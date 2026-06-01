@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T06:41:59+08:00
+updated_at: 2026-06-02T06:47:35+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,12 +27,25 @@ private project context.
 
 ## Next Action
 
-- Add a tiny CLI-level smoke for `goal-harness new-project-prompt` so the
-  actual command output, not only the Python prompt builder, preserves the quota
-  guard rule. Keep it fixture-only; do not append a real gate or run a real map.
+- Add a tiny quota-plan fixture for multi-project allocation: when several
+  goals are eligible, the next automatic turn should choose the highest
+  `quota.compute` goal, while operator-gated goals stay out of the eligible
+  lane. Keep it fixture-only; do not append a real gate or run a real map.
 
 ## Recent Progress
 
+- 2026-06-02T06:47:35+08:00: Extended `examples/project-prompt-smoke.py` so the
+  actual CLI output path is covered, not only the Python prompt builder. The
+  smoke now runs `python -m goal_harness.cli --format json new-project-prompt`
+  and the default Markdown `new-project-prompt` output, then verifies both carry
+  the quota guard rule: `should_run=false` means no implementation/adapter work
+  and no `agent_command`; `should_run=true` plus `agent_command` is required
+  before executing that command; otherwise follow `recommended_action` for the
+  next safe read-only action. Validation: direct project-prompt smoke passed;
+  aggregate public smokes passed with 3 scripts; Python compile passed; public
+  contract check passed; `git diff --check` passed. Critic: project-agent prompt
+  and CLI output are now guarded; the next P0 gap moves to multi-project
+  allocation, where quota plan ordering should be protected by a small fixture.
 - 2026-06-02T06:41:59+08:00: Added the project-agent quota guard rule to the
   new-project handoff prompt and public prompt contract. Project agents are now
   told that `quota should-run` is the compute gate: if `should_run=false`, skip

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -35,6 +37,33 @@ def assert_quota_guard(text: str) -> None:
     assert positions == sorted(positions), positions
 
 
+def run_cli(*extra_args: str) -> str:
+    result = subprocess.run(
+        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout
+
+
+def cli_prompt_args() -> list[str]:
+    return [
+        "new-project-prompt",
+        "--project",
+        str(PROJECT),
+        "--goal-doc",
+        str(GOAL_DOC),
+        "--goal-id",
+        GOAL_ID,
+        "--objective",
+        "Public example objective",
+        "--domain",
+        "example",
+    ]
+
+
 def main() -> int:
     payload = build_new_project_prompt(
         project=PROJECT,
@@ -54,6 +83,14 @@ def main() -> int:
     ), payload
     assert_quota_guard(payload["prompt"])
     assert_quota_guard(DOC.read_text(encoding="utf-8"))
+
+    cli_json = json.loads(run_cli("--format", "json", *cli_prompt_args()))
+    assert cli_json["quota_guard_command"] == payload["quota_guard_command"], cli_json
+    assert_quota_guard(cli_json["prompt"])
+
+    cli_markdown = run_cli(*cli_prompt_args())
+    assert "# New Project Codex Handoff Prompt" in cli_markdown, cli_markdown
+    assert_quota_guard(cli_markdown)
     print("project-prompt-smoke ok")
     return 0
 
