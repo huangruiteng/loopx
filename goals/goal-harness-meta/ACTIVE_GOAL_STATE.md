@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T07:17:33+08:00
+updated_at: 2026-06-02T07:22:35+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,14 +27,26 @@ private project context.
 
 ## Next Action
 
-- Tighten the quota-plan note in `docs/status-data-contract.md` so it names the
-  same full lane boundary as `docs/quota-allocation.md`: `next_automatic_turn`
-  is advisory, and operator-gated, waiting, throttled, paused, and health-blocked
-  goals stay out of the eligible lane. Keep it docs/text-only; do not change
-  planner logic, append a real gate, or run a real map.
+- Add a tiny public fixture for quota throttling: a goal with
+  `quota.compute=0.5` and spent slots at its allowed limit should land in the
+  `throttled` lane, return `should_run=false`, and stay out of
+  `summary.next_automatic_turn`. Keep it fixture-only; do not append a real
+  gate, run a real map, or change registry state.
 
 ## Recent Progress
 
+- 2026-06-02T07:22:35+08:00: Tightened the quota-plan note in
+  `docs/status-data-contract.md` to name the same lane boundary as
+  `docs/quota-allocation.md`: `next_automatic_turn` is advisory, may only name
+  the first eligible goal, and operator-gated, waiting, throttled, paused, and
+  health-blocked goals must stay out of the eligible lane even with high
+  `quota.compute`. Extended `examples/quota-contract-smoke.py` to assert that
+  status-contract wording. Validation: direct quota contract smoke passed;
+  aggregate public smokes passed with 5 scripts; Python compile passed; public
+  contract check passed; `git diff --check` passed. Critic: the quota boundary
+  is now consistent across README, quota allocation docs, and status data
+  contract; the next P0 gap is behavior coverage for quota throttling, not more
+  prose.
 - 2026-06-02T07:17:33+08:00: Extended `examples/quota-contract-smoke.py` so the
   same public text smoke now also covers `docs/status-data-contract.md`. It
   asserts that quota status and quota plan derive their grouping from the status

@@ -107,6 +107,16 @@ def main() -> int:
         "still respect the displayed health, operator, and evidence gates",
         label="status contract",
     )
+    assert_contains(
+        status_contract,
+        "In lane terms, `next_automatic_turn` may only name the first eligible goal",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "operator-gated, waiting, throttled, paused, and health-blocked goals must stay out of the eligible lane",
+        label="status contract",
+    )
 
     print("quota-contract-smoke ok")
     return 0
