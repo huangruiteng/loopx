@@ -69,4 +69,8 @@ contract health. It should be the first thing a controller or future UI reads:
 See [attention-queue.md](attention-queue.md).
 
 The JSON export is the boundary for dashboards, heartbeat summaries, and future
-UI work. See [status-data-contract.md](status-data-contract.md).
+UI work. See [status-data-contract.md](status-data-contract.md). The product
+dashboard frontend should follow
+[dashboard-frontend-selection.md](dashboard-frontend-selection.md); the
+single-file HTML renderer remains a fallback for smoke tests and offline
+inspection.

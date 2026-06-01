@@ -138,7 +138,12 @@ python3 examples/render-status-dashboard.py /tmp/goal-status.json /tmp/goal-stat
 
 The generated page groups queue items into user/controller, Codex-ready, and
 external-evidence lanes. It is a small demo for local inspection and UI
-prototyping; it is not a hosted web app.
+prototyping; it is not the product dashboard.
+
+The official dashboard direction is a React/Vite control-plane app that can
+render this same JSON contract with typed routes, filters, tables, charts, and
+drill-down pages. See
+[dashboard-frontend-selection.md](dashboard-frontend-selection.md).
 
 ## Adapter Responsibilities
 

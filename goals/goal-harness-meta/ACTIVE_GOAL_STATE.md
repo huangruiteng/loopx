@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T11:48:36+08:00
+updated_at: 2026-06-01T11:59:59+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -26,9 +26,9 @@ private project context.
 
 ## Next Action
 
-- Use the status data contract and dashboard renderer as the base for the next
-  public product segment: either a reusable adapter-template doc or a more
-  polished dashboard data export example backed by compact run history.
+- Scaffold `apps/dashboard` with Vite + React + TypeScript + shadcn/ui +
+  TanStack Router/Table, then render `examples/status.example.json` as the
+  first real control-plane screen.
 
 ## Recent Progress
 
@@ -40,6 +40,11 @@ private project context.
   `examples/render-status-dashboard.py`, documented the static dashboard demo,
   and validated that `examples/status.example.json` renders to a local HTML
   dashboard with user/controller, Codex-ready, and external-evidence lanes.
+- 2026-06-01T11:59:59+08:00: Added
+  `docs/dashboard-frontend-selection.md`, reframed the single-file HTML
+  renderer as a diagnostic fallback, and selected a React/Vite/shadcn/TanStack
+  stack for the product dashboard after benchmarking observability and
+  orchestration consoles.
 
 ## Validation
 
@@ -47,6 +52,7 @@ private project context.
 - `python3 -m goal_harness.cli --help`
 - `python3 -m goal_harness.cli --format json check --scan-root .`
 - Parse all JSON examples in `examples/`.
+- `python3 -m goal_harness.cli --format json check --scan-path README.md --scan-path docs/dashboard-frontend-selection.md --scan-path docs/status-data-contract.md`
 
 ## Guards
 

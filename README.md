@@ -121,6 +121,11 @@ goal-harness --format json status > /tmp/goal-status.json
 python3 ~/goal-harness/examples/render-status-dashboard.py /tmp/goal-status.json /tmp/goal-status.html
 ```
 
+The Python renderer is a diagnostic fallback. The planned product dashboard is
+a React/Vite app with typed routes, tables, charts, and a more polished
+control-plane UI. See
+[docs/dashboard-frontend-selection.md](docs/dashboard-frontend-selection.md).
+
 For a project with many unrelated files, scan only the public files you intend
 to publish:
 
@@ -167,7 +172,9 @@ need user/controller action, which are ready for Codex work, and which are only
 watching external evidence. See
 [docs/attention-queue.md](docs/attention-queue.md). For dashboards and scripts
 that consume `goal-harness --format json status`, see the
-[status data contract](docs/status-data-contract.md).
+[status data contract](docs/status-data-contract.md). For the official
+dashboard frontend direction, see
+[docs/dashboard-frontend-selection.md](docs/dashboard-frontend-selection.md).
 
 ## Public / Private Boundary
 
