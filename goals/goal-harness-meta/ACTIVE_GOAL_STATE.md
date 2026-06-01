@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T11:36:00+08:00
+updated_at: 2026-06-01T11:43:29+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -26,9 +26,16 @@ private project context.
 
 ## Next Action
 
-- Maintain a compact self-health run in the shared runtime, then use it to drive
-  the next public product segment: richer status UI/data export, adapter
-  templates, or controller/sub-agent coordination examples.
+- Use the status data contract to build the next public product segment: a
+  minimal local dashboard data export demo, a reusable adapter-template doc, or
+  a controller/sub-agent coordination example backed by compact run history.
+
+## Recent Progress
+
+- 2026-06-01T11:43:29+08:00: Added `docs/status-data-contract.md`,
+  linked it from README / architecture / attention queue / integration docs,
+  pushed the public commit, and saved a compact self-health run with
+  `health_check=22/22`.
 
 ## Validation
 
