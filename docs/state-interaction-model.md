@@ -250,6 +250,10 @@ User review surface:
 - expose a compact review link affordance for the current action-kind focus,
   selected goal, status source, and queue filters; copying that link is still
   dashboard UI state, not reward, approval, or controller opt-in,
+- expose a copyable operator handoff packet that combines the review link,
+  selected goal, current action kind, safe local path, reward/default hint, and
+  a localized human review action; this packet is for project-agent handoff and
+  must not be treated as a durable state transition,
 - show the run being judged,
 - show why the system thinks a human decision is needed,
 - show the selected goal's current operator stance before raw run history,

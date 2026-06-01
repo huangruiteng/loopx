@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T20:04:30+08:00
+updated_at: 2026-06-01T20:12:51+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -29,10 +29,10 @@ private project context.
 
 - Use `docs/state-interaction-model.md` as the gate before adding more
   controller, reward, adapter, or dashboard features. The next implementation
-  slice should turn the copied review link into a concise operator handoff
-  packet: include the selected goal, current action kind, safe local path, and
-  reward/default hint so the user can forward it to another project agent
-  without implying durable approval, reward, or write control.
+  slice should add a dashboard-side "copy agent prompt" variant for the same
+  operator handoff packet, so the user can forward a precise instruction to a
+  project agent while still keeping approval, reward append, and write-control
+  as separate explicit actions.
 
 ## Recent Progress
 
@@ -285,6 +285,16 @@ private project context.
   status contract. README, status data contract, and state interaction docs now
   describe the copied link as a user review affordance over agent-facing
   status.
+- 2026-06-01T20:12:51+08:00: Turned the copied review state into a first-screen
+  operator handoff packet. The React dashboard now derives the selected action
+  card from the current selected goal and action-kind lane, then builds a
+  copyable packet with selected goal, action type, review link, Chinese review
+  action, current judgment, context summary, `Reward/default hint`, and `Safe
+  local path` including the command when available. The packet explicitly says
+  it does not write reward, approval, controller opt-in, or write-control.
+  README, status data contract, and state interaction docs now describe the
+  packet as a user-facing project-agent handoff artifact, not a durable state
+  transition.
 
 ## Validation
 
@@ -336,6 +346,12 @@ private project context.
   copies the current controller/agent-harness review URL into the clipboard,
   preserves `statusUrl`, `lane`, and `severity`, and updates when the operator
   switches to the reward filter and selects `tiger-team-maiduidui-regauc`.
+- Browser DOM smoke: `Copy Handoff` copies a Chinese
+  `Goal Harness Operator Handoff` packet for `agent-harness-main-control` with
+  controller review action, `read-only-map --dry-run`, reward/default hint,
+  review link, and explicit no-write boundary; after switching to the reward
+  filter and selecting `tiger-team-maiduidui-regauc`, the packet updates to the
+  reward goal and `record_human_reward_gate / neutral`.
 - `python3 -m goal_harness.cli --format json check --scan-path README.md --scan-path docs/dashboard-frontend-selection.md --scan-path docs/status-data-contract.md`
 - `cd apps/dashboard && npm run build`
 - Browser DOM smoke: load

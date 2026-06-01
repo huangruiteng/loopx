@@ -420,6 +420,10 @@ A first useful UI can be built from the export alone:
   `actionKind`, selected `goalId`, source `statusUrl`, `lane`, and `severity`
   search state. That link is a user review affordance over this export; it
   must not add fields to the status contract or mutate goal runtime state.
+- Operator handoff packet: the dashboard may also copy a localized text packet
+  derived from the selected action card. It can include the review link, action
+  kind, selected goal, safe local path, and reward/default hint, but it remains
+  a user-facing handoff artifact and must not be parsed as approval or reward.
 - Goal directory: all `run_history.goals`, grouped mentally by `domain` and
   enriched with matching attention items and lifecycle phase badges when a
   goal needs action.

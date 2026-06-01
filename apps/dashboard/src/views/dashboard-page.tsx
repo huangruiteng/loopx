@@ -764,9 +764,63 @@ async function copyTextToClipboard(value: string) {
   }
 }
 
+function actionKindLabel(kind: UserActionFilter) {
+  return kind === "all" ? "All actions" : userActionKindConfig[kind].label;
+}
+
+function chineseReviewAction(item?: UserActionSummaryItem, selectedKind?: UserActionFilter) {
+  const kind = item?.kind ?? (selectedKind === "all" ? undefined : selectedKind);
+  if (kind === "reward") {
+    return "请用户判断这条 run 是否值得记录 human reward；这不是写权限批准。";
+  }
+  if (kind === "controller") {
+    return "请用户或目标 controller 审阅是否允许 read-only/controller opt-in；不要视为 write-control。";
+  }
+  if (kind === "codex") {
+    return "可以让 Codex 沿 safe local path 继续推进；写操作仍需单独授权。";
+  }
+  if (kind === "evidence") {
+    return "继续等待外部证据，不要把观察状态升级成决策建议。";
+  }
+  if (kind === "health") {
+    return "先修复健康阻塞，再讨论 reward、approval 或 controller handoff。";
+  }
+  return "请先查看 dashboard 当前审阅状态，再决定是否转给项目 agent。";
+}
+
+function buildOperatorHandoffPacket({
+  actionKind,
+  item,
+  reviewUrl,
+  selectedGoalId,
+}: {
+  actionKind: UserActionFilter;
+  item?: UserActionSummaryItem;
+  reviewUrl: string;
+  selectedGoalId: string;
+}) {
+  const lines = [
+    "【Goal Harness Operator Handoff】",
+    `目标：${(item?.goalId ?? selectedGoalId) || "none"}`,
+    `动作类型：${item ? userActionKindConfig[item.kind].label : actionKindLabel(actionKind)}`,
+    `审阅链接：${reviewUrl}`,
+    `用户审阅动作：${chineseReviewAction(item, actionKind)}`,
+    `当前判断：${item?.title ?? "No active user-facing action"}`,
+    `上下文摘要：${item?.summary ?? "当前状态源没有对应的 action card。"}`,
+    `Reward/default hint：${item?.rewardHint ?? "none"}`,
+    `Safe local path：${item?.safePathLabel ?? "Inspect status"}`,
+  ];
+  if (item?.safePathCommand) {
+    lines.push("```bash", item.safePathCommand, "```");
+  }
+  lines.push("边界：这是 dashboard 审阅转交文本；不写 reward、approval、controller opt-in 或 write-control。");
+  return lines.join("\n");
+}
+
 function ReviewLinkPanel({
   actionKind,
   goalId,
+  handoffPacket,
   lane,
   reviewUrl,
   severity,
@@ -774,23 +828,37 @@ function ReviewLinkPanel({
 }: {
   actionKind: UserActionFilter;
   goalId: string;
+  handoffPacket: string;
   lane: string;
   reviewUrl: string;
   severity: string;
   statusUrl: string;
 }) {
-  const [copyState, setCopyState] = useState<CopyState>("idle");
+  const [linkCopyState, setLinkCopyState] = useState<CopyState>("idle");
+  const [handoffCopyState, setHandoffCopyState] = useState<CopyState>("idle");
 
   useEffect(() => {
-    if (copyState === "idle") {
+    if (linkCopyState === "idle") {
       return;
     }
-    const timeoutId = window.setTimeout(() => setCopyState("idle"), 1800);
+    const timeoutId = window.setTimeout(() => setLinkCopyState("idle"), 1800);
     return () => window.clearTimeout(timeoutId);
-  }, [copyState, reviewUrl]);
+  }, [linkCopyState, reviewUrl]);
+
+  useEffect(() => {
+    if (handoffCopyState === "idle") {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => setHandoffCopyState("idle"), 1800);
+    return () => window.clearTimeout(timeoutId);
+  }, [handoffCopyState, handoffPacket]);
 
   async function copyReviewLink() {
-    setCopyState((await copyTextToClipboard(reviewUrl)) ? "copied" : "failed");
+    setLinkCopyState((await copyTextToClipboard(reviewUrl)) ? "copied" : "failed");
+  }
+
+  async function copyHandoffPacket() {
+    setHandoffCopyState((await copyTextToClipboard(handoffPacket)) ? "copied" : "failed");
   }
 
   return (
@@ -802,7 +870,7 @@ function ReviewLinkPanel({
               <Badge variant="info">Review link</Badge>
               <Badge variant="neutral">UI state only</Badge>
               <Badge variant={actionKind === "all" ? "neutral" : userActionKindConfig[actionKind].variant}>
-                {actionKind === "all" ? "All actions" : userActionKindConfig[actionKind].label}
+                {actionKindLabel(actionKind)}
               </Badge>
               {goalId ? <Badge variant="neutral">{goalId}</Badge> : <Badge variant="neutral">No goal</Badge>}
               {statusUrl ? <Badge variant="success">Status URL</Badge> : <Badge variant="neutral">Example source</Badge>}
@@ -814,12 +882,19 @@ function ReviewLinkPanel({
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             <Button aria-label="Copy review link" onClick={() => void copyReviewLink()} variant="primary">
-              {copyState === "copied" ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              {copyState === "copied" ? "Copied" : "Copy Link"}
+              {linkCopyState === "copied" ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {linkCopyState === "copied" ? "Copied" : "Copy Link"}
             </Button>
-            {copyState === "failed" ? <Badge variant="danger">Copy failed</Badge> : null}
+            <Button aria-label="Copy operator handoff" onClick={() => void copyHandoffPacket()}>
+              {handoffCopyState === "copied" ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {handoffCopyState === "copied" ? "Copied" : "Copy Handoff"}
+            </Button>
+            {linkCopyState === "failed" || handoffCopyState === "failed" ? <Badge variant="danger">Copy failed</Badge> : null}
           </div>
         </div>
+        <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-950 p-3 text-xs leading-5 text-slate-50 dark:border-zinc-800">
+          {handoffPacket}
+        </pre>
       </CardContent>
     </Card>
   );
@@ -2312,6 +2387,23 @@ export function DashboardPage() {
     : runHistoryOptions[0] ?? "";
   const selectedGoal = runHistory.goals.find((goal) => goal.id === selectedGoalId);
   const selectedQueueItem = queue.items.find((item) => item.goal_id === selectedGoalId);
+  const userActionItems = useMemo(
+    () => buildUserActionSummaryItems({
+      registry: payload.registry,
+      rows: goalRows,
+      runtimeRoot: payload.runtime_root,
+    }),
+    [goalRows, payload.registry, payload.runtime_root],
+  );
+  const selectedActionItem = useMemo(() => {
+    const focusedItems = search.actionKind === "all"
+      ? userActionItems
+      : userActionItems.filter((item) => item.kind === search.actionKind);
+    return focusedItems.find((item) => item.goalId === selectedGoalId)
+      ?? userActionItems.find((item) => item.goalId === selectedGoalId)
+      ?? focusedItems[0]
+      ?? userActionItems[0];
+  }, [search.actionKind, selectedGoalId, userActionItems]);
   const reviewUrl = useMemo(() => {
     const url = new URL(window.location.href);
     url.searchParams.set("actionKind", search.actionKind);
@@ -2329,6 +2421,15 @@ export function DashboardPage() {
     }
     return url.toString();
   }, [search.actionKind, search.lane, search.severity, search.statusUrl, selectedGoalId]);
+  const handoffPacket = useMemo(
+    () => buildOperatorHandoffPacket({
+      actionKind: search.actionKind,
+      item: selectedActionItem,
+      reviewUrl,
+      selectedGoalId,
+    }),
+    [reviewUrl, search.actionKind, selectedActionItem, selectedGoalId],
+  );
 
   function selectGoal(goalId: string) {
     void navigate({
@@ -2442,6 +2543,7 @@ export function DashboardPage() {
               <ReviewLinkPanel
                 actionKind={search.actionKind}
                 goalId={selectedGoalId}
+                handoffPacket={handoffPacket}
                 lane={search.lane}
                 reviewUrl={reviewUrl}
                 severity={search.severity}

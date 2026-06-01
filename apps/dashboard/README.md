@@ -31,7 +31,10 @@ with another local operator or agent. The selected goal is also URL-backed via
 `goalId`, which lets a shared link preserve both the review lane and the
 selected goal detail. The first screen exposes a compact `Review link` control
 that copies the current `actionKind`, selected `goalId`, source `statusUrl`,
-and queue filters as browser UI state only.
+and queue filters as browser UI state only. The same control can copy an
+operator handoff packet with the selected goal, current action kind, review
+link, safe local path, reward/default hint, and Chinese review action for a
+project agent.
 The selected-goal detail starts with `Operator Decision`, which turns the
 selected goal's queue item, lifecycle phase, and readiness gates into one of
 the user-level stances: review or authorize, let Codex continue, wait for
