@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T20:30:15+08:00
+updated_at: 2026-06-01T20:41:35+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -29,10 +29,10 @@ private project context.
 
 - Use `docs/state-interaction-model.md` as the gate before adding more
   controller, reward, adapter, or dashboard features. The next implementation
-  slice should make the first-screen action dock more decision-oriented: add
-  explicit Chinese operator-response templates for reward/controller cards
-  while keeping reward append, approval, controller opt-in, and write-control
-  as separate durable transitions.
+  slice should connect the Chinese operator-response template to a local
+  dry-run preview path for reward/controller decisions, so the user can see
+  the exact CLI transition that would be recorded before any durable reward,
+  approval, controller opt-in, or write-control is appended.
 
 ## Recent Progress
 
@@ -304,6 +304,16 @@ private project context.
   card's goal. The project-agent prompt tells receiving Codex sessions to run
   `goal-harness doctor`, read the project registry, active state, and run
   history, follow only the safe local path, and report in Chinese.
+- 2026-06-01T20:41:35+08:00: Added first-screen Chinese operator response
+  templates to `Selected action share`. The React dashboard now derives a
+  `Copy User Response` packet from the selected action card and review link,
+  with reward cards prompting for "同意记录这次 human reward / 暂不同意", reason,
+  and next step, and controller cards prompting for "同意继续
+  read-only/controller opt-in / 暂不同意", reason, next step, and an explicit
+  no-write-control boundary. Codex/evidence/health cards also get conservative
+  copy-only templates. README, status data contract, and state interaction
+  docs describe the template as browser UI state, not durable reward,
+  approval, controller opt-in, or write-control.
 
 ## Validation
 
@@ -371,6 +381,14 @@ private project context.
   `.goal-harness/registry.json`, the selected safe local path, and the
   boundary that the prompt is not reward append, approval, controller opt-in,
   or write-control.
+- Browser DOM smoke: reward-focused first screen shows `Copy User Response`,
+  `目标：tiger-team-maiduidui-regauc`, and the Chinese
+  `同意记录这次 human reward / 暂不同意记录这次 human reward` template with a
+  no-write-control boundary.
+- Browser DOM smoke: controller-focused first screen shows `Copy User Response`,
+  `目标：agent-harness-main-control`, and the Chinese
+  `同意继续 read-only/controller opt-in / 暂不同意，原因如下` template with a
+  no-write-control boundary.
 - `python3 -m goal_harness.cli --format json check --scan-path README.md --scan-path docs/dashboard-frontend-selection.md --scan-path docs/status-data-contract.md`
 - `cd apps/dashboard && npm run build`
 - Browser DOM smoke: load

@@ -855,6 +855,76 @@ function buildAgentPromptPacket({
   return lines.join("\n");
 }
 
+function buildUserResponseTemplate({
+  actionKind,
+  item,
+  reviewUrl,
+  selectedGoalId,
+}: {
+  actionKind: UserActionFilter;
+  item?: UserActionSummaryItem;
+  reviewUrl: string;
+  selectedGoalId: string;
+}) {
+  const goalId = (item?.goalId ?? selectedGoalId) || "none";
+  const kind = item?.kind ?? (actionKind === "all" ? undefined : actionKind);
+  const lines = [
+    "【用户审阅回复模板】",
+    `目标：${goalId}`,
+    `动作类型：${item ? userActionKindConfig[item.kind].label : actionKindLabel(actionKind)}`,
+    `审阅链接：${reviewUrl}`,
+    `当前判断：${item?.title ?? "No active user-facing action"}`,
+    `上下文摘要：${item?.summary ?? "当前状态源没有对应的 action card。"}`,
+    `Reward/default hint：${item?.rewardHint ?? "none"}`,
+    "",
+  ];
+
+  if (kind === "reward") {
+    lines.push(
+      "我的判断：同意记录这次 human reward / 暂不同意记录这次 human reward。",
+      "理由：<请写一句中文原因，例如：aligned eval duration RegAUC 已可读，且这个方向值得继续观察。>",
+      "下一步：<请写希望项目 agent 做什么，例如：先按 safe local path 做 dry-run，并把 reward 命令发回给我确认。>",
+      "边界：这只是 human reward 判断；不是 write-control、controller opt-in 或生产动作授权。",
+    );
+  } else if (kind === "controller") {
+    lines.push(
+      "我的判断：同意继续 read-only/controller opt-in / 暂不同意，原因如下。",
+      "理由：<请写一句中文原因，例如：可以先做 read-only map，但不允许写控制或线上变更。>",
+      "下一步：<请写希望项目 agent 做什么，例如：运行 safe local path 的 dry-run，汇报 changed files、validation 和 next safe action。>",
+      "边界：这不是 write-control；任何写入、实验控制、生产动作都需要再次明确授权。",
+    );
+  } else if (kind === "codex") {
+    lines.push(
+      "我的判断：可以让 Codex 沿 safe local path 继续推进。",
+      "理由：<请写一句中文原因，例如：当前 action 已经是 Codex-ready，不需要额外 reward/controller 判断。>",
+      "下一步：<请写希望项目 agent 做什么，例如：读取最新 map/history 后完成一个 bounded progress segment。>",
+      "边界：如果下一步需要写入、reward append、approval 或 write-control，先回报再等我确认。",
+    );
+  } else if (kind === "evidence") {
+    lines.push(
+      "我的判断：继续等待外部证据，不升级为决策建议。",
+      "理由：<请写一句中文原因，例如：aligned eval 还没到可比较窗口。>",
+      "下一步：<请写观察条件，例如：等 duration RegAUC 对齐后再进入 reward/controller 判断。>",
+      "边界：观察状态不是 reward、approval 或 controller opt-in。",
+    );
+  } else if (kind === "health") {
+    lines.push(
+      "我的判断：先修复健康阻塞，再讨论 reward/controller/codex handoff。",
+      "理由：<请写一句中文原因，例如：当前 contract/registry/runtime health 不足以支撑后续判断。>",
+      "下一步：<请写希望项目 agent 做什么，例如：先运行 doctor/status/check 并修复阻塞项。>",
+      "边界：健康修复不等于授权 reward append、approval 或 write-control。",
+    );
+  } else {
+    lines.push(
+      "我的判断：<请写同意/不同意/继续观察，以及一句原因。>",
+      "下一步：<请写希望项目 agent 做什么。>",
+      "边界：本回复不自动写 reward、approval、controller opt-in 或 write-control。",
+    );
+  }
+
+  return lines.join("\n");
+}
+
 function ReviewLinkPanel({
   agentPrompt,
   actionKind,
@@ -864,6 +934,7 @@ function ReviewLinkPanel({
   reviewUrl,
   severity,
   statusUrl,
+  userResponseTemplate,
 }: {
   agentPrompt: string;
   actionKind: UserActionFilter;
@@ -873,10 +944,12 @@ function ReviewLinkPanel({
   reviewUrl: string;
   severity: string;
   statusUrl: string;
+  userResponseTemplate: string;
 }) {
   const [agentPromptCopyState, setAgentPromptCopyState] = useState<CopyState>("idle");
   const [linkCopyState, setLinkCopyState] = useState<CopyState>("idle");
   const [handoffCopyState, setHandoffCopyState] = useState<CopyState>("idle");
+  const [userResponseCopyState, setUserResponseCopyState] = useState<CopyState>("idle");
 
   useEffect(() => {
     if (agentPromptCopyState === "idle") {
@@ -902,6 +975,14 @@ function ReviewLinkPanel({
     return () => window.clearTimeout(timeoutId);
   }, [handoffCopyState, handoffPacket]);
 
+  useEffect(() => {
+    if (userResponseCopyState === "idle") {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => setUserResponseCopyState("idle"), 1800);
+    return () => window.clearTimeout(timeoutId);
+  }, [userResponseCopyState, userResponseTemplate]);
+
   async function copyReviewLink() {
     setLinkCopyState((await copyTextToClipboard(reviewUrl)) ? "copied" : "failed");
   }
@@ -912,6 +993,10 @@ function ReviewLinkPanel({
 
   async function copyAgentPrompt() {
     setAgentPromptCopyState((await copyTextToClipboard(agentPrompt)) ? "copied" : "failed");
+  }
+
+  async function copyUserResponseTemplate() {
+    setUserResponseCopyState((await copyTextToClipboard(userResponseTemplate)) ? "copied" : "failed");
   }
 
   return (
@@ -938,6 +1023,10 @@ function ReviewLinkPanel({
               {linkCopyState === "copied" ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               {linkCopyState === "copied" ? "Copied" : "Copy Review Link"}
             </Button>
+            <Button aria-label="Copy user response" onClick={() => void copyUserResponseTemplate()}>
+              {userResponseCopyState === "copied" ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {userResponseCopyState === "copied" ? "Copied" : "Copy User Response"}
+            </Button>
             <Button aria-label="Copy operator handoff" onClick={() => void copyHandoffPacket()}>
               {handoffCopyState === "copied" ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               {handoffCopyState === "copied" ? "Copied" : "Copy Handoff"}
@@ -946,9 +1035,12 @@ function ReviewLinkPanel({
               {agentPromptCopyState === "copied" ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               {agentPromptCopyState === "copied" ? "Copied" : "Copy Agent Prompt"}
             </Button>
-            {linkCopyState === "failed" || handoffCopyState === "failed" || agentPromptCopyState === "failed" ? <Badge variant="danger">Copy failed</Badge> : null}
+            {linkCopyState === "failed" || handoffCopyState === "failed" || agentPromptCopyState === "failed" || userResponseCopyState === "failed" ? <Badge variant="danger">Copy failed</Badge> : null}
           </div>
         </div>
+        <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+          {userResponseTemplate}
+        </pre>
         <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-950 p-3 text-xs leading-5 text-slate-50 dark:border-zinc-800">
           {handoffPacket}
         </pre>
@@ -2499,6 +2591,15 @@ export function DashboardPage() {
     }),
     [reviewUrl, search.actionKind, selectedActionItem, selectedReviewGoalId],
   );
+  const userResponseTemplate = useMemo(
+    () => buildUserResponseTemplate({
+      actionKind: search.actionKind,
+      item: selectedActionItem,
+      reviewUrl,
+      selectedGoalId: selectedReviewGoalId,
+    }),
+    [reviewUrl, search.actionKind, selectedActionItem, selectedReviewGoalId],
+  );
 
   function selectGoal(goalId: string) {
     void navigate({
@@ -2582,6 +2683,7 @@ export function DashboardPage() {
                   reviewUrl={reviewUrl}
                   severity={search.severity}
                   statusUrl={search.statusUrl}
+                  userResponseTemplate={userResponseTemplate}
                 />
               </section>
 

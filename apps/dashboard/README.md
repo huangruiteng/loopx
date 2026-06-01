@@ -32,13 +32,15 @@ search parameter, so focused review links survive refresh and can be shared
 with another local operator or agent. The selected goal is also URL-backed via
 `goalId`, which lets a shared link preserve both the review lane and the
 selected goal detail. The adjacent first-screen `Selected action share`
-control copies the current `actionKind`,
-selected `goalId`, source `statusUrl`, and queue filters as browser UI state
-only. The same control can copy either an operator handoff packet or a
+control copies the current `actionKind`, selected `goalId`, source
+`statusUrl`, and queue filters as browser UI state only. The same control can
+copy a Chinese user-response template, an operator handoff packet, or a
 project-agent prompt with the selected goal, current action kind, review link,
-safe local path, reward/default hint, and Chinese review action. The project
-agent prompt is deliberately still a handoff artifact; it is not approval,
-reward append, controller opt-in, or write-control.
+safe local path, reward/default hint, and Chinese review action. The
+user-response template helps the operator write an agree/disagree/reason/next
+step reply for reward and controller gates, but it is still copy-only browser
+state. The project-agent prompt is deliberately still a handoff artifact; it
+is not approval, reward append, controller opt-in, or write-control.
 The selected-goal detail starts with `Operator Decision`, which turns the
 selected goal's queue item, lifecycle phase, and readiness gates into one of
 the user-level stances: review or authorize, let Codex continue, wait for

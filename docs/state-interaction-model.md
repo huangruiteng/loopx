@@ -214,8 +214,8 @@ First screen:
 - user actions that need the operator before auxiliary source controls or raw
   status drill-down,
 - selected action share controls next to those actions, so review links,
-  handoff packets, and project-agent prompts are visible without hunting
-  through the page,
+  user-response templates, handoff packets, and project-agent prompts are
+  visible without hunting through the page,
 - contract health and global registry health,
 - lanes by `waiting_on`: user/controller, Codex-ready, external evidence,
   blocking health,
@@ -255,6 +255,10 @@ User review surface:
 - expose a compact review link affordance for the current action-kind focus,
   selected goal, status source, and queue filters; copying that link is still
   dashboard UI state, not reward, approval, or controller opt-in,
+- expose a copyable Chinese user-response template for the selected action,
+  especially reward and controller gates, so the operator can quickly fill in
+  agree/disagree, reason, and next step; the template is not parsed as durable
+  reward, approval, controller opt-in, or write-control,
 - expose a copyable operator handoff packet that combines the review link,
   selected goal, current action kind, safe local path, reward/default hint, and
   a localized human review action; this packet is for project-agent handoff and

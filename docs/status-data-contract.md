@@ -423,6 +423,11 @@ A first useful UI can be built from the export alone:
   `actionKind`, selected `goalId`, source `statusUrl`, `lane`, and `severity`
   search state. That link is a user review affordance over this export; it
   must not add fields to the status contract or mutate goal runtime state.
+- User-response template: the dashboard may copy a localized operator reply
+  template derived from the selected action card. Reward and controller gates
+  should prompt the user for agree/disagree, reason, and next step in Chinese,
+  but the copied text is still browser UI state and must not be parsed as
+  durable reward, approval, controller opt-in, or write-control.
 - Operator handoff packet: the dashboard may also copy a localized text packet
   derived from the selected action card. It can include the review link, action
   kind, selected goal, safe local path, and reward/default hint, but it remains
