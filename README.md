@@ -174,6 +174,11 @@ See the first-screen status and attention queue:
 goal-harness status
 ```
 
+`status` and `serve-status` default their public/private contract scan to the
+Goal Harness install root, not the shell's current project directory. Pass
+`--scan-root` or `--scan-path` only when you intentionally want to scan a
+specific public-safe project surface.
+
 Use JSON output from scripts, heartbeats, or pre-tick adapters:
 
 ```bash
@@ -201,8 +206,8 @@ npm run build
 npm run dev
 ```
 
-Serve live status JSON from the project you want to inspect, then use the
-dashboard `Live` source button:
+Serve live status JSON for the current registry/global-registry view, then use
+the dashboard `Live` source button:
 
 ```bash
 goal-harness serve-status --port 8765

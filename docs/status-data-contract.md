@@ -36,7 +36,9 @@ return private artifact paths.
 goal-harness --format json status > goal-status.json
 ```
 
-Use narrow scan paths when a project contains unrelated private files:
+By default, `status` scans the Goal Harness install root for public/private
+contract health. Use narrow scan paths only when you intentionally want the
+status export to check a specific public-safe project surface:
 
 ```bash
 goal-harness --format json status \

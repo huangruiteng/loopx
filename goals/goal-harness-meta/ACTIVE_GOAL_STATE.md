@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T17:36:10+08:00
+updated_at: 2026-06-01T17:55:00+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,13 +27,11 @@ private project context.
 
 ## Next Action
 
-- Use `goal-harness status` as the multi-project first screen. It now checks
-  the shared global registry for stale source registries, missing active state
-  files, and duplicate goal ids, then lifts action/high findings into the
-  attention queue and renders them in the dashboard. The current local health
-  finding is an `agent-harness-main-control` planned entry whose state file is
-  not present yet; keep that as a controller opt-in/state repair item rather
-  than mutating the target project implicitly.
+- Use `goal-harness status` as the multi-project first screen. Its default
+  contract scan now stays on the Goal Harness install root, so running status
+  from a private project directory does not accidentally scan that project's
+  local state. Keep explicit `--scan-root` / `--scan-path` for public-safe
+  project surfaces only.
 
 ## Recent Progress
 
@@ -182,6 +180,11 @@ private project context.
   pre-tick now reads the global registry first-screen status, so a newly
   connected project such as `premium-ui-ai-search-rec-migration` appears as
   `state_refreshed -> codex` instead of a local-registry ghost.
+- 2026-06-01T17:55:00+08:00: Fixed `status` / `serve-status` default contract
+  scan boundaries. Multi-project status can now be run from a private project
+  checkout while still checking the public Goal Harness install root by
+  default; operators must opt in with `--scan-root` or `--scan-path` before
+  scanning a project-specific public surface.
 
 ## Validation
 
@@ -310,6 +313,9 @@ private project context.
   `appended=false`
 - `docs/dashboard-reward-write-boundary.md` is linked from README, integration,
   status contract, and experiment-controller milestone docs
+- `goal-harness --registry ~/.codex/goal-harness/registry.global.json --format
+  json status` run from a private project directory returns `ok=true`,
+  `contract.summary.errors=0`, and `global_registry.summary.findings=0`
 
 ## Guards
 

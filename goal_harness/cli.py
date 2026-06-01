@@ -52,6 +52,10 @@ def user_supplied_registry(argv: list[str] | None) -> bool:
     return any(value == "--registry" or value.startswith("--registry=") for value in values)
 
 
+def default_public_scan_root() -> str:
+    return str(Path(__file__).resolve().parents[1])
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Goal Harness control-plane helper.")
     parser.add_argument("--registry", default=str(default_registry_path()), help="Path to a project-local registry.")
@@ -209,7 +213,11 @@ def main(argv: list[str] | None = None) -> int:
     check_parser.add_argument("--limit", type=int, default=5)
 
     status_parser = sub.add_parser("status", help="Show a first-screen goal status and attention queue.")
-    status_parser.add_argument("--scan-root", default=".", help="Public files to scan for obvious private material.")
+    status_parser.add_argument(
+        "--scan-root",
+        default=default_public_scan_root(),
+        help="Public files to scan for obvious private material. Defaults to the Goal Harness install root.",
+    )
     status_parser.add_argument(
         "--scan-path",
         action="append",
@@ -222,7 +230,11 @@ def main(argv: list[str] | None = None) -> int:
     serve_status_parser.add_argument("--host", default=DEFAULT_STATUS_HOST, help="Bind host. Defaults to localhost only.")
     serve_status_parser.add_argument("--port", type=int, default=DEFAULT_STATUS_PORT)
     serve_status_parser.add_argument("--path", default=DEFAULT_STATUS_PATH, help="Status JSON route.")
-    serve_status_parser.add_argument("--scan-root", default=".", help="Public files to scan for obvious private material.")
+    serve_status_parser.add_argument(
+        "--scan-root",
+        default=default_public_scan_root(),
+        help="Public files to scan for obvious private material. Defaults to the Goal Harness install root.",
+    )
     serve_status_parser.add_argument(
         "--scan-path",
         action="append",

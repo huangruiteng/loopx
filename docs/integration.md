@@ -223,9 +223,14 @@ Use `goal-harness status` as the entrypoint for the next controller tick or UI
 refresh:
 
 ```bash
-goal-harness status --scan-path README.md --scan-path docs/
 goal-harness --format json status
+goal-harness status --scan-path README.md --scan-path docs/
 ```
+
+The default contract scan uses the Goal Harness install root, so running status
+from a private project directory does not accidentally scan local `.local`
+state. Pass `--scan-root` or `--scan-path` for a project only when that path is
+intended to be public-safe.
 
 For the React dashboard, serve that same status contract over loopback HTTP:
 
