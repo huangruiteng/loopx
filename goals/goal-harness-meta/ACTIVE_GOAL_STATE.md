@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T23:26:41+08:00
+updated_at: 2026-06-02T01:46:00+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,15 +27,27 @@ private project context.
 
 ## Next Action
 
-- Use the simplified controller Review Packet for `agent-harness-main-control`
-  as the next opt-in handoff. The attention queue now says exactly what to run:
-  `goal-harness read-only-map --goal-id agent-harness-main-control --dry-run`.
-  The target Agent should report the preview, and a real map append should wait
-  until the operator or target controller moves the adapter to
-  `read-only-map-ready` or `connected-read-only`.
+- Surface `authority_registry` coverage in the dashboard Review Packet and
+  selected run detail. The CLI/status contract now reports whether a complex
+  project declared an authority registry, whether the registry path exists, how
+  many default entry docs were found, topic authority count, and conflict risk;
+  the user-facing view should translate those fields into one simple
+  "authority coverage" line before asking for controller or reward decisions.
 
 ## Recent Progress
 
+- 2026-06-02T01:46:00+08:00: Added compact authority-registry coverage to the
+  read-only map path. Registry inspection now summarizes optional
+  `authority_registry`, global sync keeps a compact public-safe summary, and
+  `goal-harness read-only-map` writes both full local coverage and compact
+  status fields: declared/path/default entries/topic authority/conflict risk.
+  Residual risks now use stable `authority_registry_*` labels for missing
+  registry files, missing default entries, deprecated sources, or medium/high
+  conflict risk. Updated docs and examples. Validation covered Python compile,
+  registry and sync-global dry-runs, temporary project dry-run and status
+  smoke tests, JSON example parsing, public contract check, sensitive-pattern
+  scan, and `git diff --check`; pushed commit `7ee16ec` as
+  `huangrt01 <huangrt01@163.com>`.
 - 2026-06-01T23:26:41+08:00: Aligned the public status/attention queue with
   the planned-adapter dry-run preview behavior. For a registered
   high-complexity `*_read_only_map_v0` goal with `adapter.status=planned` and
