@@ -260,6 +260,10 @@ A first useful UI can be built from the export alone:
   display the compact result. This is still a validation path, not a browser
   write path.
 
+Browser-side reward append is intentionally outside the default status server.
+If a future local server enables it, it must follow the explicit opt-in boundary
+in [dashboard-reward-write-boundary.md](dashboard-reward-write-boundary.md).
+
 Suggested badge mapping:
 
 - `severity=high`: blocking.

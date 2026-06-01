@@ -101,6 +101,10 @@ For local dashboards backed by `goal-harness serve-status`, the draft can also
 round-trip through `POST /reward/dry-run`. That endpoint validates the selected
 goal/run and compact reward text but always returns `appended=false`.
 
+Browser-side append remains a separate opt-in design gate. The safety boundary
+is defined in
+[dashboard-reward-write-boundary.md](dashboard-reward-write-boundary.md).
+
 ## Controller Readiness Model
 
 Readiness is different from reward. It answers "what level of controller

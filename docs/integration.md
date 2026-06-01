@@ -171,6 +171,11 @@ validate a selected goal/run reward draft before any write path exists. The
 dry-run response is compact and does not append to `index.jsonl`; recording a
 real reward still uses the `goal-harness reward` CLI command.
 
+A browser append endpoint would be a separate explicit opt-in capability. Do
+not infer write permission from running the dashboard or status server; follow
+[dashboard-reward-write-boundary.md](dashboard-reward-write-boundary.md) before
+adding any browser-side reward writer.
+
 The status command combines contract health and run history into an attention
 queue. Each queue item says which goal needs attention, who it is waiting on,
 how severe the item is, and exactly one recommended action.

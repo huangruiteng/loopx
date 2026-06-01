@@ -223,6 +223,9 @@ that consume `goal-harness --format json status`, see the
 [status data contract](docs/status-data-contract.md). For the official
 dashboard frontend direction, see
 [docs/dashboard-frontend-selection.md](docs/dashboard-frontend-selection.md).
+Browser-side reward writes are intentionally not part of the default dashboard;
+the opt-in safety boundary is described in
+[docs/dashboard-reward-write-boundary.md](docs/dashboard-reward-write-boundary.md).
 
 ## Public / Private Boundary
 

@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T15:08:00+08:00
+updated_at: 2026-06-01T15:18:00+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -26,9 +26,9 @@ private project context.
 
 ## Next Action
 
-- Design an explicit opt-in browser append path only after the local reward
-  dry-run endpoint has been exercised against real operator text and still
-  preserves the public/private evidence boundary.
+- Convert the reward append boundary into implementation only after the design
+  is reviewed; keep the dashboard on dry-run validation and CLI reward writes
+  until then.
 
 ## Recent Progress
 
@@ -108,6 +108,12 @@ private project context.
   the React run-history panel can validate selected goal/run reward drafts
   against that loopback endpoint, and the response is compact with
   `appended=false` and no private artifact paths.
+- 2026-06-01T15:18:00+08:00: Added
+  `docs/dashboard-reward-write-boundary.md` to define the future browser reward
+  append gate. The design requires an explicit server write flag, loopback-only
+  binding, a browser capability token, exact run targeting, a dry-run preview
+  handshake, stale-preview rejection, compact responses, and validation that the
+  index changes only on a reviewed append path.
 
 ## Validation
 
@@ -155,6 +161,8 @@ private project context.
 - Browser smoke: load the React dashboard from a loopback `statusUrl`, click
   `Dry-run Check`, and verify the reward panel shows `validated` with
   `appended=false`
+- `docs/dashboard-reward-write-boundary.md` is linked from README, integration,
+  status contract, and experiment-controller milestone docs
 
 ## Guards
 
