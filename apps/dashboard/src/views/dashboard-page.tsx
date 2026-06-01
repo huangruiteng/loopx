@@ -2111,7 +2111,6 @@ export function DashboardPage() {
   const [statusUrl, setStatusUrl] = useState(search.statusUrl);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedGoalId, setSelectedGoalId] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const queue = payload.attention_queue;
   const runHistory = payload.run_history;
@@ -2188,11 +2187,31 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    const goalIds = new Set(goalRows.map((row) => row.goal.id));
-    if (!selectedGoalId || !goalIds.has(selectedGoalId)) {
-      setSelectedGoalId(goalRows[0]?.goal.id ?? "");
+    if (search.statusUrl && source.kind === "example") {
+      return;
     }
-  }, [goalRows, selectedGoalId]);
+    const goalIds = new Set(goalRows.map((row) => row.goal.id));
+    const fallbackGoalId = goalRows[0]?.goal.id ?? "";
+    if (goalRows.length === 0) {
+      if (search.goalId) {
+        void navigate({
+          search: (current) => ({
+            ...current,
+            goalId: "",
+          }),
+        });
+      }
+      return;
+    }
+    if (!search.goalId || !goalIds.has(search.goalId)) {
+      void navigate({
+        search: (current) => ({
+          ...current,
+          goalId: fallbackGoalId,
+        }),
+      });
+    }
+  }, [goalRows, navigate, search.goalId, search.statusUrl, source.kind]);
 
   const filteredItems = queue.items.filter((item) => {
     const lane = laneFor(item)?.key ?? "all";
@@ -2200,9 +2219,20 @@ export function DashboardPage() {
     const severityMatches = search.severity === "all" || search.severity === item.severity;
     return laneMatches && severityMatches;
   });
+  const runHistoryOptions = goalRows.map((row) => row.goal.id);
+  const selectedGoalId = runHistoryOptions.includes(search.goalId)
+    ? search.goalId
+    : runHistoryOptions[0] ?? "";
   const selectedGoal = runHistory.goals.find((goal) => goal.id === selectedGoalId);
   const selectedQueueItem = queue.items.find((item) => item.goal_id === selectedGoalId);
-  const runHistoryOptions = goalRows.map((row) => row.goal.id);
+  function selectGoal(goalId: string) {
+    void navigate({
+      search: (current) => ({
+        ...current,
+        goalId,
+      }),
+    });
+  }
 
   return (
     <div className={theme === "dark" ? "dark" : ""}>
@@ -2317,11 +2347,11 @@ export function DashboardPage() {
                 registry={payload.registry}
                 rows={goalRows}
                 runtimeRoot={payload.runtime_root}
-                onSelectGoal={setSelectedGoalId}
+                onSelectGoal={selectGoal}
                 selectedGoalId={selectedGoalId}
               />
 
-              <GoalDirectory rows={goalRows} onSelectGoal={setSelectedGoalId} selectedGoalId={selectedGoalId} />
+              <GoalDirectory rows={goalRows} onSelectGoal={selectGoal} selectedGoalId={selectedGoalId} />
 
               <UserReviewMap rows={goalRows} />
 
@@ -2357,7 +2387,7 @@ export function DashboardPage() {
                                 <button
                                   className="w-full rounded-md border border-current/15 bg-white/65 p-3 text-left text-sm transition hover:bg-white dark:bg-zinc-950/55 dark:hover:bg-zinc-950"
                                   key={item.goal_id}
-                                  onClick={() => setSelectedGoalId(item.goal_id)}
+                                  onClick={() => selectGoal(item.goal_id)}
                                   type="button"
                                 >
                                   <div className="flex flex-wrap items-center gap-2">
@@ -2421,13 +2451,13 @@ export function DashboardPage() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <QueueTable items={filteredItems} onSelectGoal={setSelectedGoalId} selectedGoalId={selectedGoalId} />
+                    <QueueTable items={filteredItems} onSelectGoal={selectGoal} selectedGoalId={selectedGoalId} />
                   </CardContent>
                 </Card>
 
                 <div className="space-y-3">
                   {runHistoryOptions.length > 0 ? (
-                    <Select aria-label="Run history goal" onChange={(event) => setSelectedGoalId(event.target.value)} value={selectedGoalId}>
+                    <Select aria-label="Run history goal" onChange={(event) => selectGoal(event.target.value)} value={selectedGoalId}>
                       {runHistoryOptions.map((goalId) => (
                         <option key={goalId} value={goalId}>
                           {goalId}

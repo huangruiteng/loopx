@@ -412,6 +412,10 @@ A first useful UI can be built from the export alone:
   controller, Codex, evidence, and health, without adding new status fields.
   Persisting that focus in a URL search parameter is dashboard UI state; it
   does not change the status contract or durable goal truth.
+- Selected goal detail: the dashboard may persist the selected `goal_id` in
+  URL search state so a review link can reopen the same run-history detail.
+  This selected-goal state is not part of the status export and must not be
+  treated as an approval, reward, or controller signal.
 - Goal directory: all `run_history.goals`, grouped mentally by `domain` and
   enriched with matching attention items and lifecycle phase badges when a
   goal needs action.

@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T19:43:08+08:00
+updated_at: 2026-06-01T19:48:44+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -29,10 +29,10 @@ private project context.
 
 - Use `docs/state-interaction-model.md` as the gate before adding more
   controller, reward, adapter, or dashboard features. The next implementation
-  slice should let first-screen `User Actions` select and persist the focused
-  goal in the URL as well, so a shared multi-project review link can preserve
-  both the review lane and the selected goal detail without writing durable
-  goal state.
+  slice should add a compact share/review affordance for the URL-backed
+  `actionKind` and `goalId` state, so the operator can copy the current
+  review lane plus selected goal without confusing it with a durable approval
+  or reward write.
 
 ## Recent Progress
 
@@ -268,6 +268,14 @@ private project context.
   shared, including empty focused views such as `actionKind=evidence`, while
   remaining dashboard UI state only. README, status contract, and
   state-interaction docs now describe the URL-backed focus boundary.
+- 2026-06-01T19:48:44+08:00: Made the selected goal detail URL-backed as
+  `goalId`. All dashboard selection surfaces now update the same search
+  parameter: `User Actions`, `Goal Directory`, attention lanes, attention table,
+  and the run-history goal selector. If a loaded status source does not contain
+  the requested goal, the dashboard falls back to the first available
+  run-history goal and normalizes the URL. README, status contract, and
+  state-interaction docs now describe selected-goal URL state as a browser
+  review affordance, not part of the status export or durable goal truth.
 
 ## Validation
 
@@ -310,6 +318,11 @@ private project context.
   `User Actions` card list on controller work, keeps the URL stable after
   refresh, and clicking `Reward` updates the search parameter to
   `actionKind=reward` while preserving status URL state.
+- Browser DOM smoke: loading
+  `?actionKind=controller&goalId=agent-harness-main-control` opens the
+  controller-focused action card and selected run-history detail; selecting the
+  reward card updates `goalId=tiger-team-maiduidui-regauc`, keeps
+  `actionKind=reward`, and preserves `statusUrl`.
 - `python3 -m goal_harness.cli --format json check --scan-path README.md --scan-path docs/dashboard-frontend-selection.md --scan-path docs/status-data-contract.md`
 - `cd apps/dashboard && npm run build`
 - Browser DOM smoke: load

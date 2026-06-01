@@ -27,7 +27,9 @@ contract. A compact action-kind filter lets the operator focus the first
 screen on reward, controller, Codex, evidence, or health work without changing
 the underlying status export. The filter is backed by the `actionKind` URL
 search parameter, so focused review links survive refresh and can be shared
-with another local operator or agent.
+with another local operator or agent. The selected goal is also URL-backed via
+`goalId`, which lets a shared link preserve both the review lane and the
+selected goal detail.
 The selected-goal detail starts with `Operator Decision`, which turns the
 selected goal's queue item, lifecycle phase, and readiness gates into one of
 the user-level stances: review or authorize, let Codex continue, wait for

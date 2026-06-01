@@ -245,6 +245,8 @@ User review surface:
   durable goal truth,
 - keep that action-kind focus URL-backed when useful, so a human can reload or
   share the current review lane without mutating goal, run, or status state,
+- keep selected goal detail URL-backed when useful, while treating it as
+  browser review state rather than a durable goal transition,
 - show the run being judged,
 - show why the system thinks a human decision is needed,
 - show the selected goal's current operator stance before raw run history,
