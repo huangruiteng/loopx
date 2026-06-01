@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T19:12:00+08:00
+updated_at: 2026-06-01T19:08:36+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -222,7 +222,7 @@ private project context.
   let Codex continue, wait for evidence, or fix health first. This keeps
   `goal-harness status` as an agent-facing contract while making the dashboard
   answer the user question before showing run-history details.
-- 2026-06-01T19:12:00+08:00: Connected `Operator Decision` to a selected-goal
+- 2026-06-01T19:08:36+08:00: Connected `Operator Decision` to a selected-goal
   `Safe CLI Path`. The dashboard now shows the safe local command class for the
   current stance: status/history inspection, `read-only-map --dry-run`,
   `refresh-state --dry-run`, or a reward-gate handoff to the existing Reward CLI
