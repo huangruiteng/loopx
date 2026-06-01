@@ -49,6 +49,13 @@ goal-harness bootstrap \
 If you already have a project folder and a goal document, use
 [docs/new-project-codex-prompt.md](docs/new-project-codex-prompt.md) as the
 copy-paste prompt for the Codex session that will connect the project.
+You can generate the prompt from the CLI:
+
+```bash
+goal-harness new-project-prompt \
+  --project /path/to/your-project \
+  --goal-doc /path/to/your-project/GOAL.md
+```
 
 For a Codex controller goal that may spawn scoped child agents:
 

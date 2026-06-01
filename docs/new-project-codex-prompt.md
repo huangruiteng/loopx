@@ -8,6 +8,28 @@ Use this prompt when you already have:
 
 Replace the placeholders before sending it to Codex.
 
+## CLI Generator
+
+Generate the same handoff prompt locally:
+
+```bash
+goal-harness new-project-prompt \
+  --project <PROJECT_ROOT> \
+  --goal-doc <GOAL_DOC_PATH>
+```
+
+If the project needs a controller that can split scoped sub-agent probes:
+
+```bash
+goal-harness new-project-prompt \
+  --project <PROJECT_ROOT> \
+  --goal-doc <GOAL_DOC_PATH> \
+  --spawn-allowed \
+  --allowed-domain docs-map \
+  --allowed-domain validation-map \
+  --write-scope "docs/**"
+```
+
 ## Copy-Paste Prompt
 
 ```text
@@ -38,8 +60,11 @@ Replace the placeholders before sending it to Codex.
      --objective "<OBJECTIVE_FROM_GOAL_DOC>" \
      --domain <DOMAIN> \
      --adapter-kind read_only_project_map_v0 \
-     --adapter-status connected-read-only \
-     --next-probe "<READ_ONLY_PRE_TICK_COMMAND_IF_AVAILABLE>"
+     --adapter-status connected-read-only
+
+   如果已有安全的只读 pre-tick 命令，再追加：
+
+   --next-probe "<READ_ONLY_PRE_TICK_COMMAND>"
 
    如果项目需要主控拆 sub-agent，再加：
 

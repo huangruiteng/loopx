@@ -47,6 +47,14 @@ If another Codex session should perform the connection from a project folder
 and a goal document, use [new-project-codex-prompt.md](new-project-codex-prompt.md)
 as the handoff prompt.
 
+You can generate that handoff prompt:
+
+```bash
+goal-harness new-project-prompt \
+  --project /path/to/project \
+  --goal-doc /path/to/project/GOAL.md
+```
+
 In most real projects these files should be private. If they contain current
 work state or local evidence, add them to `.gitignore`:
 

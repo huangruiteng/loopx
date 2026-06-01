@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T15:37:00+08:00
+updated_at: 2026-06-01T15:47:30+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -26,9 +26,10 @@ private project context.
 
 ## Next Action
 
-- Use `docs/new-project-codex-prompt.md` to connect the next real project from
-  a project folder plus goal document, then verify it appears in the dashboard
-  attention queue with public-safe controller gates.
+- Use `goal-harness new-project-prompt --project <PROJECT_ROOT> --goal-doc
+  <GOAL_DOC_PATH>` to generate the next real project handoff, then verify the
+  connected goal appears in the dashboard attention queue with public-safe
+  controller gates.
 
 ## Recent Progress
 
@@ -122,6 +123,11 @@ private project context.
   static HTML fallback, status contract, and sanitized examples render those
   gate hints. Added `docs/new-project-codex-prompt.md` and linked it from
   README and integration docs.
+- 2026-06-01T15:47:30+08:00: Added `goal-harness new-project-prompt`, a CLI
+  generator for the Chinese Codex handoff prompt used to connect a project from
+  a project folder plus goal document. The generated command defaults to a
+  read-only adapter and omits `--next-probe` unless a real read-only pre-tick
+  command is provided.
 
 ## Validation
 
@@ -170,6 +176,12 @@ private project context.
   `tiger-team-maiduidui-regauc` with
   `controller_stage=ready_for_read_only_not_decision` and missing gates
   `human_reward_capture`, `aligned_eval_decision_evidence`
+- `python3 -m goal_harness.cli new-project-prompt --project
+  /tmp/demo-project --goal-doc /tmp/demo-project/GOAL.md` renders a Chinese
+  handoff prompt without a placeholder `--next-probe`
+- `python3 -m goal_harness.cli --format json new-project-prompt --project
+  /tmp/demo-project --goal-doc /tmp/demo-project/GOAL.md` exposes the prompt
+  and connect command for scripts
 - Browser smoke: load the dashboard with `/status.local.json`, select
   `tiger-team-maiduidui-regauc`, and verify the queue gate hints plus next
   handoff condition are visible
