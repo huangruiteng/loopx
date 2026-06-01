@@ -34,7 +34,13 @@
         "waiting_on": "user_or_controller",
         "severity": "action",
         "recommended_action": "ask the target controller to opt into a read-only map before any mutation",
-        "source": "latest_run"
+        "source": "latest_run",
+        "controller_stage": "ready_for_read_only_not_decision",
+        "missing_gates": [
+          "human_reward_capture",
+          "aligned_eval_decision_evidence"
+        ],
+        "next_handoff_condition": "record aligned eval evidence and one human reward event"
       },
       {
         "goal_id": "docs-maintenance-goal",
@@ -77,6 +83,35 @@
             "classification": "ready_for_controller_opt_in",
             "recommended_action": "ask the target controller to opt into a read-only map before any mutation",
             "health_check": "8/8",
+            "controller_readiness": {
+              "classification": "ready_for_read_only_not_decision",
+              "read_only_observer_ready": true,
+              "decision_advisor_ready": false,
+              "write_controller_ready": false,
+              "missing_gates": [
+                "human_reward_capture",
+                "aligned_eval_decision_evidence"
+              ],
+              "review_judgment": "safe to connect read-only observation, but not decision advice",
+              "next_handoff_condition": "record aligned eval evidence and one human reward event",
+              "gates": [
+                {
+                  "id": "durable_goal_context",
+                  "ok": true,
+                  "review": "goal state and run history are available"
+                },
+                {
+                  "id": "human_reward_capture",
+                  "ok": false,
+                  "review": "no operator reward has been recorded yet"
+                },
+                {
+                  "id": "aligned_eval_decision_evidence",
+                  "ok": false,
+                  "review": "comparable validation evidence is not present yet"
+                }
+              ]
+            },
             "json_exists": true,
             "markdown_exists": true
           },

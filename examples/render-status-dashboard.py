@@ -64,6 +64,17 @@ def render_item(item: dict[str, Any]) -> str:
     waiting = esc(item.get("waiting_on"))
     source = esc(item.get("source"))
     action = esc(item.get("recommended_action"))
+    missing = item.get("missing_gates") if isinstance(item.get("missing_gates"), list) else []
+    missing_text = ", ".join(esc(gate) for gate in missing if gate)
+    gate_block = ""
+    if item.get("controller_stage") or missing_text or item.get("next_handoff_condition"):
+        gate_block = f"""
+          <div class="gate-summary">
+            <strong>{esc(item.get("controller_stage"))}</strong>
+            <span>{missing_text}</span>
+            <p>{esc(item.get("next_handoff_condition"))}</p>
+          </div>
+        """
     return f"""
         <article class="item {severity_class(item)}">
           <div class="item-top">
@@ -76,6 +87,7 @@ def render_item(item: dict[str, Any]) -> str:
             <dt>Source</dt><dd>{source}</dd>
           </dl>
           <p>{action}</p>
+          {gate_block}
         </article>
     """
 
@@ -302,6 +314,17 @@ def render_dashboard(payload: dict[str, Any]) -> str:
     dt {{ color: var(--muted); }}
     dd {{ margin: 0; overflow-wrap: anywhere; }}
     .item p, .empty {{ color: var(--muted); font-size: 13px; }}
+    .gate-summary {{
+      margin-top: 10px;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      background: #fff7ed;
+      padding: 10px;
+      color: #7c2d12;
+      font-size: 12px;
+    }}
+    .gate-summary strong, .gate-summary span {{ display: block; overflow-wrap: anywhere; }}
+    .gate-summary p {{ margin-top: 6px; color: #9a3412; }}
     .run-section {{
       margin-top: 18px;
     }}

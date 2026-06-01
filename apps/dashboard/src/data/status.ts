@@ -8,6 +8,9 @@ export const queueItemSchema = z.object({
   severity: z.string(),
   recommended_action: z.string(),
   source: z.string().optional(),
+  controller_stage: z.string().optional().nullable(),
+  missing_gates: z.array(z.string()).optional().default([]),
+  next_handoff_condition: z.string().optional().nullable(),
 });
 
 export const humanRewardSchema = z.object({

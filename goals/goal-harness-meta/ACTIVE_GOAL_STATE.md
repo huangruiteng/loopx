@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T15:18:00+08:00
+updated_at: 2026-06-01T15:37:00+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -26,9 +26,9 @@ private project context.
 
 ## Next Action
 
-- Convert the reward append boundary into implementation only after the design
-  is reviewed; keep the dashboard on dry-run validation and CLI reward writes
-  until then.
+- Use `docs/new-project-codex-prompt.md` to connect the next real project from
+  a project folder plus goal document, then verify it appears in the dashboard
+  attention queue with public-safe controller gates.
 
 ## Recent Progress
 
@@ -114,6 +114,14 @@ private project context.
   binding, a browser capability token, exact run targeting, a dry-run preview
   handshake, stale-preview rejection, compact responses, and validation that the
   index changes only on a reviewed append path.
+- 2026-06-01T15:37:00+08:00: Added queue-level controller gate hints and a
+  reusable new-project Codex handoff prompt. `goal-harness status` now lifts
+  compact `controller_stage`, `missing_gates`, and `next_handoff_condition`
+  into attention queue items so a multi-project operator can see why a watched
+  goal is not ready without opening the run payload. The React dashboard,
+  static HTML fallback, status contract, and sanitized examples render those
+  gate hints. Added `docs/new-project-codex-prompt.md` and linked it from
+  README and integration docs.
 
 ## Validation
 
@@ -158,6 +166,13 @@ private project context.
   without compact runs show `needs run`
 - `curl POST /reward/dry-run` against a synthetic loopback server returns
   `ok=true`, `appended=false`, and leaves the run index row count unchanged
+- `goal-harness status` for the local multi-project registry shows
+  `tiger-team-maiduidui-regauc` with
+  `controller_stage=ready_for_read_only_not_decision` and missing gates
+  `human_reward_capture`, `aligned_eval_decision_evidence`
+- Browser smoke: load the dashboard with `/status.local.json`, select
+  `tiger-team-maiduidui-regauc`, and verify the queue gate hints plus next
+  handoff condition are visible
 - Browser smoke: load the React dashboard from a loopback `statusUrl`, click
   `Dry-run Check`, and verify the reward panel shows `validated` with
   `appended=false`

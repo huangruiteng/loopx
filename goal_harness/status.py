@@ -76,8 +76,11 @@ def attention_item(
     severity: str,
     recommended_action: str,
     source: str,
+    controller_stage: str | None = None,
+    missing_gates: list[str] | None = None,
+    next_handoff_condition: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    item = {
         "goal_id": goal_id,
         "status": status,
         "waiting_on": waiting_on,
@@ -85,6 +88,13 @@ def attention_item(
         "recommended_action": recommended_action,
         "source": source,
     }
+    if controller_stage:
+        item["controller_stage"] = controller_stage
+    if missing_gates:
+        item["missing_gates"] = missing_gates
+    if next_handoff_condition:
+        item["next_handoff_condition"] = next_handoff_condition
+    return item
 
 
 def latest_run(goal: dict[str, Any]) -> dict[str, Any] | None:
@@ -95,10 +105,30 @@ def latest_run(goal: dict[str, Any]) -> dict[str, Any] | None:
     return run if isinstance(run, dict) else None
 
 
+def readiness_attention_fields(run: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(run, dict):
+        return {}
+    readiness = compact_controller_readiness(run.get("controller_readiness"))
+    if not readiness:
+        return {}
+    fields: dict[str, Any] = {}
+    if readiness.get("classification"):
+        fields["controller_stage"] = readiness.get("classification")
+    missing = readiness.get("missing_gates")
+    if isinstance(missing, list):
+        public_missing = [str(gate) for gate in missing if gate]
+        if public_missing:
+            fields["missing_gates"] = public_missing
+    if readiness.get("next_handoff_condition"):
+        fields["next_handoff_condition"] = readiness.get("next_handoff_condition")
+    return fields
+
+
 def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
     goal_id = str(goal.get("id") or "unknown-goal")
     adapter_status = str(goal.get("adapter_status") or "")
     current_run = latest_run(goal)
+    readiness_fields = readiness_attention_fields(current_run)
 
     if goal.get("legacy_runtime_goal"):
         return None
@@ -132,6 +162,7 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
             severity="high",
             recommended_action="repair or regenerate the latest run artifacts before trusting status",
             source="run_history",
+            **readiness_fields,
         )
 
     classification = str(current_run.get("classification") or "unknown")
@@ -144,6 +175,7 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
             severity="high",
             recommended_action=action,
             source="latest_run",
+            **readiness_fields,
         )
     if classification in USER_OR_CONTROLLER_CLASSIFICATIONS:
         return attention_item(
@@ -153,6 +185,7 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
             severity="action",
             recommended_action=action,
             source="latest_run",
+            **readiness_fields,
         )
     if classification in CODEX_READY_CLASSIFICATIONS:
         return attention_item(
@@ -162,6 +195,7 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
             severity="action",
             recommended_action=action,
             source="latest_run",
+            **readiness_fields,
         )
     if classification.startswith(WATCH_CLASSIFICATION_PREFIXES):
         return attention_item(
@@ -171,6 +205,7 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
             severity="watch",
             recommended_action=action,
             source="latest_run",
+            **readiness_fields,
         )
     return None
 
@@ -380,6 +415,18 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         )
         if action:
             lines.append(f"  - action: {action}")
+        gates = item.get("missing_gates") if isinstance(item.get("missing_gates"), list) else []
+        gate_text = ", ".join(str(gate) for gate in gates if gate)
+        controller_stage = item.get("controller_stage")
+        next_condition = item.get("next_handoff_condition")
+        if controller_stage or gate_text:
+            lines.append(
+                "  - gates: "
+                f"stage={controller_stage or 'none'} "
+                f"missing={gate_text or 'none'}"
+            )
+        if next_condition:
+            lines.append(f"  - next_handoff_condition: {next_condition}")
 
     run_history = payload.get("run_history") if isinstance(payload.get("run_history"), dict) else {}
     run_goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []

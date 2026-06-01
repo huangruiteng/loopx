@@ -126,7 +126,13 @@ Item shape:
   "waiting_on": "user_or_controller",
   "severity": "action",
   "recommended_action": "ask the target controller to opt into a read-only map before any mutation",
-  "source": "latest_run"
+  "source": "latest_run",
+  "controller_stage": "ready_for_read_only_not_decision",
+  "missing_gates": [
+    "human_reward_capture",
+    "aligned_eval_decision_evidence"
+  ],
+  "next_handoff_condition": "record aligned eval evidence and one human reward event"
 }
 ```
 
@@ -139,6 +145,12 @@ Item fields:
 - `severity`: `high`, `action`, or `watch`.
 - `recommended_action`: exactly one next action.
 - `source`: `contract`, `registry`, `run_history`, or `latest_run`.
+- `controller_stage`: optional compact controller-readiness classification from
+  the latest run.
+- `missing_gates`: optional public-safe gate ids that explain why a goal cannot
+  advance to the next controller stage yet.
+- `next_handoff_condition`: optional public-safe condition for advancing the
+  controller handoff.
 
 ## Run History
 
@@ -244,6 +256,9 @@ A first useful UI can be built from the export alone:
 - Goal directory: all `run_history.goals`, grouped mentally by `domain` and
   enriched with matching attention items when a goal needs action.
 - Primary queue: `attention_queue.items`.
+- Queue gate hints: show `controller_stage`, `missing_gates`, and
+  `next_handoff_condition` directly in queue rows so an operator can see why a
+  watched goal is not ready yet without opening the full run payload.
 - User lane: items with `waiting_on=user_or_controller` or `controller`.
 - Codex lane: items with `waiting_on=codex`.
 - Watch lane: items with `waiting_on=external_evidence`.

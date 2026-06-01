@@ -43,6 +43,10 @@ The default files are:
 .codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md
 ```
 
+If another Codex session should perform the connection from a project folder
+and a goal document, use [new-project-codex-prompt.md](new-project-codex-prompt.md)
+as the handoff prompt.
+
 In most real projects these files should be private. If they contain current
 work state or local evidence, add them to `.gitignore`:
 

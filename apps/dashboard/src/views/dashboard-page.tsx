@@ -136,6 +136,31 @@ function StatusBadge({ value }: { value: string }) {
   return <Badge variant={severityVariant[value] ?? "neutral"}>{value}</Badge>;
 }
 
+function QueueGateSummary({ item, compact = false }: { item?: QueueItem; compact?: boolean }) {
+  if (!item) {
+    return null;
+  }
+  const gates = item.missing_gates ?? [];
+  if (!item.controller_stage && gates.length === 0 && !item.next_handoff_condition) {
+    return null;
+  }
+  return (
+    <div className={cn("flex flex-wrap gap-1.5", compact ? "mt-1" : "mt-2")}>
+      {item.controller_stage ? <Badge variant="info">{item.controller_stage}</Badge> : null}
+      {gates.map((gate) => (
+        <Badge key={gate} variant="warning">
+          {gate}
+        </Badge>
+      ))}
+      {item.next_handoff_condition && !compact ? (
+        <span className="w-full text-xs leading-5 text-slate-500 dark:text-zinc-400">
+          {item.next_handoff_condition}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function shellQuote(value: string) {
   if (/^[A-Za-z0-9_./:=@+-]+$/.test(value)) {
     return value;
@@ -308,6 +333,7 @@ function GoalDirectory({
                   <div className="mt-1 line-clamp-1 text-xs text-slate-500 dark:text-zinc-400">
                     {row.waitingOn === "clear" ? "No attention item" : waitingLabel[row.waitingOn] ?? row.waitingOn}
                   </div>
+                  <QueueGateSummary compact item={row.queueItem} />
                 </div>
                 <div className="min-w-0 md:text-right">
                   <div className="text-xs font-medium text-slate-500 dark:text-zinc-400">
@@ -369,7 +395,12 @@ function QueueTable({
       {
         accessorKey: "recommended_action",
         header: "Action",
-        cell: ({ row }) => <ShortText>{row.original.recommended_action}</ShortText>,
+        cell: ({ row }) => (
+          <div className="min-w-0">
+            <ShortText>{row.original.recommended_action}</ShortText>
+            <QueueGateSummary compact item={row.original} />
+          </div>
+        ),
       },
     ],
     [],
@@ -740,6 +771,7 @@ function RunHistoryPanel({
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
               <div className="font-medium">Queue action</div>
               <p className="mt-1 leading-6 text-slate-700 dark:text-zinc-300">{queueItem.recommended_action}</p>
+              <QueueGateSummary item={queueItem} />
             </div>
           ) : null}
 
@@ -1075,6 +1107,7 @@ export function DashboardPage() {
                                     <StatusBadge value={item.severity} />
                                   </div>
                                   <p className="mt-2 text-xs leading-5 opacity-80">{item.recommended_action}</p>
+                                  <QueueGateSummary compact item={item} />
                                 </button>
                               ))
                             )}

@@ -46,6 +46,10 @@ goal-harness bootstrap \
   --objective "Improve this project through bounded, verified goal segments."
 ```
 
+If you already have a project folder and a goal document, use
+[docs/new-project-codex-prompt.md](docs/new-project-codex-prompt.md) as the
+copy-paste prompt for the Codex session that will connect the project.
+
 For a Codex controller goal that may spawn scoped child agents:
 
 ```bash
