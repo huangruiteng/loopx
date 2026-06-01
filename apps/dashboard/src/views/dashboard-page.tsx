@@ -16,6 +16,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sun,
+  Terminal,
   Users,
 } from "lucide-react";
 import {
@@ -126,6 +127,39 @@ function ShortText({ children }: { children: string }) {
 
 function StatusBadge({ value }: { value: string }) {
   return <Badge variant={severityVariant[value] ?? "neutral"}>{value}</Badge>;
+}
+
+function shellQuote(value: string) {
+  if (/^[A-Za-z0-9_./:=@+-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, "'\"'\"'")}'`;
+}
+
+function buildRewardCommand({
+  goalId,
+  registry,
+  runtimeRoot,
+  runGeneratedAt,
+}: {
+  goalId: string;
+  registry: string;
+  runtimeRoot: string;
+  runGeneratedAt: string;
+}) {
+  return [
+    "goal-harness \\",
+    `  --registry ${shellQuote(registry)} \\`,
+    `  --runtime-root ${shellQuote(runtimeRoot)} \\`,
+    "  reward \\",
+    `  --goal-id ${shellQuote(goalId)} \\`,
+    `  --run-generated-at ${shellQuote(runGeneratedAt)} \\`,
+    "  --decision '<decision_label>' \\",
+    "  --reward positive \\",
+    "  --reason-summary '<public_safe_reason>' \\",
+    "  --follow-up '<next_condition>' \\",
+    "  --dry-run",
+  ].join("\n");
 }
 
 function latestRunSortValue(run?: RunRecord) {
@@ -476,12 +510,54 @@ function LatestRun({ run }: { run: RunRecord }) {
   );
 }
 
+function RewardCommandDraft({
+  goal,
+  registry,
+  runtimeRoot,
+}: {
+  goal?: RunGoal;
+  registry: string;
+  runtimeRoot: string;
+}) {
+  const latestRun = goal?.latest_runs[0];
+  const command = goal && latestRun
+    ? buildRewardCommand({
+        goalId: goal.id,
+        registry,
+        runtimeRoot,
+        runGeneratedAt: latestRun.generated_at,
+      })
+    : "";
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="flex flex-wrap items-center gap-2">
+        <Terminal className="h-4 w-4 text-slate-500 dark:text-zinc-400" />
+        <span className="font-medium">Reward CLI Draft</span>
+        <Badge variant="info">local-only</Badge>
+        <Badge variant={command ? "warning" : "neutral"}>{command ? "dry-run" : "needs run"}</Badge>
+      </div>
+      {command ? (
+        <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-950 p-3 text-xs leading-5 text-slate-50 dark:border-zinc-800">
+          {command}
+        </pre>
+      ) : (
+        <p className="mt-3 text-sm text-slate-500 dark:text-zinc-400">No compact run record to reward.</p>
+      )}
+    </div>
+  );
+}
+
 function RunHistoryPanel({
   goal,
   queueItem,
+  registry,
+  runtimeRoot,
 }: {
   goal?: RunGoal;
   queueItem?: QueueItem;
+  registry: string;
+  runtimeRoot: string;
 }) {
   const latestRuns = goal?.latest_runs ?? [];
   const artifactReady = latestRuns.filter((run) => run.json_exists && run.markdown_exists).length;
@@ -542,6 +618,8 @@ function RunHistoryPanel({
               <p className="mt-1 leading-6 text-slate-700 dark:text-zinc-300">{queueItem.recommended_action}</p>
             </div>
           ) : null}
+
+          <RewardCommandDraft goal={goal} registry={registry} runtimeRoot={runtimeRoot} />
 
           <div className="space-y-2">
             {latestRuns.length === 0 ? (
@@ -936,7 +1014,12 @@ export function DashboardPage() {
                       ))}
                     </Select>
                   ) : null}
-                  <RunHistoryPanel goal={selectedGoal} queueItem={selectedQueueItem} />
+                  <RunHistoryPanel
+                    goal={selectedGoal}
+                    queueItem={selectedQueueItem}
+                    registry={payload.registry}
+                    runtimeRoot={payload.runtime_root}
+                  />
                 </div>
               </section>
             </div>

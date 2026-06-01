@@ -92,6 +92,11 @@ The writer appends an index overlay; it does not rewrite the private run
 payload. That keeps operator feedback close to the judged decision while
 preserving the public/private evidence boundary.
 
+The dashboard may generate a `Reward CLI Draft` for the selected goal and
+latest run. That draft should default to `--dry-run`; the operator still records
+the judgment through the CLI until browser-side writes can enforce the same
+local-only boundary and public-safe text checks.
+
 ## Controller Readiness Model
 
 Readiness is different from reward. It answers "what level of controller

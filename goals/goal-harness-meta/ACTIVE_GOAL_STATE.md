@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-01T14:45:00+08:00
+updated_at: 2026-06-01T15:00:00+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -26,9 +26,9 @@ private project context.
 
 ## Next Action
 
-- Add a local-only dashboard operator action design for recording human reward,
-  reusing the new Goal Directory selection model while preserving the CLI-first
-  safety boundary for private evidence.
+- Implement a guarded local dashboard reward submit path only after the CLI
+  draft flow can round-trip through dry-run validation without copying private
+  evidence.
 
 ## Recent Progress
 
@@ -98,6 +98,11 @@ private project context.
   `domain` in compact run history, the React dashboard renders a first-screen
   `Goal Directory` across all known goals, and the old queue mix chart was
   removed so attention lanes and run-history drill-down stay focused.
+- 2026-06-01T15:00:00+08:00: Added a local-only `Reward CLI Draft` to the
+  dashboard run-history panel. It is generated from the selected goal, latest
+  compact run timestamp, registry, and runtime root; defaults to `--dry-run`;
+  and keeps browser-side reward writes out of scope until the same safety checks
+  are enforced locally.
 
 ## Validation
 
@@ -137,6 +142,9 @@ private project context.
 - Browser smoke: verify `Goal Directory` renders bundled examples, hides the
   old `Queue Mix`, switches run history when selecting `docs-maintenance-goal`,
   and renders the live local 5-goal status export with public-safe domains
+- Browser smoke: verify `Reward CLI Draft` appears for a selected goal with a
+  compact run, includes `--dry-run` and `--run-generated-at`, and selected goals
+  without compact runs show `needs run`
 
 ## Guards
 

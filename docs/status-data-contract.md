@@ -245,6 +245,10 @@ A first useful UI can be built from the export alone:
 - Run detail panel: selected goal from the attention queue, compact
   classifications, controller readiness, health checks, reward signals, and
   artifact availability.
+- Reward CLI draft: selected goal plus latest compact run timestamp should be
+  enough to generate a local `goal-harness reward --dry-run` command. The
+  dashboard should not append feedback directly until the local-only evidence
+  boundary is explicitly implemented.
 
 Suggested badge mapping:
 

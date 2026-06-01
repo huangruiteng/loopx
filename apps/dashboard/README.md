@@ -18,6 +18,11 @@ switcher: it lists every known goal, its public-safe domain, attention state,
 latest run, and run counts before the operator drills into queue or history
 detail.
 
+When a selected goal has a compact run record, the run-history panel also shows
+a `Reward CLI Draft`. It is intentionally local-only and defaults to
+`--dry-run`; browser writes to private runtime indexes are not part of this
+surface yet.
+
 ## Load Live Status
 
 Start a local status server from the project you want to inspect:
