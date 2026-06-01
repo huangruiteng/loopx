@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T07:29:50+08:00
+updated_at: 2026-06-02T07:33:20+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,14 +27,27 @@ private project context.
 
 ## Next Action
 
-- Add a tiny public CLI fixture for `quota should-run --format json` on a
-  throttled goal, so the executable skip payload exposes `state=throttled`,
-  `should_run=false`, the spent/allowed slots, and the same
-  `plan_summary.next_automatic_turn`. Keep it fixture-only; do not append a
-  real gate, run a real map, or change registry state.
+- Add a tiny public dashboard/status fixture for a throttled quota item, so the
+  human first-screen view can show a quiet `throttled` state without putting it
+  in the user-action or reward queue. Keep it fixture-only; do not add a
+  settings panel, append a real gate, run a real map, or change registry state.
 
 ## Recent Progress
 
+- 2026-06-02T07:33:20+08:00: Extended `examples/quota-plan-smoke.py` to cover
+  the executable `quota should-run --format json` path for a throttled goal.
+  The smoke now builds a temporary public-safe registry/runtime/project,
+  invokes `python -m goal_harness.cli --format json quota should-run --goal-id
+  throttled-half`, and verifies the project-agent-facing skip payload exposes
+  `state=throttled`, `should_run=false`, `decision=skip`, spent/allowed slots
+  `12/12`, no `agent_command`, and the same `plan_summary.next_automatic_turn`
+  as the quota plan. Validation: direct quota-plan smoke passed; aggregate
+  public smokes passed with 5 scripts; Python compile passed; public contract
+  check passed; `git diff --check` passed. Critic: throttled quota behavior is
+  now guarded across planner, CLI plan, in-process should-run, and CLI
+  should-run; the remaining nearby P0 gap is making the human-facing
+  status/dashboard surface show throttled quota as quiet scheduling state, not
+  as another user decision.
 - 2026-06-02T07:29:50+08:00: Extended `examples/quota-plan-smoke.py` with a
   public-safe throttled quota fixture. The fixture adds `throttled-half` with
   `quota.compute=0.5` and spent slots equal to allowed slots, verifies the goal

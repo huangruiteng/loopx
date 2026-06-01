@@ -249,6 +249,34 @@ def run_cli_quota_plan(root: Path) -> tuple[dict, str]:
     return json.loads(json_result.stdout), markdown_result.stdout
 
 
+def run_cli_throttled_should_run(root: Path) -> dict:
+    registry_path, runtime, project = write_cli_fixture(root)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "goal_harness.cli",
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(runtime),
+            "--format",
+            "json",
+            "quota",
+            "should-run",
+            "--goal-id",
+            "throttled-half",
+            "--scan-path",
+            str(project),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(result.stdout)
+
+
 def assert_plan_shape(plan: dict, markdown: str | None = None) -> None:
     eligible_ids = [item["goal_id"] for item in plan["groups"]["eligible"]]
     operator_gate_ids = [item["goal_id"] for item in plan["groups"]["operator_gate"]]
@@ -283,6 +311,23 @@ def assert_throttled_should_run(status_payload: dict) -> None:
     assert "spent 12/12" in payload["reason"], payload
 
 
+def assert_throttled_cli_should_run(payload: dict) -> None:
+    quota = payload["quota"]
+
+    assert payload["ok"] is True, payload
+    assert payload["goal_id"] == "throttled-half", payload
+    assert payload["decision"] == "skip", payload
+    assert payload["should_run"] is False, payload
+    assert payload["state"] == "throttled", payload
+    assert payload["waiting_on"] == "codex", payload
+    assert payload["plan_summary"]["next_automatic_turn"] == "full-speed", payload
+    assert quota["compute"] == 0.5, payload
+    assert quota["spent_slots"] == 12, payload
+    assert quota["allowed_slots"] == 12, payload
+    assert "spent 12/12" in payload["reason"], payload
+    assert "agent_command" not in payload, payload
+
+
 def main() -> int:
     status_payload = build_status_fixture()
     plan = build_quota_plan(status_payload, mode="plan")
@@ -292,6 +337,8 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="goal-harness-quota-plan-smoke-") as tmp:
         cli_plan, cli_markdown = run_cli_quota_plan(Path(tmp))
     assert_plan_shape(cli_plan, cli_markdown)
+    with tempfile.TemporaryDirectory(prefix="goal-harness-quota-should-run-smoke-") as tmp:
+        assert_throttled_cli_should_run(run_cli_throttled_should_run(Path(tmp)))
     print("quota-plan-smoke ok")
     return 0
 
