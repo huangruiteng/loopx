@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T03:52:23+08:00
+updated_at: 2026-06-02T03:56:50+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,13 +27,24 @@ private project context.
 
 ## Next Action
 
-- After this compute-quota guard/onboarding slice is packaged, re-run
-  `goal-harness status` and choose the next P0 candidate from the Priority
-  Stack. Prefer state/human-decision reliability over adding quota write
+- Use fresh `goal-harness status` to inspect the P0 human-decision loop:
+  operator gates, Review Packet wording, and reward writeback should give the
+  user one clear Chinese decision and give project agents one clear next
+  command. Pick the smallest status/dashboard/CLI fix; do not start quota write
   commands or a scheduler.
 
 ## Recent Progress
 
+- 2026-06-02T03:56:50+08:00: Fixed a state-truth issue in
+  `refresh-state`: deriving `recommended_action` now uses the first
+  public-safe `## Next Action` item and joins wrapped continuation lines
+  instead of publishing only the first physical line. This prevents dashboard
+  and `quota should-run` output from showing truncated actions such as
+  "After this ... re-run". Updated README, integration docs, status contract,
+  CLI help, and the installed project skill wording from "line" to "item".
+  Validation covered Python compile, a direct wrapped-bullet unit smoke, live
+  `refresh-state --dry-run` for `goal-harness-meta`, public contract check,
+  and `git diff --check`.
 - 2026-06-02T03:52:23+08:00: Packaging pass reviewed the public diff for the
   compute-quota guard adoption slice. Scope is limited to
   `goal_harness/project_prompt.py`, `docs/new-project-codex-prompt.md`,

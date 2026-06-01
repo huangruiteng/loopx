@@ -65,9 +65,27 @@ def clean_action_line(line: str) -> str:
     return BULLET_PREFIX_RE.sub("", line.strip()).strip()
 
 
+def is_bullet_line(line: str) -> bool:
+    return bool(BULLET_PREFIX_RE.match(line.strip()))
+
+
+def first_action_item(lines: list[str], start: int) -> str:
+    first_line = lines[start]
+    parts = [clean_action_line(first_line)]
+    if is_bullet_line(first_line):
+        for line in lines[start + 1 :]:
+            if is_bullet_line(line):
+                break
+            cleaned = clean_action_line(line)
+            if cleaned:
+                parts.append(cleaned)
+    return " ".join(part for part in parts if part).strip()
+
+
 def derive_recommended_action(state_text: str) -> str:
-    for line in extract_section_lines(state_text, "Next Action", limit=8):
-        action = clean_action_line(line)
+    lines = extract_section_lines(state_text, "Next Action", limit=8)
+    for index, line in enumerate(lines):
+        action = first_action_item(lines, index)
         if not action:
             continue
         try:

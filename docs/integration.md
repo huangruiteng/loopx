@@ -185,8 +185,9 @@ refresh payload under the shared runtime root, and appends a compact
 public-safe classification, action, health-check, and artifact pointers; raw
 evidence belongs in the project-local state file or private runtime payload.
 When `--recommended-action` is omitted, the command derives the compact action
-from the first public-safe line in the active state's `## Next Action`, falling
-back to a generic refresh action if that line contains private-looking content.
+from the first public-safe item in the active state's `## Next Action`, joining
+wrapped continuation lines and falling back to a generic refresh action if that
+item contains private-looking content.
 
 For a newly connected read-only project, append a generic map run before
 building a custom adapter:

@@ -272,9 +272,9 @@ run came from `goal-harness refresh-state`. Dashboard consumers should show it
 as Codex-ready work: the controller state changed, and the next agent turn
 should inspect the refreshed active state before continuing.
 If the refresh command was run without `--recommended-action`, the compact
-`recommended_action` should be the first public-safe line from the refreshed
-active state's `## Next Action`; otherwise it falls back to a generic refresh
-notice.
+`recommended_action` should be the first public-safe item from the refreshed
+active state's `## Next Action`, including wrapped continuation lines;
+otherwise it falls back to a generic refresh notice.
 
 For registered planned high-complexity goals with a compatible
 `*_read_only_map_v0` adapter and no run yet, status keeps the queue item in

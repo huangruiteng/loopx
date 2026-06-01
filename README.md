@@ -145,9 +145,10 @@ without running a project adapter:
 goal-harness refresh-state --goal-id your-project-goal
 ```
 
-By default the refresh run uses the first public-safe line from the active
-state's `## Next Action` as its compact `recommended_action`, so dashboards can
-show the actual next move instead of a generic refresh notice. Use
+By default the refresh run uses the first public-safe item from the active
+state's `## Next Action` as its compact `recommended_action`, joining wrapped
+continuation lines so dashboards can show the actual next move instead of a
+truncated refresh notice. Use
 `--recommended-action` when the state contains only private or overly detailed
 next-action text.
 

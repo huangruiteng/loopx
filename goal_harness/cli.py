@@ -215,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     read_only_map_parser.add_argument(
         "--recommended-action",
-        help="Public-safe next action. Defaults to the first public-safe line from the active state's Next Action.",
+        help="Public-safe next action. Defaults to the first public-safe item from the active state's Next Action.",
     )
     read_only_map_parser.add_argument(
         "--dry-run",

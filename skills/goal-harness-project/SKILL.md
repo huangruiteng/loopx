@@ -142,9 +142,9 @@ goal-harness refresh-state --goal-id <STABLE_GOAL_ID>
 This fixes stale dashboards where the latest run still shows an old
 `ready_for_controller_opt_in` or similar state. It also auto-syncs the project
 entry into the global registry. If you do not pass `--recommended-action`, the
-refresh run should publish the first public-safe line from `## Next Action` as
-the compact dashboard action; keep raw evidence and private links in the state
-file, not in that action line.
+refresh run should publish the first public-safe item from `## Next Action` as
+the compact dashboard action, including wrapped continuation lines; keep raw
+evidence and private links in the state file, not in that action item.
 
 ## Record Human Reward
 
