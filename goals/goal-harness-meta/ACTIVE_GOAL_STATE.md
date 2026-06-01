@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T07:12:32+08:00
+updated_at: 2026-06-02T07:17:33+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,14 +27,26 @@ private project context.
 
 ## Next Action
 
-- Extend the quota contract smoke to cover the `docs/status-data-contract.md`
-  quota-plan note too, so the status contract, quota allocation contract, and
-  README entry point cannot drift on the advisory `next_automatic_turn`
-  boundary. Keep it docs/text-only; do not change planner logic, append a real
-  gate, or run a real map.
+- Tighten the quota-plan note in `docs/status-data-contract.md` so it names the
+  same full lane boundary as `docs/quota-allocation.md`: `next_automatic_turn`
+  is advisory, and operator-gated, waiting, throttled, paused, and health-blocked
+  goals stay out of the eligible lane. Keep it docs/text-only; do not change
+  planner logic, append a real gate, or run a real map.
 
 ## Recent Progress
 
+- 2026-06-02T07:17:33+08:00: Extended `examples/quota-contract-smoke.py` so the
+  same public text smoke now also covers `docs/status-data-contract.md`. It
+  asserts that quota status and quota plan derive their grouping from the status
+  payload, `quota should-run` derives the per-goal guard from that grouping, the
+  quota commands are read-only views rather than a separate source of truth, and
+  scripts must treat `summary.next_automatic_turn` as advisory while still
+  respecting health, operator, and evidence gates. Validation: direct quota
+  contract smoke passed; aggregate public smokes passed with 5 scripts; Python
+  compile passed; public contract check passed; `git diff --check` passed.
+  Critic: the status contract is now smoke-protected, but its wording is less
+  explicit than the quota allocation contract about throttled, paused, waiting,
+  operator-gated, and health-blocked lanes.
 - 2026-06-02T07:12:32+08:00: Added
   `examples/quota-contract-smoke.py`, a dependency-free text smoke that reads
   `README.md` and `docs/quota-allocation.md`. It protects the public quota

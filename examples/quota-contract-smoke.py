@@ -9,6 +9,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 README = REPO_ROOT / "README.md"
 QUOTA_DOC = REPO_ROOT / "docs" / "quota-allocation.md"
+STATUS_CONTRACT = REPO_ROOT / "docs" / "status-data-contract.md"
 
 
 def compact(text: str) -> str:
@@ -22,6 +23,7 @@ def assert_contains(text: str, needle: str, *, label: str) -> None:
 def main() -> int:
     readme = compact(README.read_text(encoding="utf-8"))
     quota_doc = compact(QUOTA_DOC.read_text(encoding="utf-8"))
+    status_contract = compact(STATUS_CONTRACT.read_text(encoding="utf-8"))
 
     assert_contains(quota_doc, "## Allocation Contract", label="quota doc")
     assert_contains(
@@ -79,6 +81,31 @@ def main() -> int:
         readme,
         "See `docs/quota-allocation.md` for the full allocation contract",
         label="README",
+    )
+    assert_contains(
+        status_contract,
+        "`goal-harness quota status` and `goal-harness quota plan` derive an agent-facing grouping from this same status payload",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "`goal-harness quota should-run --goal-id <goal-id>` derives a per-goal automation guard from that grouping",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "These are read-only views, not a separate source of truth",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "Scripts should treat `summary.next_automatic_turn` in the quota-plan JSON as advisory",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "still respect the displayed health, operator, and evidence gates",
+        label="status contract",
     )
 
     print("quota-contract-smoke ok")
