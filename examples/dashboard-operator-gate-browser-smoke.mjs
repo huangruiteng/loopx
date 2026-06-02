@@ -200,6 +200,8 @@ async function main() {
           "Quota 0.5",
           "等待人或控制器决策",
           "0/12 slots",
+          "Suggested decision",
+          "同意先做 read-only map dry-run；不授权写入或主控接管。",
           "Copy Review Packet",
         ];
         const missing = required.filter((text) => !body.includes(text));

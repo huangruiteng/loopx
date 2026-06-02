@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T11:40:00+08:00
+updated_at: 2026-06-02T11:52:53+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -28,13 +28,34 @@ private project context.
 ## Next Action
 
 - Run the next tick's steering audit across at least three lanes before
-  choosing work. Now that quota spend accounting no longer masks the current
-  work state, compare P0 human-decision/dashboard simplification, P0 real
-  adapter proof, and project-agent execution loop hardening; do not continue
-  quota/status work unless another state-truth break appears.
+  choosing work. The controller review packet now includes a single suggested
+  decision line, so compare approved-gate transition coverage, project-agent
+  packet legibility, and real adapter proof once controller opt-in exists; do
+  not add more dashboard panels unless they reduce human review cost.
 
 ## Recent Progress
 
+- 2026-06-02T11:52:53+08:00: Used the required steering audit after the
+  global-registry sync slice. Candidates considered: P0 human-decision
+  dashboard simplification, P0 real adapter proof, and P0 project-agent packet
+  legibility. Chose human-decision simplification because the dashboard already
+  exposed a single review packet, but the user still had to infer the actual
+  recommended judgment from surrounding copy. Added a compact suggested
+  decision line to controller review packets and the right-side Review Packet
+  panel. For read-only-map controller opt-ins it now says the operator can
+  approve a dry-run only, without granting writes or controller takeover.
+  Losing high-value candidate: real adapter proof should resume only after the
+  controller opt-in gate is answered. Changed files:
+  `apps/dashboard/src/views/dashboard-page.tsx`,
+  `examples/dashboard-operator-gate-browser-smoke.mjs`, and this active state.
+  Validation: `npm run build` passed in the dashboard app; `node
+  examples/dashboard-operator-gate-browser-smoke.mjs` passed; `python3
+  examples/status-markdown-smoke.py` passed; `python3 examples/run-smokes.py`
+  passed with 8 scripts; `goal-harness check --scan-root .` passed; `git diff
+  --check` passed. Critic: this is deliberately a small review-cost reduction,
+  not another dashboard feature expansion. The next UI work should remove or
+  merge attention cost, or cover the approved-gate transition, rather than add
+  more panels.
 - 2026-06-02T11:40:00+08:00: Ran the required steering audit after two P1
   intro-writing slices and recent prompt/skill work. Candidates considered:
   P0 state truth/safety (`quota_slot_spent` was masking current status in

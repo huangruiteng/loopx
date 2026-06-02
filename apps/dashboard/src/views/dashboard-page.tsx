@@ -826,6 +826,29 @@ function humanReviewPrompt(kind?: UserActionKind) {
   };
 }
 
+function suggestedDecisionLine(kind?: UserActionKind, item?: UserActionSummaryItem) {
+  if (kind === "controller") {
+    const question = item?.operatorQuestion ?? "";
+    if (question.includes("read-only map")) {
+      return "同意先做 read-only map dry-run；不授权写入或主控接管。";
+    }
+    return "同意先做只读 controller dry-run；不授权写入或生产动作。";
+  }
+  if (kind === "reward") {
+    return "同意记录这次 human reward / 暂不同意，原因是...";
+  }
+  if (kind === "codex") {
+    return "同意让 Codex 沿 safe path 继续；如需写入再单独请求授权。";
+  }
+  if (kind === "evidence") {
+    return "继续等待外部证据；暂不升级成决策建议。";
+  }
+  if (kind === "health") {
+    return "先修健康阻塞；暂不处理 reward/controller/codex handoff。";
+  }
+  return "继续 / 不继续 / 继续观察，并补一句原因。";
+}
+
 function normalizeConflictRisk(value?: string | null) {
   return (value || "unknown").toLowerCase();
 }
@@ -1037,6 +1060,7 @@ function buildReviewPacket({
   const goalId = (item?.goalId ?? selectedGoalId) || "<goal-id>";
   const kind = item?.kind ?? (actionKind === "all" ? undefined : actionKind);
   const prompt = humanReviewPrompt(kind);
+  const suggestedDecision = suggestedDecisionLine(kind, item);
   const lines = [
     "【Goal Harness Review Packet】",
     `目标：${goalId}`,
@@ -1048,6 +1072,7 @@ function buildReviewPacket({
     "",
     "【人只需判断】",
     `问题：${item?.operatorQuestion ?? prompt.question}`,
+    `建议判断：${suggestedDecision}`,
     `回复：${prompt.reply}`,
     `边界：${prompt.boundary}`,
     ...(transitionPreview.operatorGateDraftCommand ? [
@@ -1076,6 +1101,7 @@ function ReviewLinkPanel({
   severity,
   statusUrl,
   transitionPreview,
+  suggestedDecision,
 }: {
   actionKind: UserActionFilter;
   authorityCoverage?: AuthorityCoverage;
@@ -1087,6 +1113,7 @@ function ReviewLinkPanel({
   severity: string;
   statusUrl: string;
   transitionPreview: OperatorTransitionPreview;
+  suggestedDecision: string;
 }) {
   const [packetCopyState, setPacketCopyState] = useState<CopyState>("idle");
 
@@ -1122,6 +1149,13 @@ function ReviewLinkPanel({
             <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-zinc-400">
               先在 dashboard/operator view 做判断；同意后再把 packet 作为项目 Agent 的执行上下文。
             </p>
+            <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-sm leading-6 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+              <div className="flex flex-wrap items-center gap-2">
+                <CircleAlert className="h-3.5 w-3.5" />
+                <Badge variant="warning">Suggested decision</Badge>
+              </div>
+              <p className="mt-1 break-words font-medium">{suggestedDecision}</p>
+            </div>
             {authorityCoverage ? (
               <p className="mt-2 text-xs leading-5 text-slate-700 dark:text-zinc-300">{authorityCoverage.reviewLine}</p>
             ) : null}
@@ -2973,11 +3007,14 @@ export function DashboardPage() {
       ?? focusedItems[0]
       ?? (search.goalId ? userActionItems.find((item) => item.goalId === selectedGoalId) : undefined)
       ?? userActionItems[0];
-	  }, [search.actionKind, search.goalId, selectedGoalId, userActionItems]);
-	  const selectedReviewGoalId = selectedActionItem?.goalId ?? selectedGoalId;
-	  const selectedActionGoal = runHistory.goals.find((goal) => goal.id === selectedReviewGoalId);
-	  const selectedActionQueueItem = queue.items.find((item) => item.goal_id === selectedReviewGoalId);
-	  const reviewUrl = useMemo(() => {
+  }, [search.actionKind, search.goalId, selectedGoalId, userActionItems]);
+  const selectedReviewGoalId = selectedActionItem?.goalId ?? selectedGoalId;
+  const selectedActionGoal = runHistory.goals.find((goal) => goal.id === selectedReviewGoalId);
+  const selectedActionQueueItem = queue.items.find((item) => item.goal_id === selectedReviewGoalId);
+  const selectedActionKind = selectedActionItem?.kind
+    ?? (search.actionKind === "all" ? undefined : search.actionKind);
+  const selectedSuggestedDecision = suggestedDecisionLine(selectedActionKind, selectedActionItem);
+  const reviewUrl = useMemo(() => {
     const url = new URL(window.location.href);
     url.searchParams.set("actionKind", search.actionKind);
     url.searchParams.set("lane", search.lane);
@@ -3118,6 +3155,7 @@ export function DashboardPage() {
                   reviewUrl={reviewUrl}
                   severity={search.severity}
                   statusUrl={search.statusUrl}
+                  suggestedDecision={selectedSuggestedDecision}
                   transitionPreview={transitionPreview}
                 />
               </section>
