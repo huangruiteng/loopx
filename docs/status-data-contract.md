@@ -307,6 +307,9 @@ Review Packet source-of-truth rule:
 - the dashboard/operator view owns the human decision;
 - the copied Review Packet is a bridge from that decision surface to a local
   operator preview and a target project-agent instruction;
+- `goal-harness review-packet --goal-id <goal-id>` may generate the same
+  packet from the status contract for CLI-facing agents, but it is still a
+  read-only packaging command;
 - the local `operator_gate_dry_run` preview belongs to the user or controller,
   not the target project agent;
 - the project-agent command is only the after-approval dry-run execution path.

@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T12:04:21+08:00
+updated_at: 2026-06-02T12:10:25+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -28,14 +28,43 @@ private project context.
 ## Next Action
 
 - Run the next tick's steering audit across at least three lanes before
-  choosing work. The project-agent packet now names forwarding condition,
-  execution boundary, and stop condition; next compare real adapter proof once
-  controller opt-in exists, attention-cost reduction, and whether project
-  agents need a CLI-visible packet formatter. Do not add more dashboard panels
-  unless they reduce human or agent review cost.
+  choosing work. Review Packets are now available from both dashboard and
+  `goal-harness review-packet`; next compare real adapter proof once
+  controller opt-in exists, attention-cost reduction, and whether the CLI
+  packet should be referenced from installed project-agent skill guidance. Do
+  not add more dashboard panels unless they reduce human or agent review cost.
 
 ## Recent Progress
 
+- 2026-06-02T12:10:25+08:00: Used the required steering audit after clarifying
+  project-agent packet boundaries. Candidates considered: P0 real adapter
+  proof, P0 attention-cost reduction, and P0 CLI-visible packet formatter.
+  Real adapter proof remains gated on controller opt-in; attention-cost
+  reduction requires a deliberate UI deletion/merge decision. Chose the
+  CLI-visible packet formatter because the previous packet improvements were
+  still browser-only, while project agents and controller threads need a
+  read-only command they can run from status. Added
+  `goal_harness/review_packet.py` and the `goal-harness review-packet` CLI
+  command. It collects status, infers reward/controller/codex/evidence/health
+  packet kind, emits a Markdown packet or JSON payload, includes the same human
+  decision boundary and project-agent forwarding/execution/stop conditions, and
+  never writes registry or runtime history. Added
+  `examples/review-packet-cli-smoke.py`, README usage, and status-contract
+  wording that the CLI packet remains read-only packaging, not durable
+  approval. Losing high-value candidate: real adapter proof should resume only
+  after controller opt-in; attention-cost reduction should be a product
+  deletion/merge slice. Changed files: `goal_harness/review_packet.py`,
+  `goal_harness/cli.py`, `examples/review-packet-cli-smoke.py`, `README.md`,
+  `docs/status-data-contract.md`, and this active state. Validation: `python3
+  examples/review-packet-cli-smoke.py` passed; `python3
+  examples/review-packet-smoke.py` passed; `python3 -m py_compile
+  goal_harness/review_packet.py goal_harness/cli.py
+  examples/review-packet-cli-smoke.py` passed; `goal-harness review-packet
+  --help` works; `python3 examples/run-smokes.py` passed with 9 scripts;
+  `goal-harness check --scan-root .` passed; `git diff --check` passed.
+  Critic: the packet is now usable outside the browser. Further packet work
+  should move into installed project-agent guidance or wait for a real
+  controller opt-in, not keep polishing packet prose.
 - 2026-06-02T12:04:21+08:00: Used the required steering audit after approved
   gate browser coverage. Candidates considered: P0 project-agent packet
   legibility, P0 real adapter proof, and P0 attention-cost reduction. Chose

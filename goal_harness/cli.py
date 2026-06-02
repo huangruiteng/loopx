@@ -44,6 +44,7 @@ from .quota import (
     spend_quota_slot,
 )
 from .registry import inspect_registry, render_registry_markdown
+from .review_packet import build_review_packet, render_review_packet_markdown
 from .runtime import archive_runtime_goal, render_archive_runtime_markdown
 from .state_refresh import (
     DEFAULT_REFRESH_ACTION,
@@ -342,6 +343,30 @@ def main(argv: list[str] | None = None) -> int:
         help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
     )
     status_parser.add_argument("--limit", type=int, default=5)
+
+    review_packet_parser = sub.add_parser(
+        "review-packet",
+        help="Generate a CLI-visible Review Packet from the current status contract.",
+    )
+    review_packet_parser.add_argument("--goal-id", required=True, help="Goal id to package for review or handoff.")
+    review_packet_parser.add_argument(
+        "--action-kind",
+        choices=["reward", "controller", "codex", "evidence", "health"],
+        help="Override inferred action kind. Defaults to the goal's current attention item.",
+    )
+    review_packet_parser.add_argument("--review-url", help="Optional dashboard review URL to include in the packet.")
+    review_packet_parser.add_argument(
+        "--scan-root",
+        default=default_public_scan_root(),
+        help="Public files to scan for obvious private material. Defaults to the Goal Harness install root.",
+    )
+    review_packet_parser.add_argument(
+        "--scan-path",
+        action="append",
+        default=[],
+        help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
+    )
+    review_packet_parser.add_argument("--limit", type=int, default=5)
 
     quota_parser = sub.add_parser(
         "quota",
@@ -719,6 +744,32 @@ def main(argv: list[str] | None = None) -> int:
                 },
             }
         print_payload(payload, args.format, render_status_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "review-packet":
+        try:
+            scan_roots = [Path(item).expanduser() for item in args.scan_path]
+            if not scan_roots:
+                scan_roots = [Path(args.scan_root).expanduser()]
+            status_payload = collect_status(
+                registry_path=registry_path,
+                runtime_root_override=args.runtime_root,
+                scan_roots=scan_roots,
+                limit=max(0, args.limit),
+            )
+            payload = build_review_packet(
+                status_payload,
+                goal_id=args.goal_id,
+                action_kind=args.action_kind,
+                review_url=args.review_url,
+            )
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "goal_id": args.goal_id,
+                "error": str(exc),
+            }
+        print_payload(payload, args.format, render_review_packet_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "quota":

@@ -243,6 +243,16 @@ See the first-screen status and attention queue:
 goal-harness status
 ```
 
+Generate a CLI-visible Review Packet for a selected goal:
+
+```bash
+goal-harness review-packet --goal-id your-project-goal
+```
+
+This is read-only. It packages the same human decision boundary and
+project-agent forwarding/stop conditions that the dashboard exposes, so target
+agents do not have to infer scope from browser copy.
+
 For agent-facing compute allocation, read the quota grouping that is derived
 from the same status contract:
 
