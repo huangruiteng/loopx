@@ -33,12 +33,12 @@ with another local operator or agent. The selected goal is also URL-backed via
 `goalId`, which lets a shared link preserve both the review lane and the
 selected goal detail. The adjacent first-screen `Selected action share`
 control copies the current `actionKind`, selected `goalId`, source
-`statusUrl`, and queue filters as browser UI state only. It intentionally has
-one canonical copy affordance: `Copy Review Packet`. The packet follows the
-selected action card, so an operator can click a different card to switch the
-target instead of choosing among several copy formats. The packet combines the
-review link, Chinese agree/disagree/reason/next-step template, project-agent
-instructions, safe local path, reward/default hint, and local dry-run preview.
+`statusUrl`, and queue filters as browser UI state only. Each first-screen
+action card intentionally has one canonical copy affordance: `Copy`. The
+copied handoff starts as a short `【GH Packet】` with the selected card's user
+todo, gate, safety boundary, safe path, command, and project-agent stop rule, so
+an operator can click a different card to switch the target instead of choosing
+among several copy formats.
 It is still a handoff artifact; it is not approval, reward append, controller
 opt-in, or write-control.
 The selected-goal detail starts with `Operator Decision`, which turns the

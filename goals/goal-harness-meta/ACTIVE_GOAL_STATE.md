@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T01:19:21+08:00
+updated_at: 2026-06-03T01:24:55+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -45,15 +45,33 @@ handoff, validation, and quota bookkeeping.
 
 ## Next Action
 
-- Next tick should continue the P1 public first-try usability path by aligning
-  dashboard docs and operator-copy wording with the current first-screen UI:
-  audit `apps/dashboard/README.md`, the README dashboard section, and one
-  browser-smoke output for stale `Copy Review Packet` / old packet names, then
-  fix exactly one docs/UI mismatch. Return to P0 only if a real connected goal
-  shows stale status, hidden user todos, or an overlong gate packet again.
+- Next tick should continue the P1 public first-try usability path by running a
+  fresh-user quickstart readthrough from README install -> `goal-harness demo`
+  -> dashboard live status, then fix exactly one remaining docs or command
+  mismatch. Return to P0 only if a real connected goal shows stale status,
+  hidden user todos, or an overlong gate packet again.
 
 ## Recent Progress
 
+- 2026-06-03T01:24:55+08:00: Steering audit candidates were: P0
+  state/status truth, P1 dashboard docs/operator-copy wording, P1 quickstart
+  smoke, and P2 broader dashboard polish. Chose the dashboard docs wording
+  slice because the previous turn connected `goal-harness demo` to the
+  dashboard, but `apps/dashboard/README.md` still described the old
+  `Copy Review Packet` affordance even though the real first-screen cards now
+  expose a single `Copy` button and a compact `【GH Packet】`. Bounded fix:
+  updated the dashboard README to describe the current card-level `Copy`
+  affordance and the short copied handoff contents: user todo, gate, safety
+  boundary, safe path, command, and project-agent stop rule. Validation:
+  targeted `rg` confirms `Copy Review Packet`, `Operator Review Packet`, and
+  old packet names now appear only in
+  `examples/dashboard-operator-gate-browser-smoke.mjs` forbidden-text guards;
+  `node examples/dashboard-operator-gate-browser-smoke.mjs` passes;
+  `git diff --check` and `goal-harness check --scan-root .` pass. Changed
+  files: `apps/dashboard/README.md`, this active state, and the private
+  CS-Notes state. Critic: this removes the stale docs/UI mismatch, but the
+  public quickstart still relies on a readthrough rather than a full fresh-clone
+  rehearsal; next slice should audit that flow and fix one concrete mismatch.
 - 2026-06-03T01:19:21+08:00: Steering audit candidates were: P0
   state/status truth, P1 fresh-user demo-to-dashboard usability, P1 stale
   dashboard docs/copy wording, and P2 broader dashboard polish. Chose the
