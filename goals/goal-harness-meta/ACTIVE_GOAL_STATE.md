@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-02T21:42:53+08:00
+updated_at: 2026-06-02T21:49:28+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -45,13 +45,32 @@ handoff, validation, and quota bookkeeping.
 
 ## Next Action
 
-- Next tick should remove the stale unmounted `ReviewLinkPanel` / lower review
-  packet component path after confirming no route renders it. Keep the single
-  visible packet affordance in `User Actions`, then run the dashboard build and
-  a browser smoke so duplicate packet surfaces cannot quietly return.
+- Next tick should inspect and tighten the `User Actions` copy packet payload
+  itself. Use one live platform-migration or controller action, copy it in the
+  browser, and make sure the packet is short, Chinese, and structured around
+  user todo / gate / boundary / safe agent handoff rather than raw dashboard
+  detail.
 
 ## Recent Progress
 
+- 2026-06-02T21:49:28+08:00: Steering audit candidates were: P0 state-truth
+  recheck, P0 human-decision UI duplicate-surface removal, and P1 docs polish.
+  Continued the UI cleanup because the previous empty-filter fix made the
+  single visible packet affordance reachable, and the remaining risk was stale
+  code reviving the old lower packet surface. Confirmed by `rg` that
+  `ReviewLinkPanel` had no render path, then removed the unmounted
+  `ReviewLinkPanel`, `buildReviewPacket`, `OperatorTransitionPreview`, and
+  related transition/markdown helpers. The visible `User Actions` copy path was
+  left intact. Changed files: `apps/dashboard/src/views/dashboard-page.tsx`
+  plus this active state; private `.local` state also updated. Validation:
+  `npm run build` in `apps/dashboard`, stale-keyword `rg` returned no matches
+  for `ReviewLinkPanel`, `Copy Review Packet`, `Operator Review Packet`, or
+  `Packet details`, in-app browser reload showed those old labels absent while
+  `User Actions` Copy buttons and the platform-migration `Next user todo 2/13
+  open` card remained visible, `goal-harness check --scan-root .`, and
+  `git diff --check`. Critic: duplicate packet surfaces are now structurally
+  removed; next improvement should target the copied packet payload quality, not
+  more layout changes.
 - 2026-06-02T21:42:53+08:00: Steering audit candidates were: P0 state truth
   verification, P0 human-decision UI surface cleanup, and P1 communication
   polish. State truth had just been verified, so chose one bounded P0 UI cleanup
