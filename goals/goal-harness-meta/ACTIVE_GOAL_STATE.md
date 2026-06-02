@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T00:03:57+08:00
+updated_at: 2026-06-03T00:09:18+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -45,13 +45,38 @@ handoff, validation, and quota bookkeeping.
 
 ## Next Action
 
-- Next tick should continue the P0 project-agent loop proof by checking that a
-  real project-agent heartbeat or operator-gate report actually consumes the
-  now-visible `user_todo_summary` and `agent_todo_summary`, rather than hiding
-  user or agent work in chat-only progress or an overlong Next Action.
+- Next tick should finish the P0 project-agent consumption proof by inspecting
+  or exercising one real heartbeat/operator-gate report path and verifying that
+  its visible interaction names the relevant `user_todo_summary` and
+  `agent_todo_summary` items, not just that the fields exist in CLI JSON.
 
 ## Recent Progress
 
+- 2026-06-03T00:09:18+08:00: Steering audit candidates were: P0 project-agent
+  consumption proof, P0 installed-skill/state truth, P1 public usability polish,
+  and P2 dashboard copy cleanup. Continuation check: the previous slice exposed
+  `agent_todo_summary` in quota JSON/Markdown, but real project agents load the
+  installed `~/.codex/skills/goal-harness-project/SKILL.md`; that skill was
+  still on the old contract and only told agents to read `user_todo_summary`.
+  This meant the CLI field existed but a real agent using the current skill
+  could still ignore its own agent todos. Bounded fix: synced the installed
+  `goal-harness-project` skill with the public skill contract so it reads
+  `agent_todo_summary`, uses it as the safe follow-up checklist, and treats
+  shared global registry as the source for operator gates, user todos, agent
+  todos, and quota state. Also kept the public skill template wording aligned.
+  Validation: installed skill and public skill now diff clean; `rg` confirms
+  both mention `agent_todo_summary`, `agent todos`, and safe follow-up
+  checklist; real `quota should-run --goal-id premium-ui-ai-search-rec-migration`
+  still returns `user_todo_summary.open_count=3` and
+  `agent_todo_summary.open_count=5`; `goal-harness check --scan-root .`
+  reports public boundary clean; `python3 examples/run-smokes.py` passes 15
+  smoke scripts; `git diff --check` passes. Changed files:
+  `skills/goal-harness-project/SKILL.md`, installed global
+  `~/.codex/skills/goal-harness-project/SKILL.md`, this active state, and the
+  private CS-Notes state. Critic: this closes the “project agent reads stale
+  skill” gap, but the remaining proof is interaction-level: a real heartbeat or
+  operator-gate report must visibly include the relevant user/agent todo items
+  instead of merely having access to them.
 - 2026-06-03T00:03:57+08:00: Steering audit candidates were: P0
   project-agent loop proof on a real connected goal, P0 state-truth/global
   registry freshness, P1 first-run/public PR usability, and P2 dashboard copy

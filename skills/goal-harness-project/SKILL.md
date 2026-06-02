@@ -87,7 +87,7 @@ This guard is only a compute-allocation check. It does not grant write
 permission, bypass operator gates, or replace run-bound human reward. Operator
 gates block the gated delivery path, not unrelated safe steering work.
 Use the shared global registry for this guard so the project agent reads the
-same operator gates, user todos, and quota state as the dashboard. This does
+same operator gates, user todos, agent todos, and quota state as the dashboard. This does
 not mean all project work is global: `todo add`, `refresh-state`, adapter runs,
 and project-file reads still use the project-local state/registry and then sync
 the public-safe projection back into the global control plane. If two projects
