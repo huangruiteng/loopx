@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T18:21:18+08:00
+updated_at: 2026-06-02T18:32:46+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -28,14 +28,37 @@ private project context.
 ## Next Action
 
 - Run the next tick's steering audit and choose one bounded P0 step. Compare
-  Review Packet goal-id mismatch guard, `goal-harness todo add --role
-  user|agent`, and dashboard gate/todo first-screen simplification; prefer the
-  mismatch guard if another project agent still sees a packet for the wrong
-  goal, otherwise add the todo CLI because user/agent todo injection is now the
-  next lowest-friction project-agent loop gap.
+  `goal-harness todo add --role user|agent`, a Review Packet goal-id mismatch
+  guard, and one-click operator decision recording. Prefer the todo CLI unless
+  another wrong-goal packet/gate is observed, because user/agent todo injection
+  is now the lowest-friction project-agent loop gap after dashboard copy UX was
+  simplified.
 
 ## Recent Progress
 
+- 2026-06-02T18:32:46+08:00: User pointed out three dashboard UX failures:
+  packet copy was not available on every relevant action, the copied packet was
+  too long and machine-oriented, and the separate yellow gate box plus lower
+  white packet panel made one user decision look like two objects. Simplified
+  the dashboard around one first-screen action-card model. Each visible
+  `User Actions` card now has its own `Copy` button, the default copied packet
+  is a short Chinese `Goal Harness Action` with only the decision, current
+  state, safe path, and after-approval agent command, and the right-side
+  `Operator Review Packet` panel is no longer rendered on the first screen.
+  Controller/user-gated cards use a single amber action-card treatment, with
+  user todo and operator question embedded in the same card. Changed files:
+  `apps/dashboard/src/views/dashboard-page.tsx` and
+  `examples/review-packet-smoke.py`. Validation: `npm --prefix apps/dashboard
+  run build`, `python examples/review-packet-smoke.py`, `python
+  examples/review-packet-cli-smoke.py`, `python examples/status-markdown-smoke.py`,
+  `python examples/run-smokes.py`, `goal-harness check --scan-root .`, and
+  `git diff --check` passed; Chrome live check at
+  `http://127.0.0.1:5173/?statusUrl=%2Fstatus.local.json&actionKind=controller&goalId=agent-harness-main-control&lane=all&severity=all`
+  confirmed a single `User Actions` panel, per-card copy, no rendered
+  `Operator Review Packet` panel, and one unified action card for the platform
+  migration gate/todo. Critic: the UI is now much less split-brained, but the
+  next project-agent loop gap is still how agents add user/agent todos without
+  hand-editing Markdown section names.
 - 2026-06-02T18:21:18+08:00: User pointed out that the platform migration
   heartbeat UX was still poor: when a real gate exists, the agent should
   proactively ask the user which gate decision or todo progress is needed,

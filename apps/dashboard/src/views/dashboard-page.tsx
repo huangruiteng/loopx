@@ -1140,6 +1140,46 @@ function buildReviewPacket({
   return lines.join("\n");
 }
 
+function buildHumanFriendlyActionPacket({
+  item,
+  registry,
+  runtimeRoot,
+}: {
+  item: UserActionSummaryItem;
+  registry: string;
+  runtimeRoot: string;
+}) {
+  const prompt = humanReviewPrompt(item.kind);
+  const quotaView = buildQuotaView(item.quota);
+  const todo = firstOpenTodo(item.userTodos);
+  const question = item.operatorQuestion ?? (todo ? todo.text : prompt.question);
+  const reply = item.kind === "controller" ? controllerReplyLine(item.goalId) : prompt.reply;
+  const command = item.safePathCommand ?? buildStatusCommand({ registry, runtimeRoot });
+  return [
+    "【Goal Harness Action】",
+    `目标：${item.goalId}`,
+    `动作：${item.title}`,
+    "",
+    "【请你判断】",
+    question,
+    todo && item.operatorQuestion ? `用户待办：${todo.text}` : null,
+    `建议回复：${reply}`,
+    `建议判断：${suggestedDecisionLine(item.kind, item, item.goalId)}`,
+    `边界：${prompt.boundary}`,
+    "",
+    "【当前状态】",
+    `摘要：${item.summary}`,
+    `下一步：${item.detail}`,
+    quotaView ? `配额：${quotaView.shortLine}` : null,
+    item.authorityCoverage ? `权威源：${item.authorityCoverage.shortLine}` : null,
+    "",
+    "【同意后给项目 Agent】",
+    `只允许 safe path：${item.safePathLabel}`,
+    command ? `命令：${command.replace(/\s+/g, " ").trim()}` : null,
+    "要求：用中文回报 changed files、validation、next safe action；需要写入/生产/进一步授权时停下。",
+  ].filter(Boolean).join("\n");
+}
+
 function ReviewLinkPanel({
   actionKind,
   authorityCoverage,
@@ -1926,11 +1966,21 @@ function UserActionSummary({
   const kindOptions = userActionKindOrder.filter((kind) => kindCounts[kind] > 0 || kind === selectedKind);
   const visibleItems = selectedKind === "all" ? items : items.filter((item) => item.kind === selectedKind);
   const selectedKindLabel = selectedKind === "all" ? "All" : userActionKindConfig[selectedKind].label;
-  const operatorGateItems = items.filter((item) =>
-    item.kind === "controller" || item.waitingOn === "user_or_controller" || item.waitingOn === "controller"
-  );
-  const selectedOperatorGate = operatorGateItems.find((item) => item.goalId === selectedGoalId);
-  const primaryOperatorGate = selectedOperatorGate ?? operatorGateItems[0];
+  const [actionCopyState, setActionCopyState] = useState<{ key: string; state: CopyState } | null>(null);
+
+  useEffect(() => {
+    if (!actionCopyState || actionCopyState.state === "idle") {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => setActionCopyState(null), 1800);
+    return () => window.clearTimeout(timeoutId);
+  }, [actionCopyState]);
+
+  async function copyActionPacket(item: UserActionSummaryItem) {
+    const key = `${item.goalId}-${item.kind}-${item.title}`;
+    const packet = buildHumanFriendlyActionPacket({ item, registry, runtimeRoot });
+    setActionCopyState({ key, state: (await copyTextToClipboard(packet)) ? "copied" : "failed" });
+  }
 
   return (
     <Card>
@@ -1958,39 +2008,6 @@ function UserActionSummary({
           </div>
         ) : (
           <div className="space-y-3">
-            {primaryOperatorGate ? (
-              <button
-                className="w-full rounded-lg border border-amber-300 bg-amber-50 p-3 text-left transition hover:bg-amber-100 dark:border-amber-900/70 dark:bg-amber-950/40 dark:hover:bg-amber-950"
-                onClick={() => {
-                  onSelectKind("controller");
-                  onSelectGoal(primaryOperatorGate.goalId);
-                }}
-                type="button"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <CircleAlert className="h-4 w-4 text-amber-700 dark:text-amber-300" />
-                  <Badge variant="warning">Needs decision</Badge>
-                  <Badge variant="neutral">{operatorGateItems.length} gates</Badge>
-                  <Badge variant="neutral">{primaryOperatorGate.goalId}</Badge>
-                  {todoCountLabel(primaryOperatorGate.userTodos) ? (
-                    <Badge variant="success">User todo {todoCountLabel(primaryOperatorGate.userTodos)}</Badge>
-                  ) : null}
-                  <QuotaChip quota={primaryOperatorGate.quota} />
-                </div>
-                {firstOpenTodo(primaryOperatorGate.userTodos) ? (
-                  <UserTodoCallout todos={primaryOperatorGate.userTodos} />
-                ) : (
-                  <p className="mt-2 break-words text-sm font-semibold leading-6 text-amber-950 dark:text-amber-100">
-                    {primaryOperatorGate.operatorQuestion ?? primaryOperatorGate.summary}
-                  </p>
-                )}
-                <p className="mt-2 line-clamp-2 text-xs leading-5 text-amber-800 dark:text-amber-200">
-                  {firstOpenTodo(primaryOperatorGate.userTodos)
-                    ? primaryOperatorGate.operatorQuestion ?? primaryOperatorGate.detail
-                    : primaryOperatorGate.detail}
-                </p>
-              </button>
-            ) : null}
             <div aria-label="User action kind filter" className="flex flex-wrap gap-2">
               <Button
                 aria-pressed={selectedKind === "all"}
@@ -2019,16 +2036,21 @@ function UserActionSummary({
                 No {selectedKindLabel.toLowerCase()} action is active for this status source.
               </div>
             ) : (
-              <div className="grid gap-3 lg:grid-cols-3">
-                {visibleItems.map((item) => (
-                  <button
+              <div className="grid gap-3 xl:grid-cols-2">
+                {visibleItems.map((item) => {
+                  const actionKey = `${item.goalId}-${item.kind}-${item.title}`;
+                  const copyState = actionCopyState?.key === actionKey ? actionCopyState.state : "idle";
+                  const isGateAction = item.kind === "controller" || item.waitingOn === "user_or_controller" || item.waitingOn === "controller";
+                  return (
+                  <article
                     className={cn(
-                      "min-w-0 rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900",
-                      item.goalId === selectedGoalId && "border-slate-400 bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900",
+                      "min-w-0 rounded-lg border p-3 text-left transition",
+                      isGateAction
+                        ? "border-amber-300 bg-amber-50/70 dark:border-amber-900/70 dark:bg-amber-950/30"
+                        : "border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
+                      item.goalId === selectedGoalId && "ring-2 ring-slate-300 dark:ring-zinc-700",
                     )}
-                    key={`${item.goalId}-${item.title}`}
-                    onClick={() => onSelectGoal(item.goalId)}
-                    type="button"
+                    key={actionKey}
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={userActionKindConfig[item.kind].variant}>{userActionKindConfig[item.kind].label}</Badge>
@@ -2041,11 +2063,34 @@ function UserActionSummary({
                       <QuotaChip quota={item.quota} />
                       {item.draftLabel ? <Badge variant="info">{item.draftLabel}</Badge> : null}
                     </div>
-                    <div className="mt-3 break-words text-sm font-semibold text-slate-950 dark:text-zinc-50">{item.title}</div>
-                    <div className="mt-1 break-all text-xs text-slate-500 dark:text-zinc-400">{item.goalId}</div>
+                    <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+                      <button
+                        className="min-w-0 text-left"
+                        onClick={() => onSelectGoal(item.goalId)}
+                        type="button"
+                      >
+                        <div className="break-words text-sm font-semibold text-slate-950 dark:text-zinc-50">{item.title}</div>
+                        <div className="mt-1 break-all text-xs text-slate-500 dark:text-zinc-400">{item.goalId}</div>
+                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {copyState === "failed" ? <Badge variant="danger">Copy failed</Badge> : null}
+                        <Button
+                          aria-label={`Copy action packet for ${item.goalId}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void copyActionPacket(item);
+                          }}
+                          size="sm"
+                          variant="secondary"
+                        >
+                          {copyState === "copied" ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                          {copyState === "copied" ? "Copied" : "Copy"}
+                        </Button>
+                      </div>
+                    </div>
                     <UserTodoCallout todos={item.userTodos} />
                     {item.operatorQuestion ? (
-                      <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 dark:border-amber-900/60 dark:bg-amber-950/30">
+                      <div className="mt-3">
                         <div className="flex flex-wrap items-center gap-2">
                           <CircleAlert className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
                           <Badge variant="warning">Operator question</Badge>
@@ -2082,8 +2127,9 @@ function UserActionSummary({
                         </>
                       ) : null}
                     </div>
-                  </button>
-                ))}
+                  </article>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -3100,68 +3146,6 @@ export function DashboardPage() {
       ?? userActionItems[0];
   }, [search.actionKind, search.goalId, selectedGoalId, userActionItems]);
   const selectedReviewGoalId = selectedActionItem?.goalId ?? selectedGoalId;
-  const selectedActionGoal = runHistory.goals.find((goal) => goal.id === selectedReviewGoalId);
-  const selectedActionQueueItem = queue.items.find((item) => item.goal_id === selectedReviewGoalId);
-  const selectedActionKind = selectedActionItem?.kind
-    ?? (search.actionKind === "all" ? undefined : search.actionKind);
-  const selectedSuggestedDecision = suggestedDecisionLine(selectedActionKind, selectedActionItem, selectedReviewGoalId);
-  const reviewUrl = useMemo(() => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("actionKind", search.actionKind);
-    url.searchParams.set("lane", search.lane);
-    url.searchParams.set("severity", search.severity);
-    if (selectedReviewGoalId) {
-      url.searchParams.set("goalId", selectedReviewGoalId);
-    } else {
-      url.searchParams.delete("goalId");
-    }
-    if (search.statusUrl) {
-      url.searchParams.set("statusUrl", search.statusUrl);
-    } else {
-      url.searchParams.delete("statusUrl");
-	    }
-	    return url.toString();
-	  }, [search.actionKind, search.lane, search.severity, search.statusUrl, selectedReviewGoalId]);
-	  const transitionPreview = useMemo(
-	    () => buildOperatorTransitionPreview({
-	      actionKind: search.actionKind,
-	      goal: selectedActionGoal,
-	      item: selectedActionItem,
-	      queueItem: selectedActionQueueItem,
-	      registry: payload.registry,
-	      runtimeRoot: payload.runtime_root,
-	      selectedGoalId: selectedReviewGoalId,
-	    }),
-	    [
-	      payload.registry,
-	      payload.runtime_root,
-	      search.actionKind,
-	      selectedActionGoal,
-	      selectedActionItem,
-	      selectedActionQueueItem,
-	      selectedReviewGoalId,
-	    ],
-	  );
-  const selectedAuthorityCoverage = useMemo(
-    () => buildAuthorityCoverage({ goal: selectedActionGoal, run: selectedActionGoal?.latest_runs[0] }),
-    [selectedActionGoal],
-  );
-  const selectedQuotaView = useMemo(
-    () => buildQuotaView(selectedActionQueueItem?.quota ?? selectedActionGoal?.quota),
-    [selectedActionGoal, selectedActionQueueItem],
-  );
-	  const reviewPacket = useMemo(
-	    () => buildReviewPacket({
-	      actionKind: search.actionKind,
-        authorityCoverage: selectedAuthorityCoverage,
-	      item: selectedActionItem,
-        quotaView: selectedQuotaView,
-	      reviewUrl,
-	      selectedGoalId: selectedReviewGoalId,
-	      transitionPreview,
-	    }),
-	    [reviewUrl, search.actionKind, selectedActionItem, selectedAuthorityCoverage, selectedQuotaView, selectedReviewGoalId, transitionPreview],
-	  );
 
   function selectGoal(goalId: string) {
     void navigate({
@@ -3218,7 +3202,7 @@ export function DashboardPage() {
             </header>
 
             <div className="space-y-5 p-4 sm:p-6">
-              <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+              <section>
                 <UserActionSummary
                   selectedKind={search.actionKind}
                   onSelectKind={(actionKind) =>
@@ -3234,20 +3218,6 @@ export function DashboardPage() {
                   runtimeRoot={payload.runtime_root}
                   onSelectGoal={selectGoal}
                   selectedGoalId={selectedReviewGoalId}
-                />
-
-                <ReviewLinkPanel
-                  actionKind={search.actionKind}
-                  authorityCoverage={selectedAuthorityCoverage}
-                  goalId={selectedReviewGoalId}
-                  lane={search.lane}
-                  quotaView={selectedQuotaView}
-                  reviewPacket={reviewPacket}
-                  reviewUrl={reviewUrl}
-                  severity={search.severity}
-                  statusUrl={search.statusUrl}
-                  suggestedDecision={selectedSuggestedDecision}
-                  transitionPreview={transitionPreview}
                 />
               </section>
 

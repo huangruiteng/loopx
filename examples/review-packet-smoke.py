@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Smoke-test the dashboard Review Packet contract.
+"""Smoke-test the dashboard operator action packet contract.
 
 The dashboard owns the operator-facing packet text. This smoke keeps a
-public-safe fixture for the planned opt-in path and checks the source still
-orders the human question, local gate dry-run, and project-agent command
-sections correctly.
+public-safe fixture for the planned opt-in path and checks the source keeps the
+copyable packet short and human-facing. The longer local gate dry-run remains
+available as an advanced/debug path, not as the default copied packet.
 """
 
 from __future__ import annotations
@@ -38,16 +38,6 @@ def source_between(source: str, start: str, end: str) -> str:
 
 def build_sanitized_controller_packet() -> str:
     goal_id = "planned-main-control"
-    operator_gate_draft = multiline_command(
-        "goal-harness \\",
-        "  --registry ./examples/registry.example.json \\",
-        "  --runtime-root ./tmp/runtime \\",
-        "  operator-gate \\",
-        f"  --goal-id {goal_id} \\",
-        "  --decision approve \\",
-        f"  --reason-summary '同意 {goal_id} 先做 read-only map dry-run，不授权写入或生产动作' \\",
-        "  --dry-run",
-    )
     project_agent_command = multiline_command(
         "goal-harness \\",
         "  --registry ./examples/registry.example.json \\",
@@ -58,31 +48,26 @@ def build_sanitized_controller_packet() -> str:
     )
     return "\n".join(
         [
-            "【Goal Harness Review Packet】",
+            "【Goal Harness Action】",
             f"目标：{goal_id}",
-            "类型：Controller",
-            "链接：https://example.invalid/review",
-            "摘要：planned opt-in review fixture",
-            "权威源：public-safe fixture",
-            "配额：eligible",
+            "动作：Review controller opt-in",
             "",
-            "【人只需判断】",
-            "问题：是否允许目标项目进入 read-only/controller opt-in？",
-            f"回复：同意 {goal_id} 先做 read-only map dry-run / 暂不同意 + 一句话原因。",
+            "【请你判断】",
+            "是否允许目标项目进入 read-only/controller opt-in？",
+            f"建议回复：同意 {goal_id} 先做 read-only map dry-run / 暂不同意 + 一句话原因。",
+            f"建议判断：同意 {goal_id} 先做 read-only map dry-run；不授权写入或主控接管。",
             "边界：这只授权项目 Agent 预览 dry-run 路径；不写 operator gate、run history、write-control、实验控制或生产动作。",
             "",
-            "【用户本地 Gate 记录草稿】",
-            "用途：人确认后，由用户或主控先 dry-run 预览 durable operator gate；不要把它当作项目 Agent 执行命令。",
-            command_block(operator_gate_draft),
+            "【当前状态】",
+            "摘要：planned opt-in review fixture",
+            "下一步：先在 Goal Harness 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run",
+            "配额：Operator gate; 0/1440 slots",
+            "权威源：default entries 10/10; topic 10; risk medium",
             "",
-            "【给项目 Agent】",
-            "转发条件：只有用户已经明确同意 read-only/controller dry-run 后，才把本段发给项目 Agent。",
-            "执行边界：只执行下面只读或 dry-run 项目路径；不要运行用户本地 Gate 记录草稿。",
-            "停止条件：需要真实 approval、write-control、run history append、生产动作或命令失败时，停下等明确授权。",
-            "",
-            command_block(project_agent_command),
-            "",
-            "回报：用中文说明 changed files、validation 和 next safe action。",
+            "【同意后给项目 Agent】",
+            "只允许 safe path：Read-only map dry-run",
+            f"命令：{project_agent_command.replace(chr(10), ' ')}",
+            "要求：用中文回报 changed files、validation、next safe action；需要写入/生产/进一步授权时停下。",
         ]
     )
 
@@ -98,8 +83,8 @@ def main() -> int:
     assert "the dashboard/operator view owns the human decision" in contract
     assert "the project-agent command is only the after-approval dry-run execution path" in contract
     assert "复制后直接发给对应项目 Agent；人只补一句判断。" not in source
-    assert "Operator Review Packet" in source
-    assert "先在 dashboard/operator view 做判断；同意后再把 packet 作为项目 Agent 的执行上下文。" in source
+    assert "【Goal Harness Action】" in source
+    assert "Copy action packet for" in source
     assert "项目 Agent 只有在 approval 后才回报 changed files、validation 和 next safe action。" in source
     assert "转发条件：只有用户已经明确同意 read-only/controller dry-run 后，才把本段发给项目 Agent。" in source
     assert "执行边界：只执行下面只读或 dry-run 项目路径；不要运行用户本地 Gate 记录草稿。" in source
@@ -113,8 +98,9 @@ def main() -> int:
         ],
     )
 
-    packet_builder = source_between(source, "function buildReviewPacket", "function ReviewLinkPanel")
-    assert_order(packet_builder, ["【人只需判断】", "【用户本地 Gate 记录草稿】", "【给项目 Agent】"])
+    packet_builder = source_between(source, "function buildHumanFriendlyActionPacket", "function ReviewLinkPanel")
+    assert_order(packet_builder, ["【请你判断】", "【当前状态】", "【同意后给项目 Agent】"])
+    assert "operatorGateDraftCommand" not in packet_builder
 
     controller_prompt = source_between(source, "if (kind === \"controller\")", "if (kind === \"codex\")")
     assert "是否允许目标项目进入 read-only/controller opt-in？" in controller_prompt
@@ -152,28 +138,28 @@ def main() -> int:
         ],
     )
     user_action_summary = source_between(source, "function UserActionSummary", "function OperatorDecisionPanel")
-    assert "const selectedOperatorGate = operatorGateItems.find((item) => item.goalId === selectedGoalId);" in user_action_summary
-    assert "const primaryOperatorGate = selectedOperatorGate ?? operatorGateItems[0];" in user_action_summary
+    assert "buildHumanFriendlyActionPacket({ item, registry, runtimeRoot })" in user_action_summary
+    assert "aria-label={`Copy action packet for ${item.goalId}`}" in user_action_summary
+    assert "const primaryOperatorGate" not in user_action_summary
+    assert "Needs decision" not in user_action_summary
 
     packet = build_sanitized_controller_packet()
     assert_order(
         packet,
         [
-            "问题：是否允许目标项目进入 read-only/controller opt-in？",
-            "回复：同意 planned-main-control 先做 read-only map dry-run / 暂不同意 + 一句话原因。",
-            "【用户本地 Gate 记录草稿】",
-            "operator-gate",
-            "【给项目 Agent】",
-            "转发条件",
-            "执行边界",
-            "停止条件",
+            "【请你判断】",
+            "是否允许目标项目进入 read-only/controller opt-in？",
+            "建议回复：同意 planned-main-control 先做 read-only map dry-run / 暂不同意 + 一句话原因。",
+            "【当前状态】",
+            "【同意后给项目 Agent】",
             "read-only-map",
+            "需要写入/生产/进一步授权时停下",
         ],
     )
-    assert packet.count("operator-gate") == 1, packet
+    assert "operator-gate" not in packet, packet
     assert packet.count("read-only-map") == 1, packet
-    assert "不要把它当作项目 Agent 执行命令" in packet
-    assert "不授权写入或生产动作" in packet
+    assert len(packet.splitlines()) <= 20, packet
+    assert "不授权写入或主控接管" in packet
     print("review-packet-smoke ok")
     return 0
 
