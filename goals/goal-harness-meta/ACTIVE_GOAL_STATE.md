@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T18:59:02+08:00
+updated_at: 2026-06-02T19:06:03+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,14 +27,37 @@ private project context.
 
 ## Next Action
 
-- Run the next tick's steering audit after confirming heartbeat preflight stays
-  healthy. Compare the Review Packet goal-id mismatch guard, one-click operator
-  decision recording, and the next project-agent execution loop gap; choose the
-  smallest P0 slice that improves cross-project handoff without adding user
-  attention cost.
+- Next tick should take the smallest P0 human-decision-loop slice: make an
+  approved/deferred/rejected operator decision easier to turn into a durable
+  `operator-gate` record from the Review Packet or dashboard copy surface.
+  Keep the first version CLI/static-dashboard friendly and smoke-tested; do
+  not touch real project repos. Losing candidate to remember: the
+  project-agent execution loop still needs a better approved-command handoff,
+  but durable decision recording should be clearer first.
 
 ## Recent Progress
 
+- 2026-06-02T19:06:03+08:00: Heartbeat preflight is healthy with
+  `$HOME/.local/bin` on PATH and `quota should-run` returned eligible. Steering
+  audit candidates: P0 state/safety Review Packet goal-id mismatch guard, P0
+  human-decision one-click/durable operator decision recording, and P0
+  project-agent approved-command handoff. Chose the goal-id guard because it is
+  the smallest state/safety slice after the recent cross-project confusion:
+  project agents must reject a packet that belongs to another active goal.
+  Added a `target_goal_guard()` to the CLI Review Packet `给项目 Agent` section
+  for reward, controller, and codex handoffs, explicitly saying the packet only
+  applies to the target `goal_id` and to stop if the agent's active goal or
+  registry entry differs. Updated the CLI smoke to assert the guard and its
+  order before any command. Changed files: `goal_harness/review_packet.py`,
+  `examples/review-packet-cli-smoke.py`, and this active state. Validation:
+  `python examples/review-packet-cli-smoke.py`, `python
+  examples/review-packet-smoke.py`, `python -m compileall -q goal_harness`,
+  `python examples/run-smokes.py`, `goal-harness check --scan-root .`, `git
+  diff --check`, and a live `goal-harness review-packet --goal-id
+  agent-harness-main-control` snippet showing the target guard before
+  `read-only-map`. Critic: this does not solve the whole project-agent
+  execution loop, but it removes a high-risk handoff ambiguity without adding
+  user-facing complexity.
 - 2026-06-02T18:59:02+08:00: User objected that the heartbeat PATH skip should
   be self-resolved instead of surfaced as a visible skip message. Fixed the
   root cause rather than relying on a one-off absolute path. The current

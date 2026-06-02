@@ -106,11 +106,15 @@ def main() -> int:
         assert "【用户本地 Gate 记录草稿】" in packet, packet
         assert "operator-gate" in packet, packet
         assert "【给项目 Agent】" in packet, packet
+        assert f"目标校验：本段只适用于 goal_id=`{GOAL_ID}`；如果与你当前 active goal 或 registry entry 不一致，停止并回报目标不匹配。" in packet, packet
         assert "转发条件：只有用户已经明确同意 read-only/controller dry-run 后，才把本段发给项目 Agent。" in packet, packet
         assert "执行边界：只执行下面只读或 dry-run 项目路径；不要运行用户本地 Gate 记录草稿。" in packet, packet
         assert "停止条件：需要真实 approval、write-control、run history append、生产动作或命令失败时，停下等明确授权。" in packet, packet
         assert "read-only-map" in packet, packet
-        assert_order(packet, ["【人只需判断】", "【用户本地 Gate 记录草稿】", "operator-gate", "【给项目 Agent】", "read-only-map"])
+        assert_order(
+            packet,
+            ["【人只需判断】", "【用户本地 Gate 记录草稿】", "operator-gate", "【给项目 Agent】", "目标校验", "read-only-map"],
+        )
         assert not run_dir.exists(), "review-packet must not write runtime runs"
 
         json_result = run_cli(

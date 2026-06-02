@@ -187,9 +187,18 @@ def project_agent_command(status_payload: dict[str, Any], goal_id: str, kind: st
     return build_status_command(status_payload)
 
 
-def project_agent_section(kind: str, command: str) -> str:
+def target_goal_guard(goal_id: str) -> str:
+    return (
+        f"目标校验：本段只适用于 goal_id=`{goal_id}`；如果与你当前 active goal "
+        "或 registry entry 不一致，停止并回报目标不匹配。"
+    )
+
+
+def project_agent_section(kind: str, command: str, goal_id: str) -> str:
+    goal_guard = target_goal_guard(goal_id)
     if kind == "reward":
         lines = [
+            goal_guard,
             "转发条件：只有用户已经真实记录 run-bound human_reward 后，才把本段发给项目 Agent。",
             "执行边界：不要替用户写 reward；active state 只做摘要，reward 的权威来源是 run-bound human_reward overlay。",
             "停止条件：如果 reward 还停留在 dry-run / 草稿 / 口头判断，停下等待用户记录；如果已经记录，只用下面 history 路径读取。",
@@ -198,6 +207,7 @@ def project_agent_section(kind: str, command: str) -> str:
         ]
     elif kind == "controller":
         lines = [
+            goal_guard,
             "转发条件：只有用户已经明确同意 read-only/controller dry-run 后，才把本段发给项目 Agent。",
             "执行边界：只执行下面只读或 dry-run 项目路径；不要运行用户本地 Gate 记录草稿。",
             "停止条件：需要真实 approval、write-control、run history append、生产动作或命令失败时，停下等明确授权。",
@@ -206,6 +216,7 @@ def project_agent_section(kind: str, command: str) -> str:
         ]
     else:
         lines = [
+            goal_guard,
             "转发条件：只有用户已经同意 safe local path 后，才把本段发给项目 Agent。",
             "执行边界：读取本项目 status/history 后，只执行下面只读或 dry-run 路径。",
             "停止条件：需要真实写 reward、approval、write-control、run history append、生产动作或命令失败时，停下等明确授权。",
@@ -239,7 +250,7 @@ def build_review_packet(
     gate_command = build_operator_gate_command(status_payload, goal_id) if kind == "controller" else None
     decision = suggested_decision(kind, item, goal_id)
     reply = controller_reply(goal_id) if kind == "controller" else prompt["reply"]
-    agent_text = project_agent_section(kind, command)
+    agent_text = project_agent_section(kind, command, goal_id)
     type_label = {
         "reward": "Reward",
         "controller": "Controller",
