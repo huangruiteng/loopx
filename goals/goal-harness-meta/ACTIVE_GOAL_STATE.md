@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-02T21:49:28+08:00
+updated_at: 2026-06-02T21:58:00+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -45,14 +45,35 @@ handoff, validation, and quota bookkeeping.
 
 ## Next Action
 
-- Next tick should inspect and tighten the `User Actions` copy packet payload
-  itself. Use one live platform-migration or controller action, copy it in the
-  browser, and make sure the packet is short, Chinese, and structured around
-  user todo / gate / boundary / safe agent handoff rather than raw dashboard
-  detail.
+- Next tick should add a small deterministic copy-packet smoke for the
+  dashboard action-packet builder, ideally by extracting the pure packet builder
+  enough to test one user-todo/Codex-ready fixture. Browser clipboard reads are
+  not reliable in the current in-app browser, so the regression guard should
+  assert the generated packet sections and rough length without depending on a
+  virtual clipboard.
 
 ## Recent Progress
 
+- 2026-06-02T21:58:00+08:00: Steering audit candidates were: P0 state-truth
+  follow-up, P0 action packet payload quality, and P1 communication polish.
+  Chose packet payload quality because the UI now has a single visible packet
+  affordance, so the remaining user burden is whether the copied content is
+  short and decision-shaped. Tightened `buildHumanFriendlyActionPacket` so the
+  copied payload is structured as status, user action/gate, boundary, and safe
+  project-agent handoff. It no longer dumps separate summary/next-action lines
+  that made Codex-ready user-todo cards feel like raw dashboard detail. Long
+  todo/question/boundary text is compacted before copy. Changed files:
+  `apps/dashboard/src/views/dashboard-page.tsx` plus this active state; private
+  `.local` state also updated. Validation: `npm run build` in
+  `apps/dashboard`, `goal-harness check --scan-root .`, `git diff --check`, and
+  browser reload showing the live platform-migration action card and Copy
+  button still present. Browser clipboard readback was not available because
+  the current in-app browser reported that its virtual clipboard is not
+  installed; `pbpaste` still contained unrelated old text, so the packet content
+  validation relied on the source diff and build. Critic: the payload shape is
+  better, but the lack of deterministic packet-generation smoke means future
+  regressions could slip through without a browser clipboard; next tick should
+  add that small fixture-level guard.
 - 2026-06-02T21:49:28+08:00: Steering audit candidates were: P0 state-truth
   recheck, P0 human-decision UI duplicate-surface removal, and P1 docs polish.
   Continued the UI cleanup because the previous empty-filter fix made the

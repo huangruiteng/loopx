@@ -1087,42 +1087,55 @@ function buildHumanFriendlyActionPacket({
   const prompt = humanReviewPrompt(item.kind);
   const quotaView = buildQuotaView(item.quota);
   const todo = firstOpenTodo(item.userTodos);
-  const question = item.operatorQuestion ?? (todo ? todo.text : prompt.question);
   const reply = item.kind === "controller" ? controllerReplyLine(item.goalId) : prompt.reply;
   const command = item.safePathCommand ?? buildStatusCommand({ registry, runtimeRoot });
   const todoBlocksGate = Boolean(todo && item.operatorQuestion);
-  const decisionLines = todoBlocksGate
+  const userActionLines = todo
     ? [
-      `先处理用户待办：${todo?.text}`,
-      `再判断 Gate：${item.operatorQuestion}`,
-      `建议回复：先说明用户待办是否已完成；完成后再回复：${reply}`,
+      `用户待办：${compactPacketText(todo.text)}`,
+      ...(todoBlocksGate ? ["完成或明确暂缓用户待办后，再判断下面的 Gate。"] : []),
     ]
     : [
-      question,
-      `建议回复：${reply}`,
+      `用户待办：无。`,
     ];
+  const gateLines = item.operatorQuestion
+    ? [
+      `Gate：${compactPacketText(item.operatorQuestion)}`,
+      `建议回复：${todoBlocksGate ? `先说明用户待办是否已完成；完成后再回复：${reply}` : reply}`,
+    ]
+    : [
+      `Gate：无用户 gate；${suggestedDecisionLine(item.kind, item, item.goalId)}`,
+    ];
+  const stateLine = [
+    compactPacketText(item.summary, 180),
+    quotaView ? `配额 ${quotaView.shortLine}` : null,
+    item.authorityCoverage ? `权威源 ${item.authorityCoverage.shortLine}` : null,
+  ].filter(Boolean).join("；");
   return [
-    "【Goal Harness Action】",
+    "【Goal Harness Action Packet】",
     `目标：${item.goalId}`,
     `动作：${item.title}`,
+    `状态：${stateLine}`,
     "",
-    "【请你判断】",
-    ...decisionLines,
-    `建议判断：${suggestedDecisionLine(item.kind, item, item.goalId)}`,
-    `边界：${prompt.boundary}`,
+    "【用户动作 / Gate】",
+    ...userActionLines,
+    ...gateLines,
+    `边界：${compactPacketText(prompt.boundary, 220)}`,
     durableOperatorGateRecordRule(item.kind),
-    "",
-    "【当前状态】",
-    `摘要：${item.summary}`,
-    `下一步：${item.detail}`,
-    quotaView ? `配额：${quotaView.shortLine}` : null,
-    item.authorityCoverage ? `权威源：${item.authorityCoverage.shortLine}` : null,
     "",
     "【同意后给项目 Agent】",
     `只允许 safe path：${item.safePathLabel}`,
     command ? `命令：${command.replace(/\s+/g, " ").trim()}` : null,
     "要求：用中文回报 changed files、validation、next safe action；需要写入/生产/进一步授权时停下。",
   ].filter(Boolean).join("\n");
+}
+
+function compactPacketText(value: string, maxLength = 260) {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) {
+    return compact;
+  }
+  return `${compact.slice(0, maxLength - 1)}…`;
 }
 
 function readinessVariant(readiness: ControllerReadiness): "success" | "warning" | "info" {
