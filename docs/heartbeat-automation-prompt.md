@@ -6,6 +6,14 @@ advances one Goal Harness goal without hiding compute policy inside the timer.
 The timer only wakes the executor. Goal Harness decides whether that wakeup
 should spend delivery compute.
 
+You can generate the task body from the CLI:
+
+```bash
+goal-harness heartbeat-prompt \
+  --goal-id <GOAL_ID> \
+  --active-state <ACTIVE_GOAL_STATE_PATH>
+```
+
 ## Template
 
 Replace the placeholders before installing the automation:

@@ -15,6 +15,7 @@ from .contract import check_contract, render_contract_markdown
 from .doctor import collect_doctor, render_doctor_markdown
 from .feedback import append_human_reward, compact_reward, render_reward_markdown
 from .global_registry import render_global_sync_markdown, sync_project_registry_to_global
+from .heartbeat_prompt import build_heartbeat_prompt, render_heartbeat_prompt_markdown
 from .history import collect_history, load_registry, render_history_markdown
 from .operator_gate import (
     DEFAULT_OPERATOR_GATE,
@@ -126,6 +127,25 @@ def main(argv: list[str] | None = None) -> int:
     prompt_parser.add_argument("--spawn-allowed", action="store_true", help="Include controller/sub-agent flags.")
     prompt_parser.add_argument("--allowed-domain", action="append", default=[], help="Allowed child work domain. Repeatable.")
     prompt_parser.add_argument("--write-scope", action="append", default=[], help="Allowed write scope such as docs/**. Repeatable.")
+
+    heartbeat_prompt_parser = sub.add_parser(
+        "heartbeat-prompt",
+        help="Generate a guarded Codex App heartbeat automation task body.",
+    )
+    heartbeat_prompt_parser.add_argument("--goal-id", required=True, help="Stable Goal Harness goal id.")
+    heartbeat_prompt_parser.add_argument(
+        "--active-state",
+        required=True,
+        help="Active goal state file the heartbeat should read and write back.",
+    )
+    heartbeat_prompt_parser.add_argument(
+        "--material-rule",
+        help="Optional project-specific material queue rule appended to the task body.",
+    )
+    heartbeat_prompt_parser.add_argument(
+        "--permission-rule",
+        help="Optional trusted-session permission rule appended to the task body.",
+    )
 
     sub.add_parser("doctor", help="Diagnose local CLI installation, PATH, wrapper, and import health.")
 
@@ -373,7 +393,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     registry_path = Path(args.registry).expanduser()
     if (
-        args.command not in {"bootstrap", "connect", "doctor", "new-project-prompt", "sync-global"}
+        args.command
+        not in {"bootstrap", "connect", "doctor", "new-project-prompt", "heartbeat-prompt", "sync-global"}
         and not user_supplied_registry(argv)
         and not registry_path.exists()
     ):
@@ -434,6 +455,16 @@ def main(argv: list[str] | None = None) -> int:
             write_scope=args.write_scope,
         )
         print_payload(payload, args.format, render_new_project_prompt_markdown)
+        return 0
+
+    if args.command == "heartbeat-prompt":
+        payload = build_heartbeat_prompt(
+            goal_id=args.goal_id,
+            active_state=Path(args.active_state),
+            material_queue_rule=args.material_rule,
+            permission_rule=args.permission_rule,
+        )
+        print_payload(payload, args.format, render_heartbeat_prompt_markdown)
         return 0
 
     if args.command == "doctor":

@@ -274,7 +274,14 @@ goal-harness quota spend-slot --goal-id <goal-id> --slots 1 --source heartbeat -
 Do not append spend for `should_run=false` skips, preflight failures, or pure
 dry-run previews. Do not run it more than once for the same completed turn.
 For a reusable Codex App heartbeat task body, use
-[docs/heartbeat-automation-prompt.md](docs/heartbeat-automation-prompt.md).
+[docs/heartbeat-automation-prompt.md](docs/heartbeat-automation-prompt.md), or
+generate one from the CLI:
+
+```bash
+goal-harness heartbeat-prompt \
+  --goal-id <goal-id> \
+  --active-state /path/to/ACTIVE_GOAL_STATE.md
+```
 
 `status` and `serve-status` default their public/private contract scan to the
 Goal Harness install root, not the shell's current project directory. Pass

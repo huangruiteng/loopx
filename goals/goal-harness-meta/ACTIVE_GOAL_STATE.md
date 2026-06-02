@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T08:51:28+08:00
+updated_at: 2026-06-02T08:58:10+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,12 +27,29 @@ private project context.
 
 ## Next Action
 
-- Add a small `goal-harness heartbeat-prompt` generator so project agents can
-  create the guarded heartbeat automation task body without copying docs by
-  hand. Keep it public-safe and protect the generated output with a smoke.
+- Teach the installed `goal-harness-project` skill and project-connection docs
+  to prefer `goal-harness heartbeat-prompt` when setting up recurring Codex App
+  heartbeats, so future project agents discover the generator without reading
+  the README first.
 
 ## Recent Progress
 
+- 2026-06-02T08:58:10+08:00: Added a public
+  `goal-harness heartbeat-prompt` CLI generator. The new
+  `goal_harness/heartbeat_prompt.py` builder emits a guarded Codex App
+  heartbeat task body from `--goal-id` and `--active-state`, reusing the same
+  quota guard and heartbeat spend commands as other prompts. Wired the command
+  into `goal_harness/cli.py`, documented it in README and
+  `docs/heartbeat-automation-prompt.md`, and extended
+  `examples/heartbeat-prompt-smoke.py` to verify the builder, CLI JSON, CLI
+  Markdown, docs link, README link, skip-without-compute boundary,
+  `refresh-state`, and exactly-once `quota spend-slot --source heartbeat
+  --execute`. Validation: direct heartbeat prompt smoke passed; aggregate
+  public smokes passed with 7 scripts; Python compile passed; public contract
+  check passed; `git diff --check` passed. Critic: the CLI now removes
+  copy/paste drift, but future Codex sessions will discover it most reliably
+  only after the installed `goal-harness-project` skill and connection docs
+  mention the command.
 - 2026-06-02T08:51:28+08:00: Added
   `docs/heartbeat-automation-prompt.md`, a public copy-paste Codex App
   heartbeat template for the guarded quota lifecycle: pre-turn
