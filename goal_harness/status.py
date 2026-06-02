@@ -25,6 +25,7 @@ CODEX_READY_CLASSIFICATIONS = {
     "run_validation",
     "state_refreshed",
     "operator_gate_approved",
+    "quota_slot_spent",
 }
 USER_OR_CONTROLLER_CLASSIFICATIONS = {
     "needs_human_reward",

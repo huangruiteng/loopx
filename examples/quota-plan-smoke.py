@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import json
 import subprocess
 import sys
@@ -126,10 +127,76 @@ def build_status_fixture() -> dict:
     }
 
 
+def append_quota_slot_spend_fixture(
+    run_dir: Path,
+    *,
+    goal_id: str,
+    compute: float,
+    slot_index: int,
+    generated_at: str,
+    allowed_slots: int,
+) -> None:
+    before_spent = slot_index
+    after_spent = slot_index + 1
+    after_state = "throttled" if after_spent >= allowed_slots else "eligible"
+    after_should_run = after_state == "eligible"
+    stem = generated_at.replace("-", "").replace(":", "").replace("+", "")
+    json_path = run_dir / f"{stem}-quota-slot-{slot_index + 1}.json"
+    markdown_path = run_dir / f"{stem}-quota-slot-{slot_index + 1}.md"
+    record = {
+        "generated_at": generated_at,
+        "goal_id": goal_id,
+        "classification": "quota_slot_spent",
+        "recommended_action": f"continue {goal_id}",
+        "health_check": "fixture quota slot spend event",
+        "quota_event": {
+            "event_type": "quota_slot_spent",
+            "source": "heartbeat",
+            "slots": 1,
+            "reason_summary": "fixture automatic agent slot completed under an eligible quota guard",
+            "before": {
+                "should_run": True,
+                "state": "eligible",
+                "compute": compute,
+                "window_hours": 24,
+                "spent_slots": before_spent,
+                "allowed_slots": allowed_slots,
+            },
+            "after": {
+                "should_run": after_should_run,
+                "state": after_state,
+                "compute": compute,
+                "window_hours": 24,
+                "spent_slots": after_spent,
+                "allowed_slots": allowed_slots,
+            },
+        },
+    }
+    json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    markdown_path.write_text(f"# {goal_id} quota slot fixture\n", encoding="utf-8")
+    with (run_dir / "index.jsonl").open("a", encoding="utf-8") as f:
+        f.write(
+            json.dumps(
+                {
+                    "generated_at": generated_at,
+                    "goal_id": goal_id,
+                    "classification": "quota_slot_spent",
+                    "recommended_action": f"continue {goal_id}",
+                    "health_check": "fixture quota slot spend event",
+                    "json_path": str(json_path),
+                    "markdown_path": str(markdown_path),
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+
+
 def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     registry_path = project / ".goal-harness" / "registry.json"
+    base_time = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=30)
     goal_specs = [
         ("half-speed", 0.5, "state_refreshed", 0, None),
         ("near-limit-half", 0.5, "state_refreshed", 11, 12),
@@ -170,7 +237,6 @@ def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
                     for key, value in {
                         "compute": compute,
                         "window_hours": 24,
-                        "spent_slots": spent_slots,
                         "allowed_slots": allowed_slots,
                     }.items()
                     if value is not None
@@ -181,8 +247,9 @@ def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
         runs_dir.mkdir(parents=True, exist_ok=True)
         json_path = runs_dir / "20260101T000000-run.json"
         markdown_path = runs_dir / "20260101T000000-run.md"
+        generated_at = (base_time - timedelta(seconds=1)).isoformat()
         record = {
-            "generated_at": "2026-01-01T00:00:00+00:00",
+            "generated_at": generated_at,
             "goal_id": goal_id,
             "classification": classification,
             "recommended_action": f"continue {goal_id}",
@@ -190,7 +257,7 @@ def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
         }
         if classification == "operator_gate_deferred":
             record["operator_gate"] = {
-                "recorded_at": "2026-01-01T00:00:00+00:00",
+                "recorded_at": generated_at,
                 "gate": "read_only_map_opt_in",
                 "decision": "defer",
                 "operator_question": f"是否同意 `{goal_id}` 先执行 read-only map opt-in？",
@@ -209,6 +276,16 @@ def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
                     ensure_ascii=False,
                 )
                 + "\n"
+            )
+        effective_allowed_slots = round(24 * compute) if allowed_slots is None else allowed_slots
+        for slot_index in range(spent_slots):
+            append_quota_slot_spend_fixture(
+                runs_dir,
+                goal_id=goal_id,
+                compute=compute,
+                slot_index=slot_index,
+                generated_at=(base_time + timedelta(seconds=slot_index)).isoformat(),
+                allowed_slots=effective_allowed_slots,
             )
 
     registry_path.parent.mkdir(parents=True, exist_ok=True)
@@ -332,20 +409,24 @@ def run_cli_slot_preview(root: Path) -> tuple[dict, dict]:
     return json.loads(preview_result.stdout), json.loads(should_run_result.stdout)
 
 
-def run_cli_slot_spend_execute(root: Path) -> dict:
+def run_cli_slot_spend_execute(root: Path) -> tuple[dict, dict, str, str]:
     registry_path, runtime, project = write_cli_fixture(root)
+    registry_before = registry_path.read_text(encoding="utf-8")
+    base_args = [
+        sys.executable,
+        "-m",
+        "goal_harness.cli",
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        "json",
+        "quota",
+    ]
     result = subprocess.run(
         [
-            sys.executable,
-            "-m",
-            "goal_harness.cli",
-            "--registry",
-            str(registry_path),
-            "--runtime-root",
-            str(runtime),
-            "--format",
-            "json",
-            "quota",
+            *base_args,
             "spend-slot",
             "--goal-id",
             "near-limit-half",
@@ -362,7 +443,26 @@ def run_cli_slot_spend_execute(root: Path) -> dict:
         capture_output=True,
         text=True,
     )
-    return json.loads(result.stdout)
+    should_run_result = subprocess.run(
+        [
+            *base_args,
+            "should-run",
+            "--goal-id",
+            "near-limit-half",
+            "--scan-path",
+            str(project),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return (
+        json.loads(result.stdout),
+        json.loads(should_run_result.stdout),
+        registry_before,
+        registry_path.read_text(encoding="utf-8"),
+    )
 
 
 def assert_plan_shape(plan: dict, markdown: str | None = None) -> None:
@@ -447,7 +547,7 @@ def assert_dry_run_left_cli_fixture_unchanged(payload: dict) -> None:
     assert payload["quota"]["allowed_slots"] == 12, payload
 
 
-def assert_slot_spend_execute(payload: dict) -> None:
+def assert_slot_spend_execute(payload: dict, next_should_run: dict, registry_before: str, registry_after: str) -> None:
     quota_event = payload["quota_event"]
     before = quota_event["before"]
     after = quota_event["after"]
@@ -460,6 +560,8 @@ def assert_slot_spend_execute(payload: dict) -> None:
     assert payload["registry_mutated"] is False, payload
     assert payload["classification"] == "quota_slot_spent", payload
     assert payload["source"] == "heartbeat", payload
+    assert registry_after == registry_before
+    assert '"spent_slots"' not in registry_after
     assert json_path.exists(), payload
     assert index_path.exists(), payload
     assert quota_event["event_type"] == "quota_slot_spent", payload
@@ -481,6 +583,12 @@ def assert_slot_spend_execute(payload: dict) -> None:
     index_lines = index_path.read_text(encoding="utf-8").splitlines()
     assert any('"classification": "quota_slot_spent"' in line for line in index_lines), index_lines
 
+    assert next_should_run["goal_id"] == "near-limit-half", next_should_run
+    assert next_should_run["should_run"] is False, next_should_run
+    assert next_should_run["state"] == "throttled", next_should_run
+    assert next_should_run["quota"]["spent_slots"] == 12, next_should_run
+    assert next_should_run["quota"]["allowed_slots"] == 12, next_should_run
+
 
 def main() -> int:
     status_payload = build_status_fixture()
@@ -499,7 +607,7 @@ def main() -> int:
     assert_slot_preview(slot_preview)
     assert_dry_run_left_cli_fixture_unchanged(should_run_after_preview)
     with tempfile.TemporaryDirectory(prefix="goal-harness-quota-slot-execute-smoke-") as tmp:
-        assert_slot_spend_execute(run_cli_slot_spend_execute(Path(tmp)))
+        assert_slot_spend_execute(*run_cli_slot_spend_execute(Path(tmp)))
     print("quota-plan-smoke ok")
     return 0
 

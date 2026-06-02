@@ -73,6 +73,11 @@ For the first implementation, `spent_slots` can count automatic Goal Harness
 ticks, adapter runs, heartbeat continuations, or controller-selected Codex
 turns. It does not need to count exact tokens or wall-clock seconds yet.
 
+Status derives the current `spent_slots` from compact `quota_slot_spent`
+runtime events in the current `window_hours` window. The registry remains the
+policy source for `compute`, `window_hours`, and optional `allowed_slots`; it is
+not the spend ledger.
+
 Later versions can replace slots with real runtime, token spend, or cost, but
 the operator-facing model should remain the same: a project has a simple
 compute share.

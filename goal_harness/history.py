@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .authority import goal_authority_registry_summary
-from .quota import goal_quota_config
+from .quota import goal_quota_with_spend_ledger
 from .registry import read_json, registry_goals
 
 
@@ -86,6 +86,7 @@ def collect_history(
         registry_member = current_goal_id in goal_meta
         meta = goal_meta.get(current_goal_id) or {}
         adapter = meta.get("adapter") if isinstance(meta.get("adapter"), dict) else {}
+        quota = goal_quota_with_spend_ledger(meta, runs) if registry_member else None
         goals.append(
             {
                 "id": current_goal_id,
@@ -96,7 +97,7 @@ def collect_history(
                 "adapter_kind": adapter.get("kind"),
                 "adapter_status": adapter.get("status"),
                 "authority_registry": goal_authority_registry_summary(meta) if registry_member else None,
-                "quota": goal_quota_config(meta) if registry_member else None,
+                "quota": quota,
                 "index_path": str(index_path),
                 "index_exists": index_path.exists(),
                 "raw_index_records": raw_count,

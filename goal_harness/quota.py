@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +25,18 @@ VALID_SLOT_SPEND_SOURCES = {"heartbeat", "controller", "adapter"}
 
 def _now_local() -> str:
     return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def _run_file_stem(generated_at: str) -> str:
@@ -90,6 +102,67 @@ def goal_quota_config(goal: dict[str, Any] | None) -> dict[str, Any]:
     }
     if raw.get("next_eligible_at"):
         payload["next_eligible_at"] = str(raw.get("next_eligible_at"))
+    return payload
+
+
+def _load_quota_event_from_run(run: dict[str, Any]) -> dict[str, Any] | None:
+    if str(run.get("classification") or "") != QUOTA_SLOT_SPENT_CLASSIFICATION:
+        return None
+    event = run.get("quota_event") if isinstance(run.get("quota_event"), dict) else None
+    if event:
+        return event
+
+    raw_json_path = str(run.get("json_path") or "")
+    if not raw_json_path:
+        return None
+    json_path = Path(raw_json_path).expanduser()
+    if not json_path.exists():
+        return None
+    try:
+        record = json.loads(json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    event = record.get("quota_event") if isinstance(record.get("quota_event"), dict) else None
+    return event
+
+
+def goal_quota_with_spend_ledger(
+    goal: dict[str, Any] | None,
+    runs: list[dict[str, Any]],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    payload = goal_quota_config(goal)
+    goal_id = str(goal.get("id") or "") if goal else ""
+    current_time = now or datetime.now(timezone.utc).astimezone()
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    window_start = current_time - timedelta(hours=int(payload["window_hours"]))
+    spent_slots = 0
+    spend_event_count = 0
+
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        if str(run.get("goal_id") or goal_id) != goal_id:
+            continue
+        generated_at = _parse_timestamp(run.get("generated_at"))
+        if generated_at is None or generated_at < window_start or generated_at > current_time:
+            continue
+        event = _load_quota_event_from_run(run)
+        if not event or str(event.get("event_type") or "") != QUOTA_SLOT_SPENT_CLASSIFICATION:
+            continue
+        slots = max(0, _int_number(event.get("slots"), default=0))
+        if slots <= 0:
+            continue
+        spent_slots += slots
+        spend_event_count += 1
+
+    payload["spent_slots"] = spent_slots
+    payload["spend_source"] = "runtime_events"
+    payload["spend_event_count"] = spend_event_count
     return payload
 
 

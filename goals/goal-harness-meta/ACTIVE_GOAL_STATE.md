@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T08:12:26+08:00
+updated_at: 2026-06-02T08:23:25+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,13 +27,33 @@ private project context.
 
 ## Next Action
 
-- Teach status/quota planning to derive current `spent_slots` from compact
-  `quota_slot_spent` runtime events. Keep registry quota as the policy source,
-  event history as the spend source, and prove that an executed spend changes
-  the next `quota should-run` result without mutating registry.
+- Standardize the post-turn spend accounting protocol for automatic ticks:
+  after validation and state writeback, an executor should append
+  `quota spend-slot --execute` exactly once for the completed automatic turn.
+  Keep this in agent-facing prompts/docs first, then prove the heartbeat flow
+  can consume quota without changing registry policy.
 
 ## Recent Progress
 
+- 2026-06-02T08:23:25+08:00: Taught status/quota planning to derive current
+  `spent_slots` from compact `quota_slot_spent` runtime events. Added
+  `goal_quota_with_spend_ledger()` so `collect_history()` builds per-goal quota
+  from registry policy plus runtime spend events in the current quota window.
+  `quota_slot_spent` is now a status-visible classification, so appending a
+  spend event does not make a Codex-ready goal disappear from the attention
+  queue. The quota smoke fixture no longer stores `spent_slots` in registry;
+  it writes compact index rows plus JSON quota events, verifies the derived
+  near-limit and throttled lanes, executes a real `quota spend-slot --execute`
+  in a temp runtime, proves the next `quota should-run` turns throttled, and
+  checks the registry file stayed byte-for-byte unchanged. Updated
+  `docs/quota-allocation.md` and `docs/status-data-contract.md` to name the
+  source-of-truth split: registry is policy, runtime events are the spend
+  ledger. Validation: direct quota-plan smoke passed; direct quota contract
+  smoke passed; aggregate public smokes passed with 5 scripts; Python compile
+  passed; public contract check passed; `git diff --check` passed. Critic:
+  spend derivation is now real, but automatic executors still need a standard
+  post-turn accounting protocol so successful heartbeats reliably append one
+  spend event after validation/writeback.
 - 2026-06-02T08:12:26+08:00: Implemented the smallest append-only quota slot
   spend writer. `goal-harness quota spend-slot --goal-id <goal-id> --slots 1`
   now defaults to dry-run, while `--execute` appends a compact

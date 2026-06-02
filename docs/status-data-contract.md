@@ -58,6 +58,10 @@ automation guard from that grouping. These are read-only views, not a separate
 source of truth. Scripts should treat `summary.next_automatic_turn` in the
 quota-plan JSON as advisory and still respect the displayed health, operator,
 and evidence gates.
+For spend accounting, status derives `spent_slots` from compact
+`quota_slot_spent` runtime events in the current quota window. The registry
+remains the policy source for compute share and window size, not the spend
+ledger.
 In lane terms, `next_automatic_turn` may only name the first eligible goal;
 operator-gated, waiting, throttled, paused, and health-blocked goals must stay
 out of the eligible lane even when they have a high `quota.compute`.
