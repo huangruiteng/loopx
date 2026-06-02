@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T12:25:10+08:00
+updated_at: 2026-06-02T12:29:18+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -28,14 +28,29 @@ private project context.
 ## Next Action
 
 - Run the next tick's steering audit across at least three lanes before
-  choosing work. The prompt-layer rule is now documented: visible Codex goal
-  text stays short, while recurring heartbeat automation prompts use the shared
-  `goal-harness heartbeat-prompt` lifecycle. Prefer comparing: updating stale
-  existing automations to the generated prompt, real adapter proof once
-  controller opt-in exists, or deliberate dashboard attention-cost reduction.
+  choosing work. One stale main-control automation has been migrated to the
+  generated heartbeat lifecycle and now fail-closes on the operator gate.
+  Prefer comparing: whether to ask for/record the `agent-harness-main-control`
+  read-only-map opt-in, whether any remaining stale automations should be
+  migrated, or whether dashboard attention-cost reduction is now higher-value.
 
 ## Recent Progress
 
+- 2026-06-02T12:29:18+08:00: Migrated one stale local main-control automation
+  from a short "advance TODO" style prompt to the generated Goal Harness
+  heartbeat lifecycle. The updated automation now advances
+  `agent-harness-main-control`, runs `goal-harness --format json quota
+  should-run --goal-id agent-harness-main-control` before delivery work,
+  refreshes state when needed, and appends at most one heartbeat spend event
+  after a completed turn. Validation: the automation file now contains the
+  generated lifecycle prompt; `goal-harness --format json quota should-run
+  --goal-id agent-harness-main-control` returns `should_run=false` with
+  `state=operator_gate`, so the automation will quietly skip until the user or
+  target controller clears the read-only map opt-in. Losing high-value
+  candidate: updating every old automation at once would be broader than this
+  heartbeat slice. Critic: this improves state/safety by preventing the old
+  main-control automation from bypassing Goal Harness, but it also means real
+  agent-harness delivery now depends on the explicit operator decision.
 - 2026-06-02T12:25:10+08:00: User clarified that project goal prompts and
   automations should converge across projects; the screenshot showed a short
   visible goal text (`按 ACTIVE_GOAL_STATE.md，基于 Goal Harness 体系，推进项目`)
