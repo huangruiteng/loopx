@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-02T23:34:46+08:00
+updated_at: 2026-06-02T23:47:30+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -45,13 +45,37 @@ handoff, validation, and quota bookkeeping.
 
 ## Next Action
 
-- Next tick should do a fresh-clone trial audit only if public first-run
-  usability remains the top priority: clone/install in a temp HOME, run
-  `goal-harness demo`, and record any remaining first-user friction before
-  adding more features.
+- Next tick should pivot back to P0 project-agent loop proof: verify on one real
+  connected goal that status/quota/todo hints expose explicit user todos and
+  agent todos, so a project agent does not hide user actions in chat-only
+  progress or an overlong Next Action.
 
 ## Recent Progress
 
+- 2026-06-02T23:47:30+08:00: Steering audit candidates were: P1 fresh-clone
+  trial audit for first-run usability, P0 live connected-goal adoption and
+  user/agent todo projection, and P2 richer dashboard/demo polish. Continuation
+  check: first-run usability had already consumed recent slices, but a clean
+  clone/temp-HOME audit was the explicit stop condition before adding more
+  features. The audit first found a real public friction: install, doctor,
+  `goal-harness demo`, and smokes passed, but `goal-harness check --scan-root .`
+  failed in an unconnected source checkout because the implicit
+  `.goal-harness/registry.json` was missing. Fixed the false failure by letting
+  implicit missing registries become warnings for `check`, while explicit
+  missing `--registry` paths remain errors. Added
+  `examples/check-public-boundary-smoke.py` for the fresh no-registry path and
+  documented the expected warning in README. Fresh-clone validation after commit
+  passed install, `goal-harness doctor`, `goal-harness --runtime-root <tmp>
+  demo`, `python3 examples/demo-cli-smoke.py`, `python3 examples/run-smokes.py`
+  with 15 scripts, `goal-harness check --scan-root .`, and clean cloned repo
+  status. Changed files: `README.md`, `goal_harness/cli.py`,
+  `goal_harness/contract.py`, `examples/check-public-boundary-smoke.py`, plus
+  this active state; private state also updated. Additional validation:
+  `python3 -m compileall -q goal_harness`, direct no-registry JSON check in a
+  temp HOME, and `git diff --check`. Critic: first-run/source-check friction is
+  now low enough to stop polishing the demo path; the next higher-value slice is
+  proving that real connected project agents can see and use user/agent todo
+  surfaces without making the user read chat threads.
 - 2026-06-02T23:34:46+08:00: Steering audit candidates were: P1 first-run
   `goal-harness demo` command, P0 live connected-goal adoption check, and P2
   richer dashboard/demo polish. Continuation check: first-run usability has now
