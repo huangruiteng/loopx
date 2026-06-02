@@ -1,8 +1,8 @@
 ---
 status: active-read-only
 owner_mode: goal
-objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T20:02:48+08:00
+objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
+updated_at: 2026-06-02T20:14:23+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -14,6 +14,13 @@ thread can bootstrap a goal, inspect registry and run history, check public
 boundary safety, and render a first-screen status queue without relying on any
 private project context.
 
+The core product goal is not to add more automation for its own sake. Goal
+Harness should reduce the operator's coordination load by turning each project
+line into a manageable project asset with a visible owner, gate, next action,
+stop condition, user todo, agent todo, quota, review packet, and latest
+validation signal. Features that do not reduce human relay work, improve state
+truth, or make project agents easier to guide should be downgraded.
+
 ## Current Scope
 
 - Keep `scripts/install-local.sh`, `goal-harness bootstrap`,
@@ -24,20 +31,34 @@ private project context.
   credentials, raw logs, or internal task identifiers.
 - Treat project-specific adapters as private until their contract is generic
   enough to document publicly.
+- Keep status, dashboard, and packets centered on the small set of
+  cognitive-load reducers: user todos, agent todos, gates, quota, review
+  packets, and project status aggregation.
+- Treat presentation/docs work as a secondary track: it may explain the system,
+  but it should not drive core implementation ahead of the control-plane loop.
 
 ## Next Action
 
-- Next tick should move back to the P0 human-decision loop: inspect the live
-  dashboard/operator surface for the platform-migration gate and choose the
-  smallest static-safe improvement that reduces the user's decision/recording
-  cost. Candidate slice: make the action packet or card clearly distinguish
-  "complete/confirm user todo" from "approve owner/SOP gate", and if existing
-  copy is already clear, add the smallest copy-only durable operator-gate
-  approve/defer/reject preview affordance. Do not execute real gate writes from
-  the dashboard, and do not touch target project code.
+- Next tick should implement the smallest public-safe project-asset slice:
+  inspect the current status/dashboard projection for owner, gate, next action,
+  and stop condition coverage, then add the minimal missing field or projection
+  that helps users manage projects without reading every project-agent thread.
+  Do not touch target project code, and do not mix secondary presentation work
+  into this P0 implementation slice.
 
 ## Recent Progress
 
+- 2026-06-02T20:14:23+08:00: Re-centered the meta goal around reducing
+  operator coordination load. The product target is now a multi-project control
+  plane that turns each line of work into a project asset with explicit owner,
+  gate, next action, stop condition, user todo, agent todo, quota, review
+  packet, and validation signal. Presentation and external narrative work are
+  recorded as secondary tracks that explain the system but should not drive P0
+  implementation. Changed files: this active state and the private controller
+  state. Validation: section-level readback/grep. Critic: this is a goal
+  calibration slice; the next implementation slice should add a minimal
+  project-asset status/dashboard projection rather than continuing generic UI
+  polish.
 - 2026-06-02T20:02:48+08:00: Steering audit candidates: P0 live state/safety
   adoption check for the platform-migration goal, P0 human-decision loop
   dashboard/operator-gate affordance, and P1 dashboard polish. Chose the live
