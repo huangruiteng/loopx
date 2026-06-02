@@ -104,6 +104,8 @@ def main() -> int:
         assert f"回复：同意 {GOAL_ID} 先做 read-only map dry-run / 暂不同意 + 一句话原因。" in packet, packet
         assert f"--reason-summary '同意 {GOAL_ID} 先做 read-only map dry-run，不授权写入或生产动作'" in packet, packet
         assert "【用户本地 Gate 记录草稿】" in packet, packet
+        assert "记录规则：保留 --dry-run 只预览；确认写入 durable operator gate 时再删除 --dry-run。" in packet, packet
+        assert "reject / defer 与一句 public-safe 原因" in packet, packet
         assert "operator-gate" in packet, packet
         assert "【给项目 Agent】" in packet, packet
         assert f"目标校验：本段只适用于 goal_id=`{GOAL_ID}`；如果与你当前 active goal 或 registry entry 不一致，停止并回报目标不匹配。" in packet, packet
@@ -132,6 +134,11 @@ def main() -> int:
         assert payload["ok"] is True, payload
         assert payload["kind"] == "controller", payload
         assert payload["operator_gate_dry_run_command"], payload
+        assert payload["operator_gate_decision_commands"]["approve"] == payload["operator_gate_dry_run_command"], payload
+        assert "--decision reject" in payload["operator_gate_decision_commands"]["reject"], payload
+        assert "<public-safe-reason>" in payload["operator_gate_decision_commands"]["reject"], payload
+        assert "--decision defer" in payload["operator_gate_decision_commands"]["defer"], payload
+        assert "<public-safe-condition>" in payload["operator_gate_decision_commands"]["defer"], payload
         assert payload["project_agent_command"], payload
         assert "转发条件" in payload["packet"], payload
         assert not run_dir.exists(), "json review-packet must not write runtime runs"

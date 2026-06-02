@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T19:06:03+08:00
+updated_at: 2026-06-02T19:11:33+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,16 +27,37 @@ private project context.
 
 ## Next Action
 
-- Next tick should take the smallest P0 human-decision-loop slice: make an
-  approved/deferred/rejected operator decision easier to turn into a durable
-  `operator-gate` record from the Review Packet or dashboard copy surface.
-  Keep the first version CLI/static-dashboard friendly and smoke-tested; do
-  not touch real project repos. Losing candidate to remember: the
-  project-agent execution loop still needs a better approved-command handoff,
-  but durable decision recording should be clearer first.
+- Next tick should keep the same P0 human-decision-loop scope but move from CLI
+  packet to dashboard copy surface: make the selected controller action expose
+  the same durable-gate recording rule without adding a second panel. Keep it
+  static-dashboard friendly and smoke-tested. Losing candidate to remember:
+  the project-agent execution loop still needs a better approved-command
+  handoff once operator decisions are easier to record.
 
 ## Recent Progress
 
+- 2026-06-02T19:11:33+08:00: Steering audit candidates: P0 human-decision
+  loop durable operator-gate recording, P0 project-agent approved-command
+  handoff, and P1 dashboard polish/internal narrative. Chose the operator-gate
+  recording slice because state/gate truth is already good enough, but the
+  user still has to bridge a human approve/defer/reject judgment into a durable
+  `operator_gate_*` run. Extended CLI Review Packets for controller actions:
+  the Markdown stays compact with the default approve `operator-gate --dry-run`
+  command plus one rule saying to keep `--dry-run` for preview, remove it only
+  for intentional durable append, and use `reject` / `defer` with a public-safe
+  reason when not approving. The JSON payload now also exposes
+  `operator_gate_decision_commands` for `approve`, `reject`, and `defer`, so a
+  dashboard or script can copy exact dry-run commands without parsing prose.
+  Changed files: `goal_harness/review_packet.py`,
+  `examples/review-packet-cli-smoke.py`, and this active state. Validation:
+  `python examples/review-packet-cli-smoke.py`, `python
+  examples/review-packet-smoke.py`, `python -m compileall -q goal_harness`,
+  `python examples/run-smokes.py`, `goal-harness check --scan-root .`, `git
+  diff --check`, plus live `goal-harness review-packet --goal-id
+  premium-ui-ai-search-rec-migration` showing the record rule and live JSON
+  showing `approve/defer/reject` commands. Critic: this improves CLI/script
+  handoff but the dashboard copy surface still needs to surface the same
+  durable-gate rule without resurrecting extra panels.
 - 2026-06-02T19:06:03+08:00: Heartbeat preflight is healthy with
   `$HOME/.local/bin` on PATH and `quota should-run` returned eligible. Steering
   audit candidates: P0 state/safety Review Packet goal-id mismatch guard, P0

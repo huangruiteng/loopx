@@ -48,7 +48,17 @@ def build_read_only_map_command(status_payload: dict[str, Any], goal_id: str) ->
     )
 
 
-def build_operator_gate_command(status_payload: dict[str, Any], goal_id: str) -> str:
+def operator_gate_reason_summary(goal_id: str, decision: str) -> str:
+    if decision == "approve":
+        return controller_approval_reason(goal_id)
+    if decision == "reject":
+        return f"暂不同意 {goal_id} 先做 read-only map dry-run，原因：<public-safe-reason>"
+    if decision == "defer":
+        return f"暂缓 {goal_id} read-only map dry-run，等待：<public-safe-condition>"
+    return "<public-safe-reason>"
+
+
+def build_operator_gate_command(status_payload: dict[str, Any], goal_id: str, *, decision: str = "approve") -> str:
     return "\n".join(
         [
             "goal-harness \\",
@@ -56,8 +66,8 @@ def build_operator_gate_command(status_payload: dict[str, Any], goal_id: str) ->
             f"  --runtime-root {shlex.quote(str(status_payload.get('runtime_root') or '<runtime-root>'))} \\",
             "  operator-gate \\",
             f"  --goal-id {shlex.quote(goal_id)} \\",
-            "  --decision approve \\",
-            f"  --reason-summary {shlex.quote(controller_approval_reason(goal_id))} \\",
+            f"  --decision {shlex.quote(decision)} \\",
+            f"  --reason-summary {shlex.quote(operator_gate_reason_summary(goal_id, decision))} \\",
             "  --dry-run",
         ]
     )
@@ -69,6 +79,13 @@ def controller_reply(goal_id: str) -> str:
 
 def controller_approval_reason(goal_id: str) -> str:
     return f"同意 {goal_id} 先做 read-only map dry-run，不授权写入或生产动作"
+
+
+def operator_gate_decision_commands(status_payload: dict[str, Any], goal_id: str) -> dict[str, str]:
+    return {
+        decision: build_operator_gate_command(status_payload, goal_id, decision=decision)
+        for decision in ("approve", "reject", "defer")
+    }
 
 
 def find_goal(status_payload: dict[str, Any], goal_id: str) -> dict[str, Any] | None:
@@ -247,7 +264,8 @@ def build_review_packet(
     question = str(item.get("operator_question") or prompt["question"]) if isinstance(item, dict) else prompt["question"]
     summary = str(item.get("recommended_action") or "当前状态源没有对应的 action card。") if isinstance(item, dict) else "当前状态源没有对应的 action card。"
     command = project_agent_command(status_payload, goal_id, kind, item)
-    gate_command = build_operator_gate_command(status_payload, goal_id) if kind == "controller" else None
+    gate_commands = operator_gate_decision_commands(status_payload, goal_id) if kind == "controller" else {}
+    gate_command = gate_commands.get("approve") if gate_commands else None
     decision = suggested_decision(kind, item, goal_id)
     reply = controller_reply(goal_id) if kind == "controller" else prompt["reply"]
     agent_text = project_agent_section(kind, command, goal_id)
@@ -277,6 +295,7 @@ def build_review_packet(
                 "",
                 "【用户本地 Gate 记录草稿】",
                 "用途：人确认后，由用户或主控先 dry-run 预览 durable operator gate；不要把它当作项目 Agent 执行命令。",
+                "记录规则：保留 --dry-run 只预览；确认写入 durable operator gate 时再删除 --dry-run。若拒绝或暂缓，只把 --decision 和 --reason-summary 改成 reject / defer 与一句 public-safe 原因。",
                 command_block(gate_command),
             ]
         )
@@ -300,6 +319,7 @@ def build_review_packet(
         "suggested_decision": decision,
         "project_agent_command": command,
         "operator_gate_dry_run_command": gate_command,
+        "operator_gate_decision_commands": gate_commands,
         "packet": "\n".join(lines),
     }
 
