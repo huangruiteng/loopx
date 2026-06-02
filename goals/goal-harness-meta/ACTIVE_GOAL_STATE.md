@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T09:22:14+08:00
+updated_at: 2026-06-02T09:29:11+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,13 +27,29 @@ private project context.
 
 ## Next Action
 
-- Add a small dashboard/browser smoke for the same operator-gate opt-in
-  boundary: a planned high-complexity goal should appear as a first-screen
-  human/controller action, while `quota should-run` remains the agent-facing
-  hard gate and no project-agent command becomes runnable before approval.
+- Add the paired approved-operator-gate dashboard smoke: once an
+  `operator_gate_approved` run is present, the first screen may move the goal
+  into the Codex/action lane with the approved dry-run command, while rejected
+  or deferred gates stay in the human/controller lane.
 
 ## Recent Progress
 
+- 2026-06-02T09:29:11+08:00: Added
+  `examples/dashboard-operator-gate-browser-smoke.mjs`, a browser-level
+  dashboard smoke for planned high-complexity operator-gate visibility. The
+  smoke writes a temporary public-safe status fixture, starts the dashboard
+  Vite server, opens the first screen through Playwright CLI, and verifies the
+  goal appears as `Controller` / `Review controller opt-in` with an
+  `Operator question`, `Quota 0.5`, and `Agent command ready after approval`.
+  It also rejects `0 actions`, `No user-facing action is active`, and
+  Codex-ready copy such as `Let Codex continue`. Documented explicit browser
+  smoke entrypoints in `apps/dashboard/README.md`. Validation: new
+  operator-gate browser smoke passed; existing throttled browser smoke passed;
+  aggregate public smokes passed with 8 scripts; Python compile passed; public
+  contract check passed; `git diff --check` passed. Critic: planned opt-in is
+  now protected from CLI guard through browser first screen; the paired
+  approved-gate transition still needs dashboard coverage so the UI can safely
+  distinguish "preview only" from "approval recorded".
 - 2026-06-02T09:22:14+08:00: Tightened the planned high-complexity opt-in
   contract so preview commands stay human-facing and do not leak into
   executor-facing skip payloads. `build_quota_should_run()` now returns

@@ -105,3 +105,17 @@ Then load `/status.local.json` from the dashboard source control.
 
 You can also import a JSON file directly in the browser, or load a local API
 URL that returns the same `goal-harness --format json status` shape.
+
+## Browser Smokes
+
+Dashboard browser smokes are explicit because they start a temporary Vite
+server and require the local Playwright CLI wrapper:
+
+```bash
+node examples/dashboard-throttled-browser-smoke.mjs
+node examples/dashboard-operator-gate-browser-smoke.mjs
+```
+
+The throttled smoke protects the "quiet scheduling state" first screen. The
+operator-gate smoke protects planned high-complexity goals: they should appear
+as controller/user actions, not Codex-ready work.
