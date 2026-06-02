@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep the public Goal Harness repo runnable, understandable, and safe to reuse"
-updated_at: 2026-06-02T19:11:33+08:00
+updated_at: 2026-06-02T19:17:00+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -27,15 +27,37 @@ private project context.
 
 ## Next Action
 
-- Next tick should keep the same P0 human-decision-loop scope but move from CLI
-  packet to dashboard copy surface: make the selected controller action expose
-  the same durable-gate recording rule without adding a second panel. Keep it
-  static-dashboard friendly and smoke-tested. Losing candidate to remember:
-  the project-agent execution loop still needs a better approved-command
-  handoff once operator decisions are easier to record.
+- Next tick should move to the P0 project-agent execution loop: improve the
+  approved-command handoff after an `operator_gate_approved` run, so the target
+  project agent gets one short, goal-id-guarded command/context and the user
+  does not have to relay a long packet. Keep the first slice read-only and
+  smoke-tested; do not touch real project repos. Losing candidate to remember:
+  one-click durable operator-gate recording in the dashboard can wait until the
+  handoff after approval is less manual.
 
 ## Recent Progress
 
+- 2026-06-02T19:17:00+08:00: Steering audit candidates: P0 dashboard copy
+  surface for durable gate recording, P0 project-agent approved-command
+  handoff, and P1 dashboard polish. Chose the dashboard copy slice because the
+  previous CLI packet slice exposed approve/reject/defer commands, but the
+  first-screen `Goal Harness Action` copy still omitted the durable recording
+  rule. Added a compact controller-only `durableOperatorGateRecordRule()` to
+  the dashboard action packet: it tells the user to preview with local
+  `operator-gate --dry-run`, remove `--dry-run` only for an intentional durable
+  append, and use `reject` / `defer` with a public-safe reason when not
+  approving. The default action packet still does not include the full
+  `operator-gate` command, so it remains a single short first-screen copy
+  surface rather than a second panel. Changed files:
+  `apps/dashboard/src/views/dashboard-page.tsx`,
+  `examples/review-packet-smoke.py`, and this active state. Validation:
+  `python examples/review-packet-smoke.py`, `python
+  examples/review-packet-cli-smoke.py`, `npm --prefix apps/dashboard run
+  build`, `python examples/run-smokes.py`, `goal-harness check --scan-root .`,
+  and `git diff --check`. Critic: this finishes the minimal durable gate
+  recording text across CLI and dashboard copy surfaces, but actual one-click
+  append is still future work; the next higher-value slice is the after-approval
+  project-agent handoff.
 - 2026-06-02T19:11:33+08:00: Steering audit candidates: P0 human-decision
   loop durable operator-gate recording, P0 project-agent approved-command
   handoff, and P1 dashboard polish/internal narrative. Chose the operator-gate

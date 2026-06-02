@@ -57,6 +57,7 @@ def build_sanitized_controller_packet() -> str:
             f"建议回复：同意 {goal_id} 先做 read-only map dry-run / 暂不同意 + 一句话原因。",
             f"建议判断：同意 {goal_id} 先做 read-only map dry-run；不授权写入或主控接管。",
             "边界：这只授权项目 Agent 预览 dry-run 路径；不写 operator gate、run history、write-control、实验控制或生产动作。",
+            "记录规则：如需持久记录本次判断，先用本地 operator-gate dry-run 预览；确认写入时去掉 --dry-run；拒绝/暂缓用 reject/defer + public-safe 原因。",
             "",
             "【当前状态】",
             "摘要：planned opt-in review fixture",
@@ -110,6 +111,11 @@ def main() -> int:
     controller_reply = source_between(source, "function controllerReplyLine", "function suggestedDecisionLine")
     assert "同意 ${goalId} 先做 read-only map dry-run / 暂不同意 + 一句话原因。" in controller_reply
     assert "同意 ${goalId} 先做 read-only map dry-run，不授权写入或生产动作" in controller_reply
+    record_rule = source_between(source, "function durableOperatorGateRecordRule", "function suggestedDecisionLine")
+    assert "记录规则：如需持久记录本次判断" in record_rule
+    assert "operator-gate dry-run 预览" in record_rule
+    assert "reject/defer + public-safe 原因" in record_rule
+    assert "durableOperatorGateRecordRule(item.kind)" in packet_builder
 
     gate_builder = source_between(source, "function buildOperatorGateDryRunCommand", "function buildOperatorTransitionPreview")
     assert "operator-gate" in gate_builder
@@ -150,15 +156,17 @@ def main() -> int:
             "【请你判断】",
             "是否允许目标项目进入 read-only/controller opt-in？",
             "建议回复：同意 planned-main-control 先做 read-only map dry-run / 暂不同意 + 一句话原因。",
+            "记录规则：如需持久记录本次判断",
             "【当前状态】",
             "【同意后给项目 Agent】",
             "read-only-map",
             "需要写入/生产/进一步授权时停下",
         ],
     )
-    assert "operator-gate" not in packet, packet
+    assert "operator-gate dry-run 预览" in packet, packet
+    assert "operator-gate \\" not in packet, packet
     assert packet.count("read-only-map") == 1, packet
-    assert len(packet.splitlines()) <= 20, packet
+    assert len(packet.splitlines()) <= 21, packet
     assert "不授权写入或主控接管" in packet
     print("review-packet-smoke ok")
     return 0

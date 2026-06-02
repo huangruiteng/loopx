@@ -873,6 +873,13 @@ function controllerApprovalReason(goalId: string) {
   return `同意 ${goalId} 先做 read-only map dry-run，不授权写入或生产动作`;
 }
 
+function durableOperatorGateRecordRule(kind?: UserActionKind) {
+  if (kind !== "controller") {
+    return null;
+  }
+  return "记录规则：如需持久记录本次判断，先用本地 operator-gate dry-run 预览；确认写入时去掉 --dry-run；拒绝/暂缓用 reject/defer + public-safe 原因。";
+}
+
 function suggestedDecisionLine(kind?: UserActionKind, item?: UserActionSummaryItem, goalId?: string) {
   if (kind === "controller") {
     const targetGoalId = goalId ?? item?.goalId;
@@ -1166,6 +1173,7 @@ function buildHumanFriendlyActionPacket({
     `建议回复：${reply}`,
     `建议判断：${suggestedDecisionLine(item.kind, item, item.goalId)}`,
     `边界：${prompt.boundary}`,
+    durableOperatorGateRecordRule(item.kind),
     "",
     "【当前状态】",
     `摘要：${item.summary}`,
