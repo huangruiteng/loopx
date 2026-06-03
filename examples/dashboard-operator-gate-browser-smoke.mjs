@@ -25,6 +25,7 @@ const recommendedAction = "先在 Goal Harness 完成 operator 判断；同意�
 const assetNextAction = "Project asset: handle owner todo before approving the gate";
 const assetStopCondition = "Project asset stop: record or defer the owner todo before approval";
 const userTodoText = "Read owner review worksheet first.";
+const agentTodoText = "Run the read-only map dry-run after owner todo resolution.";
 const previewCommand = "goal-harness read-only-map --goal-id planned-main-control --dry-run";
 const approvedAction = "operator approved read-only map; project agent can execute the approved dry-run";
 const approvedCommand = "goal-harness read-only-map --goal-id planned-main-control --dry-run --approved";
@@ -91,6 +92,12 @@ const statusFixture = {
             done: 0,
             total: 1,
             next: userTodoText,
+          },
+          agent_todos: {
+            open: 1,
+            done: 0,
+            total: 1,
+            next: agentTodoText,
           },
           quota: operatorGateQuota,
           latest_validation: {
@@ -446,6 +453,8 @@ async function main() {
       "Project asset stop: record or defer the owner todo before approval",
       "Agent command ready after approval",
       "Quota 0.5",
+      "Agent todo",
+      "Run the read-only map dry-run after owner todo resolution.",
       "Validation",
       "planned-high-complexity",
       "fixture planned controller opt-in",
@@ -482,6 +491,8 @@ async function main() {
       "Operator question",
       "是否同意 `planned-main-control` 先执行 read-only map opt-in？",
       "Read owner review worksheet first.",
+      "Agent todo",
+      "Run the read-only map dry-run after owner todo resolution.",
       "Validation",
       "planned-high-complexity",
       "Copy",

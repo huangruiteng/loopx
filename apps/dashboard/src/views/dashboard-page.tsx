@@ -1246,6 +1246,7 @@ function buildHumanFriendlyActionPacket({
   const prompt = humanReviewPrompt(item.kind);
   const quotaView = buildQuotaView(item.quota);
   const todo = firstOpenTodo(item.userTodos);
+  const agentTodo = firstOpenTodo(item.agentTodos);
   const approvedAgentCommand = item.kind === "codex" && Boolean(item.agentCommand);
   const reply = item.kind === "controller"
     ? controllerReplyLine(item.goalId)
@@ -1259,6 +1260,7 @@ function buildHumanFriendlyActionPacket({
     title: item.title,
     summary: item.summary,
     userTodoText: todo?.text,
+    agentTodoText: agentTodo?.text,
     todoBlocksGate,
     operatorQuestion: item.operatorQuestion,
     suggestedReply: reply,
@@ -1898,6 +1900,7 @@ function UserActionSummary({
                   const actionKey = `${item.goalId}-${item.kind}-${item.title}`;
                   const copyState = actionCopyState?.key === actionKey ? actionCopyState.state : "idle";
                   const isGateAction = item.kind === "controller" || item.waitingOn === "user_or_controller" || item.waitingOn === "controller";
+                  const agentTodo = firstOpenTodo(item.agentTodos);
                   return (
                   <article
                     className={cn(
@@ -1998,6 +2001,13 @@ function UserActionSummary({
                           <span className="line-clamp-1 break-words font-medium">
                             {formatLatestValidation(item.latestValidation)}
                           </span>
+                        </>
+                      ) : null}
+                      {agentTodo ? (
+                        <>
+                          <Bot className="h-3.5 w-3.5 text-slate-500 dark:text-zinc-400" />
+                          <Badge variant="info">Agent todo</Badge>
+                          <span className="line-clamp-1 break-words font-medium">{agentTodo.text}</span>
                         </>
                       ) : null}
                     </div>

@@ -11,6 +11,7 @@ const packet = buildActionPacket({
   title: "Review or authorize",
   summary: "production still blocked; owner/SOP snapshot has 9 blockers, but only two user todos are open",
   userTodoText: "Read the core Lark document section 8 first. Focus on 当前结论 and the Nacos diff 快速锚点 / Diff Anchors table.",
+  agentTodoText: "Run the read-only map dry-run after the owner todo is resolved; stop before writes.",
   todoBlocksGate: true,
   operatorQuestion: "是否同意 premium-ui 迁移在 owner/SOP review 后继续推进？",
   suggestedReply: "同意继续 safe-local/offline 路径 / 暂不同意 + 一句话原因。",
@@ -29,10 +30,11 @@ assert(packet.includes("待办：Read the core Lark document section 8 first."),
 assert(packet.includes("先处理/暂缓再判 gate"), "missing todo-before-gate cue");
 assert(packet.includes("Gate：是否同意 premium-ui 迁移"), "missing gate question");
 assert(packet.includes("【给项目 Agent】"), "missing project-agent handoff section");
+assert(packet.includes("待办：Run the read-only map dry-run after the owner todo is resolved; stop before writes."), "missing first agent todo");
 assert(packet.includes("路径：Read-only map dry-run"), "missing safe path");
 assert(packet.includes("上下文：只信当前 state/status/history 与命令输出"), "missing agent context rule");
 assert(packet.includes("不授权写入或生产动作") || packet.includes("不要执行 Nacos 写入"), "missing safety boundary");
-assert(packet.length > 360 && packet.length < 740, `unexpected packet length: ${packet.length}`);
+assert(packet.length > 430 && packet.length < 820, `unexpected packet length: ${packet.length}`);
 assert(
   packet.indexOf("【用户/Gate】") < packet.indexOf("【给项目 Agent】"),
   "user action section must precede project-agent handoff",

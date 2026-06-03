@@ -61,6 +61,7 @@ def build_sanitized_controller_packet() -> str:
             "记录：落盘先 dry-run。",
             "",
             "【给项目 Agent】",
+            "待办：Run the read-only map dry-run after the owner todo is resolved.",
             "路径：Read-only map dry-run",
             f"命令：{project_agent_command.replace(chr(10), ' ')}",
             "回报：files / validation / next；需授权则停。",
@@ -150,12 +151,15 @@ def main() -> int:
     packet_builder = source_between(source, "function buildHumanFriendlyActionPacket", "function readinessVariant")
     assert "return buildActionPacket({" in packet_builder
     assert "const approvedAgentCommand = item.kind === \"codex\" && Boolean(item.agentCommand);" in packet_builder
+    assert "const agentTodo = firstOpenTodo(item.agentTodos);" in packet_builder
+    assert "agentTodoText: agentTodo?.text" in packet_builder
     assert "直接转发给项目 Agent；不追加写权限、主控接管或生产动作授权。" in packet_builder
     assert "只执行已批准的只读/dry-run agent_command" in packet_builder
     assert "Approved agent command" in packet_builder
     assert_order(action_packet_source, ["【GH Packet】", "【用户/Gate】", "【给项目 Agent】"])
     assert "operatorGateDraftCommand" not in packet_builder
     assert "待办：" in action_packet_source
+    assert "input.agentTodoText ? `待办：" in action_packet_source
     assert "Gate：" in action_packet_source
     assert "先确认待办" in action_packet_source
 
@@ -211,6 +215,8 @@ def main() -> int:
     assert "Needs decision" not in user_action_summary
     assert "blocksGate={Boolean(item.operatorQuestion && firstOpenTodo(item.userTodos))}" in user_action_summary
     assert "formatLatestValidation(item.latestValidation)" in user_action_summary
+    assert "const agentTodo = firstOpenTodo(item.agentTodos);" in user_action_summary
+    assert "Agent todo" in user_action_summary
     assert "先做用户待办" in source
     assert "完成或明确暂缓这个用户待办后，再审批下面的 gate。" in source
 

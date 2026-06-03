@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T12:28:31+08:00
+updated_at: 2026-06-03T12:34:04+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -58,15 +58,44 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Dashboard first-screen action cards now project
-  `project_asset.latest_validation` as compact Validation metadata alongside
-  user/agent todos, next action, stop condition, and quota. The next heartbeat
-  should inspect user/agent todo visibility across status JSON, dashboard
-  cards, and copied packets, or audit duplicate packet/panel surfaces; only
-  patch a concrete mismatch.
+- Dashboard first-screen action cards and copied GH packets now expose the
+  first open `agent_todos` item as compact `Agent todo` / project-agent `待办`
+  context, while user todos remain the human/gate callout. The next heartbeat
+  should audit CLI `goal-harness review-packet` parity against the dashboard GH
+  packet for user/agent todo visibility and context-source boundaries, or audit
+  duplicate packet/panel surfaces; only patch a concrete mismatch.
 
 ## Recent Progress
 
+- 2026-06-03T12:34:04+08:00: Steering audit candidates were: P0 user/agent
+  todo visibility across status JSON, dashboard cards, and copied packets; P0
+  CLI Review Packet parity with the dashboard GH packet; P1 dashboard polish;
+  and P2 no-progress guard tuning. Continuation check: recent slices touched
+  dashboard first-screen metadata, but this was not another visual polish pass:
+  status JSON already exposed `agent_todos`, while the dashboard card and copied
+  GH packet only surfaced user todos, leaving target agents to dig through
+  status/history for the next safe agent todo. Compute quota allowed another
+  run, but focus quota chose this concrete P0 mismatch over broader UI work.
+  No-progress self-stop check: not triggered because recent eligible heartbeats
+  produced committed artifacts and validation signals, and this turn produced a
+  bounded packet/card visibility patch. Bounded output: updated
+  `apps/dashboard/src/data/action-packet.ts` and
+  `apps/dashboard/src/views/dashboard-page.tsx` so the first open agent todo is
+  visible in copied GH packets and action-card metadata; updated
+  `apps/dashboard/smoke/action-packet-smoke.ts`,
+  `examples/dashboard-operator-gate-browser-smoke.mjs`, and
+  `examples/review-packet-smoke.py` to lock the behavior. Validation: `python3
+  examples/review-packet-smoke.py` passed; `npm --prefix apps/dashboard run
+  smoke:action-packet` passed; `node
+  examples/dashboard-operator-gate-browser-smoke.mjs` passed; `npm --prefix
+  apps/dashboard run build` passed with the existing Vite large-chunk warning;
+  `goal-harness --format json check --scan-root .` passed with warnings=0 and
+  a clean public boundary scan over 82 files; `git diff --check` passed.
+  Critic: this keeps agent todo context to one line and avoids another panel,
+  which supports dual anti-overload; residual risk is that CLI
+  `goal-harness review-packet` has a separate formatter and still needs a
+  parity audit. Losing candidate: CLI Review Packet parity should not be
+  forgotten.
 - 2026-06-03T12:28:31+08:00: Steering audit candidates were: P0 dashboard
   first-screen burden and compact `project_asset` projection, P0 user/agent
   todo visibility across status/dashboard/packets, P0 project-agent handoff
