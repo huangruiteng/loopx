@@ -169,10 +169,18 @@ subcommand:
 goal-harness --format json review-packet --goal-id <STABLE_GOAL_ID>
 ```
 
+When the human/controller decision is already approved and the only remaining
+step is to relay the target-agent instruction, use the minimal handoff form:
+
+```bash
+goal-harness review-packet --goal-id <STABLE_GOAL_ID> --handoff-only
+```
+
 This command is read-only. It packages the current status into the same Review
 Packet shape as the dashboard; it does not append human reward, append an
 operator gate, refresh state, grant write-control, or authorize production
-actions.
+actions. `--handoff-only` only strips the human decision wrapper from markdown
+output; JSON output still keeps the full payload and adds `handoff_text`.
 
 Read the packet in order:
 

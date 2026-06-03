@@ -296,6 +296,25 @@ def main() -> int:
             ["【人只需判断】", "operator gate 已批准", "【给项目 Agent】", "Agent 待办", "operator gate 已记录为 approve", APPROVED_COMMAND],
         )
 
+        handoff_only_result = run_cli(
+            root,
+            registry_path,
+            "review-packet",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-root",
+            str(root / "project"),
+            "--handoff-only",
+        )
+        handoff_only = handoff_only_result.stdout
+        assert handoff_only.startswith(f"目标校验：本段只适用于 goal_id=`{GOAL_ID}`"), handoff_only
+        assert "【Goal Harness Review Packet】" not in handoff_only, handoff_only
+        assert "【人只需判断】" not in handoff_only, handoff_only
+        assert "【用户本地 Gate 记录草稿】" not in handoff_only, handoff_only
+        assert "operator gate 已记录为 approve" in handoff_only, handoff_only
+        assert "不要从旧聊天或旧 packet 拼当前状态" in handoff_only, handoff_only
+        assert APPROVED_COMMAND in handoff_only, handoff_only
+
         approved_json_result = run_cli(
             root,
             registry_path,
@@ -318,6 +337,25 @@ def main() -> int:
         assert "不要从旧聊天或旧 packet 拼当前状态" in approved_payload["project_agent_handoff"], approved_payload
         assert approved_payload["operator_gate_dry_run_command"] is None, approved_payload
         assert approved_payload["operator_gate_decision_commands"] == {}, approved_payload
+
+        handoff_json_result = run_cli(
+            root,
+            registry_path,
+            "--format",
+            "json",
+            "review-packet",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-root",
+            str(root / "project"),
+            "--handoff-only",
+        )
+        handoff_payload = json.loads(handoff_json_result.stdout)
+        assert handoff_payload["ok"] is True, handoff_payload
+        assert handoff_payload["handoff_only"] is True, handoff_payload
+        assert handoff_payload["handoff_text"] == handoff_payload["project_agent_handoff"], handoff_payload
+        assert handoff_payload["operator_gate_approved_handoff"] is True, handoff_payload
+
         after_files = sorted(path.name for path in run_dir.iterdir())
         assert after_files == before_files, "approved review-packet must not write runtime runs"
 

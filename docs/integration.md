@@ -252,6 +252,19 @@ approved `agent_command`; reject/defer keeps the goal gated with the recorded
 reason. This records operator gate decisions separately from `human_reward`,
 which remains reserved for judging an exact run or route outcome.
 
+After approval, use the minimal handoff form when the only remaining action is
+to relay the target project-agent instruction:
+
+```bash
+goal-harness review-packet --goal-id project-goal --handoff-only
+```
+
+This is still read-only packaging. It strips the human decision wrapper from
+markdown output so the receiving agent sees only the goal guard, forwarding
+condition, execution boundary, stop condition, and command. It does not append a
+gate decision, refresh state, spend quota, grant write-control, or authorize
+production action.
+
 If a runtime directory belongs to an old goal that is no longer in the registry,
 preview archive cleanup before changing anything:
 

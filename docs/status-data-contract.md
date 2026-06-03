@@ -399,6 +399,10 @@ Review Packet source-of-truth rule:
 - `goal-harness review-packet --goal-id <goal-id>` may generate the same
   packet from the status contract for CLI-facing agents, but it is still a
   read-only packaging command;
+- `goal-harness review-packet --goal-id <goal-id> --handoff-only` is the
+  copy-minimal form for an already selected or approved target-agent relay: it
+  prints only the `project_agent_handoff` text in markdown output, while JSON
+  output still keeps the full payload and adds `handoff_text`;
 - the local `operator_gate_dry_run` preview belongs to the user or controller,
   not the target project agent;
 - the project-agent command is only the after-approval dry-run execution path.

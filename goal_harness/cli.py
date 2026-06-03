@@ -390,6 +390,11 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
     )
+    review_packet_parser.add_argument(
+        "--handoff-only",
+        action="store_true",
+        help="Print only the target project-agent handoff in markdown output; JSON output keeps the full payload and adds handoff_text.",
+    )
     review_packet_parser.add_argument("--limit", type=int, default=5)
 
     todo_parser = sub.add_parser(
@@ -837,7 +842,13 @@ def main(argv: list[str] | None = None) -> int:
                 "goal_id": args.goal_id,
                 "error": str(exc),
             }
-        print_payload(payload, args.format, render_review_packet_markdown)
+        if args.handoff_only:
+            payload["handoff_only"] = True
+            payload["handoff_text"] = str(payload.get("project_agent_handoff") or "")
+        if args.handoff_only and args.format != "json" and payload.get("ok"):
+            print(str(payload.get("handoff_text") or ""))
+        else:
+            print_payload(payload, args.format, render_review_packet_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "todo":

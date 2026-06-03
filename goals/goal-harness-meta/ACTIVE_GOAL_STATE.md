@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T15:19:39+08:00
+updated_at: 2026-06-03T15:26:23+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -58,15 +58,45 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- The current approved `agent-harness-main-control` Review Packet has been
-  validated and recorded as a private relay artifact without touching the
-  target project repository. The next heartbeat should either wait for the
-  target project agent to run the approved dry-run in its own context, or work
-  on another Goal Harness P0 slice that does not depend on that target repo
+- `goal-harness review-packet --goal-id <goal> --handoff-only` now provides the
+  minimal target-agent relay text while preserving the full JSON Review Packet
+  payload. The next heartbeat should either wait for the target project agent
+  to run the approved dry-run in its own context, or choose another P0 slice
+  that reduces human/agent overload without depending on target repository
   execution.
 
 ## Recent Progress
 
+- 2026-06-03T15:26:23+08:00: Steering audit candidates were: P0
+  project-agent execution ergonomics by extracting a minimal approved handoff
+  from Review Packet output, P0 wait for the target project agent dry-run
+  signal, P0 audit another status/dashboard consumer only if a fresh
+  current-truth mismatch appears, and P1 communication/polish now that the
+  control loop is more stable. Continuation check: recent slices were all
+  about current authority and handoff; continuing still won because this slice
+  converted a real relay-friction observation into a reusable CLI affordance
+  rather than another private packet. No-progress self-stop check: not
+  triggered because recent eligible heartbeats produced commits, validation, or
+  a concrete relay artifact, and this turn produced a public CLI feature.
+  Bounded output: added `review-packet --handoff-only`, which prints only
+  `project_agent_handoff` in markdown output and keeps the full JSON payload
+  with `handoff_only=true` plus `handoff_text`; updated the installed skill and
+  docs so project agents can use the minimal handoff without reading the human
+  decision wrapper. Changed files: `goal_harness/cli.py`,
+  `examples/review-packet-cli-smoke.py`, `examples/install-local-smoke.py`,
+  `docs/status-data-contract.md`, `docs/integration.md`, and
+  `skills/goal-harness-project/SKILL.md`. Validation:
+  `python3 examples/review-packet-cli-smoke.py`,
+  `python3 examples/install-local-smoke.py`,
+  `python3 examples/project-agent-adoption-smoke.py`, `python3 -m py_compile
+  goal_harness/cli.py examples/review-packet-cli-smoke.py
+  examples/install-local-smoke.py`, `goal-harness --format json check
+  --scan-root .`, `git diff --check`, and changed-file sensitive-pattern scan
+  all passed. Critic: this directly advances dual anti-overload for humans and
+  agents, but it still stops before target-side execution; the next new signal
+  should be a target agent dry-run result or a different independent P0
+  bottleneck. Losing candidate: communication polish remains useful but should
+  wait until the target-side execution loop is less manual.
 - 2026-06-03T15:19:39+08:00: Steering audit candidates were: P0 real
   adapter-proof handoff for the controller-ready project line, P0 audit another
   concrete status consumer only if a fresh mismatch appears, P1 communication

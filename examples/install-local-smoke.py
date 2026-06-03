@@ -63,6 +63,7 @@ def main() -> int:
             "--source heartbeat --execute",
             "Generate A Review Packet",
             "goal-harness review-packet --goal-id",
+            "goal-harness review-packet --goal-id <STABLE_GOAL_ID> --handoff-only",
             "goal-harness --format json review-packet --goal-id",
             "target project agent must not run this draft",
             "This command is read-only",
