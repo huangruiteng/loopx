@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T11:26:23+08:00
+updated_at: 2026-06-03T11:33:22+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -53,13 +53,37 @@ handoff, validation, and quota bookkeeping.
 
 ## Next Action
 
-- Quota spend preview/status now documents the rolling-window semantics behind
-  same-turn before -> after projections. The next heartbeat should move to a
-  different P0 state-truth slice, such as checking dashboard/status consistency
-  for quota, user todo, and gate fields, and patch exactly one mismatch if found.
+- Dashboard quota parsing now derives missing `allowed_slots` from the same
+  compute/window/slot contract as CLI status. The next heartbeat should move to
+  another P0 state-truth slice, preferably checking whether dashboard action
+  cards and CLI `quota should-run` agree on operator-gate versus Codex-ready
+  handoff wording, and patch exactly one mismatch if found.
 
 ## Recent Progress
 
+- 2026-06-03T11:33:22+08:00: Steering audit candidates were: P0 dashboard/status
+  consistency for quota, user todo, and gate fields; P0 state-only status
+  recheck; P1 dashboard visual polish; and P2 no-progress guard tuning.
+  Continuation check: the previous slice clarified quota preview semantics, so
+  continuing into dashboard quota display still won because it checked a
+  separate user-visible surface rather than adding more quota docs. No-progress
+  self-stop check: not triggered because the recent eligible heartbeats
+  produced committed artifacts and validation signals, and this turn produced a
+  bounded dashboard parser fix. Bounded output: updated
+  `apps/dashboard/src/data/status.ts` so missing `allowed_slots` is derived as
+  `window_hours * 60 * compute / slot_minutes` instead of defaulting to `24`,
+  preserved `slot_minutes` in the parsed quota payload, and added
+  `examples/dashboard-quota-default-browser-smoke.mjs` to verify the dashboard
+  renders `Eligible; 12/720 slots` for a half-duty fixture without explicit
+  `allowed_slots`. Validation: `node
+  examples/dashboard-quota-default-browser-smoke.mjs` passed; `npm --prefix
+  apps/dashboard run build` passed with the existing Vite large-chunk warning;
+  `goal-harness --format json check --scan-root .` passed with warnings=0 and
+  a clean public boundary scan over 89 files; `git diff --check` passed.
+  Critic: this is a narrow contract fix rather than UI polish; the next slice
+  should compare gate/handoff wording instead of staying on quota. Losing
+  candidate: P1 visual polish remains lower priority than first-screen state
+  truth.
 - 2026-06-03T11:26:23+08:00: Steering audit candidates were: P0 quota
   preview/status truth after the latest spend showed a same-window projection
   while later status stayed flat, P0 state/status truth check only, P1

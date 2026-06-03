@@ -4,11 +4,20 @@ import { z } from "zod";
 export const quotaSchema = z.object({
   compute: z.number().optional().default(1),
   window_hours: z.number().optional().default(24),
-  allowed_slots: z.number().optional().default(24),
+  slot_minutes: z.number().optional().default(1),
+  allowed_slots: z.number().optional().nullable(),
   spent_slots: z.number().optional().default(0),
   state: z.string().optional().nullable(),
   next_eligible_at: z.string().optional().nullable(),
   reason: z.string().optional().nullable(),
+}).transform((quota) => {
+  const slotMinutes = Math.max(1, quota.slot_minutes);
+  const defaultAllowedSlots = Math.round((quota.window_hours * 60 * quota.compute) / slotMinutes);
+  return {
+    ...quota,
+    slot_minutes: slotMinutes,
+    allowed_slots: quota.allowed_slots ?? defaultAllowedSlots,
+  };
 });
 
 export const reviewMaterialSchema = z.object({
