@@ -633,6 +633,64 @@ def assert_operator_gate_should_run(status_payload: dict) -> None:
     assert "agent_todo_command_template" in markdown, markdown
 
 
+def assert_attention_queue_overrides_stale_run_history() -> None:
+    stale_goal = goal("queue-authority", compute=1.0)
+    stale_goal["status"] = "operator_gate_deferred"
+    stale_goal["lifecycle_phase"] = "controller_gated"
+    stale_goal["quota"] = {
+        "compute": 1.0,
+        "window_hours": 24,
+        "slot_minutes": 1,
+        "allowed_slots": 1440,
+        "spent_slots": 0,
+        "state": "operator_gate",
+        "reason": "stale run-history gate should not block current queue authority",
+        "blocked_action_scope": "gated_delivery",
+        "safe_bypass_allowed": True,
+    }
+    stale_goal["latest_runs"][0]["classification"] = "operator_gate_deferred"
+    stale_goal["latest_runs"][0]["recommended_action"] = "ask the old gate again"
+
+    current_item = attention("queue-authority", compute=1.0)
+    current_item.update(
+        {
+            "status": "operator_gate_approved",
+            "waiting_on": "codex",
+            "recommended_action": "run the approved dry-run",
+            "agent_command": "goal-harness read-only-map --goal-id queue-authority --dry-run",
+            "source": "latest_run",
+        }
+    )
+    current_item["project_asset"] = {
+        "owner": "codex",
+        "gate": "none",
+        "next_action": "run the approved dry-run",
+        "stop_condition": "stop if the command needs write control",
+    }
+
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "attention_queue": {"items": [current_item]},
+        "run_history": {"goals": [stale_goal]},
+    }
+    decision = build_quota_should_run(payload, goal_id="queue-authority")
+
+    assert decision["ok"] is True, decision
+    assert decision["decision"] == "run", decision
+    assert decision["should_run"] is True, decision
+    assert decision["state"] == "eligible", decision
+    assert decision["waiting_on"] == "codex", decision
+    assert decision["status"] == "operator_gate_approved", decision
+    assert decision["recommended_action"] == "run the approved dry-run", decision
+    assert decision["agent_command"] == "goal-harness read-only-map --goal-id queue-authority --dry-run", decision
+    assert "operator_question" not in decision, decision
+    assert "gate_prompt" not in decision, decision
+
+
 def assert_safe_bypass_slot_preview(status_payload: dict) -> None:
     payload = build_quota_slot_preview(status_payload, goal_id="needs-operator", slots=1)
 
@@ -748,6 +806,7 @@ def main() -> int:
     assert_plan_shape(plan, markdown)
     assert_throttled_should_run(status_payload)
     assert_operator_gate_should_run(status_payload)
+    assert_attention_queue_overrides_stale_run_history()
     assert_safe_bypass_slot_preview(status_payload)
     assert_slot_preview(build_quota_slot_preview(status_payload, goal_id="near-limit-half", slots=1))
     with tempfile.TemporaryDirectory(prefix="goal-harness-quota-plan-smoke-") as tmp:

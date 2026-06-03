@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T14:59:00+08:00
+updated_at: 2026-06-03T15:02:47+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -58,15 +58,38 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Generated heartbeat prompts now carry the current-routing-authority rule:
-  `attention_queue.items` / `project_asset` are authoritative for owner, gate,
-  waiting party, and next action, while `run_history.latest_runs` is evidence
-  only. The next heartbeat should audit an actual consumer for this split or
-  move to a real adapter-proof handoff that does not touch target project
+- `quota should-run` now has a regression smoke proving that a current
+  `attention_queue` item can override stale `run_history.latest_runs` gate
+  evidence. The next heartbeat should audit another actual consumer for this
+  routing split, such as Review Packet or dashboard action selection, or move
+  to a real adapter-proof handoff that does not touch target project
   repositories unless explicitly requested.
 
 ## Recent Progress
 
+- 2026-06-03T15:02:47+08:00: Steering audit candidates were: P0 actual consumer
+  audit for `quota should-run`, P0 Review Packet consumer audit, P0 dashboard
+  action-selection audit, P0 real adapter-proof handoff for a controller-ready
+  project line, and P2 no-progress guard tuning. Continuation check: this is a
+  third adjacent state-truth slice, but it moved from documentation/generator
+  hardening to the most important actual consumer: the heartbeat quota guard.
+  Continuing won because a wrong `quota should-run` decision would still
+  silently block approved work or re-ask stale gates. No-progress self-stop
+  check: not triggered because recent eligible heartbeats produced committed
+  artifacts or validation signals, and this turn produced a bounded regression
+  smoke. Bounded output: updated `examples/quota-plan-smoke.py` with
+  `assert_attention_queue_overrides_stale_run_history`, a fixture where
+  run history still looks like an operator gate while the current attention
+  queue is `operator_gate_approved` / `waiting_on=codex` / eligible with an
+  agent command. Validation: `python3 examples/quota-plan-smoke.py` passed;
+  `python3 -m py_compile goal_harness/quota.py examples/quota-plan-smoke.py`
+  passed; `goal-harness --format json check --scan-root .` passed with
+  warnings=0 and a clean public boundary scan over 82 files; `git diff --check`
+  passed. Critic: this locks the highest-risk consumer without broad code
+  churn, but it is still one consumer; Review Packet and dashboard selection may
+  need the same explicit regression coverage. Losing candidate: real
+  adapter-proof handoff remains high-value, but should wait until the current
+  routing split is proven through the hot-path consumers.
 - 2026-06-03T14:59:00+08:00: Steering audit candidates were: P0 heartbeat
   prompt consumer-hardening for the new routing-authority split, P0 actual
   project-local pre-tick consumer audit, P0 real adapter-proof handoff for a
