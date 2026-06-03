@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T12:22:40+08:00
+updated_at: 2026-06-03T12:28:31+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -58,15 +58,42 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Project-agent handoff packets now include an explicit context-source rule so
-  target agents do not rebuild current truth from stale chats or old packets.
-  The next heartbeat should apply the dual anti-overload lens to the dashboard
-  first screen: verify whether it already uses the compact `project_asset`
-  projection for user/agent todos, next action, stop condition, quota, and
-  validation before adding any new UI.
+- Dashboard first-screen action cards now project
+  `project_asset.latest_validation` as compact Validation metadata alongside
+  user/agent todos, next action, stop condition, and quota. The next heartbeat
+  should inspect user/agent todo visibility across status JSON, dashboard
+  cards, and copied packets, or audit duplicate packet/panel surfaces; only
+  patch a concrete mismatch.
 
 ## Recent Progress
 
+- 2026-06-03T12:28:31+08:00: Steering audit candidates were: P0 dashboard
+  first-screen burden and compact `project_asset` projection, P0 user/agent
+  todo visibility across status/dashboard/packets, P0 project-agent handoff
+  context diet, P1 dashboard polish, and P2 no-progress guard tuning.
+  Continuation check: recent slices touched dashboard/status wording and
+  project-agent handoff copy, but the previous Next Action explicitly called
+  for applying the dual anti-overload lens to the dashboard first screen; this
+  turn therefore fixed one concrete first-screen state-truth gap instead of
+  adding a new panel. No-progress self-stop check: not triggered because recent
+  eligible heartbeats produced committed artifacts and validation signals, and
+  this turn produced a bounded dashboard projection patch. Bounded output:
+  updated `apps/dashboard/src/data/status.ts` and
+  `apps/dashboard/src/views/dashboard-page.tsx` so action summary cards can
+  render compact Validation metadata from `project_asset.latest_validation`;
+  updated `examples/dashboard-operator-gate-browser-smoke.mjs` and
+  `examples/review-packet-smoke.py` to lock the first-screen source and
+  rendered text. Validation: `python3 examples/review-packet-smoke.py` passed;
+  `node examples/dashboard-operator-gate-browser-smoke.mjs` passed; `npm
+  --prefix apps/dashboard run build` passed with the existing Vite large-chunk
+  warning; `goal-harness --format json check --scan-root .` passed with
+  warnings=0 and a clean public boundary scan over 82 files; `git diff --check`
+  passed. Critic: this fills the latest-validation first-screen gap without
+  making the dashboard louder; residual risk is that the browser smoke uses a
+  fixture rather than a live operator screenshot, so the next slice should avoid
+  UI churn and inspect user/agent todo visibility or duplicate packet/panel
+  surfaces. Losing candidate: user/agent todo visibility remains the next
+  high-value anti-overload candidate.
 - 2026-06-03T12:22:40+08:00: Steering audit candidates were: P0 project-agent
   handoff context diet, P0 user/agent todo visibility across status and
   dashboard, P0 dashboard first-screen burden, P1 dashboard polish, and P2

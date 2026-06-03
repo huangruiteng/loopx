@@ -446,6 +446,9 @@ async function main() {
       "Project asset stop: record or defer the owner todo before approval",
       "Agent command ready after approval",
       "Quota 0.5",
+      "Validation",
+      "planned-high-complexity",
+      "fixture planned controller opt-in",
       "Copy",
     ], "pending dashboard");
     forbidTexts(body, [
@@ -479,6 +482,8 @@ async function main() {
       "Operator question",
       "是否同意 `planned-main-control` 先执行 read-only map opt-in？",
       "Read owner review worksheet first.",
+      "Validation",
+      "planned-high-complexity",
       "Copy",
     ], "focused controller dashboard");
     forbidTexts(body, [

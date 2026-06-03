@@ -193,6 +193,7 @@ def main() -> int:
     assert "todosFromProjectAssetSummary(projectAsset?.user_todos" in user_action_builder
     assert "const nextAction = projectAsset?.next_action ?? decision.action;" in user_action_builder
     assert "const stopCondition = projectAsset?.stop_condition ?? handoffCondition ?? decision.action;" in user_action_builder
+    assert "const latestValidation = projectAsset?.latest_validation;" in user_action_builder
     assert "const quotaState = quota?.state ?? \"waiting\";" in user_action_builder
     assert "decision.waitingOn === \"codex\" && quotaState === \"throttled\"" in user_action_builder
     assert_order(
@@ -209,6 +210,7 @@ def main() -> int:
     assert "const primaryOperatorGate" not in user_action_summary
     assert "Needs decision" not in user_action_summary
     assert "blocksGate={Boolean(item.operatorQuestion && firstOpenTodo(item.userTodos))}" in user_action_summary
+    assert "formatLatestValidation(item.latestValidation)" in user_action_summary
     assert "先做用户待办" in source
     assert "完成或明确暂缓这个用户待办后，再审批下面的 gate。" in source
 

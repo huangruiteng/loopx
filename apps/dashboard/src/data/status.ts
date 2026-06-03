@@ -317,6 +317,7 @@ export type AuthorityRegistry = z.infer<typeof authorityRegistrySchema>;
 export type ComputeQuota = z.infer<typeof quotaSchema>;
 export type ProjectAsset = z.infer<typeof projectAssetSchema>;
 export type ProjectAssetTodoSummary = z.infer<typeof projectAssetTodoSummarySchema>;
+export type ProjectAssetLatestValidation = z.infer<typeof projectAssetLatestValidationSchema>;
 export type TodoGroup = z.infer<typeof todoGroupSchema>;
 export type TodoItem = z.infer<typeof todoItemSchema>;
 export type ReviewMaterial = z.infer<typeof reviewMaterialSchema>;

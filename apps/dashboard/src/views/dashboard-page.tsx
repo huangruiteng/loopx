@@ -46,6 +46,7 @@ import {
   RunGoal,
   RunRecord,
   StatusPayload,
+  ProjectAssetLatestValidation,
   ProjectAssetTodoSummary,
   TodoGroup,
   exampleStatusPayload,
@@ -732,6 +733,7 @@ type UserActionSummaryItem = {
   quota?: ComputeQuota | null;
   userTodos?: TodoGroup | null;
   agentTodos?: TodoGroup | null;
+  latestValidation?: ProjectAssetLatestValidation | null;
   phase: string;
   waitingOn: string;
   draftLabel?: string;
@@ -1214,6 +1216,16 @@ function buildQuotaView(quota?: ComputeQuota | null): QuotaView | undefined {
   };
 }
 
+function formatLatestValidation(validation?: ProjectAssetLatestValidation | null) {
+  if (!validation) {
+    return null;
+  }
+  return [
+    validation.classification,
+    validation.summary,
+  ].filter(Boolean).join("; ") || null;
+}
+
 function QuotaChip({ quota }: { quota?: ComputeQuota | null }) {
   const view = buildQuotaView(quota);
   if (!view) {
@@ -1658,6 +1670,7 @@ function buildUserActionSummaryItems({
     const agentTodos = todosFromProjectAssetSummary(projectAsset?.agent_todos, row.queueItem?.agent_todos, "project_asset.agent_todos");
     const nextAction = projectAsset?.next_action ?? decision.action;
     const stopCondition = projectAsset?.stop_condition ?? handoffCondition ?? decision.action;
+    const latestValidation = projectAsset?.latest_validation;
     const base = {
       goalId: row.goal.id,
       phase: decision.phase,
@@ -1673,6 +1686,7 @@ function buildUserActionSummaryItems({
       quota,
       userTodos,
       agentTodos,
+      latestValidation,
     };
 
     if (row.severity === "high") {
@@ -1975,6 +1989,15 @@ function UserActionSummary({
                           <Gauge className="h-3.5 w-3.5 text-slate-500 dark:text-zinc-400" />
                           <Badge variant={buildQuotaView(item.quota)?.variant}>Quota</Badge>
                           <span className="font-medium">{buildQuotaView(item.quota)?.shortLine}</span>
+                        </>
+                      ) : null}
+                      {formatLatestValidation(item.latestValidation) ? (
+                        <>
+                          <FileCheck2 className="h-3.5 w-3.5 text-slate-500 dark:text-zinc-400" />
+                          <Badge variant="neutral">Validation</Badge>
+                          <span className="line-clamp-1 break-words font-medium">
+                            {formatLatestValidation(item.latestValidation)}
+                          </span>
                         </>
                       ) : null}
                     </div>
