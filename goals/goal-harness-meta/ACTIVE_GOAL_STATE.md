@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T16:41:40+08:00
+updated_at: 2026-06-03T16:45:58+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -61,14 +61,40 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- A sanitized runtime fixture now proves a focus-wait open todo reaches
-  `quota should-run` as `notify_user_on_open_todo=true` and maps to the
-  generated heartbeat no-spend blocker-push `NOTIFY` branch. Next, update the
-  live heartbeat automation to the generated prompt branch once its existing
-  schedule/thread fields can be preserved safely.
+- The live `goal-harness-hourly-tick` heartbeat automation now uses the
+  generated heartbeat prompt branch with `notify_user_on_open_todo`, while
+  preserving its 4-minute schedule and current thread target. Next, observe the
+  next automatic tick for prompt-shape regressions; if stable, rotate focus
+  away from blocker-push plumbing toward target-project dry-run/handoff
+  readiness.
 
 ## Recent Progress
 
+- 2026-06-03T16:45:58+08:00: Steering audit candidates were: P0 update the
+  live heartbeat automation to the generated blocker-push prompt now that the
+  local automation config was discoverable, P0 add another runtime/code fixture,
+  P0 wait for target project dry-run signals, and P1 dashboard polish.
+  Continuation check: this was the final blocker-push plumbing slice; it still
+  won because the previous public code and runtime fixture would not affect
+  future scheduled heartbeats until the live automation prompt was updated.
+  No-progress self-stop check: not triggered because recent turns produced
+  commits, validation, and runtime/config artifacts. Bounded output: updated
+  Codex App automation `goal-harness-hourly-tick` through the automation API,
+  preserving `RRULE:FREQ=MINUTELY;INTERVAL=4`,
+  `target_thread_id=019df419-5681-7331-b628-ed206f675b8d`, `status=ACTIVE`, and
+  replacing the hand-written body with the generated prompt branch that includes
+  global-registry quota guard, `goal-harness doctor`, `notify_user_on_open_todo`,
+  blocker-push `NOTIFY`, current-status authority, product bottleneck lens,
+  no-progress self-stop, and autonomous public-safe publication boundaries.
+  Validation: local automation TOML `rg` confirmed `notify_user_on_open_todo`,
+  `goal-harness doctor`, `registry.global.json`,
+  `RRULE:FREQ=MINUTELY;INTERVAL=4`, and the preserved thread id; `goal-harness
+  --format json check --scan-root .` passed with public boundary scan clean. A
+  temporary Python heredoc validation helper failed due to shell quoting, but it
+  was redundant with the direct TOML/config checks. Critic: the live automation
+  is now synced, so further blocker-push plumbing should stop unless the next
+  tick shows a prompt-shape regression. Losing candidate: target-project dry-run
+  signals remain high-value and should come back into focus after this sync.
 - 2026-06-03T16:41:40+08:00: Steering audit candidates were: P0 update the
   live heartbeat automation to use the generated blocker-push prompt, P0 add a
   sanitized runtime fixture proving the new blocker-push path end to end, P0
