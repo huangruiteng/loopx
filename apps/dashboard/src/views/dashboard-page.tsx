@@ -1234,8 +1234,13 @@ function buildHumanFriendlyActionPacket({
   const prompt = humanReviewPrompt(item.kind);
   const quotaView = buildQuotaView(item.quota);
   const todo = firstOpenTodo(item.userTodos);
-  const reply = item.kind === "controller" ? controllerReplyLine(item.goalId) : prompt.reply;
-  const command = item.safePathCommand ?? buildStatusCommand({ registry, runtimeRoot });
+  const approvedAgentCommand = item.kind === "codex" && Boolean(item.agentCommand);
+  const reply = item.kind === "controller"
+    ? controllerReplyLine(item.goalId)
+    : approvedAgentCommand
+      ? "转发下方【给项目 Agent】即可。"
+      : prompt.reply;
+  const command = item.safePathCommand ?? item.agentCommand ?? buildStatusCommand({ registry, runtimeRoot });
   const todoBlocksGate = Boolean(todo && item.operatorQuestion);
   return buildActionPacket({
     goalId: item.goalId,
@@ -1245,10 +1250,14 @@ function buildHumanFriendlyActionPacket({
     todoBlocksGate,
     operatorQuestion: item.operatorQuestion,
     suggestedReply: reply,
-    gateFallbackDecision: suggestedDecisionLine(item.kind, item, item.goalId),
-    boundary: prompt.boundary,
+    gateFallbackDecision: approvedAgentCommand
+      ? "直接转发给项目 Agent；不追加写权限、主控接管或生产动作授权。"
+      : suggestedDecisionLine(item.kind, item, item.goalId),
+    boundary: approvedAgentCommand
+      ? "只执行已批准的只读/dry-run agent_command；如需写入或更高权限，项目 Agent 必须再次停下。"
+      : prompt.boundary,
     durableRecordRule: durableOperatorGateRecordRule(item.kind),
-    safePathLabel: item.safePathLabel,
+    safePathLabel: approvedAgentCommand ? "Approved agent command" : item.safePathLabel,
     command,
     quotaShortLine: quotaView?.shortLine,
     authorityShortLine: item.authorityCoverage?.shortLine,

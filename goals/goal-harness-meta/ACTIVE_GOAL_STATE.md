@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T11:37:09+08:00
+updated_at: 2026-06-03T11:47:50+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -53,15 +53,39 @@ handoff, validation, and quota bookkeeping.
 
 ## Next Action
 
-- Dashboard action cards now distinguish approved `agent_command` handoffs from
-  generic Codex-ready continuation, matching the `quota should-run` rule that
-  exposes `agent_command` only after an operator gate is approved. The next
-  heartbeat should move to a different P0 state-truth slice, such as checking
-  review-packet copy against the same approved-command boundary, and patch only
-  one mismatch if found.
+- Approved-command handoff wording now matches across the dashboard action
+  card, copied dashboard action packet, and CLI Review Packet boundary. The
+  next heartbeat should leave this approved-handoff topic and move to another
+  P0 state-truth slice, preferably checking user/agent todo visibility or
+  status-markdown ownership wording, and patch only one mismatch if found.
 
 ## Recent Progress
 
+- 2026-06-03T11:47:50+08:00: Steering audit candidates were: P0 compare CLI
+  Review Packet approved-command copy with the dashboard copied action packet,
+  P0 state-only status recheck, P1 dashboard visual polish, and P2 no-progress
+  guard tuning. Continuation check: the prior slice fixed the visible approved
+  action card, but the copied action packet was a separate project-agent
+  handoff surface and still used generic Codex safe-path wording, so one more
+  approved-boundary slice won; focus should now leave this topic. No-progress
+  self-stop check: not triggered because recent eligible heartbeats produced
+  committed artifacts and validation signals, and this turn produced a bounded
+  dashboard packet fix. Bounded output: updated
+  `apps/dashboard/src/views/dashboard-page.tsx` so copied action packets for
+  Codex-ready rows with an approved `agent_command` say to directly forward the
+  approved command, use an `Approved agent command` path label, and state the
+  read-only/dry-run boundary instead of generic safe-path approval copy; updated
+  `examples/review-packet-smoke.py` to lock that source branch and sanitized
+  packet shape. Validation: `python3 examples/review-packet-smoke.py` passed;
+  `python3 examples/review-packet-cli-smoke.py` passed; `node
+  examples/dashboard-operator-gate-browser-smoke.mjs` passed; `npm --prefix
+  apps/dashboard run build` passed with the existing Vite large-chunk warning;
+  `goal-harness --format json check --scan-root .` passed with warnings=0 and
+  a clean public boundary scan over 82 files; `git diff --check` passed.
+  Critic: this finishes the approved-command copy alignment without widening
+  UI scope; the next slice should not remain on approved handoff unless a fresh
+  mismatch appears. Losing candidate: P1 visual polish remains lower priority
+  than first-screen state truth.
 - 2026-06-03T11:37:09+08:00: Steering audit candidates were: P0 compare
   dashboard action-card wording with `quota should-run` for operator-gate versus
   Codex-ready handoffs, P0 state-only status recheck, P1 dashboard visual

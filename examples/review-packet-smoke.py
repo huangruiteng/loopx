@@ -99,6 +99,28 @@ def build_sanitized_controller_packet_with_user_todo() -> str:
     )
 
 
+def build_sanitized_approved_command_packet() -> str:
+    goal_id = "planned-main-control"
+    approved_command = "goal-harness read-only-map --goal-id planned-main-control --dry-run --approved"
+    return "\n".join(
+        [
+            "【GH Packet】",
+            f"目标：{goal_id}",
+            "状态：operator gate approved fixture",
+            "",
+            "【用户/Gate】",
+            "待办：无",
+            "Gate：无；建议：直接转发给项目 Agent；不追加写权限、主控接管或生产动作授权。",
+            "边界：只执行已批准的只读/dry-run agent_command；如需写入或更高权限，项目 Agent 必须再次停下。",
+            "",
+            "【给项目 Agent】",
+            "路径：Approved agent command",
+            f"命令：{approved_command}",
+            "回报：files / validation / next；需授权则停。",
+        ]
+    )
+
+
 def main() -> int:
     source = DASHBOARD_PAGE.read_text(encoding="utf-8")
     action_packet_source = ACTION_PACKET.read_text(encoding="utf-8")
@@ -127,6 +149,10 @@ def main() -> int:
 
     packet_builder = source_between(source, "function buildHumanFriendlyActionPacket", "function readinessVariant")
     assert "return buildActionPacket({" in packet_builder
+    assert "const approvedAgentCommand = item.kind === \"codex\" && Boolean(item.agentCommand);" in packet_builder
+    assert "直接转发给项目 Agent；不追加写权限、主控接管或生产动作授权。" in packet_builder
+    assert "只执行已批准的只读/dry-run agent_command" in packet_builder
+    assert "Approved agent command" in packet_builder
     assert_order(action_packet_source, ["【GH Packet】", "【用户/Gate】", "【给项目 Agent】"])
     assert "operatorGateDraftCommand" not in packet_builder
     assert "待办：" in action_packet_source
@@ -220,6 +246,22 @@ def main() -> int:
     assert "Read the owner review worksheet first." in packet_with_todo
     assert "operator-gate \\" not in packet_with_todo, packet_with_todo
     assert len(packet_with_todo.splitlines()) <= 18, packet_with_todo
+
+    approved_packet = build_sanitized_approved_command_packet()
+    assert_order(
+        approved_packet,
+        [
+            "【用户/Gate】",
+            "Gate：无；建议：直接转发给项目 Agent",
+            "只执行已批准的只读/dry-run agent_command",
+            "【给项目 Agent】",
+            "Approved agent command",
+        ],
+    )
+    assert "同意让 Codex 沿 safe path 继续" not in approved_packet, approved_packet
+    assert "如果下一步需要写入、reward append、approval" not in approved_packet, approved_packet
+    assert "不追加写权限、主控接管或生产动作授权" in approved_packet, approved_packet
+    assert len(approved_packet.splitlines()) <= 18, approved_packet
     print("review-packet-smoke ok")
     return 0
 
