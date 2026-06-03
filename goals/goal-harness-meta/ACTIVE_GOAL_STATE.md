@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T15:26:23+08:00
+updated_at: 2026-06-03T15:38:01+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -58,15 +58,42 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- `goal-harness review-packet --goal-id <goal> --handoff-only` now provides the
-  minimal target-agent relay text while preserving the full JSON Review Packet
-  payload. The next heartbeat should either wait for the target project agent
-  to run the approved dry-run in its own context, or choose another P0 slice
-  that reduces human/agent overload without depending on target repository
-  execution.
+- The dashboard now uses handoff-only copy content for approved Codex actions
+  carrying `agent_command`, so the operator surface no longer hands target
+  agents a human gate wrapper after approval. The next heartbeat should either
+  wait for the target project agent dry-run signal, or choose another P0
+  anti-overload bottleneck that does not depend on target repository execution.
 
 ## Recent Progress
 
+- 2026-06-03T15:38:01+08:00: Steering audit candidates were: P0 dashboard
+  copy-path ergonomics for the newly added handoff-only rule, P0 wait for the
+  target project agent dry-run signal, P0 inspect another consumer only if a
+  fresh stale-current mismatch appears, and P1 communication polish. Continuation
+  check: this was another handoff-overload slice, but it was the front-end
+  operator path counterpart to the previous CLI slice and closed a real user
+  experience bottleneck: dashboard users should not copy a human gate wrapper to
+  a target agent after approval. No-progress self-stop check: not triggered
+  because recent eligible heartbeats produced commits, validation, and concrete
+  UX/CLI artifacts. Bounded output: added dashboard `Copy Handoff` behavior for
+  approved Codex actions carrying `agent_command`; its copied payload is the
+  target goal guard, compact context rule, forwarding condition, execution
+  boundary, stop condition, and command, without the `GH Packet` or
+  `用户/Gate` wrapper. Changed files:
+  `apps/dashboard/src/data/action-packet.ts`,
+  `apps/dashboard/src/views/dashboard-page.tsx`,
+  `apps/dashboard/smoke/action-packet-smoke.ts`,
+  `examples/dashboard-operator-gate-browser-smoke.mjs`, and
+  `docs/status-data-contract.md`. Validation: `npm --prefix apps/dashboard run
+  smoke:action-packet`, `npm --prefix apps/dashboard run build`,
+  `node examples/dashboard-operator-gate-browser-smoke.mjs`,
+  `goal-harness --format json check --scan-root .`, `git diff --check`, and
+  changed-file sensitive-pattern scan all passed. Critic: this closes the
+  dashboard side of the handoff-only feature, but it still does not produce a
+  target-side dry-run result; further same-topic work should pause unless a new
+  consumer still exposes redundant handoff content. Losing candidate:
+  communication polish remains useful, but front-end and CLI anti-overload
+  paths were still P0.
 - 2026-06-03T15:26:23+08:00: Steering audit candidates were: P0
   project-agent execution ergonomics by extracting a minimal approved handoff
   from Review Packet output, P0 wait for the target project agent dry-run

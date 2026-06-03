@@ -54,7 +54,7 @@ import {
   parseRewardDryRunResponse,
   parseStatusPayload,
 } from "../data/status";
-import { buildActionPacket } from "../data/action-packet";
+import { buildActionPacket, buildApprovedAgentHandoff } from "../data/action-packet";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -1248,12 +1248,19 @@ function buildHumanFriendlyActionPacket({
   const todo = firstOpenTodo(item.userTodos);
   const agentTodo = firstOpenTodo(item.agentTodos);
   const approvedAgentCommand = item.kind === "codex" && Boolean(item.agentCommand);
+  const command = item.safePathCommand ?? item.agentCommand ?? buildStatusCommand({ registry, runtimeRoot });
+  if (approvedAgentCommand && item.agentCommand) {
+    return buildApprovedAgentHandoff({
+      goalId: item.goalId,
+      command: item.agentCommand,
+      agentTodoText: agentTodo?.text,
+    });
+  }
   const reply = item.kind === "controller"
     ? controllerReplyLine(item.goalId)
     : approvedAgentCommand
       ? "转发下方【给项目 Agent】即可。"
       : prompt.reply;
-  const command = item.safePathCommand ?? item.agentCommand ?? buildStatusCommand({ registry, runtimeRoot });
   const todoBlocksGate = Boolean(todo && item.operatorQuestion);
   return buildActionPacket({
     goalId: item.goalId,
@@ -1900,6 +1907,11 @@ function UserActionSummary({
                   const actionKey = `${item.goalId}-${item.kind}-${item.title}`;
                   const copyState = actionCopyState?.key === actionKey ? actionCopyState.state : "idle";
                   const isGateAction = item.kind === "controller" || item.waitingOn === "user_or_controller" || item.waitingOn === "controller";
+                  const copyLabel = copyState === "copied"
+                    ? "Copied"
+                    : item.kind === "codex" && item.agentCommand
+                      ? "Copy Handoff"
+                      : "Copy";
                   const agentTodo = firstOpenTodo(item.agentTodos);
                   return (
                   <article
@@ -1937,7 +1949,7 @@ function UserActionSummary({
                           variant="secondary"
                         >
                           {copyState === "copied" ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                          {copyState === "copied" ? "Copied" : "Copy"}
+                          {copyLabel}
                         </Button>
                       </div>
                     </div>

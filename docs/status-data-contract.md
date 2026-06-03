@@ -753,7 +753,10 @@ A first useful UI can be built from the export alone:
   question, user/controller-owned local gate dry-run preview, then
   project-agent dry-run instruction. The dashboard/operator view owns the human
   decision; the project-agent command is only the after-approval dry-run
-  execution path.
+  execution path. For an approved Codex action carrying `agent_command`, the
+  copy affordance should switch to handoff-only content: no human gate wrapper,
+  only the target goal guard, forwarding condition, execution boundary, stop
+  condition, and command.
   It is still browser UI state and must not be parsed as durable reward,
   approval, controller opt-in, or write-control.
 - Goal directory: all `run_history.goals`, grouped mentally by `domain` and

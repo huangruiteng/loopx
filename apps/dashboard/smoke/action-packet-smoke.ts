@@ -1,4 +1,4 @@
-import { buildActionPacket } from "../src/data/action-packet.js";
+import { buildActionPacket, buildApprovedAgentHandoff } from "../src/data/action-packet.js";
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -40,4 +40,20 @@ assert(
   "user action section must precede project-agent handoff",
 );
 
-console.log(`action-packet smoke ok (${packet.length} chars)`);
+const approvedHandoff = buildApprovedAgentHandoff({
+  goalId: "planned-main-control",
+  command: "goal-harness read-only-map --goal-id planned-main-control --dry-run --approved",
+  agentTodoText: "Run the read-only map dry-run after owner todo resolution.",
+});
+
+assert(approvedHandoff.includes("目标校验：本段只适用于 goal_id=`planned-main-control`"), "missing target guard");
+assert(approvedHandoff.includes("上下文规则：本段只携带最小当前指令"), "missing compact context rule");
+assert(approvedHandoff.includes("Agent 待办：Run the read-only map dry-run after owner todo resolution."), "missing approved agent todo");
+assert(approvedHandoff.includes("operator gate 已记录为 approve"), "missing approved forwarding condition");
+assert(approvedHandoff.includes("只执行下面命令"), "missing execution boundary");
+assert(approvedHandoff.includes("goal-harness read-only-map --goal-id planned-main-control --dry-run --approved"), "missing approved command");
+assert(!approvedHandoff.includes("【GH Packet】"), "handoff-only payload must not include packet wrapper");
+assert(!approvedHandoff.includes("【用户/Gate】"), "handoff-only payload must not include user gate wrapper");
+assert(!approvedHandoff.includes("建议："), "handoff-only payload must not include human suggestion text");
+
+console.log(`action-packet smoke ok (${packet.length} chars, handoff ${approvedHandoff.length} chars)`);

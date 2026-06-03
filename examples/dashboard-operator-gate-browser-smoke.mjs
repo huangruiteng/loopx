@@ -172,6 +172,12 @@ const approvedStatusFixture = {
           gate: "none",
           next_action: approvedAction,
           stop_condition: "Project asset stop: stop if the approved dry-run command fails",
+          agent_todos: {
+            open: 1,
+            done: 0,
+            total: 1,
+            next: agentTodoText,
+          },
           quota: {
             compute: 0.5,
             window_hours: 24,
@@ -532,6 +538,7 @@ async function main() {
       "continue_codex_action",
       "Operator Review Packet",
       "Copy Review Packet",
+      "Copy Handoff",
       "Suggested decision",
       "同意先做 read-only map dry-run；不授权写入或主控接管。",
     ], "Operator-gated goal leaked into confusing UI");
@@ -566,6 +573,7 @@ async function main() {
       "Let Codex continue",
       "Codex can continue",
       "Copy Review Packet",
+      "Copy Handoff",
       "Suggested decision",
       "同意先做 read-only map dry-run；不授权写入或主控接管。",
     ], "Focused controller view rendered confusing stale UI");
@@ -585,7 +593,7 @@ async function main() {
       "Approved agent command",
       "approved command",
       "approve",
-      "Copy",
+      "Copy Handoff",
     ], "approved dashboard");
     forbidTexts(body, [
       "Review controller opt-in",
@@ -598,6 +606,7 @@ async function main() {
     ], "Approved operator gate still looks user-gated");
     requireExactTextCount(body, "Run approved agent command", 1, "Approved Codex-ready action card count");
     requireExactTextCount(body, "Copy", 1, "Approved review-packet copy count");
+    requireExactTextCount(body, "Copy Handoff", 1, "Approved handoff copy count");
     requireTextOrder(body, ["Project", goalId, "Run approved agent command"], "Approved project-first card identity");
 
     navigateTo(`${baseUrl}/?statusUrl=/${staleHistoryApprovedFixtureName}&goalId=${goalId}&actionKind=all`);
@@ -611,7 +620,7 @@ async function main() {
       "Approved handoff",
       "Approved agent command",
       "approved command",
-      "Copy",
+      "Copy Handoff",
     ], "current queue over stale history dashboard");
     forbidTexts(body, [
       "Review controller opt-in",
@@ -623,6 +632,7 @@ async function main() {
     ], "Current queue approved action was replaced by stale run-history gate");
     requireExactTextCount(body, "Run approved agent command", 1, "Current queue approved card count over stale history");
     requireExactTextCount(body, "Copy", 1, "Current queue approved packet copy count over stale history");
+    requireExactTextCount(body, "Copy Handoff", 1, "Current queue approved handoff copy count over stale history");
     requireTextOrder(body, ["Project", goalId, "Run approved agent command"], "Current queue approved project-first card identity");
     console.log("dashboard-operator-gate-browser-smoke ok");
   } finally {

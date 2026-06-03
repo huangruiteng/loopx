@@ -16,6 +16,28 @@ export type ActionPacketInput = {
   authorityShortLine?: string | null;
 };
 
+export type ApprovedAgentHandoffInput = {
+  goalId: string;
+  command: string;
+  agentTodoText?: string | null;
+};
+
+export function buildApprovedAgentHandoff(input: ApprovedAgentHandoffInput) {
+  const command = input.command.replace(/\s+/g, " ").trim();
+  return [
+    `目标校验：本段只适用于 goal_id=\`${input.goalId}\`；如果与你当前 active goal 或 registry entry 不一致，停止并回报目标不匹配。`,
+    "上下文规则：本段只携带最小当前指令；不要从旧聊天或旧 packet 拼当前状态。需要更多上下文时，先读当前 active state、status、history 和命令输出。",
+    input.agentTodoText ? `Agent 待办：${compactPacketText(input.agentTodoText, 220)}` : null,
+    "转发条件：operator gate 已记录为 approve；本段只用于把已批准的 agent_command 交给目标项目 Agent。",
+    "执行边界：只执行下面命令；这是只读/dry-run 执行，不是写权限、主控接管或生产动作授权。",
+    "停止条件：命令失败，或需要写入、run history append、生产动作、更高权限时，停下并用中文回报结果。",
+    "",
+    "```bash",
+    command,
+    "```",
+  ].filter(Boolean).join("\n");
+}
+
 export function buildActionPacket(input: ActionPacketInput) {
   const needsTodoFirst = Boolean(input.userTodoText && input.todoBlocksGate);
   const userActionLines = input.userTodoText
