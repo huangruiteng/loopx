@@ -124,17 +124,29 @@ goal-harness heartbeat-prompt \
   --active-state <ACTIVE_GOAL_STATE_PATH>
 ```
 
-Copy the generated task body into the Codex App heartbeat automation. It already
-contains the pre-turn `quota should-run` guard, operator-gate notification,
+For live Codex App automations, prefer the compact body after reviewing the
+full generated contract:
+
+```bash
+goal-harness heartbeat-prompt --compact \
+  --goal-id <STABLE_GOAL_ID> \
+  --active-state <ACTIVE_GOAL_STATE_PATH>
+```
+
+Copy the generated task body into the Codex App heartbeat automation. The full
+body is the audit source and compatibility default; the compact body is the
+daily driver when context pressure matters. It still contains the pre-turn
+`quota should-run` guard, operator-gate notification, blocker-push behavior,
 quiet non-gate `should_run=false` skip, bounded work, validation/writeback,
 optional `refresh-state`, and exactly one post-turn
-`quota spend-slot --source heartbeat --execute` event. The generated guard and
-spend commands explicitly use the shared global registry so project heartbeats
-read the same operator gates and user todos as the dashboard, regardless of
-their current repo. Quota slots are minute-granularity by default: minute
-heartbeats spend `--slots 1`, while
-coarser fixed-interval automations should spend the scheduler minutes consumed
-by that completed turn.
+`quota spend-slot --source heartbeat --execute` event. It points rare edge
+branches back to the expanded lifecycle contract instead of copying every detail
+into each heartbeat context. The generated guard and spend commands explicitly
+use the shared global registry so project heartbeats read the same operator
+gates and user todos as the dashboard, regardless of their current repo. Quota
+slots are minute-granularity by default: minute heartbeats spend `--slots 1`,
+while coarser fixed-interval automations should spend the scheduler minutes
+consumed by that completed turn.
 
 Keep project-specific behavior out of the automation prompt. Encode local
 differences in the project registry, `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`,

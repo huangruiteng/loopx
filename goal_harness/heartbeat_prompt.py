@@ -16,6 +16,7 @@ def build_heartbeat_prompt(
     active_state: Path,
     material_queue_rule: str | None = None,
     permission_rule: str | None = None,
+    compact: bool = False,
 ) -> dict[str, Any]:
     active_state_text = str(active_state.expanduser())
     resolved_material_rule = material_queue_rule or DEFAULT_MATERIAL_QUEUE_RULE
@@ -23,7 +24,8 @@ def build_heartbeat_prompt(
     quota_guard_command = render_quota_guard_command(goal_id)
     quota_spend_command = render_quota_spend_command(goal_id, source="heartbeat")
     cli_preflight = render_cli_preflight()
-    task_body = render_heartbeat_task_body(
+    task_body_renderer = render_compact_heartbeat_task_body if compact else render_heartbeat_task_body
+    task_body = task_body_renderer(
         goal_id=goal_id,
         active_state=active_state_text,
         cli_preflight=cli_preflight,
@@ -32,10 +34,13 @@ def build_heartbeat_prompt(
         material_queue_rule=resolved_material_rule,
         permission_rule=resolved_permission_rule,
     )
+    expanded_prompt_command = f"goal-harness heartbeat-prompt --goal-id {goal_id} --active-state {active_state_text}"
     return {
         "ok": True,
         "goal_id": goal_id,
         "active_state": active_state_text,
+        "compact": compact,
+        "expanded_prompt_command": expanded_prompt_command,
         "quota_guard_command": quota_guard_command,
         "quota_spend_command": quota_spend_command,
         "cli_preflight": cli_preflight,
@@ -208,10 +213,94 @@ If the result says `should_run=true`:
 {permission_rule}"""
 
 
+def render_compact_heartbeat_task_body(
+    *,
+    goal_id: str,
+    active_state: str,
+    cli_preflight: str,
+    quota_guard_command: str,
+    quota_spend_command: str,
+    material_queue_rule: str,
+    permission_rule: str,
+) -> str:
+    expanded_prompt_command = f"goal-harness heartbeat-prompt --goal-id {goal_id} --active-state {active_state}"
+    return f"""Advance `{goal_id}` using `{active_state}`.
+
+This compact Goal Harness heartbeat body keeps project-specific branches out of
+the automation prompt. Put local policy in registry, active state, adapter, or
+boundary rules. Expanded lifecycle contract:
+`{expanded_prompt_command}`; inspect it for ambiguous edge branches.
+
+Before delivery, make CLI reachable; run quota guard:
+
+```bash
+{cli_preflight}
+{quota_guard_command}
+```
+
+If preflight fails: quiet `DONT_NOTIFY` exact failure; no implementation,
+adapter work, file edits, research, exploration, or spend.
+
+If `should_run=false`:
+- `state=operator_gate` or `notify_user_on_open_todo=true`: blocker-push. If
+  not surfaced recently, return one concise Chinese `NOTIFY` with the gate or
+  up to three open user todos/first_open_items, reason, and expected reply
+  format (`done`, `defer/not now`, or evidence link/date/conclusion). No
+  delivery or spend.
+- `safe_bypass_allowed=true` after the same gate was already surfaced: do at
+  most one bounded gate-independent safe-bypass step; validate, write back,
+  refresh if needed, and spend once only if real work completed.
+- Otherwise quiet `DONT_NOTIFY` with the skip reason; no work or spend.
+
+If `should_run=true`:
+1. Read active state, Priority Stack, progress, critic,
+   `attention_queue.items` / `project_asset`, and guard `user_todo_summary`.
+   Treat `run_history.latest_runs` as drill-down only.
+2. Before delivery, surface open user/owner todo that can unlock a gate,
+   `focus_wait`, or external-evidence wait: short Chinese `NOTIFY`, no work or
+   spend.
+3. Follow `heartbeat_recommendation` before inventing behavior:
+   `run_first_read_only_map` means run exact real-map command, then
+   validate/save/refresh/spend/`NOTIFY`; `mapped_noop_if_unchanged` plus
+   `stop_if_unchanged=true` means quiet no-op if there is no new instruction,
+   owner evidence, agent todo, stale source, or safe handoff.
+4. Run a steering audit before choosing work: compare at least three P0/P1/P2
+   candidates when useful, apply continuation checks, keep compute quota
+   separate from focus quota, include product-bottleneck lens, record any
+   losing high-value candidate.
+5. Run the no-progress self-stop check: if 5 consecutive eligible heartbeats
+   only repeat status/brief checks with no artifact, implementation/adapter
+   progress, gate/user decision, or validation signal, pause/delete automation,
+   `NOTIFY`, no spend.
+6. Choose one bounded, verifiable step. Public-safe commit, push, and
+   PR creation may proceed after validation and clean scan. Stop for
+   private/company-internal material, credentials, destructive git, production
+   actions, or explicit repo review rules.
+7. Validate; write files/validation/critic/next action to active state;
+   use `goal-harness todo add --goal-id {goal_id} --role user|agent` for
+   blockers/follow-ups, not prose.
+8. Refresh state if dashboard/controller needs it.
+9. After completed delivery or safe-bypass work, append exactly one spend event:
+
+```bash
+{quota_spend_command}
+```
+
+Do not append spend for quiet skips, preflight failures, blocker-push asks,
+pure dry-runs, self-cancel turns, or duplicate accounting attempts.
+
+Return compactly. Use heartbeat `NOTIFY` only for committed artifact, user gate,
+real blocker, or self-stop; otherwise use `DONT_NOTIFY`.
+
+{material_queue_rule}
+{permission_rule}"""
+
+
 def render_heartbeat_prompt_markdown(payload: dict[str, Any]) -> str:
+    style = "compact " if payload.get("compact") else ""
     return f"""# Heartbeat Automation Prompt
 
-Copy this task body into a Codex App heartbeat automation.
+Copy this {style}task body into a Codex App heartbeat automation.
 
 ````text
 {payload.get("task_body", "")}
@@ -221,6 +310,8 @@ Copy this task body into a Codex App heartbeat automation.
 
 - goal_id: `{payload.get("goal_id")}`
 - active_state: `{payload.get("active_state")}`
+- compact: `{payload.get("compact")}`
+- expanded_prompt_command: `{payload.get("expanded_prompt_command")}`
 - quota_guard_command: `{payload.get("quota_guard_command")}`
 - quota_spend_command: `{payload.get("quota_spend_command")}`
 - cli_preflight: `{payload.get("cli_preflight")}`

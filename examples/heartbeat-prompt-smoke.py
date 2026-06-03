@@ -38,6 +38,7 @@ def assert_ordered(text: str, phrases: tuple[str, ...]) -> None:
 
 def main() -> int:
     payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE)
+    compact_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, compact=True)
     assert payload["quota_guard_command"] == (
         'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" '
         "quota should-run --goal-id public-heartbeat-goal"
@@ -46,6 +47,34 @@ def main() -> int:
         'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" '
         "quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute"
     ), payload
+    assert compact_payload["compact"] is True, compact_payload
+    assert compact_payload["quota_guard_command"] == payload["quota_guard_command"], compact_payload
+    assert compact_payload["quota_spend_command"] == payload["quota_spend_command"], compact_payload
+    assert len(str(compact_payload["task_body"])) < len(str(payload["task_body"])) * 0.45, (
+        len(str(compact_payload["task_body"])),
+        len(str(payload["task_body"])),
+    )
+    compact_task = normalized(str(compact_payload["task_body"]))
+    for phrase in (
+        "compact Goal Harness heartbeat body",
+        "Expanded lifecycle contract",
+        "goal-harness heartbeat-prompt --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
+        'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
+        "state=operator_gate",
+        "notify_user_on_open_todo=true",
+        "safe_bypass_allowed=true",
+        "heartbeat_recommendation",
+        "run_first_read_only_map",
+        "mapped_noop_if_unchanged",
+        "steering audit",
+        "product-bottleneck lens",
+        "no-progress self-stop check",
+        "Public-safe commit, push, and PR creation may proceed",
+        "goal-harness todo add --goal-id public-heartbeat-goal --role user|agent",
+        'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
+        "Do not append spend for quiet skips",
+    ):
+        assert phrase in compact_task, phrase
 
     doc = DOC.read_text(encoding="utf-8")
     readme = README.read_text(encoding="utf-8")
@@ -241,11 +270,14 @@ def main() -> int:
 
     assert "docs/heartbeat-automation-prompt.md" in readme, readme
     assert "goal-harness heartbeat-prompt" in readme, readme
+    assert "goal-harness heartbeat-prompt --compact" in readme, readme
     assert "heartbeat_recommendation" in readme, readme
     assert "do not hand-edit one-off automation prompt branches" in normalized(readme), readme
     assert "goal-harness heartbeat-prompt" in doc, doc
+    assert "--compact" in doc, doc
     assert "Do not hand-edit per-project lifecycle branches" in doc, doc
     assert "goal-harness heartbeat-prompt" in integration_doc, integration_doc
+    assert "goal-harness heartbeat-prompt --compact" in integration_doc, integration_doc
     assert "visible goal text can stay short" in integration_doc, integration_doc
     assert "shares the same quota, gate," in integration_doc, integration_doc
     assert "steering-audit, writeback, refresh, and spend lifecycle" in integration_doc, integration_doc
@@ -257,6 +289,7 @@ def main() -> int:
     assert "Heartbeat automation task body" in doc, doc
     assert "commit, push, and PR creation can proceed autonomously" in normalized(readme), readme
     assert "goal-harness heartbeat-prompt" in project_skill, project_skill
+    assert "--compact" in project_skill, project_skill
     assert "Set Up Recurring Heartbeats" in project_skill, project_skill
     assert "visible goal text short" in project_skill, project_skill
     assert "--source heartbeat --execute" in project_skill, project_skill
@@ -290,6 +323,30 @@ def main() -> int:
     )
     cli_payload = json.loads(cli_json.stdout)
     assert cli_payload["task_body"] == payload["task_body"], cli_payload
+    assert cli_payload["compact"] is False, cli_payload
+
+    cli_compact_json = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "goal_harness.cli",
+            "--format",
+            "json",
+            "heartbeat-prompt",
+            "--goal-id",
+            GOAL_ID,
+            "--active-state",
+            str(ACTIVE_STATE),
+            "--compact",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    cli_compact_payload = json.loads(cli_compact_json.stdout)
+    assert cli_compact_payload["task_body"] == compact_payload["task_body"], cli_compact_payload
+    assert cli_compact_payload["compact"] is True, cli_compact_payload
 
     cli_markdown = subprocess.run(
         [

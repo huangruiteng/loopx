@@ -157,6 +157,11 @@ def main(argv: list[str] | None = None) -> int:
         "--permission-rule",
         help="Optional trusted-session permission rule appended to the task body.",
     )
+    heartbeat_prompt_parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="Generate a shorter automation body that points edge cases back to the expanded lifecycle contract.",
+    )
 
     demo_parser = sub.add_parser(
         "demo",
@@ -540,6 +545,7 @@ def main(argv: list[str] | None = None) -> int:
             active_state=Path(args.active_state),
             material_queue_rule=args.material_rule,
             permission_rule=args.permission_rule,
+            compact=bool(args.compact),
         )
         print_payload(payload, args.format, render_heartbeat_prompt_markdown)
         return 0

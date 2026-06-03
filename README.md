@@ -428,6 +428,19 @@ goal-harness heartbeat-prompt \
   --active-state /path/to/ACTIVE_GOAL_STATE.md
 ```
 
+For live App automations, prefer the compact generated body once the full
+lifecycle has been reviewed:
+
+```bash
+goal-harness heartbeat-prompt --compact \
+  --goal-id <goal-id> \
+  --active-state /path/to/ACTIVE_GOAL_STATE.md
+```
+
+The compact body keeps the operational guardrails in the automation and points
+rare edge cases back to the expanded lifecycle contract, so each heartbeat does
+not carry the full audit prompt in its working context.
+
 `status` and `serve-status` default their public/private contract scan to the
 Goal Harness install root, not the shell's current project directory. Pass
 `--scan-root` or `--scan-path` only when you intentionally want to scan a
