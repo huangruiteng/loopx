@@ -1445,7 +1445,13 @@ function buildOperatorDecision({
   }
 
   if (waitingOn === "codex") {
-    const codexCopy = phase === "mapped"
+    const codexCopy = queueItem?.agent_command
+      ? {
+          title: "Run approved agent command",
+          badge: "Approved handoff",
+          reason: "quota should-run can expose this agent command because an operator gate was approved.",
+        }
+      : phase === "mapped"
       ? {
           title: "Let Codex use the map",
           badge: "Codex can continue",
@@ -1566,6 +1572,15 @@ function buildRewardDraftDefaults({
   }
 
   if (operatorDecision.waitingOn === "codex") {
+    if (queueItem?.agent_command) {
+      return {
+        decision: "run_approved_agent_command",
+        reward: "positive",
+        reasonSummary: "Operator gate is approved; Codex can use the approved agent command.",
+        followUp: "Execute only the approved read-only or dry-run command; stop before writes or higher permissions.",
+        label: "approved command",
+      };
+    }
     if (operatorDecision.phase === "mapped") {
       return {
         decision: "use_read_only_map",

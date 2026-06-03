@@ -501,9 +501,10 @@ async function main() {
       "Project",
       goalId,
       "Codex",
-      "Let Codex use the map",
-      "Codex can continue",
+      "Run approved agent command",
+      "Approved handoff",
       "Approved agent command",
+      "approved command",
       "approve",
       "Copy",
     ], "approved dashboard");
@@ -516,9 +517,9 @@ async function main() {
       "Operator Review Packet",
       "Copy Review Packet",
     ], "Approved operator gate still looks user-gated");
-    requireExactTextCount(body, "Let Codex use the map", 1, "Approved Codex-ready action card count");
+    requireExactTextCount(body, "Run approved agent command", 1, "Approved Codex-ready action card count");
     requireExactTextCount(body, "Copy", 1, "Approved review-packet copy count");
-    requireTextOrder(body, ["Project", goalId, "Let Codex use the map"], "Approved project-first card identity");
+    requireTextOrder(body, ["Project", goalId, "Run approved agent command"], "Approved project-first card identity");
     console.log("dashboard-operator-gate-browser-smoke ok");
   } finally {
     server.kill("SIGTERM");

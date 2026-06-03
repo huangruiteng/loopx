@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T11:33:22+08:00
+updated_at: 2026-06-03T11:37:09+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -53,14 +53,37 @@ handoff, validation, and quota bookkeeping.
 
 ## Next Action
 
-- Dashboard quota parsing now derives missing `allowed_slots` from the same
-  compute/window/slot contract as CLI status. The next heartbeat should move to
-  another P0 state-truth slice, preferably checking whether dashboard action
-  cards and CLI `quota should-run` agree on operator-gate versus Codex-ready
-  handoff wording, and patch exactly one mismatch if found.
+- Dashboard action cards now distinguish approved `agent_command` handoffs from
+  generic Codex-ready continuation, matching the `quota should-run` rule that
+  exposes `agent_command` only after an operator gate is approved. The next
+  heartbeat should move to a different P0 state-truth slice, such as checking
+  review-packet copy against the same approved-command boundary, and patch only
+  one mismatch if found.
 
 ## Recent Progress
 
+- 2026-06-03T11:37:09+08:00: Steering audit candidates were: P0 compare
+  dashboard action-card wording with `quota should-run` for operator-gate versus
+  Codex-ready handoffs, P0 state-only status recheck, P1 dashboard visual
+  polish, and P2 no-progress guard tuning. Continuation check: recent slices
+  were quota-related, so switching to approved-command handoff wording avoided
+  another quota pass while staying on P0 state truth. No-progress self-stop
+  check: not triggered because recent eligible heartbeats produced committed
+  artifacts and validation signals, and this turn produced a bounded dashboard
+  handoff fix. Bounded output: updated `apps/dashboard/src/views/dashboard-page.tsx`
+  so Codex-ready rows with an approved `agent_command` render as `Run approved
+  agent command` / `Approved handoff` and use the `run_approved_agent_command`
+  reward hint instead of generic continuation copy; updated
+  `examples/dashboard-operator-gate-browser-smoke.mjs` to assert the pending
+  gate and approved handoff states remain visually and semantically distinct.
+  Validation: `node examples/dashboard-operator-gate-browser-smoke.mjs` passed;
+  `npm --prefix apps/dashboard run build` passed with the existing Vite
+  large-chunk warning; `goal-harness --format json check --scan-root .` passed
+  with warnings=0 and a clean public boundary scan over 84 files; `git diff
+  --check` passed. Critic: this fixes one first-screen handoff wording mismatch
+  without broad UI polish; review-packet copy still deserves the next
+  comparison against the same approved-command boundary. Losing candidate: P1
+  visual polish remains lower priority than status/action wording truth.
 - 2026-06-03T11:33:22+08:00: Steering audit candidates were: P0 dashboard/status
   consistency for quota, user todo, and gate fields; P0 state-only status
   recheck; P1 dashboard visual polish; and P2 no-progress guard tuning.
