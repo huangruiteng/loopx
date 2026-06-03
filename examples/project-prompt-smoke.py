@@ -58,6 +58,19 @@ HEARTBEAT_PROMPT_MUST_HAVE = (
     "--active-state .codex/goals/",
     "再把输出复制进 automation",
 )
+HANDOFF_MUST_HAVE = (
+    "如果需要把当前 packet 或已批准命令交给项目 agent",
+    "优先生成最小 handoff",
+    "不要从旧聊天",
+    "旧 review packet",
+    "`run_history.latest_runs`",
+    "拼当前状态",
+    "当前权威状态来自 `attention_queue.items` / `project_asset`",
+    "goal-harness review-packet --goal-id",
+    "--handoff-only",
+    "只把输出的 handoff 交给目标项目 agent",
+    "完整 review packet 留给 operator view / evidence drill-down",
+)
 
 
 def assert_quota_guard(text: str) -> None:
@@ -72,6 +85,8 @@ def assert_quota_guard(text: str) -> None:
         positions.append(normalized.index(phrase))
     assert positions == sorted(positions), positions
     for phrase in SPEND_MUST_HAVE:
+        assert phrase in normalized, text
+    for phrase in HANDOFF_MUST_HAVE:
         assert phrase in normalized, text
     for phrase in HEARTBEAT_PROMPT_MUST_HAVE:
         assert phrase in normalized, text

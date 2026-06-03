@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-03T15:43:28+08:00
+updated_at: 2026-06-03T15:49:44+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -58,15 +58,41 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- The stale commit-readiness manifest is now marked as a closed historical
-  snapshot, so future agents should treat it as archival evidence and re-check
-  current git/status truth before acting on any cluster. The next heartbeat
-  should either wait for the target project agent dry-run signal, or choose a
-  different P0 anti-overload bottleneck that does not depend on target
-  repository execution.
+- Observe the live `premium-ui-ai-search-rec-migration` controller loop and the
+  current Codex-managed project set, then decide Goal Harness takeover rhythm
+  and priorities from real operating friction. Keep this read-only: inspect
+  current Goal Harness status, owner/agent todos, review packets, and recent
+  validation signals; do not launch platform tasks, mutate production state, or
+  touch target repo files without explicit project authorization.
 
 ## Recent Progress
 
+- 2026-06-03T15:49:44+08:00: Steering audit candidates were: P0 new-project
+  agent prompt anti-overload because `new-project-prompt` was a fresh consumer
+  that did not mention `review-packet --handoff-only`, P0 wait for target
+  project dry-run signals, P0 observe the platform-migration controller loop
+  per new user feedback, and P1 communication polish. Continuation check:
+  recent handoff-only slices should pause unless a new consumer still exposes
+  redundant context; `new-project-prompt` qualified because new project agents
+  could otherwise reconstruct current state from old chat, old packets, or
+  `run_history.latest_runs`. No-progress self-stop check: not triggered because
+  recent eligible heartbeats produced commits and validation, and this slice
+  produced a public generator/docs/test patch. Bounded output: updated
+  `goal_harness/project_prompt.py`, `docs/new-project-codex-prompt.md`, and
+  `examples/project-prompt-smoke.py` so newly connected project agents are told
+  to use `goal-harness review-packet --goal-id <goal> --handoff-only` when
+  handing off current packet or approved command, and to treat
+  `attention_queue.items` / `project_asset` as current authority rather than
+  old chat, old review packets, or `run_history.latest_runs`. Validation:
+  `python3 examples/project-prompt-smoke.py`, `python3 -m py_compile
+  goal_harness/project_prompt.py examples/project-prompt-smoke.py`, `git diff
+  --check`, `goal-harness --format json check --scan-root .`, and changed-file
+  sensitive-pattern scan passed. Critic: this closes a newly found onboarding
+  prompt consumer without expanding dashboard/CLI scope; the newest user
+  feedback says the next focus should shift to observing actual
+  platform-migration controller operation and multi-project takeover priority.
+  Losing candidate: target project dry-run signals remain high-value, but
+  broad takeover prioritization now has fresher user value.
 - 2026-06-03T15:43:28+08:00: Steering audit candidates were: P0 stale-current
   cleanup for a public commit-readiness manifest that still described a
   "current public dirty tree" after the tree had already been published, P0
