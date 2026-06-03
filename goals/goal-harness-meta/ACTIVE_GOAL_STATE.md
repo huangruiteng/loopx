@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-04T06:29:15+08:00
+updated_at: 2026-06-04T06:34:43+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -65,12 +65,21 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Return to the normal Goal Harness P0 queue: map the private platform-migration
-  pilot only when its private-safe boundary is explicit; otherwise look for a
-  concrete operator or project-agent context-load gap. Keep the pre-existing
-  dirty README untouched.
+- Define a private-safe boundary checklist for the platform-migration pilot
+  before touching private evidence. Keep the pre-existing dirty README
+  untouched.
 
 ## Recent Progress
+
+- 2026-06-04T06:34:43+08:00: Added an interface-budget smoke for active-state
+  handoffs. `examples/active-state-interface-budget-smoke.py` checks the
+  example state and tracked meta state so `Next Action` stays within a small
+  line/character budget and does not carry history, validation, or critic text.
+  This directly guards the context-load regression exposed by the previous long
+  handoff without adding a new product surface. Validation: run the new smoke,
+  py-compile it, touched-file `git diff --check`, and public/private
+  `goal-harness check`. Critic: this is intentionally a lightweight guard; it
+  should not grow into a new feature beyond catching interface bloat.
 
 - 2026-06-04T06:29:15+08:00: Tightened the meta active-state handoff after the
   truncation fix. The parser now preserves longer wrapped `recommended_action`
