@@ -54,6 +54,26 @@ WATCH_CLASSIFICATION_PREFIXES = ("await_", "monitor_")
 BLOCKING_CLASSIFICATIONS = {
     "blocked_by_safety",
 }
+DELIVERY_BATCH_SCALE_TEST_ONLY_CLASSIFICATION_HINTS = (
+    "_test",
+    "_smoke",
+    "readiness_test",
+    "integrity_test",
+)
+DELIVERY_BATCH_SCALE_MULTI_SURFACE_CLASSIFICATION_HINTS = (
+    "batch",
+    "cross_benchmark",
+    "downstream_pack",
+    "matrix",
+    "owner_handoff_consumer",
+)
+DELIVERY_BATCH_SCALE_IMPLEMENTATION_CLASSIFICATION_HINTS = (
+    "adapter",
+    "builder",
+    "consumer",
+    "implementation",
+    "runner",
+)
 CONNECTED_ADAPTER_STATUSES = {
     "connected",
     "connected-read-only",
@@ -376,11 +396,26 @@ def is_custom_post_handoff_work_run(run: dict[str, Any]) -> bool:
     return True
 
 
+def delivery_batch_scale_for_run(run: dict[str, Any]) -> str:
+    classification = str(run.get("classification") or "")
+    if not classification:
+        return "unknown"
+    normalized = classification.lower()
+    if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_MULTI_SURFACE_CLASSIFICATION_HINTS):
+        return "multi_surface"
+    if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_IMPLEMENTATION_CLASSIFICATION_HINTS):
+        return "implementation"
+    if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_TEST_ONLY_CLASSIFICATION_HINTS):
+        return "test_only"
+    return "single_surface"
+
+
 def compact_post_handoff_run(run: dict[str, Any]) -> dict[str, Any]:
     compact: dict[str, Any] = {}
     for field in ("generated_at", "classification", "health_check", "json_exists", "markdown_exists"):
         if field in run:
             compact[field] = run[field]
+    compact["delivery_batch_scale"] = delivery_batch_scale_for_run(run)
     return compact
 
 
@@ -1723,7 +1758,8 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     lines.append(
                         "      - post_handoff_run: "
                         f"classification={_markdown_scalar(latest_handoff_run.get('classification') or '')} "
-                        f"at={_markdown_scalar(latest_handoff_run.get('generated_at') or '')}"
+                        f"at={_markdown_scalar(latest_handoff_run.get('generated_at') or '')} "
+                        f"scale={_markdown_scalar(latest_handoff_run.get('delivery_batch_scale') or '')}"
                     )
                 if handoff_readiness.get("next_probe"):
                     handoff_probe = _markdown_scalar(handoff_readiness.get("next_probe") or "")

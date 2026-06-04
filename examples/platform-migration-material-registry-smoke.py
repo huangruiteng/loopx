@@ -251,6 +251,7 @@ def assert_no_evidence_handoff_readiness(readiness: dict[str, object]) -> None:
     assert readiness["quota_state"] == "eligible", readiness
     assert readiness["handoff_status"] == "ready_waiting_for_run", readiness
     assert readiness["post_handoff_run_seen"] is False, readiness
+    assert "post_handoff_latest_run" not in readiness, readiness
     assert readiness["next_probe"] == f"goal-harness review-packet --goal-id {GOAL_ID} --handoff-only", readiness
     checks = readiness["checks"]
     assert checks["project_asset_backed"] is True, readiness

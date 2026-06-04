@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-04T10:13:32+08:00
+updated_at: 2026-06-04T10:20:00+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -66,10 +66,27 @@ and agents receive the smallest sufficient execution context.
 ## Next Action
 
 - Continue the P0 project-agent handoff loop by using `quota should-run`
-  `handoff_readiness` as heartbeat guard input; tighten the project-agent
-  handoff packet only if real target runs remain too small or ambiguous.
+  `handoff_readiness.post_handoff_latest_run.delivery_batch_scale` as heartbeat
+  guard input. Keep observing when a real target run is multi-surface or
+  implementation-shaped; tighten the project-agent handoff packet only when
+  follow-through remains test-only, single-surface, or ambiguous.
 
 ## Recent Progress
+
+- 2026-06-04T10:20:00+08:00: Added a post-handoff delivery-batch scale signal
+  for project-agent follow-through. `goal_harness/status.py` now labels compact
+  `post_handoff_latest_run` records with `delivery_batch_scale` values such as
+  `test_only`, `single_surface`, `multi_surface`, `implementation`, or
+  `unknown`; `goal_harness/quota.py`, the dashboard status schema, React
+  handoff line, status data contract, and smoke fixtures now preserve or render
+  the field. Live guard validation showed the latest connected delivery target
+  run classified as `multi_surface`, so the immediate issue is not a stuck
+  test-only loop. Validation: Python compile checks, status Markdown smoke,
+  platform material-registry smoke, dashboard action-packet smoke, dashboard
+  production build, public contract check, live `quota should-run` scale check,
+  and touched-file diff check. Critic: this makes "too small" observable before
+  changing packet wording; next tightening should be conditional on the scale
+  signal showing repeated small delivery, not on one screenshot.
 
 - 2026-06-04T10:13:32+08:00: Propagated post-handoff follow-through into the
   heartbeat guard surface. `goal_harness/quota.py` now carries compact

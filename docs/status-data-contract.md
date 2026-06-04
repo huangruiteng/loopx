@@ -354,7 +354,9 @@ Item fields:
   but no later non-accounting run has appeared in the compact history window.
   `handoff_status=post_handoff_run_seen` means a later non-neutral run exists;
   `post_handoff_latest_run` identifies that latest seen run by timestamp and
-  classification. `quota_slot_spent` events do not count as post-handoff work.
+  classification, and `delivery_batch_scale` labels whether the observed
+  delivery is test-only, single-surface, multi-surface, implementation-shaped,
+  or still unknown. `quota_slot_spent` events do not count as post-handoff work.
 - `operator_question`: optional human-facing gate to show in the Goal Harness
   operator view. This is the canonical place for user/controller judgment.
 - `agent_command`: optional command or instruction for the target project agent

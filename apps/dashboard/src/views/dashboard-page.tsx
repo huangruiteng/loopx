@@ -847,6 +847,7 @@ function buildHandoffReadinessView(readiness?: ProjectAssetHandoffReadiness | nu
       ? [
         latestRun.classification ?? "unknown",
         latestRun.generated_at ? `at=${latestRun.generated_at}` : null,
+        latestRun.delivery_batch_scale ? `scale=${latestRun.delivery_batch_scale}` : null,
         latestRun.json_exists !== undefined ? `json=${Boolean(latestRun.json_exists)}` : null,
         latestRun.markdown_exists !== undefined ? `markdown=${Boolean(latestRun.markdown_exists)}` : null,
       ].filter(Boolean).join("; ")

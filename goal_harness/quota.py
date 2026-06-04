@@ -47,6 +47,7 @@ HANDOFF_READINESS_COMPACT_FIELDS = (
 POST_HANDOFF_RUN_COMPACT_FIELDS = (
     "generated_at",
     "classification",
+    "delivery_batch_scale",
     "health_check",
     "json_exists",
     "markdown_exists",
@@ -1360,7 +1361,8 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(
                 "- post_handoff_run: "
                 f"classification={latest_handoff_run.get('classification')} "
-                f"at={latest_handoff_run.get('generated_at')}"
+                f"at={latest_handoff_run.get('generated_at')} "
+                f"scale={latest_handoff_run.get('delivery_batch_scale') or ''}"
             )
     heartbeat_recommendation = (
         payload.get("heartbeat_recommendation")

@@ -575,9 +575,11 @@ def assert_connected_delivery_custom_run_stays_runnable(payload: dict, markdown:
     assert readiness["post_handoff_run_seen"] is True, readiness
     assert "handoff_ready_at" not in readiness, readiness
     assert readiness["post_handoff_latest_run"]["classification"] == "delivery_ranker_readiness_batch", readiness
+    assert readiness["post_handoff_latest_run"]["delivery_batch_scale"] == "multi_surface", readiness
     assert "delivery_ranker_readiness_batch" in markdown, markdown
     assert "handoff_state: status=post_handoff_run_seen post_handoff_run_seen=True ready_at=" in markdown, markdown
     assert "post_handoff_run: classification=delivery_ranker_readiness_batch" in markdown, markdown
+    assert "scale=multi_surface" in markdown, markdown
     assert f"asset_agent_todo: {DELIVERY_AGENT_TODO}" in markdown, markdown
 
     quota_payload = build_quota_should_run(payload, goal_id=DELIVERY_GOAL_ID)
@@ -587,6 +589,10 @@ def assert_connected_delivery_custom_run_stays_runnable(payload: dict, markdown:
     assert quota_payload["agent_todo_summary"]["open_count"] == 1, quota_payload
     assert quota_payload["goal_boundary"]["adapter"]["status"] == "connected-delivery", quota_payload
     assert quota_payload["goal_boundary"]["write_scope"] == ["src/**", "tests/**"], quota_payload
+    assert (
+        quota_payload["handoff_readiness"]["post_handoff_latest_run"]["delivery_batch_scale"]
+        == "multi_surface"
+    ), quota_payload
     assert quota_payload["heartbeat_recommendation"]["recommended_mode"] == "steering_audit_then_one_step", quota_payload
 
 
@@ -621,13 +627,14 @@ def assert_post_handoff_run_seen(payload: dict, markdown: str) -> None:
     assert readiness["handoff_ready_classification"] == "operator_gate_approved", readiness
     assert readiness["post_handoff_latest_run"]["classification"] == POST_HANDOFF_CLASSIFICATION, readiness
     assert readiness["post_handoff_latest_run"]["generated_at"] == "2026-01-01T00:01:45+00:00", readiness
+    assert readiness["post_handoff_latest_run"]["delivery_batch_scale"] == "single_surface", readiness
     assert (
         "handoff_state: status=post_handoff_run_seen "
         "post_handoff_run_seen=True ready_at=2026-01-01T00:01:00+00:00"
     ) in markdown, markdown
     assert (
         "post_handoff_run: classification=read_only_project_map "
-        "at=2026-01-01T00:01:45+00:00"
+        "at=2026-01-01T00:01:45+00:00 scale=single_surface"
     ) in markdown, markdown
     quota_payload = build_quota_should_run(payload, goal_id="planned-main-control")
     quota_markdown = render_quota_should_run_markdown(quota_payload)
@@ -635,8 +642,12 @@ def assert_post_handoff_run_seen(payload: dict, markdown: str) -> None:
     assert quota_readiness["handoff_status"] == "post_handoff_run_seen", quota_payload
     assert quota_readiness["post_handoff_run_seen"] is True, quota_payload
     assert quota_readiness["post_handoff_latest_run"]["classification"] == POST_HANDOFF_CLASSIFICATION, quota_payload
+    assert quota_readiness["post_handoff_latest_run"]["delivery_batch_scale"] == "single_surface", quota_payload
     assert "handoff_state: status=post_handoff_run_seen post_handoff_run_seen=True" in quota_markdown, quota_markdown
-    assert "post_handoff_run: classification=read_only_project_map at=2026-01-01T00:01:45+00:00" in quota_markdown, quota_markdown
+    assert (
+        "post_handoff_run: classification=read_only_project_map "
+        "at=2026-01-01T00:01:45+00:00 scale=single_surface"
+    ) in quota_markdown, quota_markdown
 
 
 def main() -> int:

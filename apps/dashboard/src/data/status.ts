@@ -59,6 +59,7 @@ export const projectAssetLatestValidationSchema = z.object({
 export const postHandoffRunSchema = z.object({
   generated_at: z.string().optional().nullable(),
   classification: z.string().optional().nullable(),
+  delivery_batch_scale: z.string().optional().nullable(),
   health_check: z.string().optional().nullable(),
   json_exists: z.boolean().optional().nullable(),
   markdown_exists: z.boolean().optional().nullable(),
