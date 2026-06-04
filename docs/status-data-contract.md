@@ -64,6 +64,11 @@ hint for generic lifecycle cases such as first read-only map runs and quiet
 mapped no-ops. Project-specific policy should still come from the registry,
 active state, adapter output, or boundary rules rather than ad hoc scheduler
 prompt branches.
+When the selected attention item is project-asset backed, the per-goal guard
+also carries compact `handoff_readiness` with `handoff_status` and
+`post_handoff_run_seen`. Heartbeat jobs can therefore tell whether the selected
+goal is still waiting for a target run or has already seen post-handoff work
+without parsing the full status payload.
 For spend accounting, status derives `spent_slots` from compact
 `quota_slot_spent` runtime events in the current quota window. The registry
 remains the policy source for compute share and window size, not the spend

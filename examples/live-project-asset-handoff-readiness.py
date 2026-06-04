@@ -98,6 +98,13 @@ def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
     assert should_run.get("state") == project_asset.get("quota", {}).get("state"), should_run
     assert should_run.get("quota", {}).get("compute") == project_asset.get("quota", {}).get("compute"), should_run
     assert should_run.get("goal_boundary", {}).get("stop_condition") == project_asset.get("stop_condition"), should_run
+    should_run_readiness = (
+        should_run.get("handoff_readiness")
+        if isinstance(should_run.get("handoff_readiness"), dict)
+        else {}
+    )
+    assert should_run_readiness.get("handoff_status") == readiness.get("handoff_status"), should_run
+    assert should_run_readiness.get("post_handoff_run_seen") == readiness.get("post_handoff_run_seen"), should_run
 
     for field, summary_key in (("user_todos", "user_todo_summary"), ("agent_todos", "agent_todo_summary")):
         asset_todos = project_asset.get(field) if isinstance(project_asset.get(field), dict) else {}

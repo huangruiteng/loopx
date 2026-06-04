@@ -33,6 +33,24 @@ FOCUS_WAIT_REASON = (
     "spending delivery compute"
 )
 READ_ONLY_MAP_ADAPTER_SUFFIX = "_read_only_map_v0"
+HANDOFF_READINESS_COMPACT_FIELDS = (
+    "ready",
+    "codex_ready",
+    "source",
+    "quota_state",
+    "handoff_status",
+    "post_handoff_run_seen",
+    "handoff_ready_at",
+    "handoff_ready_classification",
+    "next_probe",
+)
+POST_HANDOFF_RUN_COMPACT_FIELDS = (
+    "generated_at",
+    "classification",
+    "health_check",
+    "json_exists",
+    "markdown_exists",
+)
 
 
 def _now_local() -> str:
@@ -376,6 +394,30 @@ def _todo_write_hint(goal_id: str) -> dict[str, str]:
     }
 
 
+def _compact_handoff_readiness(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    compact = {field: value[field] for field in HANDOFF_READINESS_COMPACT_FIELDS if field in value}
+    checks = value.get("checks") if isinstance(value.get("checks"), dict) else {}
+    if checks:
+        compact["checks"] = {
+            str(key): bool(check)
+            for key, check in checks.items()
+        }
+    latest_run = (
+        value.get("post_handoff_latest_run")
+        if isinstance(value.get("post_handoff_latest_run"), dict)
+        else {}
+    )
+    if latest_run:
+        compact["post_handoff_latest_run"] = {
+            field: latest_run[field]
+            for field in POST_HANDOFF_RUN_COMPACT_FIELDS
+            if field in latest_run
+        }
+    return compact or None
+
+
 def _goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> dict[str, Any] | None:
     boundary: dict[str, Any] = {}
     adapter_kind = goal.get("adapter_kind")
@@ -694,11 +736,17 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
             "controller_stage",
             "missing_gates",
             "next_handoff_condition",
+            "handoff_readiness",
             "user_todos",
             "agent_todos",
         ):
             if optional_field in attention:
-                item[optional_field] = attention[optional_field]
+                if optional_field == "handoff_readiness":
+                    compact_handoff = _compact_handoff_readiness(attention[optional_field])
+                    if compact_handoff:
+                        item[optional_field] = compact_handoff
+                else:
+                    item[optional_field] = attention[optional_field]
         groups.setdefault(state, []).append(item)
 
     for state_items in groups.values():
@@ -790,6 +838,7 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             "source": item.get("source"),
             "project_asset_source": item.get("project_asset_source"),
             "recommended_action": item.get("recommended_action"),
+            "handoff_readiness": item.get("handoff_readiness"),
             "heartbeat_recommendation": _heartbeat_recommendation(
                 item,
                 goal_id=safe_goal_id,
@@ -1283,6 +1332,36 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
     if payload.get("reason"):
         lines.append(f"- reason: {payload.get('reason')}")
+    handoff_readiness = (
+        payload.get("handoff_readiness")
+        if isinstance(payload.get("handoff_readiness"), dict)
+        else {}
+    )
+    if handoff_readiness:
+        lines.append(
+            "- handoff_readiness: "
+            f"ready={handoff_readiness.get('ready')} "
+            f"codex_ready={handoff_readiness.get('codex_ready')} "
+            f"source={handoff_readiness.get('source')} "
+            f"quota_state={handoff_readiness.get('quota_state')}"
+        )
+        lines.append(
+            "- handoff_state: "
+            f"status={handoff_readiness.get('handoff_status')} "
+            f"post_handoff_run_seen={handoff_readiness.get('post_handoff_run_seen')} "
+            f"ready_at={handoff_readiness.get('handoff_ready_at') or ''}"
+        )
+        latest_handoff_run = (
+            handoff_readiness.get("post_handoff_latest_run")
+            if isinstance(handoff_readiness.get("post_handoff_latest_run"), dict)
+            else {}
+        )
+        if latest_handoff_run:
+            lines.append(
+                "- post_handoff_run: "
+                f"classification={latest_handoff_run.get('classification')} "
+                f"at={latest_handoff_run.get('generated_at')}"
+            )
     heartbeat_recommendation = (
         payload.get("heartbeat_recommendation")
         if isinstance(payload.get("heartbeat_recommendation"), dict)

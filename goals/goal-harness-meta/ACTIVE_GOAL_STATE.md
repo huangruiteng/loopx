@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-04T10:04:35+08:00
+updated_at: 2026-06-04T10:13:32+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -65,11 +65,26 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Continue the P0 project-agent handoff loop by using the new handoff status to
-  observe real project-agent follow-through, then tighten the next handoff packet
-  only if status still cannot explain whether a target run was seen.
+- Continue the P0 project-agent handoff loop by using `quota should-run`
+  `handoff_readiness` as heartbeat guard input; tighten the project-agent
+  handoff packet only if real target runs remain too small or ambiguous.
 
 ## Recent Progress
+
+- 2026-06-04T10:13:32+08:00: Propagated post-handoff follow-through into the
+  heartbeat guard surface. `goal_harness/quota.py` now carries compact
+  `handoff_readiness` from the selected attention item into `quota should-run`
+  JSON and Markdown, including `handoff_status`, `post_handoff_run_seen`,
+  `handoff_ready_at`, and `post_handoff_latest_run`, without changing quota
+  decisions. This lets heartbeat preflight distinguish a still-waiting handoff
+  from a seen target run without parsing the full status payload. Validation:
+  Python compile checks, status Markdown smoke, live project-asset handoff
+  readiness check, public contract check, touched-file diff check, and a live
+  `quota should-run` sanity check showing a connected side-bypass target as
+  `post_handoff_run_seen=True` with its latest custom delivery classification.
+  Critic: this closes the guard propagation gap; remaining risk is whether
+  handoff packet wording pushes target agents toward sufficiently large
+  validated delivery batches.
 
 - 2026-06-04T10:04:35+08:00: Added post-handoff follow-through status for
   project-agent handoffs. `goal_harness/status.py` now extends

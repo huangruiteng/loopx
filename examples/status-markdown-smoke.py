@@ -629,6 +629,14 @@ def assert_post_handoff_run_seen(payload: dict, markdown: str) -> None:
         "post_handoff_run: classification=read_only_project_map "
         "at=2026-01-01T00:01:45+00:00"
     ) in markdown, markdown
+    quota_payload = build_quota_should_run(payload, goal_id="planned-main-control")
+    quota_markdown = render_quota_should_run_markdown(quota_payload)
+    quota_readiness = quota_payload["handoff_readiness"]
+    assert quota_readiness["handoff_status"] == "post_handoff_run_seen", quota_payload
+    assert quota_readiness["post_handoff_run_seen"] is True, quota_payload
+    assert quota_readiness["post_handoff_latest_run"]["classification"] == POST_HANDOFF_CLASSIFICATION, quota_payload
+    assert "handoff_state: status=post_handoff_run_seen post_handoff_run_seen=True" in quota_markdown, quota_markdown
+    assert "post_handoff_run: classification=read_only_project_map at=2026-01-01T00:01:45+00:00" in quota_markdown, quota_markdown
 
 
 def main() -> int:
@@ -694,12 +702,17 @@ def main() -> int:
     assert "latest_validation: classification=operator_gate_approved" in approved_markdown, approved_markdown
     assert f"agent_command: `{APPROVED_COMMAND}`" in approved_markdown, approved_markdown
     assert_handoff_waiting_for_post_run(approved_item, approved_markdown)
-    assert_quota_should_run(
+    approved_quota_payload = assert_quota_should_run(
         approved_payload,
         expected=True,
         state="eligible",
         waiting_on="codex",
     )
+    approved_quota_readiness = approved_quota_payload["handoff_readiness"]
+    assert approved_quota_readiness["handoff_status"] == "ready_waiting_for_run", approved_quota_payload
+    assert approved_quota_readiness["post_handoff_run_seen"] is False, approved_quota_payload
+    approved_quota_markdown = render_quota_should_run_markdown(approved_quota_payload)
+    assert "handoff_state: status=ready_waiting_for_run post_handoff_run_seen=False" in approved_quota_markdown, approved_quota_markdown
     post_spend_items = post_spend_payload["attention_queue"]["items"]
     assert len(post_spend_items) == 1, post_spend_items
     post_spend_item = post_spend_items[0]
