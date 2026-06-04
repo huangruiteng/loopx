@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-04T10:20:00+08:00
+updated_at: 2026-06-04T10:30:05+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -72,6 +72,18 @@ and agents receive the smallest sufficient execution context.
   follow-through remains test-only, single-surface, or ambiguous.
 
 ## Recent Progress
+
+- 2026-06-04T10:30:05+08:00: Wired the new delivery-batch scale signal into
+  the generated heartbeat lifecycle contract. `goal_harness/heartbeat_prompt.py`
+  now tells full, compact, and brief heartbeat bodies to check
+  `delivery_batch_scale` before tightening project-agent handoffs; the compact
+  prompt stays under its interface budget. `docs/heartbeat-automation-prompt.md`,
+  `README.md`, and `examples/heartbeat-prompt-smoke.py` now cover the field and
+  the compressed no-op wording. Validation: heartbeat prompt smoke, installer
+  smoke, Python compile checks, public contract check, and touched-file diff
+  check. Critic: this closes the prompt propagation gap without changing the
+  target handoff packet; packet tightening should still wait for repeated
+  small-scale follow-through evidence.
 
 - 2026-06-04T10:20:00+08:00: Added a post-handoff delivery-batch scale signal
   for project-agent follow-through. `goal_harness/status.py` now labels compact

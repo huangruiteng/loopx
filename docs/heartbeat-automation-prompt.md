@@ -180,8 +180,8 @@ If the result says should_run=true:
    spend, sync or refresh state if needed, and NOTIFY. If it says
    recommended_mode=mapped_noop_if_unchanged with stop_if_unchanged=true, and
    you find no new user instruction, owner evidence, agent todo, stale source,
-   or safe handoff, return a quiet DONT_NOTIFY no-op: do not run another
-   dry-run, do not edit files, and do not append quota spend.
+   or safe handoff, return quiet `DONT_NOTIFY`: do not run, edit, or spend.
+   Check `delivery_batch_scale` before tightening project-agent handoffs.
 2. Run a short steering audit before choosing work: list at least three
    plausible next-action candidates across different P0/P1/P2 lanes when
    useful; if the same topic has consumed several recent delivery slices, apply
@@ -283,7 +283,8 @@ repeated topics, then read `heartbeat_recommendation`: run
 `recommended_mode=run_first_read_only_map` as one real read-only map and spend
 once after validation; for `recommended_mode=mapped_noop_if_unchanged`, return a
 quiet no-op without another dry-run, file edit, or quota spend when no new
-instruction/evidence/todo/stale source/safe handoff exists. Then run the
+instruction/evidence/todo/stale source/safe handoff exists. Check
+`delivery_batch_scale` before tightening project-agent handoffs. Then run the
 no-progress self-stop check, do one bounded verifiable progress segment when a
 real step exists, validate it, write back changed files / validation / critic /
 next action, append exactly one
@@ -315,9 +316,10 @@ For every automatic heartbeat turn, the agent-facing checklist is:
 7. Follow `heartbeat_recommendation`: first connected read-only goals should run
    one real `read-only-map`, while already mapped unchanged goals should return
    a quiet no-op without another dry-run or quota spend.
-8. Cancel or pause the automation instead of spending if 5 consecutive eligible
+8. Check `delivery_batch_scale` before tightening project-agent handoffs.
+9. Cancel or pause the automation instead of spending if 5 consecutive eligible
    turns are only repeated no-progress status loops.
-9. Treat routine public commit, push, and PR creation as autonomous after clean
+10. Treat routine public commit, push, and PR creation as autonomous after clean
    validation and a public/private boundary scan; stop for private/company
    material, credentials, destructive git, production actions, or repo rules
    that explicitly require review.

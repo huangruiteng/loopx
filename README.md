@@ -386,8 +386,10 @@ path. See
 `docs/quota-allocation.md` for the full allocation contract.
 
 `quota should-run` also returns `heartbeat_recommendation`, a machine-readable
-hint for generic heartbeat lifecycle decisions. For a newly connected read-only
-goal, `recommended_mode=run_first_read_only_map` means the heartbeat should run
+hint for generic heartbeat lifecycle decisions. It can also carry post-handoff
+`delivery_batch_scale` so heartbeats can observe target-agent follow-through
+before tightening handoff wording. For a newly connected read-only goal,
+`recommended_mode=run_first_read_only_map` means the heartbeat should run
 one real `read-only-map` and spend once after the map is saved and validated.
 For an already mapped goal, `recommended_mode=mapped_noop_if_unchanged` means
 the heartbeat should quietly no-op, without another dry-run or quota spend, when

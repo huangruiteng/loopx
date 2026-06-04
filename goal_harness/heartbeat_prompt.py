@@ -153,8 +153,9 @@ If the result says `should_run=true`:
    heartbeat spend, sync or refresh state if needed, and `NOTIFY`. If it says
    `recommended_mode=mapped_noop_if_unchanged` with `stop_if_unchanged=true`,
    and you find no new user instruction, owner evidence, agent todo, stale
-   source, or safe handoff, return a quiet `DONT_NOTIFY` no-op: do not run
-   another dry-run, do not edit files, and do not append quota spend.
+   source, or safe handoff, return quiet `DONT_NOTIFY`: do not run, edit, or
+   spend.
+   Check `delivery_batch_scale` before tightening project-agent handoffs.
 2. Run a short steering audit before choosing work: list at least three
    plausible next-action candidates across different P0/P1/P2 lanes when
    useful; if the same topic has consumed several recent delivery slices, apply
@@ -260,7 +261,7 @@ todo, send one concise Chinese `NOTIFY`; otherwise quiet
 If allowed, follow compact contract: read active state/status queue and
 project_asset source labels;
 blocker-push before delivery; obey `heartbeat_recommendation` and
-`goal_boundary`;
+`goal_boundary`; check `delivery_batch_scale`;
 steering audit with product-bottleneck lens; choose one bounded verifiable
 progress segment; coherent batches are allowed when scope/validation are clear;
 stop on private/company-internal material, credentials, destructive git,
@@ -334,6 +335,7 @@ If `should_run=true`:
    validate/save/spend/refresh/`NOTIFY`; `mapped_noop_if_unchanged` plus
    `stop_if_unchanged=true` means quiet no-op if there is no new instruction,
    owner evidence, agent todo, stale source, or safe handoff.
+   Check `delivery_batch_scale` before tightening project-agent handoffs.
 4. Run a steering audit before choosing work: compare at least three P0/P1/P2
    candidates when useful, apply continuation checks, keep compute quota
    separate from focus quota, include product-bottleneck lens, record any
