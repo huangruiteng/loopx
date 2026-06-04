@@ -29,6 +29,7 @@ const packet = buildActionPacket({
   projectNextAction: "Project asset says the owner/SOP review is the current authority.",
   projectStopCondition: "Stop before write-control or production mutation.",
   projectAssetSource: "project_asset",
+  handoffReadinessLine: "ready; codex_ready=true; source=project_asset; quota=eligible; failed=none",
 });
 
 assert(packet.includes("【GH Packet】"), "missing packet title");
@@ -38,6 +39,7 @@ assert(packet.includes("Authority：default entries 10/10; topic 10; materials 6
 assert(packet.includes("Project Asset：Owner=user_or_controller；Gate=owner_sop_review"), "missing project-asset owner/gate");
 assert(packet.includes("Next：Project asset says the owner/SOP review is the current authority."), "missing project-asset next action");
 assert(packet.includes("Stop：Stop before write-control or production mutation."), "missing project-asset stop condition");
+assert(packet.includes("Handoff：ready; codex_ready=true; source=project_asset; quota=eligible; failed=none"), "missing handoff readiness");
 assert(packet.includes("待办：Read the core Lark document section 8 first."), "missing first user todo");
 assert(packet.includes("先处理/暂缓再判 gate"), "missing todo-before-gate cue");
 assert(packet.includes("Gate：是否同意 premium-ui 迁移"), "missing gate question");
@@ -141,12 +143,14 @@ const platformMigrationNoEvidencePacket = buildActionPacket({
   projectNextAction: "Refresh the public-safe material registry summary.",
   projectStopCondition: "stop if the next action needs reward, gate approval, write control, or production access",
   projectAssetSource: "project_asset",
+  handoffReadinessLine: "ready; codex_ready=true; source=project_asset; quota=eligible; failed=none",
 });
 
 assert(platformMigrationNoEvidencePacket.includes("目标：platform-migration-material-registry"), "missing platform migration target");
 assert(platformMigrationNoEvidencePacket.includes("Project Asset：Owner=codex；Gate=none"), "missing platform project asset owner/gate");
 assert(platformMigrationNoEvidencePacket.includes("Next：Refresh the public-safe material registry summary."), "missing platform next action");
 assert(platformMigrationNoEvidencePacket.includes("Stop：stop if the next action needs reward"), "missing platform stop condition");
+assert(platformMigrationNoEvidencePacket.includes("Handoff：ready; codex_ready=true; source=project_asset; quota=eligible; failed=none"), "missing platform handoff readiness");
 assert(platformMigrationNoEvidencePacket.includes("Quota：Eligible; 0/1440 slots"), "missing platform quota context");
 assert(platformMigrationNoEvidencePacket.includes("Authority：entries 0/3; topics 3; materials 6; repos 2; owner review 1; stale 1; risk medium"), "missing platform material context");
 assert(platformMigrationNoEvidencePacket.includes("待办：Confirm whether owner review is fresh enough to resume delivery."), "missing platform user todo");
@@ -161,9 +165,12 @@ const firstScreenRequiredSource = [
   "const quota = projectAsset?.quota ?? row.queueItem?.quota ?? row.goal.quota",
   "const nextAction = projectAsset?.next_action ?? decision.action",
   "const stopCondition = projectAsset?.stop_condition ?? handoffCondition ?? decision.action",
+  "const handoffReadiness = row.queueItem?.handoff_readiness",
+  "buildHandoffReadinessView(item.handoffReadiness)",
   "const userTodos = todosFromProjectAssetSummary(projectAsset?.user_todos",
   "const agentTodos = todosFromProjectAssetSummary(projectAsset?.agent_todos",
   "<Badge variant=\"neutral\">Project asset</Badge>",
+  "Handoff readiness:",
   "Owner/Gate/Stop are not project_asset-backed; below uses raw status fallback.",
   "<span className=\"font-medium\">{buildQuotaView(item.quota)?.shortLine}</span>",
 ];

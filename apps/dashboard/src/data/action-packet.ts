@@ -21,6 +21,7 @@ export type ActionPacketInput = {
   projectNextAction?: string | null;
   projectStopCondition?: string | null;
   projectAssetSource?: ProjectAssetSource | null;
+  handoffReadinessLine?: string | null;
 };
 
 export type ApprovedAgentHandoffInput = {
@@ -87,6 +88,7 @@ export function buildActionPacket(input: ActionPacketInput) {
       : null,
     input.projectNextAction ? `${isFallback ? "Fallback Next" : "Next"}：${compactPacketText(input.projectNextAction, 160)}` : null,
     input.projectStopCondition ? `${isFallback ? "Fallback Stop" : "Stop"}：${compactPacketText(input.projectStopCondition, 160)}` : null,
+    input.handoffReadinessLine ? `Handoff：${compactPacketText(input.handoffReadinessLine, 140)}` : null,
   ];
 
   return [

@@ -56,6 +56,24 @@ export const projectAssetLatestValidationSchema = z.object({
   summary: z.string().optional().nullable(),
 });
 
+export const handoffReadinessChecksSchema = z.object({
+  project_asset_backed: z.boolean().optional(),
+  same_source_should_run: z.boolean().optional(),
+  codex_ready: z.boolean().optional(),
+  handoff_has_next_action: z.boolean().optional(),
+  handoff_has_stop_condition: z.boolean().optional(),
+  handoff_sanitized_surface: z.boolean().optional(),
+}).catchall(z.boolean());
+
+export const projectAssetHandoffReadinessSchema = z.object({
+  ready: z.boolean().optional().default(false),
+  codex_ready: z.boolean().optional().default(false),
+  source: z.string().optional().nullable(),
+  quota_state: z.string().optional().nullable(),
+  checks: handoffReadinessChecksSchema.optional().default({}),
+  next_probe: z.string().optional().nullable(),
+});
+
 export const projectAssetSchema = z.object({
   owner: z.string(),
   gate: z.string(),
@@ -74,6 +92,7 @@ export const queueItemSchema = z.object({
   severity: z.string(),
   recommended_action: z.string(),
   project_asset: projectAssetSchema.optional().nullable(),
+  handoff_readiness: projectAssetHandoffReadinessSchema.optional().nullable(),
   source: z.string().optional(),
   operator_question: z.string().optional().nullable(),
   agent_command: z.string().optional().nullable(),
@@ -362,6 +381,7 @@ export type ComputeQuota = z.infer<typeof quotaSchema>;
 export type ProjectAsset = z.infer<typeof projectAssetSchema>;
 export type ProjectAssetTodoSummary = z.infer<typeof projectAssetTodoSummarySchema>;
 export type ProjectAssetLatestValidation = z.infer<typeof projectAssetLatestValidationSchema>;
+export type ProjectAssetHandoffReadiness = z.infer<typeof projectAssetHandoffReadinessSchema>;
 export type TodoGroup = z.infer<typeof todoGroupSchema>;
 export type TodoItem = z.infer<typeof todoItemSchema>;
 export type ReviewMaterial = z.infer<typeof reviewMaterialSchema>;

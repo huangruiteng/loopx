@@ -47,6 +47,7 @@ import {
   RunRecord,
   StatusPayload,
   ProjectAssetLatestValidation,
+  ProjectAssetHandoffReadiness,
   ProjectAssetTodoSummary,
   TodoGroup,
   UsageSummary,
@@ -752,6 +753,7 @@ type UserActionSummaryItem = {
   projectNextAction?: string | null;
   projectStopCondition?: string | null;
   projectAssetSource: ProjectAssetSource;
+  handoffReadiness?: ProjectAssetHandoffReadiness | null;
   phase: string;
   waitingOn: string;
   draftLabel?: string;
@@ -802,6 +804,39 @@ function todoCountLabel(todos?: TodoGroup | null) {
     return null;
   }
   return `${todos.open_count}/${todos.total_count} open`;
+}
+
+type HandoffReadinessView = {
+  ready: boolean;
+  shortLine: string;
+  failedLabel: string;
+  probe?: string | null;
+  variant: BadgeVariant;
+};
+
+function buildHandoffReadinessView(readiness?: ProjectAssetHandoffReadiness | null): HandoffReadinessView | null {
+  if (!readiness) {
+    return null;
+  }
+  const checks = readiness.checks ?? {};
+  const failed = Object.entries(checks)
+    .filter(([, value]) => value === false)
+    .map(([key]) => humanizeIdentifier(key));
+  const failedLabel = failed.length ? failed.join(", ") : "none";
+  const ready = Boolean(readiness.ready);
+  return {
+    ready,
+    shortLine: [
+      ready ? "ready" : "not ready",
+      `codex_ready=${Boolean(readiness.codex_ready)}`,
+      `source=${readiness.source ?? "unknown"}`,
+      `quota=${readiness.quota_state ?? "unknown"}`,
+      `failed=${failedLabel}`,
+    ].join("; "),
+    failedLabel,
+    probe: readiness.next_probe,
+    variant: ready ? "success" : "warning",
+  };
 }
 
 function todoFocusPriority({
@@ -1515,6 +1550,7 @@ function buildHumanFriendlyActionPacket({
 }) {
   const prompt = humanReviewPrompt(item.kind);
   const quotaView = buildQuotaView(item.quota);
+  const handoffReadiness = buildHandoffReadinessView(item.handoffReadiness);
   const todo = firstOpenTodo(item.userTodos);
   const agentTodo = firstOpenTodo(item.agentTodos);
   const approvedAgentCommand = item.kind === "codex" && Boolean(item.agentCommand);
@@ -1544,6 +1580,7 @@ function buildHumanFriendlyActionPacket({
       projectNextAction: item.projectNextAction,
       projectStopCondition: item.projectStopCondition,
       projectAssetSource: item.projectAssetSource,
+      handoffReadinessLine: handoffReadiness?.shortLine,
     });
   }
   if (approvedAgentCommand && item.agentCommand) {
@@ -1587,6 +1624,7 @@ function buildHumanFriendlyActionPacket({
     projectNextAction: item.projectNextAction,
     projectStopCondition: item.projectStopCondition,
     projectAssetSource: item.projectAssetSource,
+    handoffReadinessLine: handoffReadiness?.shortLine,
   });
 }
 
@@ -1986,6 +2024,7 @@ function buildUserActionSummaryItems({
     const nextAction = projectAsset?.next_action ?? decision.action;
     const stopCondition = projectAsset?.stop_condition ?? handoffCondition ?? decision.action;
     const latestValidation = projectAsset?.latest_validation;
+    const handoffReadiness = row.queueItem?.handoff_readiness;
     const base = {
       goalId: row.goal.id,
       phase: decision.phase,
@@ -2007,6 +2046,7 @@ function buildUserActionSummaryItems({
       projectNextAction: nextAction,
       projectStopCondition: stopCondition,
       projectAssetSource,
+      handoffReadiness,
     };
 
     if (row.severity === "high") {
@@ -2237,6 +2277,7 @@ function UserActionSummary({
                   const actionKey = `${item.goalId}-${item.kind}-${item.title}`;
                   const copyState = actionCopyState?.key === actionKey ? actionCopyState.state : "idle";
                   const isGateAction = item.kind === "controller" || item.waitingOn === "user_or_controller" || item.waitingOn === "controller";
+                  const handoffReadiness = buildHandoffReadinessView(item.handoffReadiness);
                   const copyLabel = copyState === "copied"
                     ? "Copied"
                     : item.kind === "codex" && item.agentCommand
@@ -2293,9 +2334,14 @@ function UserActionSummary({
                         <Badge variant="neutral">{waitingLabel[item.waitingOn] ?? item.waitingOn}</Badge>
                       ) : null}
                       <QuotaChip quota={item.quota} />
+                      {handoffReadiness ? (
+                        <Badge variant={handoffReadiness.variant}>
+                          {handoffReadiness.ready ? "Handoff ready" : "Handoff blocked"}
+                        </Badge>
+                      ) : null}
                       {item.draftLabel ? <Badge variant="info">{item.draftLabel}</Badge> : null}
                     </div>
-                    {(item.projectAssetSource === "legacy_raw_fallback" || item.projectOwner || item.projectGate || item.projectNextAction || item.projectStopCondition) ? (
+                    {(item.projectAssetSource === "legacy_raw_fallback" || item.projectOwner || item.projectGate || item.projectNextAction || item.projectStopCondition || handoffReadiness) ? (
                       <div className="mt-3 border-t border-slate-200 pt-3 text-xs leading-5 text-slate-600 dark:border-zinc-800 dark:text-zinc-300">
                         <div className="flex flex-wrap items-center gap-2">
                           {item.projectAssetSource === "legacy_raw_fallback" ? (
@@ -2320,6 +2366,18 @@ function UserActionSummary({
                           <p className="mt-1 line-clamp-2 break-words">
                             <span className="font-medium">{item.projectAssetSource === "legacy_raw_fallback" ? "Fallback stop:" : "Stop:"}</span> {item.projectStopCondition}
                           </p>
+                        ) : null}
+                        {handoffReadiness ? (
+                          <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs leading-5 dark:border-zinc-800 dark:bg-zinc-900">
+                            <p className="break-words">
+                              <span className="font-medium">Handoff readiness:</span> {handoffReadiness.shortLine}
+                            </p>
+                            {handoffReadiness.probe ? (
+                              <p className="mt-1 break-words">
+                                <span className="font-medium">Probe:</span> {handoffReadiness.probe}
+                              </p>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     ) : null}

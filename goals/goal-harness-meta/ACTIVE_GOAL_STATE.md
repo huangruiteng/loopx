@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-04T09:24:40+08:00
+updated_at: 2026-06-04T09:36:32+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -65,12 +65,28 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Continue P0 real adapter adoption by wiring `handoff_readiness` into the
-  React dashboard/User Actions first screen or copied action packet, so an
-  operator can see which real projects are safe to hand off to a project agent
-  without opening the handoff-only CLI output.
+- Continue P0 dashboard adoption by wiring `handoff_readiness` into the selected
+  project / queue detail drill-down and adding browser-level smoke coverage when
+  a browser runtime is available, so readiness is not only visible in User
+  Actions cards and copied packets.
 
 ## Recent Progress
+
+- 2026-06-04T09:36:32+08:00: Wired `handoff_readiness` into the React dashboard
+  User Actions path. `apps/dashboard/src/data/status.ts` now parses
+  `queueItem.handoff_readiness`; `apps/dashboard/src/views/dashboard-page.tsx`
+  carries readiness into each User Actions item, shows `Handoff ready/blocked`
+  badges on the first screen, and renders a Project Asset detail line with
+  readiness, failed checks, and probe. `apps/dashboard/src/data/action-packet.ts`
+  now includes a compact `Handoff:` line in copied action packets, and
+  `apps/dashboard/smoke/action-packet-smoke.ts` covers both packet text and
+  React source drift for the platform-migration no-evidence case. Validation:
+  action-packet smoke (packet 1163 chars), dashboard TypeScript/Vite build,
+  touched-file `git diff --check`, and public goal-harness contract check.
+  Browser-level Playwright smoke was attempted but skipped because the browser
+  binary is not installed; no browser download was performed. Critic:
+  readiness is now visible in User Actions and copied packets, but selected
+  project / queue detail drill-down still needs the same signal.
 
 - 2026-06-04T09:24:40+08:00: Promoted live project_asset handoff readiness into
   the status/dashboard hot path. `goal_harness/status.py` now attaches
