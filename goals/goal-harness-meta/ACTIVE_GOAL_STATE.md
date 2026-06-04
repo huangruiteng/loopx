@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-04T09:06:56+08:00
+updated_at: 2026-06-04T09:13:04+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -65,13 +65,28 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Move to P0 real adapter adoption: choose one real non-fixture project state
-  for a public-safe handoff/readiness proof, confirming project_asset authority
-  flows through `should-run -> handoff packet -> target-agent stop condition`.
-  If private evidence is needed, read it only from local/private state and
-  commit only sanitized contract coverage.
+- Continue P0 real adapter adoption by promoting live project_asset handoff
+  readiness from a manual example into a status/dashboard-visible signal. First
+  make codex-ready real projects show whether should-run and handoff are
+  same-source, project_asset-backed, sanitized, and protected by a stop
+  condition.
 
 ## Recent Progress
+
+- 2026-06-04T09:13:04+08:00: Completed a real non-fixture project_asset handoff
+  readiness proof. Added `examples/live-project-asset-handoff-readiness.py`, a
+  generic live checker that reads a selected goal from the shared registry/status,
+  `quota should-run`, and `review-packet --handoff-only` without committing
+  private payloads. It asserts that one project_asset authority flows through
+  the status queue, should-run quota/todos/next/stop, and handoff-only source
+  label / stop condition. It also rejects full Review Packet sections, human
+  decision sections, operator decision payloads, local absolute paths, and
+  secret-like material. Ran it against the real `premium-ui-ai-search-rec-migration`
+  goal: `project_asset_source=project_asset`, `should_run=True`,
+  `quota_state=eligible`, handoff 16 lines / 979 chars. Validation: live
+  premium-ui readiness check and touched Python `py_compile`. Critic: this
+  leaves the fixture loop, but readiness is still a manual example; next step
+  should surface the same signal automatically in status/dashboard hot paths.
 
 - 2026-06-04T09:06:56+08:00: Completed the `quota should-run`
   project_asset-backed no-evidence guard proof. `goal_harness/quota.py` now
