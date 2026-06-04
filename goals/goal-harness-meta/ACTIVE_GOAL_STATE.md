@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-04T09:13:04+08:00
+updated_at: 2026-06-04T09:24:40+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -65,13 +65,32 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Continue P0 real adapter adoption by promoting live project_asset handoff
-  readiness from a manual example into a status/dashboard-visible signal. First
-  make codex-ready real projects show whether should-run and handoff are
-  same-source, project_asset-backed, sanitized, and protected by a stop
-  condition.
+- Continue P0 real adapter adoption by wiring `handoff_readiness` into the
+  React dashboard/User Actions first screen or copied action packet, so an
+  operator can see which real projects are safe to hand off to a project agent
+  without opening the handoff-only CLI output.
 
 ## Recent Progress
+
+- 2026-06-04T09:24:40+08:00: Promoted live project_asset handoff readiness into
+  the status/dashboard hot path. `goal_harness/status.py` now attaches
+  `handoff_readiness` to attention items, checking project_asset backing,
+  same-source `quota should-run` / `project_asset.next_action`, codex-ready
+  eligible quota, next action, stop condition, and a public-safe summary surface
+  without local paths or secret-like material. Status Markdown now prints the
+  readiness/check/probe fields, and `examples/render-status-dashboard.py`
+  shows Handoff readiness inside the Project Asset card. The platform-migration
+  smoke covers status JSON, Markdown, and static HTML, and the live checker now
+  asserts the same readiness field against the real
+  `premium-ui-ai-search-rec-migration` goal. Validation: touched Python
+  `py_compile`, platform-migration material registry smoke, status-markdown
+  smoke, live premium-ui readiness check (`status_readiness=True`,
+  `should_run=True`, `quota_state=eligible`, handoff 16 lines / 979 chars),
+  touched-file `git diff --check`, and public goal-harness repo contract check.
+  The full CS-Notes scan remains nonzero because `.local`
+  contains pre-existing private/local-path findings, not because of this public
+  repo change. Critic: readiness is visible in status/static dashboard now, but
+  the React dashboard/User Actions path still needs to consume it.
 
 - 2026-06-04T09:13:04+08:00: Completed a real non-fixture project_asset handoff
   readiness proof. Added `examples/live-project-asset-handoff-readiness.py`, a

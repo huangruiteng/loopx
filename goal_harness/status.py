@@ -122,6 +122,10 @@ LIFECYCLE_PRIORITY = (
     "run_recorded",
 )
 TODO_TASK_PATTERN = re.compile(r"^\s*[-*]\s+\[([ xX-])\]\s+(.+?)\s*$")
+LOCAL_PATH_SURFACE_PATTERN = re.compile(r"(?<!<)/(?:Users|Volumes|var/folders|tmp|private/tmp)/[^\s`'\"<>]+")
+SECRET_LIKE_SURFACE_PATTERN = re.compile(
+    r"(?i)(?:bearer\s+[a-z0-9._~+/=-]{16,}|ak[a-z0-9_=-]{12,}|sk[a-z0-9_=-]{12,}|token[=:][^\s`'\"<>]{12,})"
+)
 USER_TODO_HEADER_MARKERS = (
     "user todo",
     "owner review reading queue",
@@ -336,6 +340,47 @@ def project_asset_latest_validation(run: dict[str, Any] | None) -> dict[str, Any
     return signal or None
 
 
+def project_asset_summary_is_public_safe(project_asset: dict[str, Any]) -> bool:
+    text = repr(project_asset)
+    return not LOCAL_PATH_SURFACE_PATTERN.search(text) and not SECRET_LIKE_SURFACE_PATTERN.search(text)
+
+
+def project_asset_handoff_readiness(item: dict[str, Any]) -> dict[str, Any] | None:
+    project_asset = item.get("project_asset")
+    if not isinstance(project_asset, dict):
+        return None
+
+    quota = project_asset.get("quota") if isinstance(project_asset.get("quota"), dict) else {}
+    if not quota and isinstance(item.get("quota"), dict):
+        quota = item["quota"]
+
+    next_action = str(project_asset.get("next_action") or "").strip()
+    item_action = str(item.get("recommended_action") or "").strip()
+    stop_condition = str(project_asset.get("stop_condition") or "").strip()
+    quota_state = str(quota.get("state") or "").strip()
+    waiting_on = str(item.get("waiting_on") or "").strip()
+    goal_id = str(item.get("goal_id") or "").strip()
+    codex_ready = waiting_on == "codex" and quota_state == "eligible"
+    checks = {
+        "project_asset_backed": True,
+        "same_source_should_run": bool(quota and next_action and (not item_action or item_action == next_action)),
+        "codex_ready": codex_ready,
+        "handoff_has_next_action": bool(next_action),
+        "handoff_has_stop_condition": bool(stop_condition),
+        "handoff_sanitized_surface": project_asset_summary_is_public_safe(project_asset),
+    }
+    readiness: dict[str, Any] = {
+        "ready": all(checks.values()),
+        "codex_ready": codex_ready,
+        "source": "project_asset",
+        "quota_state": quota_state or "unknown",
+        "checks": checks,
+    }
+    if goal_id:
+        readiness["next_probe"] = f"goal-harness review-packet --goal-id {goal_id} --handoff-only"
+    return readiness
+
+
 def enrich_project_asset(
     item: dict[str, Any],
     *,
@@ -358,6 +403,9 @@ def enrich_project_asset(
         project_asset["quota"] = quota_summary
     if latest_validation:
         project_asset["latest_validation"] = latest_validation
+    readiness = project_asset_handoff_readiness(item)
+    if readiness:
+        item["handoff_readiness"] = readiness
 
 
 def build_project_asset(
@@ -1508,6 +1556,35 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"classification={_markdown_scalar(latest_validation.get('classification') or '')} "
                     f"at={_markdown_scalar(latest_validation.get('generated_at') or '')}"
                 )
+            handoff_readiness = (
+                item.get("handoff_readiness")
+                if isinstance(item.get("handoff_readiness"), dict)
+                else {}
+            )
+            if handoff_readiness:
+                lines.append(
+                    "    - handoff_readiness: "
+                    f"ready={handoff_readiness.get('ready')} "
+                    f"codex_ready={handoff_readiness.get('codex_ready')} "
+                    f"source={_markdown_scalar(handoff_readiness.get('source') or '')} "
+                    f"quota_state={_markdown_scalar(handoff_readiness.get('quota_state') or '')}"
+                )
+                checks = (
+                    handoff_readiness.get("checks")
+                    if isinstance(handoff_readiness.get("checks"), dict)
+                    else {}
+                )
+                passed = [key for key, value in checks.items() if value]
+                failed = [key for key, value in checks.items() if not value]
+                if checks:
+                    lines.append(
+                        "      - handoff_checks: "
+                        f"pass={','.join(passed) if passed else '-'} "
+                        f"fail={','.join(failed) if failed else '-'}"
+                    )
+                if handoff_readiness.get("next_probe"):
+                    handoff_probe = _markdown_scalar(handoff_readiness.get("next_probe") or "")
+                    lines.append(f"      - handoff_probe: `{handoff_probe}`")
         user_todos = item.get("user_todos") if isinstance(item.get("user_todos"), dict) else {}
         if user_todos:
             lines.append(

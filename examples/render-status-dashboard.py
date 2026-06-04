@@ -137,6 +137,25 @@ def project_asset_block(item: dict[str, Any]) -> str:
     latest_validation = asset.get("latest_validation") if isinstance(asset.get("latest_validation"), dict) else {}
     validation = latest_validation.get("classification") if isinstance(latest_validation, dict) else None
     quota = quota_summary(asset.get("quota") if isinstance(asset.get("quota"), dict) else item.get("quota"))
+    readiness = item.get("handoff_readiness") if isinstance(item.get("handoff_readiness"), dict) else {}
+    readiness_block = ""
+    if readiness:
+        checks = readiness.get("checks") if isinstance(readiness.get("checks"), dict) else {}
+        failed = [key for key, value in checks.items() if not value]
+        failed_text = ", ".join(failed) if failed else "none"
+        state = "ready" if readiness.get("ready") else "not ready"
+        readiness_summary = (
+            f"{state}; codex_ready {readiness.get('codex_ready')}; "
+            f"source {readiness.get('source')}; quota {readiness.get('quota_state')}"
+        )
+        readiness_block = f"""
+            <div class="handoff-readiness {'ready' if readiness.get('ready') else 'blocked'}">
+              <strong>Handoff readiness</strong>
+              <span>{esc(readiness_summary)}</span>
+              <p><b>Failed checks</b> {esc(failed_text)}</p>
+              <p><b>Probe</b> {esc(readiness.get("next_probe"))}</p>
+            </div>
+        """
     rows = [
         f"<p><b>Next</b> {esc(next_action)}</p>" if next_action else "",
         f"<p><b>Stop</b> {esc(stop_condition)}</p>" if stop_condition else "",
@@ -150,6 +169,7 @@ def project_asset_block(item: dict[str, Any]) -> str:
             <strong>Project Asset</strong>
             <span>owner {esc(owner)}; gate {esc(gate)}</span>
             {''.join(rows)}
+            {readiness_block}
           </div>
         """
 
@@ -459,6 +479,22 @@ def render_dashboard(payload: dict[str, Any]) -> str:
     }}
     .project-asset strong, .project-asset span {{ display: block; overflow-wrap: anywhere; }}
     .project-asset p {{ margin-top: 6px; color: inherit; }}
+    .handoff-readiness {{
+      margin-top: 10px;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      background: #f0fdf4;
+      padding: 10px;
+      color: #14532d;
+      font-size: 12px;
+    }}
+    .handoff-readiness.blocked {{
+      border-color: #fecaca;
+      background: #fef2f2;
+      color: #7f1d1d;
+    }}
+    .handoff-readiness strong, .handoff-readiness span {{ display: block; overflow-wrap: anywhere; }}
+    .handoff-readiness p {{ margin-top: 6px; color: inherit; }}
     .run-section {{
       margin-top: 18px;
     }}

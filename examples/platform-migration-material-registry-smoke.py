@@ -244,6 +244,22 @@ def assert_no_evidence_project_asset(project_asset: dict[str, object]) -> None:
     assert_public_safe(json.dumps(project_asset, ensure_ascii=False))
 
 
+def assert_no_evidence_handoff_readiness(readiness: dict[str, object]) -> None:
+    assert readiness["ready"] is True, readiness
+    assert readiness["codex_ready"] is True, readiness
+    assert readiness["source"] == "project_asset", readiness
+    assert readiness["quota_state"] == "eligible", readiness
+    assert readiness["next_probe"] == f"goal-harness review-packet --goal-id {GOAL_ID} --handoff-only", readiness
+    checks = readiness["checks"]
+    assert checks["project_asset_backed"] is True, readiness
+    assert checks["same_source_should_run"] is True, readiness
+    assert checks["codex_ready"] is True, readiness
+    assert checks["handoff_has_next_action"] is True, readiness
+    assert checks["handoff_has_stop_condition"] is True, readiness
+    assert checks["handoff_sanitized_surface"] is True, readiness
+    assert_public_safe(json.dumps(readiness, ensure_ascii=False))
+
+
 def assert_status_markdown_no_evidence_projection(status_markdown: str) -> None:
     expected_lines = [
         "project_asset_source: project_asset",
@@ -253,6 +269,13 @@ def assert_status_markdown_no_evidence_projection(status_markdown: str) -> None:
         f"asset_user_todo: {EXPECTED_USER_TODO}",
         f"asset_agent_todo: {EXPECTED_AGENT_TODO}",
         "asset_quota: compute=1.0 state=eligible slots=0/1440",
+        "handoff_readiness: ready=True codex_ready=True source=project_asset quota_state=eligible",
+        (
+            "handoff_checks: "
+            "pass=project_asset_backed,same_source_should_run,codex_ready,handoff_has_next_action,"
+            "handoff_has_stop_condition,handoff_sanitized_surface fail=-"
+        ),
+        f"handoff_probe: `goal-harness review-packet --goal-id {GOAL_ID} --handoff-only`",
         "authority_material: entries=0/3 topics=3 materials=6 repositories=2",
         "owner_review_required=1 stale=1 current_authority=1 risk=medium",
     ]
@@ -343,6 +366,7 @@ def main() -> int:
         assert_material_counts(goal["authority_registry"], expected_default_entries_present=0)
         queue_item = next(item for item in status["attention_queue"]["items"] if item["goal_id"] == GOAL_ID)
         assert_no_evidence_project_asset(queue_item["project_asset"])
+        assert_no_evidence_handoff_readiness(queue_item["handoff_readiness"])
 
         status_markdown = run_cli(root, registry_path, "status", "--limit", "20").stdout
         assert_status_markdown_no_evidence_projection(status_markdown)
@@ -389,6 +413,10 @@ def main() -> int:
         assert f"Agent todo: 1/1 open; next {EXPECTED_AGENT_TODO}" in html, html
         assert "<b>Quota</b> compute 1.0; eligible; slots 0/1440" in html, html
         assert "<b>Validation</b> read_only_project_map" in html, html
+        assert "Handoff readiness" in html, html
+        assert "ready; codex_ready True; source project_asset; quota eligible" in html, html
+        assert "<b>Failed checks</b> none" in html, html
+        assert f"<b>Probe</b> goal-harness review-packet --goal-id {GOAL_ID} --handoff-only" in html, html
         assert_public_safe(html)
 
     print("platform-migration-material-registry-smoke ok")

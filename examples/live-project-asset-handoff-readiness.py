@@ -73,6 +73,23 @@ def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
     item = attention_item(status_payload, args.goal_id)
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     assert project_asset, "live attention item is not project_asset-backed"
+    readiness = item.get("handoff_readiness") if isinstance(item.get("handoff_readiness"), dict) else {}
+    assert readiness.get("ready") is True, readiness
+    assert readiness.get("codex_ready") is True, readiness
+    assert readiness.get("source") == "project_asset", readiness
+    assert readiness.get("quota_state") == "eligible", readiness
+    expected_probe = f"goal-harness review-packet --goal-id {args.goal_id} --handoff-only"
+    assert readiness.get("next_probe") == expected_probe, readiness
+    checks = readiness.get("checks") if isinstance(readiness.get("checks"), dict) else {}
+    for check in (
+        "project_asset_backed",
+        "same_source_should_run",
+        "codex_ready",
+        "handoff_has_next_action",
+        "handoff_has_stop_condition",
+        "handoff_sanitized_surface",
+    ):
+        assert checks.get(check) is True, readiness
 
     should_run = run_goal_harness(args, "quota", "should-run", "--goal-id", args.goal_id)
     assert should_run.get("ok") is True, should_run
@@ -108,6 +125,7 @@ def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
         "goal_id": args.goal_id,
         "status": item.get("status"),
         "project_asset_source": should_run.get("project_asset_source"),
+        "status_readiness": readiness.get("ready"),
         "should_run": should_run.get("should_run"),
         "quota_state": should_run.get("state"),
         "handoff_lines": len(handoff_text.splitlines()),
