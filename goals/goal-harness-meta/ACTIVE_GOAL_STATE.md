@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-04T10:30:05+08:00
+updated_at: 2026-06-04T10:34:25+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -72,6 +72,19 @@ and agents receive the smallest sufficient execution context.
   follow-through remains test-only, single-surface, or ambiguous.
 
 ## Recent Progress
+
+- 2026-06-04T10:34:25+08:00: Exposed post-handoff delivery scale in the
+  project-agent review packet hot path. `goal_harness/review_packet.py` now
+  adds an optional compact `交付观测` line to `project_agent_handoff` /
+  `handoff_text` when `attention_queue.items[].handoff_readiness` already has
+  `post_handoff_latest_run.delivery_batch_scale`; it still avoids raw
+  `run_history` / `latest_runs` cold-path evidence and stays inside the
+  16-line / 1800-character handoff budget. Validation: review-packet CLI smoke,
+  Python compile checks, status Markdown smoke, public contract check, live
+  side-bypass handoff-only scale check, and touched-file diff check. Critic:
+  this shares the scale signal with target-agent handoffs without tightening
+  handoff wording; the current live side-bypass packet reports
+  `scale=implementation`, so continue observing rather than escalating.
 
 - 2026-06-04T10:30:05+08:00: Wired the new delivery-batch scale signal into
   the generated heartbeat lifecycle contract. `goal_harness/heartbeat_prompt.py`

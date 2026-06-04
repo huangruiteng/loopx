@@ -258,6 +258,15 @@ def assert_attention_queue_drives_approved_handoff_over_stale_history() -> None:
                             "next": "Run the approved queue-authority dry-run.",
                         },
                     },
+                    "handoff_readiness": {
+                        "handoff_status": "post_handoff_run_seen",
+                        "post_handoff_run_seen": True,
+                        "post_handoff_latest_run": {
+                            "generated_at": "2026-01-01T00:02:00+00:00",
+                            "classification": "owner_handoff_consumer_test",
+                            "delivery_batch_scale": "implementation",
+                        },
+                    },
                     "source": "latest_run",
                 }
             ]
@@ -296,6 +305,10 @@ def assert_attention_queue_drives_approved_handoff_over_stale_history() -> None:
     assert payload["operator_gate_dry_run_command"] is None, payload
     assert payload["operator_gate_decision_commands"] == {}, payload
     assert payload["agent_todo_text"] == "Run the approved queue-authority dry-run.", payload
+    assert (
+        payload["handoff_followthrough_summary"]
+        == "post_handoff_run=owner_handoff_consumer_test, scale=implementation, at=2026-01-01T00:02:00+00:00"
+    ), payload
     assert payload["project_asset_source"] == "project_asset", payload
     assert_project_agent_handoff_compact(
         payload["project_agent_handoff"],
@@ -305,6 +318,7 @@ def assert_attention_queue_drives_approved_handoff_over_stale_history() -> None:
     assert "类型：Codex" in packet, packet
     assert "来源：project_asset（owner/gate/next/stop 来自 attention_queue.project_asset）" in packet, packet
     assert "项目资产来源：project_asset（owner/gate/next/stop 来自 attention_queue.project_asset）" in packet, packet
+    assert "交付观测：post_handoff_run=owner_handoff_consumer_test, scale=implementation" in packet, packet
     assert "operator gate 已批准" in packet, packet
     assert "【用户本地 Gate 记录草稿】" not in packet, packet
     assert "ask the stale operator gate again" not in packet, packet

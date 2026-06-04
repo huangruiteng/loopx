@@ -480,7 +480,8 @@ Review Packet source-of-truth rule:
 - project-agent handoff text is an interface-budgeted hot-path artifact: it
   should stay within 16 lines and 1800 characters, include at most one command
   block, and carry only the target goal guard, minimal-context rule, source
-  label, forwarding/execution boundary, command, and stop condition;
+  label, optional compact post-handoff delivery scale, forwarding/execution
+  boundary, command, and stop condition;
 - handoff-only output must not carry the full Review Packet, human decision
   section, local operator-gate preview, operator decision payload fields, raw
   `run_history`, or `latest_runs` cold-path evidence;

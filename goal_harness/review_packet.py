@@ -163,6 +163,24 @@ def project_asset_source_line(source: str) -> str:
     return "legacy/raw fallback（未收到 project_asset；summary/action/todos 来自 raw queue/status 降级判断，不能当 owner/gate/stop authority）"
 
 
+def handoff_followthrough_summary(item: dict[str, Any] | None) -> str | None:
+    if not isinstance(item, dict):
+        return None
+    readiness = item.get("handoff_readiness") if isinstance(item.get("handoff_readiness"), dict) else {}
+    latest_run = (
+        readiness.get("post_handoff_latest_run")
+        if isinstance(readiness.get("post_handoff_latest_run"), dict)
+        else {}
+    )
+    if not latest_run:
+        return None
+    classification = str(latest_run.get("classification") or "unknown").strip() or "unknown"
+    scale = str(latest_run.get("delivery_batch_scale") or "unknown").strip() or "unknown"
+    generated_at = str(latest_run.get("generated_at") or "").strip()
+    suffix = f", at={generated_at}" if generated_at else ""
+    return compact_packet_text(f"post_handoff_run={classification}, scale={scale}{suffix}", limit=220)
+
+
 def authority_material_summary(goal: dict[str, Any] | None) -> str | None:
     if not isinstance(goal, dict):
         return None
@@ -332,6 +350,7 @@ def project_agent_section(
     agent_todo_text: str | None = None,
     authority_summary: str | None = None,
     project_asset_source_text: str | None = None,
+    handoff_followthrough_text: str | None = None,
     approved_operator_gate: bool = False,
 ) -> str:
     goal_guard = target_goal_guard(goal_id)
@@ -339,6 +358,7 @@ def project_agent_section(
     todo_line = f"Agent 待办：{agent_todo_text}" if agent_todo_text else None
     authority_line = f"材料上下文：{authority_summary}；只用这些脱敏计数判断 freshness / owner gap，不要要求内部链接或原文。" if authority_summary else None
     source_line = f"项目资产来源：{project_asset_source_text}" if project_asset_source_text else None
+    followthrough_line = f"交付观测：{handoff_followthrough_text}" if handoff_followthrough_text else None
     if approved_operator_gate:
         lines = [
             goal_guard,
@@ -346,6 +366,7 @@ def project_agent_section(
             source_line,
             todo_line,
             authority_line,
+            followthrough_line,
             "转发条件：operator gate 已记录为 approve；本段只用于把已批准的 agent_command 交给目标项目 Agent。",
             "执行边界：只执行下面命令；这是只读/dry-run 执行，不是写权限、主控接管或生产动作授权。",
             "停止条件：命令失败，或需要写入、run history append、生产动作、更高权限时，停下并用中文回报结果。",
@@ -359,6 +380,7 @@ def project_agent_section(
             source_line,
             todo_line,
             authority_line,
+            followthrough_line,
             "转发条件：只有用户已经真实记录 run-bound human_reward 后，才把本段发给项目 Agent。",
             "执行边界：不要替用户写 reward；active state 只做摘要，reward 的权威来源是 run-bound human_reward overlay。",
             "停止条件：如果 reward 还停留在 dry-run / 草稿 / 口头判断，停下等待用户记录；如果已经记录，只用下面 history 路径读取。",
@@ -372,6 +394,7 @@ def project_agent_section(
             source_line,
             todo_line,
             authority_line,
+            followthrough_line,
             "转发条件：只有用户已经明确同意 read-only/controller dry-run 后，才把本段发给项目 Agent。",
             "执行边界：只执行下面只读或 dry-run 项目路径；不要运行用户本地 Gate 记录草稿。",
             "停止条件：需要真实 approval、write-control、run history append、生产动作或命令失败时，停下等明确授权。",
@@ -385,6 +408,7 @@ def project_agent_section(
             source_line,
             todo_line,
             authority_line,
+            followthrough_line,
             "转发条件：仅当目标项目 Agent 需要当前等待边界时转发；这不是恢复 delivery 的授权。",
             "执行边界：只读 status/history，确认当前 owner blocker、证据入口和 stop condition；不要继续实现、adapter work、写入或生产动作。",
             "停止条件：没有新的 owner evidence、clean baseline 或外部 eval 时，保持 focus_wait 并用中文回报仍在等待什么。",
@@ -398,6 +422,7 @@ def project_agent_section(
             source_line,
             todo_line,
             authority_line,
+            followthrough_line,
             "转发条件：只有用户已经同意 safe local path 后，才把本段发给项目 Agent。",
             "执行边界：读取本项目 status/history 后，只执行下面只读或 dry-run 路径。",
             "停止条件：需要真实写 reward、approval、write-control、run history append、生产动作或命令失败时，停下等明确授权。",
@@ -432,6 +457,7 @@ def build_review_packet(
     asset_source = project_asset_source(item)
     asset_source_line = project_asset_source_line(asset_source)
     authority_summary = authority_material_summary(goal)
+    followthrough_summary = handoff_followthrough_summary(item)
     command = redact_local_absolute_paths(project_agent_command(status_payload, goal_id, kind, item))
     approved_handoff = operator_gate_approved_handoff(item, goal)
     gate_commands = operator_gate_decision_commands(status_payload, goal_id) if kind == "controller" else {}
@@ -454,6 +480,7 @@ def build_review_packet(
         agent_todo_text=agent_todo_text,
         authority_summary=authority_summary,
         project_asset_source_text=asset_source_line,
+        handoff_followthrough_text=followthrough_summary,
         approved_operator_gate=approved_handoff,
     )
     type_label = {
@@ -518,6 +545,7 @@ def build_review_packet(
         "owner_blocker_text": owner_blocker_text,
         "agent_todo_text": agent_todo_text,
         "authority_summary": authority_summary,
+        "handoff_followthrough_summary": followthrough_summary,
         "project_asset_source": asset_source,
         "packet": "\n".join(line for line in lines if line),
     }
