@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-04T08:40:04+08:00
+updated_at: 2026-06-04T08:47:51+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -65,12 +65,28 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Move to the P0 real adapter proof: run a public-safe sanity check for the
-  platform-migration no-evidence projection across status, packet, and handoff
-  surfaces, confirming that owner, gate, next, stop, todos, and quota remain
-  expressible without reading private evidence.
+- Continue the P0 real adapter proof by checking the platform-migration
+  no-evidence projection across quota and dashboard action-card surfaces, so
+  generic lifecycle guards and first-screen user actions do not mis-block,
+  over-authorize, or leak when private evidence is intentionally absent.
 
 ## Recent Progress
+
+- 2026-06-04T08:47:51+08:00: Added the public-safe platform-migration
+  no-evidence projection proof. `examples/platform-migration-material-registry-smoke.py`
+  now validates more than material-registry counts: the sanitized fixture must
+  expose owner, gate, next action, stop condition, user todo, agent todo,
+  quota, latest validation, and authority/material context through status JSON,
+  status Markdown, review packets, handoff-only Markdown, and handoff-only
+  JSON without reading private evidence. The smoke also rejects full Review
+  Packet sections, human decision sections, local gate drafts, local paths,
+  internal markers, and token-like material in handoff-only output. Validation:
+  platform-migration material registry smoke, touched Python `py_compile`,
+  touched-file `git diff --check`, and 2-file public/private
+  `goal-harness check`. Critic: this is a fixture-level adapter proof and does
+  not inspect real premium_ui private evidence; the next useful gap is
+  quota/should-run or dashboard action-card consumption of the same
+  no-evidence projection.
 
 - 2026-06-04T08:40:04+08:00: Documented the handoff compactness budget in the
   public status data contract. `docs/status-data-contract.md` now states that
