@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-04T09:42:59+08:00
+updated_at: 2026-06-04T09:50:30+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -65,12 +65,27 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Continue P0 dashboard adoption by adding browser-level smoke / DOM coverage
-  for the selected project / queue detail `handoff_readiness` panel when a
-  browser runtime is available, while keeping focus on the real project-agent
-  handoff loop rather than adding more UI-only fields.
+- Continue the P0 project-agent handoff loop by distinguishing `handoff ready`
+  from `post-handoff run seen / still waiting` in status or dashboard surfaces,
+  instead of adding more UI-only fields.
 
 ## Recent Progress
+
+- 2026-06-04T09:50:30+08:00: Completed browser-level DOM verification for the
+  React dashboard selected-detail `handoff_readiness` panel and added a stable
+  DOM locator contract. `apps/dashboard/src/views/dashboard-page.tsx` now gives
+  `HandoffReadinessPanel` `data-testid` / `data-goal-id` attributes; the
+  selected queue detail uses `selected-queue-handoff-readiness` with the current
+  `goal_id`. `apps/dashboard/smoke/action-packet-smoke.ts` now checks that this
+  locator contract stays wired. Validation: dashboard action-packet smoke,
+  dashboard TypeScript `tsc --noEmit`, dashboard Vite build, public contract
+  check, and an in-app browser DOM smoke against local status/dashboard servers.
+  The browser assertion found exactly one
+  `[data-testid="selected-queue-handoff-readiness"][data-goal-id="goal-harness-meta"]`
+  panel and verified `Handoff ready`, the compact ready line,
+  `Failed checks: none`, and the handoff-only probe. Critic: the browser smoke
+  debt is paid; further UI field expansion has diminishing returns unless it
+  helps observe real project-agent handoff execution.
 
 - 2026-06-04T09:42:59+08:00: Wired `handoff_readiness` into the React dashboard
   selected project / queue detail path. `apps/dashboard/src/views/dashboard-page.tsx`

@@ -839,7 +839,15 @@ function buildHandoffReadinessView(readiness?: ProjectAssetHandoffReadiness | nu
   };
 }
 
-function HandoffReadinessPanel({ readiness }: { readiness?: ProjectAssetHandoffReadiness | null }) {
+function HandoffReadinessPanel({
+  goalId,
+  readiness,
+  testId = "handoff-readiness-panel",
+}: {
+  goalId?: string;
+  readiness?: ProjectAssetHandoffReadiness | null;
+  testId?: string;
+}) {
   const view = buildHandoffReadinessView(readiness);
   if (!view) {
     return null;
@@ -852,6 +860,8 @@ function HandoffReadinessPanel({ readiness }: { readiness?: ProjectAssetHandoffR
           ? "border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"
           : "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100",
       )}
+      data-goal-id={goalId}
+      data-testid={testId}
     >
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={view.variant}>{view.ready ? "Handoff ready" : "Handoff blocked"}</Badge>
@@ -3258,7 +3268,11 @@ function RunHistoryPanel({
                 </div>
               ) : null}
               <QueueGateSummary item={queueItem} />
-              <HandoffReadinessPanel readiness={queueItem.handoff_readiness} />
+              <HandoffReadinessPanel
+                goalId={queueItem.goal_id}
+                readiness={queueItem.handoff_readiness}
+                testId="selected-queue-handoff-readiness"
+              />
             </div>
           ) : null}
 
