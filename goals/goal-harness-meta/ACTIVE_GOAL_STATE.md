@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-06T05:52:18+08:00
+updated_at: 2026-06-06T06:02:24+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -213,10 +213,14 @@ and agents receive the smallest sufficient execution context.
   `codex/release-readiness-hardening`, decide whether to push/open a PR or
   write back the exact blocker that prevents publication beyond the local
   branch.
-- [ ] [P2] Monitor draft PR #1 (`codex/release-readiness-hardening`) for review
-  or CI signal; if the stacked scope is acceptable, decide whether to mark it
-  ready for review or proceed toward release promotion, otherwise write back the
-  exact review/CI/scope blocker.
+- [x] [P2] Monitor draft PR #1 (`codex/release-readiness-hardening`) for review
+  or CI signal; decide that the stacked release-readiness scope is acceptable
+  after a clean mergeability poll and prior validation, then mark the PR ready
+  for review.
+- [ ] [P2] Monitor ready PR #1 (`codex/release-readiness-hardening`) for review,
+  CI, or merge signal; if no external signal arrives, keep this as read-only
+  monitoring and do not spend quota unless a new blocker, approval, or release
+  promotion decision is written back.
 - [x] [P2] Finish command/docs consistency for the multi-project dashboard:
   root README, demo output, dashboard README, and status-data contract should
   agree on when to use project-local `serve-status` versus
@@ -239,10 +243,10 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Next eligible meta work: monitor draft PR #1 for review or CI signal. If the
-  stacked scope is acceptable, decide whether to mark it ready for review or
-  proceed toward release promotion; otherwise write back the exact review, CI,
-  or scope blocker.
+- Next eligible meta work: monitor ready PR #1 for review, CI, or merge signal.
+  If no external signal arrives, keep the turn read-only with no spend. If a
+  review, check, merge, or release-promotion decision appears, write back the
+  exact state transition or blocker before any further promotion work.
 
 ## Controller Health Judgment
 
