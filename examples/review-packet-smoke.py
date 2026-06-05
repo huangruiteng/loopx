@@ -158,7 +158,7 @@ def main() -> int:
         "`status=read_only_project_map`",
     )
     assert "the dashboard/operator view owns the human decision" in contract
-    assert "the project-agent command is only the after-approval dry-run execution path" in contract
+    assert "the project-agent command is the after-approval dry-run path" in contract
     assert "复制后直接发给对应项目 Agent；人只补一句判断。" not in source
     assert "【GH Packet】" in action_packet_source
     assert "【用户/Gate】" in action_packet_source
@@ -205,6 +205,9 @@ def main() -> int:
     record_rule = source_between(source, "function durableOperatorGateRecordRule", "function suggestedDecisionLine")
     assert "记录规则：如需持久记录本次判断" in record_rule
     assert "operator-gate dry-run 预览" in record_rule
+    assert "operator_gate_resume_contract_v0" in record_rule
+    assert "只在该决策点 rebase 当前权威状态" in record_rule
+    assert "不回滚或带回整个仓库" in record_rule
     assert "reject/defer + public-safe 原因" in record_rule
     assert "durableOperatorGateRecordRule(item.kind)" in packet_builder
 

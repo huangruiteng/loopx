@@ -57,8 +57,12 @@ def main() -> int:
         dashboard_app_commands = "\n".join(payload["dashboard_app_commands"])
         assert f"cd {resolved_project}" in dashboard_status_commands, payload
         assert 'goal-harness --registry "$registry" serve-status --scan-root "$PWD" --port 8765' in dashboard_status_commands, payload
+        assert payload["dashboard_status_scope"] == "project-local-demo", payload
         assert "npm run dev" in dashboard_app_commands, payload
         assert payload["dashboard_status_url"] == "http://127.0.0.1:8765/status.json", payload
+        canonical_commands = "\n".join(payload["canonical_dashboard_status_commands"])
+        assert "serve-status --global-registry --port 8766 --limit 80" in canonical_commands, payload
+        assert payload["canonical_dashboard_status_url"] == "http://127.0.0.1:8766/status.json", payload
 
         registry = json.loads((project / ".goal-harness" / "registry.json").read_text(encoding="utf-8"))
         assert len(registry["goals"]) == 1, registry

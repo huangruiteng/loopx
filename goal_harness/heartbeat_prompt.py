@@ -13,18 +13,29 @@ DEFAULT_PERMISSION_RULE = "Do not ask for permissions when the current Codex ses
 def build_heartbeat_prompt(
     *,
     goal_id: str,
-    active_state: Path,
+    active_state: Path | None = None,
+    active_state_source: str = "explicit",
+    resolved_active_state: Path | None = None,
     material_queue_rule: str | None = None,
     permission_rule: str | None = None,
     compact: bool = False,
     brief: bool = False,
+    cli_bin: str = "goal-harness",
 ) -> dict[str, Any]:
-    active_state_text = str(active_state.expanduser())
+    effective_resolved_active_state = resolved_active_state or active_state
+    active_state_text = str(active_state.expanduser()) if active_state else "the registry-declared active state"
+    if active_state:
+        resolved_active_state_source = active_state_source
+    else:
+        resolved_active_state_source = "registry" if active_state_source == "explicit" else active_state_source
+    active_state_arg = f" --active-state {active_state_text}" if active_state else ""
     resolved_material_rule = material_queue_rule or DEFAULT_MATERIAL_QUEUE_RULE
     resolved_permission_rule = permission_rule or DEFAULT_PERMISSION_RULE
-    quota_guard_command = render_quota_guard_command(goal_id)
-    quota_spend_command = render_quota_spend_command(goal_id, source="heartbeat")
-    cli_preflight = render_cli_preflight()
+    quota_guard_command = render_quota_guard_command(goal_id, cli_bin=cli_bin)
+    quota_spend_command = render_quota_spend_command(goal_id, source="heartbeat", cli_bin=cli_bin)
+    cli_preflight = render_cli_preflight(cli_bin=cli_bin)
+    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}"
+    compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}"
     if brief:
         task_body_renderer = render_brief_heartbeat_task_body
     elif compact:
@@ -39,15 +50,23 @@ def build_heartbeat_prompt(
         quota_spend_command=quota_spend_command,
         material_queue_rule=resolved_material_rule,
         permission_rule=resolved_permission_rule,
+        cli_bin=cli_bin,
+        expanded_prompt_command=expanded_prompt_command,
+        compact_prompt_command=compact_prompt_command,
     )
-    expanded_prompt_command = f"goal-harness heartbeat-prompt --goal-id {goal_id} --active-state {active_state_text}"
     return {
         "ok": True,
         "goal_id": goal_id,
         "active_state": active_state_text,
+        "active_state_source": resolved_active_state_source,
+        "resolved_active_state": str(effective_resolved_active_state.expanduser())
+        if effective_resolved_active_state
+        else None,
         "compact": compact,
         "brief": brief,
+        "cli_bin": cli_bin,
         "expanded_prompt_command": expanded_prompt_command,
+        "compact_prompt_command": compact_prompt_command,
         "quota_guard_command": quota_guard_command,
         "quota_spend_command": quota_spend_command,
         "cli_preflight": cli_preflight,
@@ -66,67 +85,72 @@ def render_heartbeat_task_body(
     quota_spend_command: str,
     material_queue_rule: str,
     permission_rule: str,
+    cli_bin: str,
+    expanded_prompt_command: str,
+    compact_prompt_command: str,
 ) -> str:
     return f"""Advance `{goal_id}` using `{active_state}`.
 
 This heartbeat body is the generic Goal Harness lifecycle. Do not add
 project-specific branching to the automation prompt. Put project-specific
 policy in the Goal Harness registry, active-state sections, adapter output,
-`quota should-run.goal_boundary`, or narrow public/private boundary rules; if a
-new lifecycle rule is needed, update `goal-harness heartbeat-prompt` so all
-projects inherit it.
+`quota should-run.goal_boundary`, or boundary rules; if a new lifecycle rule is
+needed, update `goal-harness heartbeat-prompt` so all projects inherit it.
 
-Before spending delivery compute, first make the Goal Harness CLI reachable in
-this automation shell, then run the quota guard:
+Before spending delivery compute, first make the Goal Harness CLI reachable and
+run the quota guard:
 
 ```bash
 {cli_preflight}
 {quota_guard_command}
 ```
 
-If that preflight still fails, do not do implementation work, adapter work,
-file edits, research, project exploration, or quota spend in this turn. Return
-a quiet heartbeat `DONT_NOTIFY` response with the exact preflight failure
-reason.
+If that preflight still fails, do no implementation, adapter, file edit,
+research, exploration, or spend; return quiet `DONT_NOTIFY` with exact failure.
 
 If the result says `should_run=false`:
 
-- If the payload says `state=operator_gate`, treat the gate as a user/controller
-  interaction, not as a silent skip. Read `gate_prompt`, `operator_question`,
-  `recommended_action`, `next_handoff_condition`, `missing_gates`,
-  `user_todo_summary`, and `agent_todo_summary` from the payload. If the same
-  unresolved gate has not already been asked in the recent visible thread,
-  return heartbeat `NOTIFY`
-  with one concise Chinese question that lists the gate and the expected reply
-  format. If `user_todo_summary.open_count > 0`, the notification must list the
-  existing open user todos even when there are no newly discovered user actions;
-  never summarize this case as "no new user action". Do not execute
-  `agent_command`, adapter work, write-control, production actions, or the
-  gated path while asking.
-- If the payload says `notify_user_on_open_todo=true`, treat the existing open
-  `user_todo_summary` as a blocker-push opportunity, not as a silent skip. This
-  is especially important for `state=focus_wait`, `state=waiting`, and
-  `waiting_on=external_evidence`, where a short user/owner answer can unlock a
-  quiet project. If the same blocker ask has not already been surfaced in the
-  recent visible thread, return heartbeat `NOTIFY` with one concise Chinese ask
-  listing at most three `first_open_items`, the `open_todo_notify_reason`, and
-  the expected reply format: `done`, `defer/not now`, or a new evidence
-  link/date/conclusion. Do not do implementation work, adapter work, file
-  edits, research, project exploration, or quota spend for that blocker-push
-  turn. If the same blocker was already surfaced recently, return a quiet
-  `DONT_NOTIFY` skip reason and do not append quota spend.
+- If `state=operator_gate`, treat it as a user/controller interaction. Read
+  `gate_prompt`, `operator_question`, `recommended_action`,
+  `next_handoff_condition`, `missing_gates`, `user_todo_summary`, and
+  `agent_todo_summary`. If not surfaced recently, return heartbeat `NOTIFY`
+  with one concise Chinese question listing the gate and expected reply format.
+  If `user_todo_summary.open_count > 0`, list existing open user todos even
+  when no new user actions were discovered; never summarize this case as "no
+  new user action". Do not execute `agent_command`, adapter work,
+  write-control, production actions, or the gated path while asking.
+- If `notify_user_on_open_todo=true`, treat existing open `user_todo_summary`
+  as a blocker-push opportunity, not a silent skip. For `state=focus_wait`,
+  `state=waiting`, and `waiting_on=external_evidence`, a short user/owner
+  answer can unlock the project. If not surfaced recently, return heartbeat
+  `NOTIFY` with one concise Chinese ask listing at most three
+  `first_open_items`, `open_todo_notify_reason`, and expected reply format:
+  `done`, `defer/not now`, or a new evidence link/date/conclusion. No
+  implementation, adapter work, edits, research, exploration, or spend for
+  that blocker-push turn. If already surfaced recently, return quiet
+  `DONT_NOTIFY` and do not append quota spend.
 - If the payload also says `safe_bypass_allowed=true` and the same gate has
   already been surfaced, the gate blocks only the gated delivery path. You may
-  read the active state and do exactly one bounded safe-bypass step from the
-  Priority Stack, such as read-only steering analysis, documentation, or another
-  P0/P1 item that does not depend on that gate. If you do a safe-bypass step,
-  validate it, write back progress/critic/next action, optionally refresh state,
-  append exactly one spend event, and report compactly. If
-  `user_todo_summary.open_count > 0`, that report must include the existing
-  open user todos and must not say there is "no new user action". If
-  `agent_todo_summary.open_count > 0`, the report should also name the first
-  safe agent todo it can execute next. If no useful safe-bypass step exists,
-  report the pending gate compactly instead of doing work.
+  do exactly one bounded safe-bypass step from the Priority Stack that does not
+  depend on that gate; validate, write back, optionally refresh, spend once, and
+  report compactly. If `user_todo_summary.open_count > 0`, that report must
+  include the existing open user todos and must not say there is "no new user
+  action". If no useful safe-bypass step exists, report the pending gate.
+- If `safe_bypass_kind=outcome_floor_recovery` or
+  `heartbeat_recommendation.recommended_mode=outcome_floor_recovery`, run only
+  outcome-floor recovery: produce the required ranker/cross-domain evidence
+  artifact named by `must_advance`, or write back the concrete blocker. Avoid
+  summary/queue/contract propagation and synthetic-only chains. Spend once after
+  validated evidence/blocker writeback.
+- If `waiting_on=external_evidence` or `state=waiting`, and this automation is
+  explicitly a monitor, run at most one bounded read-only observation poll using
+  project-approved status/log/metric/marker surfaces named in active state,
+  `recommended_action`, or `goal_boundary.next_probe`. Unchanged evidence:
+  quiet `DONT_NOTIFY`, no edits, no spend. New eval/fail/complete/blocker/
+  approval/CI/deploy/data evidence: report, write back only allowed canonical
+  state/board/ledger, add todos if needed, then spend once after validation.
+  Still do not launch/stop/restart/sync/design code or mutate production unless
+  `should_run=true` or the user explicitly authorizes it.
 - Otherwise, do not do implementation work, adapter work, file edits, research,
   or project exploration in this turn. Return a quiet heartbeat `DONT_NOTIFY`
   response with the skip reason.
@@ -141,11 +165,12 @@ If the result says `should_run=true`:
    `run_history.latest_runs` as evidence and drill-down only; it may be limited
    by status command limits or filters, so do not decide whether a gate is
    pending or approved from latest runs alone. Also inspect `goal_boundary` and
-   any `user_todo_summary` from the guard/status payload. If an open user/owner
-   todo is the current blocker that can unlock a gate, `focus_wait`, or
-   external-evidence wait, handle it before delivery as the same blocker-push
-   opportunity: short `NOTIFY`, at most three items, no implementation work,
-   and no quota spend for that blocker-push turn.
+   guard `user_todo_summary`. Stop for an open user/owner todo only when it
+   belongs to this goal's guard payload or current project asset and blocks the
+   selected path; then use the blocker-push pattern above. Dependency or
+   sibling-goal todos found in `attention_queue.items` should be recorded as
+   dependency blockers; they must not consume the whole eligible turn. Choose a
+   gate-independent P0/P1/P2 candidate for this goal when one exists.
    Also read `heartbeat_recommendation` from the quota payload before inventing
    local automation behavior. If it says `recommended_mode=run_first_read_only_map`,
    run exactly its `command` as a real read-only map, not another dry-run, then
@@ -155,8 +180,9 @@ If the result says `should_run=true`:
    and you find no new user instruction, owner evidence, agent todo, stale
    source, or safe handoff, return quiet `DONT_NOTIFY`: do not run, edit, or
    spend.
-	   Check `delivery_batch_scale` / `handoff_delivery_contract`; for
-	   repeated-small, obey contract.
+   Check `delivery_batch_scale`, `delivery_outcome`,
+   `post_handoff_outcome_gap_streak`, and `handoff_delivery_contract`; for
+   repeated-small or surface-only loops, obey the contract.
 2. Run a short steering audit before choosing work: list at least three
    plausible next-action candidates across different P0/P1/P2 lanes when
    useful; if the same topic has consumed several recent delivery slices, apply
@@ -214,11 +240,18 @@ If the result says `should_run=true`:
    a bounded safe-bypass step, append this same spend event once after
    validation/writeback.
 
-9. If the dashboard or controller needs to see a state-only update after spend,
-   run:
+9. If the dashboard or controller needs state after spend, refresh:
 
    ```bash
-   goal-harness refresh-state --goal-id {goal_id}
+   {cli_bin} refresh-state --goal-id {goal_id}
+   ```
+
+   For a validated progress artifact, add a public-safe classification and
+   explicit delivery hints so readiness does not infer from classification
+   names:
+
+   ```bash
+   {cli_bin} refresh-state --goal-id {goal_id} --classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION> --delivery-batch-scale multi_surface --delivery-outcome outcome_progress
    ```
 
 10. Return a compact final report. Use heartbeat `NOTIFY` only for meaningful
@@ -238,14 +271,14 @@ def render_brief_heartbeat_task_body(
     quota_spend_command: str,
     material_queue_rule: str,
     permission_rule: str,
+    cli_bin: str,
+    expanded_prompt_command: str,
+    compact_prompt_command: str,
 ) -> str:
-    compact_prompt_command = f"goal-harness heartbeat-prompt --compact --goal-id {goal_id} --active-state {active_state}"
-    expanded_prompt_command = f"goal-harness heartbeat-prompt --goal-id {goal_id} --active-state {active_state}"
     return f"""Advance `{goal_id}` using `{active_state}`.
 
-Brief installed Goal Harness heartbeat. Daily
-body: `{compact_prompt_command}`; audit:
-`{expanded_prompt_command}`.
+Brief installed Goal Harness heartbeat. Thin dispatcher: keep context small;
+pull details on demand. Details: `{compact_prompt_command}`.
 
 Preflight and quota guard:
 
@@ -254,27 +287,31 @@ Preflight and quota guard:
 {quota_guard_command}
 ```
 
-If preflight fails or guard says skip: no implementation, adapter work, file
-edits, research, exploration, or spend. If guard exposes gate or open user
-todo, send one concise Chinese `NOTIFY`; otherwise quiet
-`DONT_NOTIFY`.
+If preflight fails: quiet `DONT_NOTIFY`, no work/spend.
 
-If allowed, follow compact contract: read state/status queue/project_asset;
-blocker-push first; obey `heartbeat_recommendation`, `goal_boundary`, and
-`delivery_batch_scale` / `handoff_delivery_contract`; steering audit with
-product-bottleneck lens; choose one bounded verifiable progress segment, batch
-ok when scope/validation are clear; stop on private material, credentials,
-destructive git, production actions, or explicit review rules; validate/write
-back files, validation, critic, next action; add todos with `goal-harness todo
-add`; refresh after spend if needed.
+If `should_run=false`: no work/spend except explicit `safe_bypass_allowed=true`
+branches. Gate/open todo -> concise Chinese `NOTIFY`. external/wait monitor ->
+one read-only status/log/metric/marker poll; new evidence -> allowed writeback,
+spend once. `safe_bypass_kind=outcome_floor_recovery` or matching
+`heartbeat_recommendation` -> one ranker/cross-domain evidence recovery or
+blocker writeback; no surface/synthetic-only work; validate/writeback/spend.
+Else quiet `DONT_NOTIFY`.
+
+If `should_run=true`: fetch compact; read needed state
+priority slice + guard payload. Use `status --limit 3` only for cross-goal
+priority/owner/gate ambiguity; use `review-packet --handoff-only` only for
+scale/readiness ambiguity. Blocker-push first; obey
+`heartbeat_recommendation`, `goal_boundary`, `delivery_batch_scale`,
+`delivery_outcome`, outcome streaks, `handoff_delivery_contract`; do 1
+bounded segment/batch;
+validate/writeback/todos; spend once; refresh with explicit delivery
+scale/outcome for progress artifacts. Stop on private, credentials,
+destructive git, prod, or review rules.
 
 Spend exactly once only after completed delivery or safe-bypass work:
+`{quota_spend_command}`
 
-```bash
-{quota_spend_command}
-```
-
-No spend for quiet skips, preflight failures, blocker-push asks, pure dry-runs,
+No spend for quiet skips, preflight failures, blocker-push asks, dry-runs,
 self-cancel, or duplicate accounting. Return compactly; `NOTIFY` only for a
 committed artifact, user gate, real blocker, or self-stop.
 
@@ -291,8 +328,10 @@ def render_compact_heartbeat_task_body(
     quota_spend_command: str,
     material_queue_rule: str,
     permission_rule: str,
+    cli_bin: str,
+    expanded_prompt_command: str,
+    compact_prompt_command: str,
 ) -> str:
-    expanded_prompt_command = f"goal-harness heartbeat-prompt --goal-id {goal_id} --active-state {active_state}"
     return f"""Advance `{goal_id}` using `{active_state}`.
 
 This compact Goal Harness heartbeat body keeps project-specific branches out of
@@ -316,37 +355,41 @@ If `should_run=false`:
   up to three open user todos/first_open_items, reason, and expected reply
   format (`done`, `defer/not now`, or evidence link/date/conclusion). No
   delivery or spend.
-- `safe_bypass_allowed=true` after the same gate was already surfaced: do at
-  most one bounded gate-independent safe-bypass step; validate, write back,
-  spend once only if real work completed, then refresh if needed.
+- `safe_bypass_allowed=true`: if `safe_bypass_kind=outcome_floor_recovery`,
+  produce the required ranker/cross-domain evidence artifact or blocker; no
+  surface/synthetic-only work. Else gate-independent step.
+  Validate/writeback/spend once; refresh if needed.
+- `waiting_on=external_evidence` or `state=waiting` with explicit monitor
+  purpose: one read-only status/log/metric/marker poll. Unchanged: quiet
+  `DONT_NOTIFY`, no edits/spend. New eval/fail/done/blocker/approval/CI/deploy/
+  data evidence: report, allowed state/board/ledger writeback, todos, spend
+  once. No launch/stop/restart/sync/code/prod mutation without authorization.
 - Otherwise quiet `DONT_NOTIFY` with the skip reason; no work or spend.
 
 If `should_run=true`:
-1. Read active state, Priority Stack, progress, critic, `goal_boundary`,
+1. Read active state, Priority Stack, progress/critic, `goal_boundary`,
    `attention_queue.items` / `project_asset`, and guard `user_todo_summary`.
    Legacy/raw fallback is not owner/gate/stop authority. Treat
    `run_history.latest_runs` as drill-down only.
-2. Before delivery, surface open user/owner todo that can unlock a gate,
-   `focus_wait`, or external-evidence wait: short Chinese `NOTIFY`, no work or
-   spend.
+2. Stop only for this goal's own blocker todo: Chinese `NOTIFY`, no work/spend.
+   Dependency/sibling todos: record/surface, do not skip; continue P0/P1/P2 audit.
 3. Follow `heartbeat_recommendation` before inventing behavior:
    `run_first_read_only_map` means run exact real-map command, then
    validate/save/spend/refresh/`NOTIFY`; `mapped_noop_if_unchanged` plus
    `stop_if_unchanged=true` means quiet no-op if there is no new instruction,
    owner evidence, agent todo, stale source, or safe handoff.
-	   Check `delivery_batch_scale` / `handoff_delivery_contract`; for
-	   repeated-small, obey contract.
-4. Run a steering audit before choosing work: compare at least three P0/P1/P2
-   candidates when useful, apply continuation checks, keep compute quota
-   separate from focus quota, include product-bottleneck lens, record any
-   losing high-value candidate.
+   Check `delivery_batch_scale`, `delivery_outcome`,
+   `post_handoff_outcome_gap_streak`, `handoff_delivery_contract`; obey
+   repeated-small/surface-loop contracts.
+4. Run steering audit: compare P0/P1/P2, continuation checks,
+   compute/focus quota, bottleneck lens.
 5. Run the no-progress self-stop check: if 5 consecutive eligible heartbeats
    only repeat status/brief checks with no artifact, implementation/adapter
    progress, gate/user decision, or validation signal, pause/delete automation,
    `NOTIFY`, no spend.
-6. Choose one bounded, verifiable progress segment. It may be a coherent batch
-   when scope and validation are clear. Public-safe commit, push, and PR
-   creation may proceed after validation and clean scan. Stop for
+6. Choose one bounded, verifiable segment. Coherent batch is OK when
+   scope/validation are clear. Public-safe commit/push/PR may proceed
+   after validation and clean scan. Stop for
    private/company-internal material, credentials, destructive git, production
    actions, or explicit repo review rules.
 7. Validate; write files/validation/critic/next action to active state;
@@ -359,7 +402,9 @@ If `should_run=true`:
 {quota_spend_command}
 ```
 
-9. Refresh state after spend if needed.
+9. Refresh after spend if needed; for validated progress artifacts pass
+   explicit `--delivery-batch-scale` and `--delivery-outcome` so readiness does
+   not infer from classification names.
 
 Do not append spend for quiet skips, preflight failures, blocker-push asks,
 pure dry-runs, self-cancel turns, or duplicate accounting attempts.
@@ -390,9 +435,13 @@ Copy this {style}task body into a Codex App heartbeat automation.
 
 - goal_id: `{payload.get("goal_id")}`
 - active_state: `{payload.get("active_state")}`
+- active_state_source: `{payload.get("active_state_source")}`
+- resolved_active_state: `{payload.get("resolved_active_state")}`
 - compact: `{payload.get("compact")}`
 - brief: `{payload.get("brief")}`
+- cli_bin: `{payload.get("cli_bin")}`
 - expanded_prompt_command: `{payload.get("expanded_prompt_command")}`
+- compact_prompt_command: `{payload.get("compact_prompt_command")}`
 - quota_guard_command: `{payload.get("quota_guard_command")}`
 - quota_spend_command: `{payload.get("quota_spend_command")}`
 - cli_preflight: `{payload.get("cli_preflight")}`

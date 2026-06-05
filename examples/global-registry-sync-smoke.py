@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import sys
 import tempfile
 from pathlib import Path
@@ -62,10 +63,24 @@ def find_goal(global_registry: Path) -> dict:
     raise AssertionError(f"{GOAL_ID} not found in global registry")
 
 
+def assert_no_write_temps(global_registry: Path) -> None:
+    leftovers = sorted(global_registry.parent.glob(f".{global_registry.name}.*.tmp"))
+    assert not leftovers, [str(path) for path in leftovers]
+
+
+def sync_worker(registry_path: str) -> None:
+    sync_project_registry_to_global(
+        registry_path=Path(registry_path),
+        runtime_root_override=None,
+        dry_run=False,
+    )
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="goal-harness-global-sync-smoke-") as tmp:
         root = Path(tmp)
         runtime = root / "runtime"
+        global_registry = global_registry_path(runtime)
         controller_repo = root / "controller"
         project_repo = root / "project"
         controller_repo.mkdir()
@@ -89,7 +104,8 @@ def main() -> int:
             dry_run=False,
         )
 
-        goal = find_goal(global_registry_path(runtime))
+        assert_no_write_temps(global_registry)
+        goal = find_goal(global_registry)
         assert goal["waiting_on"] == "user_or_controller", goal
         assert goal["attention_status"] == "owner_sop_review_pending", goal
         assert goal["recommended_action"] == OVERRIDE_ACTION, goal
@@ -102,13 +118,26 @@ def main() -> int:
             runtime_root_override=None,
             dry_run=False,
         )
-        goal = find_goal(global_registry_path(runtime))
+        assert_no_write_temps(global_registry)
+        goal = find_goal(global_registry)
         assert "waiting_on" not in goal, goal
         assert "attention_status" not in goal, goal
         assert "recommended_action" not in goal, goal
         assert "operator_question" not in goal, goal
         assert "next_handoff_condition" not in goal, goal
         assert goal["source_registry"] == str(project_registry.resolve()), goal
+
+        processes = [
+            multiprocessing.Process(target=sync_worker, args=(str(controller_registry),)),
+            multiprocessing.Process(target=sync_worker, args=(str(project_registry),)),
+        ]
+        for process in processes:
+            process.start()
+        for process in processes:
+            process.join(timeout=10)
+            assert process.exitcode == 0, process.exitcode
+        assert_no_write_temps(global_registry)
+        find_goal(global_registry)
 
     print("global-registry-sync-smoke ok")
     return 0

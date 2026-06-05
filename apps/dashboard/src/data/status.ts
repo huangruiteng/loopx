@@ -10,6 +10,13 @@ export const quotaSchema = z.object({
   state: z.string().optional().nullable(),
   next_eligible_at: z.string().optional().nullable(),
   reason: z.string().optional().nullable(),
+  blocked_action_scope: z.string().optional().nullable(),
+  focus_wait: z.boolean().optional().nullable(),
+  handoff_outcome_floor_block: z.boolean().optional().nullable(),
+  post_handoff_outcome_gap_streak: z.number().optional().nullable(),
+  outcome_gap_threshold: z.number().optional().nullable(),
+  must_advance: z.array(z.string()).optional().default([]),
+  avoid: z.array(z.string()).optional().default([]),
 }).transform((quota) => {
   const slotMinutes = Math.max(1, quota.slot_minutes);
   const defaultAllowedSlots = Math.round((quota.window_hours * 60 * quota.compute) / slotMinutes);
@@ -50,6 +57,39 @@ export const projectAssetTodoSummarySchema = z.object({
   next: z.string().optional().nullable(),
 });
 
+export const dependencyBlockerSchema = z.object({
+  goal_id: z.string(),
+  status: z.string().optional().nullable(),
+  waiting_on: z.string().optional().nullable(),
+  severity: z.string().optional().nullable(),
+  index: z.number().optional().nullable(),
+  text: z.string(),
+  source: z.string().optional().nullable(),
+});
+
+export const dependencyBlockerSummarySchema = z.object({
+  source: z.string().optional().nullable(),
+  open_count: z.number().optional().default(0),
+  items: z.array(dependencyBlockerSchema).optional().default([]),
+});
+
+export const autonomousBacklogCandidateSchema = z.object({
+  goal_id: z.string(),
+  status: z.string().optional().nullable(),
+  waiting_on: z.string().optional().nullable(),
+  quota_state: z.string().optional().nullable(),
+  priority: z.string().optional().nullable(),
+  todo_index: z.number().optional().nullable(),
+  text: z.string(),
+  source: z.string().optional().nullable(),
+});
+
+export const autonomousBacklogCandidateSummarySchema = z.object({
+  source: z.string().optional().nullable(),
+  open_count: z.number().optional().default(0),
+  items: z.array(autonomousBacklogCandidateSchema).optional().default([]),
+});
+
 export const projectAssetLatestValidationSchema = z.object({
   generated_at: z.string().optional().nullable(),
   classification: z.string().optional().nullable(),
@@ -60,6 +100,7 @@ export const postHandoffRunSchema = z.object({
   generated_at: z.string().optional().nullable(),
   classification: z.string().optional().nullable(),
   delivery_batch_scale: z.string().optional().nullable(),
+  delivery_outcome: z.string().optional().nullable(),
   health_check: z.string().optional().nullable(),
   json_exists: z.boolean().optional().nullable(),
   markdown_exists: z.boolean().optional().nullable(),
@@ -87,6 +128,7 @@ export const projectAssetHandoffReadinessSchema = z.object({
   post_handoff_latest_run: postHandoffRunSchema.optional().nullable(),
   post_handoff_recent_runs: z.array(postHandoffRunSchema).optional().default([]),
   post_handoff_small_scale_streak: z.number().int().nonnegative().optional().default(0),
+  post_handoff_outcome_gap_streak: z.number().int().nonnegative().optional().default(0),
   next_probe: z.string().optional().nullable(),
 });
 
@@ -120,6 +162,7 @@ export const queueItemSchema = z.object({
   quota: quotaSchema.optional().nullable(),
   user_todos: todoGroupSchema.optional().nullable(),
   agent_todos: todoGroupSchema.optional().nullable(),
+  dependency_blockers: dependencyBlockerSummarySchema.optional().nullable(),
   todo_state_file: z.string().optional().nullable(),
 });
 
@@ -139,6 +182,27 @@ export const operatorGateSchema = z.object({
   reason_summary: z.string().optional().nullable(),
   follow_up: z.string().optional().nullable(),
   agent_command: z.string().optional().nullable(),
+});
+
+export const operatorGateResumeContractSchema = z.object({
+  version: z.string().optional().nullable(),
+  goal_id: z.string().optional().nullable(),
+  run_id: z.string().optional().nullable(),
+  gate_id: z.string().optional().nullable(),
+  created_state_ref: z.string().optional().nullable(),
+  created_policy_version: z.string().optional().nullable(),
+  interrupt_payload: z.object({
+    question: z.string().optional().nullable(),
+    choices: z.array(z.string()).optional().default([]),
+  }).optional().nullable(),
+  allowed_decisions: z.array(z.string()).optional().default([]),
+  operator_decision: z.string().optional().nullable(),
+  latest_state_ref: z.string().optional().nullable(),
+  freshness_check: z.string().optional().nullable(),
+  precondition_check: z.string().optional().nullable(),
+  migration_or_rebase_result: z.string().optional().nullable(),
+  resulting_action: z.string().optional().nullable(),
+  validation_after_resume: z.string().optional().nullable(),
 });
 
 export const controllerReadinessGateSchema = z.object({
@@ -214,6 +278,7 @@ export const runRecordSchema = z.object({
   markdown_exists: z.boolean().optional().default(false),
   human_reward: humanRewardSchema.optional().nullable(),
   operator_gate: operatorGateSchema.optional().nullable(),
+  operator_gate_resume_contract: operatorGateResumeContractSchema.optional().nullable(),
   controller_readiness: controllerReadinessSchema.optional().nullable(),
   project_map: projectMapSchema.optional().nullable(),
 });
@@ -281,6 +346,8 @@ export const usageTotalsSchema = z.object({
   quota_spend_slots_7d: z.number().optional().default(0),
   automation_run_count_24h: z.number().optional().default(0),
   automation_run_count_7d: z.number().optional().default(0),
+  progress_signal_run_count_24h: z.number().optional().default(0),
+  progress_signal_run_count_7d: z.number().optional().default(0),
 });
 
 export const usageGoalSchema = usageTotalsSchema.extend({
@@ -295,6 +362,8 @@ const defaultUsageTotals = {
   quota_spend_slots_7d: 0,
   automation_run_count_24h: 0,
   automation_run_count_7d: 0,
+  progress_signal_run_count_24h: 0,
+  progress_signal_run_count_7d: 0,
 };
 
 export const usageSummarySchema = z.object({
@@ -307,12 +376,146 @@ export const usageSummarySchema = z.object({
   goals: z.array(usageGoalSchema).optional().default([]),
 }).optional().nullable();
 
+export const eventLedgerClassCountsSchema = z.object({
+  accounting: z.number().optional().default(0),
+  decision: z.number().optional().default(0),
+  evidence: z.number().optional().default(0),
+  state: z.number().optional().default(0),
+  work: z.number().optional().default(0),
+});
+
+const defaultEventLedgerClassCounts = {
+  accounting: 0,
+  decision: 0,
+  evidence: 0,
+  state: 0,
+  work: 0,
+};
+
+export const eventLedgerTotalsSchema = z.object({
+  events_24h: z.number().optional().default(0),
+  events_7d: z.number().optional().default(0),
+  by_class_24h: eventLedgerClassCountsSchema.optional().default(defaultEventLedgerClassCounts),
+  by_class_7d: eventLedgerClassCountsSchema.optional().default(defaultEventLedgerClassCounts),
+});
+
+export const eventLedgerGoalSchema = eventLedgerTotalsSchema.extend({
+  goal_id: z.string(),
+  latest_event_class: z.string().optional().nullable(),
+  latest_event_at: z.string().optional().nullable(),
+});
+
+const defaultEventLedgerTotals = {
+  events_24h: 0,
+  events_7d: 0,
+  by_class_24h: defaultEventLedgerClassCounts,
+  by_class_7d: defaultEventLedgerClassCounts,
+};
+
+export const eventLedgerSummarySchema = z.object({
+  available: z.boolean().optional().default(true),
+  source: z.string().optional().default("run_history"),
+  generated_at: z.string().optional().nullable(),
+  sample_run_count: z.number().optional().default(0),
+  proxy_note: z.string().optional().nullable(),
+  event_classes: z.array(z.string()).optional().default(["accounting", "decision", "evidence", "state", "work"]),
+  totals: eventLedgerTotalsSchema.optional().default(defaultEventLedgerTotals),
+  goals: z.array(eventLedgerGoalSchema).optional().default([]),
+}).optional().nullable();
+
+export const promotionReadinessSummarySchema = z.object({
+  available: z.boolean().optional().default(false),
+  source: z.string().optional().default("run_history"),
+  goal_id: z.string().optional().nullable(),
+  generated_at: z.string().optional().nullable(),
+  classification: z.string().optional().nullable(),
+  delivery_batch_scale: z.string().optional().nullable(),
+  delivery_outcome: z.string().optional().nullable(),
+  recommended_action: z.string().optional().nullable(),
+  json_exists: z.boolean().optional().default(false),
+  markdown_exists: z.boolean().optional().default(false),
+  freshness_window_hours: z.number().optional().default(24),
+  freshness_status: z.string().optional().nullable(),
+  is_fresh: z.boolean().optional().default(false),
+  requires_readiness_run: z.boolean().optional().default(true),
+  age_seconds: z.number().optional().nullable(),
+  age_hours: z.number().optional().nullable(),
+  freshness_reference_time: z.string().optional().nullable(),
+  sample_run_count: z.number().optional().default(0),
+  proxy_note: z.string().optional().nullable(),
+  reason: z.string().optional().nullable(),
+}).optional().nullable();
+
+export const promotionGateSchema = z.object({
+  ok: z.boolean().optional().default(true),
+  registry: z.string().optional().nullable(),
+  runtime_root: z.string().optional().nullable(),
+  gate: z.string().optional().default("promotion_readiness"),
+  gate_state: z.string().optional().default("warning"),
+  can_promote: z.boolean().optional().default(false),
+  should_warn: z.boolean().optional().default(true),
+  non_blocking: z.boolean().optional().default(true),
+  recommended_action: z.string().optional().nullable(),
+  warning_message: z.string().optional().nullable(),
+  readiness: promotionReadinessSummarySchema.default(null),
+}).optional().nullable();
+
+export const decisionFreshnessSummaryCountsSchema = z.object({
+  decision_count: z.number().optional().default(0),
+  stale_count: z.number().optional().default(0),
+  rebase_required_count: z.number().optional().default(0),
+  fresh_count: z.number().optional().default(0),
+});
+
+export const decisionFreshnessItemSchema = z.object({
+  goal_id: z.string(),
+  decision_kind: z.string().optional().nullable(),
+  decision_at: z.string().optional().nullable(),
+  classification: z.string().optional().nullable(),
+  age_days: z.number().optional().nullable(),
+  stale_by_age: z.boolean().optional().default(false),
+  newer_event_count_7d: z.number().optional().default(0),
+  newer_event_classes_7d: eventLedgerClassCountsSchema.optional().default(defaultEventLedgerClassCounts),
+  freshness_state: z.string().optional().nullable(),
+  requires_decision_point_rebase: z.boolean().optional().default(false),
+  reason: z.string().optional().nullable(),
+});
+
+export const decisionFreshnessSummarySchema = z.object({
+  available: z.boolean().optional().default(true),
+  source: z.string().optional().default("run_history"),
+  generated_at: z.string().optional().nullable(),
+  sample_run_count: z.number().optional().default(0),
+  window_days: z.number().optional().default(7),
+  proxy_note: z.string().optional().nullable(),
+  summary: decisionFreshnessSummaryCountsSchema.optional().default({
+    decision_count: 0,
+    stale_count: 0,
+    rebase_required_count: 0,
+    fresh_count: 0,
+  }),
+  items: z.array(decisionFreshnessItemSchema).optional().default([]),
+}).optional().nullable();
+
+export const statusContractSchema = z.object({
+  schema_version: z.number().optional().default(0),
+  minimum_dashboard_schema_version: z.number().optional().default(2),
+  producer: z.string().optional().nullable(),
+  reload_hint: z.string().optional().nullable(),
+}).optional().default({
+  schema_version: 0,
+  minimum_dashboard_schema_version: 2,
+  producer: null,
+  reload_hint: "scripts/macos-dashboard-launchagent.sh restart",
+});
+
 export const statusPayloadSchema = z.object({
   ok: z.boolean(),
   registry: z.string(),
   runtime_root: z.string(),
   goal_count: z.number(),
   run_count: z.number(),
+  status_contract: statusContractSchema,
   contract: z.object({
     ok: z.boolean(),
     summary: z.object({
@@ -350,6 +553,7 @@ export const statusPayloadSchema = z.object({
     needs_controller: z.number().optional().default(0),
     needs_codex: z.number(),
     watching_external_evidence: z.number(),
+    autonomous_backlog_candidates: autonomousBacklogCandidateSummarySchema.optional().nullable(),
     items: z.array(queueItemSchema),
   }),
   run_history: runHistorySchema.optional().default({
@@ -359,6 +563,10 @@ export const statusPayloadSchema = z.object({
     goals: [],
     recent_runs: [],
   }),
+  event_ledger_summary: eventLedgerSummarySchema.default(null),
+  promotion_readiness_summary: promotionReadinessSummarySchema.default(null),
+  promotion_gate: promotionGateSchema.default(null),
+  decision_freshness_summary: decisionFreshnessSummarySchema.default(null),
   usage_summary: usageSummarySchema.default(null),
 });
 
@@ -388,9 +596,11 @@ export const rewardDryRunResponseSchema = z.object({
 });
 
 export type StatusPayload = z.infer<typeof statusPayloadSchema>;
+export type StatusContract = NonNullable<z.infer<typeof statusContractSchema>>;
 export type QueueItem = z.infer<typeof queueItemSchema>;
 export type HumanReward = z.infer<typeof humanRewardSchema>;
 export type OperatorGate = z.infer<typeof operatorGateSchema>;
+export type OperatorGateResumeContract = z.infer<typeof operatorGateResumeContractSchema>;
 export type ControllerReadiness = z.infer<typeof controllerReadinessSchema>;
 export type AuthorityRegistry = z.infer<typeof authorityRegistrySchema>;
 export type ComputeQuota = z.infer<typeof quotaSchema>;
@@ -403,6 +613,11 @@ export type TodoItem = z.infer<typeof todoItemSchema>;
 export type ReviewMaterial = z.infer<typeof reviewMaterialSchema>;
 export type ProjectMap = z.infer<typeof projectMapSchema>;
 export type GlobalRegistryHealth = z.infer<typeof globalRegistryHealthSchema>;
+export type EventLedgerSummary = NonNullable<z.infer<typeof eventLedgerSummarySchema>>;
+export type PromotionReadinessSummary = NonNullable<z.infer<typeof promotionReadinessSummarySchema>>;
+export type PromotionGate = NonNullable<z.infer<typeof promotionGateSchema>>;
+export type DecisionFreshnessSummary = NonNullable<z.infer<typeof decisionFreshnessSummarySchema>>;
+export type DecisionFreshnessItem = z.infer<typeof decisionFreshnessItemSchema>;
 export type UsageSummary = NonNullable<z.infer<typeof usageSummarySchema>>;
 export type RunGoal = z.infer<typeof runGoalSchema>;
 export type RunRecord = z.infer<typeof runRecordSchema>;

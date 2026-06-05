@@ -70,6 +70,16 @@ def main() -> int:
     )
     assert_contains(
         quota_doc,
+        "`safe_bypass_kind=outcome_floor_recovery`",
+        label="quota doc",
+    )
+    assert_contains(
+        quota_doc,
+        "produce the required ranker/cross-domain evidence artifact",
+        label="quota doc",
+    )
+    assert_contains(
+        quota_doc,
         "`gate_prompt`, `operator_question`, `next_handoff_condition`, `missing_gates`, `user_todo_summary`, or `agent_todo_summary`",
         label="quota doc",
     )
@@ -111,6 +121,16 @@ def main() -> int:
     assert_contains(
         quota_doc,
         "`notify_user_on_open_todo=true`",
+        label="quota doc",
+    )
+    assert_contains(
+        quota_doc,
+        "`promotion_readiness_warning`",
+        label="quota doc",
+    )
+    assert_contains(
+        quota_doc,
+        "report release readiness blockers from the shared run-history projection",
         label="quota doc",
     )
     assert_contains(
@@ -166,6 +186,11 @@ def main() -> int:
     assert_contains(
         quota_doc,
         "if `should_run=false` but `safe_bypass_allowed=true` and the agent actually completes bounded safe-bypass work",
+        label="quota doc",
+    )
+    assert_contains(
+        quota_doc,
+        "spend only after validated ranker/cross-domain evidence or concrete blocker writeback",
         label="quota doc",
     )
 
@@ -297,6 +322,26 @@ def main() -> int:
     assert_contains(
         status_contract,
         "avoid reconstructing owner, gate, next action, stop condition, todo counts, compute state, and latest validation",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "`operator_gate_resume_contract`",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "version=operator_gate_resume_contract_v0",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "re-read current registry, `ACTIVE_GOAL_STATE`, quota, repo dirty/ref snapshot, policy, and run status",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "must not carry the whole repository state back to the old gate",
         label="status contract",
     )
 

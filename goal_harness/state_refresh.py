@@ -19,6 +19,8 @@ DEFAULT_REFRESH_CLASSIFICATION = "state_refreshed"
 DEFAULT_REFRESH_ACTION = "inspect refreshed active goal state and continue the next bounded progress segment"
 RECOMMENDED_ACTION_SECTION_LINE_LIMIT = 16
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
+DELIVERY_BATCH_SCALE_CHOICES = ("test_only", "single_surface", "multi_surface", "implementation")
+DELIVERY_OUTCOME_CHOICES = ("outcome_progress", "surface_only", "outcome_gap", "primary_goal_outcome")
 
 
 def now_local() -> str:
@@ -150,6 +152,8 @@ def build_state_refresh_record(
     recommended_action: str,
     generated_at: str,
     registry_goal: dict[str, Any] | None,
+    delivery_batch_scale: str | None = None,
+    delivery_outcome: str | None = None,
 ) -> dict[str, Any]:
     frontmatter = parse_frontmatter(state_text)
     next_action = extract_section_lines(state_text, "Next Action")
@@ -159,7 +163,7 @@ def build_state_refresh_record(
     authority_sources = []
     if registry_goal and isinstance(registry_goal.get("authority_sources"), list):
         authority_sources = registry_goal.get("authority_sources") or []
-    return {
+    record = {
         "generated_at": generated_at,
         "goal_id": goal_id,
         "classification": classification,
@@ -184,6 +188,11 @@ def build_state_refresh_record(
             "authority_source_count": len(authority_sources),
         },
     }
+    if delivery_batch_scale:
+        record["delivery_batch_scale"] = delivery_batch_scale
+    if delivery_outcome:
+        record["delivery_outcome"] = delivery_outcome
+    return record
 
 
 def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
@@ -197,6 +206,8 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
         f"- appended: `{payload.get('appended')}`",
         f"- goal_id: `{payload.get('goal_id')}`",
         f"- classification: `{payload.get('classification')}`",
+        f"- delivery_batch_scale: `{payload.get('delivery_batch_scale')}`",
+        f"- delivery_outcome: `{payload.get('delivery_outcome')}`",
         f"- generated_at: `{payload.get('generated_at')}`",
         f"- state_file: `{state.get('path')}`",
         f"- state_updated_at: `{frontmatter.get('updated_at')}`",
@@ -243,11 +254,19 @@ def refresh_state_run(
     state_file: Path | None,
     classification: str,
     recommended_action: str | None,
+    delivery_batch_scale: str | None = None,
+    delivery_outcome: str | None = None,
     dry_run: bool,
     sync_global: bool = True,
 ) -> dict[str, Any]:
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     validate_public_safe_text("classification", classification)
+    if delivery_batch_scale and delivery_batch_scale not in DELIVERY_BATCH_SCALE_CHOICES:
+        raise ValueError(
+            "delivery_batch_scale must be one of: " + ", ".join(DELIVERY_BATCH_SCALE_CHOICES)
+        )
+    if delivery_outcome and delivery_outcome not in DELIVERY_OUTCOME_CHOICES:
+        raise ValueError("delivery_outcome must be one of: " + ", ".join(DELIVERY_OUTCOME_CHOICES))
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
     registry_goal, resolved_project, resolved_state_file = resolve_goal_state(
@@ -270,6 +289,8 @@ def refresh_state_run(
         recommended_action=action,
         generated_at=generated_at,
         registry_goal=registry_goal,
+        delivery_batch_scale=delivery_batch_scale,
+        delivery_outcome=delivery_outcome,
     )
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
@@ -286,6 +307,10 @@ def refresh_state_run(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
+    if delivery_batch_scale:
+        index_record["delivery_batch_scale"] = delivery_batch_scale
+    if delivery_outcome:
+        index_record["delivery_outcome"] = delivery_outcome
     payload = {
         "ok": True,
         "dry_run": dry_run,

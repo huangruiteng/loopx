@@ -7,7 +7,13 @@
     "build": "tsc --noEmit && vite build",
     "dev": "vite --host 127.0.0.1",
     "preview": "vite preview --host 127.0.0.1",
-    "smoke:action-packet": "rm -rf /tmp/goal-harness-action-packet-smoke && tsc --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --strict --outDir /tmp/goal-harness-action-packet-smoke smoke/action-packet-smoke.ts src/data/action-packet.ts && node /tmp/goal-harness-action-packet-smoke/smoke/action-packet-smoke.js"
+    "smoke:action-packet": "rm -rf /tmp/goal-harness-action-packet-smoke && tsc --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --strict --outDir /tmp/goal-harness-action-packet-smoke smoke/action-packet-smoke.ts src/data/action-packet.ts && node /tmp/goal-harness-action-packet-smoke/smoke/action-packet-smoke.js",
+    "smoke:demo-readiness": "python3 ../../examples/dashboard-demo-readiness-smoke.py",
+    "smoke:home-browser": "node ../../examples/dashboard-home-browser-smoke.mjs",
+    "smoke:home-route": "rm -rf /tmp/goal-harness-home-route-smoke && tsc --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --strict --outDir /tmp/goal-harness-home-route-smoke smoke/home-route-smoke.ts && node /tmp/goal-harness-home-route-smoke/home-route-smoke.js",
+    "smoke:ops-decision-freshness": "node ../../examples/dashboard-ops-decision-freshness-smoke.mjs",
+    "smoke:promotion-readiness": "node ../../examples/dashboard-promotion-readiness-browser-smoke.mjs",
+    "smoke:usage-progress": "rm -rf /tmp/goal-harness-usage-progress-smoke && tsc --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --strict --outDir /tmp/goal-harness-usage-progress-smoke smoke/usage-progress-smoke.ts && node /tmp/goal-harness-usage-progress-smoke/usage-progress-smoke.js"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.170.10",

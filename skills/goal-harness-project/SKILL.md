@@ -83,9 +83,23 @@ action". If `agent_todo_summary.open_count > 0`, use it as the project agent's
 safe follow-up checklist instead of mining chat history or an overlong Next
 Action.
 
+If the response has `safe_bypass_kind=outcome_floor_recovery` or
+`heartbeat_recommendation.recommended_mode=outcome_floor_recovery`, the outcome
+floor blocks surface-only delivery but permits one bounded recovery attempt:
+produce the required ranker/cross-domain evidence artifact named by
+`quota.must_advance`, or write back the concrete blocker that prevents that
+artifact. Avoid summary/queue/contract propagation and synthetic-only test
+chains. Spend exactly once only after validated evidence/blocker writeback.
+
 This guard is only a compute-allocation check. It does not grant write
 permission, bypass operator gates, or replace run-bound human reward. Operator
 gates block the gated delivery path, not unrelated safe steering work.
+For an eligible current goal, dependency or sibling-goal todos must not consume the whole eligible turn.
+Record or surface those todos as dependency blockers,
+but continue the steering audit and choose a gate-independent
+P0/P1/P2 candidate for the current goal when one exists. Stop before delivery
+only when the open user/owner todo belongs to the current goal's guard payload
+or project asset and blocks the selected delivery path.
 Routine public repo publication is a boundary decision, not a standing operator
 gate: when the active state permits the step, validation passes, and the
 public/private boundary scan is clean, commit, push, and PR creation can proceed
@@ -130,27 +144,26 @@ When a user or controller wants a recurring Codex App heartbeat for a connected
 goal, prefer the generator instead of hand-copying the quota lifecycle:
 
 ```bash
-goal-harness heartbeat-prompt \
-  --goal-id <STABLE_GOAL_ID> \
-  --active-state <ACTIVE_GOAL_STATE_PATH>
+goal-harness heartbeat-prompt --goal-id <STABLE_GOAL_ID>
 ```
 
 For live Codex App automations, prefer the compact body after reviewing the
 full generated contract:
 
 ```bash
-goal-harness heartbeat-prompt --compact \
-  --goal-id <STABLE_GOAL_ID> \
-  --active-state <ACTIVE_GOAL_STATE_PATH>
+goal-harness heartbeat-prompt --compact --goal-id <STABLE_GOAL_ID>
 ```
 
 If the installed automation body still needs to be smaller, use the brief body:
 
 ```bash
-goal-harness heartbeat-prompt --brief \
-  --goal-id <STABLE_GOAL_ID> \
-  --active-state <ACTIVE_GOAL_STATE_PATH>
+goal-harness heartbeat-prompt --brief --goal-id <STABLE_GOAL_ID>
 ```
+
+For connected goals, omit `--active-state`; the CLI resolves the active state
+from the registry goal `state_file`, which keeps installed automations from
+pinning a stale path. Pass `--active-state <ACTIVE_GOAL_STATE_PATH>` only for
+detached state files, migration checks, or compatibility tests.
 
 Copy the generated task body into the Codex App heartbeat automation. The full
 body is the audit source and compatibility default; the compact body is the
@@ -348,6 +361,19 @@ state-only refresh:
 
 ```bash
 goal-harness refresh-state --goal-id <STABLE_GOAL_ID>
+```
+
+If that refresh records a validated progress artifact rather than a pure
+state-only note, include a public-safe classification and explicit delivery
+hints so status, review packets, and quota guards do not infer scale/outcome
+from the classification name:
+
+```bash
+goal-harness refresh-state \
+  --goal-id <STABLE_GOAL_ID> \
+  --classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION> \
+  --delivery-batch-scale multi_surface \
+  --delivery-outcome outcome_progress
 ```
 
 This fixes stale dashboards where the latest run still shows an old

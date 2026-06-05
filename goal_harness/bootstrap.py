@@ -240,6 +240,10 @@ def bootstrap_project(
     execution_minimum_scale: str | None = None,
     execution_must_include: list[str] | None = None,
     execution_small_streak_threshold: int | None = None,
+    execution_outcome_markers: list[str] | None = None,
+    execution_surface_only_hints: list[str] | None = None,
+    execution_surface_streak_threshold: int | None = None,
+    execution_outcome_must_advance: list[str] | None = None,
     force: bool,
     dry_run: bool,
     sync_global: bool,
@@ -260,6 +264,10 @@ def bootstrap_project(
         minimum_scale=execution_minimum_scale,
         must_include=execution_must_include,
         small_scale_streak_threshold=execution_small_streak_threshold,
+        outcome_markers=execution_outcome_markers,
+        surface_only_hints=execution_surface_only_hints,
+        surface_streak_threshold=execution_surface_streak_threshold,
+        outcome_must_advance=execution_outcome_must_advance,
     )
 
     registry = read_json_if_exists(registry_path)

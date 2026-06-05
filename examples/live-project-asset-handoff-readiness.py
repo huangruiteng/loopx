@@ -15,7 +15,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_PATH_PATTERN = re.compile(r"(?<!<)/(?:Users|Volumes|var/folders|tmp|private/tmp)/[^\s`'\"<>]+")
 SECRET_PATTERN = re.compile(
-    r"(?i)(?:bearer\s+[a-z0-9._~+/=-]{16,}|ak[a-z0-9_=-]{12,}|sk[a-z0-9_=-]{12,}|token[=:][^\s`'\"<>]{12,})"
+    r"(?i)(?:\bbearer\s+[a-z0-9._~+/=-]{16,}|(?<![a-z0-9_])(?:ak|sk)[-_=:][a-z0-9_=-]{10,}|\btoken\s*[=:]\s*[^\s`'\"<>]{12,})"
 )
 
 

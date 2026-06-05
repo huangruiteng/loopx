@@ -4,6 +4,12 @@
   "runtime_root": "./runtime",
   "goal_count": 4,
   "run_count": 3,
+  "status_contract": {
+    "schema_version": 2,
+    "minimum_dashboard_schema_version": 2,
+    "producer": "goal-harness status",
+    "reload_hint": "scripts/macos-dashboard-launchagent.sh restart"
+  },
   "usage_summary": {
     "available": true,
     "source": "run_history",
@@ -16,7 +22,9 @@
       "quota_spend_slots_24h": 0,
       "quota_spend_slots_7d": 0,
       "automation_run_count_24h": 0,
-      "automation_run_count_7d": 0
+      "automation_run_count_7d": 0,
+      "progress_signal_run_count_24h": 3,
+      "progress_signal_run_count_7d": 3
     },
     "goals": [
       {
@@ -27,6 +35,8 @@
         "quota_spend_slots_7d": 0,
         "automation_run_count_24h": 0,
         "automation_run_count_7d": 0,
+        "progress_signal_run_count_24h": 2,
+        "progress_signal_run_count_7d": 2,
         "project_share_24h": 0.667
       },
       {
@@ -37,7 +47,173 @@
         "quota_spend_slots_7d": 0,
         "automation_run_count_24h": 0,
         "automation_run_count_7d": 0,
+        "progress_signal_run_count_24h": 1,
+        "progress_signal_run_count_7d": 1,
         "project_share_24h": 0.333
+      }
+    ]
+  },
+  "event_ledger_summary": {
+    "available": true,
+    "source": "run_history",
+    "generated_at": "2026-06-01T00:10:00+00:00",
+    "sample_run_count": 3,
+    "proxy_note": "append-only run-history projection; compact event-class counts only",
+    "event_classes": [
+      "accounting",
+      "decision",
+      "evidence",
+      "state",
+      "work"
+    ],
+    "totals": {
+      "events_24h": 3,
+      "events_7d": 3,
+      "by_class_24h": {
+        "accounting": 0,
+        "decision": 1,
+        "evidence": 1,
+        "state": 0,
+        "work": 1
+      },
+      "by_class_7d": {
+        "accounting": 0,
+        "decision": 1,
+        "evidence": 1,
+        "state": 0,
+        "work": 1
+      }
+    },
+    "goals": [
+      {
+        "goal_id": "complex-project-main-control",
+        "events_24h": 2,
+        "events_7d": 2,
+        "by_class_24h": {
+          "accounting": 0,
+          "decision": 1,
+          "evidence": 0,
+          "state": 0,
+          "work": 1
+        },
+        "by_class_7d": {
+          "accounting": 0,
+          "decision": 1,
+          "evidence": 0,
+          "state": 0,
+          "work": 1
+        },
+        "latest_event_class": "decision",
+        "latest_event_at": "2026-05-31T21:15:00+00:00"
+      },
+      {
+        "goal_id": "experiment-controller-goal",
+        "events_24h": 1,
+        "events_7d": 1,
+        "by_class_24h": {
+          "accounting": 0,
+          "decision": 0,
+          "evidence": 1,
+          "state": 0,
+          "work": 0
+        },
+        "by_class_7d": {
+          "accounting": 0,
+          "decision": 0,
+          "evidence": 1,
+          "state": 0,
+          "work": 0
+        },
+        "latest_event_class": "evidence",
+        "latest_event_at": "2026-05-31T20:44:00+00:00"
+      }
+    ]
+  },
+  "promotion_readiness_summary": {
+    "available": true,
+    "source": "run_history",
+    "goal_id": "goal-harness-meta",
+    "generated_at": "2026-06-01T00:08:00+00:00",
+    "classification": "canary_promotion_readiness_smoke_group",
+    "delivery_batch_scale": "multi_surface",
+    "delivery_outcome": "primary_goal_outcome",
+    "recommended_action": "Run the promotion readiness smoke before release promotion.",
+    "json_exists": true,
+    "markdown_exists": true,
+    "freshness_window_hours": 24,
+    "freshness_status": "fresh",
+    "is_fresh": true,
+    "requires_readiness_run": false,
+    "age_seconds": 120,
+    "age_hours": 0.03,
+    "freshness_reference_time": "2026-06-01T00:10:00+00:00",
+    "sample_run_count": 1,
+    "proxy_note": "canary promotion-readiness projection from append-only run history; exact evidence stays in run artifacts"
+  },
+  "promotion_gate": {
+    "ok": true,
+    "registry": ".goal-harness/registry.json",
+    "runtime_root": "./runtime",
+    "gate": "promotion_readiness",
+    "gate_state": "ready",
+    "can_promote": true,
+    "should_warn": false,
+    "non_blocking": true,
+    "recommended_action": "promotion readiness is fresh",
+    "readiness": {
+      "available": true,
+      "source": "run_history",
+      "goal_id": "goal-harness-meta",
+      "generated_at": "2026-06-01T00:08:00+00:00",
+      "classification": "canary_promotion_readiness_smoke_group",
+      "delivery_batch_scale": "multi_surface",
+      "delivery_outcome": "primary_goal_outcome",
+      "recommended_action": "Run the promotion readiness smoke before release promotion.",
+      "json_exists": true,
+      "markdown_exists": true,
+      "freshness_window_hours": 24,
+      "freshness_status": "fresh",
+      "is_fresh": true,
+      "requires_readiness_run": false,
+      "age_seconds": 120,
+      "age_hours": 0.03,
+      "freshness_reference_time": "2026-06-01T00:10:00+00:00",
+      "sample_run_count": 1,
+      "proxy_note": "canary promotion-readiness projection from append-only run history; exact evidence stays in run artifacts"
+    }
+  },
+  "decision_freshness_summary": {
+    "available": true,
+    "source": "run_history",
+    "generated_at": "2026-06-01T00:10:00+00:00",
+    "sample_run_count": 3,
+    "window_days": 7,
+    "proxy_note": "checkpointed decision freshness projection; rebase old decisions at the decision point before reuse",
+    "summary": {
+      "decision_count": 1,
+      "stale_count": 0,
+      "rebase_required_count": 1,
+      "fresh_count": 0
+    },
+    "items": [
+      {
+        "goal_id": "complex-project-main-control",
+        "decision_kind": "operator_gate",
+        "decision_at": "2026-05-31T21:15:00+00:00",
+        "classification": "operator_gate_approved",
+        "age_days": 0.13,
+        "stale_by_age": false,
+        "newer_event_count_7d": 1,
+        "newer_event_classes_7d": {
+          "accounting": 0,
+          "decision": 0,
+          "evidence": 0,
+          "state": 0,
+          "work": 1
+        },
+        "freshness_state": "rebase_required",
+        "requires_decision_point_rebase": true,
+        "reason": "newer sampled events exist after decision; rebase at decision point"
       }
     ]
   },

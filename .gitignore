@@ -15,5 +15,6 @@ dist/
 # Project-local private state. Keep real project paths, task ids, tokens,
 # internal logs, and active goal state outside the public repository.
 .local/
+.goal-harness/
 .goal-wrapper.local/
 runtime/

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -22,9 +23,9 @@ PROJECT_SKILL = REPO_ROOT / "skills" / "goal-harness-project" / "SKILL.md"
 GOAL_ID = "public-heartbeat-goal"
 ACTIVE_STATE = Path("/tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md")
 INTERFACE_BUDGET_CHARS = {
-    "full": 10_000,
-    "compact": 4_500,
-    "brief": 2_500,
+    "full": 10_800,
+    "compact": 4_900,
+    "brief": 2_600,
 }
 PROJECT_SPECIFIC_PROMPT_LEAKS = (
     "agent-harness-side-bypass",
@@ -72,6 +73,7 @@ def main() -> int:
     payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE)
     compact_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, compact=True)
     brief_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, brief=True)
+    registry_default_payload = build_heartbeat_prompt(goal_id=GOAL_ID, compact=True)
     assert_prompt_budget("full", str(payload["task_body"]))
     assert_prompt_budget("compact", str(compact_payload["task_body"]))
     assert_prompt_budget("brief", str(brief_payload["task_body"]))
@@ -88,9 +90,11 @@ def main() -> int:
     ), payload
     assert compact_payload["compact"] is True, compact_payload
     assert compact_payload["brief"] is False, compact_payload
+    assert payload["active_state_source"] == "explicit", payload
+    assert payload["resolved_active_state"] == str(ACTIVE_STATE), payload
     assert compact_payload["quota_guard_command"] == payload["quota_guard_command"], compact_payload
     assert compact_payload["quota_spend_command"] == payload["quota_spend_command"], compact_payload
-    assert len(str(compact_payload["task_body"])) < len(str(payload["task_body"])) * 0.45, (
+    assert len(str(compact_payload["task_body"])) < len(str(payload["task_body"])) * 0.47, (
         len(str(compact_payload["task_body"])),
         len(str(payload["task_body"])),
     )
@@ -102,23 +106,40 @@ def main() -> int:
         'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
         "state=operator_gate",
         "notify_user_on_open_todo=true",
-	        "safe_bypass_allowed=true",
-	        "heartbeat_recommendation",
-	        "goal_boundary",
-	        "delivery_batch_scale",
-	        "handoff_delivery_contract",
+        "safe_bypass_allowed=true",
+        "safe_bypass_kind=outcome_floor_recovery",
+        "ranker/cross-domain evidence artifact",
+        "status/log/metric/marker poll",
+        "heartbeat_recommendation",
+        "goal_boundary",
+        "delivery_batch_scale",
+        "delivery_outcome",
+        "post_handoff_outcome_gap_streak",
+        "handoff_delivery_contract",
         "Legacy/raw fallback is not owner/gate/stop authority",
         "run_first_read_only_map",
         "mapped_noop_if_unchanged",
         "steering audit",
-        "product-bottleneck lens",
+        "bottleneck lens",
         "no-progress self-stop check",
-        "Public-safe commit, push, and PR creation may proceed",
+        "Public-safe commit/push/PR may proceed",
         "goal-harness todo add --goal-id public-heartbeat-goal --role user|agent",
         'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
+        "validated progress artifacts pass explicit `--delivery-batch-scale` and `--delivery-outcome`",
         "Do not append spend for quiet skips",
     ):
         assert phrase in compact_task, phrase
+    registry_default_task = normalized(str(registry_default_payload["task_body"]))
+    assert registry_default_payload["active_state"] == "the registry-declared active state", registry_default_payload
+    assert registry_default_payload["active_state_source"] == "registry", registry_default_payload
+    assert registry_default_payload["expanded_prompt_command"] == (
+        "goal-harness heartbeat-prompt --goal-id public-heartbeat-goal"
+    ), registry_default_payload
+    assert registry_default_payload["compact_prompt_command"] == (
+        "goal-harness heartbeat-prompt --compact --goal-id public-heartbeat-goal"
+    ), registry_default_payload
+    assert "using `the registry-declared active state`" in registry_default_task, registry_default_task
+    assert "--active-state" not in registry_default_payload["expanded_prompt_command"], registry_default_payload
     assert brief_payload["brief"] is True, brief_payload
     assert brief_payload["compact"] is False, brief_payload
     assert brief_payload["quota_guard_command"] == payload["quota_guard_command"], brief_payload
@@ -130,16 +151,24 @@ def main() -> int:
     brief_task = normalized(str(brief_payload["task_body"]))
     for phrase in (
         "Brief installed Goal Harness heartbeat",
+        "Thin dispatcher",
+        "pull details on demand",
         "goal-harness heartbeat-prompt --compact --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
         "Preflight and quota guard",
         'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
-        "gate or open user todo",
+        "Gate/open todo ->",
+        "status/log/metric/marker poll",
+        "safe_bypass_kind=outcome_floor_recovery",
+        "ranker/cross-domain evidence recovery",
+        "state priority slice",
+        "guard payload",
+        "status --limit 3",
+        "review-packet --handoff-only",
         "heartbeat_recommendation",
         "goal_boundary",
-	        "state/status queue/project_asset",
-        "steering audit with product-bottleneck lens",
-        "choose one bounded verifiable progress segment",
-        "goal-harness todo add",
+        "bounded segment/batch",
+        "validate/writeback/todos",
+        "explicit delivery scale/outcome for progress artifacts",
         'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
         "No spend for quiet skips",
     ):
@@ -180,11 +209,18 @@ def main() -> int:
         "listing at most three first_open_items",
         "open_todo_notify_reason",
         "done, defer/not now, or a new evidence link/date/conclusion",
-        "quota spend for that blocker-push turn",
+        "do not append quota spend",
         "safe_bypass_allowed=true",
         "gate blocks only the gated delivery path",
         "one bounded safe-bypass step",
         "that report must include the existing open user todos",
+        "safe_bypass_kind=outcome_floor_recovery",
+        "ranker/cross-domain evidence artifact",
+        "explicitly a monitor",
+        "status/log/metric/marker surfaces",
+        "New eval/fail/complete/blocker",
+        "state/board/ledger",
+        "Still do not launch/stop/restart/sync/design code",
         "DONT_NOTIFY",
         "should_run=true",
         "When you inspect current Goal Harness routing",
@@ -194,8 +230,12 @@ def main() -> int:
         "run_history.latest_runs as evidence and drill-down only",
         "do not decide whether a gate is pending or approved from latest runs alone",
         "goal_boundary",
-        "If an open user/owner todo is the current blocker that can unlock a gate, focus_wait, or external-evidence wait",
-        "no quota spend for that blocker-push turn",
+        "Stop for an open user/owner todo only when it belongs to this goal's guard payload or current project asset",
+        "Dependency or sibling-goal todos found in `attention_queue.items` should be recorded as dependency blockers",
+        "must not consume the whole eligible turn",
+        "choose a gate-independent P0/P1/P2 candidate for this goal when one exists",
+        "then use the blocker-push pattern above",
+        "do not append quota spend",
         "heartbeat_recommendation",
         "recommended_mode=run_first_read_only_map",
         "real read-only map, not another dry-run",
@@ -204,8 +244,8 @@ def main() -> int:
         "stop_if_unchanged=true",
         "no new user instruction, owner evidence, agent todo, stale source, or safe handoff",
         "return quiet `DONT_NOTIFY`: do not run, edit, or spend",
-	        "Check `delivery_batch_scale` / `handoff_delivery_contract`; for",
-	        "repeated-small, obey contract",
+        "Check `delivery_batch_scale`, `delivery_outcome`,",
+        "repeated-small or surface-only loops",
         "Run a short steering audit before choosing work",
         "list at least three plausible next-action candidates across different P0/P1/P2 lanes",
         "apply a continuation check",
@@ -234,9 +274,14 @@ def main() -> int:
         "docs/project-agent-todo-contract.md",
         'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute',
         "goal-harness refresh-state --goal-id <GOAL_ID>",
+        "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
+        "--delivery-batch-scale multi_surface",
+        "--delivery-outcome outcome_progress",
         "append exactly one",
         "Do not append spend for quiet should_run=false skips, preflight failures, pure dry-run previews, or duplicate accounting attempts",
         "safe_bypass_allowed=true and you actually completed a bounded safe-bypass step",
+        "safe_bypass_kind=outcome_floor_recovery",
+        "ranker/cross-domain evidence artifact",
         "Return a compact final report",
     )
     compact_doc = normalized(doc)
@@ -267,11 +312,16 @@ def main() -> int:
         "listing at most three `first_open_items`",
         "open_todo_notify_reason",
         "new evidence link/date/conclusion",
-        "quota spend for that blocker-push turn",
+        "do not append quota spend",
         "safe_bypass_allowed=true",
         "gate blocks only the gated delivery path",
         "one bounded safe-bypass step",
         "that report must include the existing open user todos",
+        "explicitly a monitor",
+        "status/log/metric/marker surfaces",
+        "New eval/fail/complete/blocker",
+        "state/board/ledger",
+        "Still do not launch/stop/restart/sync/design code",
         "DONT_NOTIFY",
         "When you inspect current Goal Harness routing",
         "attention_queue.items",
@@ -280,8 +330,8 @@ def main() -> int:
         "run_history.latest_runs` as evidence and drill-down only",
         "do not decide whether a gate is pending or approved from latest runs alone",
         "goal_boundary",
-        "current blocker that can unlock a gate, `focus_wait`, or external-evidence wait",
-        "no quota spend for that blocker-push turn",
+        "then use the blocker-push pattern above",
+        "do not append quota spend",
         "heartbeat_recommendation",
         "recommended_mode=run_first_read_only_map",
         "real read-only map, not another dry-run",
@@ -290,8 +340,8 @@ def main() -> int:
         "stop_if_unchanged=true",
         "no new user instruction, owner evidence, agent todo, stale source, or safe handoff",
         "return quiet `DONT_NOTIFY`: do not run, edit, or spend",
-	        "Check `delivery_batch_scale` / `handoff_delivery_contract`; for",
-	        "repeated-small, obey contract",
+        "Check `delivery_batch_scale`, `delivery_outcome`,",
+        "repeated-small or surface-only loops",
         "Run a short steering audit before choosing work",
         "list at least three plausible next-action candidates across different P0/P1/P2 lanes",
         "apply a continuation check",
@@ -314,7 +364,13 @@ def main() -> int:
         "docs/project-agent-todo-contract.md",
         'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
         "goal-harness refresh-state --goal-id public-heartbeat-goal",
+        "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
+        "--delivery-batch-scale multi_surface",
+        "--delivery-outcome outcome_progress",
+        "readiness does not infer from classification names",
         "Do not append spend for quiet `should_run=false` skips",
+        "safe_bypass_kind=outcome_floor_recovery",
+        "ranker/cross-domain evidence artifact",
     ):
         assert phrase in compact_generated, phrase
 
@@ -332,12 +388,15 @@ def main() -> int:
             "notify_user_on_open_todo=true",
             "blocker-push opportunity",
             "safe_bypass_allowed=true",
+            "explicitly a monitor",
+            "status/log/metric/marker surfaces",
+            "New eval/fail/complete/blocker",
             "If the result says should_run=true",
             "When you inspect current Goal Harness routing",
             "attention_queue.items",
             "run_history.latest_runs",
             "Also inspect goal_boundary",
-            "same blocker-push opportunity",
+            "then use the blocker-push pattern above",
             "heartbeat_recommendation",
             "recommended_mode=run_first_read_only_map",
             "recommended_mode=mapped_noop_if_unchanged",
@@ -356,15 +415,21 @@ def main() -> int:
     assert "docs/heartbeat-automation-prompt.md" in readme, readme
     assert "goal-harness heartbeat-prompt" in readme, readme
     assert "goal-harness heartbeat-prompt --compact" in readme, readme
+    assert "goal-harness-canary" in readme, readme
+    assert "release snapshot" in readme, readme
     assert "heartbeat_recommendation" in readme, readme
     assert "do not hand-edit one-off automation prompt branches" in normalized(readme), readme
     assert "goal-harness heartbeat-prompt" in doc, doc
     assert "--compact" in doc, doc
     assert "--brief" in doc, doc
+    assert "--cli-bin goal-harness-canary" in doc, doc
     assert "Do not hand-edit per-project lifecycle branches" in doc, doc
     assert "goal-harness heartbeat-prompt" in integration_doc, integration_doc
     assert "goal-harness heartbeat-prompt --compact" in integration_doc, integration_doc
     assert "goal-harness heartbeat-prompt --brief" in integration_doc, integration_doc
+    assert "goal-harness-canary heartbeat-prompt" in integration_doc, integration_doc
+    assert "--cli-bin goal-harness-canary" in integration_doc, integration_doc
+    assert "local release snapshot" in integration_doc, integration_doc
     assert "visible goal text can stay short" in integration_doc, integration_doc
     assert "shares the same quota, gate," in integration_doc, integration_doc
     assert "steering-audit, writeback, refresh, and spend lifecycle" in integration_doc, integration_doc
@@ -383,12 +448,18 @@ def main() -> int:
     assert "Set Up Recurring Heartbeats" in project_skill, project_skill
     assert "visible goal text short" in project_skill, project_skill
     assert "--source heartbeat --execute" in project_skill, project_skill
+    assert "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in project_skill, project_skill
+    assert "--delivery-batch-scale multi_surface" in project_skill, project_skill
+    assert "--delivery-outcome outcome_progress" in project_skill, project_skill
+    assert "do not infer scale/outcome from the classification name" in normalized(project_skill), project_skill
     assert "no-progress self-stop guard" in project_skill, project_skill
     assert "consecutive eligible heartbeat turns" in project_skill, project_skill
     assert "Routine public repo publication is a boundary decision" in project_skill, project_skill
     assert "Do not reintroduce a user gate for public-safe publication itself" in project_skill, project_skill
     assert "notify_user_on_open_todo=true" in project_skill, project_skill
     assert "blocker-push `NOTIFY`" in project_skill, project_skill
+    assert "sibling-goal todos" in project_skill, project_skill
+    assert "must not consume the whole eligible turn" in project_skill, project_skill
     assert "heartbeat_recommendation" in project_skill, project_skill
     assert "mapped_noop_if_unchanged" in project_skill, project_skill
     assert "legacy/raw fallback" in project_skill, project_skill
@@ -417,6 +488,8 @@ def main() -> int:
     assert cli_payload["task_body"] == payload["task_body"], cli_payload
     assert cli_payload["compact"] is False, cli_payload
     assert cli_payload["brief"] is False, cli_payload
+    assert cli_payload["cli_bin"] == "goal-harness", cli_payload
+    assert cli_payload["active_state_source"] == "explicit", cli_payload
 
     cli_compact_json = subprocess.run(
         [
@@ -463,6 +536,93 @@ def main() -> int:
     cli_brief_payload = json.loads(cli_brief_json.stdout)
     assert cli_brief_payload["task_body"] == brief_payload["task_body"], cli_brief_payload
     assert cli_brief_payload["brief"] is True, cli_brief_payload
+    assert cli_brief_payload["cli_bin"] == "goal-harness", cli_brief_payload
+
+    cli_canary_json = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "goal_harness.cli",
+            "--format",
+            "json",
+            "heartbeat-prompt",
+            "--goal-id",
+            GOAL_ID,
+            "--active-state",
+            str(ACTIVE_STATE),
+            "--brief",
+            "--cli-bin",
+            "goal-harness-canary",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    cli_canary_payload = json.loads(cli_canary_json.stdout)
+    assert cli_canary_payload["cli_bin"] == "goal-harness-canary", cli_canary_payload
+    assert "goal-harness-canary doctor" in cli_canary_payload["cli_preflight"], cli_canary_payload
+    assert "goal-harness-canary --format json" in cli_canary_payload["quota_guard_command"], cli_canary_payload
+    assert "goal-harness-canary heartbeat-prompt --compact" in cli_canary_payload["task_body"], cli_canary_payload
+
+    with tempfile.TemporaryDirectory() as raw_tmp:
+        root = Path(raw_tmp)
+        project = root / "project"
+        state_file = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
+        registry_path = project / ".goal-harness" / "registry.json"
+        state_file.parent.mkdir(parents=True)
+        registry_path.parent.mkdir(parents=True)
+        state_file.write_text("# Active State\n", encoding="utf-8")
+        registry_path.write_text(
+            json.dumps(
+                {
+                    "goals": [
+                        {
+                            "id": GOAL_ID,
+                            "domain": "smoke",
+                            "status": "active",
+                            "repo": str(project),
+                            "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
+                            "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        cli_registry_default_json = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "goal_harness.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(registry_path),
+                "heartbeat-prompt",
+                "--goal-id",
+                GOAL_ID,
+                "--brief",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        cli_registry_default_payload = json.loads(cli_registry_default_json.stdout)
+        assert cli_registry_default_payload["brief"] is True, cli_registry_default_payload
+        assert cli_registry_default_payload["active_state"] == "the registry-declared active state", (
+            cli_registry_default_payload
+        )
+        assert cli_registry_default_payload["active_state_source"].startswith("registry:"), cli_registry_default_payload
+        assert cli_registry_default_payload["resolved_active_state"] == str(state_file), cli_registry_default_payload
+        assert cli_registry_default_payload["expanded_prompt_command"] == (
+            "goal-harness heartbeat-prompt --goal-id public-heartbeat-goal"
+        ), cli_registry_default_payload
+        assert "goal-harness heartbeat-prompt --compact --goal-id public-heartbeat-goal" in (
+            cli_registry_default_payload["task_body"]
+        ), cli_registry_default_payload
+        assert "--active-state" not in cli_registry_default_payload["task_body"], cli_registry_default_payload
 
     cli_markdown = subprocess.run(
         [

@@ -82,6 +82,30 @@
           "state_writeback"
         ],
         "spend_rule": "spend_only_after_artifact_validation_writeback",
+        "outcome_floor": {
+          "required_when": "after_surface_progress_streak",
+          "surface_streak_threshold": 3,
+          "outcome_markers": [
+            "eval_metric",
+            "experiment",
+            "macro_evidence",
+            "evidence_segment",
+            "adapter_proof"
+          ],
+          "surface_only_hints": [
+            "forecast",
+            "runbook",
+            "queue",
+            "fields"
+          ],
+          "must_advance": [
+            "primary_goal_outcome"
+          ],
+          "avoid": [
+            "surface_only_progress_loop"
+          ],
+          "if_unavailable": "report_blocker_without_spend"
+        },
         "degradation_policy": {
           "small_scale_streak_threshold": 2,
           "on_degradation": "require_blocker_or_expand_next_batch"

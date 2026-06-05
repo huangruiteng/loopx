@@ -957,6 +957,71 @@ def assert_goal_boundary_in_should_run() -> None:
     assert "goal_boundary_requires_approval:" in markdown, markdown
 
 
+def assert_decision_freshness_warning_in_should_run() -> None:
+    goal_id = "stale-gate-reuse"
+    stale_goal = goal(goal_id, compute=1.0)
+    stale_item = attention(goal_id, compute=1.0)
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 3,
+        "attention_queue": {"items": [stale_item]},
+        "run_history": {"goals": [stale_goal]},
+        "decision_freshness_summary": {
+            "available": True,
+            "source": "run_history",
+            "sample_run_count": 3,
+            "window_days": 7,
+            "summary": {
+                "decision_count": 1,
+                "stale_count": 1,
+                "rebase_required_count": 1,
+                "fresh_count": 0,
+            },
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "decision_kind": "operator_gate",
+                    "decision_at": "2026-01-01T00:00:00+00:00",
+                    "classification": "operator_gate_approved",
+                    "age_days": 8.0,
+                    "stale_by_age": True,
+                    "newer_event_count_7d": 2,
+                    "freshness_state": "stale_rebase_required",
+                    "requires_decision_point_rebase": True,
+                    "reason": "decision older than freshness window and newer sampled events exist",
+                },
+                {
+                    "goal_id": "other-goal",
+                    "decision_kind": "human_reward",
+                    "decision_at": "2026-01-02T00:00:00+00:00",
+                    "age_days": 1.0,
+                    "newer_event_count_7d": 1,
+                    "freshness_state": "rebase_required",
+                    "requires_decision_point_rebase": True,
+                },
+            ],
+        },
+    }
+    decision = build_quota_should_run(payload, goal_id=goal_id)
+    markdown = render_quota_should_run_markdown(decision)
+
+    assert decision["should_run"] is True, decision
+    assert decision["state"] == "eligible", decision
+    warning = decision["decision_freshness_warning"]
+    assert warning["rebase_required_count"] == 1, warning
+    assert warning["global_rebase_required_count"] == 1, warning
+    assert warning["global_stale_count"] == 1, warning
+    assert warning["items"][0]["decision_kind"] == "operator_gate", warning
+    assert warning["items"][0]["freshness_state"] == "stale_rebase_required", warning
+    assert "decision_freshness_warning: rebase_required=1 window_days=7 source=run_history" in markdown, markdown
+    assert "decision_freshness_action: decision-point rebase required" in markdown, markdown
+    assert "decision_freshness_item: kind=operator_gate state=stale_rebase_required" in markdown, markdown
+    assert "other-goal" not in markdown, markdown
+
+
 def assert_safe_bypass_slot_preview(status_payload: dict) -> None:
     payload = build_quota_slot_preview(status_payload, goal_id="needs-operator", slots=1)
 
@@ -1077,6 +1142,7 @@ def main() -> int:
     assert_project_asset_backed_no_evidence_should_run()
     assert_heartbeat_recommendation_lifecycle()
     assert_goal_boundary_in_should_run()
+    assert_decision_freshness_warning_in_should_run()
     assert_safe_bypass_slot_preview(status_payload)
     assert_slot_preview(build_quota_slot_preview(status_payload, goal_id="near-limit-half", slots=1))
     with tempfile.TemporaryDirectory(prefix="goal-harness-quota-plan-smoke-") as tmp:

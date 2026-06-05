@@ -45,6 +45,7 @@ from .project_map import (
     read_only_project_map_run,
     render_read_only_project_map_markdown,
 )
+from .promotion_gate import build_promotion_gate, render_promotion_gate_markdown
 from .quota import (
     build_quota_plan,
     build_quota_should_run,
@@ -53,12 +54,14 @@ from .quota import (
     render_quota_slot_preview_markdown,
     spend_quota_slot,
 )
-from .registry import inspect_registry, render_registry_markdown
+from .registry import inspect_registry, registry_goals, render_registry_markdown, resolve_state_file
 from .review_packet import build_review_packet, render_review_packet_markdown
 from .runtime import archive_runtime_goal, render_archive_runtime_markdown
 from .state_refresh import (
     DEFAULT_REFRESH_ACTION,
     DEFAULT_REFRESH_CLASSIFICATION,
+    DELIVERY_BATCH_SCALE_CHOICES,
+    DELIVERY_OUTCOME_CHOICES,
     refresh_state_run,
     render_state_refresh_markdown,
 )
@@ -89,6 +92,16 @@ def review_packet_handoff_only_payload(payload: dict[str, object]) -> dict[str, 
         result["error"] = payload.get("error")
         return result
     handoff_text = str(payload.get("project_agent_handoff") or "")
+    raw_contract = payload.get("handoff_delivery_contract")
+    agent_contract = raw_contract
+    if isinstance(raw_contract, dict):
+        agent_contract = {
+            "mode": raw_contract.get("mode"),
+            "instruction": raw_contract.get("instruction"),
+            "minimum_scale": raw_contract.get("minimum_scale"),
+            "must_include": raw_contract.get("must_include"),
+            "if_blocked": raw_contract.get("if_blocked"),
+        }
     result.update(
         {
             "kind": payload.get("kind"),
@@ -98,6 +111,8 @@ def review_packet_handoff_only_payload(payload: dict[str, object]) -> dict[str, 
             "project_agent_handoff": handoff_text,
             "handoff_text": handoff_text,
             "operator_gate_approved_handoff": payload.get("operator_gate_approved_handoff"),
+            "connected_delivery_handoff": payload.get("connected_delivery_handoff"),
+            "handoff_delivery_contract": agent_contract,
         }
     )
     return result
@@ -106,6 +121,46 @@ def review_packet_handoff_only_payload(payload: dict[str, object]) -> dict[str, 
 def user_supplied_registry(argv: list[str] | None) -> bool:
     values = sys.argv[1:] if argv is None else argv
     return any(value == "--registry" or value.startswith("--registry=") for value in values)
+
+
+def fallback_global_registry(registry_path: Path, runtime_root_arg: str | None) -> Path:
+    if registry_path.exists():
+        return registry_path
+    runtime_root = Path(runtime_root_arg).expanduser() if runtime_root_arg else DEFAULT_RUNTIME_ROOT
+    fallback_registry = global_registry_path(runtime_root)
+    return fallback_registry if fallback_registry.exists() else registry_path
+
+
+def explicit_global_registry(runtime_root_arg: str | None) -> Path:
+    runtime_root = Path(runtime_root_arg).expanduser() if runtime_root_arg else DEFAULT_RUNTIME_ROOT
+    return global_registry_path(runtime_root)
+
+
+def resolve_heartbeat_active_state(
+    *,
+    goal_id: str,
+    active_state_arg: str | None,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+) -> tuple[Path | None, Path | None, str]:
+    if active_state_arg:
+        active_state = Path(active_state_arg).expanduser()
+        return active_state, active_state, "explicit"
+
+    resolved_registry = fallback_global_registry(registry_path, runtime_root_arg)
+    registry = load_registry(resolved_registry)
+    goal = next((item for item in registry_goals(registry) if item.get("id") == goal_id), None)
+    if goal is None:
+        raise ValueError(f"goal_id not found in registry for heartbeat active-state lookup: {goal_id}")
+    repo_text = str(goal.get("repo") or "")
+    if not repo_text:
+        raise ValueError(f"{goal_id}: registry goal has no repo for active-state lookup")
+    state_file = resolve_state_file(Path(repo_text).expanduser(), goal.get("state_file"))
+    if state_file is None:
+        raise ValueError(f"{goal_id}: registry goal has no state_file for active-state lookup")
+    if not state_file.exists():
+        raise FileNotFoundError(f"{goal_id}: registry-declared active state file does not exist: {state_file}")
+    return None, state_file, f"registry:{resolved_registry}"
 
 
 def default_public_scan_root() -> str:
@@ -157,6 +212,30 @@ def main(argv: list[str] | None = None) -> int:
         default=int(DEFAULT_EXECUTION_PROFILE["degradation_policy"]["small_scale_streak_threshold"]),
         help="Repeated small-scale streak that triggers the delivery contract.",
     )
+    bootstrap_parser.add_argument(
+        "--execution-outcome-marker",
+        action="append",
+        default=[],
+        help="Classification substring that counts as primary outcome/evidence progress. Repeatable.",
+    )
+    bootstrap_parser.add_argument(
+        "--execution-surface-only-hint",
+        action="append",
+        default=[],
+        help="Classification substring that counts as surface-only progress unless an outcome marker is present. Repeatable.",
+    )
+    bootstrap_parser.add_argument(
+        "--execution-surface-streak-threshold",
+        type=int,
+        default=int(DEFAULT_EXECUTION_PROFILE["outcome_floor"]["surface_streak_threshold"]),
+        help="Surface-progress streak that triggers the outcome-floor contract.",
+    )
+    bootstrap_parser.add_argument(
+        "--execution-outcome-must-advance",
+        action="append",
+        default=[],
+        help="Outcome/evidence floor label that future delivery must advance. Repeatable.",
+    )
     bootstrap_parser.add_argument("--force", action="store_true", help="Replace existing goal entry or state file.")
     bootstrap_parser.add_argument("--dry-run", action="store_true", help="Show planned writes without changing files.")
     bootstrap_parser.add_argument(
@@ -188,8 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     heartbeat_prompt_parser.add_argument("--goal-id", required=True, help="Stable Goal Harness goal id.")
     heartbeat_prompt_parser.add_argument(
         "--active-state",
-        required=True,
-        help="Active goal state file the heartbeat should read and write back.",
+        help="Active goal state file the heartbeat should read and write back. Defaults to the registry goal state_file.",
     )
     heartbeat_prompt_parser.add_argument(
         "--material-rule",
@@ -198,6 +276,11 @@ def main(argv: list[str] | None = None) -> int:
     heartbeat_prompt_parser.add_argument(
         "--permission-rule",
         help="Optional trusted-session permission rule appended to the task body.",
+    )
+    heartbeat_prompt_parser.add_argument(
+        "--cli-bin",
+        default="goal-harness",
+        help="Command name embedded in generated preflight/guard/spend commands. Use goal-harness-canary for gray rollout targets.",
     )
     heartbeat_style_group = heartbeat_prompt_parser.add_mutually_exclusive_group()
     heartbeat_style_group.add_argument(
@@ -226,6 +309,11 @@ def main(argv: list[str] | None = None) -> int:
     demo_parser.add_argument("--agent-todo", default=DEFAULT_DEMO_AGENT_TODO)
 
     sub.add_parser("doctor", help="Diagnose local CLI installation, PATH, wrapper, and import health.")
+
+    sub.add_parser(
+        "promotion-gate",
+        help="Emit a compact machine-readable canary promotion readiness gate result.",
+    )
 
     sub.add_parser("registry", help="Inspect registry goals and adapter declarations.")
 
@@ -282,6 +370,16 @@ def main(argv: list[str] | None = None) -> int:
     refresh_state_parser.add_argument(
         "--recommended-action",
         help=f"Public-safe next action. Defaults to: {DEFAULT_REFRESH_ACTION}",
+    )
+    refresh_state_parser.add_argument(
+        "--delivery-batch-scale",
+        choices=DELIVERY_BATCH_SCALE_CHOICES,
+        help="Optional explicit delivery scale for this refresh run, overriding classification-name inference.",
+    )
+    refresh_state_parser.add_argument(
+        "--delivery-outcome",
+        choices=DELIVERY_OUTCOME_CHOICES,
+        help="Optional explicit outcome-floor signal for this refresh run.",
     )
     refresh_state_parser.add_argument(
         "--dry-run",
@@ -518,6 +616,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Enable POST /reward/append on loopback only so the dashboard can append human_reward overlays.",
     )
+    serve_status_parser.add_argument(
+        "--global-registry",
+        action="store_true",
+        help="Serve the shared global registry view even when invoked from a project directory.",
+    )
     serve_status_parser.add_argument("--verbose", action="store_true", help="Print HTTP request logs.")
 
     args = parser.parse_args(argv)
@@ -560,6 +663,10 @@ def main(argv: list[str] | None = None) -> int:
                 execution_minimum_scale=args.execution_minimum_scale,
                 execution_must_include=args.execution_must_include or None,
                 execution_small_streak_threshold=args.execution_small_streak_threshold,
+                execution_outcome_markers=args.execution_outcome_marker or None,
+                execution_surface_only_hints=args.execution_surface_only_hint or None,
+                execution_surface_streak_threshold=args.execution_surface_streak_threshold,
+                execution_outcome_must_advance=args.execution_outcome_must_advance or None,
                 force=args.force,
                 dry_run=args.dry_run,
                 sync_global=not bool(args.no_global_sync),
@@ -591,16 +698,32 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "heartbeat-prompt":
-        payload = build_heartbeat_prompt(
-            goal_id=args.goal_id,
-            active_state=Path(args.active_state),
-            material_queue_rule=args.material_rule,
-            permission_rule=args.permission_rule,
-            compact=bool(args.compact),
-            brief=bool(args.brief),
-        )
+        try:
+            active_state, resolved_active_state, active_state_source = resolve_heartbeat_active_state(
+                goal_id=args.goal_id,
+                active_state_arg=args.active_state,
+                registry_path=registry_path,
+                runtime_root_arg=args.runtime_root,
+            )
+            payload = build_heartbeat_prompt(
+                goal_id=args.goal_id,
+                active_state=active_state,
+                active_state_source=active_state_source,
+                resolved_active_state=resolved_active_state,
+                material_queue_rule=args.material_rule,
+                permission_rule=args.permission_rule,
+                compact=bool(args.compact),
+                brief=bool(args.brief),
+                cli_bin=args.cli_bin,
+            )
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "goal_id": args.goal_id,
+                "error": str(exc),
+            }
         print_payload(payload, args.format, render_heartbeat_prompt_markdown)
-        return 0
+        return 0 if payload.get("ok") else 1
 
     if args.command == "demo":
         try:
@@ -625,6 +748,28 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         payload = collect_doctor()
         print_payload(payload, args.format, render_doctor_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "promotion-gate":
+        try:
+            payload = build_promotion_gate(
+                registry_path=registry_path,
+                runtime_root_override=args.runtime_root,
+            )
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "registry": str(registry_path),
+                "runtime_root": args.runtime_root,
+                "gate": "promotion_readiness",
+                "gate_state": "error",
+                "can_promote": False,
+                "should_warn": True,
+                "non_blocking": True,
+                "error": str(exc),
+                "recommended_action": "fix promotion readiness gate collection before promotion",
+            }
+        print_payload(payload, args.format, render_promotion_gate_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "registry":
@@ -707,6 +852,8 @@ def main(argv: list[str] | None = None) -> int:
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 classification=args.classification,
                 recommended_action=args.recommended_action,
+                delivery_batch_scale=args.delivery_batch_scale,
+                delivery_outcome=args.delivery_outcome,
                 dry_run=bool(args.dry_run),
                 sync_global=not bool(args.no_global_sync),
             )
@@ -1016,11 +1163,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "serve-status":
         try:
+            status_registry_path = explicit_global_registry(args.runtime_root) if args.global_registry else registry_path
             scan_roots = [Path(item).expanduser() for item in args.scan_path]
             if not scan_roots:
                 scan_roots = [Path(args.scan_root).expanduser()]
             serve_status(
-                registry_path=registry_path,
+                registry_path=status_registry_path,
                 runtime_root_override=args.runtime_root,
                 scan_roots=scan_roots,
                 limit=max(0, args.limit),
@@ -1033,7 +1181,7 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             payload = {
                 "ok": False,
-                "registry": str(registry_path),
+                "registry": str(status_registry_path if "status_registry_path" in locals() else registry_path),
                 "runtime_root": args.runtime_root,
                 "error": str(exc),
             }

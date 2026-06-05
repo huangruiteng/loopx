@@ -142,6 +142,13 @@ returns `safe_bypass_allowed=true`, the target heartbeat may do one bounded
 read-only steering or analysis step that does not depend on that gate, but it
 must not execute `agent_command`, adapter work, write-control, production
 actions, or the gated path.
+When `state=focus_wait` is caused by a connected-delivery outcome floor and the
+payload returns `safe_bypass_kind=outcome_floor_recovery`, the goal is not free
+to resume ordinary delivery. It may spend one bounded recovery turn only to
+produce the required ranker/cross-domain evidence artifact named by
+`quota.must_advance`, or to write back the concrete blocker that prevents that
+artifact. Surface-only summary/queue/contract propagation and synthetic-only
+test chains remain blocked.
 
 ## Compute States
 
@@ -269,6 +276,22 @@ For every registered goal, `quota should-run` also includes a `todo_write_hint`
 so agent executors know to write newly discovered user/owner work with
 `goal-harness todo add --role user` instead of hiding it in `Next Action`,
 review docs, or chat.
+When the status payload has same-goal checkpointed decisions that are stale or
+have newer sampled events, `quota should-run` includes
+`decision_freshness_warning`. This warning does not make an eligible goal skip;
+it prevents a worker from treating an old reward, steering note, or operator
+gate as current authority. Before reusing that decision, the worker must rebase
+the decision point against the latest registry, ACTIVE_GOAL_STATE, quota,
+policy, and run status. This is not a repo rollback and does not carry the whole
+old chat state forward.
+When the status payload has missing, stale, or unknown canary promotion
+readiness evidence, `quota should-run` also includes
+`promotion_readiness_warning`. This warning is additive: it does not change
+`should_run`, but it lets heartbeat workers and dashboards report release
+readiness blockers from the shared run-history projection without parsing
+`doctor`, dashboard copy, or chat reports. Before promoting the local release
+snapshot, run the canary promotion-readiness smoke and confirm fresh evidence in
+status or doctor output.
 Connected delivery goals also include `goal_boundary` when the registry has
 boundary data. That field carries the adapter status, allowed write scope,
 parent-approval scopes, registry guards, next probe, and stop condition. It is
@@ -322,7 +345,10 @@ Post-turn accounting protocol:
 - do not append spend for quiet `should_run=false` skips, preflight failures,
   pure dry-run previews, or duplicate accounting attempts;
 - if `should_run=false` but `safe_bypass_allowed=true` and the agent actually
-  completes bounded safe-bypass work, append one spend event for that work.
+  completes bounded safe-bypass work, append one spend event for that work. For
+  `safe_bypass_kind=outcome_floor_recovery`, spend only after validated
+  ranker/cross-domain evidence or concrete blocker writeback, not for another
+  surface-only report.
 
 ## Slot Spend Event Contract
 

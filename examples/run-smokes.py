@@ -15,13 +15,26 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES_DIR = REPO_ROOT / "examples"
+EXPLICIT_GROUPED_SMOKES = {
+    "canary-promotion-readiness-smoke.py",
+    "dashboard-demo-readiness-smoke.py",
+}
 
 
 def main() -> int:
-    smoke_scripts = sorted(EXAMPLES_DIR.glob("*-smoke.py"))
+    all_smoke_scripts = sorted(EXAMPLES_DIR.glob("*-smoke.py"))
+    smoke_scripts = [
+        script for script in all_smoke_scripts if script.name not in EXPLICIT_GROUPED_SMOKES
+    ]
     if not smoke_scripts:
         print("no smoke scripts found")
         return 0
+
+    skipped = [
+        script.name for script in all_smoke_scripts if script.name in EXPLICIT_GROUPED_SMOKES
+    ]
+    if skipped:
+        print(f"skipping explicit grouped smoke(s): {', '.join(skipped)}", flush=True)
 
     for script in smoke_scripts:
         label = script.relative_to(REPO_ROOT)

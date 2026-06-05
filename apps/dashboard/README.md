@@ -11,50 +11,47 @@ npm run build
 npm run dev
 ```
 
-The default screen uses the sanitized repository example at
-`examples/status.example.json`, including the attention queue and compact run
-history drill-down. The dashboard consumes agent-facing `goal-harness status`
-JSON, but the first screen is a human operator view: `User Review Map` translates
-registry/run/reward/controller signals into review states, while `Goal
-Directory` remains the multi-project switcher with public-safe domain,
-attention state, latest run, and run counts.
-`Todo Focus` is the first content region because the dashboard must answer the
-two highest-signal operator questions before showing raw status: which user
-todo is blocking progress, and which high-priority agent todo can run next.
-It aggregates the first open user todo and agent todo per goal from the same
-status payload used by the queue, then keeps the selected goal one click away.
-`User Actions` follows that todo view because the dashboard is for the human
-operator, not for raw status inspection. It lifts the selected-detail operator
-logic into the first screen:
-reward gates, controller opt-ins, evidence watches, Codex handoffs, and health
-blocks are grouped as operator cards before the user opens a goal detail. Each
-card also exposes the matching safe local path and reward-draft hint, so the
-first screen stays user-facing while still pointing agents toward the CLI
-contract. A compact action-kind filter lets the operator focus the first
-screen on reward, controller, Codex, evidence, or health work without changing
-the underlying status export. The filter is backed by the `actionKind` URL
-search parameter, so focused review links survive refresh and can be shared
-with another local operator or agent. The selected goal is also URL-backed via
-`goalId`, which lets a shared link preserve both the review lane and the
-selected goal detail. The adjacent first-screen `Selected action share`
-control copies the current `actionKind`, selected `goalId`, source
-`statusUrl`, and queue filters as browser UI state only. Each first-screen
-action card leads with the project id before the action title, because
-operators usually choose by project first and then inspect the requested
-action. Each card intentionally has one canonical copy affordance: `Copy`. The
-copied handoff starts as a short `【GH Packet】` with the selected card's user
-todo, gate, safety boundary, safe path, command, and project-agent stop rule, so
-an operator can click a different card to switch the target instead of choosing
-among several copy formats.
-It is still a handoff artifact; it is not approval, reward append, controller
-opt-in, or write-control.
-The selected-goal detail starts with `Operator Decision`, which turns the
-selected goal's queue item, lifecycle phase, and readiness gates into one of
-the user-level stances: review or authorize, let Codex continue, wait for
-evidence, or fix health first.
-That same panel now includes a `Safe CLI Path`: a local dry-run, history, or
-status command that matches the current stance. It is a bridge from
-user-facing review to agent-facing CLI execution, not a browser write path.
+The default screen is the Chinese-first control-plane home. It is meant to
+answer the operator's first questions before raw status drill-down: which
+project line is active, which user todo is truly blocking, which agent todo is
+high priority, which quota/guard state applies, and what evidence has already
+been written back. It loads the shared global status source by default when the
+loopback global server is available, so multi-project state is visible without
+passing `view=share` or opening a debugging table.
+Because this screen is the operator-facing home, it translates raw machine
+status into Chinese decision copy. Exact tokens such as `single_surface`,
+`focus_wait`, or `quota_slot_spent` may remain useful in `?view=ops` and packet
+drill-downs, but the home should foreground user todos, agent priorities,
+quota guard judgments, and evidence writeback in human-readable terms.
+
+`?view=ops` remains as the explicit detailed workbench. That view keeps the
+legacy operator tools: `Todo Focus`, `User Actions`, `Goal Directory`,
+attention lanes, selected-goal run history, reward dry-run/append controls,
+and raw queue filters. Use it when debugging status contracts, reward overlays,
+or individual queue items; do not treat it as the product's main screen.
+
+The old `view=share` URL value is tolerated as a compatibility alias for the
+main control-plane home, but the dashboard normalizes non-`ops` views out of
+the URL. Browser search parameters such as `actionKind`, `goalId`, `lane`,
+`severity`, `statusUrl`, and `view` are UI state only. They are not approval,
+reward append, controller opt-in, write-control, or durable goal truth.
+
+The detailed ops workbench consumes the same agent-facing
+`goal-harness status` JSON. Its first-screen action cards can group reward
+gates, controller opt-ins, evidence watches, Codex handoffs, and health blocks;
+each card may expose a safe local path and reward-draft hint. The copied
+handoff remains a short `【GH Packet】` artifact with user todo, gate, safety
+boundary, safe path, command, and project-agent stop rule. It is still a
+handoff artifact; it is not approval, reward append, controller opt-in, or
+write-control.
+
+The selected-goal detail in `?view=ops` starts with `Operator Decision`, which
+turns the selected goal's queue item, lifecycle phase, and readiness gates into
+one of the user-level stances: review or authorize, let Codex continue, wait
+for evidence, or fix health first. That same panel includes a `Safe CLI Path`:
+a local dry-run, history, or status command that matches the current stance. It
+is a bridge from user-facing review to agent-facing CLI execution, not a
+browser write path.
 
 When a selected goal has a compact run record, the run-history panel also shows
 a `Reward CLI Draft`. It is intentionally local-only and defaults to
@@ -85,14 +82,55 @@ sets the same summary-write intent after the operator confirms the preview.
 
 ## Load Live Status
 
-Start a local status server from the project you want to inspect:
+For the canonical multi-project home, start a global status server. This is the
+normal operator view for all projects connected into the shared registry:
+
+```bash
+goal-harness serve-status --global-registry --port 8766 --limit 80
+```
+
+On macOS, keep both the status feed and the built dashboard static app running
+after login with the user-level LaunchAgent helper:
+
+```bash
+../../scripts/macos-dashboard-launchagent.sh install
+```
+
+The helper starts:
+
+```text
+http://127.0.0.1:8766/status.json
+http://127.0.0.1:5174/
+```
+
+Use `../../scripts/macos-dashboard-launchagent.sh restart|stop|uninstall|status`
+for local service operations. `status` also probes
+`http://127.0.0.1:8766/status.json` and prints the
+`status_contract.schema_version`; if it is missing or below the expected
+dashboard version, run `restart` before a demo so the live feed is not served by
+an older daemon. Logs live under `~/Library/Logs/goal-harness/`.
+The status output path is covered without touching real macOS services by
+`python3 examples/macos-dashboard-launchagent-status-smoke.py`.
+
+Then open the dashboard root:
+
+```text
+http://127.0.0.1:5174/
+```
+
+For project-local debugging or a disposable `goal-harness demo`, start a local
+status server from the project you want to inspect:
 
 ```bash
 goal-harness serve-status --port 8765
 ```
 
-Then run the dashboard and use the `Live` source button, or load this URL from
-the source control:
+`--global-registry` is intentionally explicit: it keeps the multi-project home
+on the shared registry even when you launch it from inside a project checkout,
+while plain `serve-status` remains useful for project-local debugging.
+
+Keep the dashboard app running and use `?view=ops`, the `Live` source button,
+or load this project-local URL from the source control:
 
 ```text
 http://127.0.0.1:8765/status.json
@@ -135,13 +173,59 @@ URL that returns the same `goal-harness --format json status` shape.
 ## Browser Smokes
 
 Dashboard browser smokes are explicit because they start a temporary Vite
-server and require the local Playwright CLI wrapper:
+server. For demo readiness, run the grouped public-safe smoke:
 
 ```bash
+npm run smoke:demo-readiness
+```
+
+That command runs the LaunchAgent status-output smoke, the structured
+`promotion-gate` fresh/warning contract smoke, the source-contract smokes, and
+the three browser smokes below. In CI environments without Playwright/Chrome,
+use:
+
+```bash
+python3 ../../examples/dashboard-demo-readiness-smoke.py --skip-browser
+```
+
+The individual browser smokes are still available when you want to debug one
+surface:
+
+```bash
+npm run smoke:home-browser
+npm run smoke:ops-decision-freshness
+npm run smoke:promotion-readiness
 node examples/dashboard-throttled-browser-smoke.mjs
 node examples/dashboard-operator-gate-browser-smoke.mjs
 ```
 
+The home browser smoke protects the canonical control-plane home. It uses a
+public-safe four-project fixture, opens the root route without `view=share`,
+checks the Chinese operator copy for user todos, agent priorities, p4/p3
+concurrency, quota guard state, per-project top-4 todo status, and state
+writeback, and rejects raw machine tokens such as `single_surface`,
+`focus_wait`, or `active p4 <= 2` on the first screen. It uses an installed
+Playwright package or the Codex bundled runtime when available, and starts Vite
+through the local `vite` package rather than depending on `npm` / `npx` being
+on `PATH`.
+
+The ops decision-freshness smoke protects the detailed `?view=ops` panel with
+two public fixtures: a live-like zero-item summary and a stale/rebase-required
+decision example. It verifies the rendered Chinese/English operator copy,
+counts, top affected goal, and exact-replay wording instead of relying only on
+source-string checks.
+
+The promotion-readiness smoke protects the detailed `?view=ops` panel with
+fresh, stale, and missing readiness fixtures. It verifies the status badges,
+readiness/rerun decision, artifact window, age, reason, and source-of-truth copy
+for canary promotion readiness. The canonical fixture/browser script is
+`examples/dashboard-promotion-readiness-browser-smoke.mjs`; use the npm script
+above instead of calling ad hoc duplicate filenames.
+The grouped demo-readiness path also runs `examples/promotion-gate-smoke.py`
+before browser checks, so the structured `gate_state`, `can_promote`, and
+`should_warn` contract is covered even when browser smokes are skipped.
+
 The throttled smoke protects the "quiet scheduling state" first screen. The
 operator-gate smoke protects planned high-complexity goals: they should appear
-as controller/user actions, not Codex-ready work.
+as controller/user actions, not Codex-ready work. Those older browser smokes
+still use the local Playwright CLI wrapper.

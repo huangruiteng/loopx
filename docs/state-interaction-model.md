@@ -118,6 +118,52 @@ surfaces.
 | Status export | CLI/status layer | Dashboard, pre-tick, heartbeats | `goal-harness status` | Agent-facing machine contract and dashboard input. |
 | Dashboard UI state | Browser session | User | Browser URL/search state | Filters, selected goal, selected run; not durable goal truth. |
 
+## Event Ledger Contract
+
+Goal Harness should treat the compact run index plus reward / quota overlays as
+the append-only event ledger for long-running work. Chat threads, browser
+filters, and local tool outputs may help a worker decide what to do in the
+moment, but they are not the durable source of truth.
+
+The control plane should preserve these event classes:
+
+- **work events**: `refresh-state`, read-only maps, adapter ticks, and progress
+  classifications that say what changed and how it was validated;
+- **decision events**: operator gates, checkpointed resume contracts,
+  approvals, deferrals, and `human_reward` overlays tied to exact runs;
+- **accounting events**: quota spend rows such as `quota_slot_spent`;
+- **evidence events**: eval, CI, artifact, blocker, failure, done, or
+  read-only evidence-poll observations.
+
+Current state is a projection over those events plus the active goal state and
+registry policy. That projection may compact old detail for prompts and
+dashboards, but it should not silently replace or rewrite the event that made a
+decision auditable.
+`goal-harness status` exposes this boundary through `event_ledger_summary`: a
+compact count of sampled accounting, decision, evidence, state, and work events.
+Dashboards and heartbeat prompts can use that projection to understand recent
+control-plane shape while still drilling into `run_history` for exact events.
+
+This gives Goal Harness a durable-execution boundary:
+
+- Codex threads are replaceable workers. They execute bounded transitions, then
+  write validated events.
+- The Goal Harness control plane orchestrates task dispatch, quota, gates, and
+  latest-state projections from the event ledger.
+- Heartbeat prompts should stay thin. They should query status, quota, review
+  packets, and active state rather than carrying project-specific history.
+- Spend, validation, artifacts, blockers, handoffs, and read-only evidence polls
+  should become durable events before later agents rely on them.
+- Side-bypass and main-control workers should coordinate through the same
+  ledger so they cannot double-spend, hide blockers, or race on stale state.
+
+Old user decisions need freshness checks. A reward, steering note, or approval
+from seven days ago can remain valuable, but a worker should apply it only after
+replaying or rechecking the newer event window that could make it stale. The
+current checkpointed gate contract is the first version of that rule: use the old
+decision as an audit anchor, then rebase at the decision point against current
+registry, active state, quota, policy, repo/run status, and recent evidence.
+
 ## Priority Stack And Next Action Selection
 
 `Next Action` should be derived from a goal priority stack, not from the last

@@ -1,0 +1,64 @@
+// @ts-expect-error The smoke compiler intentionally runs without @types/node.
+import { readFileSync } from "node:fs";
+
+function assert(condition: boolean, message: string) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function includes(source: string, snippet: string, label: string) {
+  assert(source.includes(snippet), `missing ${label}: ${snippet}`);
+}
+
+function excludes(source: string, snippet: string, label: string) {
+  assert(!source.includes(snippet), `unexpected ${label}: ${snippet}`);
+}
+
+const routerSource = readFileSync("src/router.tsx", "utf8");
+const dashboardSource = readFileSync("src/views/dashboard-page.tsx", "utf8");
+const readmeSource = readFileSync("README.md", "utf8");
+const contractSource = readFileSync("../../docs/status-data-contract.md", "utf8");
+const packageSource = readFileSync("package.json", "utf8");
+
+includes(routerSource, 'view: z.enum(["ops", "share"]).optional()', "optional view search param");
+excludes(routerSource, 'view: z.enum(["ops", "share"]).optional().default("share")', "share default route mode");
+
+includes(dashboardSource, 'const defaultGlobalStatusUrl = "http://127.0.0.1:8766/status.json";', "global default status URL");
+includes(dashboardSource, 'return view === "ops" ? "ops" : undefined;', "canonical URL omits non-ops view");
+includes(dashboardSource, 'if (search.view !== "ops") {', "non-ops renders control-plane home");
+includes(dashboardSource, 'void loadFromUrl(defaultGlobalStatusUrl);', "home loads global status source");
+includes(dashboardSource, 'data-testid="share-overview"', "control-plane home test id");
+includes(dashboardSource, 'data-testid={`share-top-todos-${view.spec.id}`}', "share top todo list test id");
+includes(dashboardSource, "Top-4 Todo", "share top-four todo label");
+includes(dashboardSource, "已完成", "share todo done status");
+includes(dashboardSource, "决策需 rebase", "share decision freshness warning");
+includes(dashboardSource, "这不是仓库回滚", "share decision non-rollback copy");
+includes(dashboardSource, '最多 2 个 p4 运行中', "Chinese p4 concurrency constraint");
+includes(dashboardSource, '单面改动', "Chinese delivery scale label");
+includes(dashboardSource, '阻塞说明', "Chinese blocker label");
+includes(dashboardSource, '配额守卫', "Chinese quota guard label");
+includes(dashboardSource, '状态写回', "Chinese state writeback label");
+includes(dashboardSource, '<h1 className="text-2xl font-semibold">Goal Operations</h1>', "ops workbench fallback");
+excludes(dashboardSource, '{"active p4 <= 2"}', "raw p4 constraint badge");
+includes(packageSource, '"smoke:home-route"', "home route smoke script");
+includes(packageSource, '"smoke:home-browser"', "home browser smoke script");
+includes(packageSource, '"smoke:demo-readiness"', "demo readiness smoke script");
+includes(readmeSource, "npm run smoke:home-browser", "README home browser smoke command");
+includes(readmeSource, "npm run smoke:demo-readiness", "README demo readiness smoke command");
+includes(readmeSource, "--skip-browser", "README demo readiness CI skip-browser command");
+includes(readmeSource, "without `view=share`", "README home smoke canonical route expectation");
+
+for (const [source, sourceLabel] of [
+  [readmeSource, "dashboard README"],
+  [contractSource, "status data contract"],
+] as const) {
+  includes(source, "control-plane home", `${sourceLabel} canonical home`);
+  includes(source, "?view=ops", `${sourceLabel} ops fallback`);
+  includes(source, "view=share", `${sourceLabel} legacy share compatibility`);
+}
+
+includes(contractSource, "translate raw machine fields", "status contract translation expectation");
+includes(contractSource, "single_surface", "status contract raw machine token example");
+
+console.log("home-route smoke ok");

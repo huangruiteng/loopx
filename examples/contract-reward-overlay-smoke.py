@@ -59,6 +59,10 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     duplicate_state_file.parent.mkdir(parents=True)
     reward_state_file.write_text("---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8")
     duplicate_state_file.write_text("---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8")
+    local_private_doc = project / ".local" / "managed_lark" / "PRIVATE_DRAFT.md"
+    local_private_doc.parent.mkdir(parents=True)
+    private_host = "bytedance." + "lark" + "office.com"
+    local_private_doc.write_text(f"https://{private_host}/docx/private-draft\n", encoding="utf-8")
 
     write_run(runtime_root / "goals" / "reward-overlay-goal" / "runs", "reward-overlay-goal", duplicate_kind="reward_overlay")
     write_run(runtime_root / "goals" / "plain-duplicate-goal" / "runs", "plain-duplicate-goal", duplicate_kind="plain_duplicate")
@@ -111,6 +115,7 @@ def main() -> None:
         assert "reward-overlay-goal: reward overlay rows raw=2 unique=1 overlays=1" in checks, payload
         assert "reward-overlay-goal: duplicate index rows" not in warnings, payload
         assert "plain-duplicate-goal: duplicate index rows raw=2 unique=1" in warnings, payload
+        assert not any(".local/managed_lark" in item for item in payload["errors"]), payload
 
     print("contract-reward-overlay-smoke ok")
 

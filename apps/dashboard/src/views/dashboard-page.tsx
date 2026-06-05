@@ -17,6 +17,7 @@ import {
   Upload,
   Radar,
   RefreshCw,
+  RotateCcw,
   ShieldCheck,
   Sun,
   Terminal,
@@ -40,6 +41,7 @@ import {
   GlobalRegistryHealth,
   HumanReward,
   OperatorGate,
+  OperatorGateResumeContract,
   ProjectMap,
   ReviewMaterial,
   RewardDryRunResponse,
@@ -50,6 +52,11 @@ import {
   ProjectAssetHandoffReadiness,
   ProjectAssetTodoSummary,
   TodoGroup,
+  EventLedgerSummary,
+  PromotionReadinessSummary,
+  PromotionGate,
+  DecisionFreshnessItem,
+  DecisionFreshnessSummary,
   UsageSummary,
   exampleStatusPayload,
   formatStatusError,
@@ -154,11 +161,76 @@ type DataSource =
   | { kind: "file"; label: string };
 
 const defaultLiveStatusUrl = "http://127.0.0.1:8765/status.json";
+const defaultGlobalStatusUrl = "http://127.0.0.1:8766/status.json";
+const expectedStatusContractSchemaVersion = 2;
+const fallbackStatusContractReloadHint = "scripts/macos-dashboard-launchagent.sh restart";
 const rewardOptions = ["positive", "mixed", "neutral", "negative"] as const;
 const inputClassName =
   "h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-slate-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:ring-zinc-500";
 
 type RewardValue = (typeof rewardOptions)[number];
+
+function routeViewForUrl(view?: "ops" | "share") {
+  return view === "ops" ? "ops" : undefined;
+}
+
+function currentRouteView(current: { view?: "ops" | "share" } | {}) {
+  return "view" in current ? current.view : undefined;
+}
+
+function isLoopbackUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function statusContractFreshnessIssue(payload: StatusPayload, source: DataSource) {
+  if (source.kind !== "url" || !isLoopbackUrl(source.label)) {
+    return null;
+  }
+  const schemaVersion = payload.status_contract.schema_version ?? 0;
+  if (schemaVersion >= expectedStatusContractSchemaVersion) {
+    return null;
+  }
+  return {
+    reloadHint: payload.status_contract.reload_hint || fallbackStatusContractReloadHint,
+    schemaVersion,
+  };
+}
+
+function StatusContractFreshnessWarning({
+  payload,
+  source,
+}: {
+  payload: StatusPayload;
+  source: DataSource;
+}) {
+  const issue = statusContractFreshnessIssue(payload, source);
+  if (!issue) {
+    return null;
+  }
+  return (
+    <div
+      className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 shadow-sm dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100"
+      data-testid="status-contract-freshness-warning"
+    >
+      <div className="flex flex-wrap items-center gap-2 font-semibold">
+        <CircleAlert className="h-4 w-4" />
+        状态服务契约过旧
+        <Badge variant="warning">schema v{issue.schemaVersion}</Badge>
+      </div>
+      <p className="mt-1">
+        这个 loopback live feed 低于 dashboard 期望的 schema v{expectedStatusContractSchemaVersion}；
+        可能是 `127.0.0.1:8766` 仍在运行旧 daemon。演示前运行
+        <span className="mx-1 font-mono">{issue.reloadHint}</span>
+        后刷新页面。
+      </p>
+    </div>
+  );
+}
 
 type RewardRequestBody = {
   goal_id: string;
@@ -788,14 +860,16 @@ function todosFromProjectAssetSummary(
     total_count: summary.total ?? fallback?.total_count ?? 0,
     open_count: summary.open ?? fallback?.open_count ?? 0,
     done_count: summary.done ?? fallback?.done_count ?? 0,
-    items: next
-      ? [{
-          index: fallbackFirstOpen?.index ?? 1,
-          done: false,
-          text: next,
-          review_materials: fallbackFirstOpen?.review_materials ?? [],
-        }]
-      : (fallback?.items ?? []),
+    items: fallback?.items?.length
+      ? fallback.items
+      : (next
+          ? [{
+              index: fallbackFirstOpen?.index ?? 1,
+              done: false,
+              text: next,
+              review_materials: fallbackFirstOpen?.review_materials ?? [],
+            }]
+          : []),
   };
 }
 
@@ -1332,7 +1406,7 @@ function durableOperatorGateRecordRule(kind?: UserActionKind) {
   if (kind !== "controller") {
     return null;
   }
-  return "记录规则：如需持久记录本次判断，先用本地 operator-gate dry-run 预览；确认写入时去掉 --dry-run；拒绝/暂缓用 reject/defer + public-safe 原因。";
+  return "记录规则：如需持久记录本次判断，先用本地 operator-gate dry-run 预览；确认写入时去掉 --dry-run；写入会生成 operator_gate_resume_contract_v0，只在该决策点 rebase 当前权威状态，不回滚或带回整个仓库；拒绝/暂缓用 reject/defer + public-safe 原因。";
 }
 
 function suggestedDecisionLine(kind?: UserActionKind, item?: UserActionSummaryItem, goalId?: string) {
@@ -1619,6 +1693,1065 @@ function QuotaChip({ quota }: { quota?: ComputeQuota | null }) {
     return null;
   }
   return <Badge variant={view.variant}>{view.label}</Badge>;
+}
+
+type ShareGoalSpec = {
+  id: string;
+  label: string;
+  subtitle: string;
+  emphasis: string;
+  accent: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+type EventLedgerClass = keyof EventLedgerSummary["totals"]["by_class_24h"];
+
+type ShareGoalView = {
+  agentTodos: TodoGroup | null;
+  decisionFreshnessWarnings: DecisionFreshnessItem[];
+  eventLedger?: EventLedgerSummary["goals"][number];
+  row?: GoalDirectoryRow;
+  spec: ShareGoalSpec;
+  usage?: UsageSummary["goals"][number];
+  userTodos: TodoGroup | null;
+};
+
+const shareGoalSpecs: ShareGoalSpec[] = [
+  {
+    id: "premium-ui-ai-search-rec-migration",
+    label: "平台迁移",
+    subtitle: "AI Search / ZJXMT 迁移控制",
+    emphasis: "把用户确认项、Agent 本地研究、Nacos 前置风险拆开管理。",
+    accent: "border-t-emerald-500",
+    icon: GitBranch,
+  },
+  {
+    id: "tiger-team-maiduidui-regauc",
+    label: "埋堆堆打平",
+    subtitle: "RegAUC 实验推进",
+    emphasis: "已授权主动推进，但必须遵守最多 2 个 p4、最多 2 个 p3 运行中的并发约束。",
+    accent: "border-t-amber-500",
+    icon: Gauge,
+  },
+  {
+    id: "agent-harness-side-bypass",
+    label: "Agent Harness 旁路",
+    subtitle: "TAU2 排序器 / 跨域证据",
+    emphasis: "停止重复小步，要求排序器或跨域证据；做不到就不花配额、直接报告阻塞。",
+    accent: "border-t-rose-500",
+    icon: ShieldCheck,
+  },
+  {
+    id: "goal-harness-meta",
+    label: "Goal Harness Meta",
+    subtitle: "控制面自举与稳定性",
+    emphasis: "把观察循环转成状态、配额、active-state 的可验证产品改动。",
+    accent: "border-t-sky-500",
+    icon: Radar,
+  },
+];
+
+const shareStatusLabel: Record<string, string> = {
+  dashboard_home_control_plane_promotion: "主屏已提升",
+  dashboard_home_docs_contract_alignment: "主屏文档合约已对齐",
+  dashboard_home_route_smoke_contract: "主屏路由合约已验证",
+  state_refreshed: "状态已刷新",
+  quota_slot_spent: "已记录配额",
+  side_bypass_tau2_non_category_profile_admission_sweep: "旁路证据扫描",
+};
+
+const shareDeliveryScaleLabel: Record<string, string> = {
+  coherent_batch: "成组交付",
+  implementation: "实现改动",
+  multi_surface: "多面改动",
+  single_surface: "单面改动",
+  test_only: "仅测试合约",
+};
+
+const shareDeliveryOutcomeLabel: Record<string, string> = {
+  outcome_gap: "产出差距",
+  primary_goal_outcome: "主目标进展",
+  surface_only: "仅表层进展",
+};
+
+const shareQuotaLabel: Record<string, string> = {
+  blocked_health: "健康阻塞",
+  eligible: "可自动推进",
+  focus_wait: "暂缓不花配额",
+  operator_gate: "等待用户决策",
+  paused: "已暂停",
+  throttled: "quota 已满",
+  waiting: "等待下一步",
+};
+
+const shareWaitingLabel: Record<string, string> = {
+  clear: "无需关注",
+  codex: "Agent 可处理",
+  controller: "控制器待确认",
+  external_evidence: "等待外部证据",
+  user_or_controller: "用户待确认",
+};
+
+const eventClassLabel: Record<string, string> = {
+  accounting: "花费记录",
+  decision: "人类决策",
+  evidence: "证据观察",
+  state: "状态刷新",
+  work: "实际推进",
+};
+
+const eventClassOrder = ["work", "evidence", "decision", "accounting", "state"] as const;
+
+function cleanShareText(value?: string | null) {
+  return (value ?? "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\/Users\/[^\s，。；,;)]+/g, "[local]")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compactShareText(value?: string | null, limit = 132) {
+  const text = cleanShareText(value);
+  if (!text) {
+    return "暂无";
+  }
+  return text.length > limit ? `${text.slice(0, limit - 3).trimEnd()}...` : text;
+}
+
+function shareMachineLabel(value?: string | null) {
+  const raw = value ?? "";
+  if (!raw) {
+    return "";
+  }
+  return shareStatusLabel[raw]
+    ?? shareDeliveryScaleLabel[raw]
+    ?? shareDeliveryOutcomeLabel[raw]
+    ?? shareQuotaLabel[raw]
+    ?? raw
+      .replace(/_/g, " ")
+      .replace(/\bquota\b/g, "配额")
+      .replace(/\bguard\b/g, "守卫")
+      .replace(/\bhandoff\b/g, "交接")
+      .replace(/\bstate\b/g, "状态");
+}
+
+function shareRowById(rows: GoalDirectoryRow[]) {
+  return new Map(rows.map((row) => [row.goal.id, row]));
+}
+
+function shareUsageById(usage?: UsageSummary | null) {
+  return new Map((usage?.goals ?? []).map((goal) => [goal.goal_id, goal]));
+}
+
+function shareEventLedgerById(summary?: EventLedgerSummary | null) {
+  return new Map((summary?.goals ?? []).map((goal) => [goal.goal_id, goal]));
+}
+
+function shareDecisionFreshnessById(summary?: DecisionFreshnessSummary | null) {
+  const grouped = new Map<string, DecisionFreshnessItem[]>();
+  for (const item of summary?.items ?? []) {
+    if (!item.requires_decision_point_rebase) {
+      continue;
+    }
+    const current = grouped.get(item.goal_id) ?? [];
+    current.push(item);
+    grouped.set(item.goal_id, current);
+  }
+  return grouped;
+}
+
+function shareDecisionKindLabel(kind?: string | null) {
+  if (kind === "human_reward") {
+    return "reward";
+  }
+  if (kind === "operator_gate") {
+    return "gate";
+  }
+  if (kind === "operator_gate_resume_contract") {
+    return "resume contract";
+  }
+  return kind ? shareMachineLabel(kind) : "decision";
+}
+
+function shareDecisionFreshnessStateLabel(state?: string | null) {
+  if (state === "stale_rebase_required") {
+    return "已过期，需 rebase";
+  }
+  if (state === "rebase_required") {
+    return "有后续事件，需 rebase";
+  }
+  return shareMachineLabel(state) || "需 rebase";
+}
+
+function getShareTodos(row: GoalDirectoryRow | undefined, role: "user" | "agent") {
+  if (!row) {
+    return null;
+  }
+  const projectAsset = row.queueItem?.project_asset;
+  return role === "user"
+    ? todosFromProjectAssetSummary(projectAsset?.user_todos, row.queueItem?.user_todos, "project_asset.user_todos")
+    : todosFromProjectAssetSummary(projectAsset?.agent_todos, row.queueItem?.agent_todos, "project_asset.agent_todos");
+}
+
+function shareTodoCount(todos?: TodoGroup | null) {
+  if (!todos || todos.total_count === 0) {
+    return "0/0";
+  }
+  return `${todos.open_count}/${todos.total_count}`;
+}
+
+type ShareTodoRole = "user" | "agent";
+
+type ShareTopTodoItem = {
+  done: boolean;
+  index: number;
+  role: ShareTodoRole;
+  sourceOrder: number;
+  text: string;
+};
+
+function shareTodoRoleLabel(role: ShareTodoRole) {
+  return role === "user" ? "用户" : "Agent";
+}
+
+function shareTodoStatusLabel(todo: ShareTopTodoItem) {
+  if (todo.done) {
+    return "已完成";
+  }
+  return todo.role === "user" ? "待用户" : "待 Agent";
+}
+
+function shareTodoStatusVariant(todo: ShareTopTodoItem): BadgeVariant {
+  if (todo.done) {
+    return "success";
+  }
+  return todo.role === "user" ? "warning" : "info";
+}
+
+function shareTopTodoItems(view: ShareGoalView, limit = 4): ShareTopTodoItem[] {
+  const groups: Array<[ShareTodoRole, TodoGroup | null]> = [
+    ["user", view.userTodos],
+    ["agent", view.agentTodos],
+  ];
+  return groups
+    .flatMap(([role, group]) => (group?.items ?? []).map((todo, sourceOrder) => ({
+      done: todo.done,
+      index: todo.index,
+      role,
+      sourceOrder,
+      text: todo.text,
+    })))
+    .sort((left, right) => {
+      const leftPriority = (left.done ? 2 : 0) + (left.role === "agent" ? 1 : 0);
+      const rightPriority = (right.done ? 2 : 0) + (right.role === "agent" ? 1 : 0);
+      return leftPriority - rightPriority
+        || left.sourceOrder - right.sourceOrder
+        || left.index - right.index;
+    })
+    .slice(0, limit);
+}
+
+function ShareTopTodoList({
+  className,
+  compact = false,
+  view,
+}: {
+  className?: string;
+  compact?: boolean;
+  view: ShareGoalView;
+}) {
+  const todos = shareTopTodoItems(view);
+  if (todos.length === 0) {
+    return (
+      <div className={cn("rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500", className)}>
+        当前没有可展示的项目 todo。
+      </div>
+    );
+  }
+  return (
+    <div className={cn("space-y-2", className)} data-testid={`share-top-todos-${view.spec.id}`}>
+      {todos.map((todo, itemIndex) => {
+        const StatusIcon = todo.done ? CheckCircle2 : Clock3;
+        return (
+          <div
+            className={cn(
+              "rounded-md border px-3 py-2",
+              todo.done ? "border-emerald-200 bg-emerald-50/70" : "border-slate-200 bg-white",
+            )}
+            key={`${todo.role}-${todo.index}-${itemIndex}`}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={todo.role === "user" ? "warning" : "info"}>{shareTodoRoleLabel(todo.role)}</Badge>
+              <Badge variant={shareTodoStatusVariant(todo)}>
+                <StatusIcon className="h-3 w-3" />
+                {shareTodoStatusLabel(todo)}
+              </Badge>
+              <span className="text-[11px] font-medium text-slate-500">#{todo.index}</span>
+            </div>
+            <p className={cn("mt-1 break-words text-sm leading-6 text-slate-700", compact ? "line-clamp-2" : "line-clamp-3")}>
+              {compactShareText(todo.text, compact ? 112 : 152)}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ShareDependencyBlockerList({
+  className,
+  compact = false,
+  view,
+}: {
+  className?: string;
+  compact?: boolean;
+  view: ShareGoalView;
+}) {
+  const blockers = view.row?.queueItem?.dependency_blockers;
+  const items = blockers?.items ?? [];
+  if (!blockers || blockers.open_count === 0 || items.length === 0) {
+    return null;
+  }
+  return (
+    <div className={cn("space-y-2", className)} data-testid={`share-dependency-blockers-${view.spec.id}`}>
+      {items.slice(0, compact ? 2 : 4).map((blocker, itemIndex) => (
+        <div
+          className="rounded-md border border-amber-200 bg-amber-50/70 px-3 py-2"
+          key={`${blocker.goal_id}-${blocker.index ?? itemIndex}`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="warning">依赖阻塞</Badge>
+            <span className="break-all text-[11px] font-semibold text-amber-700">{blocker.goal_id}</span>
+            {blocker.waiting_on ? (
+              <span className="text-[11px] font-medium text-amber-700">
+                {shareWaitingLabel[blocker.waiting_on] ?? shareMachineLabel(blocker.waiting_on)}
+              </span>
+            ) : null}
+          </div>
+          <p className={cn("mt-1 break-words text-sm leading-6 text-amber-950", compact ? "line-clamp-2" : "line-clamp-3")}>
+            {compactShareText(blocker.text, compact ? 108 : 148)}
+          </p>
+        </div>
+      ))}
+      {blockers.open_count > items.length ? (
+        <div className="text-[11px] font-medium text-amber-700">
+          另有 {blockers.open_count - items.length} 项依赖阻塞未展开。
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ShareDecisionFreshnessWarning({
+  className,
+  compact = false,
+  view,
+}: {
+  className?: string;
+  compact?: boolean;
+  view: ShareGoalView;
+}) {
+  const items = view.decisionFreshnessWarnings;
+  if (items.length === 0) {
+    return null;
+  }
+  const visible = items.slice(0, compact ? 1 : 2);
+  return (
+    <div className={cn("space-y-2", className)} data-testid={`share-decision-freshness-${view.spec.id}`}>
+      {visible.map((item, itemIndex) => (
+        <div
+          className="rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2"
+          key={`${item.decision_kind ?? "decision"}-${item.decision_at ?? itemIndex}`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="warning">决策需 rebase</Badge>
+            <span className="text-[11px] font-semibold text-amber-700">
+              {shareDecisionKindLabel(item.decision_kind)}
+            </span>
+            <span className="text-[11px] font-medium text-amber-700">
+              {shareDecisionFreshnessStateLabel(item.freshness_state)}
+            </span>
+          </div>
+          <p className={cn("mt-1 break-words text-sm leading-6 text-amber-950", compact ? "line-clamp-2" : "line-clamp-3")}>
+            {compact
+              ? "审批或转交前先重读当前控制面状态；这不是仓库回滚。"
+              : "审批或转交前先重读 registry / active state / quota / run status；旧聊天或旧 gate 不能直接当当前授权，这不是仓库回滚。"}
+          </p>
+          <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-medium text-amber-700">
+            <span>7d 新事件 {item.newer_event_count_7d ?? 0}</span>
+            {item.age_days != null ? <span>决策年龄 {Math.round(item.age_days)}d</span> : null}
+          </div>
+        </div>
+      ))}
+      {items.length > visible.length ? (
+        <div className="text-[11px] font-medium text-amber-700">
+          另有 {items.length - visible.length} 个旧决策需要 rebase。
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function shareOpenTotal(views: ShareGoalView[], role: "user" | "agent") {
+  return views.reduce(
+    (total, view) => {
+      const todos = role === "user" ? view.userTodos : view.agentTodos;
+      return {
+        open: total.open + (todos?.open_count ?? 0),
+        total: total.total + (todos?.total_count ?? 0),
+      };
+    },
+    { open: 0, total: 0 },
+  );
+}
+
+function quotaStateForShare(row?: GoalDirectoryRow) {
+  return row?.queueItem?.project_asset?.quota?.state ?? row?.queueItem?.quota?.state ?? row?.goal.quota?.state ?? "waiting";
+}
+
+function quotaForShare(row?: GoalDirectoryRow) {
+  return row?.queueItem?.project_asset?.quota ?? row?.queueItem?.quota ?? row?.goal.quota;
+}
+
+function shareStatusForGoal(view: ShareGoalView): { label: string; summary: string; variant: BadgeVariant } {
+  const quota = quotaForShare(view.row);
+  const quotaState = quota?.state ?? "waiting";
+  if (!view.row) {
+    return {
+      label: "未接入",
+      summary: "全局状态里还没有这个目标的 current projection。",
+      variant: "neutral",
+    };
+  }
+  if (view.spec.id === "agent-harness-side-bypass" && quotaState === "focus_wait") {
+    const gap = view.row.queueItem?.handoff_readiness?.post_handoff_outcome_gap_streak ?? quota?.post_handoff_outcome_gap_streak ?? 0;
+    return {
+      label: "暂缓不花配额",
+      summary: `连续 ${gap || 3} 次产出差距，下一步必须是排序器 / 跨域证据，或明确阻塞说明。`,
+      variant: "warning",
+    };
+  }
+  if (view.spec.id === "premium-ui-ai-search-rec-migration" && (view.userTodos?.open_count ?? 0) > 0) {
+    return {
+      label: "用户待办已捕获",
+      summary: "源 topic/table 权威确认被单独留给用户，Agent 不会越权重启或上传。",
+      variant: "warning",
+    };
+  }
+  if (view.spec.id === "tiger-team-maiduidui-regauc") {
+    return {
+      label: "已授权主动推进",
+      summary: "可用 open p4/p3 槽位推进，但必须写回 board 与 MLP ledger。",
+      variant: "info",
+    };
+  }
+  if (view.spec.id === "goal-harness-meta") {
+    return {
+      label: "控制面健康",
+      summary: "全局注册表、配额守卫、active-state 刷新处于可观测闭环。",
+      variant: "success",
+    };
+  }
+  if (quotaState === "eligible") {
+    return {
+      label: "可自动推进",
+      summary: "当前没有用户闸门，Agent 可做一个有边界、有验证、有写回的小段推进。",
+      variant: "success",
+    };
+  }
+  return {
+    label: shareQuotaLabel[quotaState] ?? shareMachineLabel(quotaState),
+    summary: compactShareText(quota?.reason ?? view.row.queueItem?.recommended_action, 118),
+    variant: quotaVariant(quotaState),
+  };
+}
+
+function shareStatusText(row?: GoalDirectoryRow) {
+  if (!row) {
+    return "未接入";
+  }
+  return shareMachineLabel(row.status);
+}
+
+function ShareKpi({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone = "neutral",
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  detail: string;
+  tone?: "neutral" | "success" | "warning" | "info" | "danger";
+}) {
+  const toneClass = {
+    neutral: "border-slate-200 bg-white text-slate-900",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    warning: "border-amber-200 bg-amber-50 text-amber-950",
+    info: "border-sky-200 bg-sky-50 text-sky-950",
+    danger: "border-rose-200 bg-rose-50 text-rose-950",
+  }[tone];
+  return (
+    <div className={cn("min-h-28 rounded-lg border px-4 py-3", toneClass)}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-medium text-current/70">{label}</div>
+        <Icon className="h-4 w-4 text-current/60" />
+      </div>
+      <div className="mt-3 text-3xl font-semibold tracking-normal">{value}</div>
+      <div className="mt-1 text-xs leading-5 text-current/70">{detail}</div>
+    </div>
+  );
+}
+
+function ShareProjectCard({ view }: { view: ShareGoalView }) {
+  const Icon = view.spec.icon;
+  const status = shareStatusForGoal(view);
+  const quota = quotaForShare(view.row);
+  const usage = view.usage;
+  const dependencyBlockers = view.row?.queueItem?.dependency_blockers;
+  const readiness = view.row?.queueItem?.handoff_readiness;
+  const latest = readiness?.post_handoff_latest_run;
+  const lastEvidence = latest
+    ? [
+      shareMachineLabel(latest.classification),
+      latest.delivery_batch_scale ? `规模 ${shareMachineLabel(latest.delivery_batch_scale)}` : null,
+      latest.delivery_outcome ? `结果 ${shareMachineLabel(latest.delivery_outcome)}` : null,
+    ].filter(Boolean).join(" · ")
+    : shareStatusText(view.row);
+
+  return (
+    <article
+      className={cn(
+        "grid min-h-[410px] content-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm",
+        "border-t-4",
+        view.spec.accent,
+      )}
+      data-goal-id={view.spec.id}
+    >
+      <div className="min-w-0">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Icon className="h-4 w-4 text-slate-600" />
+              <h3 className="text-xl font-semibold tracking-normal text-slate-950">{view.spec.label}</h3>
+            </div>
+            <p className="mt-1 text-sm font-medium text-slate-500">{view.spec.subtitle}</p>
+          </div>
+          <Badge variant={status.variant}>{status.label}</Badge>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-slate-700">{view.spec.emphasis}</p>
+
+        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2">
+            <div className="text-lg font-semibold text-slate-950">{shareTodoCount(view.userTodos)}</div>
+            <div className="text-[11px] font-medium text-slate-500">用户待办</div>
+          </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2">
+            <div className="text-lg font-semibold text-slate-950">{shareTodoCount(view.agentTodos)}</div>
+            <div className="text-[11px] font-medium text-slate-500">Agent 待办</div>
+          </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2">
+            <div className="text-lg font-semibold text-slate-950">{usage?.progress_signal_run_count_24h ?? 0}</div>
+            <div className="text-[11px] font-medium text-slate-500">24h 进展</div>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="text-xs font-semibold text-slate-500">Top-4 Todo</div>
+            <div className="flex flex-wrap gap-1">
+              <Badge variant="warning">待用户</Badge>
+              <Badge variant="info">待 Agent</Badge>
+              <Badge variant="success">已完成</Badge>
+              {dependencyBlockers?.open_count ? <Badge variant="warning">依赖 {dependencyBlockers.open_count}</Badge> : null}
+            </div>
+          </div>
+          <ShareTopTodoList view={view} />
+          <ShareDependencyBlockerList className="mt-2" view={view} />
+          <ShareDecisionFreshnessWarning className="mt-2" view={view} />
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
+        <Badge variant={quotaVariant(quota?.state)}>{shareQuotaLabel[quota?.state ?? "waiting"] ?? (shareMachineLabel(quota?.state) || "等待下一步")}</Badge>
+        <Badge variant="neutral">{shareWaitingLabel[view.row?.waitingOn ?? "clear"] ?? shareMachineLabel(view.row?.waitingOn)}</Badge>
+        <Badge variant={view.row?.queueItem?.handoff_readiness?.ready ? "success" : "warning"}>
+          {view.row?.queueItem?.handoff_readiness?.ready ? "handoff 可执行" : "handoff 受控"}
+        </Badge>
+        <span className="line-clamp-1 min-w-0 flex-1 text-xs text-slate-500">{lastEvidence}</span>
+      </div>
+    </article>
+  );
+}
+
+function ShareTodoMatrix({ views }: { views: ShareGoalView[] }) {
+  return (
+    <section
+      className="rounded-xl border border-slate-200 bg-white px-5 py-5 shadow-sm"
+      data-testid="share-todo-matrix"
+    >
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-normal text-slate-950">Todo 责任矩阵</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            重点不是把所有项目都自动化掉，而是把“该人判断”和“该 Agent 推进”分清楚。
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="warning">待用户</Badge>
+          <Badge variant="info">待 Agent</Badge>
+          <Badge variant="success">已完成</Badge>
+        </div>
+      </div>
+      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+        <div className="grid grid-cols-[170px_minmax(0,1fr)_220px] gap-0 bg-slate-50 text-xs font-semibold text-slate-500">
+          <div className="px-3 py-2">项目</div>
+          <div className="px-3 py-2">Top-4 Todo（含状态）</div>
+          <div className="px-3 py-2 text-right">控制状态</div>
+        </div>
+        <div className="divide-y divide-slate-200">
+          {views.map((view) => {
+            const status = shareStatusForGoal(view);
+            const dependencyOpen = view.row?.queueItem?.dependency_blockers?.open_count ?? 0;
+            return (
+              <div
+                className="grid min-h-[180px] grid-cols-[170px_minmax(0,1fr)_220px] gap-0 bg-white"
+                key={view.spec.id}
+              >
+                <div className="px-3 py-3">
+                  <div className="text-sm font-semibold text-slate-950">{view.spec.label}</div>
+                  <div className="mt-1 text-[11px] leading-4 text-slate-500">{view.spec.subtitle}</div>
+                </div>
+                <div className="border-l border-slate-200 px-3 py-3">
+                  <ShareTopTodoList compact view={view} />
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs font-medium">
+                    <span className="text-amber-700">用户 {shareTodoCount(view.userTodos)}</span>
+                    <span className="text-sky-700">Agent {shareTodoCount(view.agentTodos)}</span>
+                    {dependencyOpen > 0 ? <span className="text-amber-700">依赖阻塞 {dependencyOpen}</span> : null}
+                  </div>
+                  <ShareDependencyBlockerList className="mt-2" compact view={view} />
+                  <ShareDecisionFreshnessWarning className="mt-2" compact view={view} />
+                </div>
+                <div className="border-l border-slate-200 px-3 py-3 text-right">
+                  <Badge variant={status.variant}>{status.label}</Badge>
+                  <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{status.summary}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+type ShareSignalTone = "rose" | "amber" | "emerald";
+
+function ShareSignalCard({
+  body,
+  icon: Icon,
+  metrics,
+  status,
+  steps,
+  title,
+  tone,
+}: {
+  body: string;
+  icon: React.ComponentType<{ className?: string }>;
+  metrics: { label: string; value: string }[];
+  status: { label: string; variant: BadgeVariant };
+  steps: { label: string; value: string }[];
+  title: string;
+  tone: ShareSignalTone;
+}) {
+  const toneClass = {
+    rose: {
+      border: "border-rose-200",
+      header: "bg-rose-50 text-rose-950",
+      icon: "bg-rose-100 text-rose-700",
+      rule: "border-rose-200",
+      text: "text-rose-950",
+    },
+    amber: {
+      border: "border-amber-200",
+      header: "bg-amber-50 text-amber-950",
+      icon: "bg-amber-100 text-amber-700",
+      rule: "border-amber-200",
+      text: "text-amber-950",
+    },
+    emerald: {
+      border: "border-emerald-200",
+      header: "bg-emerald-50 text-emerald-950",
+      icon: "bg-emerald-100 text-emerald-700",
+      rule: "border-emerald-200",
+      text: "text-emerald-950",
+    },
+  }[tone];
+
+  return (
+    <article className={cn("overflow-hidden rounded-xl border bg-white shadow-sm", toneClass.border)}>
+      <div className={cn("flex min-h-[82px] items-start justify-between gap-3 px-5 py-4", toneClass.header)}>
+        <div className="flex min-w-0 items-start gap-3">
+          <div className={cn("mt-0.5 rounded-lg p-2", toneClass.icon)}>
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-normal">{title}</h2>
+            <p className={cn("mt-1 text-sm leading-6", toneClass.text)}>{body}</p>
+          </div>
+        </div>
+        <Badge variant={status.variant}>{status.label}</Badge>
+      </div>
+
+      <div className="px-5 py-4">
+        <div className="grid grid-cols-3 gap-2">
+          {metrics.map((metric) => (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" key={metric.label}>
+              <div className="text-[11px] font-medium text-slate-500">{metric.label}</div>
+              <div className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-950">{metric.value}</div>
+            </div>
+          ))}
+        </div>
+        <div className={cn("mt-4 grid grid-cols-3 gap-0 overflow-hidden rounded-lg border", toneClass.rule)}>
+          {steps.map((step, index) => (
+            <div
+              className={cn(
+                "bg-white px-3 py-3",
+                index > 0 && "border-l",
+                toneClass.rule,
+              )}
+              key={step.label}
+            >
+              <div className="text-[11px] font-semibold text-slate-500">{step.label}</div>
+              <div className="mt-1 text-sm font-medium leading-5 text-slate-800">{step.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ShareGuardEvidence({
+  payload,
+  views,
+}: {
+  payload: StatusPayload;
+  views: ShareGoalView[];
+}) {
+  const side = views.find((view) => view.spec.id === "agent-harness-side-bypass");
+  const tiger = views.find((view) => view.spec.id === "tiger-team-maiduidui-regauc");
+  const meta = views.find((view) => view.spec.id === "goal-harness-meta");
+  const premium = views.find((view) => view.spec.id === "premium-ui-ai-search-rec-migration");
+  const sideGap = side?.row?.queueItem?.handoff_readiness?.post_handoff_outcome_gap_streak
+    ?? side?.row?.queueItem?.quota?.post_handoff_outcome_gap_streak
+    ?? 0;
+  const tigerUsage = tiger?.usage;
+  const metaUsage = meta?.usage;
+
+  return (
+    <section
+      className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm"
+      data-testid="share-guard-evidence"
+    >
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-normal text-slate-950">Guard / Evidence 控制信号</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            控制面的价值不是继续制造 todo，而是把何时停、何时推进、何时写回变成同一套证据。
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="warning">配额守卫</Badge>
+          <Badge variant="info">证据等待</Badge>
+          <Badge variant="success">状态写回</Badge>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_1fr]">
+        <ShareSignalCard
+          body={`连续 ${sideGap || 3} 次产出差距后，控制面暂停自动消耗；没有排序器 / 跨域证据，只能给阻塞说明。`}
+          icon={ShieldCheck}
+          metrics={[
+            { label: "触发阈值", value: `${sideGap || 3} 次产出差距` },
+            { label: "禁止路径", value: "单面改动" },
+            { label: "允许输出", value: "阻塞说明" },
+          ]}
+          status={{ label: "no-spend 暂缓", variant: "warning" }}
+          steps={[
+            { label: "触发", value: "表层小步重复" },
+            { label: "控制", value: "暂缓不花 quota" },
+            { label: "写回", value: "证据或 blocker" },
+          ]}
+          title="旁路：防止重复小步"
+          tone="rose"
+        />
+
+        <ShareSignalCard
+          body={`24h 已花 ${tigerUsage?.quota_spend_slots_24h ?? 0} 个配额槽，进展信号 ${tigerUsage?.progress_signal_run_count_24h ?? 0}；推进必须落到任务、失败标记、评估或账本。`}
+          icon={Gauge}
+          metrics={[
+            { label: "24h quota", value: `${tigerUsage?.quota_spend_slots_24h ?? 0} slots` },
+            { label: "并发边界", value: "最多 2 个 p4 运行中" },
+            { label: "补充边界", value: "最多 2 个 p3 运行中" },
+          ]}
+          status={{ label: "主动推进", variant: "info" }}
+          steps={[
+            { label: "触发", value: "已授权推进" },
+            { label: "控制", value: "配额 + 并发约束" },
+            { label: "写回", value: "board + ledger" },
+          ]}
+          title="埋堆堆：授权推进但要留痕"
+          tone="amber"
+        />
+
+        <ShareSignalCard
+          body={`平台迁移保留 ${premium?.userTodos?.open_count ?? 0} 个真实用户待办；Meta 24h 进展信号 ${metaUsage?.progress_signal_run_count_24h ?? 0}，当前合约错误 ${payload.contract.summary.errors}。`}
+          icon={FileCheck2}
+          metrics={[
+            { label: "真实用户 gate", value: `${premium?.userTodos?.open_count ?? 0} open` },
+            { label: "Meta 进展", value: `${metaUsage?.progress_signal_run_count_24h ?? 0} signals` },
+            { label: "全局发现", value: `${payload.global_registry.summary.findings} findings` },
+          ]}
+          status={{ label: "已验证", variant: "success" }}
+          steps={[
+            { label: "触发", value: "状态刷新" },
+            { label: "控制", value: "registry 真相源" },
+            { label: "写回", value: "active-state 写回" },
+          ]}
+          title="平台迁移 + Meta：状态真相"
+          tone="emerald"
+        />
+      </div>
+    </section>
+  );
+}
+
+function ShareAutonomousBacklog({
+  summary,
+}: {
+  summary?: StatusPayload["attention_queue"]["autonomous_backlog_candidates"];
+}) {
+  const items = summary?.items ?? [];
+  if (!summary || summary.open_count === 0 || items.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3" data-testid="share-autonomous-backlog">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Bot className="h-4 w-4 text-sky-700" />
+          <div className="text-sm font-semibold text-sky-950">可自动推进候选</div>
+        </div>
+        <Badge variant="info">{summary.open_count}</Badge>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
+        {items.slice(0, 3).map((candidate, index) => (
+          <div className="rounded-md border border-sky-200 bg-white px-3 py-2" key={`${candidate.goal_id}-${candidate.todo_index ?? index}`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="break-all text-[11px] font-semibold text-sky-700">{candidate.goal_id}</span>
+              {candidate.priority ? <Badge variant="info">{candidate.priority}</Badge> : null}
+            </div>
+            <p className="mt-1 line-clamp-2 break-words text-sm leading-6 text-slate-700">
+              {compactShareText(candidate.text, 118)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function eventClassCount(
+  counts: EventLedgerSummary["totals"]["by_class_24h"] | EventLedgerSummary["totals"]["by_class_7d"] | undefined,
+  eventClass: EventLedgerClass,
+) {
+  return counts?.[eventClass] ?? 0;
+}
+
+function EventClassPill({
+  counts,
+  eventClass,
+}: {
+  counts?: EventLedgerSummary["totals"]["by_class_24h"] | EventLedgerSummary["totals"]["by_class_7d"];
+  eventClass: EventLedgerClass;
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-center shadow-sm">
+      <div className="text-lg font-semibold text-slate-950">{eventClassCount(counts, eventClass)}</div>
+      <div className="mt-0.5 text-[11px] font-medium text-slate-500">{eventClassLabel[eventClass]}</div>
+    </div>
+  );
+}
+
+function ShareEventLedgerStrip({ summary }: { summary?: EventLedgerSummary | null }) {
+  if (!summary?.available) {
+    return null;
+  }
+  const totals = summary.totals;
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3" data-testid="share-event-ledger">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <History className="h-4 w-4 text-slate-700" />
+          <div>
+            <div className="text-sm font-semibold text-slate-950">控制面事件账本投影</div>
+            <p className="mt-0.5 text-xs leading-5 text-slate-500">
+              Chat thread 只是 worker；这里展示的是 run history 的 compact 事件投影。
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="neutral">{summary.source}</Badge>
+          <Badge variant="info">{summary.sample_run_count} samples</Badge>
+          <Badge variant="success">24h {totals.events_24h}</Badge>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-5">
+        {eventClassOrder.map((eventClass) => (
+          <EventClassPill counts={totals.by_class_24h} eventClass={eventClass} key={eventClass} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ShareEvidenceView({
+  isLoading,
+  onRefresh,
+  payload,
+  rows,
+  source,
+  theme,
+  toggleTheme,
+}: {
+  isLoading: boolean;
+  onRefresh: () => void;
+  payload: StatusPayload;
+  rows: GoalDirectoryRow[];
+  source: DataSource;
+  theme: "light" | "dark";
+  toggleTheme: () => void;
+}) {
+  const rowById = shareRowById(rows);
+  const eventLedgerById = shareEventLedgerById(payload.event_ledger_summary);
+  const decisionFreshnessById = shareDecisionFreshnessById(payload.decision_freshness_summary);
+  const usageById = shareUsageById(payload.usage_summary);
+  const views = shareGoalSpecs.map((spec): ShareGoalView => {
+    const row = rowById.get(spec.id);
+    return {
+      agentTodos: getShareTodos(row, "agent"),
+      decisionFreshnessWarnings: decisionFreshnessById.get(spec.id) ?? [],
+      eventLedger: eventLedgerById.get(spec.id),
+      row,
+      spec,
+      usage: usageById.get(spec.id),
+      userTodos: getShareTodos(row, "user"),
+    };
+  });
+  const userOpenTotal = shareOpenTotal(views, "user");
+  const agentOpenTotal = shareOpenTotal(views, "agent");
+  const blockedCount = views.filter((view) => shareStatusForGoal(view).label.includes("暂缓")).length;
+  const automation = payload.usage_summary?.totals.automation_run_count_24h ?? 0;
+  const ledgerTotals = payload.event_ledger_summary?.totals;
+  const progress = payload.usage_summary?.totals.progress_signal_run_count_24h ?? 0;
+  const ledgerWork = eventClassCount(ledgerTotals?.by_class_24h, "work");
+  const ledgerEvidence = eventClassCount(ledgerTotals?.by_class_24h, "evidence");
+
+  return (
+    <div className={theme === "dark" ? "dark" : ""}>
+      <main className="min-h-screen bg-[#f7f7f4] text-slate-950">
+        <div className="mx-auto max-w-[1500px] space-y-5 px-5 py-5">
+          <section
+            className="rounded-2xl border border-slate-200 bg-white px-6 py-6 shadow-sm"
+            data-testid="share-overview"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-3xl">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="success">Goal Harness 控制面</Badge>
+                  <Badge variant="neutral">四项目实证</Badge>
+                  <Badge variant={payload.ok ? "success" : "danger"}>{payload.ok ? "状态健康" : "健康阻塞"}</Badge>
+                </div>
+                <h1 className="mt-3 text-4xl font-semibold tracking-normal text-slate-950">
+                  把多项目 Agent 工作变成可管理的 Todo、证据和配额
+                </h1>
+                <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">
+                  这个看板把平台迁移、埋堆堆打平、Agent Harness 旁路和 Goal Harness Meta 统一到同一套控制面：
+                  用户待办单独挂起，Agent 高优任务继续推进，配额守卫和交接合约负责防止重复空转。
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button disabled={isLoading} onClick={toggleTheme} variant="secondary">
+                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  主题
+                </Button>
+                <Button disabled={isLoading} onClick={onRefresh} variant="primary">
+                  <RefreshCw className="h-4 w-4" />
+                  刷新证据
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <StatusContractFreshnessWarning payload={payload} source={source} />
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <ShareKpi
+                detail="分享重点项目"
+                icon={GitBranch}
+                label="覆盖项目"
+                value={String(views.length)}
+              />
+              <ShareKpi
+                detail="打开 / 总数"
+                icon={Users}
+                label="用户待办"
+                tone={userOpenTotal.open > 0 ? "warning" : "success"}
+                value={`${userOpenTotal.open}/${userOpenTotal.total}`}
+              />
+              <ShareKpi
+                detail="打开 / 总数"
+                icon={Bot}
+                label="Agent 待办"
+                tone={agentOpenTotal.open > 0 ? "info" : "success"}
+                value={`${agentOpenTotal.open}/${agentOpenTotal.total}`}
+              />
+              <ShareKpi
+                detail={`${progress} 个进展信号；ledger work ${ledgerWork}`}
+                icon={Gauge}
+                label="24h 自动回合"
+                tone="info"
+                value={String(automation)}
+              />
+              <ShareKpi
+                detail={`${ledgerEvidence} 个证据观察；重复小步会被拦住`}
+                icon={ShieldCheck}
+                label="暂缓不花配额"
+                tone={blockedCount > 0 ? "warning" : "success"}
+                value={String(blockedCount)}
+              />
+            </div>
+
+            <ShareAutonomousBacklog summary={payload.attention_queue.autonomous_backlog_candidates} />
+            <ShareEventLedgerStrip summary={payload.event_ledger_summary} />
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              {views.map((view) => (
+                <ShareProjectCard key={view.spec.id} view={view} />
+              ))}
+            </div>
+          </section>
+
+          <ShareTodoMatrix views={views} />
+          <ShareGuardEvidence payload={payload} views={views} />
+        </div>
+      </main>
+    </div>
+  );
 }
 
 function buildHumanFriendlyActionPacket({
@@ -2834,6 +3967,38 @@ function OperatorGateSummary({ gate }: { gate: OperatorGate }) {
   );
 }
 
+function OperatorGateResumeContractSummary({ contract }: { contract: OperatorGateResumeContract }) {
+  const checks = [
+    contract.freshness_check,
+    contract.precondition_check,
+    contract.migration_or_rebase_result,
+    contract.validation_after_resume,
+  ].filter(Boolean);
+  return (
+    <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-900/60 dark:bg-emerald-950/30">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="success">Checkpointed resume</Badge>
+        {contract.version ? <Badge variant="neutral">{contract.version}</Badge> : null}
+        {contract.gate_id ? <span className="font-medium text-emerald-950 dark:text-emerald-100">{contract.gate_id}</span> : null}
+        {contract.operator_decision ? <Badge variant="success">{contract.operator_decision}</Badge> : null}
+      </div>
+      {contract.latest_state_ref ? (
+        <p className="mt-2 text-xs leading-5 text-emerald-900 dark:text-emerald-100">{contract.latest_state_ref}</p>
+      ) : null}
+      {checks.length > 0 ? (
+        <ul className="mt-2 space-y-1 text-xs leading-5 text-emerald-800 dark:text-emerald-200">
+          {checks.map((check) => (
+            <li key={check}>{check}</li>
+          ))}
+        </ul>
+      ) : null}
+      {contract.resulting_action ? (
+        <p className="mt-2 text-xs leading-5 text-emerald-950 dark:text-emerald-100">{contract.resulting_action}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function ControllerReadinessSummary({ readiness }: { readiness: ControllerReadiness }) {
   const missing = readiness.missing_gates ?? [];
   return (
@@ -2909,6 +4074,7 @@ function LatestRun({ run }: { run: RunRecord }) {
         {run.health_check ? <Badge variant="success">{run.health_check}</Badge> : null}
         {run.human_reward ? <Badge variant={rewardVariant(run.human_reward.reward)}>Reward</Badge> : null}
         {run.operator_gate ? <Badge variant={operatorGateVariant(run.operator_gate)}>Gate</Badge> : null}
+        {run.operator_gate_resume_contract ? <Badge variant="success">Resume contract</Badge> : null}
         {run.controller_readiness ? <Badge variant={readinessVariant(run.controller_readiness)}>Readiness</Badge> : null}
         <Badge variant={artifactVariant(run.json_exists)}>JSON</Badge>
         <Badge variant={artifactVariant(run.markdown_exists)}>Markdown</Badge>
@@ -2919,6 +4085,9 @@ function LatestRun({ run }: { run: RunRecord }) {
       {run.controller_readiness ? <ControllerReadinessSummary readiness={run.controller_readiness} /> : null}
       {run.human_reward ? <HumanRewardSummary reward={run.human_reward} /> : null}
       {run.operator_gate ? <OperatorGateSummary gate={run.operator_gate} /> : null}
+      {run.operator_gate_resume_contract ? (
+        <OperatorGateResumeContractSummary contract={run.operator_gate_resume_contract} />
+      ) : null}
       {run.project_map ? <ProjectMapSummary projectMap={run.project_map} /> : null}
     </div>
   );
@@ -3546,6 +4715,7 @@ export function DashboardPage() {
         search: (current) => ({
           ...current,
           statusUrl: trimmed,
+          view: routeViewForUrl(currentRouteView(current)),
         }),
       });
     } catch (error) {
@@ -3581,6 +4751,7 @@ export function DashboardPage() {
       search: (current) => ({
         ...current,
         statusUrl: "",
+        view: routeViewForUrl(currentRouteView(current)),
       }),
     });
   }
@@ -3588,6 +4759,10 @@ export function DashboardPage() {
   useEffect(() => {
     if (search.statusUrl) {
       void loadFromUrl(search.statusUrl);
+      return;
+    }
+    if (search.view !== "ops") {
+      void loadFromUrl(defaultGlobalStatusUrl);
     }
   }, []);
 
@@ -3657,6 +4832,20 @@ export function DashboardPage() {
     });
   }
 
+  if (search.view !== "ops") {
+    return (
+      <ShareEvidenceView
+        isLoading={isLoading}
+        onRefresh={() => void loadFromUrl(source.kind === "url" ? source.label : (statusUrl || defaultGlobalStatusUrl))}
+        payload={payload}
+        rows={goalRows}
+        source={source}
+        theme={theme}
+        toggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+      />
+    );
+  }
+
   return (
     <div className={theme === "dark" ? "dark" : ""}>
       <div className="min-h-screen bg-[#f6f7f9] text-slate-950 dark:bg-[#09090b] dark:text-zinc-50">
@@ -3703,6 +4892,8 @@ export function DashboardPage() {
             </header>
 
             <div className="space-y-5 p-4 sm:p-6">
+              <StatusContractFreshnessWarning payload={payload} source={source} />
+
               <section>
                 <TodoFocusPanel rows={goalRows} onSelectGoal={selectGoal} selectedGoalId={selectedReviewGoalId} />
               </section>
@@ -3734,7 +4925,13 @@ export function DashboardPage() {
                 <MetricCard icon={FileJson2} label="Queue" value={String(queue.item_count)} tone="warning" />
               </section>
 
-              <UsageStatsPanel usage={payload.usage_summary} />
+              <div className="grid gap-4 xl:grid-cols-4">
+                <UsageStatsPanel usage={payload.usage_summary} />
+                <EventLedgerSummaryPanel summary={payload.event_ledger_summary} />
+                <PromotionReadinessSummaryPanel summary={payload.promotion_readiness_summary} />
+                <PromotionGatePanel gate={payload.promotion_gate} />
+                <DecisionFreshnessSummaryPanel summary={payload.decision_freshness_summary} />
+              </div>
 
               <GoalDirectory rows={goalRows} onSelectGoal={selectGoal} selectedGoalId={selectedGoalId} />
 
@@ -3941,6 +5138,252 @@ function UsageMetric({
   );
 }
 
+function EventLedgerSummaryPanel({ summary }: { summary?: EventLedgerSummary | null }) {
+  if (!summary?.available) {
+    return null;
+  }
+  const totals = summary.totals;
+  const topGoals = summary.goals.slice(0, 5);
+  return (
+    <Card>
+      <CardHeader className="flex-wrap">
+        <CardTitle className="flex items-center gap-2">
+          <History className="h-4 w-4" />
+          控制面事件账本
+        </CardTitle>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="info">{summary.source}</Badge>
+          <Badge variant="neutral">{summary.sample_run_count} samples</Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="mb-3 text-sm leading-6 text-slate-600 dark:text-zinc-300">
+          Chat thread 不是 source of truth；这里是 run history 的 compact 投影，用来判断最近事实是推进、证据、决策、状态还是花费。
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {eventClassOrder.map((eventClass) => (
+            <UsageMetric
+              key={eventClass}
+              label={eventClassLabel[eventClass]}
+              value={`${eventClassCount(totals.by_class_24h, eventClass)} / ${eventClassCount(totals.by_class_7d, eventClass)}`}
+            />
+          ))}
+        </div>
+        {topGoals.length ? (
+          <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-zinc-800">
+            <div className="grid grid-cols-[minmax(0,1fr)_72px_72px_92px] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+              <div>Goal</div>
+              <div className="text-right">24h</div>
+              <div className="text-right">7d</div>
+              <div className="text-right">Latest</div>
+            </div>
+            <div className="divide-y divide-slate-200 dark:divide-zinc-800">
+              {topGoals.map((goal) => (
+                <div
+                  className="grid grid-cols-[minmax(0,1fr)_72px_72px_92px] gap-2 px-3 py-2 text-sm"
+                  key={goal.goal_id}
+                >
+                  <div className="min-w-0 break-all font-medium text-slate-900 dark:text-zinc-100">{goal.goal_id}</div>
+                  <div className="text-right text-slate-600 dark:text-zinc-300">{goal.events_24h}</div>
+                  <div className="text-right text-slate-600 dark:text-zinc-300">{goal.events_7d}</div>
+                  <div className="text-right text-slate-600 dark:text-zinc-300">{eventClassLabel[goal.latest_event_class as EventLedgerClass] ?? goal.latest_event_class ?? "unknown"}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {summary.proxy_note ? (
+          <div className="mt-3 text-xs text-slate-500 dark:text-zinc-400">{summary.proxy_note}</div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function promotionReadinessVariant(summary: PromotionReadinessSummary): "success" | "warning" | "danger" {
+  if (summary.is_fresh && !summary.requires_readiness_run) {
+    return "success";
+  }
+  if (summary.freshness_status === "missing" || summary.freshness_status === "unknown") {
+    return "danger";
+  }
+  return "warning";
+}
+
+function promotionGateVariant(gate: PromotionGate): "success" | "warning" | "danger" {
+  if (gate.can_promote && !gate.should_warn) {
+    return "success";
+  }
+  if (gate.gate_state === "warning") {
+    return "warning";
+  }
+  return "danger";
+}
+
+function PromotionReadinessSummaryPanel({ summary }: { summary?: PromotionReadinessSummary | null }) {
+  if (!summary) {
+    return null;
+  }
+  const variant = promotionReadinessVariant(summary);
+  const status = summary.freshness_status ?? "unknown";
+  const age = summary.age_hours == null ? "n/a" : `${summary.age_hours}h`;
+  return (
+    <Card>
+      <CardHeader className="flex-wrap">
+        <CardTitle className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4" />
+          Promotion readiness
+        </CardTitle>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant={variant}>{status}</Badge>
+          <Badge variant={summary.requires_readiness_run ? "warning" : "success"}>
+            {summary.requires_readiness_run ? "rerun needed" : "ready"}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="mb-3 text-sm leading-6 text-slate-600 dark:text-zinc-300">
+          这里从同一份 append-only run history 观察 canary promotion readiness；chat thread 和安装器日志都不是 source of truth。
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <UsageMetric label="Freshness" value={status} />
+          <UsageMetric label="Age" value={age} />
+          <UsageMetric label="Samples" value={formatUsageCount(summary.sample_run_count)} />
+        </div>
+        <div className="mt-4 space-y-1 text-xs text-slate-500 dark:text-zinc-400">
+          <div className="break-all">goal={summary.goal_id ?? "none"}</div>
+          <div>window={summary.freshness_window_hours ?? 24}h · artifacts={String(Boolean(summary.json_exists))}/{String(Boolean(summary.markdown_exists))}</div>
+          {summary.generated_at ? <div>generated_at={summary.generated_at}</div> : null}
+          {summary.reason ? <div>{summary.reason}</div> : null}
+          {summary.proxy_note ? <div>{summary.proxy_note}</div> : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PromotionGatePanel({ gate }: { gate?: PromotionGate | null }) {
+  if (!gate) {
+    return null;
+  }
+  const readiness = gate.readiness;
+  const variant = promotionGateVariant(gate);
+  const freshness = readiness?.freshness_status ?? "unknown";
+  const age = readiness?.age_hours == null ? "n/a" : `${readiness.age_hours}h`;
+  return (
+    <Card>
+      <CardHeader className="flex-wrap">
+        <CardTitle className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4" />
+          Promotion gate
+        </CardTitle>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant={variant}>{gate.gate_state ?? "unknown"}</Badge>
+          <Badge variant={gate.can_promote ? "success" : "warning"}>
+            {gate.can_promote ? "promote ok" : "check first"}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <UsageMetric label="Can promote" value={gate.can_promote ? "yes" : "no"} />
+          <UsageMetric label="Freshness" value={freshness} />
+          <UsageMetric label="Age" value={age} />
+        </div>
+        <div className="mt-4 space-y-1 text-xs text-slate-500 dark:text-zinc-400">
+          <div>should_warn={String(gate.should_warn)} · non_blocking={String(gate.non_blocking)}</div>
+          {readiness?.generated_at ? <div>generated_at={readiness.generated_at}</div> : null}
+          {gate.recommended_action ? <div className="break-words">action={gate.recommended_action}</div> : null}
+          {gate.warning_message ? <div className="break-words text-amber-700 dark:text-amber-300">{gate.warning_message}</div> : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DecisionFreshnessSummaryPanel({ summary }: { summary?: DecisionFreshnessSummary | null }) {
+  if (!summary?.available) {
+    return null;
+  }
+  const counts = summary.summary;
+  const topItems = summary.items
+    .filter((item) => item.requires_decision_point_rebase || item.freshness_state !== "fresh")
+    .sort((left, right) => {
+      const leftStale = left.requires_decision_point_rebase ? 0 : 1;
+      const rightStale = right.requires_decision_point_rebase ? 0 : 1;
+      return leftStale - rightStale
+        || (right.newer_event_count_7d ?? 0) - (left.newer_event_count_7d ?? 0)
+        || (right.age_days ?? 0) - (left.age_days ?? 0);
+    })
+    .slice(0, 5);
+  return (
+    <Card>
+      <CardHeader className="flex-wrap">
+        <CardTitle className="flex items-center gap-2">
+          <RotateCcw className="h-4 w-4" />
+          决策 freshness
+        </CardTitle>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant={counts.rebase_required_count > 0 ? "warning" : "success"}>
+            rebase {counts.rebase_required_count}
+          </Badge>
+          <Badge variant="neutral">{summary.window_days}d window</Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="mb-3 text-sm leading-6 text-slate-600 dark:text-zinc-300">
+          这里看旧 reward / gate 是否需要在审批或转交前重读当前控制面状态；exact replay 仍回到 append-only run history。
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <UsageMetric label="Decisions" value={formatUsageCount(counts.decision_count)} />
+          <UsageMetric label="Stale" value={formatUsageCount(counts.stale_count)} />
+          <UsageMetric label="Rebase" value={formatUsageCount(counts.rebase_required_count)} />
+          <UsageMetric label="Fresh" value={formatUsageCount(counts.fresh_count)} />
+        </div>
+        {topItems.length ? (
+          <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-zinc-800">
+            <div className="grid grid-cols-[minmax(0,1fr)_92px_72px_72px] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+              <div>Goal</div>
+              <div className="text-right">State</div>
+              <div className="text-right">Events</div>
+              <div className="text-right">Age</div>
+            </div>
+            <div className="divide-y divide-slate-200 dark:divide-zinc-800">
+              {topItems.map((item, index) => (
+                <div
+                  className="grid grid-cols-[minmax(0,1fr)_92px_72px_72px] gap-2 px-3 py-2 text-sm"
+                  key={`${item.goal_id}-${item.decision_at ?? index}`}
+                >
+                  <div className="min-w-0">
+                    <div className="break-all font-medium text-slate-900 dark:text-zinc-100">{item.goal_id}</div>
+                    <div className="mt-0.5 text-[11px] text-slate-500 dark:text-zinc-400">
+                      {shareDecisionKindLabel(item.decision_kind)}
+                    </div>
+                  </div>
+                  <div className="text-right text-slate-600 dark:text-zinc-300">
+                    {shareDecisionFreshnessStateLabel(item.freshness_state)}
+                  </div>
+                  <div className="text-right text-slate-600 dark:text-zinc-300">{item.newer_event_count_7d ?? 0}</div>
+                  <div className="text-right text-slate-600 dark:text-zinc-300">
+                    {item.age_days != null ? `${Math.round(item.age_days)}d` : "-"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
+            当前样本里没有需要 rebase 的 checkpointed decision。
+          </div>
+        )}
+        {summary.proxy_note ? (
+          <div className="mt-3 text-xs text-slate-500 dark:text-zinc-400">{summary.proxy_note}</div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function UsageStatsPanel({ usage }: { usage?: UsageSummary | null }) {
   if (!usage?.available) {
     return null;
@@ -3960,7 +5403,7 @@ function UsageStatsPanel({ usage }: { usage?: UsageSummary | null }) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <UsageMetric label="24h turns" value={formatUsageCount(totals.runs_24h)} />
           <UsageMetric label="7d turns" value={formatUsageCount(totals.runs_7d)} />
           <UsageMetric
@@ -3971,24 +5414,30 @@ function UsageStatsPanel({ usage }: { usage?: UsageSummary | null }) {
             label="Automation"
             value={`${formatUsageCount(totals.automation_run_count_24h)} / ${formatUsageCount(totals.automation_run_count_7d)}`}
           />
+          <UsageMetric
+            label="Progress"
+            value={`${formatUsageCount(totals.progress_signal_run_count_24h)} / ${formatUsageCount(totals.progress_signal_run_count_7d)}`}
+          />
         </div>
         {topGoals.length ? (
           <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-zinc-800">
-            <div className="grid grid-cols-[minmax(0,1fr)_80px_80px_80px] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+            <div className="grid grid-cols-[minmax(0,1fr)_70px_70px_80px_80px] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
               <div>Goal</div>
               <div className="text-right">24h</div>
               <div className="text-right">7d</div>
+              <div className="text-right">Progress</div>
               <div className="text-right">Share</div>
             </div>
             <div className="divide-y divide-slate-200 dark:divide-zinc-800">
               {topGoals.map((goal) => (
                 <div
-                  className="grid grid-cols-[minmax(0,1fr)_80px_80px_80px] gap-2 px-3 py-2 text-sm"
+                  className="grid grid-cols-[minmax(0,1fr)_70px_70px_80px_80px] gap-2 px-3 py-2 text-sm"
                   key={goal.goal_id}
                 >
                   <div className="min-w-0 break-all font-medium text-slate-900 dark:text-zinc-100">{goal.goal_id}</div>
                   <div className="text-right text-slate-600 dark:text-zinc-300">{goal.runs_24h}</div>
                   <div className="text-right text-slate-600 dark:text-zinc-300">{goal.runs_7d}</div>
+                  <div className="text-right text-slate-600 dark:text-zinc-300">{goal.progress_signal_run_count_24h}</div>
                   <div className="text-right text-slate-600 dark:text-zinc-300">{formatUsageShare(goal.project_share_24h)}</div>
                 </div>
               ))}

@@ -17,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from goal_harness.cli import review_packet_handoff_only_payload  # noqa: E402
 from goal_harness.review_packet import build_review_packet  # noqa: E402
 
 STATUS_DATA_CONTRACT_PATH = REPO_ROOT / "docs" / "status-data-contract.md"
@@ -363,10 +364,145 @@ def assert_attention_queue_drives_approved_handoff_over_stale_history() -> None:
     ], small_payload
     assert small_payload["handoff_delivery_contract"]["small_scale_streak_threshold"] == 3, small_payload
     assert "交付观测：post_handoff_run=owner_handoff_consumer_test, scale=test_only" in small_packet, small_packet
-    assert "交付合同：下一轮选 1 个连贯推进段" in small_packet, small_packet
-    assert "至少达到 implementation" in small_packet, small_packet
+    assert "交付合同：下一轮回到 active state P0/P1 outcome" in small_packet, small_packet
+    assert "至少 implementation" in small_packet, small_packet
     assert "targeted validation、state writeback" in small_packet, small_packet
     assert "不 spend" in small_packet, small_packet
+
+
+def assert_connected_delivery_surface_loop_requires_macro_evidence() -> None:
+    goal_id = "delivery-side-bypass"
+    status_payload = {
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "status": "side_bypass_next_action_queue_owner_drop_fields_implementation",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "recommended_action": "Attempt a ranker / cross-domain evidence segment or report blocker.",
+                    "adapter_status": "connected-delivery",
+                    "adapter_kind": "side_bypass_delivery_v0",
+                    "quota": {
+                        "state": "eligible",
+                    },
+                    "project_asset": {
+                        "owner": "codex",
+                        "gate": "none",
+                        "next_action": "Attempt a ranker / cross-domain evidence segment or report blocker.",
+                        "stop_condition": "stop if useful work needs unapproved scope",
+                        "execution_profile": {
+                            "cadence": "macro_evidence_segment",
+                            "minimum_scale": "implementation",
+                            "must_include": [
+                                "experiment_or_evidence_artifact",
+                                "targeted_validation",
+                                "state_writeback",
+                            ],
+                            "spend_rule": "spend_only_after_artifact_validation_writeback",
+                            "outcome_floor": {
+                                "required_when": "after_surface_progress_streak",
+                                "surface_streak_threshold": 2,
+                                "outcome_markers": [
+                                    "ranker_fit",
+                                    "cross_domain_eval",
+                                    "eval_metric",
+                                ],
+                                "surface_only_hints": [
+                                    "forecast",
+                                    "runbook",
+                                    "queue",
+                                    "fields",
+                                ],
+                                "must_advance": [
+                                    "ranker_or_cross_domain_evidence",
+                                ],
+                                "avoid": [
+                                    "clean_downstream_surface_propagation",
+                                    "synthetic_only_test_chain",
+                                ],
+                                "if_unavailable": "report_blocker_without_spend",
+                            },
+                            "degradation_policy": {
+                                "small_scale_streak_threshold": 3,
+                                "on_degradation": "require_blocker_or_expand_next_batch",
+                            },
+                        },
+                    },
+                    "handoff_readiness": {
+                        "handoff_status": "post_handoff_run_seen",
+                        "post_handoff_run_seen": True,
+                        "post_handoff_latest_run": {
+                            "generated_at": "2026-01-01T00:07:00+00:00",
+                            "classification": "delivery_next_action_queue_owner_drop_fields_implementation",
+                            "delivery_batch_scale": "implementation",
+                            "delivery_outcome": "surface_only",
+                        },
+                        "post_handoff_recent_runs": [
+                            {
+                                "generated_at": "2026-01-01T00:07:00+00:00",
+                                "classification": "delivery_next_action_queue_owner_drop_fields_implementation",
+                                "delivery_batch_scale": "implementation",
+                                "delivery_outcome": "surface_only",
+                            },
+                            {
+                                "generated_at": "2026-01-01T00:06:00+00:00",
+                                "classification": "delivery_owner_drop_scenario_runbook_implementation",
+                                "delivery_batch_scale": "implementation",
+                                "delivery_outcome": "surface_only",
+                            },
+                        ],
+                        "post_handoff_small_scale_streak": 0,
+                        "post_handoff_outcome_gap_streak": 2,
+                    },
+                    "source": "latest_run",
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": goal_id,
+                    "status": "side_bypass_next_action_queue_owner_drop_fields_implementation",
+                    "registry_member": True,
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+
+    payload = build_review_packet(status_payload, goal_id=goal_id)
+    handoff = payload["project_agent_handoff"]
+    contract = payload["handoff_delivery_contract"]
+    assert payload["ok"] is True, payload
+    assert payload["connected_delivery_handoff"] is True, payload
+    assert "quota should-run" in payload["project_agent_command"], payload
+    assert "--goal-id delivery-side-bypass" in payload["project_agent_command"], payload
+    assert contract["mode"] == "expand_after_surface_progress_loop", payload
+    assert contract["post_handoff_outcome_gap_streak"] == 2, payload
+    assert contract["outcome_floor"]["must_advance"] == ["ranker_or_cross_domain_evidence"], payload
+    assert "connected-delivery" in handoff, handoff
+    assert "真实 delivery" in handoff, handoff
+    assert "可改文件、验证、写回、spend" in handoff, handoff
+    assert "surface-only 下游传播" in handoff, handoff
+    assert "只读或 dry-run 路径" not in handoff, handoff
+    assert "交付合同：下一轮回到 active state P0/P1 outcome" in handoff, handoff
+    assert "ranker or cross domain evidence" in handoff, handoff
+    assert_project_agent_handoff_compact(
+        handoff,
+        "connected-delivery macro evidence handoff",
+        goal_id=goal_id,
+    )
+    handoff_only = review_packet_handoff_only_payload(payload)
+    agent_contract = handoff_only["handoff_delivery_contract"]
+    assert set(agent_contract) == {"mode", "instruction", "minimum_scale", "must_include", "if_blocked"}, handoff_only
+    assert agent_contract["mode"] == "expand_after_surface_progress_loop", handoff_only
+    assert "ranker or cross domain evidence" in agent_contract["instruction"], handoff_only
+    assert "outcome_floor" not in agent_contract, handoff_only
+    assert "outcome_markers" not in repr(handoff_only), handoff_only
+    assert "surface_only_hints" not in repr(handoff_only), handoff_only
 
 
 def assert_focus_wait_owner_blocker_packet() -> None:
@@ -514,6 +650,97 @@ def assert_missing_project_asset_review_packet_fallback() -> None:
     assert "项目资产来源：project_asset" not in packet, packet
 
 
+def assert_decision_freshness_warning_packet() -> None:
+    goal_id = "stale-gate-reuse"
+    status_payload = {
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "status": "operator_gate_approved",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "recommended_action": "Relay approved dry-run only after freshness rebase.",
+                    "source": "latest_run",
+                    "project_asset": {
+                        "owner": "codex",
+                        "gate": "none",
+                        "next_action": "Relay approved dry-run only after freshness rebase.",
+                        "stop_condition": "stop if stale gate cannot be rebound to current state",
+                    },
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": goal_id,
+                    "status": "operator_gate_approved",
+                    "registry_member": True,
+                    "latest_runs": [],
+                }
+            ]
+        },
+        "decision_freshness_summary": {
+            "available": True,
+            "source": "run_history",
+            "sample_run_count": 3,
+            "window_days": 7,
+            "summary": {
+                "decision_count": 2,
+                "stale_count": 1,
+                "rebase_required_count": 2,
+                "fresh_count": 0,
+            },
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "decision_kind": "operator_gate",
+                    "decision_at": "2026-01-01T00:00:00+00:00",
+                    "classification": "operator_gate_approved",
+                    "age_days": 8.0,
+                    "stale_by_age": True,
+                    "newer_event_count_7d": 2,
+                    "freshness_state": "stale_rebase_required",
+                    "requires_decision_point_rebase": True,
+                },
+                {
+                    "goal_id": "other-goal",
+                    "decision_kind": "human_reward",
+                    "decision_at": "2026-01-02T00:00:00+00:00",
+                    "age_days": 1.0,
+                    "newer_event_count_7d": 1,
+                    "freshness_state": "rebase_required",
+                    "requires_decision_point_rebase": True,
+                },
+            ],
+        },
+    }
+
+    payload = build_review_packet(status_payload, goal_id=goal_id)
+    packet = payload["packet"]
+    warning = payload["decision_freshness_warning"]
+
+    assert payload["ok"] is True, payload
+    assert warning["window_days"] == 7, warning
+    assert len(warning["items"]) == 1, warning
+    assert warning["items"][0]["decision_kind"] == "operator_gate", warning
+    assert "【决策 freshness 警告】" in packet, packet
+    assert "旧 reward/gate 决策复用前需在当前 registry/state/quota/policy/run status 上重新对齐" in packet, packet
+    assert "operator_gate state=stale_rebase_required age_days=8.0 newer_7d=2" in packet, packet
+    assert "这不是仓库回滚" in packet, packet
+    assert "other-goal" not in packet, packet
+    assert "【决策 freshness 警告】" not in payload["project_agent_handoff"], payload
+    assert_project_agent_handoff_compact(
+        payload["project_agent_handoff"],
+        "decision freshness warning handoff remains compact",
+        goal_id=goal_id,
+    )
+    assert_no_local_paths(payload, "decision freshness warning packet")
+
+
 def main() -> int:
     help_result = subprocess.run(
         [sys.executable, "-m", "goal_harness.cli", "review-packet", "--help"],
@@ -528,8 +755,10 @@ def main() -> int:
 
     assert_status_data_contract_documents_handoff_budget()
     assert_attention_queue_drives_approved_handoff_over_stale_history()
+    assert_connected_delivery_surface_loop_requires_macro_evidence()
     assert_focus_wait_owner_blocker_packet()
     assert_missing_project_asset_review_packet_fallback()
+    assert_decision_freshness_warning_packet()
     with tempfile.TemporaryDirectory(prefix="goal-harness-review-packet-") as tmp:
         root = Path(tmp)
         registry_path = write_planned_registry(root)

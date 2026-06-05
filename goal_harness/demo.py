@@ -152,6 +152,11 @@ def run_demo(
             'registry="$PWD/.goal-harness/registry.json"',
             'goal-harness --registry "$registry" serve-status --scan-root "$PWD" --port 8765',
         ],
+        "dashboard_status_scope": "project-local-demo",
+        "canonical_dashboard_status_commands": [
+            "goal-harness serve-status --global-registry --port 8766 --limit 80",
+        ],
+        "canonical_dashboard_status_url": "http://127.0.0.1:8766/status.json",
         "dashboard_app_commands": [
             "cd ~/goal-harness/apps/dashboard",
             "npm install",
@@ -207,7 +212,7 @@ def render_demo_markdown(payload: dict[str, Any]) -> str:
             "",
             "## Dashboard Option",
             "",
-            "Terminal 1: start a live status server from the demo project:",
+            "Terminal 1: start a project-local live status server for this demo:",
             "",
         ]
     )
@@ -225,6 +230,14 @@ def render_demo_markdown(payload: dict[str, Any]) -> str:
     lines.extend(
         [
             f"- In the dashboard, use the `Live` source or load `{payload.get('dashboard_status_url')}`.",
+            "- This demo endpoint is project-local; it does not sync the temporary demo into the shared global registry.",
+            "",
+            "For the canonical multi-project dashboard, use the shared global registry view instead:",
+            "",
         ]
     )
+    for command in payload.get("canonical_dashboard_status_commands") or []:
+        lines.append(f"- `{command}`")
+    if payload.get("canonical_dashboard_status_url"):
+        lines.append(f"- load `{payload.get('canonical_dashboard_status_url')}`.")
     return "\n".join(lines)

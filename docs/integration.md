@@ -13,12 +13,31 @@ git clone <repo-url> ~/goal-harness
 goal-harness doctor
 ```
 
-The installer links the repository wrapper into `~/.local/bin/goal-harness`,
-adds that bin directory to the current shell profile when it is missing from
-`PATH`, and installs the `goal-harness-project` Codex skill into
-`~/.codex/skills` so future project agents use the same connection workflow.
-Use `goal-harness doctor` from any project folder to inspect the resolved
-command path, symlink target, wrapper script, and Python import health.
+The installer publishes the current checkout as a local release snapshot and
+links that snapshot into `~/.local/bin/goal-harness`. It also installs a
+`goal-harness-canary` wrapper that points at the live checkout for selected
+gray-rollout goal controllers. This keeps default automations stable while
+allowing one canary goal to validate prompt/runtime changes before promotion.
+The installer adds the bin directory to the current shell profile when it is
+missing from `PATH`, and installs a snapshot of the `goal-harness-project` Codex
+skill into `~/.codex/skills` so future project agents use the same connection
+workflow. Use `goal-harness doctor` from any project folder to inspect the
+resolved command path, symlink target, release snapshot, canary wrapper,
+installed skill delivery-hint state, wrapper script, and Python import health.
+
+Gray rollout flow:
+
+```bash
+# Generate a heartbeat body for a canary goal controller only.
+goal-harness-canary heartbeat-prompt \
+  --brief \
+  --cli-bin goal-harness-canary \
+  --goal-id <CANARY_GOAL_ID>
+
+# After canary observation looks healthy, promote the checkout to default.
+~/goal-harness/scripts/install-local.sh
+goal-harness doctor
+```
 
 Then projects can call:
 
@@ -67,6 +86,30 @@ source-level delivery contract for the project, not a one-off heartbeat hint:
       "state_writeback"
     ],
     "spend_rule": "spend_only_after_artifact_validation_writeback",
+    "outcome_floor": {
+      "required_when": "after_surface_progress_streak",
+      "surface_streak_threshold": 3,
+      "outcome_markers": [
+        "eval_metric",
+        "experiment",
+        "macro_evidence",
+        "evidence_segment",
+        "adapter_proof"
+      ],
+      "surface_only_hints": [
+        "forecast",
+        "runbook",
+        "queue",
+        "fields"
+      ],
+      "must_advance": [
+        "primary_goal_outcome"
+      ],
+      "avoid": [
+        "surface_only_progress_loop"
+      ],
+      "if_unavailable": "report_blocker_without_spend"
+    },
     "degradation_policy": {
       "small_scale_streak_threshold": 2,
       "on_degradation": "require_blocker_or_expand_next_batch"
@@ -147,25 +190,26 @@ guard and spend protocol:
 
 ```bash
 goal-harness heartbeat-prompt \
-  --goal-id project-goal \
-  --active-state /path/to/project/.codex/goals/project-goal/ACTIVE_GOAL_STATE.md
+  --goal-id project-goal
 ```
+
+For connected goals, omit `--active-state`; the CLI resolves the active state
+from the registry goal `state_file`. Keep `--active-state` only as an explicit
+override for detached state files, migration checks, or compatibility tests.
 
 For live Codex App automations, use the compact form after reviewing the full
 contract:
 
 ```bash
 goal-harness heartbeat-prompt --compact \
-  --goal-id project-goal \
-  --active-state /path/to/project/.codex/goals/project-goal/ACTIVE_GOAL_STATE.md
+  --goal-id project-goal
 ```
 
 If an installed automation still needs to be smaller, use the brief body:
 
 ```bash
 goal-harness heartbeat-prompt --brief \
-  --goal-id project-goal \
-  --active-state /path/to/project/.codex/goals/project-goal/ACTIVE_GOAL_STATE.md
+  --goal-id project-goal
 ```
 
 Copy the generated task body into the heartbeat automation. The timer only
@@ -315,6 +359,23 @@ When `--recommended-action` is omitted, the command derives the compact action
 from the first public-safe item in the active state's `## Next Action`, joining
 wrapped continuation lines and falling back to a generic refresh action if that
 item contains private-looking content.
+When the state refresh is also the compact record for a validated progress
+artifact, add explicit delivery hints so handoff readiness does not have to
+infer scale from a classification name:
+
+```bash
+goal-harness refresh-state \
+  --goal-id project-goal \
+  --classification dashboard_home_browser_smoke_regression \
+  --delivery-batch-scale multi_surface \
+  --delivery-outcome outcome_progress
+```
+
+Use `--delivery-batch-scale` for `test_only`, `single_surface`,
+`multi_surface`, or `implementation`, and use `--delivery-outcome` for
+`outcome_progress`, `surface_only`, or `outcome_gap` when the execution profile
+has an outcome floor. This keeps quota guards, review packets, and dashboards
+truthful after a coherent artifact without exposing raw evidence.
 
 For a newly connected read-only project, append a generic map run before
 building a custom adapter:
@@ -453,12 +514,15 @@ intended to be public-safe.
 For the React dashboard, serve that same status contract over loopback HTTP:
 
 ```bash
-goal-harness serve-status --port 8765
+goal-harness serve-status --global-registry --port 8766 --limit 80
 ```
 
-Then load `http://127.0.0.1:8765/status.json` from the dashboard source
-control. The command binds to `127.0.0.1` by default and is meant for local
-operator dashboards, not public hosting.
+Then load `http://127.0.0.1:8766/status.json` from the dashboard source
+control. `--global-registry` keeps the multi-project dashboard on the shared
+registry even when the server is launched from a project checkout. For
+project-local debugging, omit the flag or pass an explicit project
+`--registry`. The command binds to `127.0.0.1` by default and is meant for
+local operator dashboards, not public hosting.
 
 The same loopback server exposes `POST /reward/dry-run` so the dashboard can
 validate a selected goal/run reward draft. The dry-run response is compact and

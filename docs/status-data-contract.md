@@ -9,6 +9,11 @@ private run payloads beyond compact index fields and does not mutate files.
 The export is agent-facing machine state. A dashboard should consume this
 contract and translate it into a human operator view rather than treating raw
 CLI fields as product copy.
+In particular, first-screen dashboards should translate raw machine fields such
+as `single_surface`, `focus_wait`, `quota_slot_spent`, or concurrency snippets
+into the operator's language before presenting them as primary copy. The
+machine tokens may remain in drill-down views, logs, or packets where exact
+debuggability matters.
 
 When a command is run outside a project-local `.goal-harness/registry.json`,
 the CLI falls back to the shared local global registry at
@@ -20,12 +25,26 @@ view.
 For local dashboards, the same JSON shape can be served over loopback HTTP:
 
 ```bash
-goal-harness serve-status --port 8765
+goal-harness serve-status --global-registry --port 8766 --limit 80
 ```
 
-The default endpoint is `http://127.0.0.1:8765/status.json`. It is intended for
-local dashboard development and includes CORS headers so a Vite app on another
-localhost port can fetch it.
+The default endpoint in that example is `http://127.0.0.1:8766/status.json`.
+`--global-registry` is the canonical multi-project dashboard mode: it serves
+the shared global registry even when launched from inside a project checkout,
+avoiding a project-local registry scope warning. For project-local debugging,
+omit `--global-registry` or pass the project registry explicitly. The server is
+intended for local dashboard development and includes CORS headers so a Vite app
+on another localhost port can fetch it.
+The disposable `goal-harness demo` path intentionally uses a project-local
+server on `127.0.0.1:8765`; it does not sync the temporary demo into the shared
+global registry.
+
+Loopback status exports include `status_contract.schema_version`. The dashboard
+uses that small protocol marker to detect when `127.0.0.1:8766` is still served
+by an older daemon or release snapshot after the checkout has moved forward. If
+the field is absent or below the dashboard's expected version, the product UI
+should warn the operator and point to the safe reload path:
+`scripts/macos-dashboard-launchagent.sh restart`.
 
 The same local server exposes `POST /reward/dry-run` for dashboard reward
 validation. It accepts the selected `goal_id`, `run_generated_at`, compact
@@ -76,6 +95,12 @@ ledger.
 `quota_slot_spent` is status-neutral accounting: it must remain visible in run
 history for quota audit, but status and attention queues should use the latest
 non-accounting run as the current work state.
+More generally, status should expose projections over the append-only event
+ledger rather than acting as the ledger itself. Work classifications, human
+reward overlays, operator-gate resume contracts, quota spend rows, evidence
+polls, blocker writebacks, and artifact validations should remain auditable as
+events; dashboards and heartbeat prompts consume compact projections of those
+events for current-state decisions.
 In lane terms, `next_automatic_turn` may only name the first eligible goal;
 operator-gated, focus-waiting, waiting, throttled, paused, and health-blocked
 goals must stay out of the eligible lane even when they have a high
@@ -90,6 +115,12 @@ goals must stay out of the eligible lane even when they have a high
   "runtime_root": "./runtime",
   "goal_count": 3,
   "run_count": 2,
+  "status_contract": {
+    "schema_version": 2,
+    "minimum_dashboard_schema_version": 2,
+    "producer": "goal-harness status",
+    "reload_hint": "scripts/macos-dashboard-launchagent.sh restart"
+  },
   "contract": {
     "ok": true,
     "summary": {
@@ -132,6 +163,20 @@ goals must stay out of the eligible lane even when they have a high
     "needs_controller": 0,
     "needs_codex": 1,
     "watching_external_evidence": 0,
+    "autonomous_backlog_candidates": {
+      "source": "attention_queue.agent_todos",
+      "open_count": 1,
+      "items": [
+        {
+          "goal_id": "goal-harness-meta",
+          "quota_state": "eligible",
+          "priority": "P1",
+          "todo_index": 1,
+          "text": "Add an autonomous backlog candidate surface for eligible goals.",
+          "source": "agent_todos"
+        }
+      ]
+    },
     "items": []
   },
   "run_history": {
@@ -140,6 +185,98 @@ goals must stay out of the eligible lane even when they have a high
     "run_count": 2,
     "goals": [],
     "recent_runs": []
+  },
+  "event_ledger_summary": {
+    "available": true,
+    "source": "run_history",
+    "sample_run_count": 2,
+    "proxy_note": "append-only run-history projection; compact event-class counts only",
+    "event_classes": ["accounting", "decision", "evidence", "state", "work"],
+    "totals": {
+      "events_24h": 2,
+      "events_7d": 2,
+      "by_class_24h": {
+        "accounting": 1,
+        "decision": 0,
+        "evidence": 0,
+        "state": 1,
+        "work": 0
+      },
+      "by_class_7d": {
+        "accounting": 1,
+        "decision": 0,
+        "evidence": 0,
+        "state": 1,
+        "work": 0
+      }
+    },
+    "goals": []
+  },
+  "promotion_readiness_summary": {
+    "available": true,
+    "source": "run_history",
+    "goal_id": "goal-harness-meta",
+    "generated_at": "2026-06-01T00:08:00+00:00",
+    "classification": "canary_promotion_readiness_smoke_group",
+    "delivery_batch_scale": "multi_surface",
+    "delivery_outcome": "primary_goal_outcome",
+    "json_exists": true,
+    "markdown_exists": true,
+    "freshness_window_hours": 24,
+    "freshness_status": "fresh",
+    "is_fresh": true,
+    "requires_readiness_run": false,
+    "age_seconds": 120,
+    "age_hours": 0.03,
+    "sample_run_count": 1,
+    "proxy_note": "canary promotion-readiness projection from append-only run history; exact evidence stays in run artifacts"
+  },
+  "promotion_gate": {
+    "ok": true,
+    "gate": "promotion_readiness",
+    "gate_state": "ready",
+    "can_promote": true,
+    "should_warn": false,
+    "non_blocking": true,
+    "recommended_action": "promotion readiness is fresh",
+    "readiness": {
+      "freshness_status": "fresh",
+      "requires_readiness_run": false
+    }
+  },
+  "decision_freshness_summary": {
+    "available": true,
+    "source": "run_history",
+    "sample_run_count": 2,
+    "window_days": 7,
+    "proxy_note": "checkpointed decision freshness projection; rebase old decisions at the decision point before reuse",
+    "summary": {
+      "decision_count": 1,
+      "stale_count": 0,
+      "rebase_required_count": 1,
+      "fresh_count": 0
+    },
+    "items": [
+      {
+        "goal_id": "goal-harness-meta",
+        "decision_kind": "operator_gate",
+        "decision_at": "2026-06-01T00:05:00+00:00",
+        "classification": "operator_gate_approved",
+        "age_days": 0.2,
+        "stale_by_age": false,
+        "newer_event_count_7d": 1,
+        "newer_event_classes_7d": {
+          "accounting": 1,
+          "decision": 0,
+          "evidence": 0,
+          "state": 0,
+          "work": 0
+        },
+        "freshness_state": "rebase_required",
+        "requires_decision_point_rebase": true,
+        "reason": "newer sampled events exist after decision; rebase at decision point"
+      }
+    ]
   },
   "usage_summary": {
     "available": true,
@@ -152,7 +289,9 @@ goals must stay out of the eligible lane even when they have a high
       "quota_spend_slots_24h": 1,
       "quota_spend_slots_7d": 1,
       "automation_run_count_24h": 1,
-      "automation_run_count_7d": 1
+      "automation_run_count_7d": 1,
+      "progress_signal_run_count_24h": 1,
+      "progress_signal_run_count_7d": 1
     },
     "goals": []
   }
@@ -161,8 +300,79 @@ goals must stay out of the eligible lane even when they have a high
 
 Consumers should treat unknown fields as additive. Required fields for a
 first-screen UI are `ok`, `contract`, and `attention_queue`.
-`usage_summary` is optional and should be treated as a compact run-history
-proxy, not as billing or token telemetry.
+`status_contract`, `event_ledger_summary`, `promotion_readiness_summary`,
+`promotion_gate`, `decision_freshness_summary`, and `usage_summary` are optional and should be
+treated as compact protocol or run-history projections, not as the ledger
+itself, billing telemetry, token telemetry, or a release operation source. A
+missing `status_contract` means an older status producer; loopback dashboards
+should surface that as a daemon freshness warning rather than silently hiding
+newer panels.
+
+## Promotion Gate JSON
+
+`goal-harness promotion-gate --format json` is the compact machine-readable
+gate for local release promotion. It reads the same append-only readiness event
+as `doctor`, `status`, and `install-local.sh`, then returns a small operation
+result that scripts can assert without parsing installer stderr.
+
+This command is read-only and non-blocking. `can_promote=false` means the
+installer should warn before promotion, not that the CLI refuses to install.
+The warning remains a human-facing guardrail; automation should use
+`gate_state`, `can_promote`, `should_warn`, and `readiness.freshness_status` as
+the stable fields.
+`goal-harness status --format json` embeds the same compact result under
+`promotion_gate`, so dashboard panels, installer smoke, and CLI gate checks
+consume one state contract instead of re-deriving release-readiness state
+separately.
+
+Fresh shape:
+
+```json
+{
+  "ok": true,
+  "registry": ".goal-harness/registry.json",
+  "runtime_root": "~/.codex/goal-harness",
+  "gate": "promotion_readiness",
+  "gate_state": "ready",
+  "can_promote": true,
+  "should_warn": false,
+  "non_blocking": true,
+  "recommended_action": "promotion readiness is fresh",
+  "readiness": {
+    "available": true,
+    "goal_id": "goal-harness-meta",
+    "classification": "canary_promotion_readiness_smoke_group",
+    "freshness_status": "fresh",
+    "requires_readiness_run": false,
+    "freshness_window_hours": 24,
+    "json_exists": true,
+    "markdown_exists": true
+  }
+}
+```
+
+Missing or stale shape:
+
+```json
+{
+  "ok": true,
+  "gate": "promotion_readiness",
+  "gate_state": "warning",
+  "can_promote": false,
+  "should_warn": true,
+  "non_blocking": true,
+  "recommended_action": "python3 examples/canary-promotion-readiness-smoke.py",
+  "warning_message": "promotion-readiness evidence is stale; ...",
+  "readiness": {
+    "freshness_status": "stale",
+    "requires_readiness_run": true
+  }
+}
+```
+
+`warning_message` is intentionally human-facing and may change. It exists so
+`scripts/install-local.sh` can keep its operator warning, but automation should
+prefer the structured fields above.
 
 ## Global Registry Health
 
@@ -338,8 +548,10 @@ Item fields:
   `execution_profile`, the project-level delivery floor created by
   `goal-harness connect`. This is the first-screen project asset surface for
   agents and dashboards; it lets consumers avoid reconstructing owner, gate,
-  next action, stop condition, todo counts, compute state, latest validation,
-  and delivery-floor policy from scattered fields. Markdown renderers should
+  next action, stop condition, todo counts, compute state, and latest
+  validation from scattered fields. It also keeps delivery-floor policy close
+  to the project asset instead of forcing agents to infer it from history.
+  Markdown renderers should
   include the first unfinished user and agent todo here when available, so
   hot-path readers do not need to scan the detailed todo sections. The richer
   top-level `user_todos`, `agent_todos`, and `quota` fields remain available
@@ -359,12 +571,24 @@ Item fields:
   `post_handoff_latest_run` identifies that latest seen run by timestamp and
   classification, and `delivery_batch_scale` labels whether the observed
   delivery is test-only, single-surface, multi-surface, implementation-shaped,
-  or still unknown. `post_handoff_recent_runs` is a compact newest-first slice
-  of recent post-handoff work runs, and `post_handoff_small_scale_streak`
-  counts the leading `test_only` / `single_surface` / `unknown` scale streak so
-  heartbeat jobs and review packets can request a larger validated delivery
-  batch only after repeated small-scale follow-through. `quota_slot_spent`
-  events do not count as post-handoff work.
+  or still unknown. Status prefers an explicit compact run field such as
+  `delivery_batch_scale=multi_surface` over classification-name inference, so
+  a verified browser-smoke-plus-docs artifact is not misclassified as
+  `test_only` merely because the classification contains `smoke`.
+  `post_handoff_recent_runs` is a compact newest-first slice of recent
+  post-handoff work runs, and `post_handoff_small_scale_streak` counts the
+  leading `test_only` / `single_surface` / `unknown` scale streak so heartbeat
+  jobs and review packets can request a larger validated delivery batch only
+  after repeated small-scale follow-through. When
+  `project_asset.execution_profile.outcome_floor` declares outcome markers or
+  surface-only hints, compact runs may also include `delivery_outcome`
+  (`outcome_progress`, `surface_only`, or `outcome_gap`), and status also
+  honors an explicit refresh-state `delivery_outcome` before falling back to
+  marker/hint inference. `primary_goal_outcome` is accepted as a compatible
+  progress label for refresh-state records that want to mirror the default
+  execution profile wording. `post_handoff_outcome_gap_streak` counts
+  consecutive work runs that did not advance the declared outcome floor.
+  `quota_slot_spent` events do not count as post-handoff work.
 - `operator_question`: optional human-facing gate to show in the Goal Harness
   operator view. This is the canonical place for user/controller judgment.
 - `agent_command`: optional command or instruction for the target project agent
@@ -382,6 +606,11 @@ Item fields:
   `## Codex Todo`, or `## Project Agent Todo`. Agent-facing consumers may use
   it to choose implementation work after gates and quota allow execution; it is
   not a user approval signal.
+- `dependency_blockers`: optional compact summary of unfinished user todos from
+  other current attention-queue goals. This lets dashboards and heartbeat
+  dispatchers show sibling/project dependency gates separately from the current
+  goal's own `user_todos`; it is visibility context only and must not by itself
+  change the current goal's quota or owner decision.
 - Local active-state file paths are intentionally omitted from queue items.
   They are useful debug/source metadata, but the public-safe status queue should
   identify work by `goal_id`, project asset state, and compact todos instead of
@@ -408,6 +637,22 @@ If the refresh command was run without `--recommended-action`, the compact
 `recommended_action` should be the first public-safe item from the refreshed
 active state's `## Next Action`, including wrapped continuation lines;
 otherwise it falls back to a generic refresh notice.
+For registered `connected`, `connected-read-only`, and `pre-tick-runnable`
+adapters, custom compact progress classifications that are not blocker, gate,
+or watch classifications also remain Codex-ready. This lets a controller record
+a validated progress run before quota accounting without forcing an extra
+state-only refresh solely to make `quota spend-slot` eligible.
+
+### Autonomous Backlog Candidates
+
+`attention_queue.autonomous_backlog_candidates` is an optional compact list of
+unfinished agent todos from current queue items where `waiting_on=codex` and
+the goal quota is `eligible`. It is meant for heartbeat dispatchers and
+dashboards that need to keep P0/P1/P2 product-hardening moving while the most
+visible project card is waiting on user/controller/evidence. It is a candidate
+surface only: consumers must still obey the selected goal's quota,
+`goal_boundary`, owner/gate, public/private boundary, and validation/writeback
+rules before spending a turn.
 
 Registry entries may override first-screen attention with optional public-safe
 fields: `waiting_on`, `attention_status`, `recommended_action`,
@@ -468,6 +713,27 @@ that generic lifecycle hint before inventing local automation behavior:
 once, while `mapped_noop_if_unchanged` returns a quiet no-op without another
 dry-run or quota spend if no new instruction, evidence, todo, stale source, or
 safe handoff exists.
+When the payload includes `decision_freshness_warning`, the goal may still be
+eligible, but sampled reward/gate state for that same goal is stale or has newer
+events after it. Executors should not reuse that old decision as authority until
+they re-read the current registry, ACTIVE_GOAL_STATE, quota, policy, and run
+status at the decision point. This warning is a guardrail for decision reuse,
+not a repository rewind or a replacement for `should_run`.
+If the payload's `handoff_readiness.post_handoff_outcome_gap_streak` has reached
+the `project_asset.execution_profile.outcome_floor.surface_streak_threshold`,
+`quota should-run` should also enforce the handoff contract by returning
+`should_run=false`, `state=focus_wait`, `blocked_action_scope=delivery_outcome_floor`,
+`safe_bypass_allowed=true`, `safe_bypass_kind=outcome_floor_recovery`, and
+`heartbeat_recommendation.recommended_mode=outcome_floor_recovery` when the
+floor declares a concrete `must_advance` target. That lets a target agent spend
+one bounded recovery turn only for ranker/cross-domain evidence or concrete
+blocker writeback, instead of continuing a surface-only loop or waiting
+passively.
+The status export should apply the same quota guard to `attention_queue.items[]`
+and `project_asset.quota`, while preserving `handoff_readiness` run evidence:
+`codex_ready` may become false, but `post_handoff_latest_run`,
+`post_handoff_recent_runs`, and `post_handoff_outcome_gap_streak` should remain
+visible for dashboards and handoff packets.
 
 Review Packet source-of-truth rule:
 
@@ -477,6 +743,11 @@ Review Packet source-of-truth rule:
 - `goal-harness review-packet --goal-id <goal-id>` may generate the same
   packet from the status contract for CLI-facing agents, but it is still a
   read-only packaging command;
+- when status includes same-goal `decision_freshness_summary` items that require
+  rebase, the full Review Packet should render a compact human-visible
+  freshness warning before the operator approves or relays work; this warning
+  stays out of the minimized handoff-only text so the project agent still
+  receives a small current instruction;
 - `goal-harness review-packet --goal-id <goal-id> --handoff-only` is the
   copy-minimal form for an already selected or approved target-agent relay: it
   prints only the `project_agent_handoff` text in markdown output, while JSON
@@ -496,13 +767,22 @@ Review Packet source-of-truth rule:
   profile's `degradation_policy.small_scale_streak_threshold`, packets may set
   `mode=expand_after_repeated_small_delivery` and ask the target agent to run
   one coherent batch at the profile's `minimum_scale` with the declared
-  `must_include` surfaces, or report a blocker without spending quota;
+  `must_include` surfaces, or report a blocker without spending quota. When
+  implementation-shaped runs are still only forecast/runbook/queue/field
+  propagation and `post_handoff_outcome_gap_streak` reaches the profile's
+  `outcome_floor.surface_streak_threshold`, packets may instead set
+  `mode=expand_after_surface_progress_loop` and require the next delivery to
+  advance the declared outcome floor, or report a blocker without spend;
 - handoff-only output must not carry the full Review Packet, human decision
   section, local operator-gate preview, operator decision payload fields, raw
   `run_history`, or `latest_runs` cold-path evidence;
 - the local `operator_gate_dry_run` preview belongs to the user or controller,
   not the target project agent;
-- the project-agent command is only the after-approval dry-run execution path.
+- the project-agent command is the after-approval dry-run path for controller
+  gates, or the quota guard for connected-delivery Codex goals. Connected
+  delivery handoffs may authorize bounded write-scope delivery after
+  `should_run=true`; they must still stop for unapproved scopes, production
+  actions, destructive git, private material, or surface-only loops.
 
 For controller opt-in packets, the operator question must appear before any
 local gate preview, and the local gate preview must appear before any
@@ -746,6 +1026,10 @@ When a Codex-owned goal carries `lifecycle_phase=focus_wait` or a
 of `eligible`. This keeps compute quota separate from delivery focus: the goal
 can remain healthy and visible while automatic turns wait for new evidence,
 owner input, external eval, or a clean baseline.
+Quota may also use `state=focus_wait` when post-handoff delivery has repeatedly
+missed the declared outcome floor. In that case `blocked_action_scope` should
+identify `delivery_outcome_floor`, and the target agent should either return
+with outcome-scale evidence or report a blocker without spending another slot.
 
 For `controller_readiness`, the status export keeps only controller-stage
 booleans, missing gate names, operator-facing review text, next handoff
@@ -753,8 +1037,14 @@ condition, and compact gate rows with `id`, `ok`, and `review`. For
 `human_reward`, the status export keeps only `recorded_at`, `decision`,
 `reward`, `reason_summary`, and `follow_up`. For `operator_gate`, the status
 export keeps only `recorded_at`, `gate`, `decision`, `operator_question`,
-`reason_summary`, `follow_up`, and `agent_command`; richer evidence belongs in
-private run payloads.
+`reason_summary`, `follow_up`, and `agent_command`. Operator-gate runs may also
+include a compact `operator_gate_resume_contract` with
+`version=operator_gate_resume_contract_v0`, `gate_id`, `created_state_ref`,
+`latest_state_ref`, `operator_decision`, freshness/precondition checks, rebase
+result, resulting action, and validation-after-resume text. This contract is
+the public checkpointed-decision surface. Its rebase is scoped to the approval /
+resume decision point only; it is not a repo/worktree rollback, restore, or
+time-travel mechanism. Richer evidence belongs in private run payloads.
 
 Operator gate decisions answer "may the project agent cross this gate?" and are
 separate from reward signals. Use them for approvals such as read-only map
@@ -771,7 +1061,13 @@ The dry-run form appends nothing. A real append writes an
 `operator_gate_approved`, `operator_gate_rejected`, or
 `operator_gate_deferred` compact run. Approved gates are surfaced as
 Codex-ready with the approved `agent_command`; rejected/deferred gates stay in
-the user/controller lane with the recorded reason.
+the user/controller lane with the recorded reason. The approved command is not a
+time-travel replay of the old checkpoint: at the approval/resume decision point,
+the target turn must re-read current registry, `ACTIVE_GOAL_STATE`, quota, repo
+dirty/ref snapshot, policy, and run status. That check decides whether the
+approved action is still valid now; it must not carry the whole repository state
+back to the old gate. Quota spend, eval/experiment launches, production writes,
+or external messages belong after the fresh approved resume.
 
 Operators can append `human_reward` with the CLI:
 
@@ -850,6 +1146,102 @@ changed selected run, or changed raw index count forces the operator to preview
 again. The compact browser response does not expose index paths, state file
 paths, or raw private evidence.
 
+## Event Ledger Summary
+
+`event_ledger_summary` is an optional dashboard-friendly projection over the
+compact run index. It makes the durable-execution contract visible without
+requiring a dashboard or heartbeat prompt to read the full run history.
+
+The summary classifies sampled run records into:
+
+- `accounting`: quota and spend rows such as `quota_slot_spent`;
+- `decision`: operator gates, resume contracts, deferrals, approvals, and
+  `human_reward` overlays;
+- `evidence`: eval, metric, CI, deploy, artifact, blocker, failure/done, or
+  read-only evidence-poll observations;
+- `state`: state refresh and other compact state-projection rows;
+- `work`: remaining bounded delivery or implementation progress rows.
+
+The summary reports 24h/7d totals and per-goal counts by event class. It is a
+projection only: consumers should use it to understand what kind of facts the
+control plane has observed recently, then drill into `run_history` or the
+project-local history command for exact evidence. It must not replace append-only
+run, reward, quota, validation, artifact, blocker, or evidence events.
+Each per-goal row may also include `latest_event_class` and `latest_event_at`,
+which are compact routing hints for the dashboard, not replacements for the
+latest run record.
+
+## Promotion Readiness Summary
+
+`promotion_readiness_summary` is an optional release-control projection over the
+same sampled run history. It finds the latest
+`canary_promotion_readiness_smoke_group` event and reports whether that evidence
+is fresh enough to trust before promoting a live checkout into the default local
+release snapshot.
+
+The summary reports:
+
+- `freshness_status`: `fresh`, `stale`, `missing`, or `unknown`.
+- `freshness_window_hours`: the freshness window, currently 24 hours.
+- `is_fresh` and `requires_readiness_run`: compact guards for installers,
+  dashboards, and heartbeat jobs.
+- `age_seconds` / `age_hours`: evidence age when the event timestamp is
+  parseable.
+- `json_exists` / `markdown_exists`: whether the latest evidence artifacts still
+  exist.
+
+This projection does not promote anything and does not replace the run artifact.
+`scripts/install-local.sh` consumes the same readiness fact only to print a
+non-blocking warning; operators should still run `goal-harness doctor` or the
+canary-promotion readiness smoke for exact local release evidence.
+
+## Decision Freshness Summary
+
+`decision_freshness_summary` is an optional checkpointed-decision projection over
+the sampled run history. It exists because a chat thread is not the source of
+truth for long-running control decisions: the durable source is the append-only
+run history and event ledger. A Codex thread may remember an old approval or
+reward, but before spending quota, launching work, or mutating external state it
+must rebase that decision point against the latest registry, active state,
+quota, policy, and run-status facts.
+
+The summary treats compact `human_reward`, `operator_gate`, operator-gate resume
+contracts, and reward/gate-like classifications as checkpointed decisions. For
+each sampled decision it reports:
+
+- `freshness_state`: `fresh`, `rebase_required`, or
+  `stale_rebase_required`.
+- `stale_by_age`: whether the decision is older than the freshness window.
+- `newer_event_count_7d` and `newer_event_classes_7d`: newer sampled events for
+  the same goal inside the seven-day window.
+- `requires_decision_point_rebase`: whether the worker should refresh current
+  control-plane state before reusing the old decision.
+
+This is a decision-point rebase helper, not a repository reset or time-travel
+mechanism. Newer events mean the worker should reinterpret the old reward or
+gate in the current state; they do not roll the project back to the old chat
+context. If `status --limit` omits older runs, the summary may miss a stale
+decision, so consumers should treat it as an operational warning surface and
+drill into the project history for exact replay when needed.
+`quota should-run` consumes this projection for the selected goal as
+`decision_freshness_warning` whenever a sampled decision has
+`requires_decision_point_rebase=true`. That warning is deliberately additive:
+it does not flip `should_run`, but it tells the worker that any old reward or
+gate it plans to reuse must be rebound to the current control-plane state first.
+Dashboard project/detail and share surfaces should render non-empty same-goal
+items as a compact Chinese operator warning before approval or relay, explicitly
+clarifying that decision-point rebase means rereading current control-plane state,
+not rolling the repository or project back to the old chat context.
+
+`quota should-run` also consumes `promotion_readiness_summary` as
+`promotion_readiness_warning` when the sampled canary promotion-readiness
+evidence is missing, stale, or unknown. The warning is a release-readiness guard
+surface, not a scheduling decision: it does not flip `should_run`, but it lets a
+heartbeat worker report that the release snapshot should not be promoted until
+fresh canary promotion-readiness evidence is written back to the shared
+run-history projection. This keeps release readiness in queryable control-plane
+state instead of relying on dashboard prose, `doctor` output, or a chat thread.
+
 ## Usage Summary
 
 `usage_summary` is an optional dashboard-friendly proxy derived from the same
@@ -867,12 +1259,21 @@ The summary currently reports:
   whose compact `quota_event.source` is `heartbeat`, `automation`, or `cron`.
   If the compact run index does not retain a source, `quota_slot_spent` is
   counted as an automation/spend proxy rather than dropped.
+- `progress_signal_run_count_24h` / `progress_signal_run_count_7d`: compact
+  run records that look like actual project or adapter progress rather than
+  accounting/bookkeeping. This proxy excludes `quota_slot_spent` and
+  `state_refreshed`, so dashboards can spot automation loops that keep spending
+  or refreshing state without producing a fresh delivery, validation, mapping,
+  blocker, or gate signal.
 - `project_share_24h`: per-goal share of observed 24h runs, rounded to three
   decimals.
 
 Because `status --limit` can bound the recent run sample, consumers should
 display `sample_run_count` and treat these values as operational signals for
 finding busy project lines, not as precise historical accounting.
+The markdown status renderer includes the same totals plus the top sampled
+goals so heartbeat operators can notice low-progress loops without opening the
+full JSON payload.
 
 ## Display Model
 
@@ -882,9 +1283,30 @@ A first useful UI can be built from the export alone:
   auxiliary source controls, metrics, and raw drill-down, because the
   dashboard is a user decision surface rather than an agent CLI mirror.
 - Metrics: `ok`, `goal_count`, `run_count`, and contract summary.
+- Canonical home: the default dashboard route should render a Chinese-first
+  control-plane home over the shared global status source when available. It
+  should emphasize project cards, each project's top four todos with per-item
+  status, true user todos, agent-priority todos, quota/guard state, and latest
+  evidence before raw drill-down. This is a browser presentation over the
+  status export, not a new status source.
+- Detailed ops view: `?view=ops` may render the older debugging workbench with
+  raw queue filters, selected-goal details, reward drafts, and run-history
+  panels. The legacy `view=share` value may remain as a compatibility alias
+  for the canonical home, but non-ops views should not be treated as separate
+  durable modes.
 - Usage snapshot: optional `usage_summary` proxy metrics for observed 24h/7d
-  runs, quota spend slots, automation run count, and busiest goals by current
-  sample share.
+  runs, quota spend slots, automation run count, progress-signal run count, and
+  busiest goals by current sample share.
+- Promotion readiness ops panel: optional `promotion_readiness_summary` status
+  showing whether the latest canary promotion-readiness evidence is fresh,
+  stale, missing, or unknown before a release snapshot is promoted.
+- Promotion gate ops panel: optional `promotion_gate` status showing the compact
+  `can_promote` / `should_warn` release-promotion decision derived from that
+  same readiness event; dashboard code should display it, not recompute it.
+- Decision freshness ops panel: optional `decision_freshness_summary` metrics
+  for global decision count, stale count, rebase-required count, fresh count,
+  and top affected goals. The panel is a routing warning for old reward/gate
+  reuse; exact replay and event ordering remain in append-only run history.
 - Compute quota summary: goals eligible for the next agent turn, focus-waiting
   goals, throttled goals, waiting goals, paused goals, and operator-gated goals
   should be visible on the first screen once quota fields are present.
@@ -905,9 +1327,10 @@ A first useful UI can be built from the export alone:
   This selected-goal state is not part of the status export and must not be
   treated as an approval, reward, or controller signal.
 - Review link: the dashboard may copy a browser URL that includes local
-  `actionKind`, selected `goalId`, source `statusUrl`, `lane`, and `severity`
-  search state. That link is a user review affordance over this export; it
-  must not add fields to the status contract or mutate goal runtime state.
+  `actionKind`, selected `goalId`, source `statusUrl`, `lane`, `severity`, and
+  optional `view=ops` search state. That link is a user review affordance over
+  this export; it must not add fields to the status contract or mutate goal
+  runtime state.
 - Review Packet: the dashboard should expose one canonical copy affordance for
   the selected action card rather than separate link, reply, handoff, and agent
   prompt buttons. The packet may include the review link, Chinese

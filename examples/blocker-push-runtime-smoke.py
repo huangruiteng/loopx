@@ -185,9 +185,10 @@ def main() -> int:
             "--active-state",
             str(state_file),
         )["task_body"]
-        assert "notify_user_on_open_todo=true" in prompt, prompt
-        assert "return heartbeat `NOTIFY`" in prompt, prompt
-        assert "quota spend for that blocker-push turn" in prompt, prompt
+        compact_prompt = " ".join(prompt.split())
+        assert "notify_user_on_open_todo=true" in compact_prompt, prompt
+        assert "return heartbeat `NOTIFY`" in compact_prompt, prompt
+        assert "No implementation, adapter work, edits, research, exploration, or spend for that blocker-push turn" in compact_prompt, prompt
 
     print("blocker-push-runtime-smoke ok")
     return 0

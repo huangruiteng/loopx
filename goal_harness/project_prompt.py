@@ -19,10 +19,11 @@ def shell_arg(value: str) -> str:
     return shlex.quote(value)
 
 
-def render_cli_preflight() -> str:
-    return """export PATH="$HOME/.local/bin:$PATH"
+def render_cli_preflight(*, cli_bin: str = "goal-harness") -> str:
+    cli_bin_arg = shell_arg(cli_bin)
+    return f"""export PATH="$HOME/.local/bin:$PATH"
 install_script="$HOME/goal-harness/scripts/install-local.sh"
-if ! command -v goal-harness >/dev/null 2>&1; then
+if ! command -v {cli_bin_arg} >/dev/null 2>&1; then
   if [ -x "$install_script" ]; then
     "$install_script"
     export PATH="$HOME/.local/bin:$PATH"
@@ -31,20 +32,20 @@ if ! command -v goal-harness >/dev/null 2>&1; then
     exit 1
   fi
 fi
-goal-harness doctor >/dev/null"""
+{cli_bin_arg} doctor >/dev/null"""
 
 
-def render_quota_guard_command(goal_id: str) -> str:
+def render_quota_guard_command(goal_id: str, *, cli_bin: str = "goal-harness") -> str:
     return (
-        "goal-harness --format json "
+        f"{shell_arg(cli_bin)} --format json "
         f"--registry {SHARED_GLOBAL_REGISTRY} "
         f"quota should-run --goal-id {shell_arg(goal_id)}"
     )
 
 
-def render_quota_spend_command(goal_id: str, *, source: str = "adapter") -> str:
+def render_quota_spend_command(goal_id: str, *, source: str = "adapter", cli_bin: str = "goal-harness") -> str:
     return (
-        "goal-harness "
+        f"{shell_arg(cli_bin)} "
         f"--registry {SHARED_GLOBAL_REGISTRY} "
         "quota spend-slot "
         f"--goal-id {shell_arg(goal_id)} "

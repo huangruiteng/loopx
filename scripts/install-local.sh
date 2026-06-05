@@ -8,9 +8,48 @@ bin_dir="${GOAL_HARNESS_BIN_DIR:-$HOME/.local/bin}"
 shell_profile="${GOAL_HARNESS_SHELL_PROFILE:-}"
 codex_home="${CODEX_HOME:-$HOME/.codex}"
 skills_dir="${GOAL_HARNESS_SKILLS_DIR:-$codex_home/skills}"
-skill_source="$repo_root/skills/goal-harness-project"
 skill_target="$skills_dir/goal-harness-project"
 install_skill="${GOAL_HARNESS_INSTALL_SKILL:-1}"
+install_canary="${GOAL_HARNESS_INSTALL_CANARY:-1}"
+releases_dir="${GOAL_HARNESS_RELEASES_DIR:-$HOME/.local/share/goal-harness/releases}"
+release_id="${GOAL_HARNESS_RELEASE_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+release_dir="$releases_dir/$release_id"
+release_tmp="$release_dir.tmp.$$"
+
+warn_stale_promotion_readiness() {
+  local python_bin="${GOAL_HARNESS_PYTHON:-python3}"
+  local gate_json
+  gate_json="$(PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}" "$python_bin" -m goal_harness.cli --runtime-root "$codex_home/goal-harness" --format json promotion-gate 2>/dev/null || true)"
+  if [[ -z "$gate_json" ]]; then
+    return 0
+  fi
+  GOAL_HARNESS_PROMOTION_GATE_JSON="$gate_json" "$python_bin" - <<'PY' || true
+import json
+import os
+import sys
+
+try:
+    payload = json.loads(os.environ.get("GOAL_HARNESS_PROMOTION_GATE_JSON") or "{}")
+except json.JSONDecodeError:
+    sys.exit(0)
+
+if not payload.get("should_warn"):
+    sys.exit(0)
+
+message = payload.get("warning_message")
+if not message:
+    message = "promotion-readiness evidence requires a canary readiness run before promotion."
+print(f"goal-harness install warning: {message}", file=sys.stderr)
+PY
+}
+
+copy_path() {
+  local src="$1"
+  local dst="$2"
+  if [[ -e "$src" ]]; then
+    cp -R "$src" "$dst"
+  fi
+}
 
 if [[ -z "$shell_profile" ]]; then
   case "${SHELL:-}" in
@@ -20,9 +59,35 @@ if [[ -z "$shell_profile" ]]; then
   esac
 fi
 
+warn_stale_promotion_readiness
+
 mkdir -p "$bin_dir"
-chmod +x "$repo_root/scripts/goal-harness"
-ln -sfn "$repo_root/scripts/goal-harness" "$bin_dir/goal-harness"
+mkdir -p "$releases_dir"
+rm -rf "$release_tmp"
+mkdir -p "$release_tmp"
+copy_path "$repo_root/goal_harness" "$release_tmp/goal_harness"
+copy_path "$repo_root/scripts" "$release_tmp/scripts"
+copy_path "$repo_root/skills" "$release_tmp/skills"
+copy_path "$repo_root/docs" "$release_tmp/docs"
+copy_path "$repo_root/examples" "$release_tmp/examples"
+copy_path "$repo_root/README.md" "$release_tmp/README.md"
+copy_path "$repo_root/pyproject.toml" "$release_tmp/pyproject.toml"
+find "$release_tmp" -name __pycache__ -type d -prune -exec rm -rf {} +
+find "$release_tmp" -name '*.pyc' -type f -delete
+chmod +x "$release_tmp/scripts/goal-harness"
+if [[ -e "$release_dir" ]]; then
+  rm -rf "$release_tmp"
+else
+  mv "$release_tmp" "$release_dir"
+fi
+ln -sfn "$release_dir/scripts/goal-harness" "$bin_dir/goal-harness"
+
+canary_line="- canary executable: skipped"
+if [[ "$install_canary" != "0" ]]; then
+  chmod +x "$repo_root/scripts/goal-harness"
+  ln -sfn "$repo_root/scripts/goal-harness" "$bin_dir/goal-harness-canary"
+  canary_line="- canary executable: $bin_dir/goal-harness-canary"
+fi
 
 if [[ -n "$shell_profile" ]]; then
   touch "$shell_profile"
@@ -41,25 +106,25 @@ fi
 
 export PATH="$bin_dir:$PATH"
 "$bin_dir/goal-harness" doctor >/dev/null
+if [[ "$install_canary" != "0" ]]; then
+  "$bin_dir/goal-harness-canary" doctor >/dev/null
+fi
 
 skill_line="- skill: skipped"
+skill_source="$release_dir/skills/goal-harness-project"
 if [[ "$install_skill" != "0" && -d "$skill_source" ]]; then
   mkdir -p "$skills_dir"
-  if [[ -L "$skill_target" || ! -e "$skill_target" ]]; then
-    ln -sfn "$skill_source" "$skill_target"
-  elif [[ -d "$skill_target" ]]; then
-    mkdir -p "$skill_target"
-    cp "$skill_source/SKILL.md" "$skill_target/SKILL.md"
-  else
-    rm -f "$skill_target"
-    ln -sfn "$skill_source" "$skill_target"
-  fi
+  rm -rf "$skill_target"
+  mkdir -p "$skill_target"
+  cp "$skill_source/SKILL.md" "$skill_target/SKILL.md"
   skill_line="- skill: $skill_target"
 fi
 
 cat <<EOF
 goal-harness installed locally
 - executable: $bin_dir/goal-harness
+- release: $release_dir
+$canary_line
 - profile: $shell_profile
 $skill_line
 

@@ -1,0 +1,104 @@
+{
+  "ok": true,
+  "registry": "./fixtures/registry.global.json",
+  "runtime_root": "./fixtures/runtime",
+  "goal_count": 1,
+  "run_count": 0,
+  "status_contract": {
+    "schema_version": 2,
+    "minimum_dashboard_schema_version": 2,
+    "producer": "goal-harness status",
+    "reload_hint": "scripts/macos-dashboard-launchagent.sh restart"
+  },
+  "contract": {
+    "ok": true,
+    "summary": {
+      "errors": 0,
+      "warnings": 0,
+      "checks": 1
+    },
+    "errors": [],
+    "warnings": [],
+    "checks": [
+      "public-safe promotion gate warning fixture"
+    ]
+  },
+  "global_registry": {
+    "available": true,
+    "ok": true,
+    "registry": "./fixtures/registry.global.json",
+    "current_registry": "./fixtures/registry.global.json",
+    "current_registry_is_global": true,
+    "global_goal_count": 1,
+    "current_goal_count": 1,
+    "source_registry_count": 1,
+    "summary": {
+      "high": 0,
+      "action": 0,
+      "info": 0,
+      "checks": 1,
+      "findings": 0
+    },
+    "findings": [],
+    "checks": [
+      "public-safe promotion gate warning fixture"
+    ]
+  },
+  "attention_queue": {
+    "available": true,
+    "item_count": 0,
+    "needs_user_or_controller": 0,
+    "needs_controller": 0,
+    "needs_codex": 0,
+    "watching_external_evidence": 0,
+    "items": []
+  },
+  "run_history": {
+    "available": true,
+    "goal_count": 1,
+    "run_count": 0,
+    "goals": [],
+    "recent_runs": []
+  },
+  "usage_summary": null,
+  "event_ledger_summary": null,
+  "promotion_readiness_summary": {
+    "available": false,
+    "source": "run_history",
+    "reason": "no canary promotion readiness run found in sampled history",
+    "freshness_window_hours": 24,
+    "freshness_status": "missing",
+    "is_fresh": false,
+    "requires_readiness_run": true,
+    "age_seconds": null,
+    "age_hours": null,
+    "sample_run_count": 0,
+    "proxy_note": "public-safe promotion gate warning fixture"
+  },
+  "promotion_gate": {
+    "ok": true,
+    "registry": "./fixtures/registry.global.json",
+    "runtime_root": "./fixtures/runtime",
+    "gate": "promotion_readiness",
+    "gate_state": "warning",
+    "can_promote": false,
+    "should_warn": true,
+    "non_blocking": true,
+    "recommended_action": "python3 examples/canary-promotion-readiness-smoke.py",
+    "warning_message": "promotion-readiness evidence is missing; generated_at=none, reason=no canary promotion readiness run found in sampled history. This is non-blocking.",
+    "readiness": {
+      "available": false,
+      "source": "run_history",
+      "reason": "no canary promotion readiness run found in sampled history",
+      "freshness_window_hours": 24,
+      "freshness_status": "missing",
+      "is_fresh": false,
+      "requires_readiness_run": true,
+      "age_seconds": null,
+      "age_hours": null,
+      "sample_run_count": 0,
+      "proxy_note": "public-safe promotion gate warning fixture"
+    }
+  },
+  "decision_freshness_summary": null
+}

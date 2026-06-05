@@ -7,7 +7,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .execution_profile import execution_profile_summary
+from .execution_profile import (
+    execution_profile_outcome_floor,
+    execution_profile_summary,
+    outcome_floor_threshold,
+)
 
 
 DEFAULT_COMPUTE_QUOTA = 1.0
@@ -45,16 +49,19 @@ HANDOFF_READINESS_COMPACT_FIELDS = (
     "handoff_ready_at",
     "handoff_ready_classification",
     "post_handoff_small_scale_streak",
+    "post_handoff_outcome_gap_streak",
     "next_probe",
 )
 POST_HANDOFF_RUN_COMPACT_FIELDS = (
     "generated_at",
     "classification",
     "delivery_batch_scale",
+    "delivery_outcome",
     "health_check",
     "json_exists",
     "markdown_exists",
 )
+DECISION_FRESHNESS_WARNING_ITEM_LIMIT = 3
 
 
 def _now_local() -> str:
@@ -163,6 +170,74 @@ def _focus_wait_quota(payload: dict[str, Any]) -> dict[str, Any]:
     quota["blocked_action_scope"] = "delivery_focus"
     quota["focus_wait"] = True
     return quota
+
+
+def quota_with_handoff_outcome_floor(
+    quota: dict[str, Any],
+    *,
+    waiting_on: str | None = None,
+    project_asset: dict[str, Any] | None = None,
+    handoff_readiness: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if waiting_on != "codex":
+        return quota
+    if not isinstance(handoff_readiness, dict) or not handoff_readiness:
+        return quota
+    profile = (
+        project_asset.get("execution_profile")
+        if isinstance(project_asset, dict) and isinstance(project_asset.get("execution_profile"), dict)
+        else None
+    )
+    outcome_gap_streak = handoff_readiness.get("post_handoff_outcome_gap_streak")
+    if not isinstance(outcome_gap_streak, int) or outcome_gap_streak <= 0:
+        return quota
+    threshold = outcome_floor_threshold(profile)
+    if outcome_gap_streak < threshold:
+        return quota
+    state = str(quota.get("state") or "eligible")
+    if state in {"blocked_health", "operator_gate", "waiting", "paused", "throttled"}:
+        return quota
+
+    floor = execution_profile_outcome_floor(profile)
+    must_advance = [
+        str(value).strip()
+        for value in (floor.get("must_advance") if isinstance(floor.get("must_advance"), list) else [])
+        if str(value).strip()
+    ]
+    avoid = [
+        str(value).strip()
+        for value in (floor.get("avoid") if isinstance(floor.get("avoid"), list) else [])
+        if str(value).strip()
+    ]
+    reason_parts = [
+        f"handoff outcome floor not met: outcome_gap_streak={outcome_gap_streak}/{threshold}",
+        "report blocker without spend or return with outcome-scale evidence",
+    ]
+    if must_advance:
+        reason_parts.append(f"must_advance={'+'.join(must_advance)}")
+    if avoid:
+        reason_parts.append(f"avoid={'+'.join(avoid)}")
+
+    blocked = dict(quota)
+    blocked["state"] = "focus_wait"
+    blocked["reason"] = "; ".join(reason_parts)
+    blocked["blocked_action_scope"] = "delivery_outcome_floor"
+    blocked["focus_wait"] = True
+    blocked["handoff_outcome_floor_block"] = True
+    blocked["post_handoff_outcome_gap_streak"] = outcome_gap_streak
+    blocked["outcome_gap_threshold"] = threshold
+    if must_advance:
+        blocked["must_advance"] = must_advance
+        blocked["safe_bypass_allowed"] = True
+        blocked["safe_bypass_kind"] = "outcome_floor_recovery"
+        blocked["safe_bypass_policy"] = (
+            "Outcome-floor recovery only: attempt one bounded "
+            f"{'+'.join(must_advance)} evidence segment or write back a concrete blocker; "
+            "avoid surface-only work; spend only after validated evidence/blocker writeback."
+        )
+    if avoid:
+        blocked["avoid"] = avoid
+    return blocked
 
 
 def _quota_with_focus_wait_override(
@@ -588,6 +663,7 @@ def _heartbeat_recommendation(
     adapter_kind = str(item.get("adapter_kind") or "")
     lifecycle_phase = item.get("lifecycle_phase")
     lifecycle_flags = item.get("lifecycle_flags")
+    quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
     has_user_todos = _open_todo_count(user_todo_summary) > 0
     has_agent_todos = _open_todo_count(agent_todo_summary) > 0
 
@@ -613,6 +689,26 @@ def _heartbeat_recommendation(
             "notify": "NOTIFY",
             "spend_policy": "do not append quota spend for the blocker-push turn",
             "reason": _open_todo_notify_reason(state=state, waiting_on=waiting_on),
+        }
+    if state == "focus_wait" and quota.get("handoff_outcome_floor_block"):
+        if quota.get("safe_bypass_allowed"):
+            return {
+                **base,
+                "recommended_mode": "outcome_floor_recovery",
+                "notify": "DONT_NOTIFY",
+                "spend_policy": (
+                    "append exactly one quota spend only after a validated "
+                    "ranker/cross-domain evidence artifact or concrete blocker writeback; "
+                    "do not spend for another surface-only report"
+                ),
+                "reason": str(quota.get("reason") or "handoff outcome floor is not met"),
+            }
+        return {
+            **base,
+            "recommended_mode": "report_handoff_outcome_blocker",
+            "notify": "NOTIFY",
+            "spend_policy": "do not append quota spend while reporting the handoff outcome-floor blocker",
+            "reason": str(quota.get("reason") or "handoff outcome floor is not met"),
         }
     if not should_run:
         return {
@@ -730,6 +826,14 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
                 lifecycle_flags=lifecycle_flags,
                 status=status,
             )
+        quota = quota_with_handoff_outcome_floor(
+            quota,
+            waiting_on=str(waiting_on or ""),
+            project_asset=project_asset,
+            handoff_readiness=attention.get("handoff_readiness")
+            if isinstance(attention.get("handoff_readiness"), dict)
+            else None,
+        )
         state = str(quota.get("state") or "waiting")
         item: dict[str, Any] = {
             "goal_id": goal_id,
@@ -816,6 +920,86 @@ def _quota_plan_items(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return items
 
 
+def _decision_freshness_warning(status_payload: dict[str, Any], *, goal_id: str) -> dict[str, Any] | None:
+    freshness = (
+        status_payload.get("decision_freshness_summary")
+        if isinstance(status_payload.get("decision_freshness_summary"), dict)
+        else {}
+    )
+    raw_items = freshness.get("items") if isinstance(freshness.get("items"), list) else []
+    items: list[dict[str, Any]] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("goal_id") or "") != goal_id:
+            continue
+        if item.get("requires_decision_point_rebase") is not True:
+            continue
+        items.append(
+            {
+                "goal_id": item.get("goal_id"),
+                "decision_kind": item.get("decision_kind"),
+                "freshness_state": item.get("freshness_state"),
+                "decision_at": item.get("decision_at"),
+                "classification": item.get("classification"),
+                "age_days": item.get("age_days"),
+                "newer_event_count_7d": item.get("newer_event_count_7d"),
+                "reason": item.get("reason"),
+            }
+        )
+
+    if not items:
+        return None
+    summary = freshness.get("summary") if isinstance(freshness.get("summary"), dict) else {}
+    return {
+        "source": freshness.get("source") or "run_history",
+        "window_days": freshness.get("window_days"),
+        "message": (
+            "decision-point rebase required before reusing sampled reward/gate state; "
+            "refresh registry, ACTIVE_GOAL_STATE, quota, policy, and run status first"
+        ),
+        "rebase_required_count": len(items),
+        "global_rebase_required_count": summary.get("rebase_required_count"),
+        "global_stale_count": summary.get("stale_count"),
+        "items": items[:DECISION_FRESHNESS_WARNING_ITEM_LIMIT],
+    }
+
+
+def _promotion_readiness_warning(status_payload: dict[str, Any]) -> dict[str, Any] | None:
+    readiness = (
+        status_payload.get("promotion_readiness_summary")
+        if isinstance(status_payload.get("promotion_readiness_summary"), dict)
+        else {}
+    )
+    if not readiness:
+        return None
+    freshness_status = str(readiness.get("freshness_status") or "unknown")
+    requires_readiness_run = readiness.get("requires_readiness_run") is True
+    available = readiness.get("available")
+    if available is not False and not requires_readiness_run and freshness_status == "fresh":
+        return None
+
+    return {
+        "source": readiness.get("source") or "run_history",
+        "available": available,
+        "freshness_status": freshness_status,
+        "requires_readiness_run": requires_readiness_run,
+        "freshness_window_hours": readiness.get("freshness_window_hours"),
+        "age_hours": readiness.get("age_hours"),
+        "sample_run_count": readiness.get("sample_run_count"),
+        "goal_id": readiness.get("goal_id"),
+        "generated_at": readiness.get("generated_at"),
+        "classification": readiness.get("classification"),
+        "json_exists": readiness.get("json_exists"),
+        "markdown_exists": readiness.get("markdown_exists"),
+        "reason": readiness.get("reason"),
+        "message": (
+            "promotion readiness evidence is missing, stale, or unknown; run the "
+            "canary promotion-readiness smoke before promoting the local release snapshot"
+        ),
+    }
+
+
 def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     plan = build_quota_plan(status_payload, mode="should-run")
@@ -855,6 +1039,7 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             "state": state,
             "blocked_action_scope": quota.get("blocked_action_scope"),
             "safe_bypass_allowed": bool(quota.get("safe_bypass_allowed")),
+            "safe_bypass_kind": quota.get("safe_bypass_kind"),
             "safe_bypass_policy": quota.get("safe_bypass_policy"),
             "waiting_on": item.get("waiting_on"),
             "status": item.get("status"),
@@ -895,6 +1080,12 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
                 )
         if agent_todo_summary:
             payload["agent_todo_summary"] = agent_todo_summary
+        decision_warning = _decision_freshness_warning(status_payload, goal_id=safe_goal_id)
+        if decision_warning:
+            payload["decision_freshness_warning"] = decision_warning
+        promotion_warning = _promotion_readiness_warning(status_payload)
+        if promotion_warning:
+            payload["promotion_readiness_warning"] = promotion_warning
         gate_prompt = _build_gate_prompt(item) if state == "operator_gate" else None
         if gate_prompt:
             payload["gate_prompt"] = gate_prompt
@@ -1390,11 +1581,15 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             else {}
         )
         if latest_handoff_run:
+            outcome_suffix = ""
+            if latest_handoff_run.get("delivery_outcome"):
+                outcome_suffix = f" outcome={latest_handoff_run.get('delivery_outcome')}"
             lines.append(
                 "- post_handoff_run: "
                 f"classification={latest_handoff_run.get('classification')} "
                 f"at={latest_handoff_run.get('generated_at')} "
                 f"scale={latest_handoff_run.get('delivery_batch_scale') or ''}"
+                f"{outcome_suffix}"
             )
         recent_handoff_runs = (
             handoff_readiness.get("post_handoff_recent_runs")
@@ -1407,10 +1602,23 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             if isinstance(run, dict)
         ]
         if recent_scales:
+            recent_outcomes = [
+                str(run.get("delivery_outcome") or "")
+                for run in recent_handoff_runs
+                if isinstance(run, dict) and run.get("delivery_outcome")
+            ]
+            outcome_text = f" outcome={','.join(recent_outcomes)}" if recent_outcomes else ""
+            gap_text = (
+                f" outcome_gap_streak={handoff_readiness.get('post_handoff_outcome_gap_streak')}"
+                if "post_handoff_outcome_gap_streak" in handoff_readiness
+                else ""
+            )
             lines.append(
                 "- post_handoff_recent_scales: "
                 f"{','.join(recent_scales)} "
                 f"small_streak={handoff_readiness.get('post_handoff_small_scale_streak', 0)}"
+                f"{outcome_text}"
+                f"{gap_text}"
             )
     heartbeat_recommendation = (
         payload.get("heartbeat_recommendation")
@@ -1433,10 +1641,66 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- heartbeat_reason: {heartbeat_recommendation.get('reason')}")
     if payload.get("safe_bypass_allowed"):
         lines.append(f"- safe_bypass_allowed: `{payload.get('safe_bypass_allowed')}`")
+    if payload.get("safe_bypass_kind"):
+        lines.append(f"- safe_bypass_kind: {payload.get('safe_bypass_kind')}")
     if payload.get("blocked_action_scope"):
         lines.append(f"- blocked_action_scope: `{payload.get('blocked_action_scope')}`")
     if payload.get("safe_bypass_policy"):
         lines.append(f"- safe_bypass_policy: {payload.get('safe_bypass_policy')}")
+    decision_freshness_warning = (
+        payload.get("decision_freshness_warning")
+        if isinstance(payload.get("decision_freshness_warning"), dict)
+        else {}
+    )
+    if decision_freshness_warning:
+        lines.append(
+            "- decision_freshness_warning: "
+            f"rebase_required={decision_freshness_warning.get('rebase_required_count')} "
+            f"window_days={decision_freshness_warning.get('window_days')} "
+            f"source={decision_freshness_warning.get('source')}"
+        )
+        if decision_freshness_warning.get("message"):
+            lines.append(f"- decision_freshness_action: {decision_freshness_warning.get('message')}")
+        freshness_items = (
+            decision_freshness_warning.get("items")
+            if isinstance(decision_freshness_warning.get("items"), list)
+            else []
+        )
+        for item in freshness_items[:DECISION_FRESHNESS_WARNING_ITEM_LIMIT]:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "- decision_freshness_item: "
+                f"kind={item.get('decision_kind')} "
+                f"state={item.get('freshness_state')} "
+                f"age_days={item.get('age_days')} "
+                f"newer_7d={item.get('newer_event_count_7d')} "
+                f"at={item.get('decision_at')}"
+            )
+    promotion_readiness_warning = (
+        payload.get("promotion_readiness_warning")
+        if isinstance(payload.get("promotion_readiness_warning"), dict)
+        else {}
+    )
+    if promotion_readiness_warning:
+        lines.append(
+            "- promotion_readiness_warning: "
+            f"status={promotion_readiness_warning.get('freshness_status')} "
+            f"requires_readiness_run={promotion_readiness_warning.get('requires_readiness_run')} "
+            f"window_hours={promotion_readiness_warning.get('freshness_window_hours')} "
+            f"source={promotion_readiness_warning.get('source')}"
+        )
+        if promotion_readiness_warning.get("message"):
+            lines.append(f"- promotion_readiness_action: {promotion_readiness_warning.get('message')}")
+        lines.append(
+            "- promotion_readiness_evidence: "
+            f"goal={promotion_readiness_warning.get('goal_id') or ''} "
+            f"generated_at={promotion_readiness_warning.get('generated_at') or ''} "
+            f"age_hours={promotion_readiness_warning.get('age_hours')} "
+            f"artifacts={promotion_readiness_warning.get('json_exists')}/{promotion_readiness_warning.get('markdown_exists')}"
+        )
+        if promotion_readiness_warning.get("reason"):
+            lines.append(f"- promotion_readiness_reason: {promotion_readiness_warning.get('reason')}")
     goal_boundary = payload.get("goal_boundary") if isinstance(payload.get("goal_boundary"), dict) else {}
     if goal_boundary:
         adapter = goal_boundary.get("adapter") if isinstance(goal_boundary.get("adapter"), dict) else {}

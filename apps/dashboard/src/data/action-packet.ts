@@ -102,7 +102,7 @@ export function buildActionPacket(input: ActionPacketInput) {
     ...userActionLines,
     ...gateLines,
     `边界：${compactPacketText(input.boundary, 110)}`,
-    input.durableRecordRule ? "记录：落盘先 dry-run。" : null,
+    input.durableRecordRule ? `记录：${compactPacketText(input.durableRecordRule, 180)}` : null,
     "",
     "【给项目 Agent】",
     input.agentTodoText ? `待办：${compactPacketText(input.agentTodoText, 180)}` : null,

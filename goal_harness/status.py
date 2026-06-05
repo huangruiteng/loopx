@@ -7,12 +7,23 @@ import re
 from typing import Any
 
 from .contract import check_contract
-from .execution_profile import compact_execution_profile, execution_profile_summary
+from .doctor import (
+    PROMOTION_READINESS_CLASSIFICATIONS,
+    PROMOTION_READINESS_FRESHNESS_HOURS,
+    add_promotion_readiness_freshness,
+    latest_promotion_readiness_event,
+)
+from .execution_profile import (
+    compact_execution_profile,
+    execution_profile_outcome_floor,
+    execution_profile_summary,
+)
 from .history import collect_history, load_registry
 from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
 from .paths import global_registry_path, resolve_runtime_root
-from .quota import quota_status
+from .promotion_gate import build_promotion_gate
+from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
 
 
@@ -55,6 +66,57 @@ WATCH_CLASSIFICATION_PREFIXES = ("await_", "monitor_")
 BLOCKING_CLASSIFICATIONS = {
     "blocked_by_safety",
 }
+EVENT_LEDGER_CLASSES = (
+    "accounting",
+    "decision",
+    "evidence",
+    "state",
+    "work",
+)
+EVENT_LEDGER_PROXY_NOTE = "append-only run-history projection; compact event-class counts only"
+STATUS_CONTRACT_SCHEMA_VERSION = 2
+MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION = 2
+STATUS_CONTRACT_RELOAD_HINT = "scripts/macos-dashboard-launchagent.sh restart"
+DECISION_FRESHNESS_WINDOW_DAYS = 7
+DECISION_FRESHNESS_ITEM_LIMIT = 12
+DECISION_FRESHNESS_PROXY_NOTE = (
+    "checkpointed decision freshness projection; rebase old decisions at the decision point before reuse"
+)
+PROMOTION_READINESS_PROXY_NOTE = (
+    "canary promotion-readiness projection from append-only run history; exact evidence stays in run artifacts"
+)
+DECISION_FRESHNESS_CLASSIFICATION_PREFIXES = (
+    "human_reward",
+    "reward_overlay",
+)
+EVENT_LEDGER_DECISION_CLASSIFICATIONS = USER_OR_CONTROLLER_CLASSIFICATIONS | {
+    "operator_gate_approved",
+}
+EVENT_LEDGER_STATE_CLASSIFICATIONS = {
+    "state_refreshed",
+    "public_harness_healthy",
+}
+EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS = {
+    "inspect_eval_result",
+    "inspect_result",
+    "needs_more_read_only_evidence",
+    "read_only_project_map",
+}
+EVENT_LEDGER_EVIDENCE_HINTS = (
+    "artifact",
+    "blocker",
+    "ci",
+    "data",
+    "deploy",
+    "done",
+    "eval",
+    "evidence",
+    "failure",
+    "fail",
+    "metric",
+    "monitor",
+    "validation",
+)
 DELIVERY_BATCH_SCALE_TEST_ONLY_CLASSIFICATION_HINTS = (
     "_test",
     "_smoke",
@@ -123,6 +185,22 @@ OPERATOR_GATE_COMPACT_FIELDS = (
     "follow_up",
     "agent_command",
 )
+OPERATOR_GATE_RESUME_CONTRACT_COMPACT_FIELDS = (
+    "version",
+    "goal_id",
+    "run_id",
+    "gate_id",
+    "created_state_ref",
+    "created_policy_version",
+    "allowed_decisions",
+    "operator_decision",
+    "latest_state_ref",
+    "freshness_check",
+    "precondition_check",
+    "migration_or_rebase_result",
+    "resulting_action",
+    "validation_after_resume",
+)
 CONTROLLER_READINESS_COMPACT_FIELDS = (
     "classification",
     "read_only_observer_ready",
@@ -154,7 +232,7 @@ LIFECYCLE_PRIORITY = (
 TODO_TASK_PATTERN = re.compile(r"^\s*[-*]\s+\[([ xX-])\]\s+(.+?)\s*$")
 LOCAL_PATH_SURFACE_PATTERN = re.compile(r"(?<!<)/(?:Users|Volumes|var/folders|tmp|private/tmp)/[^\s`'\"<>]+")
 SECRET_LIKE_SURFACE_PATTERN = re.compile(
-    r"(?i)(?:bearer\s+[a-z0-9._~+/=-]{16,}|ak[a-z0-9_=-]{12,}|sk[a-z0-9_=-]{12,}|token[=:][^\s`'\"<>]{12,})"
+    r"(?i)(?:\bbearer\s+[a-z0-9._~+/=-]{16,}|(?<![a-z0-9_])(?:ak|sk)[-_=:][a-z0-9_=-]{10,}|\btoken\s*[=:]\s*[^\s`'\"<>]{12,})"
 )
 USER_TODO_HEADER_MARKERS = (
     "user todo",
@@ -167,6 +245,9 @@ AGENT_TODO_HEADER_MARKERS = (
     "project agent todo",
 )
 MAX_STATUS_TODOS_PER_ROLE = 12
+MAX_DEPENDENCY_BLOCKERS = 4
+MAX_AUTONOMOUS_BACKLOG_CANDIDATES = 6
+AUTONOMOUS_PRIORITY_PATTERN = re.compile(r"^\s*\[(P[0-4][^\]]*)\]\s*(.+)$", re.IGNORECASE)
 
 
 def normalize_todo_text(text: str, *, limit: int = 500) -> str:
@@ -342,6 +423,131 @@ def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] |
     return summary
 
 
+def dependency_blocker_summary(
+    items: list[dict[str, Any]],
+    *,
+    current_goal_id: str,
+    limit: int = MAX_DEPENDENCY_BLOCKERS,
+) -> dict[str, Any] | None:
+    blockers: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        goal_id = str(item.get("goal_id") or "")
+        if not goal_id or goal_id == current_goal_id:
+            continue
+        user_todos = item.get("user_todos") if isinstance(item.get("user_todos"), dict) else {}
+        for todo in user_todos.get("items") or []:
+            if not isinstance(todo, dict) or todo.get("done"):
+                continue
+            text = normalize_todo_text(str(todo.get("text") or ""), limit=220)
+            if not text:
+                continue
+            blockers.append(
+                {
+                    "goal_id": goal_id,
+                    "status": item.get("status"),
+                    "waiting_on": item.get("waiting_on"),
+                    "severity": item.get("severity"),
+                    "index": todo.get("index"),
+                    "text": text,
+                    "source": "user_todos",
+                }
+            )
+    if not blockers:
+        return None
+    return {
+        "source": "attention_queue.user_todos",
+        "open_count": len(blockers),
+        "items": blockers[:limit],
+    }
+
+
+def attach_dependency_blockers(items: list[dict[str, Any]]) -> None:
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        goal_id = str(item.get("goal_id") or "")
+        if not goal_id:
+            continue
+        blockers = dependency_blocker_summary(items, current_goal_id=goal_id)
+        if blockers:
+            item["dependency_blockers"] = blockers
+
+
+def first_open_todo_item(todos: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(todos, dict):
+        return None
+    for todo in todos.get("items") or []:
+        if not isinstance(todo, dict) or todo.get("done"):
+            continue
+        return todo
+    return None
+
+
+def autonomous_priority_label(text: str) -> str | None:
+    match = AUTONOMOUS_PRIORITY_PATTERN.match(text)
+    if not match:
+        return None
+    return match.group(1).strip().upper()
+
+
+def autonomous_priority_rank(priority: str | None) -> int:
+    if not priority:
+        return 50
+    match = re.match(r"P([0-4])", priority)
+    if not match:
+        return 50
+    return int(match.group(1))
+
+
+def autonomous_backlog_candidates(
+    items: list[dict[str, Any]],
+    *,
+    limit: int = MAX_AUTONOMOUS_BACKLOG_CANDIDATES,
+) -> dict[str, Any] | None:
+    candidates: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict) or item.get("waiting_on") != "codex":
+            continue
+        quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
+        if quota.get("state") != "eligible":
+            continue
+        todo = first_open_todo_item(item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None)
+        if not todo:
+            continue
+        text = normalize_todo_text(str(todo.get("text") or ""), limit=240)
+        if not text:
+            continue
+        priority = autonomous_priority_label(text)
+        candidates.append(
+            {
+                "goal_id": item.get("goal_id"),
+                "status": item.get("status"),
+                "waiting_on": item.get("waiting_on"),
+                "quota_state": quota.get("state"),
+                "priority": priority,
+                "todo_index": todo.get("index"),
+                "text": text,
+                "source": "agent_todos",
+            }
+        )
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda candidate: (
+            autonomous_priority_rank(candidate.get("priority") if isinstance(candidate.get("priority"), str) else None),
+            str(candidate.get("goal_id") or ""),
+            int(candidate.get("todo_index") or 0),
+        )
+    )
+    return {
+        "source": "attention_queue.agent_todos",
+        "open_count": len(candidates),
+        "items": candidates[:limit],
+    }
+
+
 def project_asset_quota_summary(quota: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(quota, dict):
         return None
@@ -403,25 +609,74 @@ def is_custom_post_handoff_work_run(run: dict[str, Any]) -> bool:
 
 
 def delivery_batch_scale_for_run(run: dict[str, Any]) -> str:
+    explicit = str(run.get("delivery_batch_scale") or "").strip()
+    if explicit:
+        return explicit
     classification = str(run.get("classification") or "")
     if not classification:
         return "unknown"
     normalized = classification.lower()
+    if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_TEST_ONLY_CLASSIFICATION_HINTS):
+        return "test_only"
     if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_MULTI_SURFACE_CLASSIFICATION_HINTS):
         return "multi_surface"
     if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_IMPLEMENTATION_CLASSIFICATION_HINTS):
         return "implementation"
-    if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_TEST_ONLY_CLASSIFICATION_HINTS):
-        return "test_only"
     return "single_surface"
 
 
-def compact_post_handoff_run(run: dict[str, Any]) -> dict[str, Any]:
+def _classification_contains_any(classification: str, hints: list[Any]) -> bool:
+    normalized = classification.lower()
+    return any(str(hint or "").strip().lower() in normalized for hint in hints if str(hint or "").strip())
+
+
+def delivery_outcome_for_run(run: dict[str, Any], profile: dict[str, Any] | None = None) -> str:
+    explicit = str(run.get("delivery_outcome") or "").strip()
+    if explicit:
+        return explicit
+    classification = str(run.get("classification") or "")
+    if not classification:
+        return "unknown"
+    floor = execution_profile_outcome_floor(profile)
+    outcome_markers = floor.get("outcome_markers") if isinstance(floor.get("outcome_markers"), list) else []
+    surface_hints = floor.get("surface_only_hints") if isinstance(floor.get("surface_only_hints"), list) else []
+    if not outcome_markers and not surface_hints:
+        return "not_configured"
+    marker_hit = _classification_contains_any(classification, outcome_markers)
+    surface_hit = _classification_contains_any(classification, surface_hints)
+    if surface_hit:
+        return "surface_only"
+    if marker_hit:
+        return "outcome_progress"
+    return "outcome_gap"
+
+
+def outcome_floor_configured(profile: dict[str, Any] | None) -> bool:
+    floor = execution_profile_outcome_floor(profile)
+    return bool(floor.get("outcome_markers") or floor.get("surface_only_hints"))
+
+
+def outcome_gap_streak(runs: list[dict[str, Any]], profile: dict[str, Any] | None = None) -> int:
+    if not outcome_floor_configured(profile):
+        return 0
+    streak = 0
+    for run in runs:
+        outcome = delivery_outcome_for_run(run, profile)
+        if outcome in {"outcome_progress", "primary_goal_outcome", "not_configured"}:
+            break
+        streak += 1
+    return streak
+
+
+def compact_post_handoff_run(run: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
     compact: dict[str, Any] = {}
     for field in ("generated_at", "classification", "health_check", "json_exists", "markdown_exists"):
         if field in run:
             compact[field] = run[field]
     compact["delivery_batch_scale"] = delivery_batch_scale_for_run(run)
+    outcome = delivery_outcome_for_run(run, profile)
+    if outcome != "not_configured":
+        compact["delivery_outcome"] = outcome
     return compact
 
 
@@ -441,6 +696,11 @@ def project_asset_handoff_state(
     latest_runs: list[dict[str, Any]] | None,
 ) -> dict[str, Any]:
     runs = [run for run in latest_runs or [] if isinstance(run, dict)]
+    profile = compact_execution_profile(
+        project_asset.get("execution_profile")
+        if isinstance(project_asset.get("execution_profile"), dict)
+        else None
+    )
     parsed_runs = [
         (run, parse_timestamp(run.get("generated_at")))
         for run in runs
@@ -514,15 +774,20 @@ def project_asset_handoff_state(
     if handoff_run and handoff_run.get("classification"):
         state["handoff_ready_classification"] = handoff_run.get("classification")
     if post_handoff_run:
-        state["post_handoff_latest_run"] = compact_post_handoff_run(post_handoff_run)
+        state["post_handoff_latest_run"] = compact_post_handoff_run(post_handoff_run, profile)
     if recent_post_handoff_runs:
         state["post_handoff_recent_runs"] = [
-            compact_post_handoff_run(run)
+            compact_post_handoff_run(run, profile)
             for run in recent_post_handoff_runs
         ]
         state["post_handoff_small_scale_streak"] = small_delivery_batch_scale_streak(
             recent_post_handoff_runs
         )
+        if outcome_floor_configured(profile):
+            state["post_handoff_outcome_gap_streak"] = outcome_gap_streak(
+                recent_post_handoff_runs,
+                profile,
+            )
     return state
 
 
@@ -554,6 +819,16 @@ def project_asset_handoff_readiness(
         "handoff_has_stop_condition": bool(stop_condition),
         "handoff_sanitized_surface": project_asset_summary_is_public_safe(project_asset),
     }
+    state_trace_ready = all(
+        checks[key]
+        for key in (
+            "project_asset_backed",
+            "same_source_should_run",
+            "handoff_has_next_action",
+            "handoff_has_stop_condition",
+            "handoff_sanitized_surface",
+        )
+    )
     readiness: dict[str, Any] = {
         "ready": all(checks.values()),
         "codex_ready": codex_ready,
@@ -563,7 +838,7 @@ def project_asset_handoff_readiness(
     }
     readiness.update(
         project_asset_handoff_state(
-            ready=bool(readiness["ready"]),
+            ready=state_trace_ready,
             project_asset=project_asset,
             latest_runs=latest_runs,
         )
@@ -869,7 +1144,7 @@ def collect_global_registry_health(
                 message=f"current registry excludes {len(missing_from_current)} global goal(s)",
                 recommended_action=(
                     "for multi-project dashboard/controller status, run `goal-harness status` "
-                    "without `--registry` or pass the global registry"
+                    "without `--registry`, pass the global registry, or start `serve-status --global-registry`"
                 ),
                 goal_ids=shown,
             )
@@ -1228,6 +1503,17 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
             **attention_fields,
             **lifecycle_fields,
         )
+    if adapter_status in CONNECTED_ADAPTER_STATUSES:
+        return attention_item(
+            goal_id=goal_id,
+            status=classification,
+            waiting_on="codex",
+            severity="action",
+            recommended_action=action,
+            source="latest_run",
+            **attention_fields,
+            **lifecycle_fields,
+        )
     return None
 
 
@@ -1299,9 +1585,31 @@ def build_attention_queue(
                     quota=item.get("quota") if isinstance(item.get("quota"), dict) else None,
                     latest_runs=goal_latest_runs,
                 )
+                guarded_quota = quota_with_handoff_outcome_floor(
+                    item.get("quota") if isinstance(item.get("quota"), dict) else {},
+                    waiting_on=str(item.get("waiting_on") or ""),
+                    project_asset=item.get("project_asset")
+                    if isinstance(item.get("project_asset"), dict)
+                    else None,
+                    handoff_readiness=item.get("handoff_readiness")
+                    if isinstance(item.get("handoff_readiness"), dict)
+                    else None,
+                )
+                if guarded_quota != item.get("quota"):
+                    item["quota"] = guarded_quota
+                    enrich_project_asset(
+                        item,
+                        user_todos=item.get("user_todos") if isinstance(item.get("user_todos"), dict) else None,
+                        agent_todos=item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None,
+                        quota=guarded_quota,
+                        latest_runs=goal_latest_runs,
+                    )
             items.append(item)
 
-    return {
+    attach_dependency_blockers(items)
+    backlog_candidates = autonomous_backlog_candidates(items)
+
+    queue = {
         "available": True,
         "item_count": len(items),
         "needs_user_or_controller": sum(
@@ -1312,6 +1620,9 @@ def build_attention_queue(
         "watching_external_evidence": sum(1 for item in items if item["waiting_on"] == "external_evidence"),
         "items": items,
     }
+    if backlog_candidates:
+        queue["autonomous_backlog_candidates"] = backlog_candidates
+    return queue
 
 
 def compact_human_reward(reward: Any) -> dict[str, Any] | None:
@@ -1325,6 +1636,24 @@ def compact_operator_gate(operator_gate: Any) -> dict[str, Any] | None:
     if not isinstance(operator_gate, dict):
         return None
     compact = {field: operator_gate[field] for field in OPERATOR_GATE_COMPACT_FIELDS if field in operator_gate}
+    return compact or None
+
+
+def compact_operator_gate_resume_contract(contract: Any) -> dict[str, Any] | None:
+    if not isinstance(contract, dict):
+        return None
+    compact = {
+        field: contract[field]
+        for field in OPERATOR_GATE_RESUME_CONTRACT_COMPACT_FIELDS
+        if field in contract
+    }
+    interrupt = contract.get("interrupt_payload") if isinstance(contract.get("interrupt_payload"), dict) else {}
+    if interrupt:
+        compact["interrupt_payload"] = {
+            field: interrupt[field]
+            for field in ("question", "choices")
+            if field in interrupt
+        }
     return compact or None
 
 
@@ -1406,6 +1735,27 @@ def _append_human_reward_markdown(lines: list[str], goal_id: Any, reward: dict[s
         )
 
 
+def _append_operator_gate_resume_contract_markdown(lines: list[str], contract: dict[str, Any]) -> None:
+    headline_parts = []
+    for field in ("version", "gate_id", "operator_decision"):
+        value = contract.get(field)
+        if value:
+            headline_parts.append(f"{field}={_markdown_scalar(value)}")
+    if not headline_parts:
+        headline_parts.append("recorded=True")
+    lines.append(f"    - operator_gate_resume_contract: {' '.join(headline_parts)}")
+    for field in (
+        "latest_state_ref",
+        "freshness_check",
+        "precondition_check",
+        "migration_or_rebase_result",
+        "validation_after_resume",
+    ):
+        value = contract.get(field)
+        if value:
+            lines.append(f"      - {field}: {_markdown_scalar(value)}")
+
+
 def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     compact = {field: run[field] for field in RUN_COMPACT_FIELDS if field in run}
     flags = run_lifecycle_flags(run)
@@ -1417,6 +1767,9 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     operator_gate = compact_operator_gate(run.get("operator_gate"))
     if operator_gate:
         compact["operator_gate"] = operator_gate
+    resume_contract = compact_operator_gate_resume_contract(run.get("operator_gate_resume_contract"))
+    if resume_contract:
+        compact["operator_gate_resume_contract"] = resume_contract
     readiness = compact_controller_readiness(run.get("controller_readiness"))
     if readiness:
         compact["controller_readiness"] = readiness
@@ -1493,6 +1846,11 @@ def is_automation_run(run: dict[str, Any]) -> bool:
     return str(run.get("classification") or "") == "quota_slot_spent"
 
 
+def is_progress_signal_run(run: dict[str, Any]) -> bool:
+    classification = str(run.get("classification") or "")
+    return bool(classification and classification not in {"quota_slot_spent", "state_refreshed"})
+
+
 def blank_usage_goal(goal_id: str) -> dict[str, Any]:
     return {
         "goal_id": goal_id,
@@ -1502,7 +1860,312 @@ def blank_usage_goal(goal_id: str) -> dict[str, Any]:
         "quota_spend_slots_7d": 0,
         "automation_run_count_24h": 0,
         "automation_run_count_7d": 0,
+        "progress_signal_run_count_24h": 0,
+        "progress_signal_run_count_7d": 0,
         "project_share_24h": 0.0,
+    }
+
+
+def blank_event_class_counts() -> dict[str, int]:
+    return {event_class: 0 for event_class in EVENT_LEDGER_CLASSES}
+
+
+def blank_event_ledger_goal(goal_id: str) -> dict[str, Any]:
+    return {
+        "goal_id": goal_id,
+        "events_24h": 0,
+        "events_7d": 0,
+        "by_class_24h": blank_event_class_counts(),
+        "by_class_7d": blank_event_class_counts(),
+        "latest_event_class": None,
+        "latest_event_at": None,
+    }
+
+
+def event_ledger_event_class(run: dict[str, Any]) -> str:
+    classification = str(run.get("classification") or "").lower()
+    if classification == "quota_slot_spent" or isinstance(run.get("quota_event"), dict):
+        return "accounting"
+    if (
+        classification in EVENT_LEDGER_DECISION_CLASSIFICATIONS
+        or "operator_gate" in classification
+        or "human_reward" in classification
+        or "reward" in classification
+        or isinstance(run.get("human_reward"), dict)
+        or isinstance(run.get("operator_gate"), dict)
+        or isinstance(run.get("operator_gate_resume_contract"), dict)
+    ):
+        return "decision"
+    if classification in EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS:
+        return "evidence"
+    if classification.startswith(WATCH_CLASSIFICATION_PREFIXES):
+        return "evidence"
+    if any(hint in classification for hint in EVENT_LEDGER_EVIDENCE_HINTS):
+        return "evidence"
+    if any(
+        key in run
+        for key in (
+            "active_priorities",
+            "active_task_count",
+            "artifact",
+            "artifacts",
+            "cache_check",
+            "controller_readiness",
+            "project_map",
+        )
+    ):
+        return "evidence"
+    if classification in EVENT_LEDGER_STATE_CLASSIFICATIONS or classification.endswith("_refreshed"):
+        return "state"
+    return "work"
+
+
+def build_event_ledger_summary(history: dict[str, Any]) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    cutoff_24h = now - timedelta(hours=24)
+    cutoff_7d = now - timedelta(days=7)
+    totals = {
+        "events_24h": 0,
+        "events_7d": 0,
+        "by_class_24h": blank_event_class_counts(),
+        "by_class_7d": blank_event_class_counts(),
+    }
+    goals: dict[str, dict[str, Any]] = {}
+    sample_count = 0
+
+    for run in history.get("runs") or []:
+        if not isinstance(run, dict):
+            continue
+        sample_count += 1
+        generated_at = parse_timestamp(run.get("generated_at"))
+        if generated_at is None:
+            continue
+        event_class = event_ledger_event_class(run)
+        goal_id = str(run.get("goal_id") or "unknown-goal")
+        goal = goals.setdefault(goal_id, blank_event_ledger_goal(goal_id))
+        latest_event_at = parse_timestamp(goal.get("latest_event_at"))
+        if latest_event_at is None or generated_at > latest_event_at:
+            goal["latest_event_class"] = event_class
+            goal["latest_event_at"] = generated_at.isoformat()
+
+        if generated_at >= cutoff_7d:
+            totals["events_7d"] += 1
+            totals["by_class_7d"][event_class] += 1
+            goal["events_7d"] += 1
+            goal["by_class_7d"][event_class] += 1
+        if generated_at >= cutoff_24h:
+            totals["events_24h"] += 1
+            totals["by_class_24h"][event_class] += 1
+            goal["events_24h"] += 1
+            goal["by_class_24h"][event_class] += 1
+
+    goal_rows = sorted(
+        goals.values(),
+        key=lambda item: (
+            item["events_24h"],
+            item["events_7d"],
+            item["goal_id"],
+        ),
+        reverse=True,
+    )
+    return {
+        "available": True,
+        "source": "run_history",
+        "generated_at": now.isoformat(),
+        "sample_run_count": sample_count,
+        "proxy_note": EVENT_LEDGER_PROXY_NOTE,
+        "event_classes": list(EVENT_LEDGER_CLASSES),
+        "totals": totals,
+        "goals": goal_rows,
+    }
+
+
+def build_promotion_readiness_summary(
+    history: dict[str, Any],
+    *,
+    runtime_root: Path | None = None,
+) -> dict[str, Any]:
+    latest: dict[str, Any] | None = None
+    latest_at: datetime | None = None
+    sample_count = 0
+    source = "run_history"
+    for run in history.get("runs") or []:
+        if not isinstance(run, dict):
+            continue
+        classification = str(run.get("classification") or "")
+        if classification not in PROMOTION_READINESS_CLASSIFICATIONS:
+            continue
+        sample_count += 1
+        generated_at = parse_timestamp(run.get("generated_at"))
+        if generated_at is None:
+            continue
+        if latest_at is None or generated_at > latest_at:
+            latest_at = generated_at
+            latest = run
+
+    if latest is None and runtime_root is not None:
+        full_scan_latest = latest_promotion_readiness_event(runtime_root)
+        if full_scan_latest.get("available"):
+            latest = full_scan_latest
+            source = "run_history_full_scan"
+
+    if latest is None:
+        readiness = add_promotion_readiness_freshness(
+            {
+                "available": False,
+                "source": source,
+                "reason": (
+                    "no canary promotion readiness run found in full run history"
+                    if runtime_root is not None
+                    else "no canary promotion readiness run found in sampled history"
+                ),
+            }
+        )
+    else:
+        readiness = add_promotion_readiness_freshness(
+            {
+                "available": True,
+                "source": source,
+                "goal_id": latest.get("goal_id"),
+                "generated_at": latest.get("generated_at"),
+                "classification": latest.get("classification"),
+                "delivery_batch_scale": latest.get("delivery_batch_scale"),
+                "delivery_outcome": latest.get("delivery_outcome"),
+                "recommended_action": latest.get("recommended_action"),
+                "json_exists": bool(latest.get("json_exists")),
+                "markdown_exists": bool(latest.get("markdown_exists")),
+            }
+        )
+    readiness.update(
+        {
+            "sample_run_count": sample_count,
+            "proxy_note": PROMOTION_READINESS_PROXY_NOTE,
+            "freshness_window_hours": PROMOTION_READINESS_FRESHNESS_HOURS,
+        }
+    )
+    return readiness
+
+
+def build_status_contract() -> dict[str, Any]:
+    return {
+        "schema_version": STATUS_CONTRACT_SCHEMA_VERSION,
+        "minimum_dashboard_schema_version": MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION,
+        "producer": "goal-harness status",
+        "reload_hint": STATUS_CONTRACT_RELOAD_HINT,
+    }
+
+
+def decision_event_kinds(run: dict[str, Any]) -> list[str]:
+    kinds: list[str] = []
+    if isinstance(run.get("human_reward"), dict):
+        kinds.append("human_reward")
+    if isinstance(run.get("operator_gate"), dict):
+        kinds.append("operator_gate")
+    if isinstance(run.get("operator_gate_resume_contract"), dict):
+        kinds.append("operator_gate_resume_contract")
+
+    classification = str(run.get("classification") or "").lower()
+    if not kinds and (
+        classification in EVENT_LEDGER_DECISION_CLASSIFICATIONS
+        or classification.startswith(DECISION_FRESHNESS_CLASSIFICATION_PREFIXES)
+    ):
+        kinds.append("decision_classification")
+    return kinds
+
+
+def decision_freshness_reason(*, stale_by_age: bool, newer_event_count: int) -> str:
+    if stale_by_age and newer_event_count:
+        return "decision older than freshness window and newer sampled events exist; rebase at decision point"
+    if stale_by_age:
+        return "decision older than freshness window; rebase at decision point"
+    if newer_event_count:
+        return "newer sampled events exist after decision; rebase at decision point"
+    return "no newer sampled events inside freshness window"
+
+
+def build_decision_freshness_summary(history: dict[str, Any]) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=DECISION_FRESHNESS_WINDOW_DAYS)
+    runs = [run for run in history.get("runs") or [] if isinstance(run, dict)]
+    items: list[dict[str, Any]] = []
+    stale_count = 0
+    rebase_required_count = 0
+    fresh_count = 0
+
+    indexed_runs: list[tuple[dict[str, Any], datetime, str]] = []
+    for run in runs:
+        generated_at = parse_timestamp(run.get("generated_at"))
+        if generated_at is None:
+            continue
+        indexed_runs.append((run, generated_at, str(run.get("goal_id") or "unknown-goal")))
+
+    for run, decision_at, goal_id in indexed_runs:
+        for decision_kind in decision_event_kinds(run):
+            newer_class_counts = blank_event_class_counts()
+            newer_event_count = 0
+            for other_run, other_at, other_goal_id in indexed_runs:
+                if other_goal_id != goal_id or other_at <= decision_at or other_at < cutoff:
+                    continue
+                newer_event_count += 1
+                newer_class_counts[event_ledger_event_class(other_run)] += 1
+
+            stale_by_age = decision_at < cutoff
+            if stale_by_age:
+                stale_count += 1
+            requires_rebase = stale_by_age or newer_event_count > 0
+            if requires_rebase:
+                rebase_required_count += 1
+            else:
+                fresh_count += 1
+            if stale_by_age:
+                freshness_state = "stale_rebase_required"
+            elif newer_event_count:
+                freshness_state = "rebase_required"
+            else:
+                freshness_state = "fresh"
+
+            items.append(
+                {
+                    "goal_id": goal_id,
+                    "decision_kind": decision_kind,
+                    "decision_at": decision_at.isoformat(),
+                    "classification": run.get("classification"),
+                    "age_days": round(max(0.0, (now - decision_at).total_seconds() / 86400), 2),
+                    "stale_by_age": stale_by_age,
+                    "newer_event_count_7d": newer_event_count,
+                    "newer_event_classes_7d": newer_class_counts,
+                    "freshness_state": freshness_state,
+                    "requires_decision_point_rebase": requires_rebase,
+                    "reason": decision_freshness_reason(
+                        stale_by_age=stale_by_age,
+                        newer_event_count=newer_event_count,
+                    ),
+                }
+            )
+
+    items.sort(
+        key=lambda item: (
+            1 if item["requires_decision_point_rebase"] else 0,
+            item["age_days"],
+            item["newer_event_count_7d"],
+            item["decision_at"],
+        ),
+        reverse=True,
+    )
+    return {
+        "available": True,
+        "source": "run_history",
+        "generated_at": now.isoformat(),
+        "sample_run_count": len(runs),
+        "window_days": DECISION_FRESHNESS_WINDOW_DAYS,
+        "proxy_note": DECISION_FRESHNESS_PROXY_NOTE,
+        "summary": {
+            "decision_count": len(items),
+            "stale_count": stale_count,
+            "rebase_required_count": rebase_required_count,
+            "fresh_count": fresh_count,
+        },
+        "items": items[:DECISION_FRESHNESS_ITEM_LIMIT],
     }
 
 
@@ -1517,6 +2180,8 @@ def build_usage_summary(history: dict[str, Any]) -> dict[str, Any]:
         "quota_spend_slots_7d": 0,
         "automation_run_count_24h": 0,
         "automation_run_count_7d": 0,
+        "progress_signal_run_count_24h": 0,
+        "progress_signal_run_count_7d": 0,
     }
     goals: dict[str, dict[str, Any]] = {}
     sample_count = 0
@@ -1532,6 +2197,7 @@ def build_usage_summary(history: dict[str, Any]) -> dict[str, Any]:
         goal = goals.setdefault(goal_id, blank_usage_goal(goal_id))
         slots = quota_spend_slots(run)
         automation_event = is_automation_run(run)
+        progress_signal = is_progress_signal_run(run)
 
         if generated_at >= cutoff_7d:
             totals["runs_7d"] += 1
@@ -1541,6 +2207,9 @@ def build_usage_summary(history: dict[str, Any]) -> dict[str, Any]:
             if automation_event:
                 totals["automation_run_count_7d"] += 1
                 goal["automation_run_count_7d"] += 1
+            if progress_signal:
+                totals["progress_signal_run_count_7d"] += 1
+                goal["progress_signal_run_count_7d"] += 1
         if generated_at >= cutoff_24h:
             totals["runs_24h"] += 1
             goal["runs_24h"] += 1
@@ -1549,6 +2218,9 @@ def build_usage_summary(history: dict[str, Any]) -> dict[str, Any]:
             if automation_event:
                 totals["automation_run_count_24h"] += 1
                 goal["automation_run_count_24h"] += 1
+            if progress_signal:
+                totals["progress_signal_run_count_24h"] += 1
+                goal["progress_signal_run_count_24h"] += 1
 
     if totals["runs_24h"]:
         for goal in goals.values():
@@ -1605,6 +2277,16 @@ def collect_status(
     )
     queue = build_attention_queue(contract=contract, history=history, global_registry=global_registry)
     run_history = build_run_history(history)
+    event_ledger_summary = build_event_ledger_summary(history)
+    promotion_readiness_summary = build_promotion_readiness_summary(
+        history,
+        runtime_root=runtime_root,
+    )
+    promotion_gate = build_promotion_gate(
+        registry_path=registry_path,
+        runtime_root_override=str(runtime_root),
+    )
+    decision_freshness_summary = build_decision_freshness_summary(history)
     usage_summary = build_usage_summary(history)
     return {
         "ok": bool(contract.get("ok")) and bool(global_registry.get("ok", True)),
@@ -1612,6 +2294,7 @@ def collect_status(
         "runtime_root": str(runtime_root),
         "goal_count": history.get("goal_count"),
         "run_count": history.get("run_count"),
+        "status_contract": build_status_contract(),
         "contract": {
             "ok": contract.get("ok"),
             "summary": contract.get("summary"),
@@ -1622,8 +2305,19 @@ def collect_status(
         "global_registry": global_registry,
         "attention_queue": queue,
         "run_history": run_history,
+        "event_ledger_summary": event_ledger_summary,
+        "promotion_readiness_summary": promotion_readiness_summary,
+        "promotion_gate": promotion_gate,
+        "decision_freshness_summary": decision_freshness_summary,
         "usage_summary": usage_summary,
     }
+
+
+def _event_class_count_text(counts: dict[str, Any]) -> str:
+    return " ".join(
+        f"{event_class}={counts.get(event_class, 0)}"
+        for event_class in EVENT_LEDGER_CLASSES
+    )
 
 
 def render_status_markdown(payload: dict[str, Any]) -> str:
@@ -1636,6 +2330,19 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         f"- goals: `{payload.get('goal_count')}`",
         f"- runs: `{payload.get('run_count')}`",
     ]
+
+    status_contract = (
+        payload.get("status_contract")
+        if isinstance(payload.get("status_contract"), dict)
+        else {}
+    )
+    if status_contract:
+        lines.append(
+            "- status_contract: "
+            f"schema_version={status_contract.get('schema_version')}, "
+            f"minimum_dashboard_schema_version={status_contract.get('minimum_dashboard_schema_version')}, "
+            f"producer={status_contract.get('producer')}"
+        )
 
     contract = payload.get("contract") if isinstance(payload.get("contract"), dict) else {}
     summary = contract.get("summary") if isinstance(contract.get("summary"), dict) else {}
@@ -1665,6 +2372,201 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         ]
     )
 
+    event_ledger = (
+        payload.get("event_ledger_summary")
+        if isinstance(payload.get("event_ledger_summary"), dict)
+        else {}
+    )
+    event_totals = (
+        event_ledger.get("totals")
+        if isinstance(event_ledger.get("totals"), dict)
+        else {}
+    )
+    if event_ledger.get("available") and event_totals:
+        by_class_24h = (
+            event_totals.get("by_class_24h")
+            if isinstance(event_totals.get("by_class_24h"), dict)
+            else {}
+        )
+        by_class_7d = (
+            event_totals.get("by_class_7d")
+            if isinstance(event_totals.get("by_class_7d"), dict)
+            else {}
+        )
+        lines.extend(
+            [
+                "",
+                "## Event Ledger Summary",
+                "- summary: "
+                f"source={_markdown_scalar(event_ledger.get('source') or '')} "
+                f"samples={event_ledger.get('sample_run_count')} "
+                f"events_24h={event_totals.get('events_24h')} "
+                f"events_7d={event_totals.get('events_7d')} "
+                f"classes_24h={_event_class_count_text(by_class_24h)} "
+                f"classes_7d={_event_class_count_text(by_class_7d)}",
+            ]
+        )
+        event_goals = (
+            event_ledger.get("goals")
+            if isinstance(event_ledger.get("goals"), list)
+            else []
+        )
+        for goal in event_goals[:3]:
+            if not isinstance(goal, dict):
+                continue
+            goal_by_class_24h = (
+                goal.get("by_class_24h")
+                if isinstance(goal.get("by_class_24h"), dict)
+                else {}
+            )
+            lines.append(
+                "- "
+                f"`{_markdown_scalar(goal.get('goal_id') or '')}`: "
+                f"events_24h={goal.get('events_24h')} "
+                f"events_7d={goal.get('events_7d')} "
+                f"latest={_markdown_scalar(goal.get('latest_event_class') or '')} "
+                f"classes_24h={_event_class_count_text(goal_by_class_24h)}"
+            )
+
+    promotion_readiness = (
+        payload.get("promotion_readiness_summary")
+        if isinstance(payload.get("promotion_readiness_summary"), dict)
+        else {}
+    )
+    if promotion_readiness:
+        lines.extend(
+            [
+                "",
+                "## Promotion Readiness Summary",
+                "- summary: "
+                f"source={_markdown_scalar(promotion_readiness.get('source') or '')} "
+                f"available={promotion_readiness.get('available')} "
+                f"samples={promotion_readiness.get('sample_run_count')} "
+                f"freshness={_markdown_scalar(promotion_readiness.get('freshness_status') or '')} "
+                f"age_hours={promotion_readiness.get('age_hours')} "
+                f"requires_readiness_run={promotion_readiness.get('requires_readiness_run')} "
+                f"window_hours={promotion_readiness.get('freshness_window_hours')}",
+                "- latest: "
+                f"goal={_markdown_scalar(promotion_readiness.get('goal_id') or '')} "
+                f"generated_at={_markdown_scalar(promotion_readiness.get('generated_at') or '')} "
+                f"classification={_markdown_scalar(promotion_readiness.get('classification') or '')} "
+                f"outcome={_markdown_scalar(promotion_readiness.get('delivery_outcome') or '')} "
+                f"artifacts={promotion_readiness.get('json_exists')}/{promotion_readiness.get('markdown_exists')}",
+            ]
+        )
+
+    promotion_gate = (
+        payload.get("promotion_gate")
+        if isinstance(payload.get("promotion_gate"), dict)
+        else {}
+    )
+    promotion_gate_readiness = (
+        promotion_gate.get("readiness")
+        if isinstance(promotion_gate.get("readiness"), dict)
+        else {}
+    )
+    if promotion_gate:
+        lines.extend(
+            [
+                "",
+                "## Promotion Gate",
+                "- gate: "
+                f"state={_markdown_scalar(promotion_gate.get('gate_state') or '')} "
+                f"can_promote={promotion_gate.get('can_promote')} "
+                f"should_warn={promotion_gate.get('should_warn')} "
+                f"non_blocking={promotion_gate.get('non_blocking')} "
+                f"freshness={_markdown_scalar(promotion_gate_readiness.get('freshness_status') or '')} "
+                f"requires_readiness_run={promotion_gate_readiness.get('requires_readiness_run')}",
+                "- latest: "
+                f"generated_at={_markdown_scalar(promotion_gate_readiness.get('generated_at') or '')} "
+                f"age_hours={promotion_gate_readiness.get('age_hours')} "
+                f"action={_markdown_scalar(promotion_gate.get('recommended_action') or '')}",
+            ]
+        )
+        if promotion_gate.get("warning_message"):
+            lines.append(
+                "- warning: "
+                f"{_markdown_scalar(promotion_gate.get('warning_message') or '')}"
+            )
+
+    decision_freshness = (
+        payload.get("decision_freshness_summary")
+        if isinstance(payload.get("decision_freshness_summary"), dict)
+        else {}
+    )
+    decision_summary = (
+        decision_freshness.get("summary")
+        if isinstance(decision_freshness.get("summary"), dict)
+        else {}
+    )
+    if decision_freshness.get("available") and decision_summary:
+        lines.extend(
+            [
+                "",
+                "## Decision Freshness Summary",
+                "- summary: "
+                f"source={_markdown_scalar(decision_freshness.get('source') or '')} "
+                f"samples={decision_freshness.get('sample_run_count')} "
+                f"window_days={decision_freshness.get('window_days')} "
+                f"decisions={decision_summary.get('decision_count')} "
+                f"stale={decision_summary.get('stale_count')} "
+                f"rebase_required={decision_summary.get('rebase_required_count')} "
+                f"fresh={decision_summary.get('fresh_count')}",
+            ]
+        )
+        decision_items = (
+            decision_freshness.get("items")
+            if isinstance(decision_freshness.get("items"), list)
+            else []
+        )
+        for item in decision_items[:3]:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "- "
+                f"`{_markdown_scalar(item.get('goal_id') or '')}`: "
+                f"kind={_markdown_scalar(item.get('decision_kind') or '')} "
+                f"state={_markdown_scalar(item.get('freshness_state') or '')} "
+                f"age_days={item.get('age_days')} "
+                f"newer_7d={item.get('newer_event_count_7d')} "
+                f"decision_at={_markdown_scalar(item.get('decision_at') or '')}"
+            )
+
+    usage = payload.get("usage_summary") if isinstance(payload.get("usage_summary"), dict) else {}
+    usage_totals = usage.get("totals") if isinstance(usage.get("totals"), dict) else {}
+    if usage.get("available") and usage_totals:
+        lines.extend(
+            [
+                "",
+                "## Usage Summary",
+                "- summary: "
+                f"source={_markdown_scalar(usage.get('source') or '')} "
+                f"samples={usage.get('sample_run_count')} "
+                f"runs_24h={usage_totals.get('runs_24h')} "
+                f"runs_7d={usage_totals.get('runs_7d')} "
+                f"quota_slots_24h={usage_totals.get('quota_spend_slots_24h')} "
+                f"quota_slots_7d={usage_totals.get('quota_spend_slots_7d')} "
+                f"automation_24h={usage_totals.get('automation_run_count_24h')} "
+                f"automation_7d={usage_totals.get('automation_run_count_7d')} "
+                f"progress_signals_24h={usage_totals.get('progress_signal_run_count_24h')} "
+                f"progress_signals_7d={usage_totals.get('progress_signal_run_count_7d')}",
+            ]
+        )
+        usage_goals = usage.get("goals") if isinstance(usage.get("goals"), list) else []
+        for goal in usage_goals[:3]:
+            if not isinstance(goal, dict):
+                continue
+            lines.append(
+                "- "
+                f"`{_markdown_scalar(goal.get('goal_id') or '')}`: "
+                f"runs_24h={goal.get('runs_24h')} "
+                f"runs_7d={goal.get('runs_7d')} "
+                f"quota_slots_24h={goal.get('quota_spend_slots_24h')} "
+                f"automation_24h={goal.get('automation_run_count_24h')} "
+                f"progress_signals_24h={goal.get('progress_signal_run_count_24h')} "
+                f"share_24h={goal.get('project_share_24h')}"
+            )
+
     queue = payload.get("attention_queue") if isinstance(payload.get("attention_queue"), dict) else {}
     lines.extend(
         [
@@ -1680,6 +2582,29 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
     )
     items = queue.get("items") if isinstance(queue.get("items"), list) else []
     goals = _goals_by_id(payload)
+    backlog = (
+        queue.get("autonomous_backlog_candidates")
+        if isinstance(queue.get("autonomous_backlog_candidates"), dict)
+        else {}
+    )
+    if backlog:
+        lines.append(
+            "- autonomous_backlog_candidates: "
+            f"open={backlog.get('open_count')} "
+            f"source={_markdown_scalar(backlog.get('source') or '')}"
+        )
+        for candidate in backlog.get("items") or []:
+            if not isinstance(candidate, dict):
+                continue
+            priority_text = ""
+            if candidate.get("priority"):
+                priority_text = f" priority={_markdown_scalar(candidate.get('priority') or '')}"
+            lines.append(
+                "  - autonomous_candidate: "
+                f"goal={_markdown_scalar(candidate.get('goal_id') or '')}"
+                f"{priority_text} "
+                f"text={_markdown_scalar(candidate.get('text') or '')}"
+            )
     if not items:
         lines.append("- none")
     for item in items:
@@ -1811,11 +2736,18 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     else {}
                 )
                 if latest_handoff_run:
+                    outcome_suffix = ""
+                    if latest_handoff_run.get("delivery_outcome"):
+                        outcome_suffix = (
+                            " "
+                            f"outcome={_markdown_scalar(latest_handoff_run.get('delivery_outcome') or '')}"
+                        )
                     lines.append(
                         "      - post_handoff_run: "
                         f"classification={_markdown_scalar(latest_handoff_run.get('classification') or '')} "
                         f"at={_markdown_scalar(latest_handoff_run.get('generated_at') or '')} "
                         f"scale={_markdown_scalar(latest_handoff_run.get('delivery_batch_scale') or '')}"
+                        f"{outcome_suffix}"
                     )
                 recent_handoff_runs = (
                     handoff_readiness.get("post_handoff_recent_runs")
@@ -1828,10 +2760,23 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     if isinstance(run, dict)
                 ]
                 if recent_scales:
+                    recent_outcomes = [
+                        _markdown_scalar(str(run.get("delivery_outcome") or ""))
+                        for run in recent_handoff_runs
+                        if isinstance(run, dict) and run.get("delivery_outcome")
+                    ]
+                    outcome_text = f" outcome={','.join(recent_outcomes)}" if recent_outcomes else ""
+                    gap_text = (
+                        f" outcome_gap_streak={handoff_readiness.get('post_handoff_outcome_gap_streak')}"
+                        if "post_handoff_outcome_gap_streak" in handoff_readiness
+                        else ""
+                    )
                     lines.append(
                         "      - post_handoff_recent_scales: "
                         f"{','.join(recent_scales)} "
                         f"small_streak={handoff_readiness.get('post_handoff_small_scale_streak', 0)}"
+                        f"{outcome_text}"
+                        f"{gap_text}"
                     )
                 if handoff_readiness.get("next_probe"):
                     handoff_probe = _markdown_scalar(handoff_readiness.get("next_probe") or "")
@@ -1870,6 +2815,26 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     continue
                 lines.append(f"    - next_agent_todo: {_markdown_scalar(todo.get('text') or '')}")
                 break
+        dependency_blockers = (
+            item.get("dependency_blockers")
+            if isinstance(item.get("dependency_blockers"), dict)
+            else {}
+        )
+        if dependency_blockers:
+            lines.append(
+                "  - dependency_blockers: "
+                f"open={dependency_blockers.get('open_count')} "
+                f"source={_markdown_scalar(dependency_blockers.get('source') or '')}"
+            )
+            for blocker in dependency_blockers.get("items") or []:
+                if not isinstance(blocker, dict):
+                    continue
+                lines.append(
+                    "    - dependency_user_todo: "
+                    f"goal={_markdown_scalar(blocker.get('goal_id') or '')} "
+                    f"waiting_on={_markdown_scalar(blocker.get('waiting_on') or '')} "
+                    f"text={_markdown_scalar(blocker.get('text') or '')}"
+                )
         quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
         if quota:
             lines.append(
@@ -1980,6 +2945,13 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                 )
                 if reward:
                     _append_human_reward_markdown(lines, goal.get("id"), reward)
+                resume_contract = (
+                    latest.get("operator_gate_resume_contract")
+                    if isinstance(latest.get("operator_gate_resume_contract"), dict)
+                    else {}
+                )
+                if resume_contract:
+                    _append_operator_gate_resume_contract_markdown(lines, resume_contract)
 
     for title, key in (("Errors", "errors"), ("Warnings", "warnings"), ("Checks", "checks")):
         entries = contract.get(key) if isinstance(contract.get(key), list) else []
