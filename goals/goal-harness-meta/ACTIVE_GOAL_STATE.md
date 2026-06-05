@@ -2,7 +2,7 @@
 status: active-read-only
 owner_mode: goal
 objective: "Keep Goal Harness focused on reducing operator coordination load across multi-project agent work"
-updated_at: 2026-06-06T05:47:20+08:00
+updated_at: 2026-06-06T05:52:18+08:00
 ---
 
 # Goal Harness Meta Goal
@@ -209,10 +209,14 @@ and agents receive the smallest sufficient execution context.
 - [x] [P2] Review the staged combined release-readiness product-hardening batch
   and decide whether to create the public commit, or write back the exact
   blocker that prevents commit/push/PR after staged validation.
-- [ ] [P2] After the public release-readiness commit lands on
+- [x] [P2] After the public release-readiness commit lands on
   `codex/release-readiness-hardening`, decide whether to push/open a PR or
   write back the exact blocker that prevents publication beyond the local
   branch.
+- [ ] [P2] Monitor draft PR #1 (`codex/release-readiness-hardening`) for review
+  or CI signal; if the stacked scope is acceptable, decide whether to mark it
+  ready for review or proceed toward release promotion, otherwise write back the
+  exact review/CI/scope blocker.
 - [x] [P2] Finish command/docs consistency for the multi-project dashboard:
   root README, demo output, dashboard README, and status-data contract should
   agree on when to use project-local `serve-status` versus
@@ -235,10 +239,10 @@ and agents receive the smallest sufficient execution context.
 
 ## Next Action
 
-- Next eligible meta work: after the public release-readiness commit lands on
-  `codex/release-readiness-hardening`, decide whether to push/open a PR or
-  write back the exact blocker that prevents publication beyond the local
-  branch.
+- Next eligible meta work: monitor draft PR #1 for review or CI signal. If the
+  stacked scope is acceptable, decide whether to mark it ready for review or
+  proceed toward release promotion; otherwise write back the exact review, CI,
+  or scope blocker.
 
 ## Controller Health Judgment
 
@@ -298,6 +302,17 @@ and agents receive the smallest sufficient execution context.
   evidence polling as state observation rather than delivery spend.
 
 ## Recent Progress
+
+- 2026-06-06T05:52:18+08:00: Pushed branch
+  `codex/release-readiness-hardening` and opened draft PR #1:
+  https://github.com/huangruiteng/goal-harness/pull/1. PR title:
+  `[codex] Harden release readiness control plane`. Publication note: the draft
+  PR is intentionally stacked on the current local `main` lineage; relative to
+  `origin/main`, it includes 10 commits: 9 local predecessor commits around
+  handoff/delivery-scale control-plane hardening plus `6fd9270 Harden release
+  readiness control plane`. No rebase or history rewrite was performed. Branch
+  push and PR creation used the authenticated GitHub CLI session for
+  `huangrt01`.
 
 - 2026-06-06T05:47:20+08:00: Reviewed the staged combined release-readiness
   product-hardening batch and chose to create a public commit on

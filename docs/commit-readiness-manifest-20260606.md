@@ -236,6 +236,22 @@ Commit-scope guard: do not add unstaged runtime outputs, `.goal-harness/`,
 `.local/`, generated dashboard `dist/`, private project evidence, credentials,
 or production identifiers.
 
+## Publication Decision - 2026-06-06T05:52:18+08:00
+
+Decision: push branch `codex/release-readiness-hardening` and open a draft PR.
+
+Result:
+
+- branch pushed to `origin/codex/release-readiness-hardening`;
+- draft PR: https://github.com/huangruiteng/goal-harness/pull/1;
+- PR title: `[codex] Harden release readiness control plane`.
+
+Publication note: the draft PR is intentionally stacked on the current local
+`main` lineage. Relative to `origin/main`, it includes 10 commits: 9 local
+predecessor commits around handoff/delivery-scale control-plane hardening plus
+`6fd9270 Harden release readiness control plane`. No rebase or history rewrite
+was performed.
+
 ## Batch 1 - Promotion Gate And Release Readiness
 
 Purpose: make release-promotion readiness a shared structured contract instead
