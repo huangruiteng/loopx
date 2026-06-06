@@ -249,6 +249,11 @@ The quota guard's `heartbeat_recommendation` covers the common onboarding
 cases: `run_first_read_only_map` for a newly connected read-only goal, and
 `mapped_noop_if_unchanged` for an already mapped goal with no new instruction,
 owner evidence, agent todo, stale source, or safe handoff.
+The same guard's `execution_obligation` is the worker contract: when
+`must_attempt_work=true`, a heartbeat should attempt one bounded segment even
+if `heartbeat_recommendation.notify=DONT_NOTIFY`; notification is not an
+execution gate. A quiet no-op needs an explicit `must_attempt_work=false`
+contract such as verified `mapped_noop_if_unchanged`.
 That lifecycle treats routine public commit, push, and PR creation as
 autonomous after validation and a clean public/private boundary scan; private or
 company-internal material, credentials, destructive git, production actions, and

@@ -238,8 +238,14 @@ If the result says should_run=true:
    ranker/cross-domain evidence artifact named by `must_advance`, or write back
    the concrete blocker. Do not fall through to ordinary delivery, surface
    propagation, or synthetic-only chains.
-   Also read heartbeat_recommendation from the quota payload before inventing
-   local automation behavior. If it says recommended_mode=run_first_read_only_map,
+   Also read execution_obligation and heartbeat_recommendation from the quota
+   payload before inventing local automation behavior.
+   heartbeat_recommendation.notify is only the user-notification policy, not an
+   execution gate. If execution_obligation.must_attempt_work=true, attempt one
+   bounded segment even when notify=DONT_NOTIFY; a quiet no-op requires
+   execution_obligation.must_attempt_work=false, such as a verified
+   mapped_noop_if_unchanged turn. If heartbeat_recommendation says
+   recommended_mode=run_first_read_only_map,
    run exactly its command as a real read-only map, not another dry-run, then
    validate/save the read_only_project_map result, append exactly one heartbeat
    spend, sync or refresh state if needed, and NOTIFY. If it says
@@ -359,7 +365,10 @@ a blocker-push opportunity for a gate / focus_wait / external-evidence wait,
 record dependency or sibling-goal todos without letting them consume the whole
 eligible turn,
 apply a continuation check for
-repeated topics, then read `heartbeat_recommendation`: run
+repeated topics, then read `execution_obligation` and `heartbeat_recommendation`:
+when `execution_obligation.must_attempt_work=true`, do one bounded segment even
+if `heartbeat_recommendation.notify=DONT_NOTIFY`; quiet no-op requires
+`execution_obligation.must_attempt_work=false`. Run
 `recommended_mode=run_first_read_only_map` as one real read-only map and spend
 once after validation; for `recommended_mode=mapped_noop_if_unchanged`, return a
 quiet no-op without another dry-run, file edit, or quota spend when no new
@@ -402,7 +411,11 @@ For every automatic heartbeat turn, the agent-facing checklist is:
 8. Use `attention_queue.items` / `project_asset` as current routing authority;
    if project_asset is absent or legacy/raw fallback, raw queue fields are not
    owner/gate/stop authority. Use `run_history.latest_runs` only as evidence or drill-down.
-9. Follow `heartbeat_recommendation`: first connected read-only goals should run
+9. Follow `execution_obligation` before deciding quiet no-op:
+   `heartbeat_recommendation.notify` is not an execution gate. If
+   `must_attempt_work=true`, do one bounded segment even when
+   `notify=DONT_NOTIFY`; quiet no-op only when `must_attempt_work=false`.
+   Then follow `heartbeat_recommendation`: first connected read-only goals should run
    one real `read-only-map`, while already mapped unchanged goals should return
    a quiet no-op without another dry-run or quota spend.
 10. Check `delivery_batch_scale`, `delivery_outcome`,

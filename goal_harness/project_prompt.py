@@ -260,15 +260,21 @@ def render_prompt_text(
    如果 payload 返回 `notify_user_on_open_todo=true`，把开放 user todo 当作 blocker-push，而不是
    静默 skip：用中文最多列 3 个开放项和期望回复格式，并且本轮不做 delivery、不 append quota spend，
    除非同一个 blocker 最近已经问过。
-   无论 `should_run` 是 true 还是 false，都先看 `effective_action`、
-   `recovery_delivery_allowed`、`safe_bypass_kind` 和 `heartbeat_recommendation`。
+   无论 `should_run` 是 true 还是 false，都先看 `execution_obligation`、
+   `effective_action`、`recovery_delivery_allowed`、`safe_bypass_kind` 和
+   `heartbeat_recommendation`。`heartbeat_recommendation.notify` 只是用户通知策略，
+   不是执行 gate；如果 `execution_obligation.must_attempt_work=true`，即使
+   `notify=DONT_NOTIFY` 也要尝试一个 bounded segment，只有
+   `must_attempt_work=false` 才能 quiet no-op。
    如果是 `outcome_floor_recovery`，这是 Codex 可执行 recovery turn：只允许做一次所需
    ranker/cross-domain evidence recovery，或写回阻止该 evidence 的具体 blocker；
    不做 surface-only / synthetic-only 循环，验证并写回后才能 append 一次 quota spend。
    如果不是 operator gate / blocker-push / outcome-floor recovery / 明确 safe-bypass，本轮不要做实现或 adapter 工作，
    只记录 public-safe reason；不要执行任何 `agent_command`，即使 status 或 review packet 里提到过命令。
    只有当返回 `should_run=true` 且 payload 里包含 `agent_command` 时，才执行该命令。
-   如果 `should_run=true` 但没有 `agent_command`，只按 `recommended_action` 选择下一个安全只读动作。
+   如果 `should_run=true` 但没有 `agent_command`，按
+   `execution_obligation` / `recommended_action` / `goal_boundary` 选择下一个
+   安全 bounded 动作；只读目标保持只读，delivery 目标按已授权 write scope 执行。
    如果命令非零，fail closed，先修 `goal-harness doctor` / `goal-harness status`。
    这个 guard 不等于写权限、不绕过 operator gate、也不替代 human reward。
    任何时候，如果你通过 read-only 分析、review doc、gate checklist 或 P0/P1 steering 发现新的

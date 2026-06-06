@@ -284,7 +284,7 @@ def main() -> int:
         "do not append quota spend",
         "heartbeat_recommendation",
         "recommended_mode=run_first_read_only_map",
-        "real read-only map, not another dry-run",
+        "real read-only map",
         "read_only_project_map result",
         "recommended_mode=mapped_noop_if_unchanged",
         "stop_if_unchanged=true",
@@ -380,7 +380,7 @@ def main() -> int:
         "do not append quota spend",
         "heartbeat_recommendation",
         "recommended_mode=run_first_read_only_map",
-        "real read-only map, not another dry-run",
+        "run its `command` as a real read-only map",
         "read_only_project_map` result",
         "recommended_mode=mapped_noop_if_unchanged",
         "stop_if_unchanged=true",
@@ -443,7 +443,11 @@ def main() -> int:
             "run_history.latest_runs",
             "Also inspect goal_boundary",
             "then use the blocker-push pattern above",
+            "execution_obligation",
             "heartbeat_recommendation",
+            "heartbeat_recommendation.notify is only the user-notification policy",
+            "not an execution gate",
+            "must_attempt_work=true",
             "recommended_mode=run_first_read_only_map",
             "recommended_mode=mapped_noop_if_unchanged",
             "Run a short steering audit before choosing work",
@@ -464,6 +468,9 @@ def main() -> int:
     assert "goal-harness-canary" in readme, readme
     assert "release snapshot" in readme, readme
     assert "heartbeat_recommendation" in readme, readme
+    assert "execution_obligation" in doc, doc
+    assert "must_attempt_work=true" in doc, doc
+    assert "not an execution gate" in normalized(doc), doc
     assert "do not hand-edit one-off automation prompt branches" in normalized(readme), readme
     assert "goal-harness heartbeat-prompt" in doc, doc
     assert "--compact" in doc, doc
@@ -482,6 +489,7 @@ def main() -> int:
     assert "shares the same quota, gate," in integration_doc, integration_doc
     assert "steering-audit, writeback, refresh, and spend lifecycle" in integration_doc, integration_doc
     assert "heartbeat_recommendation" in integration_doc, integration_doc
+    assert "execution_obligation" in integration_doc, integration_doc
     assert "Do not hand-edit one-off automation prompt branches" in normalized(integration_doc), integration_doc
     assert "public commit, push, and PR creation as autonomous" in normalized(integration_doc), integration_doc
     assert "Two Prompt Layers" in doc, doc
@@ -510,6 +518,9 @@ def main() -> int:
     assert "sibling-goal todos" in project_skill, project_skill
     assert "must not consume the whole eligible turn" in project_skill, project_skill
     assert "heartbeat_recommendation" in project_skill, project_skill
+    assert "execution_obligation" in project_skill, project_skill
+    assert "must_attempt_work=true" in project_skill, project_skill
+    assert "not an execution gate" in normalized(project_skill), project_skill
     assert "mapped_noop_if_unchanged" in project_skill, project_skill
     assert "legacy/raw fallback" in project_skill, project_skill
     assert "do not infer" in project_skill, project_skill

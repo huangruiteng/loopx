@@ -234,9 +234,11 @@ If the result says `should_run=true`:
    ranker/cross-domain evidence artifact named by `must_advance`, or write back
    the concrete blocker. Do not fall through to ordinary delivery,
    surface propagation, or synthetic-only chains.
-   Also read `heartbeat_recommendation` from the quota payload before inventing
-   local automation behavior. If it says `recommended_mode=run_first_read_only_map`,
-   run exactly its `command` as a real read-only map, not another dry-run, then
+   Read `execution_obligation`: `notify` is not an execution gate;
+   `must_attempt_work=true` means one bounded segment even with
+   `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false`. Then use
+   `heartbeat_recommendation`: `recommended_mode=run_first_read_only_map` means
+   run its `command` as a real read-only map, then
    validate/save the `read_only_project_map` result, append exactly one
    heartbeat spend, sync or refresh state if needed, and `NOTIFY`. If it says
    `recommended_mode=mapped_noop_if_unchanged` with `stop_if_unchanged=true`,
@@ -363,10 +365,12 @@ Else quiet `DONT_NOTIFY`.
 If `should_run=true`: fetch compact; read needed state
 priority slice + guard payload. Use `status --limit 3` for cross-goal
 ambiguity; `review-packet --handoff-only` for scale/readiness. Blocker-push first; obey
-`effective_action`, `recovery_delivery_allowed`, `heartbeat_recommendation`,
-`safe_bypass_kind=outcome_floor_recovery`, `goal_boundary`, `delivery_batch_scale`,
+`execution_obligation`, `effective_action`, `recovery_delivery_allowed`,
+`heartbeat_recommendation`, `safe_bypass_kind=outcome_floor_recovery`,
+`goal_boundary`, `delivery_batch_scale`,
 `delivery_outcome`, outcome streaks, `handoff_delivery_contract`; do 1
-bounded segment/batch;
+bounded segment/batch when `execution_obligation.must_attempt_work=true`; quiet
+no-op only when that field is false;
 if recovery, run ranker/cross-domain evidence recovery or blocker writeback;
 validate/writeback/todos; spend once; refresh with explicit delivery
 scale/outcome for progress artifacts. Stop on private, credentials,
@@ -440,7 +444,10 @@ If `should_run=true`:
    `safe_bypass_kind=outcome_floor_recovery`, run only ranker/cross-domain
    evidence artifact or blocker recovery; no ordinary delivery or
    surface/synthetic-only work.
-4. Follow `heartbeat_recommendation` before inventing behavior:
+4. Follow `execution_obligation`: `notify` is not an execution gate.
+   `must_attempt_work=true` means one bounded segment even with
+   `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false`.
+   Then follow `heartbeat_recommendation`:
    `run_first_read_only_map` means run exact real-map command, then
    validate/save/spend/refresh/`NOTIFY`; `mapped_noop_if_unchanged` plus
    `stop_if_unchanged=true` means quiet no-op if no new instruction/evidence/

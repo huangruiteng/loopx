@@ -207,8 +207,14 @@ in lightweight smoke scripts such as `examples/heartbeat-prompt-smoke.py`,
 Codex CLI plus Goal Harness end-to-end checks should stay explicit or
 low-frequency instead of becoming the default heartbeat path.
 
-The quota guard returns `heartbeat_recommendation`. New connected read-only
-goals should follow `recommended_mode=run_first_read_only_map`: run one real
+The quota guard returns `execution_obligation` and
+`heartbeat_recommendation`. Read `execution_obligation` before deciding on a
+quiet no-op: `heartbeat_recommendation.notify` is only the user-notification
+policy, not an execution gate. If
+`execution_obligation.must_attempt_work=true`, attempt one bounded segment even
+when `notify=DONT_NOTIFY`; a quiet no-op requires
+`execution_obligation.must_attempt_work=false`. New connected read-only goals
+should follow `recommended_mode=run_first_read_only_map`: run one real
 `goal-harness read-only-map --goal-id <STABLE_GOAL_ID>`, validate the saved
 `read_only_project_map`, spend exactly once after validation, then sync or
 refresh state if needed. Already mapped goals should follow
