@@ -90,6 +90,31 @@ def main() -> int:
     )
     assert_contains(
         quota_doc,
+        "Registry entries can carry per-goal `control_plane` policy alongside quota",
+        label="quota doc",
+    )
+    assert_contains(
+        quota_doc,
+        "`control_plane.self_repair.enabled`: default `false`",
+        label="quota doc",
+    )
+    assert_contains(
+        quota_doc,
+        "`decision=self_repair`, `self_repair_allowed=true`, `stall_self_repair`",
+        label="quota doc",
+    )
+    assert_contains(
+        quota_doc,
+        "`control_plane_projection_repair`",
+        label="quota doc",
+    )
+    assert_contains(
+        quota_doc,
+        "ordinary goals without this registry policy stay in their existing skip, waiting, or health-blocked lanes",
+        label="quota doc",
+    )
+    assert_contains(
+        quota_doc,
         "Connected delivery goals also include `goal_boundary`",
         label="quota doc",
     )
@@ -193,6 +218,11 @@ def main() -> int:
         "spend only after validated ranker/cross-domain evidence or concrete blocker writeback",
         label="quota doc",
     )
+    assert_contains(
+        quota_doc,
+        "if `should_run=true` with `effective_action=control_plane_health_repair` or `control_plane_projection_repair`",
+        label="quota doc",
+    )
 
     assert_contains(
         readme,
@@ -207,6 +237,16 @@ def main() -> int:
     assert_contains(
         readme,
         "operator-gated, focus-waiting, waiting, throttled, paused, and health-blocked goals stay out of the eligible lane",
+        label="README",
+    )
+    assert_contains(
+        readme,
+        "`control_plane.self_repair.enabled=true` lets `quota should-run` return a bounded `decision=self_repair` contract",
+        label="README",
+    )
+    assert_contains(
+        readme,
+        "missing policy defaults off",
         label="README",
     )
     assert_contains(
@@ -271,6 +311,16 @@ def main() -> int:
     )
     assert_contains(
         status_contract,
+        "Registry entries may also declare compact `control_plane` settings",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "By default `control_plane.self_repair.enabled=false`",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
         "Scripts should treat `summary.next_automatic_turn` in the quota-plan JSON as advisory",
         label="status contract",
     )
@@ -326,6 +376,16 @@ def main() -> int:
     )
     assert_contains(
         status_contract,
+        "`control_plane`: optional compact registry policy for this goal",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "`self_repair.allow_waiting_projection_repair`",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
         "`operator_gate_resume_contract`",
         label="status contract",
     )
@@ -342,6 +402,16 @@ def main() -> int:
     assert_contains(
         status_contract,
         "must not carry the whole repository state back to the old gate",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "`decision=self_repair`, `self_repair_allowed=true`, `stall_self_repair`",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "Goals without that registry policy must not get this lane by default",
         label="status contract",
     )
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .contract import check_contract
 from .doctor import (
     PROMOTION_READINESS_CLASSIFICATIONS,
@@ -1561,6 +1562,9 @@ def build_attention_queue(
             continue
         item = goal_attention(goal)
         if item:
+            control_plane = compact_control_plane_policy(goal.get("control_plane"))
+            if control_plane:
+                item["control_plane"] = control_plane
             goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
             enrich_project_asset(
                 item,
@@ -1577,6 +1581,8 @@ def build_attention_queue(
                     else None
                 ),
             )
+            if control_plane and isinstance(item.get("project_asset"), dict):
+                item["project_asset"]["control_plane"] = control_plane
             if goal.get("registry_member"):
                 item.update(active_state_todo_fields(goal))
                 item["quota"] = quota_status(
@@ -2863,6 +2869,9 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                 f"slots={quota.get('spent_slots')}/{quota.get('allowed_slots')} "
                 f"reason={quota.get('reason')}"
             )
+        control_plane = item.get("control_plane") if isinstance(item.get("control_plane"), dict) else None
+        if control_plane:
+            lines.append(f"  - control_plane: {control_plane_policy_summary(control_plane)}")
         operator_question = item.get("operator_question")
         agent_command = item.get("agent_command")
         if operator_question:

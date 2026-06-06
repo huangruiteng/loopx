@@ -67,6 +67,13 @@ Registry entries may declare the same policy directly:
   "quota": {
     "compute": 0.5,
     "window_hours": 24
+  },
+  "control_plane": {
+    "self_repair": {
+      "enabled": false,
+      "allow_health_blocker_repair": false,
+      "allow_waiting_projection_repair": false
+    }
   }
 }
 ```
@@ -115,6 +122,27 @@ Quota is applied after hard gates:
 
 This keeps the model small. Quota does not become a second permission system.
 
+## Control Plane Settings
+
+Registry entries can carry per-goal `control_plane` policy alongside quota.
+These settings are the control surface for behavior that would otherwise be
+tempting to encode in a heartbeat prompt.
+
+Current self-repair settings:
+
+- `control_plane.self_repair.enabled`: default `false`.
+- `control_plane.self_repair.allow_health_blocker_repair`: when enabled, a goal
+  may spend one bounded turn repairing Goal Harness health or contract blockers
+  that prevent normal delivery.
+- `control_plane.self_repair.allow_waiting_projection_repair`: when enabled, a
+  goal in `state=waiting` with no concrete waiting owner but with a current
+  action or agent backlog may spend one bounded turn repairing the projection or
+  writing back the concrete blocker.
+
+Self-repair is deliberately opt-in per goal. A short heartbeat can read the
+machine contract from `quota should-run`, but ordinary goals without this
+registry policy stay in their existing skip, waiting, or health-blocked lanes.
+
 ## Allocation Contract
 
 `quota plan` reports an advisory next automatic turn. It does not grant
@@ -149,6 +177,13 @@ produce the required ranker/cross-domain evidence artifact named by
 `quota.must_advance`, or to write back the concrete blocker that prevents that
 artifact. Surface-only summary/queue/contract propagation and synthetic-only
 test chains remain blocked.
+When `control_plane.self_repair.enabled=true` and the selected goal is stalled
+by a repairable control-plane condition, `quota should-run` may instead return
+`decision=self_repair`, `self_repair_allowed=true`, `stall_self_repair`, and an
+`effective_action` such as `control_plane_health_repair` or
+`control_plane_projection_repair`. This makes "repair the control plane" a
+machine-readable bounded action for the selected goal, not a prompt-specific
+branch. Spend is allowed only after validation and durable writeback.
 
 ## Compute States
 
@@ -246,9 +281,11 @@ JSON or Markdown decision:
 }
 ```
 
-Only `state=eligible` returns `should_run=true`. Known goals that are gated, in
-focus wait, waiting, throttled, paused, or health-blocked return `ok=true` only
-when the status export itself is healthy, but still return `should_run=false`.
+Only `state=eligible`, outcome-floor recovery safe-bypass, or registry-enabled
+control-plane self-repair returns `should_run=true`. Known goals that are
+gated, in focus wait, waiting, throttled, paused, or health-blocked return
+`ok=true` only when the status export itself is healthy, but otherwise return
+`should_run=false`.
 `safe_bypass_allowed=true` is not permission to clear the gate; it only says the
 agent can spend a bounded turn on independent read-only steering/analysis.
 For `state=operator_gate`, `quota should-run` should also surface
@@ -349,6 +386,9 @@ Post-turn accounting protocol:
   `safe_bypass_kind=outcome_floor_recovery`, spend only after validated
   ranker/cross-domain evidence or concrete blocker writeback, not for another
   surface-only report.
+- if `should_run=true` with `effective_action=control_plane_health_repair` or
+  `control_plane_projection_repair`, append one spend event only after the
+  control-plane projection or blocker writeback is validated.
 
 ## Slot Spend Event Contract
 
@@ -395,6 +435,9 @@ Validation rule:
 - write only after a fresh `quota should-run` returned `should_run=true`, or
   after it returned `safe_bypass_allowed=true` and the agent completed one
   bounded safe-bypass step;
+- for `effective_action=control_plane_health_repair` or
+  `control_plane_projection_repair`, treat the spend as control-plane
+  self-repair accounting, not ordinary delivery;
 - `slots` must be positive, and `after.spent_slots` must equal
   `before.spent_slots + slots`;
 - if `after.spent_slots >= after.allowed_slots`, `after.state` should be

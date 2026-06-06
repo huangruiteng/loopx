@@ -121,6 +121,13 @@
       "quota": {
         "compute": 0.5,
         "window_hours": 24
+      },
+      "control_plane": {
+        "self_repair": {
+          "enabled": false,
+          "allow_health_blocker_repair": false,
+          "allow_waiting_projection_repair": false
+        }
       }
     }
   ]

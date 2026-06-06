@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .authority import authority_registry_summary
+from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .execution_profile import compact_execution_profile, execution_profile_summary
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .quota import goal_quota_config
@@ -88,6 +89,7 @@ def inspect_registry(path: Path) -> dict[str, Any]:
         spawn_policy = raw_goal.get("spawn_policy") if isinstance(raw_goal.get("spawn_policy"), dict) else {}
         orchestration = compact_orchestration_policy(spawn_policy)
         execution_profile = compact_execution_profile(raw_goal.get("execution_profile"))
+        control_plane = compact_control_plane_policy(raw_goal.get("control_plane"))
         authority_sources = raw_goal.get("authority_sources")
         if not isinstance(authority_sources, list):
             authority_sources = []
@@ -140,6 +142,7 @@ def inspect_registry(path: Path) -> dict[str, Any]:
                 "orchestration_mode": orchestration.get("mode"),
                 "spawn_allowed": spawn_policy.get("allowed"),
                 "max_children": spawn_policy.get("max_children"),
+                "control_plane": control_plane,
                 "next_probe": raw_goal.get("next_probe"),
                 "guards": raw_goal.get("guards") or [],
             }
@@ -214,6 +217,16 @@ def render_registry_markdown(payload: dict[str, Any]) -> str:
             if execution_profile
             else ""
         )
+        control_plane = (
+            goal.get("control_plane")
+            if isinstance(goal.get("control_plane"), dict)
+            else None
+        )
+        control_plane_suffix = (
+            f" control_plane={control_plane_policy_summary(control_plane)}"
+            if control_plane
+            else ""
+        )
         lines.append(
             "| "
             f"`{goal.get('id')}` | "
@@ -225,7 +238,7 @@ def render_registry_markdown(payload: dict[str, Any]) -> str:
             f"{goal.get('repo_goal_count')} | "
             f"{goal.get('state_file_exists')} | "
             f"{spawn} | "
-            f"{adapter}{authority_suffix}{quota_suffix}{execution_suffix} | "
+            f"{adapter}{authority_suffix}{quota_suffix}{execution_suffix}{control_plane_suffix} | "
             f"{next_probe} |"
         )
 

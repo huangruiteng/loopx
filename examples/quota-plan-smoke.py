@@ -783,6 +783,126 @@ def assert_outcome_floor_recovery_should_run() -> None:
     assert "outcome-floor recovery safe-bypass" in spend_event["quota_event"]["reason_summary"], spend_event
 
 
+def assert_control_plane_health_self_repair_should_run() -> None:
+    goal_id = "goal-harness-meta"
+    meta_goal = goal(goal_id, compute=1.0)
+    meta_goal["control_plane"] = {"self_repair": {"enabled": True}}
+    meta_item = attention(goal_id, compute=1.0)
+    health_item = {
+        "goal_id": "goal-harness-contract",
+        "status": "contract_check_failed",
+        "waiting_on": "codex",
+        "severity": "high",
+        "recommended_action": "fix contract errors before advancing goal adapters",
+        "source": "contract",
+    }
+    payload = {
+        "ok": False,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "attention_queue": {"items": [health_item, meta_item]},
+        "run_history": {"goals": [meta_goal]},
+    }
+    decision = build_quota_should_run(payload, goal_id=goal_id)
+    markdown = render_quota_should_run_markdown(decision)
+    preview = build_quota_slot_preview(payload, goal_id=goal_id, slots=1)
+    spend_event = build_quota_slot_spend_event(preview, source="heartbeat")
+
+    assert decision["ok"] is True, decision
+    assert decision["status_health_ok"] is False, decision
+    assert decision["decision"] == "self_repair", decision
+    assert decision["should_run"] is True, decision
+    assert decision["normal_delivery_allowed"] is False, decision
+    assert decision["self_repair_allowed"] is True, decision
+    assert decision["effective_action"] == "control_plane_health_repair", decision
+    assert decision["heartbeat_recommendation"]["recommended_mode"] == "repair_control_plane_health", decision
+    assert decision["stall_self_repair"]["trigger"] == "health_blocker", decision
+    assert decision["stall_self_repair"]["blocking_health_items"][0]["goal_id"] == "goal-harness-contract", decision
+    assert decision["control_plane"]["self_repair"]["enabled"] is True, decision
+    assert "decision: `self_repair`" in markdown, markdown
+    assert "self_repair_allowed: `True`" in markdown, markdown
+    assert "stall_self_repair: trigger=health_blocker" in markdown, markdown
+    assert preview["ok"] is True, preview
+    assert preview["self_repair_spend"] is True, preview
+    assert preview["before"]["effective_action"] == "control_plane_health_repair", preview
+    assert "control-plane self-repair" in spend_event["health_check"], spend_event
+    assert "control-plane self-repair" in spend_event["quota_event"]["reason_summary"], spend_event
+
+
+def assert_control_plane_self_repair_default_off() -> None:
+    goal_id = "ordinary-goal"
+    ordinary_goal = goal(goal_id, compute=1.0)
+    ordinary_item = attention(goal_id, compute=1.0)
+    health_item = {
+        "goal_id": "goal-harness-contract",
+        "status": "contract_check_failed",
+        "waiting_on": "codex",
+        "severity": "high",
+        "recommended_action": "fix contract errors before advancing goal adapters",
+        "source": "contract",
+    }
+    payload = {
+        "ok": False,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "attention_queue": {"items": [health_item, ordinary_item]},
+        "run_history": {"goals": [ordinary_goal]},
+    }
+    decision = build_quota_should_run(payload, goal_id=goal_id)
+
+    assert decision["ok"] is False, decision
+    assert decision["decision"] == "skip", decision
+    assert decision["should_run"] is False, decision
+    assert decision["self_repair_allowed"] is False, decision
+    assert decision["effective_action"] == "quota_skip", decision
+    assert "stall_self_repair" not in decision, decision
+
+
+def assert_control_plane_waiting_projection_self_repair_should_run() -> None:
+    goal_id = "goal-harness-meta"
+    meta_goal = goal(goal_id, compute=1.0)
+    meta_goal["control_plane"] = {"self_repair": {"enabled": True}}
+    meta_item = attention(goal_id, compute=1.0, state="waiting", waiting_on="")
+    meta_item["status"] = "state_refreshed"
+    meta_item["recommended_action"] = "continue gate-independent product hardening"
+    meta_item["project_asset"] = {
+        "owner": "codex",
+        "gate": "none",
+        "next_action": "continue gate-independent product hardening",
+        "stop_condition": "stop if the repair needs user approval",
+    }
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "attention_queue": {"items": [meta_item]},
+        "run_history": {"goals": [meta_goal]},
+    }
+    decision = build_quota_should_run(payload, goal_id=goal_id)
+    markdown = render_quota_should_run_markdown(decision)
+    preview = build_quota_slot_preview(payload, goal_id=goal_id, slots=1)
+    spend_event = build_quota_slot_spend_event(preview, source="heartbeat")
+
+    assert decision["ok"] is True, decision
+    assert decision["decision"] == "self_repair", decision
+    assert decision["should_run"] is True, decision
+    assert decision["state"] == "waiting", decision
+    assert decision["waiting_on"] == "none", decision
+    assert decision["self_repair_allowed"] is True, decision
+    assert decision["effective_action"] == "control_plane_projection_repair", decision
+    assert decision["heartbeat_recommendation"]["recommended_mode"] == "repair_waiting_projection", decision
+    assert decision["stall_self_repair"]["trigger"] == "waiting_without_owner_projection", decision
+    assert "stall_self_repair: trigger=waiting_without_owner_projection" in markdown, markdown
+    assert preview["self_repair_spend"] is True, preview
+    assert "control-plane self-repair" in spend_event["health_check"], spend_event
+
+
 def assert_attention_queue_overrides_stale_run_history() -> None:
     stale_goal = goal("queue-authority", compute=1.0)
     stale_goal["status"] = "operator_gate_deferred"
@@ -1222,6 +1342,9 @@ def main() -> int:
     assert_operator_gate_should_run(status_payload)
     assert_focus_wait_should_run()
     assert_outcome_floor_recovery_should_run()
+    assert_control_plane_health_self_repair_should_run()
+    assert_control_plane_self_repair_default_off()
+    assert_control_plane_waiting_projection_self_repair_should_run()
     assert_attention_queue_overrides_stale_run_history()
     assert_project_asset_backed_no_evidence_should_run()
     assert_heartbeat_recommendation_lifecycle()

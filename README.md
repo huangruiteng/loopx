@@ -452,6 +452,11 @@ the next automatic turn. It can also return user todos, agent todos, gate
 prompts, waiting evidence, health blockers, safe-bypass hints,
 `heartbeat_recommendation`, post-handoff `delivery_batch_scale`, and
 outcome-floor `delivery_outcome` / `post_handoff_outcome_gap_streak` signals.
+Registry entries can also expose per-goal `control_plane` policy. For example,
+`control_plane.self_repair.enabled=true` lets `quota should-run` return a
+bounded `decision=self_repair` contract for repairable control-plane stalls;
+missing policy defaults off, so other goals keep their normal skip or wait
+behavior.
 If it returns a `gate_prompt` or `operator_question`, the target heartbeat
 should proactively ask that concrete user/controller gate. If open user todos
 are present, do not call the turn "no new user action" while they remain open;

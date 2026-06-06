@@ -83,6 +83,11 @@ hint for generic lifecycle cases such as first read-only map runs and quiet
 mapped no-ops. Project-specific policy should still come from the registry,
 active state, adapter output, or boundary rules rather than ad hoc scheduler
 prompt branches.
+Registry entries may also declare compact `control_plane` settings. These
+settings are per-goal policy, not global prompt text. By default
+`control_plane.self_repair.enabled=false`; only registry-enabled goals can turn
+health or waiting-projection stalls into a `quota should-run` self-repair
+machine contract.
 When the selected attention item is project-asset backed, the per-goal guard
 also carries compact `handoff_readiness` with `handoff_status` and
 `post_handoff_run_seen`. Heartbeat jobs can therefore tell whether the selected
@@ -548,7 +553,9 @@ Item fields:
   `execution_profile`, the project-level delivery floor created by
   `goal-harness connect`, and `orchestration`, the compact projection of
   registry `spawn_policy` with `mode`, `spawn_allowed`, `max_children`, and
-  optional `allowed_domains`. This is the first-screen project asset surface for
+  optional `allowed_domains`. They may also include `control_plane`, the
+  compact per-goal policy projection for settings such as self-repair. This is
+  the first-screen project asset surface for
   agents and dashboards; it lets consumers avoid reconstructing owner, gate,
   next action, stop condition, todo counts, compute state, and latest validation
   from scattered fields. It also keeps delivery-floor and
@@ -601,6 +608,11 @@ Item fields:
   compute share (`1.0`, `0.5`, `0.3`, or `0`), eligibility, recent spend, and
   a public-safe reason without exposing private evidence. See
   [quota-allocation.md](quota-allocation.md).
+- `control_plane`: optional compact registry policy for this goal. Current
+  settings include `self_repair.enabled`,
+  `self_repair.allow_health_blocker_repair`, and
+  `self_repair.allow_waiting_projection_repair`. Missing settings mean default
+  off, so ordinary goals remain in their existing skip/wait lanes.
 - `user_todos`: optional checkbox summary parsed from the active state's
   `## User Todo ...` / `## Owner Review Reading Queue` section. Dashboard
   consumers should render the first unfinished item as the human-facing next
@@ -721,6 +733,14 @@ that generic lifecycle hint before inventing local automation behavior:
 once, while `mapped_noop_if_unchanged` returns a quiet no-op without another
 dry-run or quota spend if no new instruction, evidence, todo, stale source, or
 safe handoff exists.
+When a registry-enabled goal has `control_plane.self_repair.enabled=true`,
+`quota should-run` may return `decision=self_repair`,
+`self_repair_allowed=true`, `stall_self_repair`, and an `effective_action` such
+as `control_plane_health_repair` or `control_plane_projection_repair`. This is
+the machine-readable stall-repair contract for short heartbeats: repair the
+control-plane projection or write back the concrete blocker, validate, record a
+durable event, then spend once. Goals without that registry policy must not get
+this lane by default.
 When the payload includes `decision_freshness_warning`, the goal may still be
 eligible, but sampled reward/gate state for that same goal is stale or has newer
 events after it. Executors should not reuse that old decision as authority until

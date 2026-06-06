@@ -7,6 +7,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .control_plane import (
+    compact_control_plane_policy,
+    control_plane_policy_summary,
+    control_plane_self_repair_allows,
+)
 from .execution_profile import (
     execution_profile_outcome_floor,
     execution_profile_summary,
@@ -61,6 +66,18 @@ POST_HANDOFF_RUN_COMPACT_FIELDS = (
     "health_check",
     "json_exists",
     "markdown_exists",
+)
+SELF_REPAIR_SPEND_ACTIONS = {
+    "control_plane_health_repair",
+    "control_plane_projection_repair",
+}
+STALL_HEALTH_ITEM_COMPACT_FIELDS = (
+    "goal_id",
+    "status",
+    "waiting_on",
+    "severity",
+    "source",
+    "recommended_action",
 )
 DECISION_FRESHNESS_WARNING_ITEM_LIMIT = 3
 
@@ -655,6 +672,78 @@ def _has_lifecycle_marker(*values: Any, marker: str) -> bool:
     return False
 
 
+def _compact_health_items(items: list[Any], *, limit: int = 3) -> list[dict[str, Any]]:
+    compact: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        payload = {field: item.get(field) for field in STALL_HEALTH_ITEM_COMPACT_FIELDS if item.get(field)}
+        if payload:
+            compact.append(payload)
+        if len(compact) >= limit:
+            break
+    return compact
+
+
+def _stall_self_repair_hint(
+    item: dict[str, Any],
+    *,
+    state: str,
+    plan_ok: bool,
+    health_items: list[Any],
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    control_plane = compact_control_plane_policy(item.get("control_plane"))
+    if not control_plane:
+        return None
+
+    if not plan_ok and control_plane_self_repair_allows(control_plane, "health_blocker_repair"):
+        blockers = _compact_health_items(health_items)
+        if blockers:
+            return {
+                "source": "quota.should-run",
+                "trigger": "health_blocker",
+                "recommended_mode": "repair_control_plane_health",
+                "effective_action": "control_plane_health_repair",
+                "allowed": True,
+                "notify": "DONT_NOTIFY",
+                "reason": "status or contract health blocks normal delivery; spend one bounded turn on control-plane repair instead of quiet spinning",
+                "repair_focus": "inspect the compact health blocker, repair registry/status/contract projection or public-boundary scan scope, validate, write a durable event, then spend once",
+                "spend_policy": "append exactly one heartbeat spend only after the health blocker is repaired, validated, and written back",
+                "control_plane": control_plane,
+                "blocking_health_items": blockers,
+            }
+
+    waiting_on = str(item.get("waiting_on") or "")
+    has_user_todos = _open_todo_count(user_todo_summary) > 0
+    has_agent_todos = _open_todo_count(agent_todo_summary) > 0
+    has_next_action = bool(str(item.get("recommended_action") or "").strip())
+    has_project_asset = isinstance(item.get("project_asset"), dict)
+    unknown_waiting_owner = waiting_on in {"", "none", "unknown", "null"}
+    if (
+        control_plane_self_repair_allows(control_plane, "waiting_projection_repair")
+        and state == "waiting"
+        and unknown_waiting_owner
+        and not has_user_todos
+        and (has_next_action or has_agent_todos or has_project_asset)
+    ):
+        return {
+            "source": "quota.should-run",
+            "trigger": "waiting_without_owner_projection",
+            "recommended_mode": "repair_waiting_projection",
+            "effective_action": "control_plane_projection_repair",
+            "allowed": True,
+            "notify": "DONT_NOTIFY",
+            "reason": "goal is waiting without a concrete owner/evidence gate while current action or agent backlog exists",
+            "repair_focus": "rebase from registry, active state, status, and run history; either project waiting_on=codex for safe agent work or write the concrete user/controller/evidence blocker",
+            "spend_policy": "append exactly one heartbeat spend only after the projection or blocker writeback is validated",
+            "control_plane": control_plane,
+        }
+
+    return None
+
+
 def _heartbeat_recommendation(
     item: dict[str, Any],
     *,
@@ -663,6 +752,7 @@ def _heartbeat_recommendation(
     should_run: bool,
     user_todo_summary: dict[str, Any] | None,
     agent_todo_summary: dict[str, Any] | None,
+    stall_self_repair: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     status = str(item.get("status") or "")
     waiting_on = str(item.get("waiting_on") or "")
@@ -687,6 +777,15 @@ def _heartbeat_recommendation(
             "notify": "NOTIFY",
             "spend_policy": "do not append quota spend while asking the operator gate",
             "reason": "operator gate blocks the gated delivery path",
+        }
+    if stall_self_repair and stall_self_repair.get("allowed"):
+        return {
+            **base,
+            "recommended_mode": stall_self_repair.get("recommended_mode") or "repair_control_plane_stall",
+            "notify": stall_self_repair.get("notify") or "DONT_NOTIFY",
+            "spend_policy": stall_self_repair.get("spend_policy") or base["spend_policy"],
+            "reason": stall_self_repair.get("reason") or "control-plane stall requires bounded repair",
+            "repair_focus": stall_self_repair.get("repair_focus"),
         }
     if state in {"focus_wait", "waiting"} and has_user_todos:
         return {
@@ -810,6 +909,11 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
         lifecycle_phase = attention.get("lifecycle_phase") or goal.get("lifecycle_phase")
         lifecycle_flags = attention.get("lifecycle_flags") or goal.get("lifecycle_flags")
         status = attention.get("status") or goal.get("status")
+        control_plane = (
+            compact_control_plane_policy(attention.get("control_plane"))
+            or compact_control_plane_policy(project_asset.get("control_plane"))
+            or compact_control_plane_policy(goal.get("control_plane"))
+        )
         raw_quota = attention.get("quota") if isinstance(attention.get("quota"), dict) else goal.get("quota")
         if project_asset_quota:
             raw_quota_base = raw_quota if isinstance(raw_quota, dict) else {}
@@ -861,6 +965,8 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
             "latest_run_generated_at": latest.get("generated_at"),
             "quota": quota,
         }
+        if control_plane:
+            item["control_plane"] = control_plane
         if project_asset:
             item["project_asset"] = project_asset
             item["project_asset_source"] = "project_asset"
@@ -1017,15 +1123,24 @@ def _recovery_delivery_allowed(quota: dict[str, Any], *, plan_ok: bool) -> bool:
 
 def _effective_action(
     *,
-    should_run: bool,
+    normal_delivery_allowed: bool,
     recovery_delivery_allowed: bool,
+    self_repair_allowed: bool,
+    stall_self_repair: dict[str, Any] | None,
     state: str,
     quota: dict[str, Any],
 ) -> str:
-    if should_run:
+    if normal_delivery_allowed:
         return "normal_run"
     if recovery_delivery_allowed:
         return "outcome_floor_recovery"
+    if self_repair_allowed:
+        repair_action = (
+            stall_self_repair.get("effective_action")
+            if isinstance(stall_self_repair, dict)
+            else None
+        )
+        return str(repair_action or "control_plane_repair")
     if state == "operator_gate":
         return "operator_gate_notify"
     if state == "blocked_health":
@@ -1058,13 +1173,6 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
         state = str(quota.get("state") or "unknown")
         normal_delivery_allowed = bool(plan.get("ok")) and state == "eligible"
         recovery_allowed = _recovery_delivery_allowed(quota, plan_ok=bool(plan.get("ok")))
-        should_run = bool(normal_delivery_allowed or recovery_allowed)
-        effective_action = _effective_action(
-            should_run=normal_delivery_allowed,
-            recovery_delivery_allowed=recovery_allowed,
-            state=state,
-            quota=quota,
-        )
         reason = str(quota.get("reason") or "quota state is not eligible")
         if not plan.get("ok"):
             reason = "status or contract health is not ok; skip automatic compute"
@@ -1075,17 +1183,49 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
         agent_todo_summary = _summarize_project_asset_todos(
             project_asset.get("agent_todos") if project_asset else None
         ) or _summarize_user_todos(item.get("agent_todos"))
+        stall_self_repair = _stall_self_repair_hint(
+            item,
+            state=state,
+            plan_ok=bool(plan.get("ok")),
+            health_items=health_items,
+            user_todo_summary=user_todo_summary,
+            agent_todo_summary=agent_todo_summary,
+        )
+        self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
+        should_run = bool(normal_delivery_allowed or recovery_allowed or self_repair_allowed)
+        effective_action = _effective_action(
+            normal_delivery_allowed=normal_delivery_allowed,
+            recovery_delivery_allowed=recovery_allowed,
+            self_repair_allowed=self_repair_allowed,
+            stall_self_repair=stall_self_repair,
+            state=state,
+            quota=quota,
+        )
         payload = {
-            "ok": bool(plan.get("ok")),
+            "ok": bool(plan.get("ok")) or self_repair_allowed,
+            "status_health_ok": bool(plan.get("ok")),
             "mode": "should-run",
             "goal_id": safe_goal_id,
-            "decision": "run" if normal_delivery_allowed else "safe_bypass_recovery" if recovery_allowed else "skip",
+            "decision": (
+                "run"
+                if normal_delivery_allowed
+                else "safe_bypass_recovery"
+                if recovery_allowed
+                else "self_repair"
+                if self_repair_allowed
+                else "skip"
+            ),
             "should_run": should_run,
             "normal_delivery_allowed": normal_delivery_allowed,
             "recovery_delivery_allowed": recovery_allowed,
+            "self_repair_allowed": self_repair_allowed,
             "effective_action": effective_action,
             "actionable_by_codex": bool(should_run or recovery_allowed),
-            "reason": reason,
+            "reason": (
+                str(stall_self_repair.get("reason"))
+                if self_repair_allowed and isinstance(stall_self_repair, dict)
+                else reason
+            ),
             "quota": quota,
             "state": state,
             "blocked_action_scope": quota.get("blocked_action_scope"),
@@ -1108,11 +1248,17 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
                 should_run=should_run,
                 user_todo_summary=user_todo_summary,
                 agent_todo_summary=agent_todo_summary,
+                stall_self_repair=stall_self_repair,
             ),
             "goal_boundary": _goal_boundary(item),
             "plan_summary": plan.get("summary"),
             "todo_write_hint": _todo_write_hint(safe_goal_id),
         }
+        control_plane = compact_control_plane_policy(item.get("control_plane"))
+        if control_plane:
+            payload["control_plane"] = control_plane
+        if stall_self_repair:
+            payload["stall_self_repair"] = stall_self_repair
         if item.get("operator_question"):
             payload["operator_question"] = item.get("operator_question")
         if item.get("missing_gates"):
@@ -1229,6 +1375,7 @@ def build_quota_slot_preview(
         )
         and before.get("safe_bypass_allowed") is True
     )
+    self_repair_spend = before.get("effective_action") in SELF_REPAIR_SPEND_ACTIONS
     if not before.get("ok") or (not before.get("should_run") and not safe_bypass_spend):
         return {
             "ok": False,
@@ -1298,6 +1445,7 @@ def build_quota_slot_preview(
             "so the visible total can stay flat if an older spend expires."
         ),
         "safe_bypass_spend": safe_bypass_spend,
+        "self_repair_spend": self_repair_spend,
     }
 
 
@@ -1308,6 +1456,7 @@ def _compact_quota_decision(decision: dict[str, Any]) -> dict[str, Any]:
         "normal_delivery_allowed": bool(decision.get("normal_delivery_allowed")),
         "recovery_delivery_allowed": bool(decision.get("recovery_delivery_allowed")),
         "effective_action": decision.get("effective_action"),
+        "self_repair_allowed": bool(decision.get("self_repair_allowed")),
         "state": str(decision.get("state") or ""),
         "safe_bypass_allowed": bool(decision.get("safe_bypass_allowed")),
         "safe_bypass_kind": decision.get("safe_bypass_kind"),
@@ -1340,7 +1489,16 @@ def build_quota_slot_spend_event(
         before_compact.get("spent_slots"), default=0
     ) + slots:
         raise ValueError("after.spent_slots must equal before.spent_slots + slots")
-    eligible_spend = before_compact["should_run"] is True and before_compact["state"] == "eligible"
+    self_repair_spend = (
+        before_compact["should_run"] is True
+        and before_compact["effective_action"] in SELF_REPAIR_SPEND_ACTIONS
+        and before_compact["self_repair_allowed"] is True
+    )
+    eligible_spend = (
+        before_compact["should_run"] is True
+        and before_compact["state"] == "eligible"
+        and not self_repair_spend
+    )
     safe_bypass_spend = (
         (
             before_compact["state"] == "operator_gate"
@@ -1349,8 +1507,8 @@ def build_quota_slot_spend_event(
         )
         and before_compact["safe_bypass_allowed"] is True
     )
-    if not eligible_spend and not safe_bypass_spend:
-        raise ValueError("quota slot spend requires an eligible or safe-bypass quota should-run decision")
+    if not eligible_spend and not safe_bypass_spend and not self_repair_spend:
+        raise ValueError("quota slot spend requires an eligible, safe-bypass, or control-plane self-repair quota should-run decision")
 
     return {
         "generated_at": generated_at or _now_local(),
@@ -1363,7 +1521,11 @@ def build_quota_slot_spend_event(
             else (
                 "quota outcome-floor recovery safe-bypass; quota slot spend event public-safe"
                 if before_compact.get("effective_action") == "outcome_floor_recovery"
-                else "quota safe-bypass operator gate; quota slot spend event public-safe"
+                else (
+                    "quota control-plane self-repair; quota slot spend event public-safe"
+                    if self_repair_spend
+                    else "quota safe-bypass operator gate; quota slot spend event public-safe"
+                )
             )
         ),
         "quota_event": {
@@ -1376,7 +1538,11 @@ def build_quota_slot_spend_event(
                 else (
                     f"{slots} automatic agent slot(s) completed as outcome-floor recovery safe-bypass work"
                     if before_compact.get("effective_action") == "outcome_floor_recovery"
-                    else f"{slots} automatic agent slot(s) completed as safe-bypass work under an operator gate"
+                    else (
+                        f"{slots} automatic agent slot(s) completed as control-plane self-repair work"
+                        if self_repair_spend
+                        else f"{slots} automatic agent slot(s) completed as safe-bypass work under an operator gate"
+                    )
                 )
             ),
             "before": before_compact,
@@ -1529,6 +1695,9 @@ def render_quota_markdown(payload: dict[str, Any]) -> str:
                 lines.append(f"  - reason: {reason}")
             if action:
                 lines.append(f"  - action: {action}")
+            control_plane = item.get("control_plane") if isinstance(item.get("control_plane"), dict) else None
+            if control_plane:
+                lines.append(f"  - control_plane: {control_plane_policy_summary(control_plane)}")
             if item.get("agent_command"):
                 lines.append(f"  - agent_command: `{item.get('agent_command')}`")
             if item.get("next_handoff_condition"):
@@ -1592,6 +1761,7 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         f"- should_run: `{payload.get('should_run')}`",
         f"- normal_delivery_allowed: `{payload.get('normal_delivery_allowed')}`",
         f"- recovery_delivery_allowed: `{payload.get('recovery_delivery_allowed')}`",
+        f"- self_repair_allowed: `{payload.get('self_repair_allowed')}`",
         f"- effective_action: `{payload.get('effective_action')}`",
         f"- actionable_by_codex: `{payload.get('actionable_by_codex')}`",
         f"- state: `{payload.get('state')}`",
@@ -1607,6 +1777,9 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
     )
     if execution_profile:
         lines.append(f"- execution_profile: {execution_profile_summary(execution_profile)}")
+    control_plane = payload.get("control_plane") if isinstance(payload.get("control_plane"), dict) else None
+    if control_plane:
+        lines.append(f"- control_plane: {control_plane_policy_summary(control_plane)}")
 
     def append_todo_summary(label: str, summary: dict[str, Any]) -> None:
         lines.append(
@@ -1717,6 +1890,35 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- heartbeat_spend_policy: {heartbeat_recommendation.get('spend_policy')}")
         if heartbeat_recommendation.get("reason"):
             lines.append(f"- heartbeat_reason: {heartbeat_recommendation.get('reason')}")
+    stall_self_repair = (
+        payload.get("stall_self_repair")
+        if isinstance(payload.get("stall_self_repair"), dict)
+        else {}
+    )
+    if stall_self_repair:
+        lines.append(
+            "- stall_self_repair: "
+            f"trigger={stall_self_repair.get('trigger')} "
+            f"mode={stall_self_repair.get('recommended_mode')} "
+            f"action={stall_self_repair.get('effective_action')}"
+        )
+        if stall_self_repair.get("repair_focus"):
+            lines.append(f"- stall_repair_focus: {stall_self_repair.get('repair_focus')}")
+        blockers = (
+            stall_self_repair.get("blocking_health_items")
+            if isinstance(stall_self_repair.get("blocking_health_items"), list)
+            else []
+        )
+        for blocker in blockers[:3]:
+            if not isinstance(blocker, dict):
+                continue
+            lines.append(
+                "- stall_health_blocker: "
+                f"goal={blocker.get('goal_id')} "
+                f"status={blocker.get('status')} "
+                f"waiting_on={blocker.get('waiting_on')} "
+                f"action={blocker.get('recommended_action')}"
+            )
     if payload.get("safe_bypass_allowed"):
         lines.append(f"- safe_bypass_allowed: `{payload.get('safe_bypass_allowed')}`")
     if payload.get("safe_bypass_kind"):
