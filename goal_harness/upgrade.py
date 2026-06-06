@@ -267,6 +267,8 @@ def build_upgrade_plan(
     selected_modes = tuple(modes or DEFAULT_UPGRADE_MODES)
     selected_goal_ids = set(goal_ids or [])
     manifest = load_installed_manifest(installed_manifest)
+    manifest_entries = manifest["entries"]
+    manifest_task_body_count = sum(1 for entry in manifest_entries if isinstance(entry, dict) and "task_body" in entry)
     installed_by_key = index_installed_entries(manifest["entries"])
     managed: list[dict[str, Any]] = []
     deferred: list[dict[str, Any]] = []
@@ -376,6 +378,11 @@ def build_upgrade_plan(
             "not_installed_prompt_count": not_installed,
             "stage_deferred_goal_count": len(deferred),
             "ready_for_default_promotion": ready,
+            "installed_manifest_available": manifest.get("available"),
+            "installed_manifest_source": manifest.get("source"),
+            "installed_manifest_entry_count": len(manifest_entries),
+            "installed_manifest_task_body_count": manifest_task_body_count,
+            "installed_manifest_has_task_body": manifest_task_body_count > 0,
         },
         "managed_heartbeats": managed,
         "stage_deferred_heartbeats": deferred,
@@ -400,6 +407,9 @@ def render_upgrade_plan_markdown(payload: dict[str, Any]) -> str:
         f"- unknown_prompt_count: `{summary.get('unknown_prompt_count')}`",
         f"- not_installed_prompt_count: `{summary.get('not_installed_prompt_count')}`",
         f"- stage_deferred_goal_count: `{summary.get('stage_deferred_goal_count')}`",
+        f"- installed_manifest_source: `{summary.get('installed_manifest_source')}`",
+        f"- installed_manifest_entry_count: `{summary.get('installed_manifest_entry_count')}`",
+        f"- installed_manifest_has_task_body: `{summary.get('installed_manifest_has_task_body')}`",
         f"- recommended_action: `{payload.get('recommended_action')}`",
     ]
     manifest = payload.get("installed_manifest") if isinstance(payload.get("installed_manifest"), dict) else {}

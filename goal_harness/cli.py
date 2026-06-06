@@ -891,6 +891,11 @@ def main(argv: list[str] | None = None) -> int:
                     "not_installed_prompt_count": 0,
                     "stage_deferred_goal_count": 0,
                     "ready_for_default_promotion": False,
+                    "installed_manifest_available": False,
+                    "installed_manifest_source": None,
+                    "installed_manifest_entry_count": 0,
+                    "installed_manifest_task_body_count": 0,
+                    "installed_manifest_has_task_body": False,
                 },
                 "recommended_action": "fix upgrade-plan collection before default promotion",
             }

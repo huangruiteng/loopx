@@ -83,6 +83,10 @@ def assert_unknown_manifest_blocks_promotion(registry_path: Path) -> dict:
     assert payload["summary"]["managed_goal_count"] == 1, payload
     assert payload["summary"]["stage_deferred_goal_count"] == 1, payload
     assert payload["summary"]["unknown_prompt_count"] == 1, payload
+    assert payload["summary"]["installed_manifest_available"] is False, payload
+    assert payload["summary"]["installed_manifest_source"] == "codex_app_automations", payload
+    assert payload["summary"]["installed_manifest_entry_count"] == 0, payload
+    assert payload["summary"]["installed_manifest_has_task_body"] is False, payload
     assert payload["summary"]["ready_for_default_promotion"] is False, payload
     deferred = payload["stage_deferred_heartbeats"][0]
     assert deferred["goal_id"] == DEFERRED_GOAL_ID, payload
@@ -135,6 +139,8 @@ def assert_matching_manifest_is_ready(registry_path: Path, manifest_path: Path, 
     assert payload["summary"]["current_prompt_count"] == 1, payload
     assert payload["summary"]["not_installed_prompt_count"] == 0, payload
     assert payload["summary"]["stage_deferred_goal_count"] == 1, payload
+    assert payload["summary"]["installed_manifest_entry_count"] == 1, payload
+    assert payload["summary"]["installed_manifest_has_task_body"] is False, payload
     assert payload["summary"]["ready_for_default_promotion"] is True, payload
     assert payload["managed_heartbeats"][0]["installed_prompts"]["thin"]["status"] == "current", payload
 
@@ -168,6 +174,8 @@ def assert_not_installed_manifest_is_ready(registry_path: Path, manifest_path: P
     assert payload["summary"]["current_prompt_count"] == 0, payload
     assert payload["summary"]["not_installed_prompt_count"] == 1, payload
     assert payload["summary"]["stage_deferred_goal_count"] == 1, payload
+    assert payload["summary"]["installed_manifest_entry_count"] == 1, payload
+    assert payload["summary"]["installed_manifest_has_task_body"] is False, payload
     assert payload["summary"]["ready_for_default_promotion"] is True, payload
     installed = payload["managed_heartbeats"][0]["installed_prompts"]["thin"]
     assert payload["managed_heartbeats"][0]["requires_update"] is False, payload
@@ -234,6 +242,9 @@ def assert_codex_app_automation_is_discovered(registry_path: Path, codex_home: P
     auto_entry = payload["installed_manifest"]["entries"][0]
     assert "task_body" not in auto_entry, payload
     assert auto_entry["prompt_sha256"] == expected_sha, payload
+    assert payload["summary"]["installed_manifest_entry_count"] == 1, payload
+    assert payload["summary"]["installed_manifest_task_body_count"] == 0, payload
+    assert payload["summary"]["installed_manifest_has_task_body"] is False, payload
     assert payload["summary"]["unknown_prompt_count"] == 0, payload
     assert payload["summary"]["stale_prompt_count"] == 0, payload
     assert payload["summary"]["current_prompt_count"] == 1, payload

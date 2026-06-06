@@ -163,6 +163,9 @@ If the plan reports unknown or stale prompt digests, update those managed
 heartbeat automations/controller clients before running `scripts/install-local.sh`
 for default promotion. This keeps connected projects from continuing on stale
 prompt branches after the local default version changes.
+The JSON `summary` includes `installed_manifest_source`,
+`installed_manifest_entry_count`, and `installed_manifest_has_task_body` so
+automation can check discovery safety without scanning every installed entry.
 Goals whose adapter stage is still `planned` or whose registry attention status
 is `stage_deferred_not_installed` are reported separately under
 `stage_deferred_heartbeats`; they do not count as unknown/stale managed
