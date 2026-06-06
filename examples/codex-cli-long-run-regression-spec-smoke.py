@@ -27,6 +27,10 @@ REQUIRED_PHRASES = (
     "Every completed work step has a validation result, writeback event, and one",
     "No step spends when `should_run_before=false`",
     "deleting the worker process",
+    "python3 examples/codex-cli-long-run-regression-runner-smoke.py",
+    "running exactly `3` isolated worker steps",
+    "`status`, `quota should-run`, `refresh-state`, and",
+    "leaving a clear path for replacing the shim action with a real Codex CLI worker later",
     "fixed session-history replay",
     "compact synthetic transcripts, not copies of real user sessions",
 )

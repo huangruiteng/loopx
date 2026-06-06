@@ -60,6 +60,22 @@ Each row must contain:
 - The isolated runtime contains enough event history to reconstruct the current
   fixture state after deleting the worker process.
 
+## First Runner Shim
+
+The first executable regression is a narrow Goal Harness CLI shim:
+
+```bash
+python3 examples/codex-cli-long-run-regression-runner-smoke.py
+```
+
+It still does not invoke Codex CLI. Instead, it proves the fixture and log
+contract by running exactly `3` isolated worker steps through the normal Goal
+Harness CLI surfaces: `status`, `quota should-run`, `refresh-state`, and
+`quota spend-slot`. Each step writes one public fixture artifact, validates it,
+records one work event, records one spend event, and appends one JSONL row. This
+keeps the regression deterministic while leaving a clear path for replacing the
+shim action with a real Codex CLI worker later.
+
 ## Failure Criteria
 
 - Any worker reads or requires real chat/session history.
