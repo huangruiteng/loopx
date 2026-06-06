@@ -454,7 +454,11 @@ Current finding kinds:
 
 High and action findings are also lifted into `attention_queue.items` with
 `source=global_registry`; informational scope findings stay in the global
-registry panel so local project views are not noisy.
+registry panel so local project views are not noisy. Source-registry provenance
+findings (`source_registry_missing` / `stale_source_registry`) are collapsed into
+the live quota-backed queue item for the same `goal_id` when one exists, under
+`global_registry_shadow_findings`, so stale source shadows do not become a second
+quota health blocker while the fact remains visible in `global_registry.findings`.
 
 ## Contract Health
 

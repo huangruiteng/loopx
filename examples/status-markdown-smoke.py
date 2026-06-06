@@ -219,6 +219,32 @@ def write_connected_delivery_registry(root: Path) -> Path:
     return registry_path
 
 
+def write_global_source_registry_shadow(root: Path, registry_path: Path, *, goal_id: str) -> None:
+    runtime = root / "runtime"
+    local_registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    goals = local_registry.get("goals") if isinstance(local_registry.get("goals"), list) else []
+    local_goal = next(goal for goal in goals if isinstance(goal, dict) and goal.get("id") == goal_id)
+    shadow_goal = dict(local_goal)
+    shadow_goal["source_registry"] = str(root / "missing-source" / "registry.json")
+    shadow_goal["synced_at"] = "2026-01-01T00:00:00+00:00"
+    runtime.mkdir(parents=True, exist_ok=True)
+    (runtime / "registry.global.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [shadow_goal],
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def write_connected_readonly_registry(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
@@ -1433,6 +1459,28 @@ def assert_connected_delivery_custom_run_stays_runnable(payload: dict, markdown:
     assert "goal_boundary_orchestration: mode=multi_subagent spawn_allowed=True max_children=2" in quota_markdown, quota_markdown
 
 
+def assert_source_registry_shadow_collapses_into_live_queue_item(payload: dict) -> None:
+    registry_summary = payload["global_registry"]["summary"]
+    assert registry_summary["action"] == 1, payload["global_registry"]
+    assert "source_registry_missing" in json.dumps(payload["global_registry"], ensure_ascii=False), payload
+
+    items = payload["attention_queue"]["items"]
+    goal_items = [item for item in items if item["goal_id"] == DELIVERY_GOAL_ID]
+    assert len(goal_items) == 1, items
+    item = goal_items[0]
+    assert item["status"] == "delivery_ranker_readiness_batch", item
+    assert item["source"] == "latest_run", item
+    assert not any(queue_item["status"] == "source_registry_missing" for queue_item in items), items
+    shadows = item["global_registry_shadow_findings"]
+    assert shadows[0]["kind"] == "source_registry_missing", shadows
+    assert item["project_asset"]["global_registry_shadow_findings"]["open"] == 1, item
+
+    quota_payload = build_quota_should_run(payload, goal_id=DELIVERY_GOAL_ID)
+    assert quota_payload["should_run"] is True, quota_payload
+    assert quota_payload["state"] == "eligible", quota_payload
+    assert quota_payload["plan_summary"]["health_blockers"] == 0, quota_payload
+
+
 def assert_connected_readonly_progress_run_stays_runnable(payload: dict, markdown: str) -> None:
     items = payload["attention_queue"]["items"]
     assert len(items) == 1, items
@@ -1826,6 +1874,12 @@ def main() -> int:
         delivery_registry_path = write_connected_delivery_registry(root)
         append_connected_delivery_fixture(root, generated_at="2026-01-01T00:05:00+00:00")
         delivery_payload, delivery_markdown = collect_fixture_status(root, delivery_registry_path)
+    with tempfile.TemporaryDirectory(prefix="goal-harness-status-source-registry-shadow-") as tmp:
+        root = Path(tmp)
+        shadow_registry_path = write_connected_delivery_registry(root)
+        write_global_source_registry_shadow(root, shadow_registry_path, goal_id=DELIVERY_GOAL_ID)
+        append_connected_delivery_fixture(root, generated_at="2026-01-01T00:05:00+00:00")
+        shadow_payload, _shadow_markdown = collect_fixture_status(root, shadow_registry_path)
     with tempfile.TemporaryDirectory(prefix="goal-harness-status-explicit-refresh-scale-") as tmp:
         root = Path(tmp)
         explicit_registry_path = write_connected_delivery_registry(root)
@@ -1947,6 +2001,7 @@ def main() -> int:
     )
     assert_registry_attention_override(override_payload, override_markdown)
     assert_connected_delivery_custom_run_stays_runnable(delivery_payload, delivery_markdown)
+    assert_source_registry_shadow_collapses_into_live_queue_item(shadow_payload)
     assert_explicit_delivery_refresh(explicit_payload, explicit_markdown)
     assert_connected_readonly_progress_run_stays_runnable(readonly_payload, readonly_markdown)
     assert_dependency_blockers_stay_separate(dependency_payload, dependency_markdown)

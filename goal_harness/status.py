@@ -153,6 +153,10 @@ CONNECTED_ADAPTER_STATUSES = {
 CONNECTED_DELIVERY_ADAPTER_STATUSES = {
     "connected-delivery",
 }
+SOURCE_REGISTRY_SHADOW_FINDINGS = {
+    "source_registry_missing",
+    "stale_source_registry",
+}
 PLANNED_CONTROLLER_OPT_IN_RECOMMENDED_ACTION = (
     "先在 Goal Harness 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run"
 )
@@ -1013,6 +1017,36 @@ def attention_item(
     return item
 
 
+def compact_global_registry_shadow_finding(finding: dict[str, Any]) -> dict[str, Any]:
+    compact: dict[str, Any] = {
+        "kind": str(finding.get("kind") or "global_registry_finding"),
+        "severity": str(finding.get("severity") or "action"),
+        "source": "global_registry",
+    }
+    if finding.get("message"):
+        compact["message"] = str(finding.get("message"))
+    if finding.get("recommended_action"):
+        compact["recommended_action"] = str(finding.get("recommended_action"))
+    return compact
+
+
+def attach_global_registry_shadow_finding(item: dict[str, Any], finding: dict[str, Any]) -> None:
+    shadows = item.setdefault("global_registry_shadow_findings", [])
+    if isinstance(shadows, list):
+        shadows.append(compact_global_registry_shadow_finding(finding))
+    project_asset = item.get("project_asset")
+    if not isinstance(project_asset, dict):
+        return
+    summary = project_asset.setdefault("global_registry_shadow_findings", {"open": 0, "kinds": []})
+    if not isinstance(summary, dict):
+        return
+    summary["open"] = int(summary.get("open") or 0) + 1
+    kinds = summary.setdefault("kinds", [])
+    kind = str(finding.get("kind") or "global_registry_finding")
+    if isinstance(kinds, list) and kind not in kinds:
+        kinds.append(kind)
+
+
 def parse_timestamp(value: Any) -> datetime | None:
     if not value:
         return None
@@ -1556,9 +1590,10 @@ def build_attention_queue(
     history: dict[str, Any],
     global_registry: dict[str, Any],
 ) -> dict[str, Any]:
-    items: list[dict[str, Any]] = []
+    health_items: list[dict[str, Any]] = []
+    history_items: list[dict[str, Any]] = []
     if contract.get("ok") is False:
-        items.append(
+        health_items.append(
             attention_item(
                 goal_id="goal-harness-contract",
                 status="contract_check_failed",
@@ -1566,22 +1601,6 @@ def build_attention_queue(
                 severity="high",
                 recommended_action="fix contract errors before advancing goal adapters",
                 source="contract",
-            )
-        )
-    for finding in global_registry.get("findings") or []:
-        if not isinstance(finding, dict):
-            continue
-        if finding.get("severity") not in {"high", "action"}:
-            continue
-        goal_id = str(finding.get("goal_id") or "global-registry")
-        items.append(
-            attention_item(
-                goal_id=goal_id,
-                status=str(finding.get("kind") or "global_registry_finding"),
-                waiting_on="codex",
-                severity=str(finding.get("severity") or "action"),
-                recommended_action=str(finding.get("recommended_action") or "inspect global registry health"),
-                source="global_registry",
             )
         )
 
@@ -1647,8 +1666,36 @@ def build_attention_queue(
                         quota=guarded_quota,
                         latest_runs=goal_latest_runs,
                     )
-            items.append(item)
+            history_items.append(item)
 
+    live_quota_items_by_goal: dict[str, list[dict[str, Any]]] = {}
+    for item in history_items:
+        if isinstance(item.get("quota"), dict):
+            live_quota_items_by_goal.setdefault(str(item.get("goal_id") or ""), []).append(item)
+
+    for finding in global_registry.get("findings") or []:
+        if not isinstance(finding, dict):
+            continue
+        if finding.get("severity") not in {"high", "action"}:
+            continue
+        goal_id = str(finding.get("goal_id") or "global-registry")
+        live_items = live_quota_items_by_goal.get(goal_id, [])
+        if finding.get("kind") in SOURCE_REGISTRY_SHADOW_FINDINGS and live_items:
+            for item in live_items:
+                attach_global_registry_shadow_finding(item, finding)
+            continue
+        health_items.append(
+            attention_item(
+                goal_id=goal_id,
+                status=str(finding.get("kind") or "global_registry_finding"),
+                waiting_on="codex",
+                severity=str(finding.get("severity") or "action"),
+                recommended_action=str(finding.get("recommended_action") or "inspect global registry health"),
+                source="global_registry",
+            )
+        )
+
+    items = [*health_items, *history_items]
     attach_dependency_blockers(items)
     backlog_candidates = autonomous_backlog_candidates(items)
 
