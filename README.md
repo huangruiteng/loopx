@@ -138,6 +138,29 @@ installer stderr:
 goal-harness promotion-gate --format json
 ```
 
+Promotion readiness is necessary but not sufficient when connected Codex App
+heartbeats are installed. Before making a canary checkout the machine default,
+also generate the local upgrade propagation plan:
+
+```bash
+goal-harness upgrade-plan --format json
+```
+
+This command inventories registry-managed controller goals, regenerates the
+brief/compact heartbeat prompts from the candidate CLI contract, and compares
+them with an optional installed automation manifest:
+
+```bash
+goal-harness upgrade-plan \
+  --installed-manifest ~/.codex/goal-harness/installed-heartbeats.json \
+  --format json
+```
+
+If the plan reports unknown or stale prompt digests, update those managed
+heartbeat automations/controller clients before running `scripts/install-local.sh`
+for default promotion. This keeps connected projects from continuing on stale
+prompt branches after the local default version changes.
+
 If a project shell cannot find or run the command, `goal-harness doctor`
 reports PATH, wrapper, release snapshot, canary wrapper, installed skill
 delivery-hint, Python import health, release provenance, and the latest
@@ -588,6 +611,7 @@ reward                  append run-bound human reward
 todo                    add user or agent todos
 quota                   inspect or account for automatic agent turns
 heartbeat-prompt        generate Codex App heartbeat task bodies
+upgrade-plan            plan local default-upgrade heartbeat propagation
 review-packet           package a CLI-visible handoff packet
 serve-status            serve local status JSON for the dashboard
 archive-runtime         archive obsolete runtime-only goal history

@@ -73,6 +73,7 @@ from .status_server import (
     serve_status,
 )
 from .todos import add_goal_todo, render_todo_markdown
+from .upgrade import build_upgrade_plan, render_upgrade_plan_markdown
 
 
 def print_payload(payload: dict[str, object], fmt: str, markdown_renderer) -> None:
@@ -313,6 +314,28 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser(
         "promotion-gate",
         help="Emit a compact machine-readable canary promotion readiness gate result.",
+    )
+
+    upgrade_plan_parser = sub.add_parser(
+        "upgrade-plan",
+        help="Plan local default upgrade propagation for managed heartbeat automations.",
+    )
+    upgrade_plan_parser.add_argument("--goal-id", action="append", default=[], help="Only include one goal id. Repeatable.")
+    upgrade_plan_parser.add_argument(
+        "--installed-manifest",
+        help="Optional JSON manifest of installed automations with goal_id, mode, automation_id, and prompt_sha256/task_body.",
+    )
+    upgrade_plan_parser.add_argument(
+        "--cli-bin",
+        default="goal-harness",
+        help="CLI command embedded in generated heartbeat prompts for the promoted default.",
+    )
+    upgrade_plan_parser.add_argument(
+        "--mode",
+        action="append",
+        choices=["brief", "compact"],
+        default=[],
+        help="Prompt mode to compare. Repeatable; defaults to brief and compact.",
     )
 
     sub.add_parser("registry", help="Inspect registry goals and adapter declarations.")
@@ -770,6 +793,35 @@ def main(argv: list[str] | None = None) -> int:
                 "recommended_action": "fix promotion readiness gate collection before promotion",
             }
         print_payload(payload, args.format, render_promotion_gate_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "upgrade-plan":
+        try:
+            payload = build_upgrade_plan(
+                registry_path=registry_path,
+                runtime_root_override=args.runtime_root,
+                installed_manifest=Path(args.installed_manifest).expanduser() if args.installed_manifest else None,
+                cli_bin=args.cli_bin,
+                modes=args.mode or None,
+                goal_ids=args.goal_id or None,
+            )
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "mode": "upgrade-plan",
+                "registry": str(registry_path),
+                "runtime_root": args.runtime_root,
+                "error": str(exc),
+                "summary": {
+                    "managed_goal_count": 0,
+                    "current_prompt_count": 0,
+                    "stale_prompt_count": 0,
+                    "unknown_prompt_count": 0,
+                    "ready_for_default_promotion": False,
+                },
+                "recommended_action": "fix upgrade-plan collection before default promotion",
+            }
+        print_payload(payload, args.format, render_upgrade_plan_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "registry":
