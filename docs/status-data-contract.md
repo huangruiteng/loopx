@@ -598,7 +598,11 @@ Item fields:
   file appears newer or different from the latest run's captured state
   projection. This warning is a repair hint, not a scheduler gate: consumers
   should run `refresh-state` before trusting latest-run-derived routing, while
-  quota eligibility still comes from the quota guard.
+  quota eligibility still comes from the quota guard. When orchestration mode
+  is `multi_subagent`, project assets may also include `subagent_activity`, a
+  compact child-run projection derived from run history. It records child run
+  ids, roles, state, parent links, public-safe scope summaries, and quota-spend
+  counts for observation only; it is not a lock service or write arbiter.
   This is the first-screen project asset surface for
   agents and dashboards; it lets consumers avoid reconstructing owner, gate,
   next action, stop condition, todo counts, compute state, and latest validation
@@ -1015,6 +1019,33 @@ Goal shape:
   "index_exists": true,
   "raw_index_records": 2,
   "unique_runs": 2,
+  "subagent_activity": {
+    "source": "run_history",
+    "parent_goal_id": "complex-project-main-control",
+    "child_count": 2,
+    "visible_child_count": 2,
+    "completed_count": 1,
+    "active_count": 1,
+    "quota_spend_slots": 2,
+    "items": [
+      {
+        "run_id": "docs-map-001",
+        "goal_id": "docs-map-subagent",
+        "parent_run_id": "controller-run-001",
+        "spawned_by_goal_id": "complex-project-main-control",
+        "agent_role": "explorer",
+        "state": "completed",
+        "work_scope": [
+          "docs/**"
+        ],
+        "touched_paths": [],
+        "touched_path_count": 0,
+        "handoff_summary": "Mapped task clusters without editing files.",
+        "quota_spend_slots": 1
+      }
+    ],
+    "proxy_note": "compact child-run projection only; parent controller remains the authority for locks, writes, and merge decisions"
+  },
   "latest_runs": []
 }
 ```
@@ -1053,6 +1084,24 @@ Run shape:
   ],
   "recommended_action": "ask the target controller to opt into a read-only map before any mutation",
   "health_check": "8/8",
+  "run_id": "controller-run-001",
+  "subagents": [
+    {
+      "run_id": "docs-map-001",
+      "goal_id": "docs-map-subagent",
+      "parent_run_id": "controller-run-001",
+      "spawned_by_goal_id": "complex-project-main-control",
+      "agent_role": "explorer",
+      "state": "completed",
+      "work_scope": [
+        "docs/**"
+      ],
+      "touched_path_count": 0,
+      "handoff_summary": "Mapped task clusters without editing files.",
+      "quota_spend_slots": 1
+    }
+  ],
+  "subagent_count": 1,
   "controller_readiness": {
     "classification": "ready_for_read_only_not_decision",
     "read_only_observer_ready": true,

@@ -163,12 +163,18 @@ PLANNED_CONTROLLER_OPT_IN_RECOMMENDED_ACTION = (
 )
 RUN_COMPACT_FIELDS = (
     "generated_at",
+    "run_id",
     "goal_id",
+    "parent_run_id",
+    "spawned_by_goal_id",
+    "agent_role",
     "classification",
     "lifecycle_phase",
     "lifecycle_flags",
     "recommended_action",
     "health_check",
+    "result_status",
+    "approval_state",
     "active_task_count",
     "active_priorities",
     "cache_check",
@@ -256,6 +262,8 @@ MAX_STATUS_TODOS_PER_ROLE = 12
 MAX_PROJECT_ASSET_TODO_ITEMS = 3
 MAX_DEPENDENCY_BLOCKERS = 4
 MAX_AUTONOMOUS_BACKLOG_CANDIDATES = 6
+MAX_SUBAGENT_ACTIVITY_ITEMS = 5
+MAX_SUBAGENT_SCOPE_ITEMS = 4
 AUTONOMOUS_PRIORITY_PATTERN = re.compile(r"^\s*\[(P[0-4][^\]]*)\]\s*(.+)$", re.IGNORECASE)
 
 
@@ -264,6 +272,28 @@ def normalize_todo_text(text: str, *, limit: int = 500) -> str:
     if len(compact) <= limit:
         return compact
     return compact[: limit - 1].rstrip() + "…"
+
+
+def public_safe_compact_text(value: Any, *, limit: int = 220) -> str | None:
+    text = normalize_todo_text(str(value or ""), limit=limit)
+    if not text:
+        return None
+    if LOCAL_PATH_SURFACE_PATTERN.search(text) or SECRET_LIKE_SURFACE_PATTERN.search(text):
+        return None
+    return text
+
+
+def public_safe_compact_list(value: Any, *, limit: int = MAX_SUBAGENT_SCOPE_ITEMS) -> list[str]:
+    values = value if isinstance(value, list) else [value] if value else []
+    result: list[str] = []
+    for item in values:
+        text = public_safe_compact_text(item, limit=160)
+        if not text:
+            continue
+        result.append(text)
+        if len(result) >= limit:
+            break
+    return result
 
 
 def parse_state_frontmatter(state_text: str) -> dict[str, str]:
@@ -651,6 +681,144 @@ def project_asset_latest_validation(run: dict[str, Any] | None) -> dict[str, Any
     return signal or None
 
 
+def _subagent_state(run: dict[str, Any]) -> str | None:
+    for field in ("result_status", "state", "status", "classification"):
+        value = public_safe_compact_text(run.get(field), limit=80)
+        if value:
+            return value
+    return None
+
+
+def _subagent_quota_spend(run: dict[str, Any]) -> int:
+    for field in ("quota_spend", "quota_slots", "spent_slots"):
+        raw = run.get(field)
+        if isinstance(raw, bool):
+            continue
+        try:
+            return max(0, int(raw))
+        except (TypeError, ValueError):
+            pass
+    quota_event = run.get("quota_event") if isinstance(run.get("quota_event"), dict) else {}
+    raw_slots = quota_event.get("slots")
+    try:
+        return max(0, int(raw_slots))
+    except (TypeError, ValueError):
+        return 0
+
+
+def compact_subagent_run(
+    raw: dict[str, Any],
+    *,
+    parent_goal_id: str | None = None,
+    parent_run_id: str | None = None,
+) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    run_id = public_safe_compact_text(
+        raw.get("run_id") or raw.get("id") or raw.get("generated_at"),
+        limit=120,
+    )
+    role = public_safe_compact_text(raw.get("agent_role") or raw.get("role"), limit=80)
+    state = _subagent_state(raw)
+    if not (run_id or role or state):
+        return None
+
+    compact: dict[str, Any] = {}
+    if run_id:
+        compact["run_id"] = run_id
+    goal_id = public_safe_compact_text(raw.get("goal_id") or raw.get("id"), limit=120)
+    if goal_id:
+        compact["goal_id"] = goal_id
+    parent_run = public_safe_compact_text(raw.get("parent_run_id") or parent_run_id, limit=120)
+    if parent_run:
+        compact["parent_run_id"] = parent_run
+    spawned_by = public_safe_compact_text(raw.get("spawned_by_goal_id") or parent_goal_id, limit=120)
+    if spawned_by:
+        compact["spawned_by_goal_id"] = spawned_by
+    if role:
+        compact["agent_role"] = role
+    if state:
+        compact["state"] = state
+    for field in ("claim_id", "approval_state"):
+        value = public_safe_compact_text(raw.get(field), limit=120)
+        if value:
+            compact[field] = value
+    work_scope = public_safe_compact_list(raw.get("work_scope") or raw.get("scope"))
+    if work_scope:
+        compact["work_scope"] = work_scope
+    touched_paths = public_safe_compact_list(raw.get("touched_paths") or raw.get("changed_files"))
+    if touched_paths:
+        compact["touched_paths"] = touched_paths
+    raw_touched = raw.get("touched_paths") or raw.get("changed_files")
+    if isinstance(raw_touched, list):
+        compact["touched_path_count"] = len(raw_touched)
+    handoff = public_safe_compact_text(raw.get("handoff_summary") or raw.get("summary"), limit=260)
+    if handoff:
+        compact["handoff_summary"] = handoff
+    quota_spend = _subagent_quota_spend(raw)
+    if quota_spend:
+        compact["quota_spend_slots"] = quota_spend
+    return compact
+
+
+def subagent_activity_for_goal(goal: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(goal, dict):
+        return None
+    parent_goal_id = str(goal.get("id") or "")
+    latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
+    children: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def add_child(raw: dict[str, Any], *, parent_run_id: str | None = None) -> None:
+        child = compact_subagent_run(
+            raw,
+            parent_goal_id=parent_goal_id or None,
+            parent_run_id=parent_run_id,
+        )
+        if not child:
+            return
+        key = (
+            str(child.get("run_id") or ""),
+            str(child.get("goal_id") or ""),
+            str(child.get("agent_role") or ""),
+        )
+        if key in seen:
+            return
+        seen.add(key)
+        children.append(child)
+
+    for run in latest_runs:
+        if not isinstance(run, dict):
+            continue
+        parent_run_id = str(run.get("run_id") or run.get("generated_at") or "")
+        for child in run.get("subagents") or []:
+            if isinstance(child, dict):
+                add_child(child, parent_run_id=parent_run_id)
+        if run.get("parent_run_id") or run.get("spawned_by_goal_id") or run.get("agent_role"):
+            add_child(run, parent_run_id=str(run.get("parent_run_id") or ""))
+
+    if not children:
+        return None
+    limited = children[:MAX_SUBAGENT_ACTIVITY_ITEMS]
+    completed_states = {"completed", "done", "success", "passed"}
+    active_states = {"running", "active", "in_progress", "queued", "started"}
+    completed = sum(1 for child in children if str(child.get("state") or "").lower() in completed_states)
+    active = sum(1 for child in children if str(child.get("state") or "").lower() in active_states)
+    quota_spend = sum(int(child.get("quota_spend_slots") or 0) for child in children)
+    summary: dict[str, Any] = {
+        "source": "run_history",
+        "parent_goal_id": parent_goal_id,
+        "child_count": len(children),
+        "visible_child_count": len(limited),
+        "completed_count": completed,
+        "active_count": active,
+        "quota_spend_slots": quota_spend,
+        "items": limited,
+        "proxy_note": "compact child-run projection only; parent controller remains the authority for locks, writes, and merge decisions",
+    }
+    return summary
+
+
 def active_state_projection_warning(goal: dict[str, Any], current_run: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(goal, dict) or not goal.get("registry_member") or not isinstance(current_run, dict):
         return None
@@ -985,6 +1153,7 @@ def enrich_project_asset(
     latest_runs: list[dict[str, Any]] | None = None,
     execution_profile: dict[str, Any] | None = None,
     orchestration: dict[str, Any] | None = None,
+    subagent_activity: dict[str, Any] | None = None,
 ) -> None:
     project_asset = item.get("project_asset")
     if not isinstance(project_asset, dict):
@@ -1002,6 +1171,8 @@ def enrich_project_asset(
         project_asset["execution_profile"] = compact_execution_profile(execution_profile)
     if orchestration is not None:
         project_asset["orchestration"] = compact_orchestration_policy(orchestration)
+    if subagent_activity:
+        project_asset["subagent_activity"] = subagent_activity
     if latest_validation:
         project_asset["latest_validation"] = latest_validation
     readiness = project_asset_handoff_readiness(item, latest_runs=latest_runs)
@@ -1706,6 +1877,7 @@ def build_attention_queue(
             if control_plane:
                 item["control_plane"] = control_plane
             goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
+            subagent_activity = subagent_activity_for_goal(goal)
             projection_warning = active_state_projection_warning(goal, latest_run(goal))
             enrich_project_asset(
                 item,
@@ -1721,6 +1893,7 @@ def build_attention_queue(
                     if isinstance(goal.get("spawn_policy"), dict)
                     else None
                 ),
+                subagent_activity=subagent_activity,
             )
             if control_plane and isinstance(item.get("project_asset"), dict):
                 item["project_asset"]["control_plane"] = control_plane
@@ -1744,6 +1917,7 @@ def build_attention_queue(
                     agent_todos=item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None,
                     quota=item.get("quota") if isinstance(item.get("quota"), dict) else None,
                     latest_runs=goal_latest_runs,
+                    subagent_activity=subagent_activity,
                 )
                 guarded_quota = quota_with_handoff_outcome_floor(
                     item.get("quota") if isinstance(item.get("quota"), dict) else {},
@@ -1763,6 +1937,7 @@ def build_attention_queue(
                         agent_todos=item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None,
                         quota=guarded_quota,
                         latest_runs=goal_latest_runs,
+                        subagent_activity=subagent_activity,
                     )
             history_items.append(item)
 
@@ -1961,6 +2136,25 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     readiness = compact_controller_readiness(run.get("controller_readiness"))
     if readiness:
         compact["controller_readiness"] = readiness
+    merge_decision = public_safe_compact_text(run.get("merge_decision"), limit=240)
+    if merge_decision:
+        compact["merge_decision"] = merge_decision
+    subagents = [
+        child
+        for child in (
+            compact_subagent_run(
+                child_run,
+                parent_goal_id=str(run.get("goal_id") or ""),
+                parent_run_id=str(run.get("run_id") or run.get("generated_at") or ""),
+            )
+            for child_run in (run.get("subagents") or [])
+            if isinstance(child_run, dict)
+        )
+        if child
+    ]
+    if subagents:
+        compact["subagents"] = subagents[:MAX_SUBAGENT_ACTIVITY_ITEMS]
+        compact["subagent_count"] = len(subagents)
     return compact
 
 
@@ -1971,6 +2165,7 @@ def build_run_history(history: dict[str, Any]) -> dict[str, Any]:
             continue
         current_run = latest_run(goal)
         lifecycle_fields = goal_lifecycle_fields(goal, current_run)
+        subagent_activity = subagent_activity_for_goal(goal)
         goals.append(
             {
                 "id": goal.get("id"),
@@ -1990,6 +2185,7 @@ def build_run_history(history: dict[str, Any]) -> dict[str, Any]:
                 "index_exists": goal.get("index_exists"),
                 "raw_index_records": goal.get("raw_index_records"),
                 "unique_runs": goal.get("unique_runs"),
+                "subagent_activity": subagent_activity,
                 "latest_status_run": compact_run(current_run) if current_run else None,
                 "latest_runs": [
                     compact_run(run)
@@ -2852,6 +3048,31 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     "    - orchestration: "
                     f"{_markdown_scalar(orchestration_policy_summary(asset_orchestration))}"
                 )
+            subagent_activity = (
+                project_asset.get("subagent_activity")
+                if isinstance(project_asset.get("subagent_activity"), dict)
+                else {}
+            )
+            if subagent_activity:
+                lines.append(
+                    "    - subagent_activity: "
+                    f"children={subagent_activity.get('child_count')} "
+                    f"visible={subagent_activity.get('visible_child_count')} "
+                    f"active={subagent_activity.get('active_count')} "
+                    f"completed={subagent_activity.get('completed_count')} "
+                    f"quota_slots={subagent_activity.get('quota_spend_slots')}"
+                )
+                for child in (subagent_activity.get("items") or [])[:3]:
+                    if not isinstance(child, dict):
+                        continue
+                    role = _markdown_scalar(child.get("agent_role") or "subagent")
+                    state = _markdown_scalar(child.get("state") or "unknown")
+                    run_id = _markdown_scalar(child.get("run_id") or "")
+                    parent_run_id = _markdown_scalar(child.get("parent_run_id") or "")
+                    lines.append(
+                        f"      - child_run: role={role} state={state} "
+                        f"run_id={run_id} parent_run_id={parent_run_id}"
+                    )
             asset_user_todos = (
                 project_asset.get("user_todos")
                 if isinstance(project_asset.get("user_todos"), dict)
