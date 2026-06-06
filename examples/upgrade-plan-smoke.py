@@ -106,8 +106,44 @@ def assert_matching_manifest_is_ready(registry_path: Path, manifest_path: Path, 
     assert payload["summary"]["unknown_prompt_count"] == 0, payload
     assert payload["summary"]["stale_prompt_count"] == 0, payload
     assert payload["summary"]["current_prompt_count"] == 1, payload
+    assert payload["summary"]["not_installed_prompt_count"] == 0, payload
     assert payload["summary"]["ready_for_default_promotion"] is True, payload
     assert payload["managed_heartbeats"][0]["installed_prompts"]["thin"]["status"] == "current", payload
+
+
+def assert_not_installed_manifest_is_ready(registry_path: Path, manifest_path: Path) -> None:
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "automations": [
+                    {
+                        "goal_id": GOAL_ID,
+                        "mode": "thin",
+                        "installed": False,
+                        "status": "not_installed",
+                    }
+                ]
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    payload = build_upgrade_plan(
+        registry_path=registry_path,
+        installed_manifest=manifest_path,
+        cli_bin="goal-harness",
+    )
+    assert payload["summary"]["unknown_prompt_count"] == 0, payload
+    assert payload["summary"]["stale_prompt_count"] == 0, payload
+    assert payload["summary"]["current_prompt_count"] == 0, payload
+    assert payload["summary"]["not_installed_prompt_count"] == 1, payload
+    assert payload["summary"]["ready_for_default_promotion"] is True, payload
+    installed = payload["managed_heartbeats"][0]["installed_prompts"]["thin"]
+    assert installed["status"] == "not_installed", payload
+    assert installed["requires_update"] is False, payload
+    assert installed["installed"] is False, payload
 
 
 def main() -> int:
@@ -115,6 +151,7 @@ def main() -> int:
         registry_path, manifest_path = write_fixture(Path(raw_tmp))
         first_payload = assert_unknown_manifest_blocks_promotion(registry_path)
         assert_matching_manifest_is_ready(registry_path, manifest_path, first_payload)
+        assert_not_installed_manifest_is_ready(registry_path, manifest_path)
     print("upgrade-plan-smoke ok")
     return 0
 

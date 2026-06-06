@@ -73,6 +73,16 @@ def installed_entry_digest(entry: dict[str, Any]) -> str | None:
     return None
 
 
+def entry_declares_not_installed(entry: dict[str, Any] | None) -> bool:
+    if not entry:
+        return False
+    status = str(entry.get("status") or "").replace("-", "_").lower()
+    if status in {"not_installed", "no_automation", "uninstalled"}:
+        return True
+    installed = entry.get("installed")
+    return installed is False
+
+
 def entry_key(entry: dict[str, Any]) -> tuple[str, str]:
     return str(entry.get("goal_id") or ""), str(entry.get("mode") or DEFAULT_UPGRADE_MODES[0])
 
@@ -133,14 +143,18 @@ def build_upgrade_plan(
             prompt_summaries[mode] = summary
             entry = installed_by_key.get((goal_id, mode))
             expected_digest = str(summary.get("sha256") or "")
-            actual_digest = installed_entry_digest(entry) if entry else None
+            not_installed = entry_declares_not_installed(entry)
+            actual_digest = None if not_installed else installed_entry_digest(entry) if entry else None
             status = "unknown"
-            if entry:
+            if not_installed:
+                status = "not_installed"
+            elif entry:
                 status = "current" if actual_digest == expected_digest else "stale"
             installed[mode] = {
                 "status": status,
-                "requires_update": status != "current",
+                "requires_update": status in {"unknown", "stale"},
                 "automation_id": entry.get("automation_id") if entry else None,
+                "installed": False if not_installed else bool(entry),
                 "prompt_sha256": actual_digest,
                 "expected_sha256": expected_digest,
             }
@@ -178,6 +192,12 @@ def build_upgrade_plan(
         for installed in goal["installed_prompts"].values()
         if installed["status"] == "current"
     )
+    not_installed = sum(
+        1
+        for goal in managed
+        for installed in goal["installed_prompts"].values()
+        if installed["status"] == "not_installed"
+    )
     ready = bool(managed) and unknown == 0 and stale == 0
     return {
         "ok": True,
@@ -192,6 +212,7 @@ def build_upgrade_plan(
             "current_prompt_count": current,
             "stale_prompt_count": stale,
             "unknown_prompt_count": unknown,
+            "not_installed_prompt_count": not_installed,
             "ready_for_default_promotion": ready,
         },
         "managed_heartbeats": managed,
@@ -216,6 +237,7 @@ def render_upgrade_plan_markdown(payload: dict[str, Any]) -> str:
         f"- current_prompt_count: `{summary.get('current_prompt_count')}`",
         f"- stale_prompt_count: `{summary.get('stale_prompt_count')}`",
         f"- unknown_prompt_count: `{summary.get('unknown_prompt_count')}`",
+        f"- not_installed_prompt_count: `{summary.get('not_installed_prompt_count')}`",
         f"- recommended_action: `{payload.get('recommended_action')}`",
     ]
     manifest = payload.get("installed_manifest") if isinstance(payload.get("installed_manifest"), dict) else {}

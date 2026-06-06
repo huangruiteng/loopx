@@ -162,6 +162,10 @@ for default promotion. This keeps connected projects from continuing on stale
 prompt branches after the local default version changes.
 Use `--mode brief` or `--mode compact` only when an installed automation is
 intentionally using one of the larger generated contracts.
+If a registry goal has no installed heartbeat automation, record that explicitly
+in the installed manifest with `installed=false` / `status=not_installed`;
+unlisted registry goals remain `unknown` so default promotion cannot silently
+skip a managed controller.
 
 If a project shell cannot find or run the command, `goal-harness doctor`
 reports PATH, wrapper, release snapshot, canary wrapper, installed skill
