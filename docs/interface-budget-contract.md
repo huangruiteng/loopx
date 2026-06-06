@@ -38,3 +38,31 @@ The regression entrypoint is:
 ```bash
 python3 examples/hot-path-interface-budget-smoke.py
 ```
+
+Cadence contract:
+
+The same smoke also emits and validates an `interface_budget_cadence` summary
+for clean drift checks. A drift-check run may record that summary in run
+history; `goal-harness status` projects it under
+`attention_queue.items[].project_asset.interface_budget_cadence`, and
+`quota should-run` mirrors the selected goal summary at top level. This lets a
+short heartbeat quiet-skip a still-fresh clean check without losing the ongoing
+guard todo.
+
+Stable cadence fields:
+
+- `checked_at`: when the hot-path budget check was run.
+- `freshness_hours`: how long the clean check remains fresh.
+- `next_check_due_at`: when the next check is due.
+- `overdue`: whether the current summary is past `next_check_due_at`.
+- `within_budget`: whether all measured hot-path surfaces fit their budgets.
+- `minimum_headroom_ratio`, `tightest_surface`, `tightest_metric`, and
+  `headroom_remaining`: compact headroom evidence for the tightest observed
+  surface.
+- `recommendation`: either `quiet_skip_until_next_check_due` or
+  `rerun_hot_path_interface_budget_smoke`.
+
+Do not add a heartbeat prompt branch for this cadence. Store exact measurements
+in run history, project only this compact decision summary, and rerun the smoke
+when `overdue=true` or when a prompt/status/quota/review-packet/dashboard
+contract changes.

@@ -1467,6 +1467,13 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
         )
         if backlog_warning:
             payload["backlog_hygiene_warning"] = backlog_warning
+        interface_budget_cadence = (
+            project_asset.get("interface_budget_cadence")
+            if isinstance(project_asset.get("interface_budget_cadence"), dict)
+            else None
+        )
+        if interface_budget_cadence:
+            payload["interface_budget_cadence"] = interface_budget_cadence
         decision_warning = _decision_freshness_warning(status_payload, goal_id=safe_goal_id)
         if decision_warning:
             payload["decision_freshness_warning"] = decision_warning
@@ -1986,6 +1993,23 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if backlog_hygiene_warning.get("recommended_action"):
             lines.append(f"- backlog_hygiene_action: {backlog_hygiene_warning.get('recommended_action')}")
+    interface_budget_cadence = (
+        payload.get("interface_budget_cadence")
+        if isinstance(payload.get("interface_budget_cadence"), dict)
+        else {}
+    )
+    if interface_budget_cadence:
+        lines.append(
+            "- interface_budget_cadence: "
+            f"overdue={interface_budget_cadence.get('overdue')} "
+            f"within_budget={interface_budget_cadence.get('within_budget')} "
+            f"checked_at={interface_budget_cadence.get('checked_at')} "
+            f"next_check_due_at={interface_budget_cadence.get('next_check_due_at')} "
+            f"tightest={interface_budget_cadence.get('tightest_surface')}/"
+            f"{interface_budget_cadence.get('tightest_metric')} "
+            f"headroom={interface_budget_cadence.get('headroom_remaining')} "
+            f"recommendation={interface_budget_cadence.get('recommendation')}"
+        )
     execution_profile = (
         payload.get("execution_profile")
         if isinstance(payload.get("execution_profile"), dict)
