@@ -122,6 +122,12 @@ also carries compact `handoff_readiness` with `handoff_status` and
 `post_handoff_run_seen`. Heartbeat jobs can therefore tell whether the selected
 goal is still waiting for a target run or has already seen post-handoff work
 without parsing the full status payload.
+`handoff_readiness.handoff_interface_budget` declares the machine-readable
+budget for the minimal project-agent handoff: `mode=project_agent_handoff`,
+`max_lines=16`, and `max_chars=1800`. `goal-harness review-packet
+--handoff-only --format json` returns the same contract plus live `line_count`,
+`char_count`, and `within_budget`, so a short heartbeat can reject handoff
+bloat without carrying this rule in prompt text.
 For spend accounting, status derives `spent_slots` from compact
 `quota_slot_spent` runtime events in the current quota window. The registry
 remains the policy source for compute share and window size, not the spend

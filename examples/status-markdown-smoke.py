@@ -27,6 +27,7 @@ from goal_harness.status import (  # noqa: E402
     render_status_markdown,
 )
 from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from goal_harness.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
 
 
 OLD_PLANNED_ACTION = "先审阅 Goal Harness operator gate；同意后再发送项目 agent 命令"
@@ -54,6 +55,14 @@ DEPENDENCY_CURRENT_GOAL_ID = "meta-hardening-fixture"
 DEPENDENCY_BLOCKER_GOAL_ID = "dependency-owner-gate"
 DEPENDENCY_AGENT_TODO = "Continue the gate-independent P1/P2 product-hardening slice."
 DEPENDENCY_USER_TODO = "Confirm the sibling project evidence gate before its controller resumes delivery."
+
+
+def assert_handoff_budget_contract(readiness: dict, label: str) -> None:
+    budget = readiness.get("handoff_interface_budget")
+    assert isinstance(budget, dict), (label, readiness)
+    assert budget["mode"] == PROJECT_AGENT_HANDOFF_BUDGET["mode"], (label, budget)
+    assert budget["max_lines"] == PROJECT_AGENT_HANDOFF_BUDGET["max_lines"], (label, budget)
+    assert budget["max_chars"] == PROJECT_AGENT_HANDOFF_BUDGET["max_chars"], (label, budget)
 
 
 def write_planned_registry(root: Path) -> Path:
@@ -1379,7 +1388,9 @@ def assert_connected_delivery_custom_run_stays_runnable(payload: dict, markdown:
     assert readiness["post_handoff_recent_runs"][0]["delivery_outcome"] == "outcome_progress", readiness
     assert readiness["post_handoff_small_scale_streak"] == 0, readiness
     assert readiness["post_handoff_outcome_gap_streak"] == 0, readiness
+    assert_handoff_budget_contract(readiness, "connected delivery status readiness")
     assert "delivery_ranker_readiness_batch" in markdown, markdown
+    assert "handoff_interface_budget: mode=project_agent_handoff max_lines=16 max_chars=1800" in markdown, markdown
     assert "handoff_state: status=post_handoff_run_seen post_handoff_run_seen=True ready_at=" in markdown, markdown
     assert "post_handoff_run: classification=delivery_ranker_readiness_batch" in markdown, markdown
     assert "scale=multi_surface" in markdown, markdown
@@ -1414,8 +1425,10 @@ def assert_connected_delivery_custom_run_stays_runnable(payload: dict, markdown:
     ), quota_payload
     assert quota_payload["handoff_readiness"]["post_handoff_small_scale_streak"] == 0, quota_payload
     assert quota_payload["handoff_readiness"]["post_handoff_outcome_gap_streak"] == 0, quota_payload
+    assert_handoff_budget_contract(quota_payload["handoff_readiness"], "connected delivery quota readiness")
     assert quota_payload["heartbeat_recommendation"]["recommended_mode"] == "steering_audit_then_one_step", quota_payload
     quota_markdown = render_quota_should_run_markdown(quota_payload)
+    assert "- handoff_interface_budget: mode=project_agent_handoff max_lines=16 max_chars=1800" in quota_markdown, quota_markdown
     assert "execution_profile: cadence=bounded_progress_segment minimum=implementation" in quota_markdown, quota_markdown
     assert "goal_boundary_orchestration: mode=multi_subagent spawn_allowed=True max_children=2" in quota_markdown, quota_markdown
 

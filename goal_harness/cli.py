@@ -115,6 +115,7 @@ def review_packet_handoff_only_payload(payload: dict[str, object]) -> dict[str, 
             "operator_gate_approved_handoff": payload.get("operator_gate_approved_handoff"),
             "connected_delivery_handoff": payload.get("connected_delivery_handoff"),
             "handoff_delivery_contract": agent_contract,
+            "handoff_interface_budget": payload.get("handoff_interface_budget"),
         }
     )
     return result

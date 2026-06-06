@@ -19,6 +19,7 @@ from .execution_profile import (
     execution_profile_outcome_floor,
     execution_profile_summary,
 )
+from .handoff_budget import handoff_budget_contract
 from .history import collect_history, load_registry
 from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
@@ -836,6 +837,7 @@ def project_asset_handoff_readiness(
         "codex_ready": codex_ready,
         "source": "project_asset",
         "quota_state": quota_state or "unknown",
+        "handoff_interface_budget": handoff_budget_contract(),
         "checks": checks,
     }
     readiness.update(
@@ -2736,6 +2738,18 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"source={_markdown_scalar(handoff_readiness.get('source') or '')} "
                     f"quota_state={_markdown_scalar(handoff_readiness.get('quota_state') or '')}"
                 )
+                interface_budget = (
+                    handoff_readiness.get("handoff_interface_budget")
+                    if isinstance(handoff_readiness.get("handoff_interface_budget"), dict)
+                    else {}
+                )
+                if interface_budget:
+                    lines.append(
+                        "      - handoff_interface_budget: "
+                        f"mode={_markdown_scalar(interface_budget.get('mode') or '')} "
+                        f"max_lines={interface_budget.get('max_lines')} "
+                        f"max_chars={interface_budget.get('max_chars')}"
+                    )
                 checks = (
                     handoff_readiness.get("checks")
                     if isinstance(handoff_readiness.get("checks"), dict)

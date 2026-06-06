@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from goal_harness.cli import review_packet_handoff_only_payload  # noqa: E402
+from goal_harness.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
 from goal_harness.review_packet import build_review_packet  # noqa: E402
 
 STATUS_DATA_CONTRACT_PATH = REPO_ROOT / "docs" / "status-data-contract.md"
@@ -28,8 +29,6 @@ FOCUS_WAIT_GOAL_ID = "focus-wait-owner-blocker"
 LOCAL_ABSOLUTE_PATH_PATTERN = re.compile(
     r"(^|[\s`'\"=:(])(?:/[A-Za-z0-9._-]+(?:/[^\s`'\",)]+)+|[A-Za-z]:[\\/][^\s`'\",)]+)"
 )
-MAX_PROJECT_AGENT_HANDOFF_LINES = 16
-MAX_PROJECT_AGENT_HANDOFF_CHARS = 1800
 PROJECT_AGENT_HANDOFF_FORBIDDEN_MARKERS = (
     "【Goal Harness Review Packet】",
     "【人只需判断】",
@@ -63,8 +62,8 @@ def assert_no_local_paths(value: Any, label: str) -> None:
 
 def assert_project_agent_handoff_compact(text: str, label: str, *, goal_id: str) -> None:
     lines = text.splitlines()
-    assert len(lines) <= MAX_PROJECT_AGENT_HANDOFF_LINES, (label, len(lines), text)
-    assert len(text) <= MAX_PROJECT_AGENT_HANDOFF_CHARS, (label, len(text), text)
+    assert len(lines) <= PROJECT_AGENT_HANDOFF_BUDGET["max_lines"], (label, len(lines), text)
+    assert len(text) <= PROJECT_AGENT_HANDOFF_BUDGET["max_chars"], (label, len(text), text)
     assert text.startswith(f"目标校验：本段只适用于 goal_id=`{goal_id}`"), (label, text)
     assert "上下文规则：本段只携带最小当前指令" in text, (label, text)
     assert "不要从旧聊天或旧 packet 拼当前状态" in text, (label, text)
@@ -76,10 +75,25 @@ def assert_project_agent_handoff_compact(text: str, label: str, *, goal_id: str)
         assert marker not in text, (label, marker, text)
 
 
+def assert_handoff_interface_budget(payload: dict[str, Any], label: str, *, text_key: str = "project_agent_handoff") -> None:
+    text = str(payload.get(text_key) or "")
+    budget = payload.get("handoff_interface_budget")
+    assert isinstance(budget, dict), (label, payload)
+    assert budget["mode"] == PROJECT_AGENT_HANDOFF_BUDGET["mode"], (label, budget)
+    assert budget["max_lines"] == PROJECT_AGENT_HANDOFF_BUDGET["max_lines"], (label, budget)
+    assert budget["max_chars"] == PROJECT_AGENT_HANDOFF_BUDGET["max_chars"], (label, budget)
+    assert budget["line_count"] == len(text.splitlines()), (label, budget, text)
+    assert budget["char_count"] == len(text), (label, budget, text)
+    assert budget["within_line_budget"] is True, (label, budget)
+    assert budget["within_char_budget"] is True, (label, budget)
+    assert budget["within_budget"] is True, (label, budget)
+
+
 def assert_status_data_contract_documents_handoff_budget() -> None:
     contract = STATUS_DATA_CONTRACT_PATH.read_text(encoding="utf-8")
     compact_contract = " ".join(contract.split())
     assert "within 16 lines and 1800 characters" in compact_contract, contract
+    assert "handoff_interface_budget" in compact_contract, contract
     assert "include at most one command block" in compact_contract, contract
     assert "optional delivery contract" in compact_contract, contract
     assert "mode=expand_after_repeated_small_delivery" in compact_contract, contract
@@ -333,6 +347,7 @@ def assert_attention_queue_drives_approved_handoff_over_stale_history() -> None:
         "approved attention queue project-agent handoff",
         goal_id=GOAL_ID,
     )
+    assert_handoff_interface_budget(payload, "approved attention queue project-agent handoff")
     assert "类型：Codex" in packet, packet
     assert "来源：project_asset（owner/gate/next/stop 来自 attention_queue.project_asset）" in packet, packet
     assert "项目资产来源：project_asset（owner/gate/next/stop 来自 attention_queue.project_asset）" in packet, packet
@@ -495,7 +510,9 @@ def assert_connected_delivery_surface_loop_requires_macro_evidence() -> None:
         "connected-delivery macro evidence handoff",
         goal_id=goal_id,
     )
+    assert_handoff_interface_budget(payload, "connected-delivery macro evidence handoff")
     handoff_only = review_packet_handoff_only_payload(payload)
+    assert_handoff_interface_budget(handoff_only, "connected-delivery handoff-only payload")
     agent_contract = handoff_only["handoff_delivery_contract"]
     assert set(agent_contract) == {"mode", "instruction", "minimum_scale", "must_include", "if_blocked"}, handoff_only
     assert agent_contract["mode"] == "expand_after_surface_progress_loop", handoff_only
@@ -836,6 +853,7 @@ def main() -> int:
             "controller project-agent handoff",
             goal_id=GOAL_ID,
         )
+        assert_handoff_interface_budget(payload, "controller project-agent handoff")
         assert payload["user_todo_text"] == "Read owner review worksheet first.", payload
         assert payload["agent_todo_text"] == "Run the read-only map dry-run after owner todo resolution.", payload
         assert payload["authority_summary"] == "authority/material: topics=2, materials=4, repositories=2, owner_review_required=1, stale=1, current_authority=1, risk=low", payload
@@ -866,6 +884,11 @@ def main() -> int:
             controller_handoff_payload["handoff_text"],
             "controller handoff-only json",
             goal_id=GOAL_ID,
+        )
+        assert_handoff_interface_budget(
+            controller_handoff_payload,
+            "controller handoff-only json",
+            text_key="handoff_text",
         )
 
         append_operator_gate_approval_fixture(root)
@@ -960,6 +983,7 @@ def main() -> int:
             "approved project-agent handoff",
             goal_id=GOAL_ID,
         )
+        assert_handoff_interface_budget(approved_payload, "approved project-agent handoff")
         assert approved_payload["operator_gate_dry_run_command"] is None, approved_payload
         assert approved_payload["operator_gate_decision_commands"] == {}, approved_payload
 
@@ -996,6 +1020,7 @@ def main() -> int:
             "handoff-only json",
             goal_id=GOAL_ID,
         )
+        assert_handoff_interface_budget(handoff_payload, "handoff-only json", text_key="handoff_text")
 
         after_files = sorted(path.name for path in run_dir.iterdir())
         assert after_files == before_files, "approved review-packet must not write runtime runs"

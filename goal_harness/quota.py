@@ -57,6 +57,7 @@ HANDOFF_READINESS_COMPACT_FIELDS = (
     "post_handoff_small_scale_streak",
     "post_handoff_outcome_gap_streak",
     "next_probe",
+    "handoff_interface_budget",
 )
 POST_HANDOFF_RUN_COMPACT_FIELDS = (
     "generated_at",
@@ -1820,6 +1821,18 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"source={handoff_readiness.get('source')} "
             f"quota_state={handoff_readiness.get('quota_state')}"
         )
+        interface_budget = (
+            handoff_readiness.get("handoff_interface_budget")
+            if isinstance(handoff_readiness.get("handoff_interface_budget"), dict)
+            else {}
+        )
+        if interface_budget:
+            lines.append(
+                "- handoff_interface_budget: "
+                f"mode={interface_budget.get('mode')} "
+                f"max_lines={interface_budget.get('max_lines')} "
+                f"max_chars={interface_budget.get('max_chars')}"
+            )
         lines.append(
             "- handoff_state: "
             f"status={handoff_readiness.get('handoff_status')} "

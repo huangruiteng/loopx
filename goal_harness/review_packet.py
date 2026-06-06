@@ -10,6 +10,7 @@ from .execution_profile import (
     execution_profile_threshold,
     outcome_floor_threshold,
 )
+from .handoff_budget import build_handoff_interface_budget
 
 
 LOCAL_ABSOLUTE_PATH_PATTERN = re.compile(
@@ -748,6 +749,7 @@ def build_review_packet(
         approved_operator_gate=approved_handoff,
         connected_delivery=delivery_handoff,
     )
+    handoff_interface_budget = build_handoff_interface_budget(agent_text)
     type_label = {
         "reward": "Reward",
         "controller": "Controller",
@@ -814,6 +816,7 @@ def build_review_packet(
         "authority_summary": authority_summary,
         "handoff_followthrough_summary": followthrough_summary,
         "handoff_delivery_contract": delivery_contract,
+        "handoff_interface_budget": handoff_interface_budget,
         "decision_freshness_warning": freshness_warning,
         "project_asset_source": asset_source,
         "packet": "\n".join(line for line in lines if line),

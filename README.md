@@ -394,6 +394,12 @@ Generate a review packet for a project agent:
 goal-harness review-packet --goal-id your-project-goal
 ```
 
+Use `--handoff-only --format json` when a controller needs to forward only the
+minimal project-agent handoff. The JSON includes `handoff_interface_budget`
+with live line/character counts and `within_budget`; status and quota guards
+publish the same max-lines/max-chars contract through
+`handoff_readiness.handoff_interface_budget`.
+
 Record an operator gate decision:
 
 ```bash
