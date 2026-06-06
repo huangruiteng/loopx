@@ -131,6 +131,7 @@ def collect_history(
             "adapter_kind": adapter.get("kind"),
             "adapter_status": adapter.get("status"),
             "coordination": meta.get("coordination") if isinstance(meta.get("coordination"), dict) else None,
+            "spawn_policy": meta.get("spawn_policy") if isinstance(meta.get("spawn_policy"), dict) else None,
             "execution_profile": compact_execution_profile(meta.get("execution_profile")) if registry_member else None,
             "guards": meta.get("guards") if isinstance(meta.get("guards"), list) else [],
             "next_probe": meta.get("next_probe") if registry_member else None,

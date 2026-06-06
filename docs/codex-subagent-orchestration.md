@@ -94,6 +94,7 @@ Controller/sub-agent fields should stay minimal in v0.1:
   "role": "controller",
   "parent_goal_id": null,
   "spawn_policy": {
+    "mode": "multi_subagent",
     "allowed": true,
     "max_children": 3,
     "allowed_domains": ["docs-map", "validation-map", "implementation-slice"],
@@ -111,6 +112,13 @@ Controller/sub-agent fields should stay minimal in v0.1:
   }
 }
 ```
+
+`spawn_policy.mode` is the control-plane execution mode. `default` means the
+goal should run as a single ordinary Codex worker. `multi_subagent` means the
+controller may launch child workers within `max_children`, `allowed_domains`,
+and the coordination/write-scope rules. Status and quota derive the same
+compact `orchestration` projection from this policy so agents do not need to
+infer sub-agent permissions from chat history.
 
 For a child goal:
 

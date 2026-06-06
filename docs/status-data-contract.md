@@ -546,11 +546,14 @@ Item fields:
   may include compact `user_todos`, `agent_todos`, `quota`, and
   `latest_validation` summaries. Registry-backed project assets also include
   `execution_profile`, the project-level delivery floor created by
-  `goal-harness connect`. This is the first-screen project asset surface for
+  `goal-harness connect`, and `orchestration`, the compact projection of
+  registry `spawn_policy` with `mode`, `spawn_allowed`, `max_children`, and
+  optional `allowed_domains`. This is the first-screen project asset surface for
   agents and dashboards; it lets consumers avoid reconstructing owner, gate,
-  next action, stop condition, todo counts, compute state, and latest
-  validation from scattered fields. It also keeps delivery-floor policy close
-  to the project asset instead of forcing agents to infer it from history.
+  next action, stop condition, todo counts, compute state, latest validation,
+  and sub-agent mode from scattered fields. It also keeps delivery-floor and
+  orchestration policy close to the project asset instead of forcing agents to
+  infer them from history.
   Markdown renderers should
   include the first unfinished user and agent todo here when available, so
   hot-path readers do not need to scan the detailed todo sections. The richer
@@ -653,6 +656,11 @@ visible project card is waiting on user/controller/evidence. It is a candidate
 surface only: consumers must still obey the selected goal's quota,
 `goal_boundary`, owner/gate, public/private boundary, and validation/writeback
 rules before spending a turn.
+
+`quota should-run` includes `goal_boundary.orchestration` when the selected goal
+has registry `spawn_policy` or project-asset orchestration state. Consumers use
+that boundary to decide whether the next bounded turn should stay in default
+single-worker mode or may launch child workers under the declared limits.
 
 Registry entries may override first-screen attention with optional public-safe
 fields: `waiting_on`, `attention_status`, `recommended_action`,

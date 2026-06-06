@@ -12,6 +12,7 @@ from .execution_profile import (
     execution_profile_summary,
     outcome_floor_threshold,
 )
+from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 
 
 DEFAULT_COMPUTE_QUOTA = 1.0
@@ -542,6 +543,9 @@ def _goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> 
         boundary["guards"] = [str(value) for value in guards if str(value).strip()]
     if goal.get("next_probe"):
         boundary["next_probe"] = str(goal.get("next_probe"))
+    spawn_policy = goal.get("spawn_policy") if isinstance(goal.get("spawn_policy"), dict) else None
+    if spawn_policy is not None:
+        boundary["orchestration"] = compact_orchestration_policy(spawn_policy)
     project_asset_source = item if item is not None else goal
     if isinstance(project_asset_source, dict) and project_asset_source.get("project_asset"):
         project_asset = project_asset_source.get("project_asset")
@@ -550,6 +554,8 @@ def _goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> 
                 boundary["stop_condition"] = project_asset.get("stop_condition")
             if isinstance(project_asset.get("execution_profile"), dict):
                 boundary["execution_profile"] = project_asset["execution_profile"]
+            if isinstance(project_asset.get("orchestration"), dict):
+                boundary["orchestration"] = compact_orchestration_policy(project_asset["orchestration"])
     if boundary:
         boundary["rule"] = "Follow this boundary before choosing delivery work; stop if useful work requires an unapproved scope."
         return boundary
@@ -849,6 +855,7 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
             "adapter_kind": goal.get("adapter_kind"),
             "adapter_status": goal.get("adapter_status"),
             "coordination": goal.get("coordination") if isinstance(goal.get("coordination"), dict) else None,
+            "spawn_policy": goal.get("spawn_policy") if isinstance(goal.get("spawn_policy"), dict) else None,
             "guards": goal.get("guards") if isinstance(goal.get("guards"), list) else [],
             "next_probe": goal.get("next_probe"),
             "latest_run_generated_at": latest.get("generated_at"),
@@ -1793,6 +1800,13 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         guards = goal_boundary.get("guards") if isinstance(goal_boundary.get("guards"), list) else []
         for guard in guards[:5]:
             lines.append(f"- goal_boundary_guard: {guard}")
+        orchestration = (
+            goal_boundary.get("orchestration")
+            if isinstance(goal_boundary.get("orchestration"), dict)
+            else None
+        )
+        if orchestration:
+            lines.append(f"- goal_boundary_orchestration: {orchestration_policy_summary(orchestration)}")
         if goal_boundary.get("stop_condition"):
             lines.append(f"- goal_boundary_stop_condition: {goal_boundary.get('stop_condition')}")
     if payload.get("operator_question"):

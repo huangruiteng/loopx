@@ -6,6 +6,7 @@ from typing import Any
 
 from .authority import authority_registry_summary
 from .execution_profile import compact_execution_profile, execution_profile_summary
+from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .quota import goal_quota_config
 
 
@@ -85,6 +86,7 @@ def inspect_registry(path: Path) -> dict[str, Any]:
         repo_ids = repo_goal_ids.get(stable_path_key(repo), []) if repo else []
         adapter = raw_goal.get("adapter") if isinstance(raw_goal.get("adapter"), dict) else {}
         spawn_policy = raw_goal.get("spawn_policy") if isinstance(raw_goal.get("spawn_policy"), dict) else {}
+        orchestration = compact_orchestration_policy(spawn_policy)
         execution_profile = compact_execution_profile(raw_goal.get("execution_profile"))
         authority_sources = raw_goal.get("authority_sources")
         if not isinstance(authority_sources, list):
@@ -134,6 +136,8 @@ def inspect_registry(path: Path) -> dict[str, Any]:
                 "operator_question": raw_goal.get("operator_question"),
                 "recommended_action": raw_goal.get("recommended_action"),
                 "next_handoff_condition": raw_goal.get("next_handoff_condition"),
+                "orchestration": orchestration,
+                "orchestration_mode": orchestration.get("mode"),
                 "spawn_allowed": spawn_policy.get("allowed"),
                 "max_children": spawn_policy.get("max_children"),
                 "next_probe": raw_goal.get("next_probe"),
@@ -186,7 +190,9 @@ def render_registry_markdown(payload: dict[str, Any]) -> str:
     )
     for goal in payload.get("goals") or []:
         adapter = f"{goal.get('adapter_kind')}:{goal.get('adapter_status')}"
-        spawn = f"{goal.get('spawn_allowed')}:{goal.get('max_children')}"
+        spawn = orchestration_policy_summary(
+            goal.get("orchestration") if isinstance(goal.get("orchestration"), dict) else None
+        )
         next_probe = str(goal.get("next_probe") or "").replace("|", "\\|")
         authority_suffix = ""
         if goal.get("authority_source_count"):

@@ -21,6 +21,7 @@ from .execution_profile import (
 from .history import collect_history, load_registry
 from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
+from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .paths import global_registry_path, resolve_runtime_root
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
@@ -857,6 +858,7 @@ def enrich_project_asset(
     latest_validation: dict[str, Any] | None = None,
     latest_runs: list[dict[str, Any]] | None = None,
     execution_profile: dict[str, Any] | None = None,
+    orchestration: dict[str, Any] | None = None,
 ) -> None:
     project_asset = item.get("project_asset")
     if not isinstance(project_asset, dict):
@@ -872,6 +874,8 @@ def enrich_project_asset(
         project_asset["quota"] = quota_summary
     if execution_profile is not None:
         project_asset["execution_profile"] = compact_execution_profile(execution_profile)
+    if orchestration is not None:
+        project_asset["orchestration"] = compact_orchestration_policy(orchestration)
     if latest_validation:
         project_asset["latest_validation"] = latest_validation
     readiness = project_asset_handoff_readiness(item, latest_runs=latest_runs)
@@ -1565,6 +1569,11 @@ def build_attention_queue(
                 execution_profile=(
                     goal.get("execution_profile")
                     if isinstance(goal.get("execution_profile"), dict)
+                    else None
+                ),
+                orchestration=(
+                    goal.get("spawn_policy")
+                    if isinstance(goal.get("spawn_policy"), dict)
                     else None
                 ),
             )
@@ -2653,6 +2662,16 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                 lines.append(
                     "    - execution_profile: "
                     f"{_markdown_scalar(execution_profile_summary(asset_execution_profile))}"
+                )
+            asset_orchestration = (
+                project_asset.get("orchestration")
+                if isinstance(project_asset.get("orchestration"), dict)
+                else None
+            )
+            if asset_orchestration:
+                lines.append(
+                    "    - orchestration: "
+                    f"{_markdown_scalar(orchestration_policy_summary(asset_orchestration))}"
                 )
             asset_user_todos = (
                 project_asset.get("user_todos")

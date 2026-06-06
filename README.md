@@ -328,6 +328,10 @@ goal-harness bootstrap \
   --write-scope "docs/**"
 ```
 
+Connected goals that enable spawning write `spawn_policy.mode` and expose a
+compact `orchestration` projection in status/quota, so the control plane can
+switch between default and multi-sub-agent execution modes.
+
 To generate a copy-paste prompt for a Codex session that will connect a
 project:
 

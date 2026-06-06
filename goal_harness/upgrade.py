@@ -159,7 +159,6 @@ def build_upgrade_plan(
                 "expected_sha256": expected_digest,
             }
 
-        mode_statuses = [item["status"] for item in installed.values()]
         managed.append(
             {
                 "goal_id": goal_id,
@@ -170,7 +169,7 @@ def build_upgrade_plan(
                 "state_file_exists": bool(state_file and state_file.exists()),
                 "generated_prompts": prompt_summaries,
                 "installed_prompts": installed,
-                "requires_update": any(status != "current" for status in mode_statuses),
+                "requires_update": any(item["requires_update"] for item in installed.values()),
             }
         )
 

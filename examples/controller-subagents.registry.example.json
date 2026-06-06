@@ -23,6 +23,7 @@
         "status": "connected"
       },
       "spawn_policy": {
+        "mode": "multi_subagent",
         "allowed": true,
         "max_children": 3,
         "allowed_domains": [

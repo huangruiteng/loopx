@@ -141,6 +141,7 @@ def assert_not_installed_manifest_is_ready(registry_path: Path, manifest_path: P
     assert payload["summary"]["not_installed_prompt_count"] == 1, payload
     assert payload["summary"]["ready_for_default_promotion"] is True, payload
     installed = payload["managed_heartbeats"][0]["installed_prompts"]["thin"]
+    assert payload["managed_heartbeats"][0]["requires_update"] is False, payload
     assert installed["status"] == "not_installed", payload
     assert installed["requires_update"] is False, payload
     assert installed["installed"] is False, payload

@@ -12,6 +12,10 @@ from .execution_profile import (
     execution_profile_summary,
 )
 from .global_registry import sync_project_registry_to_global
+from .orchestration import (
+    DEFAULT_ORCHESTRATION_MODE,
+    MULTI_SUBAGENT_ORCHESTRATION_MODE,
+)
 from .paths import DEFAULT_RUNTIME_ROOT, rel_or_abs
 
 
@@ -169,6 +173,11 @@ def build_goal_entry(
             "status": adapter_status,
         },
         "spawn_policy": {
+            "mode": (
+                MULTI_SUBAGENT_ORCHESTRATION_MODE
+                if spawn_allowed and max(0, max_children) > 0
+                else DEFAULT_ORCHESTRATION_MODE
+            ),
             "allowed": spawn_allowed,
             "max_children": max(0, max_children),
             "allowed_domains": allowed_domains,

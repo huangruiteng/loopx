@@ -150,6 +150,12 @@ def write_connected_delivery_registry(root: Path) -> Path:
                             "write_scope": ["src/**", "tests/**"],
                             "requires_parent_approval": ["publish", "production-action"],
                         },
+                        "spawn_policy": {
+                            "mode": "multi_subagent",
+                            "allowed": True,
+                            "max_children": 2,
+                            "allowed_domains": ["docs-map", "validation-map"],
+                        },
                         "execution_profile": {
                             "cadence": "bounded_progress_segment",
                             "minimum_scale": "implementation",
@@ -1357,6 +1363,8 @@ def assert_connected_delivery_custom_run_stays_runnable(payload: dict, markdown:
     assert item["project_asset"]["next_action"] == DELIVERY_ACTION, item
     assert item["project_asset"]["execution_profile"]["minimum_scale"] == "implementation", item
     assert item["project_asset"]["execution_profile"]["degradation_policy"]["small_scale_streak_threshold"] == 3, item
+    assert item["project_asset"]["orchestration"]["mode"] == "multi_subagent", item
+    assert item["project_asset"]["orchestration"]["max_children"] == 2, item
     assert item["project_asset"]["agent_todos"]["open"] == 1, item
     assert item["agent_todos"]["open_count"] == 1, item
     assert item["agent_todos"]["items"][0]["text"] == DELIVERY_AGENT_TODO, item
@@ -1378,6 +1386,7 @@ def assert_connected_delivery_custom_run_stays_runnable(payload: dict, markdown:
     assert "outcome=outcome_progress" in markdown, markdown
     assert "post_handoff_recent_scales: multi_surface small_streak=0 outcome=outcome_progress outcome_gap_streak=0" in markdown, markdown
     assert "execution_profile: cadence=bounded_progress_segment minimum=implementation" in markdown, markdown
+    assert "orchestration: mode=multi_subagent spawn_allowed=True max_children=2" in markdown, markdown
     assert f"asset_agent_todo: {DELIVERY_AGENT_TODO}" in markdown, markdown
 
     quota_payload = build_quota_should_run(payload, goal_id=DELIVERY_GOAL_ID)
@@ -1389,6 +1398,8 @@ def assert_connected_delivery_custom_run_stays_runnable(payload: dict, markdown:
     assert quota_payload["goal_boundary"]["write_scope"] == ["src/**", "tests/**"], quota_payload
     assert quota_payload["execution_profile"]["minimum_scale"] == "implementation", quota_payload
     assert quota_payload["goal_boundary"]["execution_profile"]["minimum_scale"] == "implementation", quota_payload
+    assert quota_payload["goal_boundary"]["orchestration"]["mode"] == "multi_subagent", quota_payload
+    assert quota_payload["goal_boundary"]["orchestration"]["max_children"] == 2, quota_payload
     assert (
         quota_payload["handoff_readiness"]["post_handoff_latest_run"]["delivery_batch_scale"]
         == "multi_surface"
@@ -1406,6 +1417,7 @@ def assert_connected_delivery_custom_run_stays_runnable(payload: dict, markdown:
     assert quota_payload["heartbeat_recommendation"]["recommended_mode"] == "steering_audit_then_one_step", quota_payload
     quota_markdown = render_quota_should_run_markdown(quota_payload)
     assert "execution_profile: cadence=bounded_progress_segment minimum=implementation" in quota_markdown, quota_markdown
+    assert "goal_boundary_orchestration: mode=multi_subagent spawn_allowed=True max_children=2" in quota_markdown, quota_markdown
 
 
 def assert_connected_readonly_progress_run_stays_runnable(payload: dict, markdown: str) -> None:
@@ -1530,7 +1542,10 @@ def assert_connected_delivery_surface_loop(payload: dict, markdown: str) -> None
     ) in markdown, markdown
 
     quota_payload = build_quota_should_run(payload, goal_id=DELIVERY_GOAL_ID)
-    assert quota_payload["should_run"] is False, quota_payload
+    assert quota_payload["should_run"] is True, quota_payload
+    assert quota_payload["decision"] == "safe_bypass_recovery", quota_payload
+    assert quota_payload["recovery_delivery_allowed"] is True, quota_payload
+    assert quota_payload["normal_delivery_allowed"] is False, quota_payload
     assert quota_payload["state"] == "focus_wait", quota_payload
     assert quota_payload["quota"]["blocked_action_scope"] == "delivery_outcome_floor", quota_payload
     assert quota_payload["quota"]["handoff_outcome_floor_block"] is True, quota_payload
@@ -1542,7 +1557,9 @@ def assert_connected_delivery_surface_loop(payload: dict, markdown: str) -> None
     quota_readiness = quota_payload["handoff_readiness"]
     assert quota_readiness["post_handoff_outcome_gap_streak"] == 3, quota_payload
     quota_markdown = render_quota_should_run_markdown(quota_payload)
-    assert "- should_run: `False`" in quota_markdown, quota_markdown
+    assert "- decision: `safe_bypass_recovery`" in quota_markdown, quota_markdown
+    assert "- should_run: `True`" in quota_markdown, quota_markdown
+    assert "- recovery_delivery_allowed: `True`" in quota_markdown, quota_markdown
     assert "- state: `focus_wait`" in quota_markdown, quota_markdown
     assert "- safe_bypass_allowed: `True`" in quota_markdown, quota_markdown
     assert "- safe_bypass_kind: outcome_floor_recovery" in quota_markdown, quota_markdown

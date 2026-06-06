@@ -311,6 +311,7 @@ Minimal registry fields for this pattern are:
   "role": "controller",
   "parent_goal_id": null,
   "spawn_policy": {
+    "mode": "multi_subagent",
     "allowed": true,
     "max_children": 3,
     "allowed_domains": ["docs-map", "validation-map"]
@@ -322,6 +323,11 @@ Minimal registry fields for this pattern are:
   }
 }
 ```
+
+When `spawn_policy.mode=multi_subagent`, status exposes
+`project_asset.orchestration` and quota exposes `goal_boundary.orchestration`.
+This makes the selected execution mode visible to dashboards and heartbeat
+dispatchers instead of relying on prompt text.
 
 These fields are a public contract, not a runtime lock manager. A future version
 can add claim files, stale-claim detection, and overlap warnings.

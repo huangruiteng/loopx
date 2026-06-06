@@ -994,6 +994,12 @@ def assert_goal_boundary_in_should_run() -> None:
                     "managed-mirror-sync",
                 ],
             },
+            "spawn_policy": {
+                "mode": "multi_subagent",
+                "allowed": True,
+                "max_children": 2,
+                "allowed_domains": ["side-bypass"],
+            },
             "guards": [
                 "low-conflict delivery within side-bypass write_scope only",
                 "do not touch protected main-control files",
@@ -1025,10 +1031,13 @@ def assert_goal_boundary_in_should_run() -> None:
     assert boundary["adapter"]["status"] == "connected-delivery", boundary
     assert boundary["write_scope"] == ["docs/design/**", "src/agent_harness/**", "tests/**"], boundary
     assert "production-action" in boundary["requires_parent_approval"], boundary
+    assert boundary["orchestration"]["mode"] == "multi_subagent", boundary
+    assert boundary["orchestration"]["max_children"] == 2, boundary
     assert "low-conflict delivery" in boundary["guards"][0], boundary
     assert "goal_boundary_adapter: agent_harness_side_bypass_delivery_v0:connected-delivery" in markdown, markdown
     assert "goal_boundary_write_scope: docs/design/**, src/agent_harness/**, tests/**" in markdown, markdown
     assert "goal_boundary_requires_approval:" in markdown, markdown
+    assert "goal_boundary_orchestration: mode=multi_subagent spawn_allowed=True max_children=2" in markdown, markdown
 
 
 def assert_decision_freshness_warning_in_should_run() -> None:
