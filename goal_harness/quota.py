@@ -1449,6 +1449,15 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
         )
         if agent_todo_summary:
             payload["agent_todo_summary"] = agent_todo_summary
+        projection_warning = (
+            item.get("stale_latest_run_warning")
+            if isinstance(item.get("stale_latest_run_warning"), dict)
+            else project_asset.get("stale_latest_run_warning")
+            if isinstance(project_asset.get("stale_latest_run_warning"), dict)
+            else None
+        )
+        if projection_warning:
+            payload["stale_latest_run_warning"] = projection_warning
         decision_warning = _decision_freshness_warning(status_payload, goal_id=safe_goal_id)
         if decision_warning:
             payload["decision_freshness_warning"] = decision_warning
@@ -1939,6 +1948,21 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
     ]
     if payload.get("project_asset_source"):
         lines.append(f"- project_asset_source: {payload.get('project_asset_source')}")
+    stale_latest_run_warning = (
+        payload.get("stale_latest_run_warning")
+        if isinstance(payload.get("stale_latest_run_warning"), dict)
+        else {}
+    )
+    if stale_latest_run_warning:
+        lines.append(
+            "- stale_latest_run_warning: "
+            f"requires_refresh_state={stale_latest_run_warning.get('requires_refresh_state')} "
+            f"active_state_updated_at={stale_latest_run_warning.get('active_state_updated_at')} "
+            f"latest_run_generated_at={stale_latest_run_warning.get('latest_run_generated_at')} "
+            f"reason={stale_latest_run_warning.get('reason')}"
+        )
+        if stale_latest_run_warning.get("recommended_action"):
+            lines.append(f"- stale_latest_run_action: {stale_latest_run_warning.get('recommended_action')}")
     execution_profile = (
         payload.get("execution_profile")
         if isinstance(payload.get("execution_profile"), dict)

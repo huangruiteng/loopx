@@ -8,6 +8,7 @@ temporary planned read-only-map goal.
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -27,6 +28,7 @@ from goal_harness.status import (  # noqa: E402
     render_status_markdown,
 )
 from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from goal_harness.review_packet import build_review_packet  # noqa: E402
 from goal_harness.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
 
 
@@ -624,6 +626,56 @@ def append_orphan_runtime_fixture(root: Path, *, goal_id: str, generated_at: str
             )
             + "\n"
         )
+
+
+def append_stale_state_projection_fixture(root: Path) -> None:
+    goal_id = "planned-main-control"
+    state_path = root / "project" / ".codex" / "goals" / goal_id / "ACTIVE_GOAL_STATE.md"
+    old_state_text = state_path.read_text(encoding="utf-8")
+    old_state_text = old_state_text.replace(
+        "updated_at: 2026-01-01T00:00:00+00:00",
+        "updated_at: 2026-01-01T00:01:00+00:00",
+    )
+    state_path.write_text(old_state_text, encoding="utf-8")
+    run_dir = root / "runtime" / "goals" / goal_id / "runs"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    generated_at = "2026-01-01T00:02:00+00:00"
+    compact_time = generated_at.replace("-", "").replace(":", "")
+    json_path = run_dir / f"{compact_time}-state-refreshed.json"
+    markdown_path = run_dir / f"{compact_time}-state-refreshed.md"
+    record = {
+        "generated_at": generated_at,
+        "goal_id": goal_id,
+        "classification": "state_refreshed",
+        "recommended_action": "inspect refreshed active goal state and continue",
+        "health_check": "fixture state refresh with stale later active state",
+        "state": {
+            "sha256_16": hashlib.sha256(old_state_text.encode("utf-8")).hexdigest()[:16],
+            "frontmatter": {
+                "status": "planned-high-complexity",
+                "updated_at": "2026-01-01T00:01:00+00:00",
+            },
+        },
+    }
+    json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    markdown_path.write_text("# Fixture state refresh\n", encoding="utf-8")
+    with (run_dir / "index.jsonl").open("a", encoding="utf-8") as f:
+        f.write(
+            json.dumps(
+                {
+                    **record,
+                    "json_path": str(json_path),
+                    "markdown_path": str(markdown_path),
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+    new_state_text = old_state_text.replace(
+        "updated_at: 2026-01-01T00:01:00+00:00",
+        "updated_at: 2026-01-01T00:03:00+00:00",
+    )
+    state_path.write_text(new_state_text, encoding="utf-8")
 
 
 def set_registry_attention_override(registry_path: Path) -> None:
@@ -1735,6 +1787,33 @@ def assert_explicit_delivery_refresh(payload: dict, markdown: str) -> None:
     assert quota_payload["handoff_readiness"]["post_handoff_latest_run"]["delivery_outcome"] == "outcome_progress", quota_payload
 
 
+def assert_stale_latest_run_projection_warning(payload: dict, markdown: str) -> None:
+    items = payload["attention_queue"]["items"]
+    item = items[0]
+    warning = item["stale_latest_run_warning"]
+    assert warning["kind"] == "stale_latest_run_projection", warning
+    assert warning["requires_refresh_state"] is True, warning
+    assert warning["active_state_updated_at"] == "2026-01-01T00:03:00+00:00", warning
+    assert warning["latest_run_generated_at"] == "2026-01-01T00:02:00+00:00", warning
+    assert "active_state_updated_after_latest_run" in warning["reason"], warning
+    assert "active_state_digest_differs_from_latest_run_snapshot" in warning["reason"], warning
+    assert item["project_asset"]["stale_latest_run_warning"] == warning, item
+    assert "stale_latest_run_warning: requires_refresh_state=True" in markdown, markdown
+    assert "active_state_updated_at=2026-01-01T00:03:00+00:00" in markdown, markdown
+
+    quota_payload = build_quota_should_run(payload, goal_id="planned-main-control")
+    quota_warning = quota_payload["stale_latest_run_warning"]
+    assert quota_warning["requires_refresh_state"] is True, quota_payload
+    quota_markdown = render_quota_should_run_markdown(quota_payload)
+    assert "stale_latest_run_warning: requires_refresh_state=True" in quota_markdown, quota_markdown
+    assert "stale_latest_run_action: run refresh-state before trusting latest_run-derived routing" in quota_markdown, quota_markdown
+
+    packet = build_review_packet(payload, goal_id="planned-main-control", action_kind="codex")
+    assert packet["stale_latest_run_warning"]["requires_refresh_state"] is True, packet
+    assert "【状态投影警告】" in packet["packet"], packet
+    assert "先 refresh-state，再信任基于 latest_run 的路由/交接" in packet["packet"], packet
+
+
 def assert_handoff_waiting_for_post_run(item: dict, markdown: str) -> None:
     readiness = item["handoff_readiness"]
     assert readiness["ready"] is True, readiness
@@ -1885,6 +1964,11 @@ def main() -> int:
         explicit_registry_path = write_connected_delivery_registry(root)
         append_explicit_delivery_refresh(root, explicit_registry_path)
         explicit_payload, explicit_markdown = collect_fixture_status(root, explicit_registry_path)
+    with tempfile.TemporaryDirectory(prefix="goal-harness-status-stale-latest-run-") as tmp:
+        root = Path(tmp)
+        stale_projection_registry_path = write_planned_registry(root)
+        append_stale_state_projection_fixture(root)
+        stale_projection_payload, stale_projection_markdown = collect_fixture_status(root, stale_projection_registry_path)
     with tempfile.TemporaryDirectory(prefix="goal-harness-status-connected-readonly-progress-") as tmp:
         root = Path(tmp)
         readonly_registry_path = write_connected_readonly_registry(root)
@@ -2003,6 +2087,7 @@ def main() -> int:
     assert_connected_delivery_custom_run_stays_runnable(delivery_payload, delivery_markdown)
     assert_source_registry_shadow_collapses_into_live_queue_item(shadow_payload)
     assert_explicit_delivery_refresh(explicit_payload, explicit_markdown)
+    assert_stale_latest_run_projection_warning(stale_projection_payload, stale_projection_markdown)
     assert_connected_readonly_progress_run_stays_runnable(readonly_payload, readonly_markdown)
     assert_dependency_blockers_stay_separate(dependency_payload, dependency_markdown)
     assert_connected_delivery_no_baseline_small_streak(small_streak_payload, small_streak_markdown)

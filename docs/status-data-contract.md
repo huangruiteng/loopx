@@ -593,8 +593,13 @@ Item fields:
   `goal-harness connect`, and `orchestration`, the compact projection of
   registry `spawn_policy` with `mode`, `spawn_allowed`, `max_children`, and
   optional `allowed_domains`. They may also include `control_plane`, the
-  compact per-goal policy projection for settings such as self-repair. This is
-  the first-screen project asset surface for
+  compact per-goal policy projection for settings such as self-repair, and
+  `stale_latest_run_warning`, a compact warning that the current active-state
+  file appears newer or different from the latest run's captured state
+  projection. This warning is a repair hint, not a scheduler gate: consumers
+  should run `refresh-state` before trusting latest-run-derived routing, while
+  quota eligibility still comes from the quota guard.
+  This is the first-screen project asset surface for
   agents and dashboards; it lets consumers avoid reconstructing owner, gate,
   next action, stop condition, todo counts, compute state, and latest validation
   from scattered fields. It also keeps delivery-floor and
@@ -777,6 +782,11 @@ that generic lifecycle hint before inventing local automation behavior:
 once, while `mapped_noop_if_unchanged` returns a quiet no-op without another
 dry-run or quota spend if no new instruction, evidence, todo, stale source, or
 safe handoff exists.
+When the payload includes `stale_latest_run_warning`, the current active-state
+projection has moved ahead of the latest run-history snapshot. Executors should
+repair the control-plane projection with a fresh state refresh before relying on
+latest-run status, review packets, or handoff fields, but the warning alone does
+not authorize production actions or override `should_run`.
 The payload also includes `execution_obligation`, which is the stronger worker
 contract. `heartbeat_recommendation.notify` is only a user-facing notification
 policy. It must not be interpreted as an execution gate. If

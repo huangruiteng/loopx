@@ -116,6 +116,19 @@ export const projectAssetLatestValidationSchema = z.object({
   summary: z.string().optional().nullable(),
 });
 
+export const staleLatestRunWarningSchema = z.object({
+  kind: z.string().optional().nullable(),
+  source: z.string().optional().nullable(),
+  severity: z.string().optional().nullable(),
+  requires_refresh_state: z.boolean().optional().default(false),
+  reason: z.string().optional().nullable(),
+  active_state_updated_at: z.string().optional().nullable(),
+  latest_run_generated_at: z.string().optional().nullable(),
+  latest_run_state_updated_at: z.string().optional().nullable(),
+  latest_run_classification: z.string().optional().nullable(),
+  recommended_action: z.string().optional().nullable(),
+});
+
 export const postHandoffRunSchema = z.object({
   generated_at: z.string().optional().nullable(),
   classification: z.string().optional().nullable(),
@@ -163,6 +176,7 @@ export const projectAssetSchema = z.object({
   control_plane: controlPlaneSchema.optional().nullable(),
   orchestration: orchestrationPolicySchema.optional().nullable(),
   latest_validation: projectAssetLatestValidationSchema.optional().nullable(),
+  stale_latest_run_warning: staleLatestRunWarningSchema.optional().nullable(),
 });
 
 export const queueItemSchema = z.object({
@@ -185,6 +199,7 @@ export const queueItemSchema = z.object({
   control_plane: controlPlaneSchema.optional().nullable(),
   user_todos: todoGroupSchema.optional().nullable(),
   agent_todos: todoGroupSchema.optional().nullable(),
+  stale_latest_run_warning: staleLatestRunWarningSchema.optional().nullable(),
   dependency_blockers: dependencyBlockerSummarySchema.optional().nullable(),
   todo_state_file: z.string().optional().nullable(),
 });

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+import hashlib
 from pathlib import Path
 import re
 from typing import Any
@@ -263,6 +264,21 @@ def normalize_todo_text(text: str, *, limit: int = 500) -> str:
     if len(compact) <= limit:
         return compact
     return compact[: limit - 1].rstrip() + "…"
+
+
+def parse_state_frontmatter(state_text: str) -> dict[str, str]:
+    if not state_text.startswith("---"):
+        return {}
+    parts = state_text.split("---", 2)
+    if len(parts) < 3:
+        return {}
+    result: dict[str, str] = {}
+    for line in parts[1].splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        result[key.strip()] = value.strip().strip('"')
+    return result
 
 
 def todo_role_for_heading(heading: str) -> str | None:
@@ -633,6 +649,57 @@ def project_asset_latest_validation(run: dict[str, Any] | None) -> dict[str, Any
     if summary:
         signal["summary"] = normalize_todo_text(str(summary), limit=260)
     return signal or None
+
+
+def active_state_projection_warning(goal: dict[str, Any], current_run: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(goal, dict) or not goal.get("registry_member") or not isinstance(current_run, dict):
+        return None
+    state_path = resolve_goal_local_path(goal.get("state_file"), goal, fallback_base=Path.cwd())
+    if state_path is None or not state_path.exists():
+        return None
+    try:
+        state_text = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    frontmatter = parse_state_frontmatter(state_text)
+    active_updated_at = frontmatter.get("updated_at")
+    active_digest = hashlib.sha256(state_text.encode("utf-8")).hexdigest()[:16]
+    run_state = current_run.get("state") if isinstance(current_run.get("state"), dict) else {}
+    run_frontmatter = run_state.get("frontmatter") if isinstance(run_state.get("frontmatter"), dict) else {}
+    run_state_updated_at = run_frontmatter.get("updated_at")
+    run_state_digest = str(run_state.get("sha256_16") or "")
+    latest_run_generated_at = str(current_run.get("generated_at") or "")
+
+    active_dt = parse_timestamp(active_updated_at)
+    run_state_dt = parse_timestamp(run_state_updated_at)
+    run_generated_dt = parse_timestamp(latest_run_generated_at)
+    active_newer_than_run_state = bool(active_dt and run_state_dt and active_dt > run_state_dt)
+    active_newer_than_run = bool(active_dt and run_generated_dt and active_dt > run_generated_dt)
+    digest_mismatch = bool(run_state_digest and active_digest != run_state_digest)
+    if not (active_newer_than_run_state or active_newer_than_run or digest_mismatch):
+        return None
+
+    reasons: list[str] = []
+    if active_newer_than_run:
+        reasons.append("active_state_updated_after_latest_run")
+    if active_newer_than_run_state:
+        reasons.append("active_state_updated_after_latest_run_snapshot")
+    if digest_mismatch:
+        reasons.append("active_state_digest_differs_from_latest_run_snapshot")
+
+    return {
+        "kind": "stale_latest_run_projection",
+        "source": "active_state_vs_latest_run",
+        "severity": "warning",
+        "requires_refresh_state": True,
+        "reason": ",".join(reasons),
+        "active_state_updated_at": active_updated_at,
+        "latest_run_generated_at": latest_run_generated_at,
+        "latest_run_state_updated_at": run_state_updated_at,
+        "latest_run_classification": current_run.get("classification"),
+        "recommended_action": "run refresh-state before trusting latest_run-derived routing",
+    }
 
 
 def project_asset_summary_is_public_safe(project_asset: dict[str, Any]) -> bool:
@@ -1639,6 +1706,7 @@ def build_attention_queue(
             if control_plane:
                 item["control_plane"] = control_plane
             goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
+            projection_warning = active_state_projection_warning(goal, latest_run(goal))
             enrich_project_asset(
                 item,
                 latest_validation=project_asset_latest_validation(latest_run(goal)),
@@ -1656,6 +1724,10 @@ def build_attention_queue(
             )
             if control_plane and isinstance(item.get("project_asset"), dict):
                 item["project_asset"]["control_plane"] = control_plane
+            if projection_warning:
+                item["stale_latest_run_warning"] = projection_warning
+                if isinstance(item.get("project_asset"), dict):
+                    item["project_asset"]["stale_latest_run_warning"] = projection_warning
             if goal.get("registry_member"):
                 item.update(active_state_todo_fields(goal))
                 item["quota"] = quota_status(
@@ -2822,6 +2894,19 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"compute={asset_quota.get('compute')} "
                     f"state={asset_quota.get('state')} "
                     f"slots={asset_quota.get('spent_slots')}/{asset_quota.get('allowed_slots')}"
+                )
+            projection_warning = (
+                project_asset.get("stale_latest_run_warning")
+                if isinstance(project_asset.get("stale_latest_run_warning"), dict)
+                else {}
+            )
+            if projection_warning:
+                lines.append(
+                    "    - stale_latest_run_warning: "
+                    f"requires_refresh_state={projection_warning.get('requires_refresh_state')} "
+                    f"active_state_updated_at={_markdown_scalar(projection_warning.get('active_state_updated_at') or '')} "
+                    f"latest_run_generated_at={_markdown_scalar(projection_warning.get('latest_run_generated_at') or '')} "
+                    f"reason={_markdown_scalar(projection_warning.get('reason') or '')}"
                 )
             latest_validation = (
                 project_asset.get("latest_validation")

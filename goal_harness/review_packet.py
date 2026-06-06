@@ -204,6 +204,21 @@ def decision_freshness_packet_lines(warning: dict[str, Any] | None) -> list[str]
     return [redact_local_absolute_paths(line) for line in lines]
 
 
+def stale_latest_run_packet_lines(warning: dict[str, Any] | None) -> list[str]:
+    if not isinstance(warning, dict) or not warning:
+        return []
+    lines = [
+        "",
+        "【状态投影警告】",
+        "当前 active state 看起来比 latest_run 投影更新；先 refresh-state，再信任基于 latest_run 的路由/交接。",
+        "- "
+        f"active_state_updated_at={compact_packet_text(str(warning.get('active_state_updated_at') or ''), limit=80)} "
+        f"latest_run_generated_at={compact_packet_text(str(warning.get('latest_run_generated_at') or ''), limit=80)} "
+        f"reason={compact_packet_text(str(warning.get('reason') or ''), limit=120)}",
+    ]
+    return [redact_local_absolute_paths(line) for line in lines]
+
+
 def open_todo_texts(todos: Any, *, limit: int = 3) -> list[str]:
     if not isinstance(todos, dict):
         return []
@@ -750,6 +765,12 @@ def build_review_packet(
     delivery_contract_text = handoff_delivery_contract_summary(delivery_contract)
     freshness_warning = decision_freshness_warning(status_payload, goal_id)
     freshness_warning_lines = decision_freshness_packet_lines(freshness_warning)
+    stale_latest_run_warning = (
+        item.get("stale_latest_run_warning")
+        if isinstance(item, dict) and isinstance(item.get("stale_latest_run_warning"), dict)
+        else None
+    )
+    stale_latest_run_lines = stale_latest_run_packet_lines(stale_latest_run_warning)
     command = redact_local_absolute_paths(project_agent_command(status_payload, goal_id, kind, item, goal))
     approved_handoff = operator_gate_approved_handoff(item, goal)
     delivery_handoff = connected_delivery_handoff(item, goal) and kind == "codex"
@@ -796,6 +817,7 @@ def build_review_packet(
         f"摘要：{summary}",
         f"来源：{asset_source_line}",
         f"材料：{authority_summary}（仅脱敏计数；不含内部链接、路径或正文。）" if authority_summary else None,
+        *stale_latest_run_lines,
         *freshness_warning_lines,
         "",
         "【人只需判断】",
@@ -849,6 +871,7 @@ def build_review_packet(
         "handoff_delivery_contract": delivery_contract,
         "handoff_interface_budget": handoff_interface_budget,
         "decision_freshness_warning": freshness_warning,
+        "stale_latest_run_warning": stale_latest_run_warning,
         "project_asset_source": asset_source,
         "packet": "\n".join(line for line in lines if line),
     }
