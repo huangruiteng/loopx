@@ -31,24 +31,36 @@ CONTRACT_DOC = REPO_ROOT / "docs" / "interface-budget-contract.md"
 SURFACE_BUDGETS = {
     "heartbeat_prompt_json": {
         "owner": "heartbeat automation",
+        "consumer": "wake and route one bounded turn",
+        "cold_path": "quota should-run, status, or review-packet --handoff-only",
         "max_json_chars": 3_500,
+        "max_nested_keys": 40,
         "max_top_level_keys": 25,
         "budget_field": "interface_budget",
     },
     "review_packet_handoff_only_json": {
         "owner": "project-agent handoff",
+        "consumer": "forward the smallest sufficient task packet",
+        "cold_path": "full review-packet or run-history artifact",
         "max_json_chars": 3_000,
+        "max_nested_keys": 40,
         "max_top_level_keys": 18,
         "budget_field": "handoff_interface_budget",
     },
     "quota_should_run_json": {
         "owner": "quota guard",
+        "consumer": "decide whether the selected goal may spend compute",
+        "cold_path": "status, history, or active state",
         "max_json_chars": 7_000,
+        "max_nested_keys": 180,
         "max_top_level_keys": 45,
     },
     "dashboard_status_json": {
         "owner": "operator dashboard",
+        "consumer": "render first-screen operator state",
+        "cold_path": "history, run artifacts, or project-local adapter output",
         "max_json_chars": 13_000,
+        "max_nested_keys": 260,
         "max_top_level_keys": 20,
     },
 }
@@ -141,11 +153,30 @@ def json_size(payload: dict[str, Any]) -> int:
     return len(json.dumps(payload, ensure_ascii=False, sort_keys=True))
 
 
+def nested_key_count(value: Any, *, max_depth: int = 3) -> int:
+    """Count bounded nested object keys so hot paths do not grow sideways."""
+    if max_depth < 0:
+        return 0
+    if isinstance(value, dict):
+        return len(value) + sum(
+            nested_key_count(child, max_depth=max_depth - 1) for child in value.values()
+        )
+    if isinstance(value, list):
+        return sum(nested_key_count(child, max_depth=max_depth - 1) for child in value[:20])
+    return 0
+
+
 def assert_surface(name: str, payload: dict[str, Any]) -> dict[str, Any]:
     budget = SURFACE_BUDGETS[name]
     owner = str(budget.get("owner") or "")
+    consumer = str(budget.get("consumer") or "")
+    cold_path = str(budget.get("cold_path") or "")
+    nested_keys = nested_key_count(payload)
     assert owner, (name, budget)
+    assert consumer, (name, budget)
+    assert cold_path, (name, budget)
     assert json_size(payload) <= int(budget["max_json_chars"]), (name, json_size(payload), budget)
+    assert nested_keys <= int(budget["max_nested_keys"]), (name, nested_keys, budget)
     assert len(payload) <= int(budget["max_top_level_keys"]), (name, len(payload), budget)
 
     budget_field = budget.get("budget_field")
@@ -157,9 +188,13 @@ def assert_surface(name: str, payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "surface": name,
         "owner": owner,
+        "consumer": consumer,
+        "cold_path": cold_path,
         "json_chars": json_size(payload),
+        "nested_keys": nested_keys,
         "top_level_keys": len(payload),
         "max_json_chars": budget["max_json_chars"],
+        "max_nested_keys": budget["max_nested_keys"],
         "max_top_level_keys": budget["max_top_level_keys"],
     }
 
@@ -169,7 +204,10 @@ def assert_contract_doc_matches_budget_table() -> None:
     for surface, budget in SURFACE_BUDGETS.items():
         assert surface in text, surface
         assert str(budget["owner"]) in text, (surface, budget)
+        assert str(budget["consumer"]) in text, (surface, budget)
+        assert str(budget["cold_path"]) in text.replace("`", ""), (surface, budget)
         assert str(budget["max_json_chars"]) in text.replace(",", "").replace("_", ""), surface
+        assert str(budget["max_nested_keys"]) in text, surface
         assert str(budget["max_top_level_keys"]) in text, surface
 
 
@@ -201,7 +239,9 @@ def main() -> int:
 
     for summary in summaries:
         print(
-            "{surface}: owner={owner} json_chars={json_chars}/{max_json_chars} "
+            "{surface}: owner={owner} consumer={consumer} "
+            "json_chars={json_chars}/{max_json_chars} "
+            "nested_keys={nested_keys}/{max_nested_keys} "
             "top_level_keys={top_level_keys}/{max_top_level_keys}".format(**summary)
         )
     print("hot-path-interface-budget-smoke ok")
