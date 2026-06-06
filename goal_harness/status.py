@@ -282,6 +282,7 @@ TODO_ARCHIVE_HEADER_MARKERS = (
     "完成归档",
     "待办归档",
 )
+TODO_ITEM_SCHEMA_VERSION = "todo_item_v0"
 
 
 def normalize_todo_text(text: str, *, limit: int = 500) -> str:
@@ -339,24 +340,78 @@ def todo_role_for_heading(heading: str) -> str | None:
     return None
 
 
-def compact_todo_group(items: list[dict[str, Any]], *, source_section: str | None) -> dict[str, Any] | None:
+def todo_priority_parts(text: str) -> tuple[str | None, str]:
+    match = AUTONOMOUS_PRIORITY_PATTERN.match(text)
+    if not match:
+        return None, text
+    return match.group(1).strip().upper(), match.group(2).strip()
+
+
+def structured_todo_item(
+    item: dict[str, Any],
+    *,
+    role: str | None,
+    source_section: str | None,
+    archive_state: str = "active",
+) -> dict[str, Any]:
+    text = normalize_todo_text(str(item.get("text") or ""))
+    priority, title = todo_priority_parts(text)
+    index = item.get("index")
+    status = "done" if item.get("done") else "open"
+    identity = "|".join(str(part or "") for part in (role, source_section, index, text))
+    normalized = dict(item)
+    normalized.update(
+        {
+            "schema_version": TODO_ITEM_SCHEMA_VERSION,
+            "todo_id": f"todo_{hashlib.sha1(identity.encode('utf-8')).hexdigest()[:12]}",
+            "role": role,
+            "status": status,
+            "archive_state": archive_state,
+            "source_section": source_section,
+            "text": text,
+        }
+    )
+    if priority:
+        normalized["priority"] = priority
+        normalized["title"] = normalize_todo_text(title)
+    return normalized
+
+
+def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
+    compact: dict[str, Any] = {
+        "index": item.get("index"),
+        "done": bool(item.get("done")),
+        "text": item.get("text"),
+    }
+    for key in ("schema_version", "todo_id", "role", "status", "priority", "title", "archive_state", "source_section"):
+        if item.get(key) is not None:
+            compact[key] = item.get(key)
+    return compact
+
+
+def compact_todo_group(
+    items: list[dict[str, Any]],
+    *,
+    source_section: str | None,
+    role: str | None = None,
+) -> dict[str, Any] | None:
     if not items:
         return None
+    items = [
+        structured_todo_item(item, role=role, source_section=source_section)
+        if isinstance(item, dict)
+        else item
+        for item in items
+    ]
     open_items = [item for item in items if not item.get("done")]
     done_items = [item for item in items if item.get("done")]
     return {
+        "schema_version": "todo_summary_v0",
         "source_section": source_section,
         "total_count": len(items),
         "open_count": len(open_items),
         "done_count": len(done_items),
-        "first_open_items": [
-            {
-                "index": item.get("index"),
-                "done": bool(item.get("done")),
-                "text": item.get("text"),
-            }
-            for item in open_items[:3]
-        ],
+        "first_open_items": [compact_todo_item(item) for item in open_items[:3]],
         "items": items[:MAX_STATUS_TODOS_PER_ROLE],
     }
 
@@ -429,8 +484,8 @@ def parse_active_state_todos(state_text: str, *, goal: dict[str, Any] | None = N
             current_todo["text"] = normalize_todo_text(f"{current_todo.get('text', '')} {continuation}")
 
     result: dict[str, Any] = {}
-    user = compact_todo_group(items["user"], source_section=source_sections["user"])
-    agent = compact_todo_group(items["agent"], source_section=source_sections["agent"])
+    user = compact_todo_group(items["user"], source_section=source_sections["user"], role="user")
+    agent = compact_todo_group(items["agent"], source_section=source_sections["agent"], role="agent")
     if user:
         result["user_todos"] = user
     if agent:
@@ -591,13 +646,10 @@ def open_todo_items(
             if key in seen:
                 continue
             seen.add(key)
-            result.append(
-                {
-                    "index": item.get("index"),
-                    "done": False,
-                    "text": text,
-                }
-            )
+            compact = compact_todo_item(item)
+            compact["done"] = False
+            compact["text"] = text
+            result.append(compact)
             if len(result) >= limit:
                 return result
     return result
@@ -614,6 +666,7 @@ def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] |
     if not isinstance(todos, dict):
         return None
     summary: dict[str, Any] = {
+        "schema_version": todos.get("schema_version") or "todo_summary_v0",
         "source_section": "project_asset",
         "open": todos.get("open_count", 0),
         "done": todos.get("done_count", 0),

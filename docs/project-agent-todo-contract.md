@@ -49,6 +49,18 @@ refresh the status projection after the write:
 goal-harness refresh-state --goal-id <goal-id>
 ```
 
+## Parsed Schema
+
+Projects may keep writing ordinary Markdown checkboxes, but readers should use
+the structured projection emitted by status/quota when available. Todo summaries
+carry `schema_version=todo_summary_v0`; individual items carry
+`schema_version=todo_item_v0`, `todo_id`, `role`, `status`, `priority`,
+`title`, `archive_state`, `source_section`, `index`, and `text`. The `todo_id`
+is parser-derived from the local section/index/text, so it is stable enough for
+local selection and regression checks but not a durable database id across major
+rewrites. Future timestamp, dependency, and evidence-link fields should extend
+this item shape instead of adding another todo format.
+
 ## Execution Order
 
 1. Run the quota guard against the shared global registry before spending

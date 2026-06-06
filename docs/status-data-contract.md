@@ -704,6 +704,16 @@ Item fields:
   not a user approval signal. Status, quota, and review-packet projections
   should preserve up to three unfinished agent todo items so short heartbeats do
   not confuse "first visible item" with the whole backlog.
+- Todo summaries use `schema_version=todo_summary_v0`; parsed todo items use
+  `schema_version=todo_item_v0`. The source active state can remain ordinary
+  Markdown checkboxes, but status/quota/dashboard consumers should prefer the
+  structured item fields when present: `todo_id`, `role`, `status`,
+  `priority`, `title`, `archive_state`, `source_section`, `index`, and `text`.
+  `todo_id` is a short parser-derived identifier for the current item text and
+  section, suitable for local UI selection and smoke assertions, not a durable
+  cross-rewrite database primary key. Optional future fields such as
+  `created_at`, `completed_at`, dependencies, or evidence links should extend
+  this item shape rather than inventing another todo surface.
 - `dependency_blockers`: optional compact summary of unfinished user todos from
   other current attention-queue goals. This lets dashboards and heartbeat
   dispatchers show sibling/project dependency gates separately from the current
