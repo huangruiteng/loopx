@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -13,7 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.upgrade import build_upgrade_plan, render_upgrade_plan_markdown  # noqa: E402
+from goal_harness.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
+from goal_harness.upgrade import build_upgrade_plan, prompt_digest, render_upgrade_plan_markdown  # noqa: E402
 
 
 GOAL_ID = "upgrade-plan-goal"
@@ -190,13 +192,75 @@ def assert_stage_deferred_selection_is_not_upgrade_work(registry_path: Path) -> 
     assert "stage-deferred" in payload["recommended_action"], payload
 
 
+def write_codex_app_automation(codex_home: Path, *, prompt: str) -> Path:
+    automation_path = codex_home / "automations" / GOAL_ID / "automation.toml"
+    automation_path.parent.mkdir(parents=True)
+    automation_path.write_text(
+        "\n".join(
+            [
+                "version = 1",
+                f'id = "{GOAL_ID}"',
+                'kind = "heartbeat"',
+                'name = "Upgrade Plan Fixture"',
+                f"prompt = {json.dumps(prompt)}",
+                'status = "ACTIVE"',
+                'rrule = "RRULE:FREQ=MINUTELY;INTERVAL=5"',
+                'target_thread_id = "fixture-thread"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return automation_path
+
+
+def assert_codex_app_automation_is_discovered(registry_path: Path, codex_home: Path, first_payload: dict) -> None:
+    rendered = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=None,
+        active_state_source="registry",
+        thin=True,
+        cli_bin="goal-harness",
+    )["task_body"]
+    expected_sha = first_payload["managed_heartbeats"][0]["generated_prompts"]["thin"]["sha256"]
+    assert prompt_digest(rendered) == expected_sha, first_payload
+    write_codex_app_automation(
+        codex_home,
+        prompt=rendered,
+    )
+    payload = build_upgrade_plan(registry_path=registry_path, cli_bin="goal-harness")
+    assert payload["installed_manifest"]["source"] == "codex_app_automations", payload
+    assert payload["installed_manifest"]["available"] is True, payload
+    auto_entry = payload["installed_manifest"]["entries"][0]
+    assert "task_body" not in auto_entry, payload
+    assert auto_entry["prompt_sha256"] == expected_sha, payload
+    assert payload["summary"]["unknown_prompt_count"] == 0, payload
+    assert payload["summary"]["stale_prompt_count"] == 0, payload
+    assert payload["summary"]["current_prompt_count"] == 1, payload
+    installed = payload["managed_heartbeats"][0]["installed_prompts"]["thin"]
+    assert installed["status"] == "current", payload
+    assert installed["automation_id"] == GOAL_ID, payload
+    assert installed["installed"] is True, payload
+    assert payload["summary"]["ready_for_default_promotion"] is True, payload
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="goal-harness-upgrade-plan-smoke-") as raw_tmp:
-        registry_path, manifest_path = write_fixture(Path(raw_tmp))
-        first_payload = assert_unknown_manifest_blocks_promotion(registry_path)
-        assert_matching_manifest_is_ready(registry_path, manifest_path, first_payload)
-        assert_not_installed_manifest_is_ready(registry_path, manifest_path)
-        assert_stage_deferred_selection_is_not_upgrade_work(registry_path)
+        root = Path(raw_tmp)
+        old_codex_home = os.environ.get("CODEX_HOME")
+        os.environ["CODEX_HOME"] = str(root / "codex-home")
+        try:
+            registry_path, manifest_path = write_fixture(root)
+            first_payload = assert_unknown_manifest_blocks_promotion(registry_path)
+            assert_matching_manifest_is_ready(registry_path, manifest_path, first_payload)
+            assert_not_installed_manifest_is_ready(registry_path, manifest_path)
+            assert_stage_deferred_selection_is_not_upgrade_work(registry_path)
+            assert_codex_app_automation_is_discovered(registry_path, root / "codex-home", first_payload)
+        finally:
+            if old_codex_home is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = old_codex_home
     print("upgrade-plan-smoke ok")
     return 0
 

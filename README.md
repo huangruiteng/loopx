@@ -148,7 +148,10 @@ goal-harness upgrade-plan --format json
 
 This command inventories registry-managed controller goals, regenerates the
 thin installed heartbeat prompt from the candidate CLI contract, and compares it
-with an optional installed automation manifest:
+with installed automation truth. By default it auto-discovers Codex App
+heartbeat automations from `$CODEX_HOME/automations` or
+`~/.codex/automations`; pass an explicit manifest only when an external client
+needs to supply its own installed prompt hashes:
 
 ```bash
 goal-harness upgrade-plan \

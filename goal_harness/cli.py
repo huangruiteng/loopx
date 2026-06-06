@@ -330,7 +330,11 @@ def main(argv: list[str] | None = None) -> int:
     upgrade_plan_parser.add_argument("--goal-id", action="append", default=[], help="Only include one goal id. Repeatable.")
     upgrade_plan_parser.add_argument(
         "--installed-manifest",
-        help="Optional JSON manifest of installed automations with goal_id, mode, automation_id, and prompt_sha256/task_body.",
+        help=(
+            "Optional JSON manifest of installed automations with goal_id, mode, automation_id, and "
+            "prompt_sha256/task_body. If omitted, upgrade-plan auto-discovers Codex App heartbeat "
+            "automations from $CODEX_HOME/automations or ~/.codex/automations."
+        ),
     )
     upgrade_plan_parser.add_argument(
         "--cli-bin",

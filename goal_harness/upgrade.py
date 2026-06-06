@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -46,12 +48,7 @@ def prompt_summary(prompt: dict[str, Any], mode: str) -> dict[str, Any]:
 
 def load_installed_manifest(path: Path | None) -> dict[str, Any]:
     if path is None:
-        return {
-            "available": False,
-            "path": None,
-            "entries": [],
-            "reason": "no installed automation manifest provided",
-        }
+        return load_codex_app_automation_manifest()
     if not path.exists():
         return {
             "available": False,
@@ -70,6 +67,109 @@ def load_installed_manifest(path: Path | None) -> dict[str, Any]:
         "available": True,
         "path": str(path),
         "entries": [entry for entry in entries if isinstance(entry, dict)],
+    }
+
+
+def codex_home() -> Path:
+    return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex").expanduser()
+
+
+def parse_automation_toml(path: Path) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        value = raw_value.strip()
+        if value.startswith('"') and value.endswith('"'):
+            try:
+                values[key] = json.loads(value)
+            except json.JSONDecodeError:
+                values[key] = value[1:-1]
+        elif value in {"true", "false"}:
+            values[key] = value == "true"
+        else:
+            try:
+                values[key] = int(value)
+            except ValueError:
+                values[key] = value
+    return values
+
+
+def infer_goal_id_from_prompt(prompt: str) -> str | None:
+    patterns = (
+        r"Advance\s+`([^`]+)`\s+from\b",
+        r"Advance\s+`([^`]+)`\s+using\b",
+        r"--goal-id\s+([A-Za-z0-9_.:-]+)",
+        r"goal_id:\s*`([^`]+)`",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, prompt)
+        if match:
+            return match.group(1)
+    return None
+
+
+def infer_prompt_mode(prompt: str) -> str:
+    if "compact Goal Harness heartbeat body" in prompt:
+        return "compact"
+    if "Brief installed Goal Harness heartbeat" in prompt:
+        return "brief"
+    if "Keep the heartbeat thin." in prompt or "from the registry-declared active state" in prompt:
+        return "thin"
+    return DEFAULT_UPGRADE_MODES[0]
+
+
+def load_codex_app_automation_manifest(root: Path | None = None) -> dict[str, Any]:
+    home = root or codex_home()
+    automations_root = home / "automations"
+    if not automations_root.exists():
+        return {
+            "available": False,
+            "path": str(automations_root),
+            "entries": [],
+            "reason": "no installed automation manifest provided and Codex App automations directory does not exist",
+            "source": "codex_app_automations",
+        }
+
+    entries: list[dict[str, Any]] = []
+    for path in sorted(automations_root.glob("*/automation.toml")):
+        try:
+            automation = parse_automation_toml(path)
+        except OSError:
+            continue
+        if automation.get("kind") != "heartbeat":
+            continue
+        prompt = automation.get("prompt")
+        if not isinstance(prompt, str) or not prompt.strip():
+            continue
+        goal_id = infer_goal_id_from_prompt(prompt)
+        if not goal_id:
+            continue
+        status = str(automation.get("status") or "ACTIVE")
+        entries.append(
+            {
+                "automation_id": str(automation.get("id") or path.parent.name),
+                "goal_id": goal_id,
+                "mode": infer_prompt_mode(prompt),
+                "prompt_sha256": prompt_digest(prompt),
+                "char_count": len(prompt),
+                "line_count": len(prompt.splitlines()),
+                "status": status,
+                "installed": status.upper() != "DELETED",
+                "source": "codex_app_automation_toml",
+                "path": str(path),
+            }
+        )
+
+    return {
+        "available": True,
+        "path": str(automations_root),
+        "entries": entries,
+        "source": "codex_app_automations",
+        "reason": None if entries else "no Goal Harness heartbeat automations discovered",
     }
 
 
