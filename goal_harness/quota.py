@@ -435,11 +435,34 @@ def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
         return None
     items = value.get("items") if isinstance(value.get("items"), list) else []
     open_items: list[dict[str, Any]] = []
+    first_open_items = (
+        value.get("first_open_items")
+        if isinstance(value.get("first_open_items"), list)
+        else []
+    )
+    for item in first_open_items:
+        if not isinstance(item, dict) or item.get("done") is True:
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        open_items.append(
+            {
+                "index": item.get("index"),
+                "text": text,
+            }
+        )
     for item in items:
         if not isinstance(item, dict) or item.get("done") is True:
             continue
         text = str(item.get("text") or "").strip()
         if not text:
+            continue
+        duplicate = any(
+            existing.get("index") == item.get("index") and existing.get("text") == text
+            for existing in open_items
+        )
+        if duplicate:
             continue
         open_items.append(
             {
@@ -463,7 +486,8 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
         return _summarize_user_todos(value)
 
     next_text = str(value.get("next") or "").strip()
-    first_open_items = [{"index": 1, "text": next_text}] if next_text else []
+    next_index = value.get("next_index", 1)
+    first_open_items = [{"index": next_index, "text": next_text}] if next_text else []
     open_count = value.get("open", value.get("open_count", len(first_open_items)))
     return {
         "source_section": "project_asset",

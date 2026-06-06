@@ -279,6 +279,14 @@ def compact_todo_group(items: list[dict[str, Any]], *, source_section: str | Non
         "total_count": len(items),
         "open_count": len(open_items),
         "done_count": len(done_items),
+        "first_open_items": [
+            {
+                "index": item.get("index"),
+                "done": bool(item.get("done")),
+                "text": item.get("text"),
+            }
+            for item in open_items[:3]
+        ],
         "items": items[:MAX_STATUS_TODOS_PER_ROLE],
     }
 
@@ -317,30 +325,38 @@ def parse_active_state_todos(state_text: str, *, goal: dict[str, Any] | None = N
     role: str | None = None
     source_sections: dict[str, str | None] = {"user": None, "agent": None}
     items: dict[str, list[dict[str, Any]]] = {"user": [], "agent": []}
+    current_todo: dict[str, Any] | None = None
 
     for line in state_text.splitlines():
         if line.startswith("## "):
             heading = line.lstrip("#").strip()
             role = todo_role_for_heading(heading)
+            current_todo = None
             if role and source_sections[role] is None:
                 source_sections[role] = heading
             continue
         if role is None:
             continue
         match = TODO_TASK_PATTERN.match(line)
-        if not match:
+        if match:
+            marker, text = match.groups()
+            todo: dict[str, Any] = {
+                "index": len(items[role]) + 1,
+                "done": marker.lower() == "x",
+                "text": normalize_todo_text(text),
+            }
+            if goal is not None:
+                materials = extract_review_materials(text, goal=goal, state_path=state_path)
+                if materials:
+                    todo["review_materials"] = materials
+            items[role].append(todo)
+            current_todo = todo
             continue
-        marker, text = match.groups()
-        todo: dict[str, Any] = {
-            "index": len(items[role]) + 1,
-            "done": marker.lower() == "x",
-            "text": normalize_todo_text(text),
-        }
-        if goal is not None:
-            materials = extract_review_materials(text, goal=goal, state_path=state_path)
-            if materials:
-                todo["review_materials"] = materials
-        items[role].append(todo)
+        if current_todo is None or not line.startswith((" ", "\t")):
+            continue
+        continuation = line.strip()
+        if continuation:
+            current_todo["text"] = normalize_todo_text(f"{current_todo.get('text', '')} {continuation}")
 
     result: dict[str, Any] = {}
     user = compact_todo_group(items["user"], source_section=source_sections["user"])
@@ -404,6 +420,11 @@ def project_asset_stop_condition(
 def first_open_todo_text(todos: dict[str, Any] | None) -> str | None:
     if not isinstance(todos, dict):
         return None
+    for item in todos.get("first_open_items") or []:
+        if not isinstance(item, dict) or item.get("done"):
+            continue
+        text = normalize_todo_text(str(item.get("text") or ""), limit=220)
+        return text or None
     for item in todos.get("items") or []:
         if not isinstance(item, dict) or item.get("done"):
             continue
@@ -423,6 +444,11 @@ def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] |
     next_item = first_open_todo_text(todos)
     if next_item:
         summary["next"] = next_item
+        first_open_items = todos.get("first_open_items")
+        if isinstance(first_open_items, list) and first_open_items:
+            first_open = first_open_items[0]
+            if isinstance(first_open, dict) and first_open.get("index") is not None:
+                summary["next_index"] = first_open.get("index")
     return summary
 
 
