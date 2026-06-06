@@ -87,6 +87,8 @@ def assert_unknown_manifest_blocks_promotion(registry_path: Path) -> dict:
     assert payload["summary"]["installed_manifest_source"] == "codex_app_automations", payload
     assert payload["summary"]["installed_manifest_entry_count"] == 0, payload
     assert payload["summary"]["installed_manifest_has_task_body"] is False, payload
+    assert payload["summary"]["installed_prompt_policy_warning_count"] == 0, payload
+    assert payload["summary"]["installed_prompt_policy_warning_prompt_count"] == 0, payload
     assert payload["summary"]["ready_for_default_promotion"] is False, payload
     deferred = payload["stage_deferred_heartbeats"][0]
     assert deferred["goal_id"] == DEFERRED_GOAL_ID, payload
@@ -141,6 +143,8 @@ def assert_matching_manifest_is_ready(registry_path: Path, manifest_path: Path, 
     assert payload["summary"]["stage_deferred_goal_count"] == 1, payload
     assert payload["summary"]["installed_manifest_entry_count"] == 1, payload
     assert payload["summary"]["installed_manifest_has_task_body"] is False, payload
+    assert payload["summary"]["installed_prompt_policy_warning_count"] == 0, payload
+    assert payload["summary"]["installed_prompt_policy_warning_prompt_count"] == 0, payload
     assert payload["summary"]["ready_for_default_promotion"] is True, payload
     assert payload["managed_heartbeats"][0]["installed_prompts"]["thin"]["status"] == "current", payload
 
@@ -176,6 +180,8 @@ def assert_not_installed_manifest_is_ready(registry_path: Path, manifest_path: P
     assert payload["summary"]["stage_deferred_goal_count"] == 1, payload
     assert payload["summary"]["installed_manifest_entry_count"] == 1, payload
     assert payload["summary"]["installed_manifest_has_task_body"] is False, payload
+    assert payload["summary"]["installed_prompt_policy_warning_count"] == 0, payload
+    assert payload["summary"]["installed_prompt_policy_warning_prompt_count"] == 0, payload
     assert payload["summary"]["ready_for_default_promotion"] is True, payload
     installed = payload["managed_heartbeats"][0]["installed_prompts"]["thin"]
     assert payload["managed_heartbeats"][0]["requires_update"] is False, payload
@@ -202,7 +208,7 @@ def assert_stage_deferred_selection_is_not_upgrade_work(registry_path: Path) -> 
 
 def write_codex_app_automation(codex_home: Path, *, prompt: str) -> Path:
     automation_path = codex_home / "automations" / GOAL_ID / "automation.toml"
-    automation_path.parent.mkdir(parents=True)
+    automation_path.parent.mkdir(parents=True, exist_ok=True)
     automation_path.write_text(
         "\n".join(
             [
@@ -242,9 +248,13 @@ def assert_codex_app_automation_is_discovered(registry_path: Path, codex_home: P
     auto_entry = payload["installed_manifest"]["entries"][0]
     assert "task_body" not in auto_entry, payload
     assert auto_entry["prompt_sha256"] == expected_sha, payload
+    assert auto_entry["prompt_policy_audit"]["status"] == "clean", payload
+    assert auto_entry["prompt_policy_audit"]["warning_count"] == 0, payload
     assert payload["summary"]["installed_manifest_entry_count"] == 1, payload
     assert payload["summary"]["installed_manifest_task_body_count"] == 0, payload
     assert payload["summary"]["installed_manifest_has_task_body"] is False, payload
+    assert payload["summary"]["installed_prompt_policy_warning_count"] == 0, payload
+    assert payload["summary"]["installed_prompt_policy_warning_prompt_count"] == 0, payload
     assert payload["summary"]["unknown_prompt_count"] == 0, payload
     assert payload["summary"]["stale_prompt_count"] == 0, payload
     assert payload["summary"]["current_prompt_count"] == 1, payload
@@ -253,6 +263,42 @@ def assert_codex_app_automation_is_discovered(registry_path: Path, codex_home: P
     assert installed["automation_id"] == GOAL_ID, payload
     assert installed["installed"] is True, payload
     assert payload["summary"]["ready_for_default_promotion"] is True, payload
+
+
+def assert_codex_app_stale_policy_prompt_is_flagged(registry_path: Path, codex_home: Path) -> None:
+    stale_prompt = (
+        f"Advance `{GOAL_ID}` from the registry-declared active state.\n\n"
+        "Primary stability objective: keep a project-specific controller policy in the installed prompt.\n"
+        "Current controller policy:\n"
+        "- If `should_run=false`: no implementation, adapter work, file edits, research, exploration, or spend.\n"
+        "- If `safe_bypass_kind=outcome_floor_recovery`: attempt one bounded recovery segment.\n"
+        "Details: goal-harness heartbeat-prompt --compact --goal-id "
+        f"{GOAL_ID} --active-state /tmp/stale/ACTIVE_GOAL_STATE.md\n"
+    )
+    write_codex_app_automation(codex_home, prompt=stale_prompt)
+    payload = build_upgrade_plan(registry_path=registry_path, cli_bin="goal-harness")
+    assert payload["summary"]["ready_for_default_promotion"] is False, payload
+    assert payload["summary"]["stale_prompt_count"] == 1, payload
+    assert payload["summary"]["installed_prompt_policy_warning_prompt_count"] == 1, payload
+    assert payload["summary"]["installed_prompt_policy_warning_count"] == 3, payload
+    auto_entry = payload["installed_manifest"]["entries"][0]
+    assert "task_body" not in auto_entry, payload
+    audit = auto_entry["prompt_policy_audit"]
+    assert audit["status"] == "warning", payload
+    kinds = {warning["kind"] for warning in audit["warnings"]}
+    assert kinds == {
+        "should_run_false_before_safe_bypass",
+        "embedded_project_policy",
+        "pinned_active_state_argument",
+    }, payload
+    installed = payload["managed_heartbeats"][0]["installed_prompts"]["thin"]
+    assert installed["requires_update"] is True, payload
+    assert installed["prompt_policy_audit"]["warning_count"] == 3, payload
+    markdown = render_upgrade_plan_markdown(payload)
+    assert "installed_prompt_policy_warning_count: `3`" in markdown, markdown
+    assert "should_run_false_before_safe_bypass" in markdown, markdown
+    assert "embedded_project_policy" in markdown, markdown
+    assert "pinned_active_state_argument" in markdown, markdown
 
 
 def main() -> int:
@@ -267,6 +313,7 @@ def main() -> int:
             assert_not_installed_manifest_is_ready(registry_path, manifest_path)
             assert_stage_deferred_selection_is_not_upgrade_work(registry_path)
             assert_codex_app_automation_is_discovered(registry_path, root / "codex-home", first_payload)
+            assert_codex_app_stale_policy_prompt_is_flagged(registry_path, root / "codex-home")
         finally:
             if old_codex_home is None:
                 os.environ.pop("CODEX_HOME", None)

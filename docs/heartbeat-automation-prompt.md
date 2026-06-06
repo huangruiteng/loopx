@@ -111,6 +111,15 @@ object for the selected mode. It reports the rendered prompt's `char_count`,
 inside each generated prompt, so local default-promotion checks can flag prompt
 bloat without parsing prose or relying on a chat thread.
 
+`upgrade-plan --format json` also carries a compact `prompt_policy_audit` for
+installed prompts when their body is available through the local Codex App
+automation record or an explicit manifest. The audit does not echo the prompt
+body. It only reports warning kinds such as a generic `should_run=false`
+hard-stop appearing before safe-bypass handling, embedded project policy blocks,
+or pinned `--active-state` arguments. Any warning should be treated as upgrade
+work: regenerate the installed heartbeat from the current CLI contract and keep
+project-specific policy in registry/state/status/review-packet payloads.
+
 For gray rollout, generate the brief body through `goal-harness-canary` and pass
 `--cli-bin goal-harness-canary` so only the selected goal controller uses the
 live checkout:

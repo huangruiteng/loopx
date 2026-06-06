@@ -14,6 +14,26 @@ from .registry import registry_goals, resolve_state_file
 
 
 DEFAULT_UPGRADE_MODES = ("thin",)
+SHOULD_RUN_FALSE_RE = re.compile(
+    r"should[_\s-]*run`?\s*(?:=|is|:)?\s*`?false",
+    re.IGNORECASE,
+)
+SAFE_BYPASS_RE = re.compile(
+    r"safe[_\s-]*bypass|outcome[_\s-]*floor[_\s-]*recovery|recovery[_\s-]*delivery[_\s-]*allowed",
+    re.IGNORECASE,
+)
+SHOULD_RUN_FALSE_HARD_STOP_RE = re.compile(
+    r"no\s+(?:implementation|work|delivery|spend)|"
+    r"do\s+not\s+(?:run|do|execute|append|spend|work)|"
+    r"quiet(?:ly)?\s+(?:skip|no-op)|"
+    r"skip\s+(?:delivery|work|compute)",
+    re.IGNORECASE,
+)
+PROJECT_POLICY_MARKERS = (
+    "Current controller policy:",
+    "Primary stability objective:",
+    "Current controller policy",
+)
 STAGE_DEFERRED_ATTENTION_STATUSES = {
     "stage_deferred_not_installed",
 }
@@ -44,6 +64,73 @@ def prompt_summary(prompt: dict[str, Any], mode: str) -> dict[str, Any]:
         "interface_budget_max_chars": interface_budget.get("max_chars"),
         "command": command,
     }
+
+
+def prompt_policy_audit(prompt: str | None) -> dict[str, Any]:
+    if not isinstance(prompt, str) or not prompt.strip():
+        return {
+            "available": False,
+            "status": "unavailable",
+            "warning_count": 0,
+            "warnings": [],
+            "reason": "installed prompt body is unavailable",
+        }
+
+    warnings: list[dict[str, str]] = []
+    should_run_match = SHOULD_RUN_FALSE_RE.search(prompt)
+    safe_bypass_match = SAFE_BYPASS_RE.search(prompt)
+    if should_run_match and (safe_bypass_match is None or should_run_match.start() < safe_bypass_match.start()):
+        window_end = safe_bypass_match.start() if safe_bypass_match else min(len(prompt), should_run_match.start() + 900)
+        window = prompt[should_run_match.start():window_end]
+        if SHOULD_RUN_FALSE_HARD_STOP_RE.search(window):
+            warnings.append(
+                {
+                    "kind": "should_run_false_before_safe_bypass",
+                    "severity": "warning",
+                    "recommended_action": "regenerate the installed heartbeat prompt so recovery/safe-bypass handling precedes generic should_run=false skip handling",
+                }
+            )
+
+    if any(marker in prompt for marker in PROJECT_POLICY_MARKERS):
+        warnings.append(
+            {
+                "kind": "embedded_project_policy",
+                "severity": "warning",
+                "recommended_action": "move project-specific policy into registry, active state, status, or review-packet payloads and reinstall a thin generated heartbeat prompt",
+            }
+        )
+
+    if "--active-state" in prompt:
+        warnings.append(
+            {
+                "kind": "pinned_active_state_argument",
+                "severity": "warning",
+                "recommended_action": "omit --active-state for connected goals so the installed heartbeat resolves the active state from the registry",
+            }
+        )
+
+    return {
+        "available": True,
+        "status": "warning" if warnings else "clean",
+        "warning_count": len(warnings),
+        "warnings": warnings,
+    }
+
+
+def installed_prompt_policy_audit(entry: dict[str, Any] | None) -> dict[str, Any]:
+    if not entry:
+        return {
+            "available": False,
+            "status": "unavailable",
+            "warning_count": 0,
+            "warnings": [],
+            "reason": "installed prompt entry is unavailable",
+        }
+    audit = entry.get("prompt_policy_audit")
+    if isinstance(audit, dict):
+        return audit
+    task_body = entry.get("task_body")
+    return prompt_policy_audit(task_body if isinstance(task_body, str) else None)
 
 
 def load_installed_manifest(path: Path | None) -> dict[str, Any]:
@@ -157,6 +244,7 @@ def load_codex_app_automation_manifest(root: Path | None = None) -> dict[str, An
                 "prompt_sha256": prompt_digest(prompt),
                 "char_count": len(prompt),
                 "line_count": len(prompt.splitlines()),
+                "prompt_policy_audit": prompt_policy_audit(prompt),
                 "status": status,
                 "installed": status.upper() != "DELETED",
                 "source": "codex_app_automation_toml",
@@ -306,13 +394,26 @@ def build_upgrade_plan(
                 status = "not_installed"
             elif entry:
                 status = "current" if actual_digest == expected_digest else "stale"
+            policy_audit = (
+                {
+                    "available": False,
+                    "status": "not_applicable",
+                    "warning_count": 0,
+                    "warnings": [],
+                    "reason": "heartbeat is explicitly not installed",
+                }
+                if not_installed
+                else installed_prompt_policy_audit(entry)
+            )
+            policy_warning_count = int(policy_audit.get("warning_count") or 0)
             installed[mode] = {
                 "status": status,
-                "requires_update": status in {"unknown", "stale"},
+                "requires_update": status in {"unknown", "stale"} or policy_warning_count > 0,
                 "automation_id": entry.get("automation_id") if entry else None,
                 "installed": False if not_installed else bool(entry),
                 "prompt_sha256": actual_digest,
                 "expected_sha256": expected_digest,
+                "prompt_policy_audit": policy_audit,
             }
 
         managed.append(
@@ -353,9 +454,23 @@ def build_upgrade_plan(
         for installed in goal["installed_prompts"].values()
         if installed["status"] == "not_installed"
     )
-    ready = bool(managed) and unknown == 0 and stale == 0
+    policy_warning_count = sum(
+        int(installed.get("prompt_policy_audit", {}).get("warning_count") or 0)
+        for goal in managed
+        for installed in goal["installed_prompts"].values()
+        if isinstance(installed, dict)
+    )
+    policy_warning_prompt_count = sum(
+        1
+        for goal in managed
+        for installed in goal["installed_prompts"].values()
+        if int(installed.get("prompt_policy_audit", {}).get("warning_count") or 0) > 0
+    )
+    ready = bool(managed) and unknown == 0 and stale == 0 and policy_warning_count == 0
     if ready:
         recommended_action = "promotion propagation is complete"
+    elif policy_warning_count > 0:
+        recommended_action = "regenerate installed heartbeat automations with prompt policy warnings before default promotion"
     elif managed:
         recommended_action = "refresh installed heartbeat automations/controller clients before default promotion"
     elif deferred:
@@ -383,6 +498,8 @@ def build_upgrade_plan(
             "installed_manifest_entry_count": len(manifest_entries),
             "installed_manifest_task_body_count": manifest_task_body_count,
             "installed_manifest_has_task_body": manifest_task_body_count > 0,
+            "installed_prompt_policy_warning_count": policy_warning_count,
+            "installed_prompt_policy_warning_prompt_count": policy_warning_prompt_count,
         },
         "managed_heartbeats": managed,
         "stage_deferred_heartbeats": deferred,
@@ -410,6 +527,8 @@ def render_upgrade_plan_markdown(payload: dict[str, Any]) -> str:
         f"- installed_manifest_source: `{summary.get('installed_manifest_source')}`",
         f"- installed_manifest_entry_count: `{summary.get('installed_manifest_entry_count')}`",
         f"- installed_manifest_has_task_body: `{summary.get('installed_manifest_has_task_body')}`",
+        f"- installed_prompt_policy_warning_count: `{summary.get('installed_prompt_policy_warning_count')}`",
+        f"- installed_prompt_policy_warning_prompt_count: `{summary.get('installed_prompt_policy_warning_prompt_count')}`",
         f"- recommended_action: `{payload.get('recommended_action')}`",
     ]
     manifest = payload.get("installed_manifest") if isinstance(payload.get("installed_manifest"), dict) else {}
@@ -430,7 +549,10 @@ def render_upgrade_plan_markdown(payload: dict[str, Any]) -> str:
         status_parts = []
         for mode, status in installed.items():
             if isinstance(status, dict):
-                status_parts.append(f"{mode}={status.get('status')}")
+                audit = status.get("prompt_policy_audit") if isinstance(status.get("prompt_policy_audit"), dict) else {}
+                audit_warning_count = int(audit.get("warning_count") or 0)
+                audit_suffix = f",audit_warnings={audit_warning_count}" if audit_warning_count else ""
+                status_parts.append(f"{mode}={status.get('status')}{audit_suffix}")
         prompt_parts = []
         for mode, prompt in generated.items():
             if isinstance(prompt, dict):
@@ -444,6 +566,19 @@ def render_upgrade_plan_markdown(payload: dict[str, Any]) -> str:
                 f"  prompts: `{'; '.join(prompt_parts)}`",
             ]
         )
+        for mode, status in installed.items():
+            if not isinstance(status, dict):
+                continue
+            audit = status.get("prompt_policy_audit") if isinstance(status.get("prompt_policy_audit"), dict) else {}
+            warnings = audit.get("warnings") if isinstance(audit.get("warnings"), list) else []
+            if not warnings:
+                continue
+            kinds = ", ".join(
+                str(warning.get("kind"))
+                for warning in warnings
+                if isinstance(warning, dict) and warning.get("kind")
+            )
+            lines.append(f"  prompt_policy_warnings[{mode}]: `{kinds}`")
     deferred = payload.get("stage_deferred_heartbeats") or []
     if deferred:
         lines.extend(["", "## Stage Deferred Heartbeats", ""])
