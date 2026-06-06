@@ -930,6 +930,27 @@ def _heartbeat_recommendation(
 
     post_handoff_observation = _control_plane_post_handoff_observation_hint(item)
     if post_handoff_observation and not has_user_todos:
+        if has_agent_todos:
+            active_observation = {
+                key: value
+                for key, value in post_handoff_observation.items()
+                if key != "stop_if_unchanged"
+            }
+            return {
+                **base,
+                **active_observation,
+                "recommended_mode": "post_handoff_observe_then_backlog_step",
+                "spend_policy": (
+                    "observe registry/status/run history/repo state first; if unchanged, "
+                    "advance exactly one bounded agent-todo backlog segment and append quota "
+                    "spend only after validation and durable writeback"
+                ),
+                "reason": (
+                    "latest post-handoff implementation reached the primary outcome, but "
+                    "an open agent todo remains; observe for new blockers first, then "
+                    "advance one bounded backlog step instead of quiet idling"
+                ),
+            }
         return {
             **base,
             **post_handoff_observation,

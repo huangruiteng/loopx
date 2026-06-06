@@ -903,7 +903,7 @@ def assert_control_plane_waiting_projection_self_repair_should_run() -> None:
     assert "control-plane self-repair" in spend_event["health_check"], spend_event
 
 
-def assert_control_plane_post_handoff_observe_if_unchanged() -> None:
+def post_handoff_meta_fixture(*, with_agent_todo: bool) -> dict:
     goal_id = "goal-harness-meta"
     meta_goal = goal(goal_id, compute=1.0)
     meta_goal["adapter_kind"] = "harness_self_improvement"
@@ -936,20 +936,21 @@ def assert_control_plane_post_handoff_observe_if_unchanged() -> None:
             "markdown_exists": True,
         },
     }
-    meta_item["agent_todos"] = {
-        "source_section": "Agent Todo",
-        "total_count": 1,
-        "open_count": 1,
-        "done_count": 0,
-        "items": [
-            {
-                "index": 1,
-                "done": False,
-                "text": "Keep heartbeat prompt and agent-to-CLI interaction lean as an ongoing interface-budget task.",
-            }
-        ],
-    }
-    payload = {
+    if with_agent_todo:
+        meta_item["agent_todos"] = {
+            "source_section": "Agent Todo",
+            "total_count": 1,
+            "open_count": 1,
+            "done_count": 0,
+            "items": [
+                {
+                    "index": 1,
+                    "done": False,
+                    "text": "Keep heartbeat prompt and agent-to-CLI interaction lean as an ongoing interface-budget task.",
+                }
+            ],
+        }
+    return {
         "ok": True,
         "registry": "./fixtures/registry.json",
         "runtime_root": "./fixtures/runtime",
@@ -959,6 +960,10 @@ def assert_control_plane_post_handoff_observe_if_unchanged() -> None:
         "run_history": {"goals": [meta_goal]},
     }
 
+
+def assert_control_plane_post_handoff_observe_if_unchanged() -> None:
+    goal_id = "goal-harness-meta"
+    payload = post_handoff_meta_fixture(with_agent_todo=False)
     decision = build_quota_should_run(payload, goal_id=goal_id)
     markdown = render_quota_should_run_markdown(decision)
 
@@ -968,7 +973,6 @@ def assert_control_plane_post_handoff_observe_if_unchanged() -> None:
     assert decision["normal_delivery_allowed"] is True, decision
     assert decision["self_repair_allowed"] is False, decision
     assert decision["effective_action"] == "normal_run", decision
-    assert decision["agent_todo_summary"]["open_count"] == 1, decision
     assert (
         decision["heartbeat_recommendation"]["recommended_mode"]
         == "post_handoff_observe_if_unchanged"
@@ -981,6 +985,33 @@ def assert_control_plane_post_handoff_observe_if_unchanged() -> None:
     assert "heartbeat_stop_if_unchanged: `True`" in markdown, markdown
     assert (
         "execution_obligation: must_attempt_work=False kind=quiet_noop_if_unchanged notify_is_execution_gate=False"
+        in markdown
+    ), markdown
+
+
+def assert_control_plane_post_handoff_agent_todo_stays_active() -> None:
+    goal_id = "goal-harness-meta"
+    payload = post_handoff_meta_fixture(with_agent_todo=True)
+    decision = build_quota_should_run(payload, goal_id=goal_id)
+    markdown = render_quota_should_run_markdown(decision)
+
+    assert decision["ok"] is True, decision
+    assert decision["decision"] == "run", decision
+    assert decision["should_run"] is True, decision
+    assert decision["normal_delivery_allowed"] is True, decision
+    assert decision["effective_action"] == "normal_run", decision
+    assert decision["agent_todo_summary"]["open_count"] == 1, decision
+    assert (
+        decision["heartbeat_recommendation"]["recommended_mode"]
+        == "post_handoff_observe_then_backlog_step"
+    ), decision
+    assert "stop_if_unchanged" not in decision["heartbeat_recommendation"], decision
+    assert decision["execution_obligation"]["must_attempt_work"] is True, decision
+    assert decision["execution_obligation"]["kind"] == "normal_run", decision
+    assert "post_handoff_observe_then_backlog_step" in markdown, markdown
+    assert "heartbeat_stop_if_unchanged" not in markdown, markdown
+    assert (
+        "execution_obligation: must_attempt_work=True kind=normal_run notify_is_execution_gate=False"
         in markdown
     ), markdown
 
@@ -1442,6 +1473,7 @@ def main() -> int:
     assert_control_plane_self_repair_default_off()
     assert_control_plane_waiting_projection_self_repair_should_run()
     assert_control_plane_post_handoff_observe_if_unchanged()
+    assert_control_plane_post_handoff_agent_todo_stays_active()
     assert_attention_queue_overrides_stale_run_history()
     assert_project_asset_backed_no_evidence_should_run()
     assert_heartbeat_recommendation_lifecycle()
