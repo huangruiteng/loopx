@@ -104,6 +104,13 @@ project-agnostic; if a behavior needs to be remembered across workers, write it
 to active state, run history, the registry, or a generated prompt contract
 rather than hand-editing the automation body.
 
+`goal-harness heartbeat-prompt --format json` emits an `interface_budget`
+object for the selected mode. It reports the rendered prompt's `char_count`,
+`line_count`, normalized `budget_char_count`, `max_chars`, and
+`within_budget`. `upgrade-plan --format json` carries the same budget summary
+inside each generated prompt, so local default-promotion checks can flag prompt
+bloat without parsing prose or relying on a chat thread.
+
 For gray rollout, generate the brief body through `goal-harness-canary` and pass
 `--cli-bin goal-harness-canary` so only the selected goal controller uses the
 live checkout:

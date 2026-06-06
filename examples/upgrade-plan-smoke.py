@@ -71,6 +71,10 @@ def assert_unknown_manifest_blocks_promotion(registry_path: Path) -> dict:
     assert payload["summary"]["ready_for_default_promotion"] is False, payload
     goal = payload["managed_heartbeats"][0]
     assert goal["state_file_exists"] is True, payload
+    thin_prompt = goal["generated_prompts"]["thin"]
+    assert thin_prompt["within_interface_budget"] is True, payload
+    assert thin_prompt["interface_budget"]["mode"] == "thin", payload
+    assert thin_prompt["interface_budget_char_count"] <= thin_prompt["interface_budget_max_chars"], payload
     assert goal["installed_prompts"]["thin"]["status"] == "unknown", payload
     markdown = render_upgrade_plan_markdown(payload)
     assert "ready_for_default_promotion: `False`" in markdown, markdown

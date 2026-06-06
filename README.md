@@ -160,6 +160,10 @@ If the plan reports unknown or stale prompt digests, update those managed
 heartbeat automations/controller clients before running `scripts/install-local.sh`
 for default promotion. This keeps connected projects from continuing on stale
 prompt branches after the local default version changes.
+Each generated prompt summary also includes `interface_budget` fields
+(`mode`, `budget_char_count`, `max_chars`, and `within_budget`) so the local
+upgrade path can catch prompt bloat from the same machine contract that
+`heartbeat-prompt --format json` exposes.
 Use `--mode brief` or `--mode compact` only when an installed automation is
 intentionally using one of the larger generated contracts.
 If a registry goal has no installed heartbeat automation, record that explicitly

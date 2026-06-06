@@ -8,6 +8,49 @@ from .project_prompt import render_cli_preflight, render_quota_guard_command, re
 
 DEFAULT_MATERIAL_QUEUE_RULE = "Do not consume the learning material queue unless the user explicitly asks."
 DEFAULT_PERMISSION_RULE = "Do not ask for permissions when the current Codex session is already trusted."
+INTERFACE_BUDGET_CHARS = {
+    "full": 10_800,
+    "compact": 4_900,
+    "brief": 2_600,
+    "thin": 950,
+}
+
+
+def heartbeat_prompt_mode(*, compact: bool = False, brief: bool = False, thin: bool = False) -> str:
+    if thin:
+        return "thin"
+    if brief:
+        return "brief"
+    if compact:
+        return "compact"
+    return "full"
+
+
+def prompt_budget_text(text: str, *, goal_id: str, active_state: str) -> str:
+    return text.replace(goal_id, "<GOAL_ID>").replace(active_state, "<ACTIVE_STATE>")
+
+
+def build_interface_budget(
+    *,
+    task_body: str,
+    goal_id: str,
+    active_state: str,
+    compact: bool = False,
+    brief: bool = False,
+    thin: bool = False,
+) -> dict[str, Any]:
+    mode = heartbeat_prompt_mode(compact=compact, brief=brief, thin=thin)
+    budget_text = prompt_budget_text(task_body, goal_id=goal_id, active_state=active_state)
+    budget_chars = len(budget_text)
+    max_chars = INTERFACE_BUDGET_CHARS[mode]
+    return {
+        "mode": mode,
+        "char_count": len(task_body),
+        "line_count": len(task_body.splitlines()),
+        "budget_char_count": budget_chars,
+        "max_chars": max_chars,
+        "within_budget": budget_chars <= max_chars,
+    }
 
 
 def build_heartbeat_prompt(
@@ -82,6 +125,14 @@ def build_heartbeat_prompt(
         "cli_preflight": cli_preflight,
         "material_queue_rule": resolved_material_rule,
         "permission_rule": resolved_permission_rule,
+        "interface_budget": build_interface_budget(
+            task_body=task_body,
+            goal_id=goal_id,
+            active_state=active_state_text,
+            compact=compact,
+            brief=brief,
+            thin=thin,
+        ),
         "task_body": task_body,
     }
 
@@ -469,6 +520,7 @@ def render_heartbeat_prompt_markdown(payload: dict[str, Any]) -> str:
         style = "compact "
     else:
         style = ""
+    interface_budget = payload.get("interface_budget") if isinstance(payload.get("interface_budget"), dict) else {}
     return f"""# Heartbeat Automation Prompt
 
 Copy this {style}task body into a Codex App heartbeat automation.
@@ -494,4 +546,5 @@ Copy this {style}task body into a Codex App heartbeat automation.
 - quota_guard_command: `{payload.get("quota_guard_command")}`
 - quota_spend_command: `{payload.get("quota_spend_command")}`
 - cli_preflight: `{payload.get("cli_preflight")}`
+- interface_budget: mode=`{interface_budget.get("mode")}` budget_chars=`{interface_budget.get("budget_char_count")}` max_chars=`{interface_budget.get("max_chars")}` within_budget=`{interface_budget.get("within_budget")}`
 """

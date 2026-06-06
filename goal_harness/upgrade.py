@@ -24,11 +24,16 @@ def prompt_summary(prompt: dict[str, Any], mode: str) -> dict[str, Any]:
         command = prompt.get("expanded_prompt_command")
     else:
         command = prompt.get(f"{mode}_prompt_command")
+    interface_budget = prompt.get("interface_budget") if isinstance(prompt.get("interface_budget"), dict) else {}
     return {
         "mode": mode,
         "sha256": prompt_digest(task_body),
         "char_count": len(task_body),
         "line_count": len(task_body.splitlines()),
+        "interface_budget": interface_budget,
+        "within_interface_budget": interface_budget.get("within_budget"),
+        "interface_budget_char_count": interface_budget.get("budget_char_count"),
+        "interface_budget_max_chars": interface_budget.get("max_chars"),
         "command": command,
     }
 

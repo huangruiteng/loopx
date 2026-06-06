@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
+from goal_harness.heartbeat_prompt import INTERFACE_BUDGET_CHARS, build_heartbeat_prompt  # noqa: E402
 
 DOC = REPO_ROOT / "docs" / "heartbeat-automation-prompt.md"
 README = REPO_ROOT / "README.md"
@@ -22,12 +22,6 @@ INTEGRATION_DOC = REPO_ROOT / "docs" / "integration.md"
 PROJECT_SKILL = REPO_ROOT / "skills" / "goal-harness-project" / "SKILL.md"
 GOAL_ID = "public-heartbeat-goal"
 ACTIVE_STATE = Path("/tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md")
-INTERFACE_BUDGET_CHARS = {
-    "full": 10_800,
-    "compact": 4_900,
-    "brief": 2_600,
-    "thin": 950,
-}
 PROJECT_SPECIFIC_PROMPT_LEAKS = (
     "agent-harness-side-bypass",
     "agent-harness-main-control",
@@ -56,6 +50,18 @@ def assert_prompt_budget(label: str, text: str) -> None:
     )
 
 
+def assert_interface_budget_payload(label: str, payload: dict) -> None:
+    task_body = str(payload["task_body"])
+    budget = payload.get("interface_budget")
+    assert isinstance(budget, dict), (label, payload)
+    assert budget["mode"] == label, budget
+    assert budget["char_count"] == len(task_body), budget
+    assert budget["line_count"] == len(task_body.splitlines()), budget
+    assert budget["budget_char_count"] == len(prompt_budget_text(task_body)), budget
+    assert budget["max_chars"] == INTERFACE_BUDGET_CHARS[label], budget
+    assert budget["within_budget"] is True, budget
+
+
 def assert_no_project_specific_prompt_leaks(label: str, text: str) -> None:
     for phrase in PROJECT_SPECIFIC_PROMPT_LEAKS:
         assert phrase not in text, (label, phrase)
@@ -80,6 +86,10 @@ def main() -> int:
     assert_prompt_budget("compact", str(compact_payload["task_body"]))
     assert_prompt_budget("brief", str(brief_payload["task_body"]))
     assert_prompt_budget("thin", str(thin_payload["task_body"]))
+    assert_interface_budget_payload("full", payload)
+    assert_interface_budget_payload("compact", compact_payload)
+    assert_interface_budget_payload("brief", brief_payload)
+    assert_interface_budget_payload("thin", thin_payload)
     assert_no_project_specific_prompt_leaks("full", str(payload["task_body"]))
     assert_no_project_specific_prompt_leaks("compact", str(compact_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("brief", str(brief_payload["task_body"]))
