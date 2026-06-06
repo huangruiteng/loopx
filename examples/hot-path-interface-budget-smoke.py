@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from goal_harness.cli import review_packet_handoff_only_payload  # noqa: E402
 from goal_harness.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
+from goal_harness.interface_budget import build_interface_budget_cadence  # noqa: E402
 from goal_harness.quota import build_quota_should_run  # noqa: E402
 from goal_harness.review_packet import build_review_packet  # noqa: E402
 from goal_harness.status import collect_status  # noqa: E402
@@ -119,8 +120,14 @@ def write_registry(root: Path) -> tuple[Path, Path]:
     return registry_path, project
 
 
-def append_run(root: Path) -> None:
-    generated_at = "2026-01-01T00:05:00+00:00"
+def append_run(
+    root: Path,
+    *,
+    generated_at: str = "2026-01-01T00:05:00+00:00",
+    classification: str = "state_refreshed",
+    recommended_action: str = "Continue compact interface-budget validation.",
+    interface_budget_cadence: dict[str, Any] | None = None,
+) -> None:
     compact = generated_at.replace("-", "").replace(":", "")
     run_dir = root / "runtime" / "goals" / GOAL_ID / "runs"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -129,24 +136,26 @@ def append_run(root: Path) -> None:
     record = {
         "generated_at": generated_at,
         "goal_id": GOAL_ID,
-        "classification": "state_refreshed",
-        "recommended_action": "Continue compact interface-budget validation.",
+        "classification": classification,
+        "recommended_action": recommended_action,
         "health_check": "fixture hot-path budget run",
     }
+    if interface_budget_cadence:
+        record["interface_budget_cadence"] = interface_budget_cadence
     json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     markdown_path.write_text("# Fixture hot-path budget run\n", encoding="utf-8")
-    (run_dir / "index.jsonl").write_text(
-        json.dumps(
-            {
-                **record,
-                "json_path": str(json_path),
-                "markdown_path": str(markdown_path),
-            },
-            ensure_ascii=False,
+    with (run_dir / "index.jsonl").open("a", encoding="utf-8") as f:
+        f.write(
+            json.dumps(
+                {
+                    **record,
+                    "json_path": str(json_path),
+                    "markdown_path": str(markdown_path),
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
         )
-        + "\n",
-        encoding="utf-8",
-    )
 
 
 def json_size(payload: dict[str, Any]) -> int:
@@ -209,6 +218,54 @@ def assert_contract_doc_matches_budget_table() -> None:
         assert str(budget["max_json_chars"]) in text.replace(",", "").replace("_", ""), surface
         assert str(budget["max_nested_keys"]) in text, surface
         assert str(budget["max_top_level_keys"]) in text, surface
+    for field in (
+        "interface_budget_cadence",
+        "checked_at",
+        "next_check_due_at",
+        "overdue",
+        "within_budget",
+        "minimum_headroom_ratio",
+        "quiet_skip_until_next_check_due",
+        "rerun_hot_path_interface_budget_smoke",
+    ):
+        assert field in text, field
+
+
+def assert_cadence_projection(
+    root: Path,
+    registry_path: Path,
+    project: Path,
+    cadence: dict[str, Any],
+) -> None:
+    append_run(
+        root,
+        generated_at="2099-01-01T00:10:00+00:00",
+        classification="interface_budget_cadence_check",
+        recommended_action=(
+            "Interface-budget drift check is clean; wait until the next cadence due time "
+            "unless a prompt or hot-path contract changes."
+        ),
+        interface_budget_cadence=cadence,
+    )
+    status_payload = collect_status(
+        registry_path=registry_path,
+        runtime_root_override=str(root / "runtime"),
+        scan_roots=[project],
+        limit=5,
+    )
+    items = status_payload["attention_queue"]["items"]
+    matches = [item for item in items if item.get("goal_id") == GOAL_ID]
+    assert len(matches) == 1, items
+    projected = matches[0]["project_asset"]["interface_budget_cadence"]
+    assert projected["overdue"] is False, projected
+    assert projected["within_budget"] is True, projected
+    assert projected["next_check_due_at"] == "2099-01-02T00:10:00+00:00", projected
+    assert projected["recommendation"] == "quiet_skip_until_next_check_due", projected
+
+    quota_payload = build_quota_should_run(status_payload, goal_id=GOAL_ID)
+    assert quota_payload["should_run"] is True, quota_payload
+    assert quota_payload["interface_budget_cadence"]["overdue"] is False, quota_payload
+    assert quota_payload["interface_budget_cadence"]["tightest_surface"] == cadence["tightest_surface"], quota_payload
 
 
 def main() -> int:
@@ -227,22 +284,47 @@ def main() -> int:
         handoff_payload = review_packet_handoff_only_payload(review_packet)
         heartbeat_payload = build_heartbeat_prompt(goal_id=GOAL_ID, thin=True)
 
-    assert quota_payload["should_run"] is True, quota_payload
-    assert handoff_payload["within_budget"] is True, handoff_payload
-    summaries = [
-        assert_surface("heartbeat_prompt_json", heartbeat_payload),
-        assert_surface("review_packet_handoff_only_json", handoff_payload),
-        assert_surface("quota_should_run_json", quota_payload),
-        assert_surface("dashboard_status_json", status_payload),
-    ]
-    assert_contract_doc_matches_budget_table()
+        assert quota_payload["should_run"] is True, quota_payload
+        assert handoff_payload["within_budget"] is True, handoff_payload
+        summaries = [
+            assert_surface("heartbeat_prompt_json", heartbeat_payload),
+            assert_surface("review_packet_handoff_only_json", handoff_payload),
+            assert_surface("quota_should_run_json", quota_payload),
+            assert_surface("dashboard_status_json", status_payload),
+        ]
+        cadence = build_interface_budget_cadence(
+            summaries,
+            checked_at="2099-01-01T00:10:00+00:00",
+            now="2099-01-01T01:00:00+00:00",
+            freshness_hours=24,
+        )
+        assert cadence["within_budget"] is True, cadence
+        assert cadence["overdue"] is False, cadence
+        assert cadence["surface_count"] == len(summaries), cadence
+        assert cadence["next_check_due_at"] == "2099-01-02T00:10:00+00:00", cadence
+        assert cadence["minimum_headroom_ratio"] is not None, cadence
+        stale_cadence = build_interface_budget_cadence(
+            summaries,
+            checked_at="2099-01-01T00:10:00+00:00",
+            now="2099-01-02T00:10:00+00:00",
+            freshness_hours=24,
+        )
+        assert stale_cadence["overdue"] is True, stale_cadence
+        assert stale_cadence["recommendation"] == "rerun_hot_path_interface_budget_smoke", stale_cadence
+        assert_cadence_projection(root, registry_path, project, cadence)
+        assert_contract_doc_matches_budget_table()
 
-    for summary in summaries:
+        for summary in summaries:
+            print(
+                "{surface}: owner={owner} consumer={consumer} "
+                "json_chars={json_chars}/{max_json_chars} "
+                "nested_keys={nested_keys}/{max_nested_keys} "
+                "top_level_keys={top_level_keys}/{max_top_level_keys}".format(**summary)
+            )
         print(
-            "{surface}: owner={owner} consumer={consumer} "
-            "json_chars={json_chars}/{max_json_chars} "
-            "nested_keys={nested_keys}/{max_nested_keys} "
-            "top_level_keys={top_level_keys}/{max_top_level_keys}".format(**summary)
+            "interface_budget_cadence: checked_at={checked_at} next_check_due_at={next_check_due_at} "
+            "tightest={tightest_surface}/{tightest_metric} headroom={headroom_remaining} "
+            "overdue={overdue}".format(**cadence)
         )
     print("hot-path-interface-budget-smoke ok")
     return 0

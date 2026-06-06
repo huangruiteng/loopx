@@ -348,6 +348,36 @@ missing `status_contract` means an older status producer; loopback dashboards
 should surface that as a daemon freshness warning rather than silently hiding
 newer panels.
 
+## Interface Budget Cadence
+
+When a run-history record includes `interface_budget_cadence`,
+`goal-harness status` projects a compact copy under
+`attention_queue.items[].project_asset.interface_budget_cadence`. For the
+selected goal, `quota should-run` also mirrors the same object at top level as
+`interface_budget_cadence`.
+
+This field is a restraint signal for heartbeat workers, not a dashboard feature
+request. It records the latest clean hot-path budget check, the tightest
+headroom observed, and when the next check is due. Fresh clean checks can
+support a quiet skip for the ongoing interface-budget guard; overdue or
+out-of-budget checks should prompt `python3
+examples/hot-path-interface-budget-smoke.py` or an equivalent explicit
+drift-check run.
+
+Stable fields:
+
+- `checked_at`
+- `freshness_hours`
+- `next_check_due_at`
+- `overdue`
+- `within_budget`
+- `surface_count`
+- `minimum_headroom_ratio`
+- `tightest_surface`
+- `tightest_metric`
+- `headroom_remaining`
+- `recommendation`
+
 ## Promotion Gate JSON
 
 `goal-harness promotion-gate --format json` is the compact machine-readable

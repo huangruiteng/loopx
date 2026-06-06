@@ -22,6 +22,7 @@ from .execution_profile import (
 )
 from .handoff_budget import handoff_budget_contract
 from .history import collect_history, load_registry
+from .interface_budget import interface_budget_cadence_for_runs
 from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
@@ -1215,6 +1216,7 @@ def enrich_project_asset(
     execution_profile: dict[str, Any] | None = None,
     orchestration: dict[str, Any] | None = None,
     subagent_activity: dict[str, Any] | None = None,
+    interface_budget_cadence: dict[str, Any] | None = None,
 ) -> None:
     project_asset = item.get("project_asset")
     if not isinstance(project_asset, dict):
@@ -1234,6 +1236,8 @@ def enrich_project_asset(
         project_asset["orchestration"] = compact_orchestration_policy(orchestration)
     if subagent_activity:
         project_asset["subagent_activity"] = subagent_activity
+    if interface_budget_cadence:
+        project_asset["interface_budget_cadence"] = interface_budget_cadence
     if latest_validation:
         project_asset["latest_validation"] = latest_validation
     readiness = project_asset_handoff_readiness(item, latest_runs=latest_runs)
@@ -1945,6 +1949,7 @@ def build_attention_queue(
                 item["control_plane"] = control_plane
             goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
             subagent_activity = subagent_activity_for_goal(goal)
+            interface_budget_cadence = interface_budget_cadence_for_runs(goal_latest_runs)
             projection_warning = active_state_projection_warning(goal, latest_run(goal))
             enrich_project_asset(
                 item,
@@ -1961,6 +1966,7 @@ def build_attention_queue(
                     else None
                 ),
                 subagent_activity=subagent_activity,
+                interface_budget_cadence=interface_budget_cadence,
             )
             if control_plane and isinstance(item.get("project_asset"), dict):
                 item["project_asset"]["control_plane"] = control_plane
@@ -1992,6 +1998,7 @@ def build_attention_queue(
                     quota=item.get("quota") if isinstance(item.get("quota"), dict) else None,
                     latest_runs=goal_latest_runs,
                     subagent_activity=subagent_activity,
+                    interface_budget_cadence=interface_budget_cadence,
                 )
                 guarded_quota = quota_with_handoff_outcome_floor(
                     item.get("quota") if isinstance(item.get("quota"), dict) else {},
@@ -2012,6 +2019,7 @@ def build_attention_queue(
                         quota=guarded_quota,
                         latest_runs=goal_latest_runs,
                         subagent_activity=subagent_activity,
+                        interface_budget_cadence=interface_budget_cadence,
                     )
             history_items.append(item)
 
@@ -3214,6 +3222,23 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"requires_agent_todo={backlog_warning.get('requires_agent_todo')} "
                     f"evidence_count={backlog_warning.get('evidence_count')} "
                     f"source_sections={_markdown_scalar(','.join(backlog_warning.get('source_sections') or []))}"
+                )
+            interface_budget_cadence = (
+                project_asset.get("interface_budget_cadence")
+                if isinstance(project_asset.get("interface_budget_cadence"), dict)
+                else {}
+            )
+            if interface_budget_cadence:
+                lines.append(
+                    "    - interface_budget_cadence: "
+                    f"overdue={interface_budget_cadence.get('overdue')} "
+                    f"within_budget={interface_budget_cadence.get('within_budget')} "
+                    f"checked_at={_markdown_scalar(interface_budget_cadence.get('checked_at') or '')} "
+                    f"next_check_due_at={_markdown_scalar(interface_budget_cadence.get('next_check_due_at') or '')} "
+                    f"tightest={_markdown_scalar(interface_budget_cadence.get('tightest_surface') or '')}/"
+                    f"{_markdown_scalar(interface_budget_cadence.get('tightest_metric') or '')} "
+                    f"headroom={interface_budget_cadence.get('headroom_remaining')} "
+                    f"recommendation={_markdown_scalar(interface_budget_cadence.get('recommendation') or '')}"
                 )
             latest_validation = (
                 project_asset.get("latest_validation")
