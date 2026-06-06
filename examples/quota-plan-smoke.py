@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 from goal_harness.quota import (  # noqa: E402
     build_quota_plan,
     build_quota_should_run,
+    build_quota_slot_spend_event,
     build_quota_slot_preview,
     goal_quota_with_spend_ledger,
     goal_quota_config,
@@ -709,6 +710,79 @@ def assert_focus_wait_should_run() -> None:
     assert "- user_todo_next[1]: Provide new owner evidence" in markdown, markdown
 
 
+def assert_outcome_floor_recovery_should_run() -> None:
+    goal_id = "outcome-floor-recovery"
+    recovery_goal = goal(goal_id, compute=1.0)
+    recovery_item = attention(goal_id, compute=1.0)
+    recovery_item["project_asset"] = {
+        "owner": "codex",
+        "next_action": "produce ranker evidence or write back the concrete blocker",
+        "stop_condition": "stop if recovery needs owner approval",
+        "quota": recovery_item["quota"],
+        "execution_profile": {
+            "cadence": "macro_evidence_segment",
+            "minimum_scale": "implementation",
+            "must_include": ["experiment_or_evidence_artifact", "targeted_validation", "state_writeback"],
+            "outcome_floor": {
+                "surface_streak_threshold": 1,
+                "must_advance": ["ranker_or_cross_domain_evidence"],
+                "avoid": ["surface_only_summary", "synthetic_only_test_chain"],
+            },
+        },
+    }
+    recovery_item["handoff_readiness"] = {
+        "ready": False,
+        "codex_ready": False,
+        "source": "project_asset",
+        "quota_state": "eligible",
+        "post_handoff_run_seen": True,
+        "post_handoff_outcome_gap_streak": 1,
+        "post_handoff_latest_run": {
+            "classification": "surface_only_summary",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "delivery_batch_scale": "single_surface",
+            "delivery_outcome": "outcome_gap",
+        },
+    }
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "attention_queue": {"items": [recovery_item]},
+        "run_history": {"goals": [recovery_goal]},
+    }
+    decision = build_quota_should_run(payload, goal_id=goal_id)
+    markdown = render_quota_should_run_markdown(decision)
+    preview = build_quota_slot_preview(payload, goal_id=goal_id, slots=1)
+    spend_event = build_quota_slot_spend_event(preview, source="heartbeat")
+
+    assert decision["ok"] is True, decision
+    assert decision["decision"] == "safe_bypass_recovery", decision
+    assert decision["should_run"] is True, decision
+    assert decision["normal_delivery_allowed"] is False, decision
+    assert decision["recovery_delivery_allowed"] is True, decision
+    assert decision["actionable_by_codex"] is True, decision
+    assert decision["requires_user_action"] is False, decision
+    assert decision["effective_action"] == "outcome_floor_recovery", decision
+    assert decision["state"] == "focus_wait", decision
+    assert decision["blocked_action_scope"] == "delivery_outcome_floor", decision
+    assert decision["safe_bypass_allowed"] is True, decision
+    assert decision["safe_bypass_kind"] == "outcome_floor_recovery", decision
+    assert decision["heartbeat_recommendation"]["recommended_mode"] == "outcome_floor_recovery", decision
+    assert decision["quota"]["must_advance"] == ["ranker_or_cross_domain_evidence"], decision
+    assert "decision: `safe_bypass_recovery`" in markdown, markdown
+    assert "recovery_delivery_allowed: `True`" in markdown, markdown
+    assert "effective_action: `outcome_floor_recovery`" in markdown, markdown
+    assert preview["ok"] is True, preview
+    assert preview["safe_bypass_spend"] is True, preview
+    assert preview["before"]["effective_action"] == "outcome_floor_recovery", preview
+    assert preview["after"]["quota"]["spent_slots"] == preview["before"]["quota"]["spent_slots"] + 1, preview
+    assert "outcome-floor recovery safe-bypass" in spend_event["health_check"], spend_event
+    assert "outcome-floor recovery safe-bypass" in spend_event["quota_event"]["reason_summary"], spend_event
+
+
 def assert_attention_queue_overrides_stale_run_history() -> None:
     stale_goal = goal("queue-authority", compute=1.0)
     stale_goal["status"] = "operator_gate_deferred"
@@ -1138,6 +1212,7 @@ def main() -> int:
     assert_throttled_should_run(status_payload)
     assert_operator_gate_should_run(status_payload)
     assert_focus_wait_should_run()
+    assert_outcome_floor_recovery_should_run()
     assert_attention_queue_overrides_stale_run_history()
     assert_project_asset_backed_no_evidence_should_run()
     assert_heartbeat_recommendation_lifecycle()

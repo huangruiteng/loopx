@@ -722,13 +722,17 @@ not a repository rewind or a replacement for `should_run`.
 If the payload's `handoff_readiness.post_handoff_outcome_gap_streak` has reached
 the `project_asset.execution_profile.outcome_floor.surface_streak_threshold`,
 `quota should-run` should also enforce the handoff contract by returning
-`should_run=false`, `state=focus_wait`, `blocked_action_scope=delivery_outcome_floor`,
-`safe_bypass_allowed=true`, `safe_bypass_kind=outcome_floor_recovery`, and
+`should_run=true`, `state=focus_wait`, `blocked_action_scope=delivery_outcome_floor`,
+`safe_bypass_allowed=true`, `safe_bypass_kind=outcome_floor_recovery`,
+`recovery_delivery_allowed=true`, `effective_action=outcome_floor_recovery`,
+`decision=safe_bypass_recovery`, and
 `heartbeat_recommendation.recommended_mode=outcome_floor_recovery` when the
-floor declares a concrete `must_advance` target. That lets a target agent spend
-one bounded recovery turn only for ranker/cross-domain evidence or concrete
-blocker writeback, instead of continuing a surface-only loop or waiting
-passively.
+floor declares a concrete `must_advance` target. In this shape `should_run`
+means there is a Codex-actionable turn, while `normal_delivery_allowed=false`
+explains that ordinary delivery is blocked. Executors should treat
+`effective_action=outcome_floor_recovery` as recovery permission, spend only
+after validated ranker/cross-domain evidence or concrete blocker writeback, and
+avoid continuing a surface-only loop or waiting passively.
 The status export should apply the same quota guard to `attention_queue.items[]`
 and `project_asset.quota`, while preserving `handoff_readiness` run evidence:
 `codex_ready` may become false, but `post_handoff_latest_run`,
@@ -1030,6 +1034,12 @@ Quota may also use `state=focus_wait` when post-handoff delivery has repeatedly
 missed the declared outcome floor. In that case `blocked_action_scope` should
 identify `delivery_outcome_floor`, and the target agent should either return
 with outcome-scale evidence or report a blocker without spending another slot.
+When the floor declares `must_advance`, the quota payload should split ordinary
+delivery from recovery delivery with `normal_delivery_allowed=false`,
+`recovery_delivery_allowed=true`, `should_run=true`, and
+`effective_action=outcome_floor_recovery`
+so dashboard and heartbeat consumers do not mistake the recovery lane for a
+quiet skip.
 
 For `controller_readiness`, the status export keeps only controller-stage
 booleans, missing gate names, operator-facing review text, next handoff

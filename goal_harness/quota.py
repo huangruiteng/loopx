@@ -1000,6 +1000,38 @@ def _promotion_readiness_warning(status_payload: dict[str, Any]) -> dict[str, An
     }
 
 
+def _recovery_delivery_allowed(quota: dict[str, Any], *, plan_ok: bool) -> bool:
+    return (
+        bool(plan_ok)
+        and quota.get("safe_bypass_allowed") is True
+        and str(quota.get("safe_bypass_kind") or "") == "outcome_floor_recovery"
+    )
+
+
+def _effective_action(
+    *,
+    should_run: bool,
+    recovery_delivery_allowed: bool,
+    state: str,
+    quota: dict[str, Any],
+) -> str:
+    if should_run:
+        return "normal_run"
+    if recovery_delivery_allowed:
+        return "outcome_floor_recovery"
+    if state == "operator_gate":
+        return "operator_gate_notify"
+    if state == "blocked_health":
+        return "blocked_health"
+    if state == "throttled":
+        return "throttled_skip"
+    if state in {"focus_wait", "waiting"}:
+        return "blocked_wait"
+    if quota.get("focus_wait"):
+        return "blocked_wait"
+    return "quota_skip"
+
+
 def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     plan = build_quota_plan(status_payload, mode="should-run")
@@ -1017,7 +1049,15 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
     if item:
         quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
         state = str(quota.get("state") or "unknown")
-        should_run = bool(plan.get("ok")) and state == "eligible"
+        normal_delivery_allowed = bool(plan.get("ok")) and state == "eligible"
+        recovery_allowed = _recovery_delivery_allowed(quota, plan_ok=bool(plan.get("ok")))
+        should_run = bool(normal_delivery_allowed or recovery_allowed)
+        effective_action = _effective_action(
+            should_run=normal_delivery_allowed,
+            recovery_delivery_allowed=recovery_allowed,
+            state=state,
+            quota=quota,
+        )
         reason = str(quota.get("reason") or "quota state is not eligible")
         if not plan.get("ok"):
             reason = "status or contract health is not ok; skip automatic compute"
@@ -1032,8 +1072,12 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             "ok": bool(plan.get("ok")),
             "mode": "should-run",
             "goal_id": safe_goal_id,
-            "decision": "run" if should_run else "skip",
+            "decision": "run" if normal_delivery_allowed else "safe_bypass_recovery" if recovery_allowed else "skip",
             "should_run": should_run,
+            "normal_delivery_allowed": normal_delivery_allowed,
+            "recovery_delivery_allowed": recovery_allowed,
+            "effective_action": effective_action,
+            "actionable_by_codex": bool(should_run or recovery_allowed),
             "reason": reason,
             "quota": quota,
             "state": state,
@@ -1078,6 +1122,9 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
                     state=state,
                     waiting_on=str(item.get("waiting_on") or ""),
                 )
+        payload["requires_user_action"] = bool(
+            state == "operator_gate" or payload.get("notify_user_on_open_todo") is True
+        )
         if agent_todo_summary:
             payload["agent_todo_summary"] = agent_todo_summary
         decision_warning = _decision_freshness_warning(status_payload, goal_id=safe_goal_id)
@@ -1168,7 +1215,11 @@ def build_quota_slot_preview(
     safe_slots = max(1, _int_number(slots, default=1))
     before = build_quota_should_run(status_payload, goal_id=safe_goal_id)
     safe_bypass_spend = (
-        before.get("state") == "operator_gate"
+        (
+            before.get("state") == "operator_gate"
+            or before.get("recovery_delivery_allowed") is True
+            or before.get("effective_action") == "outcome_floor_recovery"
+        )
         and before.get("safe_bypass_allowed") is True
     )
     if not before.get("ok") or (not before.get("should_run") and not safe_bypass_spend):
@@ -1247,8 +1298,12 @@ def _compact_quota_decision(decision: dict[str, Any]) -> dict[str, Any]:
     quota = decision.get("quota") if isinstance(decision.get("quota"), dict) else {}
     return {
         "should_run": bool(decision.get("should_run")),
+        "normal_delivery_allowed": bool(decision.get("normal_delivery_allowed")),
+        "recovery_delivery_allowed": bool(decision.get("recovery_delivery_allowed")),
+        "effective_action": decision.get("effective_action"),
         "state": str(decision.get("state") or ""),
         "safe_bypass_allowed": bool(decision.get("safe_bypass_allowed")),
+        "safe_bypass_kind": decision.get("safe_bypass_kind"),
         "blocked_action_scope": decision.get("blocked_action_scope"),
         "compute": quota.get("compute"),
         "window_hours": quota.get("window_hours"),
@@ -1280,7 +1335,11 @@ def build_quota_slot_spend_event(
         raise ValueError("after.spent_slots must equal before.spent_slots + slots")
     eligible_spend = before_compact["should_run"] is True and before_compact["state"] == "eligible"
     safe_bypass_spend = (
-        before_compact["state"] == "operator_gate"
+        (
+            before_compact["state"] == "operator_gate"
+            or before_compact["recovery_delivery_allowed"] is True
+            or before_compact["effective_action"] == "outcome_floor_recovery"
+        )
         and before_compact["safe_bypass_allowed"] is True
     )
     if not eligible_spend and not safe_bypass_spend:
@@ -1294,7 +1353,11 @@ def build_quota_slot_spend_event(
         "health_check": (
             "quota should-run eligible; quota slot spend event public-safe"
             if eligible_spend
-            else "quota safe-bypass operator gate; quota slot spend event public-safe"
+            else (
+                "quota outcome-floor recovery safe-bypass; quota slot spend event public-safe"
+                if before_compact.get("effective_action") == "outcome_floor_recovery"
+                else "quota safe-bypass operator gate; quota slot spend event public-safe"
+            )
         ),
         "quota_event": {
             "event_type": QUOTA_SLOT_SPENT_CLASSIFICATION,
@@ -1303,7 +1366,11 @@ def build_quota_slot_spend_event(
             "reason_summary": (
                 f"{slots} automatic agent slot(s) completed under an eligible quota guard"
                 if eligible_spend
-                else f"{slots} automatic agent slot(s) completed as safe-bypass work under an operator gate"
+                else (
+                    f"{slots} automatic agent slot(s) completed as outcome-floor recovery safe-bypass work"
+                    if before_compact.get("effective_action") == "outcome_floor_recovery"
+                    else f"{slots} automatic agent slot(s) completed as safe-bypass work under an operator gate"
+                )
             ),
             "before": before_compact,
             "after": after_compact,
@@ -1516,6 +1583,10 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         f"- goal_id: `{payload.get('goal_id')}`",
         f"- decision: `{payload.get('decision')}`",
         f"- should_run: `{payload.get('should_run')}`",
+        f"- normal_delivery_allowed: `{payload.get('normal_delivery_allowed')}`",
+        f"- recovery_delivery_allowed: `{payload.get('recovery_delivery_allowed')}`",
+        f"- effective_action: `{payload.get('effective_action')}`",
+        f"- actionable_by_codex: `{payload.get('actionable_by_codex')}`",
         f"- state: `{payload.get('state')}`",
         f"- waiting_on: `{payload.get('waiting_on')}`",
         f"- status: `{payload.get('status')}`",

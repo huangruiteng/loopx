@@ -136,12 +136,6 @@ If the result says `should_run=false`:
   report compactly. If `user_todo_summary.open_count > 0`, that report must
   include the existing open user todos and must not say there is "no new user
   action". If no useful safe-bypass step exists, report the pending gate.
-- If `safe_bypass_kind=outcome_floor_recovery` or
-  `heartbeat_recommendation.recommended_mode=outcome_floor_recovery`, run only
-  outcome-floor recovery: produce the required ranker/cross-domain evidence
-  artifact named by `must_advance`, or write back the concrete blocker. Avoid
-  summary/queue/contract propagation and synthetic-only chains. Spend once after
-  validated evidence/blocker writeback.
 - If `waiting_on=external_evidence` or `state=waiting`, and this automation is
   explicitly a monitor, run at most one bounded read-only observation poll using
   project-approved status/log/metric/marker surfaces named in active state,
@@ -171,6 +165,12 @@ If the result says `should_run=true`:
    sibling-goal todos found in `attention_queue.items` should be recorded as
    dependency blockers; they must not consume the whole eligible turn. Choose a
    gate-independent P0/P1/P2 candidate for this goal when one exists.
+   If `effective_action=outcome_floor_recovery` or
+   `recovery_delivery_allowed=true` or
+   `safe_bypass_kind=outcome_floor_recovery`, produce the required
+   ranker/cross-domain evidence artifact named by `must_advance`, or write back
+   the concrete blocker. Do not fall through to ordinary delivery,
+   surface propagation, or synthetic-only chains.
    Also read `heartbeat_recommendation` from the quota payload before inventing
    local automation behavior. If it says `recommended_mode=run_first_read_only_map`,
    run exactly its `command` as a real read-only map, not another dry-run, then
@@ -278,7 +278,7 @@ def render_brief_heartbeat_task_body(
     return f"""Advance `{goal_id}` using `{active_state}`.
 
 Brief installed Goal Harness heartbeat. Thin dispatcher: keep context small;
-pull details on demand. Details: `{compact_prompt_command}`.
+pull details on demand: `{compact_prompt_command}`.
 
 Preflight and quota guard:
 
@@ -287,23 +287,22 @@ Preflight and quota guard:
 {quota_guard_command}
 ```
 
-If preflight fails: quiet `DONT_NOTIFY`, no work/spend.
+Preflight fail: quiet `DONT_NOTIFY`, no work
 
-If `should_run=false`: no work/spend except explicit `safe_bypass_allowed=true`
-branches. Gate/open todo -> concise Chinese `NOTIFY`. external/wait monitor ->
-one read-only status/log/metric/marker poll; new evidence -> allowed writeback,
-spend once. `safe_bypass_kind=outcome_floor_recovery` or matching
-`heartbeat_recommendation` -> one ranker/cross-domain evidence recovery or
-blocker writeback; no surface/synthetic-only work; validate/writeback/spend.
+If `should_run=false`: no work/spend except explicit
+`safe_bypass_allowed=true` branches. Gate/open todo -> Chinese `NOTIFY`.
+external/wait monitor -> one read-only
+status/log/metric/marker poll; new evidence -> allowed writeback/spend once.
 Else quiet `DONT_NOTIFY`.
 
 If `should_run=true`: fetch compact; read needed state
-priority slice + guard payload. Use `status --limit 3` only for cross-goal
-priority/owner/gate ambiguity; use `review-packet --handoff-only` only for
-scale/readiness ambiguity. Blocker-push first; obey
-`heartbeat_recommendation`, `goal_boundary`, `delivery_batch_scale`,
+priority slice + guard payload. Use `status --limit 3` for cross-goal
+ambiguity; `review-packet --handoff-only` for scale/readiness. Blocker-push first; obey
+`effective_action`, `recovery_delivery_allowed`, `heartbeat_recommendation`,
+`safe_bypass_kind=outcome_floor_recovery`, `goal_boundary`, `delivery_batch_scale`,
 `delivery_outcome`, outcome streaks, `handoff_delivery_contract`; do 1
 bounded segment/batch;
+if recovery, run ranker/cross-domain evidence recovery or blocker writeback;
 validate/writeback/todos; spend once; refresh with explicit delivery
 scale/outcome for progress artifacts. Stop on private, credentials,
 destructive git, prod, or review rules.
@@ -346,24 +345,20 @@ Before delivery, make CLI reachable; run quota guard:
 {quota_guard_command}
 ```
 
-If preflight fails: quiet `DONT_NOTIFY` exact failure; no implementation,
-adapter work, file edits, research, exploration, or spend.
+If preflight fails: quiet `DONT_NOTIFY`; no work/spend.
 
 If `should_run=false`:
 - `state=operator_gate` or `notify_user_on_open_todo=true`: blocker-push. If
-  not surfaced recently, return one concise Chinese `NOTIFY` with the gate or
-  up to three open user todos/first_open_items, reason, and expected reply
-  format (`done`, `defer/not now`, or evidence link/date/conclusion). No
-  delivery or spend.
-- `safe_bypass_allowed=true`: if `safe_bypass_kind=outcome_floor_recovery`,
-  produce the required ranker/cross-domain evidence artifact or blocker; no
-  surface/synthetic-only work. Else gate-independent step.
+  not surfaced recently, concise Chinese `NOTIFY` with gate or up to three
+  user todos/first_open_items, reason, and reply format (`done`,
+  `defer/not now`, or evidence link/date/conclusion). No delivery/spend.
+- `safe_bypass_allowed=true`: do one gate-independent safe-bypass step.
   Validate/writeback/spend once; refresh if needed.
 - `waiting_on=external_evidence` or `state=waiting` with explicit monitor
   purpose: one read-only status/log/metric/marker poll. Unchanged: quiet
-  `DONT_NOTIFY`, no edits/spend. New eval/fail/done/blocker/approval/CI/deploy/
-  data evidence: report, allowed state/board/ledger writeback, todos, spend
-  once. No launch/stop/restart/sync/code/prod mutation without authorization.
+  `DONT_NOTIFY`, no edits/spend. New evidence: report, allowed
+  state/board/ledger writeback, todos, spend once. No prod mutation without
+  authorization.
 - Otherwise quiet `DONT_NOTIFY` with the skip reason; no work or spend.
 
 If `should_run=true`:
@@ -373,38 +368,41 @@ If `should_run=true`:
    `run_history.latest_runs` as drill-down only.
 2. Stop only for this goal's own blocker todo: Chinese `NOTIFY`, no work/spend.
    Dependency/sibling todos: record/surface, do not skip; continue P0/P1/P2 audit.
-3. Follow `heartbeat_recommendation` before inventing behavior:
+3. If `effective_action=outcome_floor_recovery` or
+   `recovery_delivery_allowed=true` or
+   `safe_bypass_kind=outcome_floor_recovery`, run only ranker/cross-domain
+   evidence artifact or blocker recovery; no ordinary delivery or
+   surface/synthetic-only work.
+4. Follow `heartbeat_recommendation` before inventing behavior:
    `run_first_read_only_map` means run exact real-map command, then
    validate/save/spend/refresh/`NOTIFY`; `mapped_noop_if_unchanged` plus
-   `stop_if_unchanged=true` means quiet no-op if there is no new instruction,
-   owner evidence, agent todo, stale source, or safe handoff.
+   `stop_if_unchanged=true` means quiet no-op if no new instruction/evidence/
+   todo/stale source/safe handoff.
    Check `delivery_batch_scale`, `delivery_outcome`,
    `post_handoff_outcome_gap_streak`, `handoff_delivery_contract`; obey
    repeated-small/surface-loop contracts.
-4. Run steering audit: compare P0/P1/P2, continuation checks,
+5. Run steering audit: compare P0/P1/P2, continuation checks,
    compute/focus quota, bottleneck lens.
-5. Run the no-progress self-stop check: if 5 consecutive eligible heartbeats
-   only repeat status/brief checks with no artifact, implementation/adapter
-   progress, gate/user decision, or validation signal, pause/delete automation,
-   `NOTIFY`, no spend.
-6. Choose one bounded, verifiable segment. Coherent batch is OK when
+6. Run the no-progress self-stop check: if 5 eligible heartbeats only repeat
+   status/brief checks with no artifact, implementation/adapter progress,
+   gate/user decision, or validation signal, pause/delete automation, `NOTIFY`,
+   no spend.
+7. Choose one bounded, verifiable segment. Coherent batch is OK when
    scope/validation are clear. Public-safe commit/push/PR may proceed
-   after validation and clean scan. Stop for
-   private/company-internal material, credentials, destructive git, production
-   actions, or explicit repo review rules.
-7. Validate; write files/validation/critic/next action to active state;
+   after validation and clean scan. Stop for private/company material,
+   credentials, destructive git, production, or explicit review rules.
+8. Validate; write files/validation/critic/next action to active state;
    use `goal-harness todo add --goal-id {goal_id} --role user|agent` for
    blockers/follow-ups, not prose.
-8. After completed delivery or safe-bypass work, spend once before state
+9. After completed delivery or safe-bypass work, spend once before state
    refresh:
 
 ```bash
 {quota_spend_command}
 ```
 
-9. Refresh after spend if needed; for validated progress artifacts pass
-   explicit `--delivery-batch-scale` and `--delivery-outcome` so readiness does
-   not infer from classification names.
+10. Refresh after spend if needed; validated progress artifacts pass explicit
+   `--delivery-batch-scale` and `--delivery-outcome`.
 
 Do not append spend for quiet skips, preflight failures, blocker-push asks,
 pure dry-runs, self-cancel turns, or duplicate accounting attempts.

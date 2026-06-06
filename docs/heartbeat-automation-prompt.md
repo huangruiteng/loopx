@@ -176,14 +176,6 @@ If the result says should_run=false:
   agent todo it can execute next. If no useful
   safe-bypass step exists, report the pending gate compactly instead of doing
   work.
-- If `safe_bypass_kind=outcome_floor_recovery` or the matching recovery mode
-  is present, this is
-  not a gate-independent side quest. The outcome floor blocks surface-only
-  delivery but permits exactly one recovery attempt: produce the required
-  ranker/cross-domain evidence artifact named by `must_advance`, or write back
-  the concrete blocker that prevents that artifact. Avoid summary/queue/contract
-  propagation and synthetic-only test chains. Spend exactly once only after
-  validated evidence/blocker writeback.
 - If waiting_on=external_evidence or state=waiting, and this automation is
   explicitly a monitor, run at most one bounded read-only observation poll using
   project-approved status/log/metric/marker surfaces named in active state,
@@ -213,6 +205,12 @@ If the result says should_run=true:
    todos found in `attention_queue.items` should be recorded as dependency
    blockers; they must not consume the whole eligible turn; choose a
    gate-independent P0/P1/P2 candidate for this goal when one exists.
+   If `effective_action=outcome_floor_recovery` or
+   `recovery_delivery_allowed=true` or
+   `safe_bypass_kind=outcome_floor_recovery`, produce the required
+   ranker/cross-domain evidence artifact named by `must_advance`, or write back
+   the concrete blocker. Do not fall through to ordinary delivery, surface
+   propagation, or synthetic-only chains.
    Also read heartbeat_recommendation from the quota payload before inventing
    local automation behavior. If it says recommended_mode=run_first_read_only_map,
    run exactly its command as a real read-only map, not another dry-run, then
@@ -319,10 +317,13 @@ returns `should_run=false`, ask about operator gates with NOTIFY using
 the payload says `notify_user_on_open_todo=true`, ask up to three open
 `user_todo_summary` items as a blocker-push NOTIFY and do not spend quota for
 that blocker-push turn. If
+it returns `should_run=true` with `effective_action=outcome_floor_recovery` or
+`recovery_delivery_allowed=true`, run only the bounded evidence/blocker
+recovery before any ordinary delivery. If
 it returns `state=operator_gate` plus `safe_bypass_allowed=true`, avoid the
 gated command and do at most one independent read-only steering/analysis step
 after the gate has already been surfaced.
-If it returns `should_run=true`, first compare candidate next actions across
+If it returns `should_run=true`, first check `effective_action`, then compare candidate next actions across
 the priority stack, use `attention_queue.items` / `project_asset` as the current
 routing authority; if project_asset is absent or legacy/raw fallback, raw queue
 fields are not owner/gate/stop authority. Treat `run_history.latest_runs` only as evidence,
@@ -361,35 +362,39 @@ For every automatic heartbeat turn, the agent-facing checklist is:
 3. If `notify_user_on_open_todo=true`, ask up to three open user todos as a
    blocker-push notification unless the same blocker was surfaced recently; do
    not spend quota for that blocker-push turn.
-4. If the gate was already surfaced and `safe_bypass_allowed=true`, either take
+4. If `effective_action=outcome_floor_recovery` or
+   `recovery_delivery_allowed=true`, treat `should_run=true` as a recovery turn:
+   run only the bounded evidence/blocker recovery and spend only after
+   validated writeback.
+5. If the gate was already surfaced and `safe_bypass_allowed=true`, either take
    one independent safe-bypass step or report the pending gate compactly.
-5. If the current goal is eligible, dependency or sibling-goal open user todos
+6. If the current goal is eligible, dependency or sibling-goal open user todos
    must not stop the whole turn; record or surface them, then keep looking for a
    gate-independent P0/P1/P2 candidate for the current goal.
-6. Run the steering audit before choosing the work.
-7. Use `attention_queue.items` / `project_asset` as current routing authority;
+7. Run the steering audit before choosing the work.
+8. Use `attention_queue.items` / `project_asset` as current routing authority;
    if project_asset is absent or legacy/raw fallback, raw queue fields are not
    owner/gate/stop authority. Use `run_history.latest_runs` only as evidence or drill-down.
-8. Follow `heartbeat_recommendation`: first connected read-only goals should run
+9. Follow `heartbeat_recommendation`: first connected read-only goals should run
    one real `read-only-map`, while already mapped unchanged goals should return
    a quiet no-op without another dry-run or quota spend.
-9. Check `delivery_batch_scale`, `delivery_outcome`,
+10. Check `delivery_batch_scale`, `delivery_outcome`,
    `post_handoff_outcome_gap_streak`, and `handoff_delivery_contract`; for
    repeated-small or surface-only loops, obey the contract.
-10. Cancel or pause the automation instead of spending if 5 consecutive eligible
+11. Cancel or pause the automation instead of spending if 5 consecutive eligible
    turns are only repeated no-progress status loops.
-11. Treat routine public commit, push, and PR creation as autonomous after clean
+12. Treat routine public commit, push, and PR creation as autonomous after clean
    validation and a public/private boundary scan; stop for private/company
    material, credentials, destructive git, production actions, or repo rules
    that explicitly require review.
-12. Work bounded when `should_run=true`; a coherent implementation/test/state
+13. Work bounded when `should_run=true`; a coherent implementation/test/state
     batch is fine when scope and validation are clear.
-13. Validate before reporting.
-14. Spend exactly once after validation/writeback and before a state-only refresh.
-13. Refresh state when needed after spend; for validated progress artifacts,
+14. Validate before reporting.
+15. Spend exactly once after validation/writeback and before a state-only refresh.
+16. Refresh state when needed after spend; for validated progress artifacts,
     include explicit delivery scale/outcome hints instead of relying on
     classification-name inference.
-14. Report compactly.
+17. Report compactly.
 
 This prompt is intentionally a template rather than a scheduler. It should work
 with per-project heartbeats, a shared controller loop, or future Codex goal-mode
