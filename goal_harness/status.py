@@ -252,6 +252,7 @@ AGENT_TODO_HEADER_MARKERS = (
     "project agent todo",
 )
 MAX_STATUS_TODOS_PER_ROLE = 12
+MAX_PROJECT_ASSET_TODO_ITEMS = 3
 MAX_DEPENDENCY_BLOCKERS = 4
 MAX_AUTONOMOUS_BACKLOG_CANDIDATES = 6
 AUTONOMOUS_PRIORITY_PATTERN = re.compile(r"^\s*\[(P[0-4][^\]]*)\]\s*(.+)$", re.IGNORECASE)
@@ -421,38 +422,63 @@ def project_asset_stop_condition(
     return "stop if the next action needs reward, gate approval, write control, or production access"
 
 
-def first_open_todo_text(todos: dict[str, Any] | None) -> str | None:
+def open_todo_items(
+    todos: dict[str, Any] | None,
+    *,
+    limit: int = MAX_PROJECT_ASSET_TODO_ITEMS,
+    text_limit: int = 220,
+) -> list[dict[str, Any]]:
     if not isinstance(todos, dict):
+        return []
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[Any, str]] = set()
+    for source_items in (todos.get("first_open_items"), todos.get("items")):
+        if not isinstance(source_items, list):
+            continue
+        for item in source_items:
+            if not isinstance(item, dict) or item.get("done"):
+                continue
+            text = normalize_todo_text(str(item.get("text") or ""), limit=text_limit)
+            if not text:
+                continue
+            key = (item.get("index"), text)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(
+                {
+                    "index": item.get("index"),
+                    "done": False,
+                    "text": text,
+                }
+            )
+            if len(result) >= limit:
+                return result
+    return result
+
+
+def first_open_todo_text(todos: dict[str, Any] | None) -> str | None:
+    items = open_todo_items(todos, limit=1)
+    if not items:
         return None
-    for item in todos.get("first_open_items") or []:
-        if not isinstance(item, dict) or item.get("done"):
-            continue
-        text = normalize_todo_text(str(item.get("text") or ""), limit=220)
-        return text or None
-    for item in todos.get("items") or []:
-        if not isinstance(item, dict) or item.get("done"):
-            continue
-        text = normalize_todo_text(str(item.get("text") or ""), limit=220)
-        return text or None
-    return None
+    return str(items[0].get("text") or "") or None
 
 
 def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(todos, dict):
         return None
     summary: dict[str, Any] = {
+        "source_section": "project_asset",
         "open": todos.get("open_count", 0),
         "done": todos.get("done_count", 0),
         "total": todos.get("total_count", 0),
     }
-    next_item = first_open_todo_text(todos)
-    if next_item:
-        summary["next"] = next_item
-        first_open_items = todos.get("first_open_items")
-        if isinstance(first_open_items, list) and first_open_items:
-            first_open = first_open_items[0]
-            if isinstance(first_open, dict) and first_open.get("index") is not None:
-                summary["next_index"] = first_open.get("index")
+    open_items = open_todo_items(todos)
+    if open_items:
+        summary["items"] = open_items
+        summary["next"] = open_items[0]["text"]
+        if open_items[0].get("index") is not None:
+            summary["next_index"] = open_items[0].get("index")
     return summary
 
 
@@ -2773,8 +2799,18 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                 lines.append(f"    - asset_todos: {' '.join(todo_parts)}")
                 if asset_user_todos.get("next"):
                     lines.append(f"      - asset_user_todo: {_markdown_scalar(asset_user_todos.get('next') or '')}")
+                for todo in (asset_user_todos.get("items") or [])[1:3]:
+                    if isinstance(todo, dict) and todo.get("text"):
+                        index = todo.get("index")
+                        suffix = f"[{index}]" if index is not None else ""
+                        lines.append(f"      - asset_user_todo{suffix}: {_markdown_scalar(todo.get('text') or '')}")
                 if asset_agent_todos.get("next"):
                     lines.append(f"      - asset_agent_todo: {_markdown_scalar(asset_agent_todos.get('next') or '')}")
+                for todo in (asset_agent_todos.get("items") or [])[1:3]:
+                    if isinstance(todo, dict) and todo.get("text"):
+                        index = todo.get("index")
+                        suffix = f"[{index}]" if index is not None else ""
+                        lines.append(f"      - asset_agent_todo{suffix}: {_markdown_scalar(todo.get('text') or '')}")
             asset_quota = (
                 project_asset.get("quota")
                 if isinstance(project_asset.get("quota"), dict)

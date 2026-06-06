@@ -68,10 +68,13 @@ export const todoGroupSchema = z.object({
 });
 
 export const projectAssetTodoSummarySchema = z.object({
+  source_section: z.string().optional().nullable(),
   open: z.number().optional().default(0),
   done: z.number().optional().default(0),
   total: z.number().optional().default(0),
   next: z.string().optional().nullable(),
+  next_index: z.number().optional().nullable(),
+  items: z.array(todoItemSchema).optional().default([]),
 });
 
 export const dependencyBlockerSchema = z.object({

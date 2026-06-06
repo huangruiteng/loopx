@@ -482,15 +482,29 @@ def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
 def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
-    if isinstance(value.get("items"), list):
+    if isinstance(value.get("items"), list) and (
+        "total_count" in value or "open_count" in value or "done_count" in value
+    ):
         return _summarize_user_todos(value)
 
-    next_text = str(value.get("next") or "").strip()
-    next_index = value.get("next_index", 1)
-    first_open_items = [{"index": next_index, "text": next_text}] if next_text else []
+    first_open_items: list[dict[str, Any]] = []
+    items = value.get("items") if isinstance(value.get("items"), list) else []
+    for item in items:
+        if not isinstance(item, dict) or item.get("done") is True:
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        first_open_items.append({"index": item.get("index"), "text": text})
+        if len(first_open_items) >= 3:
+            break
+    if not first_open_items:
+        next_text = str(value.get("next") or "").strip()
+        next_index = value.get("next_index", 1)
+        first_open_items = [{"index": next_index, "text": next_text}] if next_text else []
     open_count = value.get("open", value.get("open_count", len(first_open_items)))
     return {
-        "source_section": "project_asset",
+        "source_section": value.get("source_section") or "project_asset",
         "total_count": value.get("total", value.get("total_count")),
         "open_count": open_count,
         "done_count": value.get("done", value.get("done_count")),

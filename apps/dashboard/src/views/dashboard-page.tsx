@@ -898,16 +898,19 @@ function todosFromProjectAssetSummary(
   }
   const next = summary.next?.trim();
   const fallbackFirstOpen = firstOpenTodo(fallback);
+  const summaryItems = (summary.items ?? []).filter((item) => !item.done && item.text?.trim());
   return {
-    source_section: fallback?.source_section ?? sourceSection,
+    source_section: summary.source_section ?? fallback?.source_section ?? sourceSection,
     total_count: summary.total ?? fallback?.total_count ?? 0,
     open_count: summary.open ?? fallback?.open_count ?? 0,
     done_count: summary.done ?? fallback?.done_count ?? 0,
     items: fallback?.items?.length
       ? fallback.items
+      : summaryItems.length
+        ? summaryItems
       : (next
           ? [{
-              index: fallbackFirstOpen?.index ?? 1,
+              index: summary.next_index ?? fallbackFirstOpen?.index ?? 1,
               done: false,
               text: next,
               review_materials: fallbackFirstOpen?.review_materials ?? [],

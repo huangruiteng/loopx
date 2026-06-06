@@ -204,30 +204,46 @@ def decision_freshness_packet_lines(warning: dict[str, Any] | None) -> list[str]
     return [redact_local_absolute_paths(line) for line in lines]
 
 
-def first_open_todo_text(todos: Any) -> str | None:
+def open_todo_texts(todos: Any, *, limit: int = 3) -> list[str]:
     if not isinstance(todos, dict):
-        return None
-    items = todos.get("items")
-    if not isinstance(items, list):
-        return None
+        return []
+    items = todos.get("items") if isinstance(todos.get("items"), list) else []
+    if not items and isinstance(todos.get("first_open_items"), list):
+        items = todos.get("first_open_items") or []
+    result: list[str] = []
     for item in items:
         if not isinstance(item, dict) or item.get("done"):
             continue
         text = str(item.get("text") or "").strip()
         if text:
-            return compact_packet_text(text)
-    return None
+            result.append(compact_packet_text(text))
+            if len(result) >= limit:
+                return result
+    return result
+
+
+def first_open_todo_text(todos: Any) -> str | None:
+    items = open_todo_texts(todos, limit=1)
+    return items[0] if items else None
 
 
 def todo_text_from_project_asset(item: dict[str, Any] | None, key: str) -> str | None:
+    items = todo_texts_from_project_asset(item, key, limit=1)
+    return items[0] if items else None
+
+
+def todo_texts_from_project_asset(item: dict[str, Any] | None, key: str, *, limit: int = 3) -> list[str]:
     if not isinstance(item, dict):
-        return None
+        return []
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     summary = project_asset.get(key) if isinstance(project_asset.get(key), dict) else {}
+    summary_items = open_todo_texts(summary, limit=limit)
+    if summary_items:
+        return summary_items
     next_text = str(summary.get("next") or "").strip()
     if next_text:
-        return compact_packet_text(next_text)
-    return first_open_todo_text(item.get(key))
+        return [compact_packet_text(next_text)]
+    return open_todo_texts(item.get(key), limit=limit)
 
 
 def project_asset_source(item: dict[str, Any] | None) -> str:
@@ -584,6 +600,7 @@ def project_agent_section(
     goal_id: str,
     *,
     agent_todo_text: str | None = None,
+    agent_todo_items: list[str] | None = None,
     authority_summary: str | None = None,
     project_asset_source_text: str | None = None,
     handoff_followthrough_text: str | None = None,
@@ -594,6 +611,11 @@ def project_agent_section(
     goal_guard = target_goal_guard(goal_id)
     context_rule = agent_context_rule()
     todo_line = f"Agent 待办：{agent_todo_text}" if agent_todo_text else None
+    extra_todo_lines = [
+        f"Agent 待办候选 {index + 2}：{text}"
+        for index, text in enumerate((agent_todo_items or [])[1:3])
+        if text
+    ]
     authority_line = f"材料上下文：{authority_summary}；只用这些脱敏计数判断 freshness / owner gap，不要要求内部链接或原文。" if authority_summary else None
     source_line = f"项目资产来源：{project_asset_source_text}" if project_asset_source_text else None
     followthrough_line = f"交付观测：{handoff_followthrough_text}" if handoff_followthrough_text else None
@@ -604,6 +626,7 @@ def project_agent_section(
             context_rule,
             source_line,
             todo_line,
+            *extra_todo_lines,
             authority_line,
             followthrough_line,
             delivery_contract_line,
@@ -619,6 +642,7 @@ def project_agent_section(
             context_rule,
             source_line,
             todo_line,
+            *extra_todo_lines,
             authority_line,
             followthrough_line,
             delivery_contract_line,
@@ -634,6 +658,7 @@ def project_agent_section(
             context_rule,
             source_line,
             todo_line,
+            *extra_todo_lines,
             authority_line,
             followthrough_line,
             delivery_contract_line,
@@ -649,6 +674,7 @@ def project_agent_section(
             context_rule,
             source_line,
             todo_line,
+            *extra_todo_lines,
             authority_line,
             followthrough_line,
             delivery_contract_line,
@@ -664,6 +690,7 @@ def project_agent_section(
             context_rule,
             source_line,
             todo_line,
+            *extra_todo_lines,
             authority_line,
             followthrough_line,
             delivery_contract_line,
@@ -679,6 +706,7 @@ def project_agent_section(
             context_rule,
             source_line,
             todo_line,
+            *extra_todo_lines,
             authority_line,
             followthrough_line,
             delivery_contract_line,
@@ -712,7 +740,8 @@ def build_review_packet(
     question = str(item.get("operator_question") or prompt["question"]) if isinstance(item, dict) else prompt["question"]
     summary = str(item.get("recommended_action") or "当前状态源没有对应的 action card。") if isinstance(item, dict) else "当前状态源没有对应的 action card。"
     user_todo_text = todo_text_from_project_asset(item, "user_todos")
-    agent_todo_text = todo_text_from_project_asset(item, "agent_todos")
+    agent_todo_items = todo_texts_from_project_asset(item, "agent_todos")
+    agent_todo_text = agent_todo_items[0] if agent_todo_items else None
     asset_source = project_asset_source(item)
     asset_source_line = project_asset_source_line(asset_source)
     authority_summary = authority_material_summary(goal)
@@ -742,6 +771,7 @@ def build_review_packet(
         command,
         goal_id,
         agent_todo_text=agent_todo_text,
+        agent_todo_items=agent_todo_items,
         authority_summary=authority_summary,
         project_asset_source_text=asset_source_line,
         handoff_followthrough_text=followthrough_summary,
@@ -813,6 +843,7 @@ def build_review_packet(
         "user_todo_text": user_todo_text,
         "owner_blocker_text": owner_blocker_text,
         "agent_todo_text": agent_todo_text,
+        "agent_todo_items": agent_todo_items,
         "authority_summary": authority_summary,
         "handoff_followthrough_summary": followthrough_summary,
         "handoff_delivery_contract": delivery_contract,
