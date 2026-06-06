@@ -31,6 +31,12 @@ const quotaFocusWait = {
   spent_slots: 8,
   state: "focus_wait",
   reason: "fixture outcome floor blocks further spend",
+  handoff_outcome_floor_block: true,
+  safe_bypass_allowed: true,
+  safe_bypass_kind: "outcome_floor_recovery",
+  safe_bypass_policy: "Outcome-floor recovery only: attempt one bounded ranker_or_cross_domain_evidence evidence segment or write back a concrete blocker.",
+  must_advance: ["ranker_or_cross_domain_evidence"],
+  avoid: ["clean_downstream_surface_propagation", "synthetic_only_test_chain"],
   post_handoff_outcome_gap_streak: 3,
 };
 
@@ -498,8 +504,9 @@ async function main() {
       "最多 2 个 p4 运行中",
       "最多 2 个 p3 运行中",
       "Agent Harness 旁路",
-      "暂缓不花配额",
+      "需要 Codex recovery",
       "排序器 / 跨域证据",
+      "具体 blocker",
       "Goal Harness Meta",
       "配额守卫",
       "状态写回",

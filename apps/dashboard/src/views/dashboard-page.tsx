@@ -1709,8 +1709,11 @@ function buildQuotaView(quota?: ComputeQuota | null): QuotaView | undefined {
   const spent = quota.spent_slots ?? 0;
   const allowed = quota.allowed_slots ?? 0;
   const computeText = formatQuotaCompute(compute);
-  const stateLabel = quotaStateLabel[state] ?? state;
-  const reviewState = quotaStateReviewLabel[state] ?? state;
+  const recovery = isOutcomeFloorRecoveryQuota(quota);
+  const stateLabel = recovery ? "Recovery allowed" : quotaStateLabel[state] ?? state;
+  const reviewState = recovery
+    ? `需要 Codex 做一次 ${recoveryEvidenceLabel(quota)} recovery`
+    : quotaStateReviewLabel[state] ?? state;
   return {
     label: `Quota ${computeText}`,
     shortLine: `${stateLabel}; ${spent}/${allowed} slots`,
@@ -1721,6 +1724,27 @@ function buildQuotaView(quota?: ComputeQuota | null): QuotaView | undefined {
 
 function isFocusWaitQuota(quota?: ComputeQuota | null) {
   return (quota?.state ?? "") === "focus_wait";
+}
+
+function isOutcomeFloorRecoveryQuota(quota?: ComputeQuota | null) {
+  return Boolean(
+    quota
+      && quota.state === "focus_wait"
+      && quota.handoff_outcome_floor_block
+      && quota.safe_bypass_allowed
+      && quota.safe_bypass_kind === "outcome_floor_recovery",
+  );
+}
+
+function recoveryEvidenceLabel(quota?: ComputeQuota | null) {
+  const targets = quota?.must_advance ?? [];
+  if (targets.some((target) => target === "ranker_or_cross_domain_evidence")) {
+    return "排序器 / 跨域证据";
+  }
+  if (targets.length > 0) {
+    return targets.map(shareMachineLabel).join(" / ");
+  }
+  return "结果级证据";
 }
 
 function formatLatestValidation(validation?: ProjectAssetLatestValidation | null) {
@@ -2744,11 +2768,11 @@ function shareStatusForGoal(view: ShareGoalView): { label: string; summary: stri
       variant: "neutral",
     };
   }
-  if (view.spec.id === "agent-harness-side-bypass" && quotaState === "focus_wait") {
+  if (isOutcomeFloorRecoveryQuota(quota)) {
     const gap = view.row.queueItem?.handoff_readiness?.post_handoff_outcome_gap_streak ?? quota?.post_handoff_outcome_gap_streak ?? 0;
     return {
-      label: "暂缓不花配额",
-      summary: `连续 ${gap || 3} 次产出差距，下一步必须是排序器 / 跨域证据，或明确阻塞说明。`,
+      label: "需要 Codex recovery",
+      summary: `连续 ${gap || 1} 次产出差距；下一步只做 ${recoveryEvidenceLabel(quota)}，或写回具体阻塞。`,
       variant: "warning",
     };
   }
@@ -3391,9 +3415,36 @@ function buildHumanFriendlyActionPacket({
   const agentTodo = firstOpenTodo(item.agentTodos);
   const approvedAgentCommand = item.kind === "codex" && Boolean(item.agentCommand);
   const isFocusWait = isFocusWaitQuota(item.quota);
+  const isRecoveryFocusWait = isOutcomeFloorRecoveryQuota(item.quota);
   const command = isFocusWait
     ? buildStatusCommand({ registry, runtimeRoot })
     : item.safePathCommand ?? item.agentCommand ?? buildStatusCommand({ registry, runtimeRoot });
+  if (isRecoveryFocusWait) {
+    const evidenceLabel = recoveryEvidenceLabel(item.quota);
+    return buildActionPacket({
+      goalId: item.goalId,
+      title: item.title,
+      summary: item.summary,
+      userTodoText: todo?.text,
+      agentTodoText: agentTodo?.text ?? `只做一次 ${evidenceLabel} recovery；如果证据范围不可用，写回具体 blocker 后停止。`,
+      todoBlocksGate: false,
+      operatorQuestion: null,
+      suggestedReply: `执行一次 outcome-floor recovery：只做 ${evidenceLabel} 或具体 blocker 写回；完成验证和状态写回后再记一次 quota。`,
+      gateFallbackDecision: `执行一次 outcome-floor recovery：只做 ${evidenceLabel} 或具体 blocker 写回。`,
+      boundary: "普通 delivery 仍被 outcome floor 阻塞；不要继续 summary/queue/contract 等表层传播，也不要做 synthetic-only 测试链。",
+      durableRecordRule: "记录规则：validated evidence/blocker -> refresh-state/run event -> quota spend once；没有完成 recovery artifact 就不 spend。",
+      safePathLabel: item.safePathLabel || "Recovery handoff",
+      command: item.safePathCommand ?? command,
+      quotaShortLine: quotaView?.shortLine,
+      authorityShortLine: item.authorityCoverage?.shortLine,
+      projectOwner: item.projectOwner,
+      projectGate: item.projectGate,
+      projectNextAction: item.projectNextAction,
+      projectStopCondition: item.projectStopCondition,
+      projectAssetSource: item.projectAssetSource,
+      handoffReadinessLine: handoffReadiness?.shortLine,
+    });
+  }
   if (isFocusWait) {
     return buildActionPacket({
       goalId: item.goalId,
@@ -3598,6 +3649,7 @@ function buildOperatorDecision({
     ?? latestRun?.lifecycle_phase
     ?? inferLifecyclePhase(queueItem?.status ?? goal?.status, latestRun);
   const waitingOn = queueItem?.waiting_on ?? "clear";
+  const quota = queueItem?.project_asset?.quota ?? queueItem?.quota ?? goal?.quota;
   const missingGates = queueItem?.missing_gates ?? latestRun?.controller_readiness?.missing_gates ?? [];
   const action = queueItem?.recommended_action
     ?? latestRun?.recommended_action
@@ -3654,6 +3706,18 @@ function buildOperatorDecision({
   }
 
   if (waitingOn === "codex") {
+    if (isOutcomeFloorRecoveryQuota(quota)) {
+      return {
+        title: "Run recovery evidence",
+        badge: "Codex recovery",
+        variant: "warning" as BadgeVariant,
+        action,
+        reason: `Outcome floor blocks ordinary delivery; Codex should do one bounded ${recoveryEvidenceLabel(quota)} recovery or write back the concrete blocker.`,
+        needs: missingGates.map(gateLabel),
+        phase,
+        waitingOn,
+      };
+    }
     const codexCopy = queueItem?.agent_command
       ? {
           title: "Run approved agent command",
@@ -3941,6 +4005,22 @@ function buildUserActionSummaryItems({
     }
 
     if (decision.waitingOn === "codex" && quotaState === "focus_wait") {
+      if (isOutcomeFloorRecoveryQuota(quota)) {
+        const evidenceLabel = recoveryEvidenceLabel(quota);
+        return [{
+          ...base,
+          kind: "codex",
+          title: "Run Codex recovery",
+          badge: "Recovery",
+          variant: "warning",
+          summary: `普通 delivery 被 outcome floor 阻塞；下一步只做一次 ${evidenceLabel}，或写回具体 blocker。`,
+          detail: quota?.safe_bypass_policy ?? stopCondition,
+          safePathLabel: "Recovery handoff",
+          safePathCommand: buildHistoryCommand({ goalId: row.goal.id, registry, runtimeRoot }),
+          draftLabel: "outcome recovery",
+          priority: 3,
+        }];
+      }
       const ownerTodo = firstOpenTodo(userTodos);
       return [{
         ...base,
