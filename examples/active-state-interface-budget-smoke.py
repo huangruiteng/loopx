@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STATE_FILES = (
     REPO_ROOT / "examples" / "active-goal-state.example.md",
-    REPO_ROOT / "goals" / "goal-harness-meta" / "ACTIVE_GOAL_STATE.md",
+)
+LIVE_STATE_PATTERNS = (
+    "/ACTIVE_GOAL_STATE.md",
 )
 NEXT_ACTION_MAX_LINES = 4
 NEXT_ACTION_MAX_CHARS = 360
@@ -69,9 +72,25 @@ def assert_next_action_budget(path: Path) -> None:
         assert marker not in action, (path.relative_to(REPO_ROOT), marker)
 
 
+def assert_no_tracked_live_active_state() -> None:
+    output = subprocess.check_output(
+        ["git", "ls-files"],
+        cwd=REPO_ROOT,
+        text=True,
+    )
+    offenders = [
+        line
+        for line in output.splitlines()
+        if line != "examples/active-goal-state.example.md"
+        and any(line.endswith(pattern) for pattern in LIVE_STATE_PATTERNS)
+    ]
+    assert not offenders, offenders
+
+
 def main() -> int:
     for path in STATE_FILES:
         assert_next_action_budget(path)
+    assert_no_tracked_live_active_state()
     print("active-state-interface-budget-smoke ok")
     return 0
 

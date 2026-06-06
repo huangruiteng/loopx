@@ -147,10 +147,13 @@ goal-harness connect \
   --adapter-status connected-read-only
 ```
 
-Both entries live in the same `.goal-harness/registry.json`, but each goal must
-own its own active state under `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`.
+Both entries live in the same local `.goal-harness/registry.json`, but each goal
+must own its own ignored active state under
+`.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`.
 Sharing the same `state_file` across two goal ids is treated as a registry
 health error because it lets one lane overwrite or summarize the other's state.
+Do not commit the live `ACTIVE_GOAL_STATE.md`; publish a sanitized template or
+compact projection instead when a public example is needed.
 
 Use `--goal-id` on every status-changing command:
 

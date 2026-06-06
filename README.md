@@ -275,13 +275,18 @@ your-project/
   goals/<goal-id>/runs/
 ```
 
-If your goal state contains private evidence, add these paths to the project
-`.gitignore`:
+Treat real active goal state as local runtime state by default. Add these paths
+to the project `.gitignore` before committing a connected goal:
 
 ```gitignore
 .goal-harness/
 .codex/goals/
+goals/**/ACTIVE_GOAL_STATE.md
 ```
+
+Commit only sanitized templates or examples, such as
+`examples/active-goal-state.example.md`. Do not commit the live
+`ACTIVE_GOAL_STATE.md` that a controller reads and writes during operation.
 
 For a Codex controller goal that may spawn scoped child agents:
 
@@ -523,7 +528,7 @@ Keep private:
 - production logs;
 - internal document links;
 - credentials;
-- user-specific active goal state;
+- user-specific active goal state and local Goal Harness registry files;
 - raw experiment metrics.
 
 Run the public/private scan before publishing docs or examples:
