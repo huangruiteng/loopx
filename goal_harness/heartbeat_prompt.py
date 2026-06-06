@@ -20,6 +20,7 @@ def build_heartbeat_prompt(
     permission_rule: str | None = None,
     compact: bool = False,
     brief: bool = False,
+    thin: bool = False,
     cli_bin: str = "goal-harness",
 ) -> dict[str, Any]:
     effective_resolved_active_state = resolved_active_state or active_state
@@ -36,7 +37,11 @@ def build_heartbeat_prompt(
     cli_preflight = render_cli_preflight(cli_bin=cli_bin)
     expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}"
     compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}"
-    if brief:
+    brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}"
+    thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}"
+    if thin:
+        task_body_renderer = render_thin_heartbeat_task_body
+    elif brief:
         task_body_renderer = render_brief_heartbeat_task_body
     elif compact:
         task_body_renderer = render_compact_heartbeat_task_body
@@ -53,6 +58,8 @@ def build_heartbeat_prompt(
         cli_bin=cli_bin,
         expanded_prompt_command=expanded_prompt_command,
         compact_prompt_command=compact_prompt_command,
+        brief_prompt_command=brief_prompt_command,
+        thin_prompt_command=thin_prompt_command,
     )
     return {
         "ok": True,
@@ -64,9 +71,12 @@ def build_heartbeat_prompt(
         else None,
         "compact": compact,
         "brief": brief,
+        "thin": thin,
         "cli_bin": cli_bin,
         "expanded_prompt_command": expanded_prompt_command,
         "compact_prompt_command": compact_prompt_command,
+        "brief_prompt_command": brief_prompt_command,
+        "thin_prompt_command": thin_prompt_command,
         "quota_guard_command": quota_guard_command,
         "quota_spend_command": quota_spend_command,
         "cli_preflight": cli_preflight,
@@ -88,6 +98,8 @@ def render_heartbeat_task_body(
     cli_bin: str,
     expanded_prompt_command: str,
     compact_prompt_command: str,
+    brief_prompt_command: str,
+    thin_prompt_command: str,
 ) -> str:
     return f"""Advance `{goal_id}` using `{active_state}`.
 
@@ -274,6 +286,8 @@ def render_brief_heartbeat_task_body(
     cli_bin: str,
     expanded_prompt_command: str,
     compact_prompt_command: str,
+    brief_prompt_command: str,
+    thin_prompt_command: str,
 ) -> str:
     return f"""Advance `{goal_id}` using `{active_state}`.
 
@@ -330,6 +344,8 @@ def render_compact_heartbeat_task_body(
     cli_bin: str,
     expanded_prompt_command: str,
     compact_prompt_command: str,
+    brief_prompt_command: str,
+    thin_prompt_command: str,
 ) -> str:
     return f"""Advance `{goal_id}` using `{active_state}`.
 
@@ -414,8 +430,40 @@ real blocker, or self-stop; otherwise use `DONT_NOTIFY`.
 {permission_rule}"""
 
 
+def render_thin_heartbeat_task_body(
+    *,
+    goal_id: str,
+    active_state: str,
+    cli_preflight: str,
+    quota_guard_command: str,
+    quota_spend_command: str,
+    material_queue_rule: str,
+    permission_rule: str,
+    cli_bin: str,
+    expanded_prompt_command: str,
+    compact_prompt_command: str,
+    brief_prompt_command: str,
+    thin_prompt_command: str,
+) -> str:
+    permission_tail = "" if permission_rule == DEFAULT_PERMISSION_RULE else f" {permission_rule}"
+    material_sentence = (
+        "Do not consume the learning material queue unless explicitly asked."
+        if material_queue_rule == DEFAULT_MATERIAL_QUEUE_RULE
+        else material_queue_rule
+    )
+    return f"""Advance `{goal_id}` from {active_state}.
+
+On each wakeup, use your normal Codex abilities: inspect the current Goal Harness registry/global quota truth, active state, status/run history, repo state, and any relevant project signals; then decide one bounded useful action or a quiet no-op.
+
+Default loop: observe connected controllers, identify the current bottleneck, repair bounded Goal Harness control-plane/product issues when public-safe, validate, write back durable state/events, and spend quota exactly once only after validated delivery. If there is no new evidence or useful bounded work, stay quiet and do not spend.
+
+Keep the heartbeat thin. Do not encode project-specific branches here. {material_sentence} Stop for private material, credentials, destructive git, or unauthorized production actions.{permission_tail}"""
+
+
 def render_heartbeat_prompt_markdown(payload: dict[str, Any]) -> str:
-    if payload.get("brief"):
+    if payload.get("thin"):
+        style = "thin "
+    elif payload.get("brief"):
         style = "brief "
     elif payload.get("compact"):
         style = "compact "
@@ -437,9 +485,12 @@ Copy this {style}task body into a Codex App heartbeat automation.
 - resolved_active_state: `{payload.get("resolved_active_state")}`
 - compact: `{payload.get("compact")}`
 - brief: `{payload.get("brief")}`
+- thin: `{payload.get("thin")}`
 - cli_bin: `{payload.get("cli_bin")}`
 - expanded_prompt_command: `{payload.get("expanded_prompt_command")}`
 - compact_prompt_command: `{payload.get("compact_prompt_command")}`
+- brief_prompt_command: `{payload.get("brief_prompt_command")}`
+- thin_prompt_command: `{payload.get("thin_prompt_command")}`
 - quota_guard_command: `{payload.get("quota_guard_command")}`
 - quota_spend_command: `{payload.get("quota_spend_command")}`
 - cli_preflight: `{payload.get("cli_preflight")}`

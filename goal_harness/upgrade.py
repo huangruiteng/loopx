@@ -11,7 +11,7 @@ from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_r
 from .registry import registry_goals, resolve_state_file
 
 
-DEFAULT_UPGRADE_MODES = ("brief", "compact")
+DEFAULT_UPGRADE_MODES = ("thin",)
 
 
 def prompt_digest(text: str) -> str:
@@ -20,16 +20,16 @@ def prompt_digest(text: str) -> str:
 
 def prompt_summary(prompt: dict[str, Any], mode: str) -> dict[str, Any]:
     task_body = str(prompt.get("task_body") or "")
+    if mode == "full":
+        command = prompt.get("expanded_prompt_command")
+    else:
+        command = prompt.get(f"{mode}_prompt_command")
     return {
         "mode": mode,
         "sha256": prompt_digest(task_body),
         "char_count": len(task_body),
         "line_count": len(task_body.splitlines()),
-        "command": prompt.get("expanded_prompt_command")
-        if mode == "full"
-        else prompt.get("compact_prompt_command")
-        if mode == "compact"
-        else f"{prompt.get('cli_bin')} heartbeat-prompt --brief --goal-id {prompt.get('goal_id')}",
+        "command": command,
     }
 
 
@@ -74,7 +74,7 @@ def installed_entry_digest(entry: dict[str, Any]) -> str | None:
 
 
 def entry_key(entry: dict[str, Any]) -> tuple[str, str]:
-    return str(entry.get("goal_id") or ""), str(entry.get("mode") or "brief")
+    return str(entry.get("goal_id") or ""), str(entry.get("mode") or DEFAULT_UPGRADE_MODES[0])
 
 
 def index_installed_entries(entries: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
@@ -126,6 +126,7 @@ def build_upgrade_plan(
                 resolved_active_state=state_file,
                 compact=mode == "compact",
                 brief=mode == "brief",
+                thin=mode == "thin",
                 cli_bin=cli_bin,
             )
             summary = prompt_summary(prompt, mode)

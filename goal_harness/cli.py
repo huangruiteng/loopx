@@ -294,6 +294,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Generate a minimal installed automation body that delegates details to the compact lifecycle contract.",
     )
+    heartbeat_style_group.add_argument(
+        "--thin",
+        action="store_true",
+        help="Generate the thinnest generic dispatcher body for trusted agents that inspect Goal Harness state themselves.",
+    )
 
     demo_parser = sub.add_parser(
         "demo",
@@ -333,9 +338,9 @@ def main(argv: list[str] | None = None) -> int:
     upgrade_plan_parser.add_argument(
         "--mode",
         action="append",
-        choices=["brief", "compact"],
+        choices=["thin", "brief", "compact"],
         default=[],
-        help="Prompt mode to compare. Repeatable; defaults to brief and compact.",
+        help="Prompt mode to compare. Repeatable; defaults to the thin installed heartbeat contract.",
     )
 
     sub.add_parser("registry", help="Inspect registry goals and adapter declarations.")
@@ -737,6 +742,7 @@ def main(argv: list[str] | None = None) -> int:
                 permission_rule=args.permission_rule,
                 compact=bool(args.compact),
                 brief=bool(args.brief),
+                thin=bool(args.thin),
                 cli_bin=args.cli_bin,
             )
         except Exception as exc:

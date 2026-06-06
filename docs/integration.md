@@ -200,8 +200,17 @@ For connected goals, omit `--active-state`; the CLI resolves the active state
 from the registry goal `state_file`. Keep `--active-state` only as an explicit
 override for detached state files, migration checks, or compatibility tests.
 
-For live Codex App automations, use the compact form after reviewing the full
-contract:
+For live Codex App automations, use the thin form as the local machine-default
+dispatcher when the target Codex agent can inspect Goal Harness state and CLI
+output itself:
+
+```bash
+goal-harness heartbeat-prompt --thin \
+  --goal-id project-goal
+```
+
+Use the compact form after reviewing the full contract when the installed
+prompt should carry more lifecycle detail inline:
 
 ```bash
 goal-harness heartbeat-prompt --compact \
@@ -217,13 +226,15 @@ goal-harness heartbeat-prompt --brief \
 
 Copy the generated task body into the heartbeat automation. The timer only
 wakes Codex; the task body asks Goal Harness whether the goal should spend
-delivery compute on that tick. The compact body is preferred for recurring
-heartbeats because it preserves the same quota, gate, blocker-push,
-recommendation, steering-audit, writeback, refresh, and spend lifecycle without
-copying the full audit prompt into every run context. The brief body is for
-installed automations that should carry only the preflight/guard, core
-invariants, and spend accounting while delegating detailed branches back to the
-generated contracts.
+delivery compute on that tick. The thin body keeps the Codex thread as a
+replaceable worker: every wakeup should re-read registry/global quota truth,
+active state, status/run history, repo state, and project signals instead of
+depending on a stale long prompt. The compact body preserves the quota, gate,
+blocker-push, recommendation, steering-audit, writeback, refresh, and spend
+lifecycle inline without copying the full audit prompt into every run context.
+The brief body is for installed automations that should carry only the
+preflight/guard, core invariants, and spend accounting while delegating detailed
+branches back to the generated contracts.
 
 The Codex App visible goal text can stay short, such as
 `按 ACTIVE_GOAL_STATE.md，基于 Goal Harness 体系，推进项目`. It is only a label for

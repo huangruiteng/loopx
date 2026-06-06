@@ -147,8 +147,8 @@ goal-harness upgrade-plan --format json
 ```
 
 This command inventories registry-managed controller goals, regenerates the
-brief/compact heartbeat prompts from the candidate CLI contract, and compares
-them with an optional installed automation manifest:
+thin installed heartbeat prompt from the candidate CLI contract, and compares it
+with an optional installed automation manifest:
 
 ```bash
 goal-harness upgrade-plan \
@@ -160,6 +160,8 @@ If the plan reports unknown or stale prompt digests, update those managed
 heartbeat automations/controller clients before running `scripts/install-local.sh`
 for default promotion. This keeps connected projects from continuing on stale
 prompt branches after the local default version changes.
+Use `--mode brief` or `--mode compact` only when an installed automation is
+intentionally using one of the larger generated contracts.
 
 If a project shell cannot find or run the command, `goal-harness doctor`
 reports PATH, wrapper, release snapshot, canary wrapper, installed skill
@@ -485,8 +487,17 @@ goal `state_file`, so the installed automation does not need to carry a
 hard-coded path. Pass `--active-state /path/to/ACTIVE_GOAL_STATE.md` only for a
 detached state file or compatibility test.
 
-For live App automations, use a compact or brief body after reviewing the full
-lifecycle once:
+For live App automations, use a generated thin body as the machine-default
+dispatcher when the target Codex can inspect Goal Harness state and CLI output
+itself:
+
+```bash
+goal-harness heartbeat-prompt --thin \
+  --goal-id your-project-goal
+```
+
+Use a compact or brief body after reviewing the full lifecycle once when the
+installed prompt must carry more of the decision contract inline:
 
 ```bash
 goal-harness heartbeat-prompt --compact \

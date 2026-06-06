@@ -63,14 +63,15 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
 
 
 def assert_unknown_manifest_blocks_promotion(registry_path: Path) -> dict:
-    payload = build_upgrade_plan(registry_path=registry_path, modes=["brief"], cli_bin="goal-harness")
+    payload = build_upgrade_plan(registry_path=registry_path, cli_bin="goal-harness")
     assert payload["ok"] is True, payload
+    assert payload["prompt_modes"] == ["thin"], payload
     assert payload["summary"]["managed_goal_count"] == 1, payload
     assert payload["summary"]["unknown_prompt_count"] == 1, payload
     assert payload["summary"]["ready_for_default_promotion"] is False, payload
     goal = payload["managed_heartbeats"][0]
     assert goal["state_file_exists"] is True, payload
-    assert goal["installed_prompts"]["brief"]["status"] == "unknown", payload
+    assert goal["installed_prompts"]["thin"]["status"] == "unknown", payload
     markdown = render_upgrade_plan_markdown(payload)
     assert "ready_for_default_promotion: `False`" in markdown, markdown
     return payload
@@ -78,7 +79,7 @@ def assert_unknown_manifest_blocks_promotion(registry_path: Path) -> dict:
 
 def assert_matching_manifest_is_ready(registry_path: Path, manifest_path: Path, first_payload: dict) -> None:
     goal = first_payload["managed_heartbeats"][0]
-    prompt_sha = goal["generated_prompts"]["brief"]["sha256"]
+    prompt_sha = goal["generated_prompts"]["thin"]["sha256"]
     manifest_path.write_text(
         json.dumps(
             {
@@ -86,7 +87,7 @@ def assert_matching_manifest_is_ready(registry_path: Path, manifest_path: Path, 
                     {
                         "automation_id": "fixture-heartbeat",
                         "goal_id": GOAL_ID,
-                        "mode": "brief",
+                        "mode": "thin",
                         "prompt_sha256": prompt_sha,
                     }
                 ]
@@ -100,14 +101,13 @@ def assert_matching_manifest_is_ready(registry_path: Path, manifest_path: Path, 
     payload = build_upgrade_plan(
         registry_path=registry_path,
         installed_manifest=manifest_path,
-        modes=["brief"],
         cli_bin="goal-harness",
     )
     assert payload["summary"]["unknown_prompt_count"] == 0, payload
     assert payload["summary"]["stale_prompt_count"] == 0, payload
     assert payload["summary"]["current_prompt_count"] == 1, payload
     assert payload["summary"]["ready_for_default_promotion"] is True, payload
-    assert payload["managed_heartbeats"][0]["installed_prompts"]["brief"]["status"] == "current", payload
+    assert payload["managed_heartbeats"][0]["installed_prompts"]["thin"]["status"] == "current", payload
 
 
 def main() -> int:

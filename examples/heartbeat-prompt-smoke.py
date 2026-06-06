@@ -26,6 +26,7 @@ INTERFACE_BUDGET_CHARS = {
     "full": 10_800,
     "compact": 4_900,
     "brief": 2_600,
+    "thin": 950,
 }
 PROJECT_SPECIFIC_PROMPT_LEAKS = (
     "agent-harness-side-bypass",
@@ -73,13 +74,16 @@ def main() -> int:
     payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE)
     compact_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, compact=True)
     brief_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, brief=True)
+    thin_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, thin=True)
     registry_default_payload = build_heartbeat_prompt(goal_id=GOAL_ID, compact=True)
     assert_prompt_budget("full", str(payload["task_body"]))
     assert_prompt_budget("compact", str(compact_payload["task_body"]))
     assert_prompt_budget("brief", str(brief_payload["task_body"]))
+    assert_prompt_budget("thin", str(thin_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("full", str(payload["task_body"]))
     assert_no_project_specific_prompt_leaks("compact", str(compact_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("brief", str(brief_payload["task_body"]))
+    assert_no_project_specific_prompt_leaks("thin", str(thin_payload["task_body"]))
     assert payload["quota_guard_command"] == (
         'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" '
         "quota should-run --goal-id public-heartbeat-goal"
@@ -90,6 +94,7 @@ def main() -> int:
     ), payload
     assert compact_payload["compact"] is True, compact_payload
     assert compact_payload["brief"] is False, compact_payload
+    assert compact_payload["thin"] is False, compact_payload
     assert payload["active_state_source"] == "explicit", payload
     assert payload["resolved_active_state"] == str(ACTIVE_STATE), payload
     assert compact_payload["quota_guard_command"] == payload["quota_guard_command"], compact_payload
@@ -142,6 +147,7 @@ def main() -> int:
     assert "--active-state" not in registry_default_payload["expanded_prompt_command"], registry_default_payload
     assert brief_payload["brief"] is True, brief_payload
     assert brief_payload["compact"] is False, brief_payload
+    assert brief_payload["thin"] is False, brief_payload
     assert brief_payload["quota_guard_command"] == payload["quota_guard_command"], brief_payload
     assert brief_payload["quota_spend_command"] == payload["quota_spend_command"], brief_payload
     assert len(str(brief_payload["task_body"])) < len(str(compact_payload["task_body"])) * 0.55, (
@@ -173,6 +179,36 @@ def main() -> int:
         "No spend for quiet skips",
     ):
         assert phrase in brief_task, phrase
+    assert thin_payload["thin"] is True, thin_payload
+    assert thin_payload["brief"] is False, thin_payload
+    assert thin_payload["compact"] is False, thin_payload
+    assert thin_payload["thin_prompt_command"] == (
+        "goal-harness heartbeat-prompt --thin --goal-id public-heartbeat-goal "
+        "--active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md"
+    ), thin_payload
+    assert len(str(thin_payload["task_body"])) < len(str(brief_payload["task_body"])) * 0.45, (
+        len(str(thin_payload["task_body"])),
+        len(str(brief_payload["task_body"])),
+    )
+    thin_task = normalized(str(thin_payload["task_body"]))
+    for phrase in (
+        "Advance `public-heartbeat-goal` from /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
+        "use your normal Codex abilities",
+        "registry/global quota truth",
+        "active state, status/run history, repo state",
+        "decide one bounded useful action or a quiet no-op",
+        "observe connected controllers",
+        "identify the current bottleneck",
+        "repair bounded Goal Harness control-plane/product issues",
+        "write back durable state/events",
+        "spend quota exactly once only after validated delivery",
+        "If there is no new evidence or useful bounded work, stay quiet and do not spend",
+        "Keep the heartbeat thin",
+        "Do not encode project-specific branches here",
+        "Do not consume the learning material queue unless explicitly asked",
+        "Stop for private material, credentials, destructive git, or unauthorized production actions",
+    ):
+        assert phrase in thin_task, phrase
 
     doc = DOC.read_text(encoding="utf-8")
     readme = README.read_text(encoding="utf-8")
@@ -422,11 +458,13 @@ def main() -> int:
     assert "goal-harness heartbeat-prompt" in doc, doc
     assert "--compact" in doc, doc
     assert "--brief" in doc, doc
+    assert "--thin" in doc, doc
     assert "--cli-bin goal-harness-canary" in doc, doc
     assert "Do not hand-edit per-project lifecycle branches" in doc, doc
     assert "goal-harness heartbeat-prompt" in integration_doc, integration_doc
     assert "goal-harness heartbeat-prompt --compact" in integration_doc, integration_doc
     assert "goal-harness heartbeat-prompt --brief" in integration_doc, integration_doc
+    assert "goal-harness heartbeat-prompt --thin" in integration_doc, integration_doc
     assert "goal-harness-canary heartbeat-prompt" in integration_doc, integration_doc
     assert "--cli-bin goal-harness-canary" in integration_doc, integration_doc
     assert "local release snapshot" in integration_doc, integration_doc
@@ -443,6 +481,7 @@ def main() -> int:
     assert "goal-harness heartbeat-prompt" in project_skill, project_skill
     assert "--compact" in project_skill, project_skill
     assert "--brief" in project_skill, project_skill
+    assert "--thin" in project_skill, project_skill
     assert "goal_boundary" in project_skill, project_skill
     assert "smoke" in project_skill and "contract" in project_skill, project_skill
     assert "Set Up Recurring Heartbeats" in project_skill, project_skill
@@ -538,6 +577,30 @@ def main() -> int:
     assert cli_brief_payload["brief"] is True, cli_brief_payload
     assert cli_brief_payload["cli_bin"] == "goal-harness", cli_brief_payload
 
+    cli_thin_json = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "goal_harness.cli",
+            "--format",
+            "json",
+            "heartbeat-prompt",
+            "--goal-id",
+            GOAL_ID,
+            "--active-state",
+            str(ACTIVE_STATE),
+            "--thin",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    cli_thin_payload = json.loads(cli_thin_json.stdout)
+    assert cli_thin_payload["task_body"] == thin_payload["task_body"], cli_thin_payload
+    assert cli_thin_payload["thin"] is True, cli_thin_payload
+    assert cli_thin_payload["cli_bin"] == "goal-harness", cli_thin_payload
+
     cli_canary_json = subprocess.run(
         [
             sys.executable,
@@ -623,6 +686,35 @@ def main() -> int:
             cli_registry_default_payload["task_body"]
         ), cli_registry_default_payload
         assert "--active-state" not in cli_registry_default_payload["task_body"], cli_registry_default_payload
+        cli_registry_thin_json = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "goal_harness.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(registry_path),
+                "heartbeat-prompt",
+                "--goal-id",
+                GOAL_ID,
+                "--thin",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        cli_registry_thin_payload = json.loads(cli_registry_thin_json.stdout)
+        assert cli_registry_thin_payload["thin"] is True, cli_registry_thin_payload
+        assert cli_registry_thin_payload["active_state"] == "the registry-declared active state", (
+            cli_registry_thin_payload
+        )
+        assert cli_registry_thin_payload["resolved_active_state"] == str(state_file), cli_registry_thin_payload
+        assert "Advance `public-heartbeat-goal` from the registry-declared active state." in (
+            cli_registry_thin_payload["task_body"]
+        ), cli_registry_thin_payload
+        assert "--active-state" not in cli_registry_thin_payload["task_body"], cli_registry_thin_payload
 
     cli_markdown = subprocess.run(
         [

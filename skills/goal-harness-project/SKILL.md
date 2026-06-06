@@ -147,8 +147,16 @@ goal, prefer the generator instead of hand-copying the quota lifecycle:
 goal-harness heartbeat-prompt --goal-id <STABLE_GOAL_ID>
 ```
 
-For live Codex App automations, prefer the compact body after reviewing the
-full generated contract:
+For live Codex App automations, prefer the thin body as the local machine
+default when the target Codex agent can inspect Goal Harness state and CLI
+output itself:
+
+```bash
+goal-harness heartbeat-prompt --thin --goal-id <STABLE_GOAL_ID>
+```
+
+Use the compact body after reviewing the full generated contract when the
+installed prompt should carry more lifecycle detail inline:
 
 ```bash
 goal-harness heartbeat-prompt --compact --goal-id <STABLE_GOAL_ID>
@@ -166,22 +174,22 @@ pinning a stale path. Pass `--active-state <ACTIVE_GOAL_STATE_PATH>` only for
 detached state files, migration checks, or compatibility tests.
 
 Copy the generated task body into the Codex App heartbeat automation. The full
-body is the audit source and compatibility default; the compact body is the
-daily driver when context pressure matters. The brief body keeps only
+body is the audit source and compatibility default. The thin body is the daily
+driver for trusted local workers: it keeps the automation prompt project-agnostic
+and tells Codex to re-read registry/global quota truth, active state,
+status/run history, repo state, and project signals on each wakeup. The compact
+body is useful when context pressure matters but the installed prompt should
+still carry the quota, gate, blocker-push, recommendation, steering-audit,
+writeback, refresh, and spend lifecycle inline. The brief body keeps only
 preflight/guard, core invariants, and spend accounting in the installed prompt
-while delegating detailed branches back to the generated compact/full
-contracts. It still contains the pre-turn
-`quota should-run` guard, operator-gate notification, blocker-push behavior,
-quiet non-gate `should_run=false` skip, bounded work, validation/writeback,
-exactly one post-turn `quota spend-slot --source heartbeat --execute` event,
-and optional `refresh-state` after spend. It points rare edge
-branches back to the expanded lifecycle contract instead of copying every detail
-into each heartbeat context. The generated guard and spend commands explicitly
-use the shared global registry so project heartbeats read the same operator
-gates and user todos as the dashboard, regardless of their current repo. Quota
-slots are minute-granularity by default: minute heartbeats spend `--slots 1`,
-while coarser fixed-interval automations should spend the scheduler minutes
-consumed by that completed turn.
+while delegating detailed branches back to the generated compact/full contracts.
+The generated guard and spend commands explicitly use the shared global
+registry so project heartbeats read the same operator gates and user todos as
+the dashboard, regardless of their current repo. Completed heartbeat delivery
+spends through `quota spend-slot --source heartbeat --execute`, not through a
+natural-language report. Quota slots are minute-granularity by default: minute
+heartbeats spend `--slots 1`, while coarser fixed-interval automations should
+spend the scheduler minutes consumed by that completed turn.
 
 Keep project-specific behavior out of the automation prompt. Encode local
 differences in the project registry, `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`,
