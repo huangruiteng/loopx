@@ -558,6 +558,33 @@ async function main() {
     if (missingSettings.length) {
       throw new Error(`Missing control-plane settings text: ${missingSettings.join(", ")}`);
     }
+    await page.locator('[data-testid="control-plane-quota-compute"]').fill("1.5");
+    const updatedSettingsText = await page.locator('[data-testid="control-plane-settings-panel"]').innerText();
+    if (!updatedSettingsText.includes("dirty")) {
+      throw new Error("Control-plane settings draft did not enter dirty state after editing quota.");
+    }
+    const settingsCommand = await page.locator('[data-testid="control-plane-settings-command-preview"]').innerText();
+    const requiredCommandParts = [
+      "configure-goal",
+      "--goal-id goal-harness-meta",
+      "--quota-compute 1.5",
+      "--quota-window-hours 24",
+      "--self-repair-enabled",
+      "--self-repair-health",
+      "--self-repair-waiting-projection",
+      "--orchestration-mode multi_subagent",
+      "--spawn-allowed",
+      "--max-children 2",
+      "--allowed-domain docs",
+      "--allowed-domain validation",
+    ];
+    const missingCommandParts = requiredCommandParts.filter((text) => !settingsCommand.includes(text));
+    if (missingCommandParts.length) {
+      throw new Error(`Missing control-plane settings command text: ${missingCommandParts.join(", ")}`);
+    }
+    if (settingsCommand.includes("--execute")) {
+      throw new Error("Control-plane command preview must stay dry-run by default.");
+    }
 
     if (pageErrors.length) {
       throw new Error(`Dashboard page errors: ${pageErrors.join(" | ")}`);

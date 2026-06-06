@@ -11,6 +11,7 @@ from .bootstrap import (
     bootstrap_project,
     render_bootstrap_markdown,
 )
+from .configure_goal import configure_goal, render_configure_goal_markdown
 from .contract import check_contract, render_contract_markdown
 from .demo import (
     DEFAULT_DEMO_AGENT_TODO,
@@ -344,6 +345,60 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     sub.add_parser("registry", help="Inspect registry goals and adapter declarations.")
+
+    configure_goal_parser = sub.add_parser(
+        "configure-goal",
+        help="Preview or apply per-goal registry settings for quota, self-repair, and orchestration.",
+    )
+    configure_goal_parser.add_argument("--goal-id", required=True, help="Goal id to configure.")
+    configure_goal_parser.add_argument("--quota-compute", type=float, help="Per-goal quota compute multiplier.")
+    configure_goal_parser.add_argument("--quota-window-hours", type=float, help="Quota rolling window in hours.")
+    configure_goal_parser.add_argument(
+        "--self-repair-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable control_plane.self_repair for this goal.",
+    )
+    configure_goal_parser.add_argument(
+        "--self-repair-health",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable control-plane health blocker repair for this goal.",
+    )
+    configure_goal_parser.add_argument(
+        "--self-repair-waiting-projection",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable waiting-projection repair for this goal.",
+    )
+    configure_goal_parser.add_argument(
+        "--orchestration-mode",
+        choices=["default", "multi_subagent"],
+        help="Per-goal orchestration mode.",
+    )
+    configure_goal_parser.add_argument(
+        "--spawn-allowed",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Allow or block sub-agent spawning for this goal.",
+    )
+    configure_goal_parser.add_argument("--max-children", type=int, help="Maximum child agents for orchestration.")
+    configure_goal_parser.add_argument(
+        "--allowed-domain",
+        action="append",
+        default=None,
+        help="Allowed child-agent domain. Repeatable; comma-separated values are also accepted.",
+    )
+    configure_goal_parser.add_argument(
+        "--clear-allowed-domains",
+        action="store_true",
+        help="Clear allowed child-agent domains.",
+    )
+    configure_goal_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write the registry. Without this flag, configure-goal is a dry-run preview.",
+    )
 
     history_parser = sub.add_parser("history", help="Read compact run history from the shared runtime root.")
     history_parser.add_argument("--goal-id", help="Only show one goal.")
@@ -834,6 +889,37 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "registry":
         payload = inspect_registry(registry_path)
         print_payload(payload, args.format, render_registry_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "configure-goal":
+        try:
+            payload = configure_goal(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                quota_compute=args.quota_compute,
+                quota_window_hours=args.quota_window_hours,
+                self_repair_enabled=args.self_repair_enabled,
+                self_repair_health=args.self_repair_health,
+                self_repair_waiting_projection=args.self_repair_waiting_projection,
+                orchestration_mode=args.orchestration_mode,
+                spawn_allowed=args.spawn_allowed,
+                max_children=args.max_children,
+                allowed_domains=args.allowed_domain,
+                clear_allowed_domains=bool(args.clear_allowed_domains),
+                execute=bool(args.execute),
+            )
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "dry_run": not bool(args.execute),
+                "execute": bool(args.execute),
+                "registry": str(registry_path),
+                "goal_id": args.goal_id,
+                "changed": False,
+                "written": False,
+                "error": str(exc),
+            }
+        print_payload(payload, args.format, render_configure_goal_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "history":

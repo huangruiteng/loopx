@@ -1722,6 +1722,13 @@ function orchestrationMode(policy?: OrchestrationPolicy | null) {
   return explicitMode || "default";
 }
 
+function shellArg(value: string) {
+  if (/^[A-Za-z0-9_./:=@,+-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 function buildHeartbeatInstallView(goal?: RunGoal, queueItem?: QueueItem): {
   badge: string;
   detail: string;
@@ -1790,12 +1797,100 @@ function ControlPlaneSettingRow({
   );
 }
 
+type ControlPlaneSettingsDraft = {
+  quotaCompute: string;
+  quotaWindowHours: string;
+  selfRepairEnabled: boolean;
+  selfRepairHealth: boolean;
+  selfRepairWaitingProjection: boolean;
+  orchestrationMode: "default" | "multi_subagent";
+  spawnAllowed: boolean;
+  maxChildren: string;
+  allowedDomains: string;
+};
+
+function buildControlPlaneSettingsDraft(goal?: RunGoal, queueItem?: QueueItem): ControlPlaneSettingsDraft {
+  const quota = queueItem?.quota ?? queueItem?.project_asset?.quota ?? goal?.quota;
+  const controlPlane = controlPlaneForTarget(goal, queueItem);
+  const selfRepair = controlPlane?.self_repair;
+  const orchestration = orchestrationForTarget(goal, queueItem);
+  const mode = orchestrationMode(orchestration);
+  return {
+    quotaCompute: String(quota?.compute ?? 1),
+    quotaWindowHours: String(quota?.window_hours ?? 24),
+    selfRepairEnabled: Boolean(selfRepair?.enabled),
+    selfRepairHealth: Boolean(selfRepair?.allow_health_blocker_repair),
+    selfRepairWaitingProjection: Boolean(selfRepair?.allow_waiting_projection_repair),
+    orchestrationMode: mode === "multi_subagent" ? "multi_subagent" : "default",
+    spawnAllowed: Boolean(orchestration?.spawn_allowed || orchestration?.allowed),
+    maxChildren: String(orchestration?.max_children ?? 0),
+    allowedDomains: orchestration?.allowed_domains?.length ? orchestration.allowed_domains.join(", ") : "",
+  };
+}
+
+function booleanFlag(enabled: boolean, positive: string) {
+  return enabled ? `--${positive}` : `--no-${positive}`;
+}
+
+function normalizedDomainList(value: string) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function buildConfigureGoalCommand({
+  draft,
+  execute,
+  goalId,
+  registry,
+}: {
+  draft: ControlPlaneSettingsDraft;
+  execute: boolean;
+  goalId?: string;
+  registry: string;
+}) {
+  if (!goalId) {
+    return "";
+  }
+  const registryArg = registry ? shellArg(registry) : "$HOME/.codex/goal-harness/registry.global.json";
+  const parts = [
+    "goal-harness",
+    "--registry",
+    registryArg,
+    "configure-goal",
+    "--goal-id",
+    shellArg(goalId),
+    "--quota-compute",
+    shellArg(draft.quotaCompute.trim() || "1"),
+    "--quota-window-hours",
+    shellArg(draft.quotaWindowHours.trim() || "24"),
+    booleanFlag(draft.selfRepairEnabled, "self-repair-enabled"),
+    booleanFlag(draft.selfRepairHealth, "self-repair-health"),
+    booleanFlag(draft.selfRepairWaitingProjection, "self-repair-waiting-projection"),
+    "--orchestration-mode",
+    draft.orchestrationMode,
+    booleanFlag(draft.spawnAllowed, "spawn-allowed"),
+    "--max-children",
+    shellArg(draft.maxChildren.trim() || "0"),
+  ];
+  for (const domain of normalizedDomainList(draft.allowedDomains)) {
+    parts.push("--allowed-domain", shellArg(domain));
+  }
+  if (!normalizedDomainList(draft.allowedDomains).length) {
+    parts.push("--clear-allowed-domains");
+  }
+  if (execute) {
+    parts.push("--execute");
+  }
+  return parts.join(" ");
+}
+
 function ControlPlaneSettingsPanel({
   goal,
   queueItem,
+  registry,
 }: {
   goal?: RunGoal;
   queueItem?: QueueItem;
+  registry: string;
 }) {
   const quota = queueItem?.quota ?? queueItem?.project_asset?.quota ?? goal?.quota;
   const quotaView = buildQuotaView(quota);
@@ -1812,6 +1907,49 @@ function ControlPlaneSettingsPanel({
     ? `health=${flagValue(selfRepair.allow_health_blocker_repair)}; waiting_projection=${flagValue(selfRepair.allow_waiting_projection_repair)}`
     : "no per-goal self-repair override";
   const orchestrationVariant: BadgeVariant = mode === "multi_subagent" ? "info" : "neutral";
+  const currentDraft = useMemo(
+    () => buildControlPlaneSettingsDraft(goal, queueItem),
+    [
+      goal?.id,
+      goal?.quota,
+      goal?.control_plane,
+      goal?.orchestration,
+      goal?.spawn_policy,
+      queueItem?.goal_id,
+      queueItem?.quota,
+      queueItem?.control_plane,
+      queueItem?.project_asset?.quota,
+      queueItem?.project_asset?.control_plane,
+      queueItem?.project_asset?.orchestration,
+    ],
+  );
+  const [draft, setDraft] = useState(currentDraft);
+  const [copyState, setCopyState] = useState<CopyState>("idle");
+  const dirty = JSON.stringify(draft) !== JSON.stringify(currentDraft);
+  const goalId = goal?.id ?? queueItem?.goal_id;
+  const dryRunCommand = buildConfigureGoalCommand({ draft, execute: false, goalId, registry });
+  const applyCommand = buildConfigureGoalCommand({ draft, execute: true, goalId, registry });
+  const canCopy = Boolean(goalId && dirty);
+
+  useEffect(() => {
+    setDraft(currentDraft);
+    setCopyState("idle");
+  }, [currentDraft]);
+
+  useEffect(() => {
+    if (copyState === "idle") {
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(() => setCopyState("idle"), 1800);
+    return () => window.clearTimeout(timeoutId);
+  }, [copyState]);
+
+  async function copyCommand(command: string) {
+    if (!command) {
+      return;
+    }
+    setCopyState((await copyTextToClipboard(command)) ? "copied" : "failed");
+  }
 
   return (
     <div
@@ -1826,6 +1964,7 @@ function ControlPlaneSettingsPanel({
         <div className="flex flex-wrap gap-2">
           <Badge variant={selfRepairEnabled ? "success" : "neutral"}>{selfRepairEnabled ? "repair enabled" : "repair off"}</Badge>
           <Badge variant={orchestrationVariant}>{mode}</Badge>
+          <Badge variant={dirty ? "warning" : "success"}>{dirty ? "dirty" : "clean"}</Badge>
         </div>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -1857,6 +1996,117 @@ function ControlPlaneSettingsPanel({
           label="Orchestration"
           variant={orchestrationVariant}
         />
+      </div>
+      <div className="mt-3 grid gap-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950 lg:grid-cols-2">
+        <label className="space-y-1 text-xs font-medium text-slate-500 dark:text-zinc-400">
+          <span>Quota compute</span>
+          <input
+            className={inputClassName}
+            data-testid="control-plane-quota-compute"
+            inputMode="decimal"
+            onChange={(event) => setDraft((value) => ({ ...value, quotaCompute: event.target.value }))}
+            value={draft.quotaCompute}
+          />
+        </label>
+        <label className="space-y-1 text-xs font-medium text-slate-500 dark:text-zinc-400">
+          <span>Quota window hours</span>
+          <input
+            className={inputClassName}
+            inputMode="decimal"
+            onChange={(event) => setDraft((value) => ({ ...value, quotaWindowHours: event.target.value }))}
+            value={draft.quotaWindowHours}
+          />
+        </label>
+        <label className="space-y-1 text-xs font-medium text-slate-500 dark:text-zinc-400">
+          <span>Orchestration mode</span>
+          <Select
+            className="w-full"
+            data-testid="control-plane-orchestration-mode"
+            onChange={(event) =>
+              setDraft((value) => ({
+                ...value,
+                orchestrationMode: event.target.value === "multi_subagent" ? "multi_subagent" : "default",
+              }))
+            }
+            value={draft.orchestrationMode}
+          >
+            <option value="default">default</option>
+            <option value="multi_subagent">multi_subagent</option>
+          </Select>
+        </label>
+        <label className="space-y-1 text-xs font-medium text-slate-500 dark:text-zinc-400">
+          <span>Max children</span>
+          <input
+            className={inputClassName}
+            inputMode="numeric"
+            onChange={(event) => setDraft((value) => ({ ...value, maxChildren: event.target.value }))}
+            value={draft.maxChildren}
+          />
+        </label>
+        <label className="block space-y-1 text-xs font-medium text-slate-500 dark:text-zinc-400 lg:col-span-2">
+          <span>Allowed domains</span>
+          <input
+            className={inputClassName}
+            onChange={(event) => setDraft((value) => ({ ...value, allowedDomains: event.target.value }))}
+            value={draft.allowedDomains}
+          />
+        </label>
+        <div className="flex flex-wrap gap-3 text-xs font-medium text-slate-600 dark:text-zinc-300 lg:col-span-2">
+          <label className="inline-flex items-center gap-2">
+            <input
+              checked={draft.selfRepairEnabled}
+              onChange={(event) => setDraft((value) => ({ ...value, selfRepairEnabled: event.target.checked }))}
+              type="checkbox"
+            />
+            self repair
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input
+              checked={draft.selfRepairHealth}
+              onChange={(event) => setDraft((value) => ({ ...value, selfRepairHealth: event.target.checked }))}
+              type="checkbox"
+            />
+            health repair
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input
+              checked={draft.selfRepairWaitingProjection}
+              onChange={(event) => setDraft((value) => ({ ...value, selfRepairWaitingProjection: event.target.checked }))}
+              type="checkbox"
+            />
+            waiting projection
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input
+              checked={draft.spawnAllowed}
+              onChange={(event) => setDraft((value) => ({ ...value, spawnAllowed: event.target.checked }))}
+              type="checkbox"
+            />
+            spawn allowed
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 lg:col-span-2">
+          <Button disabled={!dirty} onClick={() => setDraft(currentDraft)} size="sm" variant="ghost">
+            <RotateCcw className="h-4 w-4" />
+            Reset
+          </Button>
+          <Button disabled={!canCopy} onClick={() => void copyCommand(dryRunCommand)} size="sm">
+            <Copy className="h-4 w-4" />
+            Copy dry-run
+          </Button>
+          <Button disabled={!canCopy} onClick={() => void copyCommand(applyCommand)} size="sm" variant="primary">
+            <Copy className="h-4 w-4" />
+            Copy apply
+          </Button>
+          {copyState === "copied" ? <Badge variant="success">copied</Badge> : null}
+          {copyState === "failed" ? <Badge variant="danger">copy failed</Badge> : null}
+        </div>
+        <pre
+          className="overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-950 p-3 text-xs leading-5 text-slate-50 dark:border-zinc-800 lg:col-span-2"
+          data-testid="control-plane-settings-command-preview"
+        >
+          {dryRunCommand || "select a goal"}
+        </pre>
       </div>
     </div>
   );
@@ -4605,7 +4855,7 @@ function RunHistoryPanel({
             runtimeRoot={runtimeRoot}
           />
 
-          <ControlPlaneSettingsPanel goal={goal} queueItem={queueItem} />
+          <ControlPlaneSettingsPanel goal={goal} queueItem={queueItem} registry={registry} />
 
           <div className="grid gap-2 sm:grid-cols-4">
             <div className="rounded-lg border border-slate-200 p-3 dark:border-zinc-800">
