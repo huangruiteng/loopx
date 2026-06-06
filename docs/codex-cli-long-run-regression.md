@@ -76,6 +76,21 @@ records one work event, records one spend event, and appends one JSONL row. This
 keeps the regression deterministic while leaving a clear path for replacing the
 shim action with a real Codex CLI worker later.
 
+## Real Codex CLI Worker Extension
+
+The next implementation stage should add an explicit, low-frequency runner mode
+that invokes a real Codex CLI worker against the same isolated fixture. The
+deterministic Goal Harness CLI shim remains the default public smoke so ordinary
+contract checks stay fast and reproducible. The real-worker mode should be
+opt-in, should start from an empty isolated `HOME`, and should not read real
+session history or Codex App thread state.
+
+The real-worker mode must reuse the same pass criteria as the shim: `3-5`
+bounded worker steps, one JSONL row per step, deterministic validation, durable
+writeback, and exactly one quota spend after each validated work step. If the
+worker cannot complete the sequence, the log should record the public-safe
+blocker instead of hiding the stop condition in stdout.
+
 ## Failure Criteria
 
 - Any worker reads or requires real chat/session history.

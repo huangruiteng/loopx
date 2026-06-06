@@ -31,6 +31,12 @@ REQUIRED_PHRASES = (
     "running exactly `3` isolated worker steps",
     "`status`, `quota should-run`, `refresh-state`, and",
     "leaving a clear path for replacing the shim action with a real Codex CLI worker later",
+    "The next implementation stage should add an explicit, low-frequency runner mode",
+    "The deterministic Goal Harness CLI shim remains the default public smoke",
+    "The real-worker mode should be opt-in",
+    "should not read real session history or Codex App thread state",
+    "The real-worker mode must reuse the same pass criteria as the shim",
+    "the log should record the public-safe blocker",
     "fixed session-history replay",
     "compact synthetic transcripts, not copies of real user sessions",
 )
