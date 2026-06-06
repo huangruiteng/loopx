@@ -2141,7 +2141,7 @@ function shareStatusForGoal(view: ShareGoalView): { label: string; summary: stri
   if (view.spec.id === "tiger-team-maiduidui-regauc") {
     return {
       label: "已授权主动推进",
-      summary: "可用 open p4/p3 槽位推进，但必须写回 board 与 MLP ledger。",
+      summary: "可用 open p4/p3 槽位推进，但必须写回 board 与 project ledger。",
       variant: "info",
     };
   }

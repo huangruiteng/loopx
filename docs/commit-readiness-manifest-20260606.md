@@ -448,7 +448,8 @@ Keep these out of any public commit:
   session state, and private local logs.
 - `apps/dashboard/dist/**` unless the release explicitly asks for built assets.
 - Private project worktrees, internal links, company-only documents, raw local
-  user paths, credentials, tokens, production run ids, or MLP/task ledger data.
+  user paths, credentials, tokens, production run ids, or private task ledger
+  data.
 
 ## Minimum Final Validation Before Commit Or Canary Promotion
 

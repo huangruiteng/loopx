@@ -79,7 +79,7 @@ const goalSpecs = [
       { done: false, text: "巡检 active p4/p3 占用，确认最多 2 个 p4、最多 2 个 p3 运行中。" },
       { done: false, text: "检查半年度 0.75 eval availability 和 monometrics_eval.txt 是否出现。" },
       { done: false, text: "如有可启动候选，先验证 prod-compile-clean 再 launch。" },
-      { done: false, text: "每次 launch / fail / eval / retire 都写回 board 和 MLP ledger。" },
+      { done: false, text: "每次 launch / fail / eval / retire 都写回 board 和 project ledger。" },
     ],
     latest: {
       generated_at: "2026-01-01T00:01:00+00:00",
