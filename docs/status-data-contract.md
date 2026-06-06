@@ -550,8 +550,8 @@ Item fields:
   registry `spawn_policy` with `mode`, `spawn_allowed`, `max_children`, and
   optional `allowed_domains`. This is the first-screen project asset surface for
   agents and dashboards; it lets consumers avoid reconstructing owner, gate,
-  next action, stop condition, todo counts, compute state, latest validation,
-  and sub-agent mode from scattered fields. It also keeps delivery-floor and
+  next action, stop condition, todo counts, compute state, and latest validation
+  from scattered fields. It also keeps delivery-floor and
   orchestration policy close to the project asset instead of forcing agents to
   infer them from history.
   Markdown renderers should

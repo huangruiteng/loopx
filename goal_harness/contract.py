@@ -37,6 +37,8 @@ LEAK_PATTERNS = {
 DEFAULT_SCAN_SUFFIXES = {".md", ".py", ".toml", ".json", ".yaml", ".yml", ".sh"}
 DEFAULT_SKIP_DIRS = {
     ".git",
+    ".goal-harness",
+    ".goal-wrapper.local",
     ".local",
     ".venv",
     "__pycache__",
@@ -45,6 +47,7 @@ DEFAULT_SKIP_DIRS = {
     "build",
     "dist",
     "node_modules",
+    "runtime",
 }
 
 
