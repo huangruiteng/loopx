@@ -138,6 +138,52 @@ def goal_from_registry(registry: Path) -> dict[str, Any]:
     return json.loads(registry.read_text(encoding="utf-8"))["goals"][0]
 
 
+def queue_item(status_payload: dict[str, Any]) -> dict[str, Any]:
+    items = status_payload.get("attention_queue", {}).get("items") or []
+    item = next((entry for entry in items if entry.get("goal_id") == GOAL_ID), None)
+    assert isinstance(item, dict), status_payload
+    return item
+
+
+def assert_status_settings(
+    status_payload: dict[str, Any],
+    *,
+    quota_compute: float,
+    quota_window_hours: float,
+    self_repair_enabled: bool,
+    orchestration_mode: str,
+    spawn_allowed: bool,
+    max_children: int,
+    allowed_domains: list[str] | None = None,
+) -> None:
+    item = queue_item(status_payload)
+    asset = item.get("project_asset")
+    assert isinstance(asset, dict), item
+    quota = item.get("quota")
+    assert isinstance(quota, dict), item
+    assert quota["compute"] == quota_compute, item
+    assert quota["window_hours"] == quota_window_hours, item
+    asset_quota = asset.get("quota")
+    assert isinstance(asset_quota, dict), item
+    assert asset_quota["compute"] == quota_compute, item
+    control_plane = item.get("control_plane")
+    assert isinstance(control_plane, dict), item
+    self_repair = control_plane.get("self_repair")
+    assert isinstance(self_repair, dict), item
+    assert self_repair["enabled"] is self_repair_enabled, item
+    asset_control_plane = asset.get("control_plane")
+    assert asset_control_plane == control_plane, item
+    orchestration = asset.get("orchestration")
+    assert isinstance(orchestration, dict), item
+    assert orchestration["mode"] == orchestration_mode, item
+    assert orchestration["spawn_allowed"] is spawn_allowed, item
+    assert orchestration["max_children"] == max_children, item
+    if allowed_domains is None:
+        assert "allowed_domains" not in orchestration, item
+    else:
+        assert orchestration["allowed_domains"] == allowed_domains, item
+
+
 def configure_payload() -> dict[str, Any]:
     return {
         "goal_id": GOAL_ID,
@@ -168,6 +214,15 @@ def main() -> None:
             assert disabled_api["control_plane_write_enabled"] is False, disabled_api
             assert disabled_api["configure_goal_dry_run_url"] == "/control-plane/configure-goal/dry-run", disabled_api
             assert disabled_api["configure_goal_apply_url"] is None, disabled_api
+            assert_status_settings(
+                status_payload,
+                quota_compute=1.0,
+                quota_window_hours=24,
+                self_repair_enabled=False,
+                orchestration_mode="default",
+                spawn_allowed=False,
+                max_children=0,
+            )
             status, dry = request_json("POST", f"{base_url}/control-plane/configure-goal/dry-run", configure_payload())
             assert status == 200, dry
             assert dry["changed"] is True, dry
@@ -181,6 +236,18 @@ def main() -> None:
             )
             assert status == 403, blocked
             assert blocked["written"] is False, blocked
+            status, status_payload = request_json("GET", f"{base_url}/status.json")
+            assert status == 200, status_payload
+            assert status_payload["local_dashboard_api"]["configure_goal_apply_url"] is None, status_payload
+            assert_status_settings(
+                status_payload,
+                quota_compute=1.0,
+                quota_window_hours=24,
+                self_repair_enabled=False,
+                orchestration_mode="default",
+                spawn_allowed=False,
+                max_children=0,
+            )
         finally:
             stop_server(disabled_server)
 
@@ -255,6 +322,20 @@ def main() -> None:
             assert goal["spawn_policy"]["allowed"] is True, goal
             assert goal["spawn_policy"]["max_children"] == 2, goal
             assert goal["spawn_policy"]["allowed_domains"] == ["docs", "validation"], goal
+            status, refreshed = request_json("GET", f"{base_url}/status.json")
+            assert status == 200, refreshed
+            assert refreshed["local_dashboard_api"]["control_plane_write_enabled"] is True, refreshed
+            assert refreshed["local_dashboard_api"]["configure_goal_apply_url"] == "/control-plane/configure-goal/apply", refreshed
+            assert_status_settings(
+                refreshed,
+                quota_compute=0.5,
+                quota_window_hours=12,
+                self_repair_enabled=True,
+                orchestration_mode="multi_subagent",
+                spawn_allowed=True,
+                max_children=2,
+                allowed_domains=["docs", "validation"],
+            )
         finally:
             stop_server(server)
 
