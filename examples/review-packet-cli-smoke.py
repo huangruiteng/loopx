@@ -416,6 +416,16 @@ def assert_connected_delivery_surface_loop_requires_macro_evidence() -> None:
                         "gate": "none",
                         "next_action": "Attempt a ranker / cross-domain evidence segment or report blocker.",
                         "stop_condition": "stop if useful work needs unapproved scope",
+                        "agent_todos": {
+                            "items": [
+                                {
+                                    "text": "Run a dynamic-beta fit-sanity scorer with ranker and reference baselines.",
+                                },
+                                {
+                                    "text": "Finish the airline OV tip-template runner path before any full production run.",
+                                },
+                            ],
+                        },
                         "execution_profile": {
                             "cadence": "macro_evidence_segment",
                             "minimum_scale": "implementation",
@@ -511,6 +521,9 @@ def assert_connected_delivery_surface_loop_requires_macro_evidence() -> None:
     assert "可改文件、验证、写回、spend" in handoff, handoff
     assert "surface-only 下游传播" in handoff, handoff
     assert "只读或 dry-run 路径" not in handoff, handoff
+    assert "Agent 待办候选 2" in handoff, handoff
+    assert "quota should-run --goal-id delivery-side-bypass" in handoff, handoff
+    assert "quota should-run \\" not in handoff, handoff
     assert "交付合同：下一轮回到 active state P0/P1 outcome" in handoff, handoff
     assert "ranker or cross domain evidence" in handoff, handoff
     assert_project_agent_handoff_compact(

@@ -29,9 +29,22 @@ def compact_packet_text(value: str, limit: int = 180) -> str:
     return compact[: limit - 1].rstrip() + "…"
 
 
-def command_block(command: str | None) -> str:
+def compact_shell_command(command: str) -> str:
+    parts: list[str] = []
+    for line in command.splitlines():
+        part = line.strip()
+        if part.endswith("\\"):
+            part = part[:-1].rstrip()
+        if part:
+            parts.append(part)
+    return " ".join(parts)
+
+
+def command_block(command: str | None, *, compact: bool = False) -> str:
     if not command:
         return "（当前没有可执行命令；先读取 status/history。）"
+    if compact:
+        command = compact_shell_command(command)
     return "\n".join(["```bash", command, "```"])
 
 
@@ -665,7 +678,7 @@ def project_agent_section(
             "执行边界：先执行下面 quota guard；若 should_run=true，读取 active state/status/goal_boundary/execution_profile 后，选择一个 write_scope 内的 bounded delivery segment，可改文件、验证、写回、spend。",
             "停止条件：只能继续 isolated test、surface-only 下游传播，或需要未授权写入范围、生产动作、destructive git、私密材料时，回报 blocker，不 spend。",
             "",
-            command_block(command),
+            command_block(command, compact=True),
         ]
     elif kind == "reward":
         lines = [
