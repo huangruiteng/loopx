@@ -223,6 +223,48 @@ The assisted operator-simulator track should start only after the passive
 baseline has at least one credible result or a documented negative result that
 explains why supervision is needed.
 
+## Autonomous Planning Triggers
+
+Long-horizon research cannot rely on the user to notice every stagnation point.
+Goal Harness should trigger a planning refresh when the current control plane
+shows that execution is no longer converting intent into evidence.
+
+Planning refresh is not a license to expand scope every turn. It is a bounded
+meta-step that re-reads authority, run history, benchmark evidence, open todos,
+and recent failures, then decides whether to keep the current todo, split it,
+add a new todo, retire stale work, or request an operator decision.
+
+Initial trigger conditions:
+
+- **Periodic research review:** every 20-30 visible turns or durable run events
+  in the same long-horizon research topic.
+- **No-progress streak:** three consecutive eligible turns with no committed
+  artifact, no benchmark evidence, no validated blocker, and no state-changing
+  writeback.
+- **Repeated-action loop:** the same recommended action appears across three or
+  more latest runs without a new validation result or blocker.
+- **Phase transition:** the project moves from roadmap to setup, setup to pilot,
+  pilot to A/B result, or result to paper/readiness.
+- **Backlog mismatch:** status shows no open agent todo, or only broad/open-ended
+  todos, while run history still contains unresolved benchmark or planning work.
+- **Evidence contradiction:** benchmark output, paper survey, or executor
+  compatibility evidence contradicts the current roadmap assumption.
+
+The planning refresh output should be public-safe and structured:
+
+- keep / split / add / retire / ask-decision action;
+- affected todo ids or titles;
+- reason for trigger;
+- evidence references;
+- next bounded validation command;
+- stop condition;
+- whether the next turn is implementation, setup, paper survey, or observation.
+
+This mechanism is part of the benchmark program itself: one result dimension is
+whether Goal Harness can autonomously maintain a useful research agenda over
+many turns without drifting into prompt-only planning or waiting for the user to
+restate the strategy.
+
 ## Goal Harness Integration
 
 The benchmark adapter should add control-plane structure without changing the
@@ -285,6 +327,13 @@ No operator-simulator intervention is allowed. Compare task success,
 restartability, stale-state errors, duplicated work after interruption,
 validation quality, failure attribution, and overhead. This is the first proof
 point for whether Goal Harness helps by itself.
+
+### P1: Planning-Trigger Regression
+
+Add a synthetic long-horizon research fixture that simulates repeated eligible
+turns, a no-progress streak, and a repeated recommended action. The fixture
+should prove that Goal Harness emits a bounded planning-refresh todo instead of
+quietly looping or relying on the user to re-plan.
 
 ### P1: Operator-Simulator Overlay Pilot
 
@@ -353,6 +402,10 @@ limitations, and benchmark-integrity safeguards.
   versus Codex CLI with passive Goal Harness wrapper, with no operator-simulator
   interventions, measuring restartability, stale-state avoidance, continuation
   quality, evidence discipline, and overhead.
+- [ ] [P1] Add an autonomous planning-trigger regression: after periodic review,
+  no-progress streak, repeated-action loop, phase transition, backlog mismatch,
+  or evidence contradiction, Goal Harness should re-plan, split/add/retire
+  todos, and emit the next bounded validation command.
 - [ ] [P1] Specify the user-simulator ablation matrix and failure taxonomy,
   including same-model, stronger-simulator, weaker-simulator, deterministic
   scripted-user settings, visibility limits, and intervention budgets for the
