@@ -149,6 +149,14 @@ def import_args(doc_registry: Path, *, dry_run: bool = False) -> list[str]:
 def assert_doc_contract() -> None:
     text = DOC.read_text(encoding="utf-8")
     for marker in (
+        "Project-Local Doc Registry Mechanism",
+        "Doc registry is a general Goal Harness mechanism",
+        "not an agent-harness-specific",
+        "Identify the target project and goal first",
+        "project's own doc registry",
+        "Executor Skill Contract",
+        "doc-registry skill trigger",
+        "Run the relevant smoke or status refresh before spending heartbeat quota",
         "import-doc-registry-authority",
         "doc_registry_authority_import_v0",
         "default_entry_count",

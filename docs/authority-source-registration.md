@@ -60,6 +60,62 @@ The same compact source is appended to `authority_sources` so local operators ca
 see the registered sources. Global sync strips this to summary counts through
 the existing authority-registry projection.
 
+## Project-Local Doc Registry Mechanism
+
+Doc registry is a general Goal Harness mechanism, not an agent-harness-specific
+import path. Each managed project should own its authority surface in its own
+project-local registry, usually `docs/meta/DOC_REGISTRY.yaml` plus the goal's
+ignored `.goal-harness/registry.json`.
+
+When a project agent discovers a relevant design doc, research note, benchmark
+paper, owner packet, migration report, or external material, the default order
+is:
+
+1. Identify the target project and goal first. Do not register material into
+   `goal-harness-meta` just because the current worker found it.
+2. If the material belongs to that project, add or update the project's own
+   doc registry topic/source entry first.
+3. Register the compact material contract into that same project's
+   `.goal-harness/registry.json` with `register-authority-source`, or import a
+   redacted summary of another project's doc registry with
+   `import-doc-registry-authority`.
+4. Sync only compact counts and redacted hashes into the shared global registry;
+   raw paths, document ids, private URLs, comments, and source bodies stay in
+   the project-local/private authority surface.
+5. Refresh status or state so future review packets, read-only maps, and
+   heartbeat workers can find the new authority without relying on chat memory.
+
+Use `import-doc-registry-authority` when a goal needs another project's
+DOC_REGISTRY-style map as context. Use `register-authority-source` when the
+agent found one material source that should be added to the current project's
+authority map. In both cases, the current project remains the owner of its own
+doc registry and conflict rules.
+
+## Executor Skill Contract
+
+Project executors should treat doc-registry registration as a skill-triggered
+workflow, not as a meta-project side effect. The doc-registry skill trigger is
+any task that introduces a durable authority source or research material that
+future agents may need to route work, validate decisions, or resolve conflicts.
+Register that material in the target project's own doc registry before relying
+on chat memory.
+
+The minimal executor sequence is:
+
+1. Resolve the target `goal_id` and project registry from Goal Harness state.
+2. Classify the material as owned by the current project, another project, or
+   out of scope.
+3. For current-project material, update the project-local doc registry first,
+   then run `register-authority-source` with a redacted source contract.
+4. For another project's registry, run `import-doc-registry-authority` only to
+   import compact counts, topic keys, and hashed references.
+5. Run the relevant smoke or status refresh before spending heartbeat quota.
+
+Stop instead of registering when the target project is ambiguous, the material
+contains private content that cannot be redacted into metadata, or the next step
+would require reading a gated source body. In those cases, write a project-local
+todo or blocker that names the missing authority decision.
+
 ## Boundaries
 
 - Raw private source references are never stored.

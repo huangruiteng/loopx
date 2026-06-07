@@ -21,6 +21,37 @@ Do not manually copy one project's registry entry into another project. Local
 `connect` and `refresh-state` should sync into the shared global registry
 automatically.
 
+## Register Project Authority And Material Sources
+
+When a project agent discovers a durable design document, research note,
+benchmark paper, owner packet, migration report, or external material that
+future agents may need for routing, validation, or conflict resolution, treat
+that as a doc-registry skill trigger. Identify the target project and goal
+first; do not register material into the current meta goal just because this
+worker found it.
+
+For material owned by the current project, update the project-local doc registry
+or equivalent authority map first, then register the compact redacted source
+contract in the same project's ignored `.goal-harness/registry.json`:
+
+```bash
+goal-harness register-authority-source --goal-id <STABLE_GOAL_ID> ...
+```
+
+For another project's DOC_REGISTRY-style map, import only the compact authority
+summary instead of copying raw paths, document ids, URLs, comments, or source
+bodies:
+
+```bash
+goal-harness import-doc-registry-authority --goal-id <STABLE_GOAL_ID> ...
+```
+
+After registration, refresh status or state so review packets, read-only maps,
+and heartbeat workers can find the new authority without relying on chat
+memory. Stop and write a project-local todo or blocker when the target project
+is ambiguous, the source cannot be represented as public-safe metadata, or the
+next step would require reading a gated source body.
+
 ## Preflight
 
 From the target project shell:
