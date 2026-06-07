@@ -61,6 +61,11 @@ work still belongs in the existing code, examples, and contract documents:
   official task score from restartability, stale-state avoidance, evidence
   discipline, boundary safety, writeback quality, gate compliance, failure
   attribution, and overhead.
+- `mini-control-plane-repair-with-interrupt-v0.md`: deterministic recovery
+  fixture slice for `mini_control_plane_repair_with_interrupt_v0`, proving
+  worker interruption, stale latest-run avoidance, validation failure capture,
+  human-gate resume recheck, and side-effect audit before any real benchmark
+  runner path.
 - `terminal-bench-official-pilot-readiness-v0.md`: local-only readiness
   fixture for `terminal_bench_official_pilot_decision_packet_v0`, proving the
   `benchmark_result_v0` comparison shell and control-plane checklist before any
