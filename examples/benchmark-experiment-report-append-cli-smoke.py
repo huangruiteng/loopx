@@ -282,6 +282,7 @@ def main() -> None:
         cli_chain_handoff = cli_handoff_only["benchmark_report_chain_handoff"]
         assert cli_chain_handoff == chain_handoff, cli_handoff_only
         assert "benchmark_report_chain_handoff" in cli_handoff_only, cli_handoff_only
+        assert "handoff_followthrough_summary" not in cli_handoff_only, cli_handoff_only
         assert_no_private_surface(cli_handoff_only)
 
     print("benchmark-experiment-report-append-cli-smoke ok")

@@ -963,7 +963,10 @@ Review Packet source-of-truth rule:
   `benchmark_experiment_report_replay_decision_v0`, JSON handoff-only output may
   also include `benchmark_report_chain_handoff` so agents can read
   `chain_map`, `replay_decision`, `next_run_mode`, `readiness`, and
-  `authorization` without parsing the handoff sentence;
+  `authorization` without parsing the handoff sentence. To keep the hot path
+  compact, handoff-only JSON does not expose a separate
+  `handoff_followthrough_summary` prose field; that prose remains available in
+  the full Review Packet and embedded handoff text;
 - project-agent handoff commands redact local absolute registry/runtime paths
   before they enter `project_agent_command`, `project_agent_handoff`, or
   `handoff_text`;
