@@ -23,6 +23,9 @@ When a compact `benchmark_comparison_decision_note_v0` is available, the report
 may consume it only as a claim-boundary and next-decision hint. The report must
 still keep official-score delta, control-plane delta, assisted-simulator
 evidence, and leaderboard eligibility in separate sections.
+Readiness-only and failure-analysis decision notes may feed `negative_results`
+and `next_decision`, but they must not be promoted into official benchmark
+scores, simulator evidence, or leaderboard claims.
 
 ## Required Sections
 
@@ -83,5 +86,8 @@ reproducibility, claim-boundary, negative-result, and next-decision sections.
 The fixture now also derives the claim-boundary and next-decision fields from a
 compact `benchmark_comparison_decision_note_v0`, proving that report generation
 can consume the comparison note without reading raw benchmark artifacts.
+It also checks readiness/failure decision notes as negative-result inputs, so a
+readiness-only boundary or failed paired comparison stays in the report's
+no-claim layer until the minimum next evidence is produced.
 It does not run a benchmark, simulator, model API, Docker, cloud sandbox, paid
 compute, or leaderboard upload.

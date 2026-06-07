@@ -64,14 +64,42 @@ def comparison_summary_payload() -> dict[str, Any]:
     }
 
 
-def decision_note_payload() -> dict[str, Any]:
-    note = benchmark_comparison_decision_note(comparison_summary_payload())
+def readiness_summary_payload() -> dict[str, Any]:
+    return {
+        "schema_version": COMPARISON_SCHEMA,
+        "task_id": "terminal_bench_official_pilot_readiness_v0",
+        "comparison_id": "terminal_bench_official_pilot_readiness_ab",
+        "mode_pair": ["bare_codex_cli_readiness", "passive_goal_harness_wrapper_readiness"],
+        "official_task_score_delta": "not_applicable_readiness_only",
+        "control_plane_score_delta": 0.0,
+        "both_success": None,
+        "ready_to_run_real_benchmark": False,
+        "ready_to_submit_leaderboard": False,
+    }
+
+
+def failure_summary_payload() -> dict[str, Any]:
+    return {
+        "schema_version": COMPARISON_SCHEMA,
+        "task_id": "mini_control_plane_repair_failure_probe_v0",
+        "comparison_id": "mini_control_plane_repair_failure_probe_ab",
+        "mode_pair": ["bare_codex_cli", "passive_goal_harness_wrapper"],
+        "official_task_score_delta": 0.0,
+        "control_plane_score_delta": 0.0,
+        "both_success": False,
+        "ready_to_run_real_benchmark": False,
+        "ready_to_submit_leaderboard": False,
+    }
+
+
+def decision_note_payload(summary: dict[str, Any]) -> dict[str, Any]:
+    note = benchmark_comparison_decision_note(summary)
     assert note is not None, "comparison note should be generated from compact summary"
     assert note["schema_version"] == DECISION_NOTE_SCHEMA, note
     return note
 
 
-def report_payload(note: dict[str, Any]) -> dict[str, Any]:
+def report_payload(note: dict[str, Any], readiness_note: dict[str, Any], failure_note: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": REPORT_SCHEMA,
         "experiment_identity": {
@@ -181,7 +209,24 @@ def report_payload(note: dict[str, Any]) -> dict[str, Any]:
         "negative_results": {
             "null_official_delta": True,
             "overhead_regressions": [],
-            "failed_hypotheses": [],
+            "failed_hypotheses": [
+                {
+                    "source_decision_note_schema": readiness_note["schema_version"],
+                    "evidence_layer": readiness_note["evidence_layer"],
+                    "hypothesis": "readiness-only evidence is enough for benchmark uplift claims",
+                    "result": "rejected",
+                    "minimum_next_evidence": readiness_note["minimum_next_evidence"],
+                    "must_not_claim": readiness_note["must_not_claim"],
+                },
+                {
+                    "source_decision_note_schema": failure_note["schema_version"],
+                    "evidence_layer": failure_note["evidence_layer"],
+                    "hypothesis": "failed paired comparison can be broadened without attribution",
+                    "result": "rejected",
+                    "minimum_next_evidence": failure_note["minimum_next_evidence"],
+                    "must_not_claim": failure_note["must_not_claim"],
+                },
+            ],
             "why_it_matters": "null official delta prevents overclaiming benchmark improvement from control-plane-only evidence",
         },
         "next_decision": {
@@ -189,6 +234,8 @@ def report_payload(note: dict[str, Any]) -> dict[str, Any]:
             "minimum_next_evidence": note["minimum_next_evidence"],
             "stop_condition": note["stop_condition"],
             "source_decision_note_schema": note["schema_version"],
+            "readiness_decision": readiness_note["decision"],
+            "failure_decision": failure_note["decision"],
         },
     }
 
@@ -211,6 +258,7 @@ def assert_doc_contract() -> None:
         "negative_results",
         "next_decision",
         DECISION_NOTE_SCHEMA,
+        "readiness/failure decision notes",
         "Do not include credentials",
         "python3 examples/benchmark-experiment-report-template-smoke.py",
     ]
@@ -268,21 +316,33 @@ def assert_report_contract(report: dict[str, Any]) -> None:
     assert boundary["evidence_layer_by_claim"]["assisted_collaboration"] == "operator_simulator_ablation", boundary
 
     assert report["negative_results"]["null_official_delta"] is True, report
+    failed_hypotheses = report["negative_results"]["failed_hypotheses"]
+    layers = {item["evidence_layer"] for item in failed_hypotheses}
+    assert layers == {"readiness_only", "failure_analysis"}, failed_hypotheses
+    readiness_failure = next(item for item in failed_hypotheses if item["evidence_layer"] == "readiness_only")
+    assert "benchmark pass/fail or score uplift" in readiness_failure["must_not_claim"], readiness_failure
+    attributed_failure = next(item for item in failed_hypotheses if item["evidence_layer"] == "failure_analysis")
+    assert attributed_failure["minimum_next_evidence"] == "attribute the failed scenario before broadening", attributed_failure
     assert report["next_decision"]["decision"] in {"continue", "repeat", "broaden", "defer", "stop"}, report
     assert report["next_decision"]["source_decision_note_schema"] == DECISION_NOTE_SCHEMA, report
+    assert report["next_decision"]["readiness_decision"] == "continue", report
+    assert report["next_decision"]["failure_decision"] == "repeat", report
     assert_public_safe(report)
 
 
 def main() -> None:
     assert_doc_contract()
-    note = decision_note_payload()
-    report = report_payload(note)
+    note = decision_note_payload(comparison_summary_payload())
+    readiness_note = decision_note_payload(readiness_summary_payload())
+    failure_note = decision_note_payload(failure_summary_payload())
+    report = report_payload(note, readiness_note, failure_note)
     assert_report_contract(report)
     print(
         "benchmark-experiment-report-template-smoke ok "
         f"sections={len(REQUIRED_SECTIONS)} "
         f"leaderboard={report['official_score']['leaderboard_evidence']} "
-        f"assisted={report['operator_simulator_ablation']['enabled']}"
+        f"assisted={report['operator_simulator_ablation']['enabled']} "
+        f"negative_layers={','.join(item['evidence_layer'] for item in report['negative_results']['failed_hypotheses'])}"
     )
 
 
