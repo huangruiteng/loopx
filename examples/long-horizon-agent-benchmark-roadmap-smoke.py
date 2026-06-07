@@ -5,7 +5,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-ROADMAP = REPO_ROOT / "docs" / "long-horizon-agent-benchmark-roadmap.md"
+TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
+README = TOPIC_DIR / "README.md"
+ROADMAP = TOPIC_DIR / "roadmap.md"
 
 
 REQUIRED_SNIPPETS = [
@@ -64,6 +66,13 @@ REQUIRED_SNIPPETS = [
 
 
 def main() -> None:
+    readme = README.read_text(encoding="utf-8")
+    assert "This topic folder owns Goal Harness research" in readme
+    assert "Do not implement Goal Harness product capability here." in readme
+    assert "Foundational capability" in readme
+    assert "existing code, examples, and contract documents" in readme
+    assert "`roadmap.md`" in readme
+
     text = ROADMAP.read_text(encoding="utf-8")
     missing = [snippet for snippet in REQUIRED_SNIPPETS if snippet not in text]
     assert not missing, missing
