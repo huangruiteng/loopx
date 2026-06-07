@@ -44,6 +44,11 @@ work still belongs in the existing code, examples, and contract documents:
   protocol after the passive baseline, including comparison modes, simulator
   matrix, visibility limits, intervention budget, failure taxonomy, and the
   `operator_simulator_run_v0` row shape.
+- `benchmark-experiment-report-template-v0.md`: paper-ready
+  `benchmark_experiment_report_v0` template that keeps official scores,
+  passive control-plane metrics, assisted operator-simulator ablations,
+  overhead, failure taxonomy, reproducibility artifacts, claim boundaries, and
+  negative results in separate report sections.
 - `terminal-bench-official-pilot-readiness-v0.md`: local-only readiness
   fixture for `terminal_bench_official_pilot_decision_packet_v0`, proving the
   `benchmark_result_v0` comparison shell and control-plane checklist before any

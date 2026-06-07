@@ -386,7 +386,11 @@ artifact paths.
 
 Prepare a paper-style report once the A/B results show a real signal. The report
 should include negative results, overhead, failure taxonomy, user-simulator
-limitations, and benchmark-integrity safeguards.
+limitations, and benchmark-integrity safeguards. Use
+`benchmark-experiment-report-template-v0.md` to keep official leaderboard
+scores, passive control-plane metrics, assisted operator-simulator ablations,
+cost/latency overhead, failure taxonomy, reproducibility artifacts, claim
+boundaries, negative results, and next decisions in separate sections.
 
 ## Active Agent Todo Seed
 
@@ -421,6 +425,12 @@ limitations, and benchmark-integrity safeguards.
   comparable long-horizon SWE benchmark, keeping local smokes deterministic.
 - [ ] [P2] Run or dry-run tau2/tau3 only as a simulator research pilot, not as
   the headline long-horizon leaderboard target.
+- [x] [P2] Maintain a paper-ready experiment report template that separates
+  official leaderboard score, passive control-plane metrics,
+  operator-simulator ablation, cost/latency overhead, failure taxonomy, and
+  reproducibility artifacts. Completed 2026-06-07 via
+  `benchmark-experiment-report-template-v0.md` and
+  `benchmark-experiment-report-template-smoke.py`.
 
 ## Non-Goals
 
