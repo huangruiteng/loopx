@@ -983,7 +983,12 @@ def assert_control_plane_waiting_projection_self_repair_should_run() -> None:
     assert "control-plane self-repair" in spend_event["health_check"], spend_event
 
 
-def post_handoff_meta_fixture(*, with_agent_todo: bool) -> dict:
+def post_handoff_meta_fixture(
+    *,
+    with_agent_todo: bool,
+    latest_classification: str = "handoff_only_budget_fields_merged",
+    agent_todo_text: str = "Keep heartbeat prompt and agent-to-CLI interaction lean as an ongoing interface-budget task.",
+) -> dict:
     goal_id = "goal-harness-meta"
     meta_goal = goal(goal_id, compute=1.0)
     meta_goal["adapter_kind"] = "harness_self_improvement"
@@ -1008,7 +1013,7 @@ def post_handoff_meta_fixture(*, with_agent_todo: bool) -> dict:
         "post_handoff_small_scale_streak": 0,
         "post_handoff_latest_run": {
             "generated_at": "2026-06-06T21:35:46+08:00",
-            "classification": "handoff_only_budget_fields_merged",
+            "classification": latest_classification,
             "delivery_batch_scale": "implementation",
             "delivery_outcome": "primary_goal_outcome",
             "health_check": "state_file 1/1; registry_goal 1/1",
@@ -1026,7 +1031,7 @@ def post_handoff_meta_fixture(*, with_agent_todo: bool) -> dict:
                 {
                     "index": 1,
                     "done": False,
-                    "text": "Keep heartbeat prompt and agent-to-CLI interaction lean as an ongoing interface-budget task.",
+                    "text": agent_todo_text,
                 }
             ],
         }
@@ -1094,6 +1099,42 @@ def assert_control_plane_post_handoff_agent_todo_stays_active() -> None:
         "execution_obligation: must_attempt_work=True kind=normal_run notify_is_execution_gate=False"
         in markdown
     ), markdown
+
+
+def assert_dependency_observation_returns_to_primary_backlog() -> None:
+    goal_id = "goal-harness-meta"
+    payload = post_handoff_meta_fixture(
+        with_agent_todo=True,
+        latest_classification="side_bypass_seed308_dependency_observed",
+        agent_todo_text="SOTA long-horizon agent paper and runner dossier.",
+    )
+    decision = build_quota_should_run(payload, goal_id=goal_id)
+    markdown = render_quota_should_run_markdown(decision)
+
+    assert decision["ok"] is True, decision
+    assert decision["decision"] == "run", decision
+    assert decision["should_run"] is True, decision
+    first_todo = decision["agent_todo_summary"]["first_open_items"][0]
+    first_todo_text = str(first_todo.get("title") or first_todo.get("text") or "")
+    assert first_todo_text.startswith("SOTA long-horizon"), decision
+    assert (
+        decision["heartbeat_recommendation"]["recommended_mode"]
+        == "advance_primary_backlog_after_dependency_observation"
+    ), decision
+    assert (
+        decision["heartbeat_recommendation"]["latest_run"]["progress_scope"]
+        == "dependency_observation"
+    ), decision
+    assert (
+        decision["heartbeat_recommendation"]["dependency_observation_cap"][
+            "latest_run_progress_scope"
+        ]
+        == "dependency_observation"
+    ), decision
+    assert "dependency_observation_cap" in markdown, markdown
+    assert "advance_primary_backlog_after_dependency_observation" in markdown, markdown
+    assert decision["execution_obligation"]["must_attempt_work"] is True, decision
+    assert decision["execution_obligation"]["kind"] == "normal_run", decision
 
 
 def assert_attention_queue_overrides_stale_run_history() -> None:
@@ -1555,6 +1596,7 @@ def main() -> int:
     assert_control_plane_waiting_projection_self_repair_should_run()
     assert_control_plane_post_handoff_observe_if_unchanged()
     assert_control_plane_post_handoff_agent_todo_stays_active()
+    assert_dependency_observation_returns_to_primary_backlog()
     assert_attention_queue_overrides_stale_run_history()
     assert_project_asset_backed_no_evidence_should_run()
     assert_heartbeat_recommendation_lifecycle()

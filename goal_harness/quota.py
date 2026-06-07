@@ -62,6 +62,7 @@ HANDOFF_READINESS_COMPACT_FIELDS = (
 POST_HANDOFF_RUN_COMPACT_FIELDS = (
     "generated_at",
     "classification",
+    "progress_scope",
     "delivery_batch_scale",
     "delivery_outcome",
     "health_check",
@@ -81,6 +82,11 @@ STALL_HEALTH_ITEM_COMPACT_FIELDS = (
     "recommended_action",
 )
 DECISION_FRESHNESS_WARNING_ITEM_LIMIT = 3
+DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS = (
+    "dependency_observed",
+    "dependency_observation",
+    "dependency_monitor",
+)
 
 
 def _now_local() -> str:
@@ -180,6 +186,16 @@ def _has_focus_wait_marker(*values: Any) -> bool:
             if marker in FOCUS_WAIT_LIFECYCLE_MARKERS:
                 return True
     return False
+
+
+def _latest_run_progress_scope(run: dict[str, Any]) -> str:
+    explicit = str(run.get("progress_scope") or "").strip()
+    if explicit:
+        return explicit
+    classification = str(run.get("classification") or "").strip().lower()
+    if any(hint in classification for hint in DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS):
+        return "dependency_observation"
+    return "primary_goal"
 
 
 def _focus_wait_quota(payload: dict[str, Any]) -> dict[str, Any]:
@@ -947,6 +963,42 @@ def _heartbeat_recommendation(
 
     post_handoff_observation = _control_plane_post_handoff_observation_hint(item)
     if post_handoff_observation and not has_user_todos:
+        latest_observed_run = (
+            post_handoff_observation.get("latest_run")
+            if isinstance(post_handoff_observation.get("latest_run"), dict)
+            else {}
+        )
+        progress_scope = _latest_run_progress_scope(latest_observed_run)
+        if isinstance(latest_observed_run, dict) and latest_observed_run:
+            latest_observed_run.setdefault("progress_scope", progress_scope)
+        if has_agent_todos and progress_scope == "dependency_observation":
+            return {
+                **base,
+                **{
+                    key: value
+                    for key, value in post_handoff_observation.items()
+                    if key != "stop_if_unchanged"
+                },
+                "recommended_mode": "advance_primary_backlog_after_dependency_observation",
+                "dependency_observation_cap": {
+                    "latest_run_progress_scope": progress_scope,
+                    "rule": (
+                        "Do not spend another consecutive meta turn mirroring dependency-only "
+                        "observation while primary agent todos remain executable."
+                    ),
+                },
+                "spend_policy": (
+                    "do not append quota spend for another dependency-only observation; "
+                    "spend only after advancing the primary agent-todo backlog, writing a "
+                    "real blocker, or recording a material dependency transition that changes "
+                    "the meta decision"
+                ),
+                "reason": (
+                    "latest post-handoff run was a dependency observation, not the meta "
+                    "primary research lane; advance the first executable agent todo instead "
+                    "of continuing dependency monitoring"
+                ),
+            }
         if has_agent_todos:
             active_observation = {
                 key: value
@@ -2167,6 +2219,16 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- heartbeat_command: `{heartbeat_recommendation.get('command')}`")
         if heartbeat_recommendation.get("stop_if_unchanged"):
             lines.append("- heartbeat_stop_if_unchanged: `True`")
+        dependency_cap = (
+            heartbeat_recommendation.get("dependency_observation_cap")
+            if isinstance(heartbeat_recommendation.get("dependency_observation_cap"), dict)
+            else {}
+        )
+        if dependency_cap:
+            lines.append(
+                "- dependency_observation_cap: "
+                f"progress_scope={dependency_cap.get('latest_run_progress_scope')}"
+            )
         if heartbeat_recommendation.get("spend_policy"):
             lines.append(f"- heartbeat_spend_policy: {heartbeat_recommendation.get('spend_policy')}")
         if heartbeat_recommendation.get("reason"):
