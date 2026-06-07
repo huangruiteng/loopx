@@ -34,6 +34,22 @@ def run_file_stem(generated_at: str) -> str:
     return re.sub(r"[^0-9A-Za-z-]+", "-", generated_at).strip("-")
 
 
+def unique_run_paths(runs_dir: Path, generated_at: str) -> tuple[Path, Path]:
+    stem = run_file_stem(generated_at)
+    json_path = runs_dir / f"{stem}.json"
+    markdown_path = runs_dir / f"{stem}.md"
+    if not json_path.exists() and not markdown_path.exists():
+        return json_path, markdown_path
+
+    suffix = 2
+    while True:
+        json_path = runs_dir / f"{stem}-{suffix}.json"
+        markdown_path = runs_dir / f"{stem}-{suffix}.md"
+        if not json_path.exists() and not markdown_path.exists():
+            return json_path, markdown_path
+        suffix += 1
+
+
 def validate_goal_id_path_segment(goal_id: str) -> str:
     value = str(goal_id or "").strip()
     if not value:
@@ -128,9 +144,7 @@ def append_benchmark_run(
     health_check = "benchmark_run_v0 compact event public-safe"
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
-    stem = run_file_stem(generated_at)
-    json_path = runs_dir / f"{stem}.json"
-    markdown_path = runs_dir / f"{stem}.md"
+    json_path, markdown_path = unique_run_paths(runs_dir, generated_at)
     index_path = runs_dir / "index.jsonl"
     record: dict[str, Any] = {
         "generated_at": generated_at,
