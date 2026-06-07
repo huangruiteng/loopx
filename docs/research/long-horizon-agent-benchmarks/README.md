@@ -40,6 +40,11 @@ work still belongs in the existing code, examples, and contract documents:
   Harness wrapper protocol, connecting local `benchmark_result_v0` comparison
   evidence to compact `benchmark_run_v0` history rows without operator
   simulation.
+- `terminal-bench-official-pilot-readiness-v0.md`: local-only readiness
+  fixture for `terminal_bench_official_pilot_decision_packet_v0`, proving the
+  `benchmark_result_v0` comparison shell and control-plane checklist before any
+  real Terminal-Bench, Docker, Codex/model API, cloud, paid compute, or
+  leaderboard path.
 
 ## Relationship To Goal Harness Work
 
