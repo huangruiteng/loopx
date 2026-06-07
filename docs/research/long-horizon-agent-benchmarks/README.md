@@ -29,6 +29,10 @@ work still belongs in the existing code, examples, and contract documents:
 - `paper-runner-dossier.md`: first evidence-backed ranking of benchmark papers,
   runner surfaces, Codex compatibility signals, and the next Terminal-Bench
   probe slice.
+- `terminal-bench-probe-v0.md`: first public-safe runner-boundary probe for
+  Terminal-Bench and Harbor, including Codex CLI integration surfaces, output
+  files for passive Goal Harness ingestion, and the stop condition before paid
+  or leaderboard execution.
 
 ## Relationship To Goal Harness Work
 
