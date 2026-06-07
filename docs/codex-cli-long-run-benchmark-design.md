@@ -83,14 +83,40 @@ Goal Harness actually prevents.
 
 ## Metrics
 
-Every run writes `benchmark_result_v0`:
+Every run writes `benchmark_result_v0`. The result has two scoring layers:
+
+- `official_task_score`: the benchmark-native pass/fail, reward, or task score.
+  For local Goal Harness fixtures this is the deterministic validation result;
+  for Terminal-Bench or Harbor runs it is the official verifier reward or
+  runner result.
+- `control_plane_score`: Goal Harness-specific coordination value, including
+  restartability, stale-state avoidance, evidence discipline, boundary safety,
+  writeback quality, policy or gate compliance, failure attribution, and
+  overhead.
+
+This split keeps Goal Harness honest. It can improve control-plane reliability
+before any official leaderboard uplift is claimed, and it prevents a plain
+pass/fail score from hiding whether the worker ignored stale state, read a
+forbidden surface, or failed to leave a restartable trail.
+
+The first implementation should stay deliberately small. External notes and
+paper surveys can supply detailed dimensions, but this benchmark should only
+harden the fields needed to answer the next comparison question. Additional
+fields become required only after a fixture or official probe proves that the
+missing dimension changes the decision.
+
+Core v0 fields:
 
 | Field | Meaning |
 | --- | --- |
 | `scenario_id` | `with_goal_harness` or `without_goal_harness`. |
 | `task_id` | `mini_control_plane_repair_v0`. |
 | `worker_mode` | `shim`, `fake_real_codex`, or `real_codex`. |
+| `harness_identity` | Harness name, such as `none` or `goal_harness`. |
+| `worker_surface` | Execution surface, such as Codex CLI, fake worker, or deterministic shim. |
 | `terminal_state` | `success`, `public_safe_blocker`, or `failure`. |
+| `official_task_score` | Native task score, reward, pass/fail, or deterministic fixture score. |
+| `control_plane_score` | Compact control-plane score with the few components used in this fixture. |
 | `step_count` | Number of worker steps or observed iterations. |
 | `wall_time_ms` | End-to-end elapsed time. |
 | `validation_pass_count` | Number of deterministic validations that passed. |
@@ -101,12 +127,66 @@ Every run writes `benchmark_result_v0`:
 | `open_todo_preserved` | Whether the current open agent todo remained visible. |
 | `archive_hygiene_passed` | Whether old completed todos moved to archive. |
 | `queue_contract_passed` | Whether queue ordering tests passed. |
+| `trace_publicness` | `public`, `redacted`, or `private_blocked` trace-publicness classification. |
+| `failure_attribution_labels` | Compact root-cause labels, such as policy, tool, stale-state, or validation. |
 | `goal_tick_phase_coverage` | Six-phase Goal Tick coverage for harness mode. |
 | `writeback_count` | Durable state/event writebacks. |
 | `spend_count` | Quota spends; must equal validated harness work steps. |
 | `spend_before_validation_count` | Harness mode safety violation count. |
 | `state_reconstructable` | Whether current task state can be reconstructed from artifacts/events. |
 | `summary_quality_score` | `0-3`: missing, vague, adequate, or decision-ready. |
+
+Candidate extensions, promoted only when needed:
+
+- `harness_policy_version`, `ablation_mode`,
+  `runner_protocol_compliance_passed`, `capability_violation_count`,
+  `human_gate_pending_count`, `resume_decision_applied_after_recheck`,
+  `first_failed_phase`, `stall_step_index`, `regression_avoidance_passed`,
+  `side_effect_audit_passed`, `policy_citation_count`, and
+  `behavior_spec_id`.
+
+## Research Mapping
+
+The benchmark program should use external benchmark papers and runner docs as
+constraints, not as a reason to add every benchmark at once:
+
+- Terminal-Bench 2.0 and Harbor remain the first official-runner probe. Keep
+  this lane passive, do not alter tasks, resources, timeouts, tests, scoring, or
+  upload behavior.
+- SWE-Marathon is a later heavy SWE lane because hours-to-days tasks and runner
+  boundaries are more expensive.
+- LongCLI-Bench contributes step-level stall, fail-to-pass, pass-to-pass, and
+  human-guidance measurements for local Goal Harness fixtures.
+- WildClawBench motivates evaluating the model and harness as a pair, including
+  `harness_identity`, `trace_publicness`, and side-effect audit fields.
+- HORIZON-style reports motivate richer failure attribution instead of only
+  reporting pass or fail.
+- Harness-1, agent libOS, natural-language harnesses, ASSERT, and ACS motivate
+  externalized bookkeeping, versioned policy, capability checkpoints, human
+  queues, audit records, and executable policy cases.
+
+The near-term priority is not to run more benchmarks horizontally. It is to
+prove the Goal Harness control-plane increment on small public fixtures, then
+carry the same metrics into official runner probes.
+
+## Interrupt Variant
+
+Task id: `mini_control_plane_repair_with_interrupt_v0`.
+
+This variant extends `mini_control_plane_repair_v0` with controlled recovery
+events:
+
+1. Simulate a worker kill after a partial Goal Tick writeback.
+2. Present a stale latest-run trap that conflicts with the current active
+   state.
+3. Force one validation failure before the final passing run.
+4. Add one human gate resume that must be applied only after state, policy,
+   quota, and authority are reread.
+
+The expected value is restartability and governance evidence, not a harder
+implementation puzzle. The same fixture should record `first_failed_phase`,
+`stall_step_index`, `resume_decision_applied_after_recheck`,
+`side_effect_audit_passed`, and `failure_attribution_labels`.
 
 ## Comparison Questions
 
@@ -119,6 +199,9 @@ The first useful report should answer:
 - Which mode spent only after validation and writeback?
 - Which mode left a better restart surface after deleting the worker process?
 - How much overhead did Goal Harness add in steps and wall time?
+- Did Goal Harness improve `control_plane_score` even when
+  `official_task_score` was unchanged?
+- Which first failed phase or stall step explains the outcome?
 
 ## Pass Criteria
 
@@ -128,6 +211,9 @@ The benchmark design is ready for implementation when:
 - both modes use the same project task and validations;
 - public smokes prove the metric schema, task difficulty markers, and A/B mode
   names are present;
+- metric smokes prove the official-task and control-plane score split;
+- the interrupt variant has public fixture markers for worker kill, stale
+  latest-run trap, validation failure, and human gate resume;
 - default CI remains deterministic and uses fake or shim workers only;
 - real Codex CLI execution remains explicit and low-frequency.
 
