@@ -2,9 +2,11 @@
 
 Goal Harness needs an external validity track beyond local regression smokes. The
 long-term target is to run, improve, and eventually publish on public
-long-horizon agent benchmarks while preserving the product thesis: a user and an
-agent collaborate through durable state, gates, evidence, and recovery rather
-than through prompt bloat or raw chat history.
+long-horizon agent benchmarks while preserving the product thesis: agents should
+work through durable state, gates, evidence, and recovery rather than through
+prompt bloat or raw chat history. When human-agent collaboration is evaluated,
+Goal Harness should supply its own bounded operator simulator as an overlay,
+not require the benchmark itself to provide a user simulator.
 
 ## Thesis
 
@@ -14,7 +16,7 @@ improves:
 
 - task success over long horizons;
 - recovery after stale state, failed workers, or interrupted sessions;
-- user-simulator coordination quality;
+- operator-simulator coordination quality in assisted-mode runs;
 - policy and tool-use correctness;
 - public-safe evidence and writeback discipline;
 - overhead in time, tokens, and extra steps.
@@ -37,6 +39,8 @@ should answer:
 - Are there hidden tests, exploit scans, or anti-reward-hacking safeguards?
 - Can Goal Harness add event-ledger/restartability instrumentation without
   changing the scoring protocol?
+- Can a separate assisted-mode study add a bounded operator simulator without
+  confusing the result with the official leaderboard protocol?
 
 Initial paper and benchmark scan:
 
@@ -47,7 +51,7 @@ Initial paper and benchmark scan:
 | LongCLI-Bench | Long-horizon command-line programming tasks with fine-grained failure analysis and human-agent collaboration findings. | Reports Codex-family model results; executor openness must be verified. | Candidate for research comparison after primary lane. |
 | RoadmapBench | Long-horizon software evolution across version upgrades; large multi-file change targets. | Codex executor support not yet verified. | Watchlist; high fit if runner and baseline are reproducible. |
 | WildClawBench | Real-world long-horizon tasks in reproducible containers with actual CLI agent harnesses. | Search results indicate Codex / Claude Code / OpenClaw / Hermes style executors. | Promising but new; verify paper, code, and scoring before adoption. |
-| Tau2/Tau3 | User-agent-policy interaction with simulator and tools. | Useful for simulator research, not headline long-horizon evidence. | Secondary user-simulator track only. |
+| Tau2/Tau3 | User-agent-policy interaction with simulator and tools. | Useful for simulator research, not headline long-horizon evidence. | Secondary simulator research track only. |
 
 ### Primary: Long-Horizon Engineering Leaderboards
 
@@ -77,14 +81,15 @@ Initial fit:
   validation discipline, restartability, bounded context, and recovery after
   failed or interrupted worker steps.
 
-### Secondary: Tau-Style User-Simulator Research Track
+### Secondary: Tau-Style Simulator Research Track
 
-Use tau-bench / tau2-bench / tau3-bench as a user-simulator and collaboration
-research track, not as the primary long-horizon leaderboard target. Tau-style
-benchmarks are valuable because they explicitly contain a language agent,
+Use tau-bench / tau2-bench / tau3-bench as simulator and collaboration research
+material, not as the primary long-horizon leaderboard target. Tau-style
+benchmarks are useful because they explicitly contain a language agent,
 simulated user, policy constraints, domain tools, and multi-turn task
 completion, but the typical task horizon is shorter than the engineering
-benchmarks above.
+benchmarks above, and their built-in simulator is not a substitute for a Goal
+Harness operator-simulator overlay on engineering benchmarks.
 
 Sources:
 
@@ -95,8 +100,9 @@ Sources:
 
 Initial fit:
 
-- The user simulator is first-class, so Goal Harness can test different
-  simulator capabilities instead of assuming a cooperative static user.
+- The user simulator is first-class, so Goal Harness can learn simulator
+  evaluation patterns before applying its own operator simulator to engineering
+  benchmarks.
 - Airline/retail/banking-style domains resemble enterprise project workflows:
   policy adherence, tool updates, multi-turn clarification, and final state
   verification.
@@ -138,10 +144,31 @@ Sources:
 - WebArena paper: https://arxiv.org/abs/2307.13854
 - OSWorld paper: https://arxiv.org/abs/2404.07972
 
-## User Simulator Program
+## Goal Harness Operator Simulator Program
 
-Goal Harness needs a user-simulator track, not only an agent track. The first
-simulator matrix should compare:
+Goal Harness needs its own operator simulator for assisted long-horizon
+benchmark studies. This is different from choosing benchmarks that already have
+a user simulator. The benchmark selection should optimize for hard long-horizon
+engineering work and Codex/executor compatibility; the operator simulator is a
+Goal Harness overlay used to study supervised execution.
+
+There are three result modes:
+
+- **Official leaderboard mode:** run the benchmark exactly as prescribed. Goal
+  Harness may only wrap the worker for logging, restartability, event ledger,
+  evidence, and cost/state accounting. No operator-simulator hinting,
+  approvals, or extra task guidance is allowed.
+- **Passive control-plane mode:** keep the same autonomous worker decisions, but
+  record richer Goal Harness state, Goal Tick phases, validation, and restart
+  artifacts. This measures whether the control plane improves auditability and
+  recovery without changing task policy.
+- **Assisted operator-simulator mode:** add a bounded simulated operator that
+  can approve plans, ask for scope clarification, decide whether to continue
+  after failed validation, and correct obvious process drift under a fixed
+  intervention budget. This mode measures human-agent collaboration and must be
+  reported separately from official leaderboard scores.
+
+The first operator-simulator matrix should compare:
 
 - same-family simulator and agent;
 - stronger simulator with weaker agent;
@@ -153,18 +180,18 @@ simulator matrix should compare:
 The simulator contract should record:
 
 - model or simulator identity;
-- whether the simulator can see hidden policy, expected answer, or only user
-  state;
+- whether the simulator can see only public task state and worker artifacts;
 - cooperation level;
 - ambiguity and correction behavior;
 - tool/state grounding;
 - conversation length;
 - simulator-induced failure labels.
 
-Simulator quality is part of the experiment, but it should be separated from
-leaderboard compliance. A Goal Harness result should not claim official
-long-horizon benchmark improvement if the gain only comes from an easier,
-leakier, or non-standard user simulator overlay.
+The operator simulator must not act as an oracle. It must not see hidden tests,
+expected solutions, benchmark answer keys, private project data, or any state
+that the benchmark protocol would forbid the agent from using. A Goal Harness
+result must not claim official long-horizon benchmark improvement if the gain
+comes from assisted operator-simulator intervention.
 
 ## Goal Harness Integration
 
@@ -172,14 +199,15 @@ The benchmark adapter should add control-plane structure without changing the
 benchmark's scoring rules:
 
 - register each benchmark suite as a public-safe authority source;
-- record `benchmark_run_v0` events with benchmark id, task split, agent,
-  simulator, seed, score, wall time, token/cost estimate, and artifacts;
+- record `benchmark_run_v0` events with benchmark id, task split, mode, agent,
+  optional operator simulator, seed, score, wall time, token/cost estimate, and
+  artifacts;
 - write Goal Tick phases for read_state, propose_step, execute, validate,
   critic, and writeback;
 - keep a restartable run ledger so interrupted workers can resume from current
   state instead of chat history;
-- compare with-harness and without-harness modes using identical benchmark
-  tasks and simulator settings;
+- compare native, passive control-plane, and assisted operator-simulator modes
+  using identical benchmark tasks and model settings where the protocol allows;
 - forbid private project data, internal sessions, credentials, and benchmark
   answer leakage.
 
@@ -197,7 +225,7 @@ The dossier must read the SOTA papers or official benchmark reports first. It
 should not select a benchmark only because it sounds aligned with Goal Harness.
 The first recommendation must explicitly name the expected executor path:
 native Codex CLI, a benchmark-provided Codex adapter, or a small public-safe
-Goal Harness wrapper around an official executor.
+Goal Harness passive wrapper around an official executor.
 
 ### P1: Official Long-Horizon Engineering Pilot
 
@@ -216,7 +244,22 @@ The pilot is successful when it produces comparable official metrics and a
 restartable Goal Harness event ledger without changing task answers, tests, or
 benchmark policy.
 
-### P1: Tau User-Simulator Pilot
+### P1: Operator-Simulator Overlay Pilot
+
+After the first official-protocol engineering pilot, run an assisted overlay on
+the same or similar long-horizon task slice:
+
+- fixed operator-simulator model and intervention budget;
+- no access to hidden tests, expected solutions, or benchmark answer keys;
+- allowed interventions limited to plan approval, scope clarification,
+  continue/stop decisions, validation triage, and process-drift correction;
+- separate reporting from official leaderboard metrics;
+- comparison against native and passive control-plane modes.
+
+This pilot answers whether Goal Harness can model supervised long-horizon work,
+not whether the base agent is autonomous SOTA.
+
+### P2: Tau Simulator Research Pilot
 
 Run a small tau-style pilot as a user-simulator research slice:
 
@@ -258,22 +301,23 @@ limitations, and benchmark-integrity safeguards.
 
 - [ ] [P1] Write the benchmark selection dossier with the shortlist, scoring
   criteria, setup cost, SOTA paper usage, open-source runner status, Codex CLI
-  or Codex-adapter baseline availability, simulator relevance, and first
-  recommended benchmark.
+  or Codex-adapter baseline availability, operator-simulator overlay
+  feasibility, and first recommended benchmark.
 - [ ] [P1] Run or dry-run the selected long-horizon engineering benchmark setup
   first, likely Terminal-Bench / SWE-Marathon / HORIZON style, and identify the
   smallest official-protocol pilot slice that can compare native agent versus
   Goal Harness wrapped agent.
-- [ ] [P1] Run or dry-run tau2/tau3 only as a user-simulator research pilot,
-  not as the headline long-horizon leaderboard target.
 - [ ] [P1] Specify the user-simulator ablation matrix and failure taxonomy,
-  including same-model, stronger-simulator, weaker-simulator, and deterministic
-  scripted-user settings.
+  including same-model, stronger-simulator, weaker-simulator, deterministic
+  scripted-user settings, visibility limits, and intervention budgets for the
+  Goal Harness operator-simulator overlay.
 - [ ] [P2] Define `benchmark_run_v0` and Goal Tick writeback fields for public
   benchmark runs, then connect them to status/history without adding prompt
   branches.
 - [ ] [P2] Add a low-frequency Codex CLI benchmark lane for Terminal-Bench or a
   comparable long-horizon SWE benchmark, keeping local smokes deterministic.
+- [ ] [P2] Run or dry-run tau2/tau3 only as a simulator research pilot, not as
+  the headline long-horizon leaderboard target.
 
 ## Non-Goals
 
