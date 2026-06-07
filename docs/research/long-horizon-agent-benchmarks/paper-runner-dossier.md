@@ -368,8 +368,8 @@ Use this packet as the gate before any real execution:
 | --- | --- |
 | Pilot benchmark | `terminal-bench@2.0` through Harbor or another official Terminal-Bench 2.0 path. |
 | Executor target | Native Codex CLI if the official custom-agent/import path can launch it; otherwise local passive Goal Harness wrapper for A/B measurement only. |
-| Required prior artifact | `terminal_bench_probe_v0` and `passive-baseline-protocol-v0.md` are the current public-safe setup/protocol artifacts. |
-| First allowed action | A no-submit setup/readiness probe that records runner source, runner version or commit, agent command boundary, task id or sample split, and exact stop condition. |
+| Required prior artifact | `terminal_bench_probe_v0`, `passive-baseline-protocol-v0.md`, and `terminal-bench-official-pilot-readiness-v0.md` are the current public-safe setup/protocol artifacts. |
+| First allowed action | A no-submit boundary probe that records runner source, runner version or commit, agent command boundary, submit eligibility, future event shape, and exact stop condition. |
 | First forbidden action | Running a real Terminal-Bench task, starting Docker, invoking Codex/model APIs, using cloud sandboxes, or uploading leaderboard traces without explicit authorization. |
 | Official score fields | Benchmark-native pass/fail or accuracy, task id or split, repetitions, model/agent tuple, runner source, and whether the run is submit-eligible. |
 | Goal Harness score fields | restartability, stale-state avoidance, event-ledger completeness, evidence discipline, boundary safety, writeback quality, failure attribution, and overhead. |
@@ -381,15 +381,24 @@ decision trace proving whether Goal Harness can collect comparable control-plane
 evidence around the official runner. Do not start SWE-Marathon until the
 Terminal-Bench wrapper boundary is known.
 
+## Current No-Submit Boundary Probe
+
+The next public-safe probe is `terminal-bench-no-submit-boundary-probe-v0.md`.
+It emits a `runner_boundary_probe_v0` payload: public runner identity, planned
+mode boundaries for `bare_codex_cli` and `passive_goal_harness_wrapper`, hard
+`submit_eligible = false` / `real_run = false` flags, and the future
+`benchmark_run_v0` plus `benchmark_result_v0` event shape. This is a no-submit
+boundary probe, not task evidence.
+
 ## Next Execution Slice
 
 The next bounded implementation/research slice should be:
 
-1. Add a local-only readiness probe fixture for
-   `terminal_bench_official_pilot_decision_packet_v0`.
-2. Prove the fixture can emit a compact `benchmark_result_v0` comparison shell
-   without running Terminal-Bench, Docker, Codex, model APIs, cloud sandboxes,
-   or leaderboard upload paths.
+1. Keep the no-submit boundary probe smoke-backed and current with the inspected
+   runner boundary.
+2. If explicit authorization arrives, perform a no-submit runner setup check
+   that records source/version/task placeholder/command boundary, then stop
+   before any real task execution.
 3. Keep SWE-Marathon, RoadmapBench, SWE-EVO, ALE-Bench, OSWorld, WebArena,
    TheAgentCompany, RALPHBench, and tau-style suites as ranked follow-up lanes
    until the first Terminal-Bench official-pilot boundary is validated.

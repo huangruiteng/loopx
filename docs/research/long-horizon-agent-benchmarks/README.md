@@ -45,6 +45,11 @@ work still belongs in the existing code, examples, and contract documents:
   `benchmark_result_v0` comparison shell and control-plane checklist before any
   real Terminal-Bench, Docker, Codex/model API, cloud, paid compute, or
   leaderboard path.
+- `terminal-bench-no-submit-boundary-probe-v0.md`: local-only
+  `runner_boundary_probe_v0` contract that records runner identity, planned
+  command boundaries, submit eligibility, future event shape, and hard stop
+  conditions without running Terminal-Bench, Harbor, Docker, Codex/model APIs,
+  cloud sandboxes, paid compute, or leaderboard upload paths.
 
 ## Relationship To Goal Harness Work
 
