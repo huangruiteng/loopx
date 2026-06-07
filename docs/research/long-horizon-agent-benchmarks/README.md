@@ -36,6 +36,10 @@ work still belongs in the existing code, examples, and contract documents:
 - `benchmark-run-v0-ingest.md`: first passive `benchmark_run_v0` ingestion
   contract for Harbor job outputs, with deterministic fixture coverage and no
   default Docker, model, cloud, or leaderboard execution.
+- `passive-baseline-protocol-v0.md`: paired bare Codex CLI versus passive Goal
+  Harness wrapper protocol, connecting local `benchmark_result_v0` comparison
+  evidence to compact `benchmark_run_v0` history rows without operator
+  simulation.
 
 ## Relationship To Goal Harness Work
 
