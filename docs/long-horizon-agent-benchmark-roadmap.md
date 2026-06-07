@@ -16,6 +16,8 @@ improves:
 
 - task success over long horizons;
 - recovery after stale state, failed workers, or interrupted sessions;
+- autonomous continuation from a durable backlog instead of waiting for the user
+  to restate strategy;
 - operator-simulator coordination quality in assisted-mode runs;
 - policy and tool-use correctness;
 - public-safe evidence and writeback discipline;
@@ -161,7 +163,11 @@ There are three result modes:
 - **Passive control-plane mode:** keep the same autonomous worker decisions, but
   record richer Goal Harness state, Goal Tick phases, validation, and restart
   artifacts. This measures whether the control plane improves auditability and
-  recovery without changing task policy.
+  recovery without changing task policy. It is also the first test of whether
+  Goal Harness helps without any operator simulator: if passive mode cannot
+  improve restartability, stale-state avoidance, continuation quality, or
+  failure attribution over bare Codex CLI, the operator-simulator work is not
+  yet grounded.
 - **Assisted operator-simulator mode:** add a bounded simulated operator that
   can approve plans, ask for scope clarification, decide whether to continue
   after failed validation, and correct obvious process drift under a fixed
@@ -192,6 +198,30 @@ expected solutions, benchmark answer keys, private project data, or any state
 that the benchmark protocol would forbid the agent from using. A Goal Harness
 result must not claim official long-horizon benchmark improvement if the gain
 comes from assisted operator-simulator intervention.
+
+## Passive Baseline Hypotheses
+
+Before using an operator simulator, Goal Harness should prove or falsify a
+passive-control-plane benefit against bare Codex CLI. The benchmark program
+should track these hypotheses:
+
+- **H1: Restartability.** A killed or timed-out worker can resume from the
+  public run ledger and active state with less duplicated work than bare Codex
+  CLI.
+- **H2: Stale-state avoidance.** The worker trusts current authority and
+  validation state over stale plans, stale latest-run text, or old todos more
+  often than bare Codex CLI.
+- **H3: Continuation quality.** After a completed slice, the next autonomous
+  turn selects a high-value follow-up from durable backlog/state instead of
+  waiting for the human to re-prompt the same strategic objective.
+- **H4: Evidence discipline.** Work steps produce decision-ready validation,
+  blocker, or failure-attribution events rather than transcript-only claims.
+- **H5: Bounded overhead.** Extra state reads, Goal Tick rows, and writebacks do
+  not erase the reliability gain through excessive wall time or token cost.
+
+The assisted operator-simulator track should start only after the passive
+baseline has at least one credible result or a documented negative result that
+explains why supervision is needed.
 
 ## Goal Harness Integration
 
@@ -243,6 +273,18 @@ another selected long-horizon engineering benchmark:
 The pilot is successful when it produces comparable official metrics and a
 restartable Goal Harness event ledger without changing task answers, tests, or
 benchmark policy.
+
+### P1: Passive Goal Harness Baseline
+
+Run the same selected engineering slice in at least two autonomous modes:
+
+- bare Codex CLI;
+- Codex CLI with a passive Goal Harness wrapper.
+
+No operator-simulator intervention is allowed. Compare task success,
+restartability, stale-state errors, duplicated work after interruption,
+validation quality, failure attribution, and overhead. This is the first proof
+point for whether Goal Harness helps by itself.
 
 ### P1: Operator-Simulator Overlay Pilot
 
@@ -307,6 +349,10 @@ limitations, and benchmark-integrity safeguards.
   first, likely Terminal-Bench / SWE-Marathon / HORIZON style, and identify the
   smallest official-protocol pilot slice that can compare native agent versus
   Goal Harness wrapped agent.
+- [ ] [P1] Define and run the passive Goal Harness baseline: bare Codex CLI
+  versus Codex CLI with passive Goal Harness wrapper, with no operator-simulator
+  interventions, measuring restartability, stale-state avoidance, continuation
+  quality, evidence discipline, and overhead.
 - [ ] [P1] Specify the user-simulator ablation matrix and failure taxonomy,
   including same-model, stronger-simulator, weaker-simulator, deterministic
   scripted-user settings, visibility limits, and intervention budgets for the
