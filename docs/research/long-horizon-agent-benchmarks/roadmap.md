@@ -406,10 +406,14 @@ limitations, and benchmark-integrity safeguards.
   no-progress streak, repeated-action loop, phase transition, backlog mismatch,
   or evidence contradiction, Goal Harness should re-plan, split/add/retire
   todos, and emit the next bounded validation command.
-- [ ] [P1] Specify the user-simulator ablation matrix and failure taxonomy,
+- [x] [P1] Specify the user-simulator ablation matrix and failure taxonomy,
   including same-model, stronger-simulator, weaker-simulator, deterministic
   scripted-user settings, visibility limits, and intervention budgets for the
-  Goal Harness operator-simulator overlay.
+  Goal Harness operator-simulator overlay. Completed 2026-06-07 via
+  `operator-simulator-overlay-v0.md` and
+  `operator-simulator-overlay-smoke.py`; the remaining work is to run an
+  assisted overlay only after passive baseline evidence or a documented
+  passive-baseline negative result exists.
 - [ ] [P2] Define `benchmark_run_v0` and Goal Tick writeback fields for public
   benchmark runs, then connect them to status/history without adding prompt
   branches.
