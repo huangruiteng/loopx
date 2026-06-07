@@ -5,16 +5,24 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from goal_harness.status import benchmark_comparison_decision_note  # noqa: E402
+
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
 README = TOPIC_DIR / "README.md"
 ROADMAP = TOPIC_DIR / "roadmap.md"
 TEMPLATE = TOPIC_DIR / "benchmark-experiment-report-template-v0.md"
 
 REPORT_SCHEMA = "benchmark_experiment_report_v0"
+COMPARISON_SCHEMA = "benchmark_comparison_v0"
+DECISION_NOTE_SCHEMA = "benchmark_comparison_decision_note_v0"
 REQUIRED_SECTIONS = [
     "experiment_identity",
     "official_score",
@@ -42,7 +50,28 @@ FORBIDDEN_TEXT = [
 ]
 
 
-def report_payload() -> dict[str, Any]:
+def comparison_summary_payload() -> dict[str, Any]:
+    return {
+        "schema_version": COMPARISON_SCHEMA,
+        "task_id": "mini_control_plane_repair_v0",
+        "comparison_id": "mini_control_plane_repair_v0_ab",
+        "mode_pair": ["bare_codex_cli", "passive_goal_harness_wrapper"],
+        "official_task_score_delta": 0.0,
+        "control_plane_score_delta": 0.143,
+        "both_success": True,
+        "ready_to_run_real_benchmark": False,
+        "ready_to_submit_leaderboard": False,
+    }
+
+
+def decision_note_payload() -> dict[str, Any]:
+    note = benchmark_comparison_decision_note(comparison_summary_payload())
+    assert note is not None, "comparison note should be generated from compact summary"
+    assert note["schema_version"] == DECISION_NOTE_SCHEMA, note
+    return note
+
+
+def report_payload(note: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": REPORT_SCHEMA,
         "experiment_identity": {
@@ -58,7 +87,7 @@ def report_payload() -> dict[str, Any]:
             "kind": "local_fixture_not_leaderboard",
             "native_score": 1.0,
             "wrapped_score": 1.0,
-            "delta": 0.0,
+            "delta": note["official_task_score_delta"],
             "task_id_or_split": "mini_control_plane_repair_v0",
             "repetitions": 1,
             "runner_source": "goal-harness-local-fixture",
@@ -77,6 +106,7 @@ def report_payload() -> dict[str, Any]:
                 "benchmark_run_v0:bare_codex_cli:fixture",
                 "benchmark_run_v0:passive_goal_harness_wrapper:fixture",
                 "benchmark_result_v0:paired_comparison:fixture",
+                f"{DECISION_NOTE_SCHEMA}:mini_control_plane_repair_v0_ab:fixture",
             ],
         },
         "operator_simulator_ablation": {
@@ -112,6 +142,7 @@ def report_payload() -> dict[str, Any]:
                 "benchmark_run_v0:bare_codex_cli:fixture",
                 "benchmark_run_v0:passive_goal_harness_wrapper:fixture",
                 "benchmark_result_v0:paired_comparison:fixture",
+                f"{DECISION_NOTE_SCHEMA}:mini_control_plane_repair_v0_ab:fixture",
             ],
             "runner_versions": ["goal-harness-local-fixture@v0"],
             "task_identifiers": ["mini_control_plane_repair_v0"],
@@ -123,6 +154,7 @@ def report_payload() -> dict[str, Any]:
             "artifact_manifest": [
                 "fixture:benchmark_result_v0",
                 "fixture:benchmark_comparison_v0",
+                f"fixture:{DECISION_NOTE_SCHEMA}",
                 "fixture:public_artifact_manifest",
             ],
         },
@@ -130,12 +162,16 @@ def report_payload() -> dict[str, Any]:
             "may_claim": [
                 "local control-plane score can be reported for coordination dimensions",
                 "official score delta is zero in this local fixture",
+                *note["may_claim"],
             ],
             "must_not_claim": [
                 "official leaderboard uplift",
                 "assisted-mode uplift without operator_simulator_run_v0 evidence",
                 "benchmark pass/fail improvement from local fixture evidence",
+                *note["must_not_claim"],
             ],
+            "source_decision_note_schema": note["schema_version"],
+            "source_evidence_layer": note["evidence_layer"],
             "evidence_layer_by_claim": {
                 "official_task_score": "official_score",
                 "control_plane_coordination": "passive_control_plane_score",
@@ -149,9 +185,10 @@ def report_payload() -> dict[str, Any]:
             "why_it_matters": "null official delta prevents overclaiming benchmark improvement from control-plane-only evidence",
         },
         "next_decision": {
-            "decision": "continue",
-            "minimum_next_evidence": "repeat with an official-runner-compatible output or record a blocker",
-            "stop_condition": "stop before claiming leaderboard improvement without submit-eligible official rows",
+            "decision": note["decision"],
+            "minimum_next_evidence": note["minimum_next_evidence"],
+            "stop_condition": note["stop_condition"],
+            "source_decision_note_schema": note["schema_version"],
         },
     }
 
@@ -173,6 +210,7 @@ def assert_doc_contract() -> None:
         "claim_boundary",
         "negative_results",
         "next_decision",
+        DECISION_NOTE_SCHEMA,
         "Do not include credentials",
         "python3 examples/benchmark-experiment-report-template-smoke.py",
     ]
@@ -206,7 +244,10 @@ def assert_report_contract(report: dict[str, Any]) -> None:
     passive = report["passive_control_plane_score"]
     assert passive["restartability"] >= 1.0, passive
     assert passive["regression_avoidance_passed"] is True, passive
-    assert all(event.startswith(("benchmark_run_v0:", "benchmark_result_v0:")) for event in passive["source_events"]), passive
+    assert all(
+        event.startswith(("benchmark_run_v0:", "benchmark_result_v0:", f"{DECISION_NOTE_SCHEMA}:"))
+        for event in passive["source_events"]
+    ), passive
 
     assisted = report["operator_simulator_ablation"]
     assert assisted["enabled"] is False, assisted
@@ -219,18 +260,23 @@ def assert_report_contract(report: dict[str, Any]) -> None:
 
     boundary = report["claim_boundary"]
     assert "official leaderboard uplift" in boundary["must_not_claim"], boundary
+    assert boundary["source_decision_note_schema"] == DECISION_NOTE_SCHEMA, boundary
+    assert boundary["source_evidence_layer"] == "control_plane_only", boundary
+    assert "control-plane delta improved while official score delta stayed zero" in boundary["may_claim"], boundary
     assert boundary["evidence_layer_by_claim"]["official_task_score"] == "official_score", boundary
     assert boundary["evidence_layer_by_claim"]["control_plane_coordination"] == "passive_control_plane_score", boundary
     assert boundary["evidence_layer_by_claim"]["assisted_collaboration"] == "operator_simulator_ablation", boundary
 
     assert report["negative_results"]["null_official_delta"] is True, report
     assert report["next_decision"]["decision"] in {"continue", "repeat", "broaden", "defer", "stop"}, report
+    assert report["next_decision"]["source_decision_note_schema"] == DECISION_NOTE_SCHEMA, report
     assert_public_safe(report)
 
 
 def main() -> None:
     assert_doc_contract()
-    report = report_payload()
+    note = decision_note_payload()
+    report = report_payload(note)
     assert_report_contract(report)
     print(
         "benchmark-experiment-report-template-smoke ok "

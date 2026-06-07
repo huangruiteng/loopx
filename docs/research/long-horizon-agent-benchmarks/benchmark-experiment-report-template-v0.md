@@ -19,6 +19,10 @@ The report should answer three questions without mixing evidence layers:
 The local report schema is `benchmark_experiment_report_v0`. It can summarize
 `benchmark_run_v0`, `benchmark_result_v0`, and `operator_simulator_run_v0`
 rows, but it must not replace those source events.
+When a compact `benchmark_comparison_decision_note_v0` is available, the report
+may consume it only as a claim-boundary and next-decision hint. The report must
+still keep official-score delta, control-plane delta, assisted-simulator
+evidence, and leaderboard eligibility in separate sections.
 
 ## Required Sections
 
@@ -76,5 +80,8 @@ python3 examples/benchmark-experiment-report-template-smoke.py
 It constructs one public-safe `benchmark_experiment_report_v0` object with
 official, passive-control-plane, assisted-simulator, overhead, failure,
 reproducibility, claim-boundary, negative-result, and next-decision sections.
+The fixture now also derives the claim-boundary and next-decision fields from a
+compact `benchmark_comparison_decision_note_v0`, proving that report generation
+can consume the comparison note without reading raw benchmark artifacts.
 It does not run a benchmark, simulator, model API, Docker, cloud sandbox, paid
 compute, or leaderboard upload.
