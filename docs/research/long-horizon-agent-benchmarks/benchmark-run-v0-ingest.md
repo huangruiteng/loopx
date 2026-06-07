@@ -71,12 +71,31 @@ The deterministic smoke is:
 
 ```bash
 python3 examples/benchmark-run-v0-harbor-ingest-smoke.py
+python3 examples/benchmark-run-v0-append-cli-smoke.py
 ```
 
 It creates a synthetic Harbor-style job directory with one completed
 Terminal-Bench trial, then parses it into `benchmark_run_v0`. The fixture writes
 only public-safe fake data and does not import Harbor, invoke Docker, call Codex,
 use model APIs, use cloud sandboxes, or upload leaderboard results.
+
+## CLI Append
+
+After a runner or parser has produced a `benchmark_run_v0` JSON object, append it
+to the normal Goal Harness run history with:
+
+```bash
+goal-harness history append-benchmark-run \
+  --goal-id <goal-id> \
+  --benchmark-run-json <benchmark-run-v0.json> \
+  --delivery-batch-scale implementation \
+  --delivery-outcome primary_goal_outcome \
+  --execute
+```
+
+Without `--execute`, the command is a dry-run preview. The command compacts the
+input before writing so status and review-packet surfaces receive a
+public-safe summary rather than raw runner logs or host paths.
 
 ## Stop Conditions
 
@@ -94,9 +113,9 @@ Stop before:
 
 ## Next Slice
 
-After this smoke exists, the next bounded product step is to decide where
-`benchmark_run_v0` should live in the normal Goal Harness history/status
-pipeline. The default should stay generic: parse runner outputs, append a
-public-safe run event, refresh state, and let status/review-packet expose the
-compact benchmark summary without adding benchmark-specific heartbeat prompt
-branches.
+After the append CLI exists, the next bounded product step is a passive baseline
+protocol: define a tiny paired-run fixture for bare Codex CLI versus passive
+Goal Harness wrapping, then have the runner write one `benchmark_run_v0` event
+through this command. Keep the fixture local and deterministic before invoking
+real Terminal-Bench, Docker, Codex, model APIs, or leaderboard upload paths,
+and keep doing this without adding benchmark-specific heartbeat prompt branches.

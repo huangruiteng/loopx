@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .authority import goal_authority_registry_summary
 from .control_plane import compact_control_plane_policy
 from .execution_profile import compact_execution_profile
+from .paths import resolve_runtime_root
 from .quota import goal_quota_with_spend_ledger
 from .registry import read_json, registry_goals
 
@@ -21,6 +24,25 @@ REGISTRY_ATTENTION_FIELDS = (
     "recommended_action",
     "next_handoff_condition",
 )
+
+
+def now_local() -> str:
+    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+
+
+def run_file_stem(generated_at: str) -> str:
+    return re.sub(r"[^0-9A-Za-z-]+", "-", generated_at).strip("-")
+
+
+def validate_goal_id_path_segment(goal_id: str) -> str:
+    value = str(goal_id or "").strip()
+    if not value:
+        raise ValueError("goal id is required")
+    if value in {".", ".."} or "/" in value or "\\" in value:
+        raise ValueError("goal id must be a single path segment")
+    if Path(value).name != value:
+        raise ValueError("goal id must not include path traversal")
+    return value
 
 
 def load_registry(path: Path) -> dict[str, Any]:
@@ -81,6 +103,81 @@ def load_index(path: Path) -> tuple[list[dict[str, Any]], int]:
                 positions[key] = len(records)
                 records.append(item)
     return records, raw_count
+
+
+def append_benchmark_run(
+    *,
+    registry_path: Path,
+    runtime_root_override: str | None,
+    goal_id: str,
+    benchmark_run: dict[str, Any],
+    classification: str = "benchmark_run_v0",
+    recommended_action: str | None = None,
+    delivery_batch_scale: str | None = None,
+    delivery_outcome: str | None = None,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    if benchmark_run.get("schema_version") != "benchmark_run_v0":
+        raise ValueError("benchmark run must have schema_version=benchmark_run_v0")
+
+    registry = load_registry(registry_path)
+    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    generated_at = now_local()
+    action = recommended_action or "inspect benchmark_run_v0 summary and continue passive benchmark work"
+    health_check = "benchmark_run_v0 compact event public-safe"
+
+    runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
+    stem = run_file_stem(generated_at)
+    json_path = runs_dir / f"{stem}.json"
+    markdown_path = runs_dir / f"{stem}.md"
+    index_path = runs_dir / "index.jsonl"
+    record: dict[str, Any] = {
+        "generated_at": generated_at,
+        "goal_id": safe_goal_id,
+        "classification": classification,
+        "recommended_action": action,
+        "health_check": health_check,
+        "benchmark_run": benchmark_run,
+    }
+    if delivery_batch_scale:
+        record["delivery_batch_scale"] = delivery_batch_scale
+    if delivery_outcome:
+        record["delivery_outcome"] = delivery_outcome
+
+    index_record = {
+        **record,
+        "json_path": str(json_path),
+        "markdown_path": str(markdown_path),
+    }
+    payload = {
+        "ok": True,
+        "dry_run": dry_run,
+        "appended": not dry_run,
+        "registry": str(registry_path),
+        "runtime_root": str(runtime_root),
+        "goal_id": safe_goal_id,
+        "classification": classification,
+        "recommended_action": action,
+        "generated_at": generated_at,
+        "health_check": health_check,
+        "json_path": str(json_path),
+        "markdown_path": str(markdown_path),
+        "index_path": str(index_path),
+        "benchmark_run": benchmark_run,
+    }
+    if delivery_batch_scale:
+        payload["delivery_batch_scale"] = delivery_batch_scale
+    if delivery_outcome:
+        payload["delivery_outcome"] = delivery_outcome
+
+    if not dry_run:
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        markdown_path.write_text(render_benchmark_run_append_markdown(payload) + "\n", encoding="utf-8")
+        with index_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
+    return payload
 
 
 def latest_status_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -203,4 +300,43 @@ def render_history_markdown(payload: dict[str, Any]) -> str:
             f"records=`{goal.get('raw_index_records')}`, "
             f"unique_runs=`{goal.get('unique_runs')}`"
         )
+    return "\n".join(lines)
+
+
+def render_benchmark_run_append_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# Goal Harness Benchmark Run Append",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- dry_run: `{payload.get('dry_run')}`",
+        f"- appended: `{payload.get('appended')}`",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- classification: `{payload.get('classification')}`",
+        f"- generated_at: `{payload.get('generated_at')}`",
+    ]
+    if payload.get("json_path"):
+        lines.append(f"- json_path: `{payload.get('json_path')}`")
+    if payload.get("index_path"):
+        lines.append(f"- index_path: `{payload.get('index_path')}`")
+    if payload.get("recommended_action"):
+        lines.append(f"- recommended_action: {payload.get('recommended_action')}")
+    benchmark_run = payload.get("benchmark_run") if isinstance(payload.get("benchmark_run"), dict) else {}
+    if benchmark_run:
+        progress = benchmark_run.get("progress") if isinstance(benchmark_run.get("progress"), dict) else {}
+        metrics = benchmark_run.get("metrics") if isinstance(benchmark_run.get("metrics"), dict) else {}
+        lines.extend(
+            [
+                "",
+                "## Benchmark Run",
+                "",
+                f"- schema_version: `{benchmark_run.get('schema_version')}`",
+                f"- benchmark_id: `{benchmark_run.get('benchmark_id')}`",
+                f"- source_runner: `{benchmark_run.get('source_runner')}`",
+                f"- mode: `{benchmark_run.get('mode')}`",
+                f"- progress: completed={progress.get('n_completed_trials')} total={progress.get('n_total_trials')}",
+                f"- metrics: input_tokens={metrics.get('input_tokens')} output_tokens={metrics.get('output_tokens')} cost_usd={metrics.get('cost_usd')}",
+            ]
+        )
+    if payload.get("error"):
+        lines.append(f"- error: {payload.get('error')}")
     return "\n".join(lines)
