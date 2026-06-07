@@ -87,7 +87,7 @@ DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS = (
     "dependency_observation",
     "dependency_monitor",
 )
-WORK_LANE_CONTRACT_SCHEMA_VERSION = "work_lane_contract_v0"
+WORK_LANE_CONTRACT_SCHEMA_VERSION = "work_lane_contract_v1"
 
 
 def _now_local() -> str:
@@ -207,6 +207,18 @@ def _item_progress_scope(item: dict[str, Any]) -> str:
     project_explicit = str(project_asset.get("progress_scope") or "").strip()
     if project_explicit:
         return project_explicit
+    handoff_readiness = (
+        item.get("handoff_readiness")
+        if isinstance(item.get("handoff_readiness"), dict)
+        else {}
+    )
+    latest_handoff_run = (
+        handoff_readiness.get("post_handoff_latest_run")
+        if isinstance(handoff_readiness.get("post_handoff_latest_run"), dict)
+        else {}
+    )
+    if latest_handoff_run:
+        return _latest_run_progress_scope(latest_handoff_run)
     return _latest_run_progress_scope(
         {
             "classification": item.get("status") or item.get("latest_run_classification"),
@@ -226,27 +238,38 @@ def _work_lane_contract(
         if has_agent_todos:
             return {
                 "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-                "current_lane": "advancement_task",
+                "lane": "advancement_task",
                 "next_lane": "advancement_task",
-                "monitoring_allowed": "only for a fresh blocker or material external-state transition",
-                "advancement_required": True,
+                "obligation": "advance_one_bounded_segment",
+                "must_attempt_work": True,
+                "reason_codes": ["open_agent_todo"],
+                "monitor_policy": "material_transition_only",
+                "action": "advance the first executable agent todo or write a concrete blocker",
             }
         return None
 
+    reason_codes = ["dependency_observation"]
+    if has_agent_todos:
+        reason_codes.append("open_agent_todo")
+    else:
+        reason_codes.append("no_open_agent_todo")
     return {
         "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-        "current_lane": "continuous_monitor",
+        "lane": "continuous_monitor",
         "monitor_kind": "dependency_observation",
         "next_lane": "advancement_task" if has_agent_todos else "continuous_monitor",
-        "advancement_required": has_agent_todos,
-        "monitoring_allowed": (
-            "record at most one dependency observation per material external-state transition; "
-            "unchanged monitor polls are quiet no-spend checks"
+        "obligation": (
+            "advance_unless_material_monitor_transition"
+            if has_agent_todos
+            else "quiet_until_material_monitor_transition"
         ),
-        "material_transition_exception": (
-            "a dependency-state transition may be written back once when it changes the meta decision"
+        "must_attempt_work": has_agent_todos,
+        "reason_codes": reason_codes,
+        "monitor_policy": "write_once_per_material_transition_else_no_spend",
+        "material_transition": (
+            "a dependency-state transition may be written back once when it changes the selected goal decision"
         ),
-        "advancement_action": (
+        "action": (
             "advance the first executable agent todo or write a concrete blocker"
             if has_agent_todos
             else "wait quietly for new external evidence"
@@ -921,6 +944,7 @@ def _heartbeat_recommendation(
     should_run: bool,
     user_todo_summary: dict[str, Any] | None,
     agent_todo_summary: dict[str, Any] | None,
+    work_lane_contract: dict[str, Any] | None = None,
     stall_self_repair: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     status = str(item.get("status") or "")
@@ -939,7 +963,7 @@ def _heartbeat_recommendation(
     )
     has_user_todos = _open_todo_count(user_todo_summary) > 0
     has_agent_todos = _open_todo_count(agent_todo_summary) > 0
-    work_lane_contract = _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
+    work_lane_contract = work_lane_contract or _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
 
     base: dict[str, Any] = {
         "source": "quota.should-run",
@@ -1020,39 +1044,46 @@ def _heartbeat_recommendation(
                 "planning-trigger slice before another monitor-only or repeated action"
             ),
         }
-        if work_lane_contract:
-            payload["work_lane_contract"] = work_lane_contract
         return payload
 
     if (
         work_lane_contract
-        and work_lane_contract.get("current_lane") == "continuous_monitor"
-        and work_lane_contract.get("advancement_required") is True
+        and work_lane_contract.get("lane") == "continuous_monitor"
+        and work_lane_contract.get("must_attempt_work") is True
         and not has_user_todos
     ):
-        return {
+        latest_run: dict[str, Any] = {}
+        handoff_readiness = (
+            item.get("handoff_readiness")
+            if isinstance(item.get("handoff_readiness"), dict)
+            else {}
+        )
+        latest_handoff_run = (
+            handoff_readiness.get("post_handoff_latest_run")
+            if isinstance(handoff_readiness.get("post_handoff_latest_run"), dict)
+            else {}
+        )
+        if latest_handoff_run:
+            latest_run = {
+                key: latest_handoff_run.get(key)
+                for key in POST_HANDOFF_RUN_COMPACT_FIELDS
+                if latest_handoff_run.get(key) is not None
+            }
+            latest_run["progress_scope"] = _latest_run_progress_scope(latest_handoff_run)
+        payload = {
             **base,
-            "recommended_mode": "advance_primary_backlog_after_dependency_observation",
-            "work_lane_contract": work_lane_contract,
-            "dependency_observation_cap": {
-                "latest_run_progress_scope": "dependency_observation",
-                "rule": (
-                    "Do not spend another consecutive meta turn mirroring dependency-only "
-                    "observation while primary agent todos remain executable."
-                ),
-            },
+            "recommended_mode": "follow_work_lane_contract",
             "spend_policy": (
-                "do not append quota spend for another dependency-only observation; "
-                "spend only after advancing the primary agent-todo backlog, writing a "
-                "real blocker, or recording a material dependency transition that changes "
-                "the meta decision"
+                "follow work_lane_contract.obligation; spend only after validated "
+                "advancement, concrete blocker writeback, or a material monitor transition"
             ),
             "reason": (
-                "current status is a continuous monitor lane; advance the first executable "
-                "agent todo or write a concrete blocker before spending another unchanged "
-                "dependency-observation turn"
+                "work_lane_contract is the machine contract for monitor-vs-advancement routing"
             ),
         }
+        if latest_run:
+            payload["latest_run"] = latest_run
+        return payload
 
     if status == "connected_without_run" and _supports_read_only_project_map(adapter_kind):
         return {
@@ -1098,24 +1129,14 @@ def _heartbeat_recommendation(
                     for key, value in post_handoff_observation.items()
                     if key != "stop_if_unchanged"
                 },
-                "recommended_mode": "advance_primary_backlog_after_dependency_observation",
-                "dependency_observation_cap": {
-                    "latest_run_progress_scope": progress_scope,
-                    "rule": (
-                        "Do not spend another consecutive meta turn mirroring dependency-only "
-                        "observation while primary agent todos remain executable."
-                    ),
-                },
+                "recommended_mode": "follow_work_lane_contract",
                 "spend_policy": (
-                    "do not append quota spend for another dependency-only observation; "
-                    "spend only after advancing the primary agent-todo backlog, writing a "
-                    "real blocker, or recording a material dependency transition that changes "
-                    "the meta decision"
+                    "follow work_lane_contract.obligation; spend only after validated "
+                    "advancement, concrete blocker writeback, or a material monitor transition"
                 ),
                 "reason": (
-                    "latest post-handoff run was a dependency observation, not the meta "
-                    "primary research lane; advance the first executable agent todo instead "
-                    "of continuing dependency monitoring"
+                    "latest post-handoff run was dependency observation; the work lane "
+                    "contract decides whether to advance backlog or record a material transition"
                 ),
             }
         if has_agent_todos:
@@ -1167,15 +1188,12 @@ def _execution_obligation(
     should_run: bool,
     effective_action: str,
     heartbeat_recommendation: dict[str, Any],
+    work_lane_contract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Separate the worker execution contract from user-facing notification."""
 
     recommended_mode = str(heartbeat_recommendation.get("recommended_mode") or "")
-    work_lane_contract = (
-        heartbeat_recommendation.get("work_lane_contract")
-        if isinstance(heartbeat_recommendation.get("work_lane_contract"), dict)
-        else {}
-    )
+    work_lane_contract = work_lane_contract if isinstance(work_lane_contract, dict) else {}
     if heartbeat_recommendation.get("stop_if_unchanged"):
         return {
             "must_attempt_work": False,
@@ -1186,31 +1204,29 @@ def _execution_obligation(
                 "source is unchanged and no concrete safe handoff exists"
             ),
         }
-    if should_run:
-        obligation_kind = (
-            recommended_mode
-            if work_lane_contract.get("advancement_required") is True and recommended_mode
-            else effective_action or recommended_mode or "bounded_delivery"
-        )
-        payload = {
-            "must_attempt_work": True,
-            "kind": obligation_kind,
-            "minimum": (
-                "one_primary_backlog_segment_or_material_transition"
-                if work_lane_contract.get("advancement_required") is True
-                else "one_bounded_segment"
+    if should_run and work_lane_contract:
+        return {
+            "must_attempt_work": bool(work_lane_contract.get("must_attempt_work", should_run)),
+            "kind": "work_lane_contract",
+            "contract": "work_lane_contract",
+            "contract_obligation": work_lane_contract.get("obligation"),
+            "notify_is_execution_gate": False,
+            "reason": (
+                "work_lane_contract.obligation is the machine execution contract; "
+                "heartbeat_recommendation is explanatory"
             ),
+        }
+    if should_run:
+        return {
+            "must_attempt_work": True,
+            "kind": effective_action or recommended_mode or "bounded_delivery",
+            "minimum": "one_bounded_segment",
             "notify_is_execution_gate": False,
             "reason": (
                 "should_run=true means a Codex-actionable turn exists; heartbeat notify "
                 "only controls whether to interrupt the user"
             ),
         }
-        if work_lane_contract:
-            payload["work_lane"] = work_lane_contract.get("current_lane")
-            payload["next_lane"] = work_lane_contract.get("next_lane")
-            payload["advancement_required"] = bool(work_lane_contract.get("advancement_required"))
-        return payload
     return {
         "must_attempt_work": False,
         "kind": effective_action or recommended_mode or "skip",
@@ -1557,6 +1573,7 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             state=state,
             quota=quota,
         )
+        work_lane_contract = _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
         heartbeat_recommendation = _heartbeat_recommendation(
             item,
             goal_id=safe_goal_id,
@@ -1564,6 +1581,7 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             should_run=should_run,
             user_todo_summary=user_todo_summary,
             agent_todo_summary=agent_todo_summary,
+            work_lane_contract=work_lane_contract,
             stall_self_repair=stall_self_repair,
         )
         payload = {
@@ -1611,16 +1629,12 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
                 should_run=should_run,
                 effective_action=effective_action,
                 heartbeat_recommendation=heartbeat_recommendation,
+                work_lane_contract=work_lane_contract,
             ),
             "goal_boundary": _goal_boundary(item),
             "plan_summary": plan.get("summary"),
             "todo_write_hint": _todo_write_hint(safe_goal_id),
         }
-        work_lane_contract = (
-            heartbeat_recommendation.get("work_lane_contract")
-            if isinstance(heartbeat_recommendation.get("work_lane_contract"), dict)
-            else _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
-        )
         if work_lane_contract:
             payload["work_lane_contract"] = work_lane_contract
         control_plane = compact_control_plane_policy(item.get("control_plane"))
@@ -2255,14 +2269,22 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
     if work_lane_contract:
         lines.append(
             "- work_lane_contract: "
-            f"current={work_lane_contract.get('current_lane')} "
+            f"lane={work_lane_contract.get('lane')} "
             f"next={work_lane_contract.get('next_lane')} "
-            f"advancement_required={work_lane_contract.get('advancement_required')}"
+            f"obligation={work_lane_contract.get('obligation')} "
+            f"must_attempt_work={work_lane_contract.get('must_attempt_work')}"
         )
-        if work_lane_contract.get("monitoring_allowed"):
-            lines.append(f"- work_lane_monitoring_allowed: {work_lane_contract.get('monitoring_allowed')}")
-        if work_lane_contract.get("advancement_action"):
-            lines.append(f"- work_lane_advancement_action: {work_lane_contract.get('advancement_action')}")
+        reason_codes = (
+            work_lane_contract.get("reason_codes")
+            if isinstance(work_lane_contract.get("reason_codes"), list)
+            else []
+        )
+        if reason_codes:
+            lines.append(f"- work_lane_reason_codes: {','.join(str(code) for code in reason_codes)}")
+        if work_lane_contract.get("monitor_policy"):
+            lines.append(f"- work_lane_monitor_policy: {work_lane_contract.get('monitor_policy')}")
+        if work_lane_contract.get("action"):
+            lines.append(f"- work_lane_action: {work_lane_contract.get('action')}")
     interface_budget_cadence = (
         payload.get("interface_budget_cadence")
         if isinstance(payload.get("interface_budget_cadence"), dict)
@@ -2408,16 +2430,6 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- heartbeat_command: `{heartbeat_recommendation.get('command')}`")
         if heartbeat_recommendation.get("stop_if_unchanged"):
             lines.append("- heartbeat_stop_if_unchanged: `True`")
-        dependency_cap = (
-            heartbeat_recommendation.get("dependency_observation_cap")
-            if isinstance(heartbeat_recommendation.get("dependency_observation_cap"), dict)
-            else {}
-        )
-        if dependency_cap:
-            lines.append(
-                "- dependency_observation_cap: "
-                f"progress_scope={dependency_cap.get('latest_run_progress_scope')}"
-            )
         if heartbeat_recommendation.get("spend_policy"):
             lines.append(f"- heartbeat_spend_policy: {heartbeat_recommendation.get('spend_policy')}")
         if heartbeat_recommendation.get("reason"):
@@ -2434,6 +2446,8 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"kind={execution_obligation.get('kind')} "
             f"notify_is_execution_gate={execution_obligation.get('notify_is_execution_gate')}"
         )
+        if execution_obligation.get("contract_obligation"):
+            lines.append(f"- execution_contract_obligation: {execution_obligation.get('contract_obligation')}")
         if execution_obligation.get("reason"):
             lines.append(f"- execution_obligation_reason: {execution_obligation.get('reason')}")
     stall_self_repair = (

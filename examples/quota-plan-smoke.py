@@ -1092,13 +1092,15 @@ def assert_control_plane_post_handoff_agent_todo_stays_active() -> None:
     ), decision
     assert "stop_if_unchanged" not in decision["heartbeat_recommendation"], decision
     assert decision["execution_obligation"]["must_attempt_work"] is True, decision
-    assert decision["execution_obligation"]["kind"] == "normal_run", decision
+    assert decision["execution_obligation"]["kind"] == "work_lane_contract", decision
+    assert decision["execution_obligation"]["contract_obligation"] == "advance_one_bounded_segment", decision
     assert "post_handoff_observe_then_backlog_step" in markdown, markdown
     assert "heartbeat_stop_if_unchanged" not in markdown, markdown
     assert (
-        "execution_obligation: must_attempt_work=True kind=normal_run notify_is_execution_gate=False"
+        "execution_obligation: must_attempt_work=True kind=work_lane_contract notify_is_execution_gate=False"
         in markdown
     ), markdown
+    assert "execution_contract_obligation: advance_one_bounded_segment" in markdown, markdown
 
 
 def assert_dependency_observation_returns_to_primary_backlog() -> None:
@@ -1117,24 +1119,23 @@ def assert_dependency_observation_returns_to_primary_backlog() -> None:
     first_todo = decision["agent_todo_summary"]["first_open_items"][0]
     first_todo_text = str(first_todo.get("title") or first_todo.get("text") or "")
     assert first_todo_text.startswith("SOTA long-horizon"), decision
-    assert (
-        decision["heartbeat_recommendation"]["recommended_mode"]
-        == "advance_primary_backlog_after_dependency_observation"
-    ), decision
+    assert decision["heartbeat_recommendation"]["recommended_mode"] == "follow_work_lane_contract", decision
     assert (
         decision["heartbeat_recommendation"]["latest_run"]["progress_scope"]
         == "dependency_observation"
     ), decision
-    assert (
-        decision["heartbeat_recommendation"]["dependency_observation_cap"][
-            "latest_run_progress_scope"
-        ]
-        == "dependency_observation"
-    ), decision
-    assert "dependency_observation_cap" in markdown, markdown
-    assert "advance_primary_backlog_after_dependency_observation" in markdown, markdown
+    lane = decision["work_lane_contract"]
+    assert lane["schema_version"] == "work_lane_contract_v1", lane
+    assert lane["lane"] == "continuous_monitor", lane
+    assert lane["next_lane"] == "advancement_task", lane
+    assert lane["obligation"] == "advance_unless_material_monitor_transition", lane
+    assert lane["reason_codes"] == ["dependency_observation", "open_agent_todo"], lane
+    assert "dependency_observation_cap" not in markdown, markdown
+    assert "follow_work_lane_contract" in markdown, markdown
+    assert "obligation=advance_unless_material_monitor_transition" in markdown, markdown
     assert decision["execution_obligation"]["must_attempt_work"] is True, decision
-    assert decision["execution_obligation"]["kind"] == "normal_run", decision
+    assert decision["execution_obligation"]["kind"] == "work_lane_contract", decision
+    assert decision["execution_obligation"]["contract_obligation"] == lane["obligation"], decision
 
 
 def assert_attention_queue_overrides_stale_run_history() -> None:
@@ -1273,14 +1274,16 @@ def assert_project_asset_backed_no_evidence_should_run() -> None:
     assert decision["heartbeat_recommendation"]["recommended_mode"] == "steering_audit_then_one_step", decision
     assert decision["heartbeat_recommendation"]["notify"] == "DONT_NOTIFY", decision
     assert decision["execution_obligation"]["must_attempt_work"] is True, decision
-    assert decision["execution_obligation"]["kind"] == "normal_run", decision
+    assert decision["execution_obligation"]["kind"] == "work_lane_contract", decision
+    assert decision["execution_obligation"]["contract_obligation"] == "advance_one_bounded_segment", decision
     assert decision["execution_obligation"]["notify_is_execution_gate"] is False, decision
     assert "project_asset_source: project_asset" in markdown, markdown
     assert "quota: compute=1.0 slot_minutes=1 slots=0/1440" in markdown, markdown
     assert (
-        "execution_obligation: must_attempt_work=True kind=normal_run notify_is_execution_gate=False"
+        "execution_obligation: must_attempt_work=True kind=work_lane_contract notify_is_execution_gate=False"
         in markdown
     ), markdown
+    assert "execution_contract_obligation: advance_one_bounded_segment" in markdown, markdown
     assert f"goal_boundary_stop_condition: {expected_stop}" in markdown, markdown
     assert f"user_todo_next[1]: {expected_user_todo}" in markdown, markdown
     assert f"agent_todo_next[1]: {expected_agent_todo}" in markdown, markdown

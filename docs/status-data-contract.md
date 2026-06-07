@@ -122,13 +122,18 @@ also carries compact `handoff_readiness` with `handoff_status` and
 `post_handoff_run_seen`. Heartbeat jobs can therefore tell whether the selected
 goal is still waiting for a target run or has already seen post-handoff work
 without parsing the full status payload.
-The same guard may include `work_lane_contract`. The first schema is
-`work_lane_contract_v0` and distinguishes `continuous_monitor` from
-`advancement_task`. For a dependency-observation projection with open agent
-todos, the guard sets `next_lane=advancement_task` and
-`advancement_required=true`, and the heartbeat recommendation tells the
-executor to advance primary backlog or write a real blocker before spending
-another unchanged monitor-only turn.
+The same guard may include `work_lane_contract`. Schema
+`work_lane_contract_v1` is the single machine contract for monitor versus
+advancement routing. It distinguishes `lane=continuous_monitor` from
+`lane=advancement_task`, carries the next lane, and exposes one `obligation`
+string such as `advance_unless_material_monitor_transition`.
+For a dependency-observation projection with open agent todos, the guard sets
+`next_lane=advancement_task`, `must_attempt_work=true`, and
+`reason_codes=["dependency_observation", "open_agent_todo"]`. The heartbeat
+recommendation may say `follow_work_lane_contract`, but it should not restate
+the lane semantics; unchanged monitor polls remain quiet no-spend checks, while
+a material dependency-state transition may be written back once when it changes
+the selected goal decision.
 `handoff_readiness.handoff_interface_budget` declares the machine-readable
 budget for the minimal project-agent handoff: `mode=project_agent_handoff`,
 `max_lines=16`, and `max_chars=1800`. `goal-harness review-packet
@@ -877,14 +882,15 @@ todos, `heartbeat_recommendation.recommended_mode` may become
 `autonomous_replan_required`; this is intended to keep monitor-only work from
 consuming the primary executable backlog, not to grant new private,
 destructive, production, or owner-only authority.
-The payload also includes `execution_obligation`, which is the stronger worker
-contract. `heartbeat_recommendation.notify` is only a user-facing notification
-policy. It must not be interpreted as an execution gate. If
+The payload also includes `execution_obligation`, which is the compatibility
+entry point for workers deciding whether a quiet no-op is allowed.
+`heartbeat_recommendation.notify` is only a user-facing notification policy. It
+must not be interpreted as an execution gate. If
 `execution_obligation.must_attempt_work=true`, the worker should choose one
-bounded segment under `effective_action` / `goal_boundary`, validate it, write
-durable state/events, and spend once after delivery even when
-`notify=DONT_NOTIFY`. A quiet no-op requires
-`execution_obligation.must_attempt_work=false`, such as a verified
+bounded segment under `work_lane_contract` when present, otherwise under
+`effective_action` / `goal_boundary`, validate it, write durable state/events,
+and spend once after delivery even when `notify=DONT_NOTIFY`. A quiet no-op
+requires `execution_obligation.must_attempt_work=false`, such as a verified
 `mapped_noop_if_unchanged` turn.
 When a registry-enabled goal has `control_plane.self_repair.enabled=true`,
 `quota should-run` may return `decision=self_repair`,

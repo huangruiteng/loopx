@@ -188,13 +188,16 @@ branch. Spend is allowed only after validation and durable writeback.
 `quota should-run` also separates long-running observation from work that should
 advance the selected goal. When the selected goal's current projection is a
 dependency-only observation, the payload includes `work_lane_contract` with
-`current_lane=continuous_monitor`. If open agent todos remain, the contract sets
-`next_lane=advancement_task`, `advancement_required=true`, and
-`heartbeat_recommendation.recommended_mode=advance_primary_backlog_after_dependency_observation`.
+`lane=continuous_monitor`. If open agent todos remain, schema
+`work_lane_contract_v1` sets `next_lane=advancement_task`,
+`obligation=advance_unless_material_monitor_transition`,
+`must_attempt_work=true`, and reason codes such as `dependency_observation` and
+`open_agent_todo`. `heartbeat_recommendation` should then say
+`follow_work_lane_contract` instead of encoding another project-specific branch.
 An executor may still record one material dependency-state transition when it
-changes the meta decision, but unchanged monitor polls are quiet no-spend
-checks. This keeps monitoring useful without letting it consume every eligible
-turn.
+changes the selected goal decision, but unchanged monitor polls are quiet
+no-spend checks. This keeps monitoring useful without letting it consume every
+eligible turn, and it keeps the hard routing rule in one small machine contract.
 
 ## Compute States
 
@@ -364,10 +367,13 @@ common modes are:
 The same response also includes `execution_obligation`, which separates worker
 execution from user-facing notification. `heartbeat_recommendation.notify`
 answers "should this heartbeat interrupt the user?", not "may the worker skip
-work?" When `execution_obligation.must_attempt_work=true`, a short heartbeat
-must attempt one bounded segment, validate it, write durable state/events, and
-spend once after successful delivery. A quiet no-op is only allowed when the
-machine contract explicitly says `must_attempt_work=false`, such as
+work?" When `execution_obligation.kind=work_lane_contract`, the hard routing
+rule is `work_lane_contract.obligation`; `execution_obligation` should merely
+point the worker to that object. When
+`execution_obligation.must_attempt_work=true`, a short heartbeat must attempt
+one bounded segment, validate it, write durable state/events, and spend once
+after successful delivery. A quiet no-op is only allowed when the machine
+contract explicitly says `must_attempt_work=false`, such as
 `mapped_noop_if_unchanged` after confirming the mapped source is unchanged.
 
 Unknown goals or status collection failures return non-zero so automations fail

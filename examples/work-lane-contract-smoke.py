@@ -89,21 +89,25 @@ def assert_dependency_monitor_requires_advancement() -> None:
     )
     assert guard["should_run"] is True, guard
     lane = guard["work_lane_contract"]
-    assert lane["schema_version"] == "work_lane_contract_v0", lane
-    assert lane["current_lane"] == "continuous_monitor", lane
+    assert lane["schema_version"] == "work_lane_contract_v1", lane
+    assert lane["lane"] == "continuous_monitor", lane
     assert lane["monitor_kind"] == "dependency_observation", lane
     assert lane["next_lane"] == "advancement_task", lane
-    assert lane["advancement_required"] is True, lane
+    assert lane["obligation"] == "advance_unless_material_monitor_transition", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["reason_codes"] == ["dependency_observation", "open_agent_todo"], lane
     recommendation = guard["heartbeat_recommendation"]
-    assert recommendation["recommended_mode"] == "advance_primary_backlog_after_dependency_observation", recommendation
-    assert "dependency_observation_cap" in recommendation, recommendation
-    assert guard["execution_obligation"]["kind"] == "advance_primary_backlog_after_dependency_observation", guard
-    assert guard["execution_obligation"]["minimum"] == "one_primary_backlog_segment_or_material_transition", guard
-    assert guard["execution_obligation"]["work_lane"] == "continuous_monitor", guard
-    assert guard["execution_obligation"]["next_lane"] == "advancement_task", guard
+    assert recommendation["recommended_mode"] == "follow_work_lane_contract", recommendation
+    assert "dependency_observation_cap" not in recommendation, recommendation
+    assert "work_lane_contract" not in recommendation, recommendation
+    assert guard["execution_obligation"]["kind"] == "work_lane_contract", guard
+    assert guard["execution_obligation"]["contract"] == "work_lane_contract", guard
+    assert guard["execution_obligation"]["contract_obligation"] == lane["obligation"], guard
+    assert "minimum" not in guard["execution_obligation"], guard
     markdown = render_quota_should_run_markdown(guard)
-    assert "work_lane_contract: current=continuous_monitor next=advancement_task" in markdown, markdown
-    assert "dependency_observation_cap" in markdown, markdown
+    assert "work_lane_contract: lane=continuous_monitor next=advancement_task" in markdown, markdown
+    assert "obligation=advance_unless_material_monitor_transition" in markdown, markdown
+    assert "work_lane_reason_codes: dependency_observation,open_agent_todo" in markdown, markdown
 
 
 def assert_primary_status_stays_advancement_lane() -> None:
@@ -114,9 +118,11 @@ def assert_primary_status_stays_advancement_lane() -> None:
     assert guard["should_run"] is True, guard
     assert guard["heartbeat_recommendation"]["recommended_mode"] == "steering_audit_then_one_step", guard
     lane = guard["work_lane_contract"]
-    assert lane["current_lane"] == "advancement_task", lane
+    assert lane["lane"] == "advancement_task", lane
     assert lane["next_lane"] == "advancement_task", lane
-    assert lane["advancement_required"] is True, lane
+    assert lane["obligation"] == "advance_one_bounded_segment", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["reason_codes"] == ["open_agent_todo"], lane
 
 
 def main() -> int:
