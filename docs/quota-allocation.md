@@ -185,6 +185,17 @@ by a repairable control-plane condition, `quota should-run` may instead return
 machine-readable bounded action for the selected goal, not a prompt-specific
 branch. Spend is allowed only after validation and durable writeback.
 
+`quota should-run` also separates long-running observation from work that should
+advance the selected goal. When the selected goal's current projection is a
+dependency-only observation, the payload includes `work_lane_contract` with
+`current_lane=continuous_monitor`. If open agent todos remain, the contract sets
+`next_lane=advancement_task`, `advancement_required=true`, and
+`heartbeat_recommendation.recommended_mode=advance_primary_backlog_after_dependency_observation`.
+An executor may still record one material dependency-state transition when it
+changes the meta decision, but unchanged monitor polls are quiet no-spend
+checks. This keeps monitoring useful without letting it consume every eligible
+turn.
+
 ## Compute States
 
 Recommended compact states:

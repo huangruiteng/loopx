@@ -122,6 +122,13 @@ also carries compact `handoff_readiness` with `handoff_status` and
 `post_handoff_run_seen`. Heartbeat jobs can therefore tell whether the selected
 goal is still waiting for a target run or has already seen post-handoff work
 without parsing the full status payload.
+The same guard may include `work_lane_contract`. The first schema is
+`work_lane_contract_v0` and distinguishes `continuous_monitor` from
+`advancement_task`. For a dependency-observation projection with open agent
+todos, the guard sets `next_lane=advancement_task` and
+`advancement_required=true`, and the heartbeat recommendation tells the
+executor to advance primary backlog or write a real blocker before spending
+another unchanged monitor-only turn.
 `handoff_readiness.handoff_interface_budget` declares the machine-readable
 budget for the minimal project-agent handoff: `mode=project_agent_handoff`,
 `max_lines=16`, and `max_chars=1800`. `goal-harness review-packet

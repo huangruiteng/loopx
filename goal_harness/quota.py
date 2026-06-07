@@ -87,6 +87,7 @@ DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS = (
     "dependency_observation",
     "dependency_monitor",
 )
+WORK_LANE_CONTRACT_SCHEMA_VERSION = "work_lane_contract_v0"
 
 
 def _now_local() -> str:
@@ -196,6 +197,61 @@ def _latest_run_progress_scope(run: dict[str, Any]) -> str:
     if any(hint in classification for hint in DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS):
         return "dependency_observation"
     return "primary_goal"
+
+
+def _item_progress_scope(item: dict[str, Any]) -> str:
+    explicit = str(item.get("progress_scope") or "").strip()
+    if explicit:
+        return explicit
+    project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
+    project_explicit = str(project_asset.get("progress_scope") or "").strip()
+    if project_explicit:
+        return project_explicit
+    return _latest_run_progress_scope(
+        {
+            "classification": item.get("status") or item.get("latest_run_classification"),
+            "progress_scope": item.get("latest_run_progress_scope"),
+        }
+    )
+
+
+def _work_lane_contract(
+    item: dict[str, Any],
+    *,
+    agent_todo_summary: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    progress_scope = _item_progress_scope(item)
+    has_agent_todos = _open_todo_count(agent_todo_summary) > 0
+    if progress_scope != "dependency_observation":
+        if has_agent_todos:
+            return {
+                "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
+                "current_lane": "advancement_task",
+                "next_lane": "advancement_task",
+                "monitoring_allowed": "only for a fresh blocker or material external-state transition",
+                "advancement_required": True,
+            }
+        return None
+
+    return {
+        "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
+        "current_lane": "continuous_monitor",
+        "monitor_kind": "dependency_observation",
+        "next_lane": "advancement_task" if has_agent_todos else "continuous_monitor",
+        "advancement_required": has_agent_todos,
+        "monitoring_allowed": (
+            "record at most one dependency observation per material external-state transition; "
+            "unchanged monitor polls are quiet no-spend checks"
+        ),
+        "material_transition_exception": (
+            "a dependency-state transition may be written back once when it changes the meta decision"
+        ),
+        "advancement_action": (
+            "advance the first executable agent todo or write a concrete blocker"
+            if has_agent_todos
+            else "wait quietly for new external evidence"
+        ),
+    }
 
 
 def _focus_wait_quota(payload: dict[str, Any]) -> dict[str, Any]:
@@ -883,6 +939,7 @@ def _heartbeat_recommendation(
     )
     has_user_todos = _open_todo_count(user_todo_summary) > 0
     has_agent_todos = _open_todo_count(agent_todo_summary) > 0
+    work_lane_contract = _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
 
     base: dict[str, Any] = {
         "source": "quota.should-run",
@@ -943,7 +1000,7 @@ def _heartbeat_recommendation(
             "reason": f"quota state is {state}; skip delivery compute",
         }
     if replan_obligation and replan_obligation.get("required") and not has_user_todos:
-        return {
+        payload = {
             **base,
             "recommended_mode": "autonomous_replan_required",
             "notify": "DONT_NOTIFY",
@@ -961,6 +1018,39 @@ def _heartbeat_recommendation(
             "reason": (
                 "active state exposes an autonomous replan obligation; advance the "
                 "planning-trigger slice before another monitor-only or repeated action"
+            ),
+        }
+        if work_lane_contract:
+            payload["work_lane_contract"] = work_lane_contract
+        return payload
+
+    if (
+        work_lane_contract
+        and work_lane_contract.get("current_lane") == "continuous_monitor"
+        and work_lane_contract.get("advancement_required") is True
+        and not has_user_todos
+    ):
+        return {
+            **base,
+            "recommended_mode": "advance_primary_backlog_after_dependency_observation",
+            "work_lane_contract": work_lane_contract,
+            "dependency_observation_cap": {
+                "latest_run_progress_scope": "dependency_observation",
+                "rule": (
+                    "Do not spend another consecutive meta turn mirroring dependency-only "
+                    "observation while primary agent todos remain executable."
+                ),
+            },
+            "spend_policy": (
+                "do not append quota spend for another dependency-only observation; "
+                "spend only after advancing the primary agent-todo backlog, writing a "
+                "real blocker, or recording a material dependency transition that changes "
+                "the meta decision"
+            ),
+            "reason": (
+                "current status is a continuous monitor lane; advance the first executable "
+                "agent todo or write a concrete blocker before spending another unchanged "
+                "dependency-observation turn"
             ),
         }
 
@@ -1081,6 +1171,11 @@ def _execution_obligation(
     """Separate the worker execution contract from user-facing notification."""
 
     recommended_mode = str(heartbeat_recommendation.get("recommended_mode") or "")
+    work_lane_contract = (
+        heartbeat_recommendation.get("work_lane_contract")
+        if isinstance(heartbeat_recommendation.get("work_lane_contract"), dict)
+        else {}
+    )
     if heartbeat_recommendation.get("stop_if_unchanged"):
         return {
             "must_attempt_work": False,
@@ -1092,16 +1187,30 @@ def _execution_obligation(
             ),
         }
     if should_run:
-        return {
+        obligation_kind = (
+            recommended_mode
+            if work_lane_contract.get("advancement_required") is True and recommended_mode
+            else effective_action or recommended_mode or "bounded_delivery"
+        )
+        payload = {
             "must_attempt_work": True,
-            "kind": effective_action or recommended_mode or "bounded_delivery",
-            "minimum": "one_bounded_segment",
+            "kind": obligation_kind,
+            "minimum": (
+                "one_primary_backlog_segment_or_material_transition"
+                if work_lane_contract.get("advancement_required") is True
+                else "one_bounded_segment"
+            ),
             "notify_is_execution_gate": False,
             "reason": (
                 "should_run=true means a Codex-actionable turn exists; heartbeat notify "
                 "only controls whether to interrupt the user"
             ),
         }
+        if work_lane_contract:
+            payload["work_lane"] = work_lane_contract.get("current_lane")
+            payload["next_lane"] = work_lane_contract.get("next_lane")
+            payload["advancement_required"] = bool(work_lane_contract.get("advancement_required"))
+        return payload
     return {
         "must_attempt_work": False,
         "kind": effective_action or recommended_mode or "skip",
@@ -1507,6 +1616,13 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             "plan_summary": plan.get("summary"),
             "todo_write_hint": _todo_write_hint(safe_goal_id),
         }
+        work_lane_contract = (
+            heartbeat_recommendation.get("work_lane_contract")
+            if isinstance(heartbeat_recommendation.get("work_lane_contract"), dict)
+            else _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
+        )
+        if work_lane_contract:
+            payload["work_lane_contract"] = work_lane_contract
         control_plane = compact_control_plane_policy(item.get("control_plane"))
         if control_plane:
             payload["control_plane"] = control_plane
@@ -2131,6 +2247,22 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if replan_obligation.get("next_validation_command"):
             lines.append(f"- autonomous_replan_validation: `{replan_obligation.get('next_validation_command')}`")
+    work_lane_contract = (
+        payload.get("work_lane_contract")
+        if isinstance(payload.get("work_lane_contract"), dict)
+        else {}
+    )
+    if work_lane_contract:
+        lines.append(
+            "- work_lane_contract: "
+            f"current={work_lane_contract.get('current_lane')} "
+            f"next={work_lane_contract.get('next_lane')} "
+            f"advancement_required={work_lane_contract.get('advancement_required')}"
+        )
+        if work_lane_contract.get("monitoring_allowed"):
+            lines.append(f"- work_lane_monitoring_allowed: {work_lane_contract.get('monitoring_allowed')}")
+        if work_lane_contract.get("advancement_action"):
+            lines.append(f"- work_lane_advancement_action: {work_lane_contract.get('advancement_action')}")
     interface_budget_cadence = (
         payload.get("interface_budget_cadence")
         if isinstance(payload.get("interface_budget_cadence"), dict)
