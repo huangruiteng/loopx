@@ -99,6 +99,11 @@ work still belongs in the existing code, examples, and contract documents:
   control-plane-score, claim-boundary, readiness, authorization,
   replay-decision, next-run-mode, and stop-condition state without raw logs,
   private traces, local artifact paths, chat history, or extra hot-path keys.
+- `benchmark-restart-actionability-v0.md`: restarted-worker actionability
+  fixture proving a compact reconstructed decision can produce exactly one
+  bounded local fixture command or a public-safe blocker while preserving
+  fixture-only authorization, no-leaderboard claims, and real-run stop
+  conditions.
 
 ## Relationship To Goal Harness Work
 
