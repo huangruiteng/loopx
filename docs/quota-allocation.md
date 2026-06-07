@@ -199,6 +199,12 @@ If all visible open todos are monitor-class and no open todo is hidden, the
 same contract uses `obligation=quiet_until_material_monitor_transition` and
 `must_attempt_work=false`. Hidden open todos are treated as advancement work to
 avoid false quiet no-ops from a truncated top-N todo projection.
+If the selected goal's `next_action`/`recommended_action` explicitly points to
+a planning/self-repair or advancement-class lane, monitor-only todos are not
+allowed to make the goal quiet. The contract instead uses
+`obligation=materialize_advancement_todo_or_blocker` and
+`must_attempt_work=true`, so the worker must either materialize the concrete
+advancement todo or write the blocker that prevents it.
 `heartbeat_recommendation` should then say `follow_work_lane_contract` or
 `monitor_quiet_until_material_transition` instead of encoding another
 project-specific branch. An executor may still record one material

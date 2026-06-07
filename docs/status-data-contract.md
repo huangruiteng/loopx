@@ -138,7 +138,14 @@ For a dependency-observation projection with open agent todos, the guard sets
 one open todo is advancement-class work. If all visible open todos are
 monitor-class and no open todo is hidden, the guard sets
 `obligation=quiet_until_material_monitor_transition` and
-`must_attempt_work=false`. The heartbeat recommendation may say
+`must_attempt_work=false`. One narrow exception prevents long autonomous
+projects from stalling after finishing their last visible delivery todo: when
+the current `next_action`/`recommended_action` explicitly points at a
+planning/self-repair or advancement-class lane, monitor-only todos are promoted
+to `lane=advancement_task` with
+`obligation=materialize_advancement_todo_or_blocker`. That obligation requires
+the worker to create a concrete advancement todo or write a blocker instead of
+quietly waiting on monitors. The heartbeat recommendation may say
 `follow_work_lane_contract` or `monitor_quiet_until_material_transition`, but it
 should not restate the lane semantics; unchanged monitor polls remain quiet
 no-spend checks, while a material dependency-state transition may be written

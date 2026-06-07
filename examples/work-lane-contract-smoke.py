@@ -20,6 +20,7 @@ def status_payload(
     status: str,
     has_agent_todo: bool = True,
     agent_todo_items: list[dict] | None = None,
+    next_action: str = "Observe dependency state and then advance backlog if unchanged.",
 ) -> dict:
     if agent_todo_items is None:
         agent_todo_items = [
@@ -50,7 +51,7 @@ def status_payload(
                     "waiting_on": "codex",
                     "severity": "info",
                     "source": "project_asset",
-                    "recommended_action": "Observe dependency state and then advance backlog if unchanged.",
+                    "recommended_action": next_action,
                     "quota": {
                         "compute": 1.0,
                         "window_hours": 24,
@@ -61,7 +62,7 @@ def status_payload(
                         "reason": "eligible fixture",
                     },
                     "project_asset": {
-                        "next_action": "Observe dependency state and then advance backlog if unchanged.",
+                        "next_action": next_action,
                         "stop_condition": "stop on private material",
                         "agent_todos": agent_todos,
                     },
@@ -172,6 +173,49 @@ def assert_monitor_only_todo_waits_quietly() -> None:
     assert "obligation=quiet_until_material_monitor_transition" in markdown, markdown
 
 
+def assert_monitor_only_with_planning_next_action_materializes_advancement() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            status="benchmark_experiment_report_template",
+            next_action=(
+                "Post-reporting lane should route to the planning/self-repair capability lane "
+                "as the next eligible advancement turn."
+            ),
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": "[P2] Side-bypass dependency monitor: observe public-safe replay state transitions only.",
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P2",
+                },
+                {
+                    "index": 2,
+                    "text": "[P2] Meta canary/readiness observation lane: keep release readiness observable.",
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P2",
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert lane["schema_version"] == "work_lane_contract_v1", lane
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["next_lane"] == "advancement_task", lane
+    assert lane["obligation"] == "materialize_advancement_todo_or_blocker", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["reason_codes"] == ["monitor_todo_only", "next_action_requires_advancement"], lane
+    assert "planning/self-repair" in lane["action"], lane
+    assert guard["execution_obligation"]["contract_obligation"] == lane["obligation"], guard
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+    markdown = render_quota_should_run_markdown(guard)
+    assert "work_lane_contract: lane=advancement_task next=advancement_task" in markdown, markdown
+    assert "obligation=materialize_advancement_todo_or_blocker" in markdown, markdown
+    assert "work_lane_reason_codes: monitor_todo_only,next_action_requires_advancement" in markdown, markdown
+
+
 def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -208,6 +252,7 @@ def main() -> int:
     assert_dependency_monitor_requires_advancement()
     assert_primary_status_stays_advancement_lane()
     assert_monitor_only_todo_waits_quietly()
+    assert_monitor_only_with_planning_next_action_materializes_advancement()
     assert_mixed_monitor_and_advancement_routes_to_advancement()
     print("work-lane-contract-smoke ok")
     return 0

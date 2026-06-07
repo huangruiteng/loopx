@@ -103,6 +103,14 @@ TODO_ADVANCEMENT_PATTERNS = (
     re.compile(r"(?i)(?:^|[:：]\s*)(?:implement|add|make|fix|build|wire|define|compare|run|repair|archive|publish|merge|write|attribute)\b"),
     re.compile(r"(?i)\b(?:implementation slice|validation-backed patch|smoke fixture)\b"),
 )
+NEXT_ACTION_ADVANCEMENT_HINT_PATTERNS = (
+    re.compile(r"(?i)\bplanning/self[- ]?repair\b"),
+    re.compile(r"(?i)\bplanning[- ]?self[- ]?repair\b"),
+    re.compile(r"(?i)\bself[- ]?repair capability\b"),
+    re.compile(r"(?i)\badvance(?:ment)?[- ]class\b"),
+    re.compile(r"(?i)\badvance primary backlog\b"),
+    re.compile(r"(?i)\bnext eligible advancement turn\b"),
+)
 
 
 def _now_local() -> str:
@@ -266,6 +274,19 @@ def _work_lane_contract(
                 "action": "advance the first executable agent todo or write a concrete blocker",
             }
         if monitor_only_todos:
+            if _next_action_requires_advancement(item):
+                return {
+                    "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
+                    "lane": "advancement_task",
+                    "next_lane": "advancement_task",
+                    "obligation": "materialize_advancement_todo_or_blocker",
+                    "must_attempt_work": True,
+                    "reason_codes": ["monitor_todo_only", "next_action_requires_advancement"],
+                    "monitor_policy": "material_transition_only",
+                    "action": (
+                        "materialize the planning/self-repair advancement todo or write a concrete blocker"
+                    ),
+                }
             return {
                 "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
                 "lane": "continuous_monitor",
@@ -877,6 +898,20 @@ def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
         "monitor": monitor_count,
         "hidden": hidden_count,
     }
+
+
+def _next_action_requires_advancement(item: dict[str, Any]) -> bool:
+    project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
+    values = (
+        project_asset.get("next_action"),
+        project_asset.get("recommended_action"),
+        item.get("next_action"),
+        item.get("recommended_action"),
+    )
+    text = " ".join(str(value or "") for value in values if str(value or "").strip())
+    if not text:
+        return False
+    return any(pattern.search(text) for pattern in NEXT_ACTION_ADVANCEMENT_HINT_PATTERNS)
 
 
 def _has_lifecycle_marker(*values: Any, marker: str) -> bool:
