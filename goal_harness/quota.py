@@ -430,6 +430,17 @@ def _quota_sort_key(item: dict[str, Any]) -> tuple[int, float, int, str]:
     return (state_index, -compute, spent_slots, str(item.get("goal_id") or ""))
 
 
+def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None) -> dict[str, Any]:
+    compact: dict[str, Any] = {
+        "index": item.get("index"),
+        "text": text if text is not None else item.get("text"),
+    }
+    for key in ("schema_version", "todo_id", "role", "status", "priority", "title", "archive_state", "source_section"):
+        if item.get(key) is not None:
+            compact[key] = item.get(key)
+    return compact
+
+
 def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
@@ -446,12 +457,7 @@ def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
         text = str(item.get("text") or "").strip()
         if not text:
             continue
-        open_items.append(
-            {
-                "index": item.get("index"),
-                "text": text,
-            }
-        )
+        open_items.append(_compact_todo_summary_item(item, text=text))
     for item in items:
         if not isinstance(item, dict) or item.get("done") is True:
             continue
@@ -464,13 +470,9 @@ def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
         )
         if duplicate:
             continue
-        open_items.append(
-            {
-                "index": item.get("index"),
-                "text": text,
-            }
-        )
+        open_items.append(_compact_todo_summary_item(item, text=text))
     return {
+        "schema_version": value.get("schema_version"),
         "source_section": value.get("source_section"),
         "total_count": value.get("total_count"),
         "open_count": value.get("open_count", len(open_items)),
@@ -495,7 +497,7 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
         text = str(item.get("text") or "").strip()
         if not text:
             continue
-        first_open_items.append({"index": item.get("index"), "text": text})
+        first_open_items.append(_compact_todo_summary_item(item, text=text))
         if len(first_open_items) >= 3:
             break
     if not first_open_items:
@@ -504,6 +506,7 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
         first_open_items = [{"index": next_index, "text": next_text}] if next_text else []
     open_count = value.get("open", value.get("open_count", len(first_open_items)))
     return {
+        "schema_version": value.get("schema_version"),
         "source_section": value.get("source_section") or "project_asset",
         "total_count": value.get("total", value.get("total_count")),
         "open_count": open_count,
@@ -1467,6 +1470,15 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
         )
         if backlog_warning:
             payload["backlog_hygiene_warning"] = backlog_warning
+        archive_warning = (
+            item.get("completed_todo_archive_warning")
+            if isinstance(item.get("completed_todo_archive_warning"), dict)
+            else project_asset.get("completed_todo_archive_warning")
+            if isinstance(project_asset.get("completed_todo_archive_warning"), dict)
+            else None
+        )
+        if archive_warning:
+            payload["completed_todo_archive_warning"] = archive_warning
         interface_budget_cadence = (
             project_asset.get("interface_budget_cadence")
             if isinstance(project_asset.get("interface_budget_cadence"), dict)
@@ -1993,6 +2005,23 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if backlog_hygiene_warning.get("recommended_action"):
             lines.append(f"- backlog_hygiene_action: {backlog_hygiene_warning.get('recommended_action')}")
+    completed_todo_archive_warning = (
+        payload.get("completed_todo_archive_warning")
+        if isinstance(payload.get("completed_todo_archive_warning"), dict)
+        else {}
+    )
+    if completed_todo_archive_warning:
+        lines.append(
+            "- completed_todo_archive_warning: "
+            f"requires_archive={completed_todo_archive_warning.get('requires_archive')} "
+            f"active_done={completed_todo_archive_warning.get('active_done_count')} "
+            f"max_active_done={completed_todo_archive_warning.get('max_active_done_count')} "
+            f"archive_section={completed_todo_archive_warning.get('archive_section')}"
+        )
+        if completed_todo_archive_warning.get("recommended_action"):
+            lines.append(
+                f"- completed_todo_archive_action: {completed_todo_archive_warning.get('recommended_action')}"
+            )
     interface_budget_cadence = (
         payload.get("interface_budget_cadence")
         if isinstance(payload.get("interface_budget_cadence"), dict)

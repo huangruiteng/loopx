@@ -366,12 +366,17 @@ def main() -> int:
     )
     assert_contains(
         status_contract,
-        "`owner`, `gate`, `next_action`, and `stop_condition`, and may include compact `user_todos`, `agent_todos`, `quota`, and `latest_validation` summaries",
+        "`owner`, `gate`, `support_mode`, `next_action`, and",
         label="status contract",
     )
     assert_contains(
         status_contract,
-        "avoid reconstructing owner, gate, next action, stop condition, todo counts, compute state, and latest validation",
+        "avoid reconstructing owner, gate, support mode, next action, stop condition, todo counts, compute state, and",
+        label="status contract",
+    )
+    assert_contains(
+        status_contract,
+        "`support_mode` is a compact product-mode label",
         label="status contract",
     )
     assert_contains(

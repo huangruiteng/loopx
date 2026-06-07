@@ -64,7 +64,26 @@ that part itself.
 
 ## Handoff Contract
 
-Every sub-agent brief should include:
+Every sub-agent brief should start from the shared control plane before it
+describes the task. A child worker should never infer current authority from a
+chat thread, an old packet, or another child's summary.
+
+The shared control-plane handoff is `subagent_control_plane_handoff_v0`:
+
+- `parent_goal_id` and optional `parent_run_id`,
+- `authority_artifact`: the source doc, registry entry, or review packet the
+  child must treat as current authority,
+- `latest_state_ref`: the active-state hash, run id, or generated-at timestamp
+  the child must read before work,
+- `quota_gate_snapshot`: whether the parent goal is eligible, gated, waiting,
+  or in focus wait,
+- `evidence_boundary`: public/private boundary, allowed files, and whether the
+  child may write or must stay read-only,
+- `writeback_spend_contract`: who may write the final run record and spend
+  quota,
+- `child_decision`: one of `continue`, `wait`, or `reuse_existing_evidence`.
+
+Only after that shared-control-plane prefix should the task brief include:
 
 - `goal_id`,
 - role: `explorer`, `worker`, or `validator`,
@@ -74,9 +93,22 @@ Every sub-agent brief should include:
 - validation command if applicable,
 - merge rule: what the main controller may accept, ignore, or retry.
 
+The main controller owns the shared-control-plane handoff and the final
+writeback. A child may produce evidence, a validation result, or a blocker, but
+the controller decides whether to accept it and whether quota can be spent.
+
 Example:
 
 ```text
+subagent_control_plane_handoff_v0:
+  parent_goal_id: agent-harness-main-control
+  authority_artifact: review-packet generated_at=2026-01-01T00:00:00+00:00
+  latest_state_ref: active_state_sha256_16=0123456789abcdef
+  quota_gate_snapshot: operator_gate
+  evidence_boundary: read-only docs/TODO.md and docs/meta/DOC_REGISTRY.yaml
+  writeback_spend_contract: child reports evidence only; parent writes and spends
+  child_decision: continue
+
 goal_id: agent-harness-main-control
 role: explorer
 scope: inspect docs/TODO.md and doc registry only
@@ -153,6 +185,8 @@ class evidence:
   "subagents": [
     {
       "id": "subagent-docs-map",
+      "control_plane_handoff_version": "subagent_control_plane_handoff_v0",
+      "child_decision": "continue",
       "role": "explorer",
       "scope": "docs/TODO.md + doc registry",
       "status": "completed",

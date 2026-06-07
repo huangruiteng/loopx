@@ -90,6 +90,16 @@ def assert_unknown_manifest_blocks_promotion(registry_path: Path) -> dict:
     assert payload["summary"]["installed_prompt_policy_warning_count"] == 0, payload
     assert payload["summary"]["installed_prompt_policy_warning_prompt_count"] == 0, payload
     assert payload["summary"]["ready_for_default_promotion"] is False, payload
+    propagation = payload["default_upgrade_propagation"]
+    assert propagation["schema_version"] == "default_upgrade_propagation_v0", payload
+    assert propagation["managed_target_count"] == 1, payload
+    assert propagation["deferred_target_count"] == 1, payload
+    assert propagation["update_count"] == 1, payload
+    assert propagation["unknown_count"] == 1, payload
+    assert propagation["deferred_install_count"] == 0, payload
+    assert propagation["managed_targets"][0]["action"] == "regenerate_installed_prompt", payload
+    assert propagation["managed_targets"][0]["reason"] == "installed prompt is missing from the manifest", payload
+    assert propagation["stage_deferred_targets"][0]["action"] == "skip_stage_deferred", payload
     deferred = payload["stage_deferred_heartbeats"][0]
     assert deferred["goal_id"] == DEFERRED_GOAL_ID, payload
     assert deferred["requires_update"] is False, payload
@@ -105,6 +115,9 @@ def assert_unknown_manifest_blocks_promotion(registry_path: Path) -> dict:
     markdown = render_upgrade_plan_markdown(payload)
     assert "ready_for_default_promotion: `False`" in markdown, markdown
     assert "stage_deferred_goal_count: `1`" in markdown, markdown
+    assert "## Default Upgrade Propagation" in markdown, markdown
+    assert "deferred_install_count: `0`" in markdown, markdown
+    assert "action=`skip_stage_deferred`" in markdown, markdown
     assert "## Stage Deferred Heartbeats" in markdown, markdown
     assert DEFERRED_GOAL_ID in markdown, markdown
     return payload
@@ -146,6 +159,15 @@ def assert_matching_manifest_is_ready(registry_path: Path, manifest_path: Path, 
     assert payload["summary"]["installed_prompt_policy_warning_count"] == 0, payload
     assert payload["summary"]["installed_prompt_policy_warning_prompt_count"] == 0, payload
     assert payload["summary"]["ready_for_default_promotion"] is True, payload
+    propagation = payload["default_upgrade_propagation"]
+    assert propagation["ready_for_default_promotion"] is True, payload
+    assert propagation["managed_target_count"] == 1, payload
+    assert propagation["deferred_target_count"] == 1, payload
+    assert propagation["update_count"] == 0, payload
+    assert propagation["current_count"] == 1, payload
+    assert propagation["deferred_install_count"] == 0, payload
+    assert propagation["managed_targets"][0]["action"] == "current", payload
+    assert propagation["stage_deferred_targets"][0]["action"] == "skip_stage_deferred", payload
     assert payload["managed_heartbeats"][0]["installed_prompts"]["thin"]["status"] == "current", payload
 
 
@@ -183,6 +205,12 @@ def assert_not_installed_manifest_is_ready(registry_path: Path, manifest_path: P
     assert payload["summary"]["installed_prompt_policy_warning_count"] == 0, payload
     assert payload["summary"]["installed_prompt_policy_warning_prompt_count"] == 0, payload
     assert payload["summary"]["ready_for_default_promotion"] is True, payload
+    propagation = payload["default_upgrade_propagation"]
+    assert propagation["ready_for_default_promotion"] is True, payload
+    assert propagation["not_installed_noop_count"] == 1, payload
+    assert propagation["update_count"] == 0, payload
+    assert propagation["deferred_install_count"] == 0, payload
+    assert propagation["managed_targets"][0]["action"] == "not_installed_noop", payload
     installed = payload["managed_heartbeats"][0]["installed_prompts"]["thin"]
     assert payload["managed_heartbeats"][0]["requires_update"] is False, payload
     assert installed["status"] == "not_installed", payload
@@ -203,6 +231,12 @@ def assert_stage_deferred_selection_is_not_upgrade_work(registry_path: Path) -> 
     assert payload["managed_heartbeats"] == [], payload
     assert payload["stage_deferred_heartbeats"][0]["goal_id"] == DEFERRED_GOAL_ID, payload
     assert payload["stage_deferred_heartbeats"][0]["requires_update"] is False, payload
+    propagation = payload["default_upgrade_propagation"]
+    assert propagation["managed_target_count"] == 0, payload
+    assert propagation["deferred_target_count"] == 1, payload
+    assert propagation["update_count"] == 0, payload
+    assert propagation["deferred_install_count"] == 0, payload
+    assert propagation["stage_deferred_targets"][0]["action"] == "skip_stage_deferred", payload
     assert "stage-deferred" in payload["recommended_action"], payload
 
 
@@ -258,6 +292,10 @@ def assert_codex_app_automation_is_discovered(registry_path: Path, codex_home: P
     assert payload["summary"]["unknown_prompt_count"] == 0, payload
     assert payload["summary"]["stale_prompt_count"] == 0, payload
     assert payload["summary"]["current_prompt_count"] == 1, payload
+    propagation = payload["default_upgrade_propagation"]
+    assert propagation["update_count"] == 0, payload
+    assert propagation["deferred_install_count"] == 0, payload
+    assert propagation["managed_targets"][0]["action"] == "current", payload
     installed = payload["managed_heartbeats"][0]["installed_prompts"]["thin"]
     assert installed["status"] == "current", payload
     assert installed["automation_id"] == GOAL_ID, payload
@@ -294,6 +332,15 @@ def assert_codex_app_stale_policy_prompt_is_flagged(registry_path: Path, codex_h
     installed = payload["managed_heartbeats"][0]["installed_prompts"]["thin"]
     assert installed["requires_update"] is True, payload
     assert installed["prompt_policy_audit"]["warning_count"] == 3, payload
+    propagation = payload["default_upgrade_propagation"]
+    assert propagation["update_count"] == 1, payload
+    assert propagation["policy_warning_count"] == 3, payload
+    assert propagation["deferred_install_count"] == 0, payload
+    assert propagation["managed_targets"][0]["action"] == "regenerate_installed_prompt", payload
+    assert (
+        propagation["managed_targets"][0]["reason"]
+        == "installed prompt policy warnings must be cleared before default promotion"
+    ), payload
     markdown = render_upgrade_plan_markdown(payload)
     assert "installed_prompt_policy_warning_count: `3`" in markdown, markdown
     assert "should_run_false_before_safe_bypass" in markdown, markdown

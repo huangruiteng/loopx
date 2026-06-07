@@ -261,6 +261,7 @@ AGENT_TODO_HEADER_MARKERS = (
     "project agent todo",
 )
 MAX_STATUS_TODOS_PER_ROLE = 12
+MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = MAX_STATUS_TODOS_PER_ROLE
 MAX_PROJECT_ASSET_TODO_ITEMS = 3
 MAX_DEPENDENCY_BLOCKERS = 4
 MAX_AUTONOMOUS_BACKLOG_CANDIDATES = 6
@@ -273,6 +274,15 @@ BACKLOG_HYGIENE_BULLET_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$")
 BACKLOG_HYGIENE_HINT_PATTERN = re.compile(
     r"(?i)(?:\[p[0-4]\]|todo|backlog|follow[- ]?up|queue|audit|regression|smoke|cadence|mirror|monitor|sub-?agent|待办|回归|审计|修复|检查|推进)"
 )
+TODO_ARCHIVE_HEADER_MARKERS = (
+    "todo archive",
+    "work archive",
+    "completed archive",
+    "completed work",
+    "完成归档",
+    "待办归档",
+)
+TODO_ITEM_SCHEMA_VERSION = "todo_item_v0"
 
 
 def normalize_todo_text(text: str, *, limit: int = 500) -> str:
@@ -321,6 +331,8 @@ def parse_state_frontmatter(state_text: str) -> dict[str, str]:
 
 def todo_role_for_heading(heading: str) -> str | None:
     normalized = heading.strip().lower()
+    if any(marker in normalized for marker in TODO_ARCHIVE_HEADER_MARKERS):
+        return None
     if any(marker in normalized for marker in USER_TODO_HEADER_MARKERS):
         return "user"
     if any(marker in normalized for marker in AGENT_TODO_HEADER_MARKERS):
@@ -328,24 +340,78 @@ def todo_role_for_heading(heading: str) -> str | None:
     return None
 
 
-def compact_todo_group(items: list[dict[str, Any]], *, source_section: str | None) -> dict[str, Any] | None:
+def todo_priority_parts(text: str) -> tuple[str | None, str]:
+    match = AUTONOMOUS_PRIORITY_PATTERN.match(text)
+    if not match:
+        return None, text
+    return match.group(1).strip().upper(), match.group(2).strip()
+
+
+def structured_todo_item(
+    item: dict[str, Any],
+    *,
+    role: str | None,
+    source_section: str | None,
+    archive_state: str = "active",
+) -> dict[str, Any]:
+    text = normalize_todo_text(str(item.get("text") or ""))
+    priority, title = todo_priority_parts(text)
+    index = item.get("index")
+    status = "done" if item.get("done") else "open"
+    identity = "|".join(str(part or "") for part in (role, source_section, index, text))
+    normalized = dict(item)
+    normalized.update(
+        {
+            "schema_version": TODO_ITEM_SCHEMA_VERSION,
+            "todo_id": f"todo_{hashlib.sha1(identity.encode('utf-8')).hexdigest()[:12]}",
+            "role": role,
+            "status": status,
+            "archive_state": archive_state,
+            "source_section": source_section,
+            "text": text,
+        }
+    )
+    if priority:
+        normalized["priority"] = priority
+        normalized["title"] = normalize_todo_text(title)
+    return normalized
+
+
+def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
+    compact: dict[str, Any] = {
+        "index": item.get("index"),
+        "done": bool(item.get("done")),
+        "text": item.get("text"),
+    }
+    for key in ("schema_version", "todo_id", "role", "status", "priority", "title", "archive_state", "source_section"):
+        if item.get(key) is not None:
+            compact[key] = item.get(key)
+    return compact
+
+
+def compact_todo_group(
+    items: list[dict[str, Any]],
+    *,
+    source_section: str | None,
+    role: str | None = None,
+) -> dict[str, Any] | None:
     if not items:
         return None
+    items = [
+        structured_todo_item(item, role=role, source_section=source_section)
+        if isinstance(item, dict)
+        else item
+        for item in items
+    ]
     open_items = [item for item in items if not item.get("done")]
     done_items = [item for item in items if item.get("done")]
     return {
+        "schema_version": "todo_summary_v0",
         "source_section": source_section,
         "total_count": len(items),
         "open_count": len(open_items),
         "done_count": len(done_items),
-        "first_open_items": [
-            {
-                "index": item.get("index"),
-                "done": bool(item.get("done")),
-                "text": item.get("text"),
-            }
-            for item in open_items[:3]
-        ],
+        "first_open_items": [compact_todo_item(item) for item in open_items[:3]],
         "items": items[:MAX_STATUS_TODOS_PER_ROLE],
     }
 
@@ -418,8 +484,8 @@ def parse_active_state_todos(state_text: str, *, goal: dict[str, Any] | None = N
             current_todo["text"] = normalize_todo_text(f"{current_todo.get('text', '')} {continuation}")
 
     result: dict[str, Any] = {}
-    user = compact_todo_group(items["user"], source_section=source_sections["user"])
-    agent = compact_todo_group(items["agent"], source_section=source_sections["agent"])
+    user = compact_todo_group(items["user"], source_section=source_sections["user"], role="user")
+    agent = compact_todo_group(items["agent"], source_section=source_sections["agent"], role="agent")
     if user:
         result["user_todos"] = user
     if agent:
@@ -481,6 +547,33 @@ def backlog_hygiene_warning(state_text: str, *, agent_todos: dict[str, Any] | No
     }
 
 
+def completed_todo_archive_warning(agent_todos: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(agent_todos, dict):
+        return None
+    try:
+        done_count = int(agent_todos.get("done_count") or 0)
+    except (TypeError, ValueError):
+        done_count = 0
+    if done_count <= MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE:
+        return None
+    try:
+        open_count = int(agent_todos.get("open_count") or 0)
+    except (TypeError, ValueError):
+        open_count = 0
+    return {
+        "kind": "completed_agent_todo_archive_required",
+        "requires_archive": True,
+        "archive_section": "Completed Work Archive",
+        "active_done_count": done_count,
+        "active_open_count": open_count,
+        "max_active_done_count": MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE,
+        "recommended_action": (
+            "move older completed Agent Todo entries into a dedicated Completed Work Archive "
+            "until the active Agent Todo section keeps only current open work and a small recent-done tail"
+        ),
+    }
+
+
 def project_asset_owner(waiting_on: str) -> str:
     if waiting_on == "codex":
         return "codex"
@@ -530,6 +623,36 @@ def project_asset_stop_condition(
     return "stop if the next action needs reward, gate approval, write control, or production access"
 
 
+def project_asset_support_mode(
+    *,
+    waiting_on: str,
+    operator_question: str | None,
+    missing_gates: list[str] | None,
+    status: str,
+    recommended_action: str,
+    agent_command: str | None,
+) -> str:
+    surface = " ".join(
+        str(value or "")
+        for value in (status, recommended_action, agent_command, " ".join(missing_gates or []))
+    ).lower()
+    if "reward" in surface:
+        return "reward_capture"
+    if operator_question or missing_gates or waiting_on in {"user_or_controller", "controller"}:
+        return "decision_support"
+    if waiting_on == "external_evidence":
+        return "read_only_observer"
+    if agent_command or waiting_on == "codex":
+        return "selective_assist"
+    return "read_only_observer"
+
+
+def project_asset_next_safe_command(agent_command: str | None) -> str | None:
+    if not agent_command:
+        return None
+    return public_safe_compact_text(agent_command, limit=320)
+
+
 def open_todo_items(
     todos: dict[str, Any] | None,
     *,
@@ -553,13 +676,10 @@ def open_todo_items(
             if key in seen:
                 continue
             seen.add(key)
-            result.append(
-                {
-                    "index": item.get("index"),
-                    "done": False,
-                    "text": text,
-                }
-            )
+            compact = compact_todo_item(item)
+            compact["done"] = False
+            compact["text"] = text
+            result.append(compact)
             if len(result) >= limit:
                 return result
     return result
@@ -576,6 +696,7 @@ def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] |
     if not isinstance(todos, dict):
         return None
     summary: dict[str, Any] = {
+        "schema_version": todos.get("schema_version") or "todo_summary_v0",
         "source_section": "project_asset",
         "open": todos.get("open_count", 0),
         "done": todos.get("done_count", 0),
@@ -1255,13 +1376,21 @@ def build_project_asset(
     missing_gates: list[str] | None,
     next_handoff_condition: str | None,
 ) -> dict[str, Any]:
-    return {
+    asset = {
         "owner": project_asset_owner(waiting_on),
         "gate": project_asset_gate(
             waiting_on=waiting_on,
             operator_question=operator_question,
             missing_gates=missing_gates,
             status=status,
+        ),
+        "support_mode": project_asset_support_mode(
+            waiting_on=waiting_on,
+            operator_question=operator_question,
+            missing_gates=missing_gates,
+            status=status,
+            recommended_action=recommended_action,
+            agent_command=agent_command,
         ),
         "next_action": recommended_action,
         "stop_condition": project_asset_stop_condition(
@@ -1270,6 +1399,10 @@ def build_project_asset(
             agent_command=agent_command,
         ),
     }
+    next_safe_command = project_asset_next_safe_command(agent_command)
+    if next_safe_command:
+        asset["next_safe_command"] = next_safe_command
+    return asset
 
 
 def active_state_todo_fields(goal: dict[str, Any]) -> dict[str, Any]:
@@ -1287,6 +1420,11 @@ def active_state_todo_fields(goal: dict[str, Any]) -> dict[str, Any]:
     )
     if warning:
         fields["backlog_hygiene_warning"] = warning
+    archive_warning = completed_todo_archive_warning(
+        fields.get("agent_todos") if isinstance(fields.get("agent_todos"), dict) else None
+    )
+    if archive_warning:
+        fields["completed_todo_archive_warning"] = archive_warning
     if fields:
         fields = redacted_status_todo_fields(fields)
     return fields
@@ -1983,6 +2121,13 @@ def build_attention_queue(
                 )
                 if backlog_warning and isinstance(item.get("project_asset"), dict):
                     item["project_asset"]["backlog_hygiene_warning"] = backlog_warning
+                archive_warning = (
+                    item.get("completed_todo_archive_warning")
+                    if isinstance(item.get("completed_todo_archive_warning"), dict)
+                    else None
+                )
+                if archive_warning and isinstance(item.get("project_asset"), dict):
+                    item["project_asset"]["completed_todo_archive_warning"] = archive_warning
                 item["quota"] = quota_status(
                     goal,
                     waiting_on=str(item.get("waiting_on") or ""),
@@ -3222,6 +3367,19 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"requires_agent_todo={backlog_warning.get('requires_agent_todo')} "
                     f"evidence_count={backlog_warning.get('evidence_count')} "
                     f"source_sections={_markdown_scalar(','.join(backlog_warning.get('source_sections') or []))}"
+                )
+            archive_warning = (
+                project_asset.get("completed_todo_archive_warning")
+                if isinstance(project_asset.get("completed_todo_archive_warning"), dict)
+                else {}
+            )
+            if archive_warning:
+                lines.append(
+                    "    - completed_todo_archive_warning: "
+                    f"requires_archive={archive_warning.get('requires_archive')} "
+                    f"active_done={archive_warning.get('active_done_count')} "
+                    f"max_active_done={archive_warning.get('max_active_done_count')} "
+                    f"archive_section={_markdown_scalar(archive_warning.get('archive_section') or '')}"
                 )
             interface_budget_cadence = (
                 project_asset.get("interface_budget_cadence")

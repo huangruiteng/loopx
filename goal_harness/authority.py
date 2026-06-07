@@ -1,7 +1,31 @@
 from __future__ import annotations
 
+import copy
+import hashlib
+import json
+import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+
+
+AUTHORITY_SOURCE_REGISTRATION_VERSION = "authority_source_registration_v0"
+AUTHORITY_SOURCE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
+AUTHORITY_SOURCE_BOUNDARIES = {"public", "local_private", "private_redacted"}
+PRIVATE_TEXT_PATTERNS = (
+    re.compile(r"/" + r"Users/"),
+    re.compile(r"/" + r"ext_data/"),
+    re.compile("la" + "rk" + "office", re.I),
+    re.compile("docs" + r"\." + "internal", re.I),
+    re.compile(r"\bt-20\d{12}-[a-z0-9]+\b"),
+    re.compile(r"\b" + "Bear" + r"er\b", re.I),
+    re.compile(r"\b" + "Author" + r"ization\b", re.I),
+    re.compile(r"\b" + "tok" + r"en\s*=", re.I),
+    re.compile(r"\b" + "pass" + r"word\b", re.I),
+    re.compile(r"\b" + "sec" + r"ret\b", re.I),
+)
 
 AUTHORITY_REGISTRY_SUMMARY_FIELDS = (
     "declared",
@@ -21,6 +45,304 @@ AUTHORITY_REGISTRY_SUMMARY_FIELDS = (
     "deprecated_source_count",
     "conflict_risk",
 )
+
+
+def now_local() -> str:
+    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as f:
+        payload = json.load(f)
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must contain a JSON object")
+    return payload
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp_path.replace(path)
+
+
+def validate_authority_source_id(source_id: str) -> str:
+    text = source_id.strip()
+    if not AUTHORITY_SOURCE_ID_RE.match(text):
+        raise ValueError(
+            "source_id must start with an alphanumeric character and contain only "
+            "letters, numbers, '.', '_' or '-'"
+        )
+    return text
+
+
+def source_ref_kind(source_ref: str | None) -> str | None:
+    if not source_ref:
+        return None
+    parsed = urlparse(source_ref)
+    if parsed.scheme in {"http", "https"}:
+        return "url"
+    if parsed.scheme == "file":
+        return "file_url"
+    if source_ref.startswith("/") or source_ref.startswith("~"):
+        return "local_path"
+    return "opaque_ref"
+
+
+def source_ref_digest(source_ref: str | None) -> str | None:
+    if not source_ref:
+        return None
+    return hashlib.sha256(source_ref.encode("utf-8")).hexdigest()
+
+
+def public_safe_optional(label: str, value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    validate_public_safe_text(label, text)
+    return text
+
+
+def validate_public_safe_text(label: str, value: str | None) -> None:
+    if not value:
+        return
+    for pattern in PRIVATE_TEXT_PATTERNS:
+        if pattern.search(value):
+            raise ValueError(f"{label} contains a private-looking value; keep raw evidence in private payloads")
+
+
+def find_goal_index(registry: dict[str, Any], goal_id: str) -> int:
+    goals = registry.get("goals")
+    if not isinstance(goals, list):
+        raise ValueError("registry goals must be a list")
+    for index, goal in enumerate(goals):
+        if isinstance(goal, dict) and str(goal.get("id") or "") == goal_id:
+            return index
+    raise ValueError(f"goal id not found in registry: {goal_id}")
+
+
+def normalize_project_materials(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return {str(key): item for key, item in value.items() if isinstance(item, dict)}
+    if isinstance(value, list):
+        result: dict[str, Any] = {}
+        for index, item in enumerate(value):
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id") or item.get("source_id") or f"source_{index + 1}")
+            result[item_id] = dict(item)
+        return result
+    return {}
+
+
+def normalize_topic_authority(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    return {}
+
+
+def compact_registered_authority_source(
+    *,
+    source_id: str,
+    source_ref: str | None,
+    source_kind: str,
+    role: str,
+    freshness: str,
+    owner_status: str | None,
+    gate_status: str | None,
+    boundary: str,
+    revision: str | None,
+    conflict_rule: str | None,
+    registered_at: str,
+) -> dict[str, Any]:
+    if boundary not in AUTHORITY_SOURCE_BOUNDARIES:
+        raise ValueError(f"boundary must be one of: {', '.join(sorted(AUTHORITY_SOURCE_BOUNDARIES))}")
+    source_id = validate_authority_source_id(source_id)
+    source_kind = public_safe_optional("source_kind", source_kind) or ""
+    role = public_safe_optional("role", role) or ""
+    freshness = public_safe_optional("freshness", freshness) or ""
+    if not source_kind:
+        raise ValueError("source_kind is required")
+    if not role:
+        raise ValueError("role is required")
+    if not freshness:
+        raise ValueError("freshness is required")
+
+    entry: dict[str, Any] = {
+        "schema_version": AUTHORITY_SOURCE_REGISTRATION_VERSION,
+        "id": source_id,
+        "role": role,
+        "source_kind": source_kind,
+        "freshness": freshness,
+        "boundary": boundary,
+        "source_ref_redacted": bool(source_ref),
+        "registered_at": registered_at,
+    }
+    ref_kind = source_ref_kind(source_ref)
+    ref_digest = source_ref_digest(source_ref)
+    if ref_kind:
+        entry["source_ref_kind"] = ref_kind
+    if ref_digest:
+        entry["source_ref_sha256"] = ref_digest
+    for key, value in (
+        ("owner_status", public_safe_optional("owner_status", owner_status)),
+        ("gate_status", public_safe_optional("gate_status", gate_status)),
+        ("revision", public_safe_optional("revision", revision)),
+        ("conflict_rule", public_safe_optional("conflict_rule", conflict_rule)),
+    ):
+        if value:
+            entry[key] = value
+    return entry
+
+
+def render_authority_source_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# Goal Harness Authority Source Registration",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- dry_run: `{payload.get('dry_run')}`",
+        f"- written: `{payload.get('written')}`",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- source_id: `{payload.get('source_id')}`",
+    ]
+    if payload.get("error"):
+        lines.append(f"- error: {payload.get('error')}")
+        return "\n".join(lines)
+    entry = payload.get("entry") if isinstance(payload.get("entry"), dict) else {}
+    lines.extend(
+        [
+            f"- registry: `{payload.get('registry')}`",
+            f"- source_ref_redacted: `{entry.get('source_ref_redacted')}`",
+            f"- source_ref_kind: `{entry.get('source_ref_kind')}`",
+            f"- boundary: `{entry.get('boundary')}`",
+            f"- freshness: `{entry.get('freshness')}`",
+            f"- owner_status: `{entry.get('owner_status')}`",
+            f"- gate_status: `{entry.get('gate_status')}`",
+            f"- authority_registry_path: `{payload.get('authority_registry_path')}`",
+            f"- project_material_count: `{payload.get('authority_registry_summary', {}).get('project_material_count') if isinstance(payload.get('authority_registry_summary'), dict) else None}`",
+            f"- global_sync_wrote: `{payload.get('global_sync', {}).get('wrote') if isinstance(payload.get('global_sync'), dict) else None}`",
+            "",
+            "## Write Effect",
+            str(payload.get("write_effect") or ""),
+        ]
+    )
+    return "\n".join(lines)
+
+
+def register_authority_source(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    source_id: str,
+    source_ref: str | None,
+    source_kind: str,
+    role: str,
+    freshness: str,
+    owner_status: str | None,
+    gate_status: str | None,
+    boundary: str,
+    revision: str | None,
+    conflict_rule: str | None,
+    topic: str | None,
+    dry_run: bool,
+) -> dict[str, Any]:
+    registry_path = registry_path.expanduser()
+    registry = read_json(registry_path)
+    goal_index = find_goal_index(registry, goal_id)
+    updated_registry = copy.deepcopy(registry)
+    goals = updated_registry.get("goals")
+    if not isinstance(goals, list) or not isinstance(goals[goal_index], dict):
+        raise ValueError("registry goal entry must be an object")
+    goal = goals[goal_index]
+    registered_at = now_local()
+    entry = compact_registered_authority_source(
+        source_id=source_id,
+        source_ref=source_ref,
+        source_kind=source_kind,
+        role=role,
+        freshness=freshness,
+        owner_status=owner_status,
+        gate_status=gate_status,
+        boundary=boundary,
+        revision=revision,
+        conflict_rule=conflict_rule,
+        registered_at=registered_at,
+    )
+
+    authority_registry = goal.get("authority_registry") if isinstance(goal.get("authority_registry"), dict) else {}
+    authority_registry = dict(authority_registry)
+    materials = normalize_project_materials(authority_registry.get("project_materials"))
+    previous_entry = materials.get(entry["id"])
+    materials[str(entry["id"])] = dict(entry)
+    authority_registry["project_materials"] = materials
+    authority_registry.setdefault("read_status", "registered")
+    if topic:
+        topic_text = public_safe_optional("topic", topic)
+        if topic_text:
+            topics = normalize_topic_authority(authority_registry.get("topic_authority"))
+            topics[topic_text] = str(entry["id"])
+            authority_registry["topic_authority"] = topics
+    goal["authority_registry"] = authority_registry
+
+    authority_sources = goal.get("authority_sources")
+    if not isinstance(authority_sources, list):
+        authority_sources = []
+    compact_source = {
+        key: entry[key]
+        for key in (
+            "schema_version",
+            "id",
+            "role",
+            "source_kind",
+            "freshness",
+            "boundary",
+            "source_ref_kind",
+            "source_ref_sha256",
+            "source_ref_redacted",
+            "owner_status",
+            "gate_status",
+            "revision",
+            "conflict_rule",
+            "registered_at",
+        )
+        if key in entry
+    }
+    authority_sources = [
+        item
+        for item in authority_sources
+        if not (isinstance(item, dict) and str(item.get("id") or item.get("source_id") or "") == entry["id"])
+    ]
+    authority_sources.append(compact_source)
+    goal["authority_sources"] = authority_sources
+
+    updated_registry["updated_at"] = registered_at
+    summary = compact_authority_registry(goal, project=Path(str(goal.get("repo"))).expanduser() if goal.get("repo") else None)
+    summary.pop("default_entries", None)
+    if not dry_run:
+        write_json(registry_path, updated_registry)
+
+    action = "would update" if dry_run else "updated"
+    write_effect = (
+        f"{action} goal `{goal_id}` authority_registry.project_materials[{entry['id']}] "
+        "with a redacted source reference digest; raw source_ref is not stored"
+    )
+    if previous_entry:
+        write_effect += "; previous entry with the same source_id is replaced"
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "written": not dry_run,
+        "registry": str(registry_path),
+        "goal_id": goal_id,
+        "source_id": entry["id"],
+        "entry": entry,
+        "authority_registry_path": "authority_registry.project_materials",
+        "authority_registry_summary": summary,
+        "write_effect": write_effect,
+        "raw_source_ref_stored": False,
+    }
 
 
 def _path_text(value: Any) -> str | None:

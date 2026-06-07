@@ -334,6 +334,99 @@ def stage_deferred_goal_summary(goal: dict[str, Any], state_file: Path | None) -
     }
 
 
+def managed_default_upgrade_target(goal: dict[str, Any]) -> dict[str, Any]:
+    installed = goal.get("installed_prompts") if isinstance(goal.get("installed_prompts"), dict) else {}
+    mode_summaries: list[dict[str, Any]] = []
+    statuses: set[str] = set()
+    policy_warning_count = 0
+    for mode, prompt_status in installed.items():
+        if not isinstance(prompt_status, dict):
+            continue
+        status = str(prompt_status.get("status") or "unknown")
+        statuses.add(status)
+        audit = (
+            prompt_status.get("prompt_policy_audit")
+            if isinstance(prompt_status.get("prompt_policy_audit"), dict)
+            else {}
+        )
+        warning_count = int(audit.get("warning_count") or 0)
+        policy_warning_count += warning_count
+        mode_summaries.append(
+            {
+                "mode": mode,
+                "status": status,
+                "requires_update": bool(prompt_status.get("requires_update")),
+                "automation_id": prompt_status.get("automation_id"),
+                "policy_warning_count": warning_count,
+            }
+        )
+
+    requires_update = bool(goal.get("requires_update"))
+    if requires_update:
+        action = "regenerate_installed_prompt"
+        if policy_warning_count:
+            reason = "installed prompt policy warnings must be cleared before default promotion"
+        elif "unknown" in statuses:
+            reason = "installed prompt is missing from the manifest"
+        elif "stale" in statuses:
+            reason = "installed prompt digest differs from the generated default"
+        else:
+            reason = "installed prompt requires refresh before default promotion"
+    elif "not_installed" in statuses:
+        action = "not_installed_noop"
+        reason = "heartbeat is explicitly not installed; default promotion must not install it"
+    elif "current" in statuses:
+        action = "current"
+        reason = "installed heartbeat prompt is already current"
+    else:
+        action = "noop"
+        reason = "no installed heartbeat work is required"
+
+    return {
+        "goal_id": goal.get("goal_id"),
+        "action": action,
+        "requires_update": requires_update,
+        "reason": reason,
+        "prompt_modes": mode_summaries,
+    }
+
+
+def build_default_upgrade_propagation(
+    *,
+    summary: dict[str, Any],
+    managed: list[dict[str, Any]],
+    deferred: list[dict[str, Any]],
+    recommended_action: str,
+) -> dict[str, Any]:
+    managed_targets = [managed_default_upgrade_target(goal) for goal in managed]
+    stage_deferred_targets = [
+        {
+            "goal_id": goal.get("goal_id"),
+            "action": "skip_stage_deferred",
+            "requires_update": False,
+            "deferred_reason": goal.get("deferred_reason"),
+            "recommended_action": goal.get("recommended_action"),
+        }
+        for goal in deferred
+    ]
+    return {
+        "schema_version": "default_upgrade_propagation_v0",
+        "ready_for_default_promotion": summary.get("ready_for_default_promotion"),
+        "managed_target_count": len(managed_targets),
+        "deferred_target_count": len(stage_deferred_targets),
+        "update_count": sum(1 for target in managed_targets if target["requires_update"]),
+        "current_count": summary.get("current_prompt_count"),
+        "not_installed_noop_count": sum(1 for target in managed_targets if target["action"] == "not_installed_noop"),
+        "stale_count": summary.get("stale_prompt_count"),
+        "unknown_count": summary.get("unknown_prompt_count"),
+        "policy_warning_count": summary.get("installed_prompt_policy_warning_count"),
+        "deferred_install_count": 0,
+        "managed_targets": managed_targets,
+        "stage_deferred_targets": stage_deferred_targets,
+        "recommended_action": recommended_action,
+    }
+
+
 def build_upgrade_plan(
     *,
     registry_path: Path,
@@ -477,6 +570,28 @@ def build_upgrade_plan(
         recommended_action = "selected heartbeats are stage-deferred; do not install until the operator authorizes that stage"
     else:
         recommended_action = "no registry-managed heartbeats matched the upgrade plan selection"
+    summary = {
+        "managed_goal_count": len(managed),
+        "current_prompt_count": current,
+        "stale_prompt_count": stale,
+        "unknown_prompt_count": unknown,
+        "not_installed_prompt_count": not_installed,
+        "stage_deferred_goal_count": len(deferred),
+        "ready_for_default_promotion": ready,
+        "installed_manifest_available": manifest.get("available"),
+        "installed_manifest_source": manifest.get("source"),
+        "installed_manifest_entry_count": len(manifest_entries),
+        "installed_manifest_task_body_count": manifest_task_body_count,
+        "installed_manifest_has_task_body": manifest_task_body_count > 0,
+        "installed_prompt_policy_warning_count": policy_warning_count,
+        "installed_prompt_policy_warning_prompt_count": policy_warning_prompt_count,
+    }
+    default_upgrade_propagation = build_default_upgrade_propagation(
+        summary=summary,
+        managed=managed,
+        deferred=deferred,
+        recommended_action=recommended_action,
+    )
     return {
         "ok": True,
         "mode": "upgrade-plan",
@@ -485,24 +600,10 @@ def build_upgrade_plan(
         "cli_bin": cli_bin,
         "prompt_modes": list(selected_modes),
         "installed_manifest": manifest,
-        "summary": {
-            "managed_goal_count": len(managed),
-            "current_prompt_count": current,
-            "stale_prompt_count": stale,
-            "unknown_prompt_count": unknown,
-            "not_installed_prompt_count": not_installed,
-            "stage_deferred_goal_count": len(deferred),
-            "ready_for_default_promotion": ready,
-            "installed_manifest_available": manifest.get("available"),
-            "installed_manifest_source": manifest.get("source"),
-            "installed_manifest_entry_count": len(manifest_entries),
-            "installed_manifest_task_body_count": manifest_task_body_count,
-            "installed_manifest_has_task_body": manifest_task_body_count > 0,
-            "installed_prompt_policy_warning_count": policy_warning_count,
-            "installed_prompt_policy_warning_prompt_count": policy_warning_prompt_count,
-        },
+        "summary": summary,
         "managed_heartbeats": managed,
         "stage_deferred_heartbeats": deferred,
+        "default_upgrade_propagation": default_upgrade_propagation,
         "recommended_action": recommended_action,
     }
 
@@ -542,6 +643,47 @@ def render_upgrade_plan_markdown(payload: dict[str, Any]) -> str:
             f"- reason: `{manifest.get('reason')}`",
         ]
     )
+    propagation = (
+        payload.get("default_upgrade_propagation")
+        if isinstance(payload.get("default_upgrade_propagation"), dict)
+        else {}
+    )
+    lines.extend(
+        [
+            "",
+            "## Default Upgrade Propagation",
+            "",
+            f"- schema_version: `{propagation.get('schema_version')}`",
+            f"- ready_for_default_promotion: `{propagation.get('ready_for_default_promotion')}`",
+            f"- managed_target_count: `{propagation.get('managed_target_count')}`",
+            f"- deferred_target_count: `{propagation.get('deferred_target_count')}`",
+            f"- update_count: `{propagation.get('update_count')}`",
+            f"- deferred_install_count: `{propagation.get('deferred_install_count')}`",
+            f"- recommended_action: `{propagation.get('recommended_action')}`",
+        ]
+    )
+    managed_targets = (
+        propagation.get("managed_targets") if isinstance(propagation.get("managed_targets"), list) else []
+    )
+    for target in managed_targets:
+        if not isinstance(target, dict):
+            continue
+        lines.append(
+            f"- managed `{target.get('goal_id')}` action=`{target.get('action')}` "
+            f"requires_update=`{target.get('requires_update')}` reason=`{target.get('reason')}`"
+        )
+    deferred_targets = (
+        propagation.get("stage_deferred_targets")
+        if isinstance(propagation.get("stage_deferred_targets"), list)
+        else []
+    )
+    for target in deferred_targets:
+        if not isinstance(target, dict):
+            continue
+        lines.append(
+            f"- deferred `{target.get('goal_id')}` action=`{target.get('action')}` "
+            f"requires_update=`{target.get('requires_update')}`"
+        )
     lines.extend(["", "## Managed Heartbeats", ""])
     for goal in payload.get("managed_heartbeats") or []:
         installed = goal.get("installed_prompts") if isinstance(goal.get("installed_prompts"), dict) else {}

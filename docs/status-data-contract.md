@@ -616,8 +616,8 @@ Item fields:
 - `severity`: `high`, `action`, or `watch`.
 - `recommended_action`: exactly one next action.
 - `project_asset`: a compact control-plane projection derived from the same
-  item. It must carry `owner`, `gate`, `next_action`, and `stop_condition`, and
-  may include compact `user_todos`, `agent_todos`, `quota`, and
+  item. It must carry `owner`, `gate`, `support_mode`, `next_action`, and
+  `stop_condition`, and may include compact `user_todos`, `agent_todos`, `quota`, and
   `latest_validation` summaries. Registry-backed project assets also include
   `execution_profile`, the project-level delivery floor created by
   `goal-harness connect`, and `orchestration`, the compact projection of
@@ -635,10 +635,17 @@ Item fields:
   counts for observation only; it is not a lock service or write arbiter.
   This is the first-screen project asset surface for
   agents and dashboards; it lets consumers avoid reconstructing owner, gate,
-  next action, stop condition, todo counts, compute state, and latest validation
-  from scattered fields. It also keeps delivery-floor and
+  support mode, next action, stop condition, todo counts, compute state, and
+  latest validation from scattered fields. It also keeps delivery-floor and
   orchestration policy close to the project asset instead of forcing agents to
   infer them from history.
+  `support_mode` is a compact product-mode label: `read_only_observer`,
+  `decision_support`, `reward_capture`, or `selective_assist`. It describes the
+  current operator/agent relationship; it is not a permission bit and does not
+  override `gate`, `quota`, or `agent_command`. When an approved
+  `agent_command` is present and public-safe, `project_asset.next_safe_command`
+  may repeat that command so first-screen dashboards and handoff packets can
+  show the next executable local step without scanning top-level queue fields.
   Markdown renderers should
   include the first unfinished user and agent todo here when available, so
   hot-path readers do not need to scan the detailed todo sections. The richer
@@ -704,6 +711,16 @@ Item fields:
   not a user approval signal. Status, quota, and review-packet projections
   should preserve up to three unfinished agent todo items so short heartbeats do
   not confuse "first visible item" with the whole backlog.
+- Todo summaries use `schema_version=todo_summary_v0`; parsed todo items use
+  `schema_version=todo_item_v0`. The source active state can remain ordinary
+  Markdown checkboxes, but status/quota/dashboard consumers should prefer the
+  structured item fields when present: `todo_id`, `role`, `status`,
+  `priority`, `title`, `archive_state`, `source_section`, `index`, and `text`.
+  `todo_id` is a short parser-derived identifier for the current item text and
+  section, suitable for local UI selection and smoke assertions, not a durable
+  cross-rewrite database primary key. Optional future fields such as
+  `created_at`, `completed_at`, dependencies, or evidence links should extend
+  this item shape rather than inventing another todo surface.
 - `dependency_blockers`: optional compact summary of unfinished user todos from
   other current attention-queue goals. This lets dashboards and heartbeat
   dispatchers show sibling/project dependency gates separately from the current
@@ -829,6 +846,15 @@ checkboxes before heartbeat scheduling relies on those narrative sections. The
 warning is a checklist hygiene signal only: it does not change quota eligibility,
 grant write or production permission, or make a quiet no-op valid when
 `execution_obligation.must_attempt_work=true`.
+When the payload includes `completed_todo_archive_warning`, the active
+`Agent Todo` checklist has accumulated too many completed entries for the
+dashboard/status surface to keep current open work visible. Executors should
+move older completed entries into a dedicated `Completed Work Archive` section
+and keep only current open work plus a small recent-done tail under active
+`Agent Todo`. Archive sections are intentionally ignored by active todo parsing.
+This warning is a checklist hygiene signal only: it does not change quota
+eligibility, grant write or production permission, or supersede open user/agent
+todo blockers.
 The payload also includes `execution_obligation`, which is the stronger worker
 contract. `heartbeat_recommendation.notify` is only a user-facing notification
 policy. It must not be interpreted as an execution gate. If

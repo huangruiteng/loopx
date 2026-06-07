@@ -223,10 +223,19 @@ def main() -> None:
             assert status == 409, stale
             assert stale["appended"] is False, stale
 
+            status, forbidden_preview = request_json(
+                "POST",
+                f"{base_url}/reward/dry-run",
+                reward_payload,
+                origin="http://127.0.0.1:5173",
+            )
+            assert status == 200, forbidden_preview
+            assert forbidden_preview["preview_id"], forbidden_preview
+
             status, forbidden = request_json(
                 "POST",
                 f"{base_url}/reward/append",
-                {**reward_payload, "preview_id": preview["preview_id"], "write_active_state_summary": True},
+                {**reward_payload, "preview_id": forbidden_preview["preview_id"], "write_active_state_summary": True},
                 origin="https://example.com",
             )
             assert status == 403, forbidden
