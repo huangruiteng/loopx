@@ -94,6 +94,11 @@ work still belongs in the existing code, examples, and contract documents:
   fixture-only decision to keep the no-submit approval packet research/docs-only
   until an agent consumer, approved no-submit setup check, passive wrapper, or
   repeated re-derivation justifies a compact hot-path projection.
+- `benchmark-history-reconstructability-v0.md`: restartability fixture proving
+  compact benchmark run history can reconstruct official-score,
+  control-plane-score, claim-boundary, readiness, authorization,
+  replay-decision, next-run-mode, and stop-condition state without raw logs,
+  private traces, local artifact paths, chat history, or extra hot-path keys.
 
 ## Relationship To Goal Harness Work
 
