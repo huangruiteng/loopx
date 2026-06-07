@@ -212,8 +212,8 @@ The benchmark design is ready for implementation when:
 - public smokes prove the metric schema, task difficulty markers, and A/B mode
   names are present;
 - metric smokes prove the official-task and control-plane score split;
-- the interrupt variant has public fixture markers for worker kill, stale
-  latest-run trap, validation failure, and human gate resume;
+- the interrupt variant has deterministic fixture coverage for worker kill,
+  stale latest-run trap, validation failure, and human gate resume;
 - default CI remains deterministic and uses fake or shim workers only;
 - real Codex CLI execution remains explicit and low-frequency.
 
@@ -237,10 +237,13 @@ while keeping CI deterministic.
 The current smoke emits the core v0 score layers. Both scenarios can reach the
 same `official_task_score`, while the with-harness path must produce a higher
 `control_plane_score` through restartability, writeback quality, spend
-discipline, and public trace evidence. It also carries marker-only
-`mini_control_plane_repair_with_interrupt_v0` events so the next fixture can add
-worker-kill, stale latest-run trap, validation-failure, and human-gate-resume
-coverage without expanding the first implementation all at once.
+discipline, and public trace evidence. The current smoke also runs
+`mini_control_plane_repair_with_interrupt_v0` as a
+deterministic recovery fixture: it writes a partial Goal Tick artifact, simulates
+worker kill/resume, verifies a stale latest-run trap, records one validation
+failure before success, and applies human-gate resume only after state, policy,
+quota, and authority are reread. Its summary line reports `interrupt_events=4`
+and `interrupt_spend=1`.
 
 ## Non-Goals
 

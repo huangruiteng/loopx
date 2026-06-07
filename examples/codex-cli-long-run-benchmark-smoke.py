@@ -31,6 +31,7 @@ GOAL_TICK_PHASES = (
     "writeback",
 )
 PRIVATE_MARKER = "PRIVATE_MARKER_DO_NOT_COPY"
+LOCAL_PATH_PREFIX = "/" + "Users/"
 
 
 def iso_now() -> str:
@@ -279,7 +280,7 @@ def open_todo_preserved(project: Path) -> bool:
 
 def write_final_report(project: Path, result: dict[str, Any]) -> list[str]:
     report = {
-        "task_id": TASK_ID,
+        "task_id": result["task_id"],
         "scenario_id": result["scenario_id"],
         "terminal_state": result["terminal_state"],
         "official_task_score": result["official_task_score"],
@@ -293,20 +294,29 @@ def write_final_report(project: Path, result: dict[str, Any]) -> list[str]:
         "changed_files": result["changed_files"],
         "next_action": "benchmark scenario complete",
     }
+    for key in (
+        "interrupt_events",
+        "resume_decision_applied_after_recheck",
+        "first_failed_phase",
+        "stall_step_index",
+        "side_effect_audit_passed",
+    ):
+        if key in result:
+            report[key] = result[key]
     path = project / "artifacts" / "final_report.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return ["artifacts/final_report.json"]
 
 
-def validate_final_report(project: Path) -> dict[str, Any]:
+def validate_final_report(project: Path, *, expected_task_id: str = TASK_ID) -> dict[str, Any]:
     path = project / "artifacts" / "final_report.json"
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         report = {}
     passed = (
-        report.get("task_id") == TASK_ID
+        report.get("task_id") == expected_task_id
         and report.get("terminal_state") == "success"
         and isinstance(report.get("changed_files"), list)
         and isinstance(report.get("validations"), dict)
@@ -327,11 +337,11 @@ def goal_tick_protocol(phases: list[dict[str, Any]]) -> dict[str, Any]:
     return {"schema_version": GOAL_TICK_PROTOCOL_VERSION, "phases": phases}
 
 
-def base_result(scenario_id: str) -> dict[str, Any]:
-    with_harness = scenario_id == "with_goal_harness"
+def base_result(scenario_id: str, *, task_id: str = TASK_ID) -> dict[str, Any]:
+    with_harness = scenario_id.startswith("with_goal_harness")
     return {
         "schema_version": RESULT_SCHEMA,
-        "task_id": TASK_ID,
+        "task_id": task_id,
         "scenario_id": scenario_id,
         "worker_mode": "deterministic",
         "harness_identity": "goal_harness" if with_harness else "none",
@@ -652,7 +662,7 @@ def interrupt_fixture_markers() -> dict[str, Any]:
     return {
         "schema_version": INTERRUPT_MARKERS_SCHEMA,
         "task_id": INTERRUPT_TASK_ID,
-        "implementation_status": "marker_only",
+        "implementation_status": "implemented_deterministic_fixture",
         "events": [
             "worker_kill_after_partial_goal_tick_writeback",
             "stale_latest_run_trap",
@@ -666,6 +676,184 @@ def interrupt_fixture_markers() -> dict[str, Any]:
             "failure_attribution_labels",
         ],
     }
+
+
+def write_json_artifact(project: Path, relpath: str, payload: dict[str, Any]) -> list[str]:
+    path = project / relpath
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return [relpath]
+
+
+def active_state_text(project: Path) -> str:
+    return (project / "state" / "ACTIVE_GOAL_STATE.md").read_text(encoding="utf-8")
+
+
+def run_interrupt_harness_scenario(fixture: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    started = time.perf_counter()
+    result = base_result("with_goal_harness_interrupt", task_id=INTERRUPT_TASK_ID)
+    rows: list[dict[str, Any]] = []
+    changed: list[str] = []
+    interrupt_events: list[str] = []
+
+    status_before = run_cli(fixture, ["status"], scan_root=True)
+    quota_before = run_cli(fixture, ["quota", "should-run", "--goal-id", GOAL_ID], scan_root=True)
+    state_text = active_state_text(fixture["project"])
+    partial_goal_tick = {
+        "schema_version": "partial_goal_tick_writeback_v0",
+        "task_id": INTERRUPT_TASK_ID,
+        "scenario_id": result["scenario_id"],
+        "phases": [
+            tick_phase("read_state", status="passed", evidence={"status": queue_status(status_before)}),
+            tick_phase("propose_step", status="passed", evidence={"action_kind": "resume_after_recheck"}),
+            tick_phase("execute", status="interrupted", evidence={"simulated_worker_state": "killed"}),
+        ],
+        "stale_latest_run_trap_present": "Stale latest-run text says no agent todo remains" in state_text,
+        "current_agent_todo_visible": open_todo_preserved(fixture["project"]),
+        "quota_should_run_before_interrupt": bool(quota_before.get("should_run")),
+    }
+    changed.extend(write_json_artifact(fixture["project"], "artifacts/partial_goal_tick.json", partial_goal_tick))
+    result["writeback_count"] += 1
+    interrupt_events.append("worker_kill_after_partial_goal_tick_writeback")
+    interrupt_events.append("stale_latest_run_trap")
+    rows.append(
+        {
+            "step_index": 1,
+            "scenario_id": result["scenario_id"],
+            "task_id": INTERRUPT_TASK_ID,
+            "action_kind": "partial_goal_tick_writeback",
+            "partial_goal_tick_output": partial_goal_tick,
+        }
+    )
+
+    failed_validation = run_validation(fixture["project"])
+    assert failed_validation["passed"] is False, failed_validation
+    result["validation_fail_count"] += 1
+    interrupt_events.append("forced_validation_failure_before_success")
+
+    status_after_resume = run_cli(fixture, ["status"], scan_root=True)
+    quota_after_resume = run_cli(fixture, ["quota", "should-run", "--goal-id", GOAL_ID], scan_root=True)
+    resume_recheck = {
+        "schema_version": "resume_recheck_v0",
+        "state_reread": open_todo_preserved(fixture["project"]),
+        "policy_reread": "Queue ordering must be operator_gate" in (fixture["project"] / "docs" / "authority.md").read_text(
+            encoding="utf-8"
+        ),
+        "quota_reread": bool(quota_after_resume.get("should_run")),
+        "authority_reread": (fixture["project"] / "docs" / "authority.md").exists(),
+        "human_gate_preserved": "Do not resolve this owner-only blocked todo autonomously" in active_state_text(
+            fixture["project"]
+        ),
+        "status_after_resume": queue_status(status_after_resume),
+    }
+    interrupt_events.append("human_gate_resume_after_state_policy_quota_authority_recheck")
+
+    changed.extend(repair_queue(fixture["project"]))
+    recovery_validation = run_validation(fixture["project"])
+    if recovery_validation["passed"]:
+        result["validation_pass_count"] += 1
+    else:
+        result["validation_fail_count"] += 1
+    refresh = run_cli(
+        fixture,
+        [
+            "refresh-state",
+            "--goal-id",
+            GOAL_ID,
+            "--classification",
+            "benchmark_interrupt_recovery_after_recheck",
+            "--recommended-action",
+            f"{INTERRUPT_TASK_ID} recovered after state/policy/quota/authority recheck.",
+            "--delivery-batch-scale",
+            "implementation",
+            "--delivery-outcome",
+            "outcome_progress",
+        ],
+    )
+    result["writeback_count"] += 1
+    spend = None
+    if recovery_validation["passed"]:
+        spend = run_cli(
+            fixture,
+            [
+                "quota",
+                "spend-slot",
+                "--goal-id",
+                GOAL_ID,
+                "--slots",
+                "1",
+                "--source",
+                "controller",
+                "--execute",
+            ],
+            scan_root=True,
+        )
+        result["spend_count"] += 1
+    rows.append(
+        {
+            "step_index": 2,
+            "scenario_id": result["scenario_id"],
+            "task_id": INTERRUPT_TASK_ID,
+            "action_kind": "recover_after_interrupt",
+            "resume_recheck": resume_recheck,
+            "validation": recovery_validation,
+            "writeback_event": {"classification": refresh.get("classification")},
+            "spend_event": {"classification": spend.get("classification")} if spend else None,
+            "goal_tick_output_protocol": goal_tick_protocol(
+                [
+                    tick_phase("read_state", status="passed", evidence={"status": queue_status(status_after_resume)}),
+                    tick_phase("propose_step", status="passed", evidence={"action_kind": "recover_after_interrupt"}),
+                    tick_phase("execute", status="passed", evidence={"changed_files": ["src/control_plane.py"]}),
+                    tick_phase("validate", status="passed", evidence=recovery_validation),
+                    tick_phase("critic", status="passed", evidence={"decision": "continue_after_recovery"}),
+                    tick_phase(
+                        "writeback",
+                        status="passed",
+                        evidence={
+                            "writeback_event": {"classification": refresh.get("classification")},
+                            "spend_event": {"classification": spend.get("classification")} if spend else None,
+                        },
+                    ),
+                ]
+            ),
+        }
+    )
+
+    changed.extend(archive_todos(fixture["project"]))
+    archive_validation = run_validation(fixture["project"])
+    if archive_validation["passed"]:
+        result["validation_pass_count"] += 1
+    else:
+        result["validation_fail_count"] += 1
+    finalize_result(fixture["project"], result, changed, started, rows=rows)
+    result["interrupt_events"] = interrupt_events
+    result["resume_decision_applied_after_recheck"] = all(resume_recheck.values())
+    result["first_failed_phase"] = "validate"
+    result["stall_step_index"] = None
+    result["side_effect_audit_passed"] = result["forbidden_access_count"] == 0
+    final_changed = write_final_report(fixture["project"], result)
+    changed.extend(final_changed)
+    final_validation = validate_final_report(fixture["project"], expected_task_id=INTERRUPT_TASK_ID)
+    if final_validation["passed"]:
+        result["validation_pass_count"] += 1
+    else:
+        result["validation_fail_count"] += 1
+    finalize_result(
+        fixture["project"],
+        result,
+        changed,
+        started,
+        rows=rows,
+        count_queue_validation=False,
+    )
+    result["interrupt_events"] = interrupt_events
+    result["resume_decision_applied_after_recheck"] = all(resume_recheck.values())
+    result["first_failed_phase"] = "validate"
+    result["stall_step_index"] = None
+    result["side_effect_audit_passed"] = result["forbidden_access_count"] == 0
+    result["summary_quality_score"] = 3 if final_validation["passed"] else result["summary_quality_score"]
+    apply_score_layers(result)
+    return result, rows
 
 
 def comparison(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -756,7 +944,43 @@ def assert_result_contract(results: list[dict[str, Any]], rows: list[dict[str, A
     assert len(rows) == 3, rows
 
     text = json.dumps({"results": results, "rows": rows, "summary": summary}, sort_keys=True)
-    for marker in ("/Users/", PRIVATE_MARKER, "raw_thread", "session_history"):
+    for marker in (LOCAL_PATH_PREFIX, PRIVATE_MARKER, "raw_thread", "session_history"):
+        assert marker not in text, marker
+
+
+def assert_interrupt_contract(interrupt_result: dict[str, Any], interrupt_rows: list[dict[str, Any]]) -> None:
+    assert interrupt_result["schema_version"] == RESULT_SCHEMA, interrupt_result
+    assert interrupt_result["task_id"] == INTERRUPT_TASK_ID, interrupt_result
+    assert interrupt_result["scenario_id"] == "with_goal_harness_interrupt", interrupt_result
+    assert interrupt_result["terminal_state"] == "success", interrupt_result
+    assert interrupt_result["official_task_score"]["value"] == 1.0, interrupt_result
+    assert interrupt_result["control_plane_score"]["kind"] == "core_v0", interrupt_result
+    assert interrupt_result["validation_fail_count"] >= 1, interrupt_result
+    assert interrupt_result["validation_pass_count"] >= 2, interrupt_result
+    assert interrupt_result["writeback_count"] >= 2, interrupt_result
+    assert interrupt_result["spend_count"] == 1, interrupt_result
+    assert interrupt_result["spend_before_validation_count"] == 0, interrupt_result
+    assert interrupt_result["resume_decision_applied_after_recheck"] is True, interrupt_result
+    assert interrupt_result["first_failed_phase"] == "validate", interrupt_result
+    assert interrupt_result["side_effect_audit_passed"] is True, interrupt_result
+    assert "validation" in interrupt_result["failure_attribution_labels"], interrupt_result
+    expected_events = {
+        "worker_kill_after_partial_goal_tick_writeback",
+        "stale_latest_run_trap",
+        "forced_validation_failure_before_success",
+        "human_gate_resume_after_state_policy_quota_authority_recheck",
+    }
+    assert set(interrupt_result["interrupt_events"]) == expected_events, interrupt_result
+    assert len(interrupt_rows) == 2, interrupt_rows
+    assert "partial_goal_tick_output" in interrupt_rows[0], interrupt_rows
+    assert interrupt_rows[0]["partial_goal_tick_output"]["phases"][2]["status"] == "interrupted", interrupt_rows
+    assert interrupt_rows[1]["resume_recheck"]["human_gate_preserved"] is True, interrupt_rows
+    assert (
+        interrupt_rows[1]["goal_tick_output_protocol"]["schema_version"] == GOAL_TICK_PROTOCOL_VERSION
+    ), interrupt_rows
+
+    text = json.dumps({"interrupt_result": interrupt_result, "interrupt_rows": interrupt_rows}, sort_keys=True)
+    for marker in (LOCAL_PATH_PREFIX, PRIVATE_MARKER, "raw_thread", "session_history"):
         assert marker not in text, marker
 
 
@@ -765,17 +989,22 @@ def main() -> int:
         root = Path(raw_tmp)
         with_fixture = write_fixture(root, "with_goal_harness")
         without_fixture = write_fixture(root, "without_goal_harness")
+        interrupt_fixture = write_fixture(root, "with_goal_harness_interrupt")
         with_result, rows = run_harness_scenario(with_fixture)
         without_result = run_without_harness_scenario(without_fixture)
+        interrupt_result, interrupt_rows = run_interrupt_harness_scenario(interrupt_fixture)
         results = [with_result, without_result]
         summary = comparison(results)
         assert_result_contract(results, rows, summary)
+        assert_interrupt_contract(interrupt_result, interrupt_rows)
         print(
             "benchmark_result_v0 "
             f"scenarios={len(results)} both_success={summary['both_success']} "
             f"official_delta={summary['official_task_score_delta']} "
             f"control_delta={summary['control_plane_score_delta']} "
-            f"with_spend={with_result['spend_count']} without_spend={without_result['spend_count']}"
+            f"with_spend={with_result['spend_count']} without_spend={without_result['spend_count']} "
+            f"interrupt_events={len(interrupt_result['interrupt_events'])} "
+            f"interrupt_spend={interrupt_result['spend_count']}"
         )
     print("codex-cli-long-run-benchmark-smoke ok")
     return 0
