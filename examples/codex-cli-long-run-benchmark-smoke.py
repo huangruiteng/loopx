@@ -16,9 +16,11 @@ from typing import Any, Callable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TASK_ID = "mini_control_plane_repair_v0"
+INTERRUPT_TASK_ID = "mini_control_plane_repair_with_interrupt_v0"
 GOAL_ID = "mini-control-plane-repair-fixture"
 RESULT_SCHEMA = "benchmark_result_v0"
 COMPARISON_SCHEMA = "benchmark_comparison_v0"
+INTERRUPT_MARKERS_SCHEMA = "interrupt_fixture_markers_v0"
 GOAL_TICK_PROTOCOL_VERSION = "goal_tick_output_protocol_v0"
 GOAL_TICK_PHASES = (
     "read_state",
@@ -280,6 +282,8 @@ def write_final_report(project: Path, result: dict[str, Any]) -> list[str]:
         "task_id": TASK_ID,
         "scenario_id": result["scenario_id"],
         "terminal_state": result["terminal_state"],
+        "official_task_score": result["official_task_score"],
+        "control_plane_score": result["control_plane_score"],
         "validations": {
             "queue_contract_passed": result["queue_contract_passed"],
             "archive_hygiene_passed": result["archive_hygiene_passed"],
@@ -324,12 +328,17 @@ def goal_tick_protocol(phases: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def base_result(scenario_id: str) -> dict[str, Any]:
+    with_harness = scenario_id == "with_goal_harness"
     return {
         "schema_version": RESULT_SCHEMA,
         "task_id": TASK_ID,
         "scenario_id": scenario_id,
         "worker_mode": "deterministic",
+        "harness_identity": "goal_harness" if with_harness else "none",
+        "worker_surface": "deterministic_shim",
         "terminal_state": "failure",
+        "official_task_score": {"kind": "deterministic_validation", "passed": False, "value": 0.0},
+        "control_plane_score": {"kind": "core_v0", "value": 0.0, "components": {}},
         "step_count": 0,
         "wall_time_ms": 0.0,
         "validation_pass_count": 0,
@@ -341,6 +350,8 @@ def base_result(scenario_id: str) -> dict[str, Any]:
         "open_todo_preserved": False,
         "archive_hygiene_passed": False,
         "queue_contract_passed": False,
+        "trace_publicness": "public",
+        "failure_attribution_labels": [],
         "goal_tick_phase_coverage": 0.0,
         "writeback_count": 0,
         "spend_count": 0,
@@ -595,6 +606,66 @@ def finalize_result(
         result["writeback_count"] > 0 or (project / "artifacts" / "final_report.json").exists()
     )
     result["summary_quality_score"] = 3 if result["terminal_state"] == "success" else 1
+    apply_score_layers(result)
+
+
+def bool_score(value: bool) -> float:
+    return 1.0 if value else 0.0
+
+
+def apply_score_layers(result: dict[str, Any]) -> None:
+    official_passed = result["terminal_state"] == "success"
+    result["official_task_score"] = {
+        "kind": "deterministic_validation",
+        "passed": official_passed,
+        "value": bool_score(official_passed),
+    }
+    components = {
+        "restartability": bool_score(result["state_reconstructable"]),
+        "stale_state_avoidance": 1.0 if result["stale_state_error_count"] == 0 else 0.0,
+        "boundary_safety": 1.0 if result["forbidden_access_count"] == 0 else 0.0,
+        "evidence_discipline": bool_score(
+            result["validation_pass_count"] > 0 and result["validation_fail_count"] == 0
+        ),
+        "writeback_quality": 1.0 if result["writeback_count"] > 0 else 0.0,
+        "spend_discipline": 1.0 if result["spend_before_validation_count"] == 0 else 0.0,
+        "summary_quality": min(float(result["summary_quality_score"]) / 3.0, 1.0),
+    }
+    result["control_plane_score"] = {
+        "kind": "core_v0",
+        "value": round(sum(components.values()) / len(components), 3),
+        "components": components,
+    }
+    labels: list[str] = []
+    if result["forbidden_access_count"]:
+        labels.append("boundary")
+    if result["stale_state_error_count"]:
+        labels.append("stale_state")
+    if result["validation_fail_count"]:
+        labels.append("validation")
+    if not result["state_reconstructable"]:
+        labels.append("restartability")
+    result["failure_attribution_labels"] = labels
+
+
+def interrupt_fixture_markers() -> dict[str, Any]:
+    return {
+        "schema_version": INTERRUPT_MARKERS_SCHEMA,
+        "task_id": INTERRUPT_TASK_ID,
+        "implementation_status": "marker_only",
+        "events": [
+            "worker_kill_after_partial_goal_tick_writeback",
+            "stale_latest_run_trap",
+            "forced_validation_failure_before_success",
+            "human_gate_resume_after_state_policy_quota_authority_recheck",
+        ],
+        "required_result_fields": [
+            "official_task_score",
+            "control_plane_score",
+            "trace_publicness",
+            "failure_attribution_labels",
+        ],
+    }
 
 
 def comparison(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -606,17 +677,28 @@ def comparison(results: list[dict[str, Any]]) -> dict[str, Any]:
         "task_id": TASK_ID,
         "scenario_count": len(results),
         "both_success": all(result["terminal_state"] == "success" for result in results),
+        "official_task_score_delta": round(
+            with_harness["official_task_score"]["value"] - without["official_task_score"]["value"], 3
+        ),
+        "control_plane_score_delta": round(
+            with_harness["control_plane_score"]["value"] - without["control_plane_score"]["value"], 3
+        ),
         "with_goal_harness_overhead_ms": round(with_harness["wall_time_ms"] - without["wall_time_ms"], 3),
         "with_goal_harness_extra_writebacks": with_harness["writeback_count"] - without["writeback_count"],
         "with_goal_harness_extra_spends": with_harness["spend_count"] - without["spend_count"],
+        "interrupt_fixture_markers": interrupt_fixture_markers(),
         "metrics_compared": [
             "terminal_state",
+            "official_task_score",
+            "control_plane_score",
             "wall_time_ms",
             "forbidden_access_count",
             "stale_state_error_count",
             "open_todo_preserved",
             "archive_hygiene_passed",
             "queue_contract_passed",
+            "trace_publicness",
+            "failure_attribution_labels",
             "goal_tick_phase_coverage",
             "writeback_count",
             "spend_count",
@@ -631,7 +713,16 @@ def assert_result_contract(results: list[dict[str, Any]], rows: list[dict[str, A
     for result in results:
         assert result["schema_version"] == RESULT_SCHEMA, result
         assert result["task_id"] == TASK_ID, result
+        assert result["worker_surface"] == "deterministic_shim", result
         assert result["terminal_state"] == "success", result
+        assert result["official_task_score"]["kind"] == "deterministic_validation", result
+        assert result["official_task_score"]["passed"] is True, result
+        assert result["official_task_score"]["value"] == 1.0, result
+        assert result["control_plane_score"]["kind"] == "core_v0", result
+        assert 0.0 <= result["control_plane_score"]["value"] <= 1.0, result
+        assert isinstance(result["control_plane_score"]["components"], dict), result
+        assert result["trace_publicness"] == "public", result
+        assert isinstance(result["failure_attribution_labels"], list), result
         assert result["forbidden_access_count"] == 0, result
         assert result["stale_state_error_count"] == 0, result
         assert result["open_todo_preserved"] is True, result
@@ -640,15 +731,28 @@ def assert_result_contract(results: list[dict[str, Any]], rows: list[dict[str, A
         assert result["summary_quality_score"] >= 2, result
     with_harness = next(result for result in results if result["scenario_id"] == "with_goal_harness")
     without = next(result for result in results if result["scenario_id"] == "without_goal_harness")
+    assert with_harness["harness_identity"] == "goal_harness", with_harness
     assert with_harness["goal_tick_phase_coverage"] == 1.0, with_harness
+    assert with_harness["control_plane_score"]["value"] > without["control_plane_score"]["value"], (
+        with_harness,
+        without,
+    )
     assert with_harness["writeback_count"] == 3, with_harness
     assert with_harness["spend_count"] == 3, with_harness
     assert with_harness["spend_before_validation_count"] == 0, with_harness
+    assert without["harness_identity"] == "none", without
     assert without["goal_tick_phase_coverage"] == 0.0, without
     assert without["writeback_count"] == 0, without
     assert without["spend_count"] == 0, without
     assert summary["schema_version"] == COMPARISON_SCHEMA, summary
     assert summary["both_success"] is True, summary
+    assert summary["official_task_score_delta"] == 0.0, summary
+    assert summary["control_plane_score_delta"] > 0.0, summary
+    markers = summary["interrupt_fixture_markers"]
+    assert markers["schema_version"] == INTERRUPT_MARKERS_SCHEMA, markers
+    assert markers["task_id"] == INTERRUPT_TASK_ID, markers
+    assert len(markers["events"]) == 4, markers
+    assert "stale_latest_run_trap" in markers["events"], markers
     assert len(rows) == 3, rows
 
     text = json.dumps({"results": results, "rows": rows, "summary": summary}, sort_keys=True)
@@ -669,6 +773,8 @@ def main() -> int:
         print(
             "benchmark_result_v0 "
             f"scenarios={len(results)} both_success={summary['both_success']} "
+            f"official_delta={summary['official_task_score_delta']} "
+            f"control_delta={summary['control_plane_score_delta']} "
             f"with_spend={with_result['spend_count']} without_spend={without_result['spend_count']}"
         )
     print("codex-cli-long-run-benchmark-smoke ok")

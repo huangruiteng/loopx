@@ -234,6 +234,14 @@ without-harness path performs the same public fixture repairs without Goal
 Harness quota/writeback surfaces, giving the comparison a real A/B baseline
 while keeping CI deterministic.
 
+The current smoke emits the core v0 score layers. Both scenarios can reach the
+same `official_task_score`, while the with-harness path must produce a higher
+`control_plane_score` through restartability, writeback quality, spend
+discipline, and public trace evidence. It also carries marker-only
+`mini_control_plane_repair_with_interrupt_v0` events so the next fixture can add
+worker-kill, stale latest-run trap, validation-failure, and human-gate-resume
+coverage without expanding the first implementation all at once.
+
 ## Non-Goals
 
 - Do not benchmark against real user sessions or raw chat history.
