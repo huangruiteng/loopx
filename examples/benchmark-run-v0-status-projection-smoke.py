@@ -21,6 +21,16 @@ from goal_harness.status import collect_status, render_status_markdown  # noqa: 
 
 GOAL_ID = "benchmark-projection-fixture"
 BENCHMARK_ID = "terminal-bench@2.0"
+CONTROL_PLANE_SCORE_COMPONENTS = (
+    "restartability",
+    "stale_state_avoidance",
+    "evidence_discipline",
+    "boundary_safety",
+    "writeback_quality",
+    "gate_compliance",
+    "failure_attribution",
+    "overhead",
+)
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -101,6 +111,55 @@ def benchmark_run_event() -> dict[str, Any]:
     }
 
 
+def benchmark_result_event() -> dict[str, Any]:
+    components = {
+        "restartability": 1.0,
+        "stale_state_avoidance": 1.0,
+        "evidence_discipline": 1.0,
+        "boundary_safety": 1.0,
+        "writeback_quality": 1.0,
+        "gate_compliance": 1.0,
+        "failure_attribution": 1.0,
+        "overhead": 0.0,
+    }
+    return {
+        "schema_version": "benchmark_result_v0",
+        "task_id": "mini_control_plane_repair_v0",
+        "scenario_id": "with_goal_harness",
+        "worker_mode": "deterministic",
+        "harness_identity": "goal_harness",
+        "worker_surface": "deterministic_shim",
+        "terminal_state": "success",
+        "official_task_score": {"kind": "deterministic_validation", "passed": True, "value": 1.0},
+        "control_plane_score": {
+            "schema_version": "control_plane_score_core_v0",
+            "kind": "core_v0",
+            "aggregation": "unweighted_mean",
+            "value": 0.875,
+            "components": components,
+            "component_order": list(CONTROL_PLANE_SCORE_COMPONENTS),
+        },
+        "step_count": 3,
+        "wall_time_ms": 42.0,
+        "validation_pass_count": 4,
+        "validation_fail_count": 0,
+        "changed_file_count": 3,
+        "changed_files": ["src/control_plane.py", "state/ACTIVE_GOAL_STATE.md"],
+        "forbidden_access_count": 0,
+        "stale_state_error_count": 0,
+        "open_todo_preserved": True,
+        "archive_hygiene_passed": True,
+        "queue_contract_passed": True,
+        "trace_publicness": "public",
+        "failure_attribution_labels": [],
+        "goal_tick_phase_coverage": 1.0,
+        "writeback_count": 3,
+        "spend_count": 3,
+        "spend_before_validation_count": 0,
+        "state_reconstructable": True,
+    }
+
+
 def write_fixture(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
@@ -158,6 +217,7 @@ def write_fixture(root: Path) -> Path:
         "delivery_batch_scale": "implementation",
         "delivery_outcome": "primary_goal_outcome",
         "benchmark_run": benchmark_run_event(),
+        "benchmark_result": benchmark_result_event(),
     }
     write_json(run_json, run_record)
     run_md.write_text("# Benchmark Run V0 Fixture\n", encoding="utf-8")
@@ -208,6 +268,19 @@ def main() -> None:
         assert summary["trials"][0]["reward"]["reward"] == 1.0, summary
         assert_no_private_surface(summary)
 
+        result_summary = latest["benchmark_result_summary"]
+        assert result_summary["schema_version"] == "benchmark_result_v0", result_summary
+        assert result_summary["task_id"] == "mini_control_plane_repair_v0", result_summary
+        assert result_summary["scenario_id"] == "with_goal_harness", result_summary
+        assert result_summary["official_task_score"]["value"] == 1.0, result_summary
+        control_score = result_summary["control_plane_score"]
+        assert control_score["schema_version"] == "control_plane_score_core_v0", result_summary
+        assert control_score["aggregation"] == "unweighted_mean", result_summary
+        assert control_score["value"] == 0.875, result_summary
+        assert tuple(control_score["component_order"]) == CONTROL_PLANE_SCORE_COMPONENTS, result_summary
+        assert "changed_files" not in result_summary, result_summary
+        assert_no_private_surface(result_summary)
+
         event_ledger = status["event_ledger_summary"]
         assert event_ledger["totals"]["benchmark_runs_24h"] == 1, event_ledger
         assert event_ledger["totals"]["by_class_24h"]["evidence"] == 1, event_ledger
@@ -223,6 +296,8 @@ def main() -> None:
         assert "benchmark=terminal-bench@2.0" in packet["project_agent_handoff"], packet["project_agent_handoff"]
         assert "completed=1/1" in packet["project_agent_handoff"], packet["project_agent_handoff"]
         assert "reward=1.0" in packet["project_agent_handoff"], packet["project_agent_handoff"]
+        assert "result=mini_control_plane_repair_v0" in packet["project_agent_handoff"], packet["project_agent_handoff"]
+        assert "control=0.875" in packet["project_agent_handoff"], packet["project_agent_handoff"]
         assert_no_private_surface({"project_agent_handoff": packet["project_agent_handoff"]})
 
     print("benchmark-run-v0-status-projection-smoke ok")

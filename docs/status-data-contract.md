@@ -1440,6 +1440,17 @@ templates, and stop conditions. It must not include raw Codex sessions, host
 absolute paths, credentials, private benchmark material, or leaderboard upload
 claims.
 
+When a compact run record includes `benchmark_result_summary`, it is a redacted
+projection of `benchmark_result_v0`, not a raw benchmark log reader. The summary
+keeps `official_task_score` separate from `control_plane_score`; for
+`control_plane_score_core_v0` it preserves the fixed component order
+(`restartability`, `stale_state_avoidance`, `evidence_discipline`,
+`boundary_safety`, `writeback_quality`, `gate_compliance`,
+`failure_attribution`, `overhead`) plus compact counts such as validation,
+writeback, spend, and forbidden-access totals. It must not include changed file
+paths, raw trajectories, local artifact paths, credentials, private traces, or
+leaderboard claims.
+
 ## Promotion Readiness Summary
 
 `promotion_readiness_summary` is an optional release-control projection over the

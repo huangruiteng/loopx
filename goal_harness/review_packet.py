@@ -323,9 +323,36 @@ def handoff_followthrough_summary(item: dict[str, Any] | None) -> str | None:
         if reward is not None:
             benchmark_parts.append(f"reward={reward}")
         benchmark_text = "; " + ", ".join(benchmark_parts)
+    benchmark_result = (
+        latest_run.get("benchmark_result_summary")
+        if isinstance(latest_run.get("benchmark_result_summary"), dict)
+        else {}
+    )
+    benchmark_result_text = ""
+    if benchmark_result:
+        official = (
+            benchmark_result.get("official_task_score")
+            if isinstance(benchmark_result.get("official_task_score"), dict)
+            else {}
+        )
+        control = (
+            benchmark_result.get("control_plane_score")
+            if isinstance(benchmark_result.get("control_plane_score"), dict)
+            else {}
+        )
+        result_parts = [
+            f"result={benchmark_result.get('task_id') or 'unknown'}",
+        ]
+        if official.get("value") is not None:
+            result_parts.append(f"official={official.get('value')}")
+        if control.get("value") is not None:
+            result_parts.append(f"control={control.get('value')}")
+        if control.get("schema_version"):
+            result_parts.append(f"schema={control.get('schema_version')}")
+        benchmark_result_text = "; " + ", ".join(result_parts)
     return compact_packet_text(
-        f"post_handoff_run={classification}, scale={scale}{streak_text}{suffix}{benchmark_text}",
-        limit=220,
+        f"post_handoff_run={classification}, scale={scale}{streak_text}{suffix}{benchmark_text}{benchmark_result_text}",
+        limit=260,
     )
 
 
