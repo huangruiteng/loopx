@@ -118,10 +118,14 @@ def assert_observation(payload: dict[str, Any], *, observed: bool) -> None:
 
 def main() -> int:
     from goal_harness.worker_bridge import (
+        active_user_simulator_output_json_schema,
         build_active_user_intervention,
         build_active_user_intervention_channel_contract,
         observe_active_user_intervention_feed,
     )
+
+    simulator_schema = active_user_simulator_output_json_schema()
+    assert "uniqueItems" not in json.dumps(simulator_schema), simulator_schema
 
     assert_contract(build_active_user_intervention_channel_contract())
     assert_contract(
@@ -141,6 +145,11 @@ def main() -> int:
         created_after_worker_start=False,
     )
     assert_intervention(before_start, seq=0, after_start=False)
+    false_positive_regression = build_active_user_intervention(
+        seq=1,
+        message="Run the task-visible checks before editing further.",
+    )
+    assert_intervention(false_positive_regression, seq=1, after_start=True)
     after_start = run_cli_json(
         [
             "worker-bridge",
@@ -230,6 +239,31 @@ def main() -> int:
     assert rejected_payload["ok"] is False, rejected_payload
     assert "a non-public marker" in rejected_payload["error"], rejected_payload
     assert_public_safe(rejected_payload)
+
+    rejected_token_shape = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "goal_harness.cli",
+            "worker-bridge",
+            "active-user-intervention",
+            "--seq",
+            "4",
+            "--message",
+            "token shaped " + "sk-" + "exampletoken must be rejected",
+            "--format",
+            "json",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert rejected_token_shape.returncode == 1, rejected_token_shape.stdout
+    rejected_token_payload = json.loads(rejected_token_shape.stdout)
+    assert rejected_token_payload["ok"] is False, rejected_token_payload
+    assert "a non-public marker" in rejected_token_payload["error"], rejected_token_payload
 
     print("worker-bridge-active-user-feed-smoke ok observed_after_worker_start=true")
     return 0

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 from pathlib import Path
 from typing import Any
@@ -112,10 +113,10 @@ ACTIVE_USER_PUBLIC_TEXT_FORBIDDEN_MARKERS = (
     "Author" + "ization:",
     "Bear" + "er ",
     "-----BEGIN",
-    "sk-",
     "tok" + "en=",
     "pass" + "word=",
 )
+ACTIVE_USER_SECRET_KEY_SHAPED_RE = re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{8,}")
 
 
 def build_worker_bridge_mounts(
@@ -262,6 +263,8 @@ def _coerce_public_safe_worker_text(
     if not text:
         raise ValueError(f"{field} is required")
     leaked = [marker for marker in ACTIVE_USER_PUBLIC_TEXT_FORBIDDEN_MARKERS if marker in text]
+    if ACTIVE_USER_SECRET_KEY_SHAPED_RE.search(text):
+        leaked.append("sk-token-shaped")
     if leaked:
         raise ValueError(f"{field} contains a non-public marker")
     return text[:limit].rstrip()
@@ -386,7 +389,6 @@ def active_user_simulator_output_json_schema() -> dict[str, Any]:
             "visible_evidence_basis": {
                 "type": "array",
                 "minItems": 1,
-                "uniqueItems": True,
                 "items": {
                     "type": "string",
                     "enum": list(ACTIVE_USER_SIMULATOR_ALLOWED_EVIDENCE_BASIS),
