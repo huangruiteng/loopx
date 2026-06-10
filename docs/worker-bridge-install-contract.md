@@ -43,6 +43,20 @@ The placeholder paths are public-safe. A private runner may substitute actual
 host paths at launch time, but raw substituted paths must stay out of public
 docs, status, benchmark reports, and claim artifacts.
 
+For active-user assisted treatments, the runner may add one extra writable bind
+mount for the simulator feed:
+
+```text
+source=<active-user-host-dir> target=/goal-harness-active-user read_only=false
+goal_harness_active_user_feed_jsonl=/goal-harness-active-user/goal-harness-active-user-interventions.jsonl
+goal_harness_active_user_observation_json=/goal-harness-active-user/goal-harness-active-user-observation.json
+```
+
+This mount is the host-side coordination surface for appending a post-start
+simulator intervention while the worker polls `active-user-observe`. Public
+summaries may record that the writable mount was requested and count it, but
+must not record the raw host source path.
+
 ## Runner Adapter Rule
 
 A runner adapter should translate this contract into its native worker launch

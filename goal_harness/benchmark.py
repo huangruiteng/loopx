@@ -14,10 +14,12 @@ from .worker_bridge import (
     ACTIVE_USER_INTERVENTION_CHANNEL_CONTRACT_VERSION,
     ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
     ACTIVE_USER_INTERVENTION_OBSERVATION_VERSION,
+    DEFAULT_WORKER_BRIDGE_ACTIVE_USER_MOUNT_TARGET as TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_MOUNT_TARGET,
     DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL as TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
     DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON as TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
     DEFAULT_WORKER_BRIDGE_BENCHMARK_RUN_JSON as TERMINAL_BENCH_WORKER_BRIDGE_BENCHMARK_RUN_JSON,
     DEFAULT_WORKER_BRIDGE_COUNTER_TRACE_JSON as TERMINAL_BENCH_WORKER_BRIDGE_COUNTER_TRACE_JSON,
+    GOAL_HARNESS_ACTIVE_USER_HOST_DIR_PLACEHOLDER as TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_HOST_DIR_PLACEHOLDER,
     GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER as TERMINAL_BENCH_WORKER_BRIDGE_PROJECT_ROOT_PLACEHOLDER,
     GOAL_HARNESS_RUNTIME_ROOT_PLACEHOLDER as TERMINAL_BENCH_WORKER_BRIDGE_RUNTIME_ROOT_PLACEHOLDER,
     WORKER_BRIDGE_BENCHMARK_RUN_FORBIDDEN_PUBLIC_FIELDS,
@@ -1460,6 +1462,10 @@ def _private_runner_goal_harness_runtime_root() -> str:
     return str(Path("~/.codex/goal-harness").expanduser())
 
 
+def _private_runner_active_user_host_dir() -> str:
+    return str(Path("~/.codex/goal-harness/active-user-feeds").expanduser())
+
+
 def _private_runner_command_kwargs(command_kwargs: dict[str, Any]) -> dict[str, Any]:
     """Resolve worker-bridge placeholders only for a real private launch."""
 
@@ -1472,6 +1478,15 @@ def _private_runner_command_kwargs(command_kwargs: dict[str, Any]) -> dict[str, 
     runtime_root = resolved.get("goal_harness_runtime_root")
     if not runtime_root or runtime_root == TERMINAL_BENCH_WORKER_BRIDGE_RUNTIME_ROOT_PLACEHOLDER:
         resolved["goal_harness_runtime_root"] = _private_runner_goal_harness_runtime_root()
+    active_user_host_dir = resolved.get("goal_harness_active_user_host_dir")
+    if resolved.get("goal_harness_active_user_intervention_enabled") and (
+        not active_user_host_dir
+        or active_user_host_dir
+        == TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_HOST_DIR_PLACEHOLDER
+    ):
+        resolved["goal_harness_active_user_host_dir"] = (
+            _private_runner_active_user_host_dir()
+        )
     return resolved
 
 
@@ -1562,6 +1577,22 @@ def summarize_terminal_bench_private_runner_launch(
     goal_harness_agent_kwargs_present = any(
         str(value).startswith("goal_harness_") for value in argv
     )
+    mounts: list[Any] = []
+    mounts_text = _invocation_arg_value(argv, "--mounts")
+    if mounts_text:
+        try:
+            raw_mounts = json.loads(mounts_text)
+        except json.JSONDecodeError:
+            raw_mounts = []
+        if isinstance(raw_mounts, list):
+            mounts = raw_mounts
+    active_user_mounts = [
+        mount
+        for mount in mounts
+        if isinstance(mount, dict)
+        and mount.get("target") == TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_MOUNT_TARGET
+        and mount.get("read_only") is False
+    ]
     probe_coverage = {
         "local_bin": str(Path("~/.local/bin").expanduser()) in path_value,
         "homebrew_bin": "/opt/homebrew/bin" in path_value,
@@ -1584,6 +1615,9 @@ def summarize_terminal_bench_private_runner_launch(
         "goal_harness_agent_kwargs_present": goal_harness_agent_kwargs_present,
         "goal_harness_worker_bridge_requested": "goal_harness_cli_bridge_enabled=true"
         in argv,
+        "active_user_writable_mount_requested": bool(active_user_mounts),
+        "active_user_writable_mount_count": len(active_user_mounts),
+        "active_user_writable_mount_target_present": bool(active_user_mounts),
         "no_upload_boundary": bool(boundary.get("no_upload")),
         "submit_eligible": bool(boundary.get("submit_eligible")),
         "env_path_present": bool(path_value),
@@ -2459,6 +2493,10 @@ def build_terminal_bench_managed_harbor_command(
     goal_harness_benchmark_run_json: str = (
         TERMINAL_BENCH_WORKER_BRIDGE_BENCHMARK_RUN_JSON
     ),
+    goal_harness_active_user_host_dir: str | None = None,
+    goal_harness_active_user_mount_target: str = (
+        TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_MOUNT_TARGET
+    ),
     goal_harness_classification: str = "<classification>",
     goal_harness_access_packet_mode: str = (
         TERMINAL_BENCH_GOAL_HARNESS_ACCESS_PACKET_MODE_FULL
@@ -2553,12 +2591,20 @@ def build_terminal_bench_managed_harbor_command(
             raise ValueError(f"{flag} must be greater than zero")
         command.extend([flag, _format_harbor_multiplier(parsed)])
     if goal_harness_cli_bridge_enabled:
+        active_user_host_dir = None
+        if goal_harness_active_user_intervention_enabled:
+            active_user_host_dir = (
+                goal_harness_active_user_host_dir
+                or TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_HOST_DIR_PLACEHOLDER
+            )
         worker_bridge = build_worker_bridge_install_contract(
             project_root=goal_harness_project_root,
             runtime_root=goal_harness_runtime_root,
             benchmark_run_json=goal_harness_benchmark_run_json,
             counter_trace_json=goal_harness_counter_trace_json,
             classification=goal_harness_classification,
+            active_user_host_dir=active_user_host_dir,
+            active_user_mount_target=goal_harness_active_user_mount_target,
         )
         agent_kwargs = worker_bridge["agent_kwargs"]
         command.extend(

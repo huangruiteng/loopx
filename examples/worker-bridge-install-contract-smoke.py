@@ -89,6 +89,12 @@ def assert_contract(payload: dict) -> None:
         == "goal_harness_active_user_external_update_loop_v0"
     ), payload
     assert "active-user-observe" in agent_kwargs["goal_harness_active_user_observe_command"], payload
+    assert payload["active_user_external_update_mount"] == {
+        "enabled": False,
+        "target": None,
+        "read_only": None,
+        "raw_host_path_recorded": False,
+    }, payload
     assert agent_kwargs["goal_harness_benchmark_run_schema_version"] == "benchmark_run_v0", payload
     assert (
         agent_kwargs["goal_harness_benchmark_run_writeback_contract"]
@@ -128,6 +134,41 @@ def assert_contract(payload: dict) -> None:
         == "rewrite_minimal_benchmark_run_v0_and_retry_once"
     ), payload
     assert writeback["retry_policy"]["do_not_retry_with_raw_logs_or_raw_paths"] is True, payload
+
+
+def assert_active_user_writable_mount_contract() -> None:
+    from goal_harness.worker_bridge import build_worker_bridge_install_contract
+
+    payload = build_worker_bridge_install_contract(
+        active_user_host_dir="<active-user-host-dir>",
+    )
+    mounts = payload["mounts"]
+    assert mounts[-1] == {
+        "read_only": False,
+        "source": "<active-user-host-dir>",
+        "target": "/goal-harness-active-user",
+        "type": "bind",
+    }, payload
+    assert payload["active_user_external_update_mount"] == {
+        "enabled": True,
+        "target": "/goal-harness-active-user",
+        "read_only": False,
+        "raw_host_path_recorded": False,
+    }, payload
+    agent_kwargs = payload["agent_kwargs"]
+    assert (
+        agent_kwargs["goal_harness_active_user_feed_jsonl"]
+        == "/goal-harness-active-user/goal-harness-active-user-interventions.jsonl"
+    ), payload
+    assert (
+        agent_kwargs["goal_harness_active_user_observation_json"]
+        == "/goal-harness-active-user/goal-harness-active-user-observation.json"
+    ), payload
+    assert (
+        "--feed-jsonl /goal-harness-active-user/goal-harness-active-user-interventions.jsonl"
+        in agent_kwargs["goal_harness_active_user_observe_command"]
+    ), payload
+    assert_public_safe(payload)
     active_user_channel = payload["active_user_intervention_channel_contract"]
     assert (
         active_user_channel["schema_version"]
@@ -349,6 +390,11 @@ def assert_terminal_bench_adapter_consumes_contract() -> None:
         goal_harness_mode="codex_goal_harness",
         goal_harness_cli_bridge_enabled=True,
     )
+    active_user_command = build_terminal_bench_managed_harbor_command(
+        goal_harness_mode="codex_goal_harness",
+        goal_harness_cli_bridge_enabled=True,
+        goal_harness_active_user_intervention_enabled=True,
+    )
     extended_timeout_command = build_terminal_bench_managed_harbor_command(
         goal_harness_mode="codex_goal_harness",
         goal_harness_cli_bridge_enabled=True,
@@ -363,6 +409,19 @@ def assert_terminal_bench_adapter_consumes_contract() -> None:
     mounts = json.loads(command[command.index("--mounts") + 1])
     assert mounts[0]["source"] == "<goal-harness-project-root>", command
     assert mounts[1]["source"] == "<goal-harness-runtime-root>", command
+    active_user_mounts = json.loads(
+        active_user_command[active_user_command.index("--mounts") + 1]
+    )
+    assert active_user_mounts[-1] == {
+        "read_only": False,
+        "source": "<active-user-host-dir>",
+        "target": "/goal-harness-active-user",
+        "type": "bind",
+    }, active_user_mounts
+    assert (
+        "goal_harness_active_user_feed_jsonl="
+        "/goal-harness-active-user/goal-harness-active-user-interventions.jsonl"
+    ) in active_user_command, active_user_command
     assert (
         "goal_harness_command_prefix="
         "PYTHONPATH='<goal-harness-project-root>' python3 -m goal_harness.cli"
@@ -381,6 +440,7 @@ def assert_terminal_bench_adapter_consumes_contract() -> None:
 
 def main() -> int:
     assert_module_contract()
+    assert_active_user_writable_mount_contract()
     assert_cli_contract()
     assert_cli_outcome()
     assert_cli_benchmark_run()

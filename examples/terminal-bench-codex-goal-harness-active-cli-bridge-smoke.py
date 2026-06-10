@@ -595,6 +595,11 @@ def assert_harbor_command_preview() -> None:
         goal_harness_mode="codex_goal_harness",
         goal_harness_cli_bridge_enabled=True,
     )
+    active_user_launch = build_terminal_bench_private_runner_launch(
+        mode="codex-goal-harness",
+        goal_harness_cli_bridge_enabled=True,
+        goal_harness_active_user_intervention_enabled=True,
+    )
     assert "--include-task-name" not in batch_launch["argv"], batch_launch["argv"]
     assert "--path" in batch_launch["argv"], batch_launch["argv"]
     batch_mounts = json.loads(batch_launch["argv"][batch_launch["argv"].index("--mounts") + 1])
@@ -609,7 +614,14 @@ def assert_harbor_command_preview() -> None:
     ]
     assert not any("<goal-harness-project-root>" in item for item in batch_agent_kwargs), batch_agent_kwargs
     assert not any("<goal-harness-runtime-root>" in item for item in batch_agent_kwargs), batch_agent_kwargs
+    active_user_mounts = json.loads(
+        active_user_launch["argv"][active_user_launch["argv"].index("--mounts") + 1]
+    )
+    assert active_user_mounts[-1]["target"] == "/goal-harness-active-user", active_user_mounts
+    assert active_user_mounts[-1]["read_only"] is False, active_user_mounts
+    assert "<active-user-host-dir>" not in json.dumps(active_user_mounts), active_user_mounts
     launch_summary = summarize_terminal_bench_private_runner_launch(launch)
+    active_user_summary = summarize_terminal_bench_private_runner_launch(active_user_launch)
     assert launch_summary["schema_version"] == "terminal_bench_private_runner_launch_summary_v0", launch_summary
     assert launch_summary["launch_schema_version"] == "terminal_bench_private_runner_launch_v0", launch_summary
     assert launch_summary["uses_private_runner_env"] is True, launch_summary
@@ -621,6 +633,10 @@ def assert_harbor_command_preview() -> None:
     assert launch_summary["auth_values_recorded"] is False, launch_summary
     assert launch_summary["raw_env_recorded"] is False, launch_summary
     assert launch_summary["raw_paths_recorded"] is False, launch_summary
+    assert active_user_summary["active_user_writable_mount_requested"] is True, active_user_summary
+    assert active_user_summary["active_user_writable_mount_count"] == 1, active_user_summary
+    assert active_user_summary["raw_paths_recorded"] is False, active_user_summary
+    assert_public_safe(active_user_summary)
     assert_public_safe(launch_summary)
     assert "goal_harness_mode=codex_goal_harness" in command, command
     assert "goal_harness_mode=codex_goal_harness" in mode_launch["argv"], mode_launch["argv"]

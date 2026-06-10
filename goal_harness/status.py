@@ -835,6 +835,8 @@ def _compact_benchmark_private_runner_launch(value: Any) -> dict[str, Any]:
         "no_upload_boundary",
         "submit_eligible",
         "env_path_present",
+        "active_user_writable_mount_requested",
+        "active_user_writable_mount_target_present",
         "auth_values_recorded",
         "raw_env_recorded",
         "raw_paths_recorded",
@@ -844,6 +846,9 @@ def _compact_benchmark_private_runner_launch(value: Any) -> dict[str, Any]:
     count = value.get("env_probe_path_coverage_count")
     if isinstance(count, int) and not isinstance(count, bool):
         compact["env_probe_path_coverage_count"] = count
+    active_user_mount_count = value.get("active_user_writable_mount_count")
+    if isinstance(active_user_mount_count, int) and not isinstance(active_user_mount_count, bool):
+        compact["active_user_writable_mount_count"] = active_user_mount_count
     coverage = value.get("env_probe_path_coverage")
     if isinstance(coverage, dict):
         compact_coverage = {

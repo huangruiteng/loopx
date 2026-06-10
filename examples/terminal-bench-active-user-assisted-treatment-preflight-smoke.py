@@ -343,6 +343,10 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert event["official_score_claim_allowed"] is False, event
     assert event["active_user_simulator_injection_channel_available"] is True, event
     assert_private_launcher_plan(event["active_user_private_launcher_plan"])
+    launch_summary = event["private_runner_launch_summary"]
+    assert launch_summary["active_user_writable_mount_requested"] is True, launch_summary
+    assert launch_summary["active_user_writable_mount_count"] == 1, launch_summary
+    assert launch_summary["raw_paths_recorded"] is False, launch_summary
     assert event["validation"]["all_passed"] is True, event
     assert event["validation"]["failed_checks"] == [], event
     assert event["validation"]["active_user_assisted_treatment_preflight"] is True, event

@@ -10,7 +10,9 @@ WORKER_BRIDGE_INSTALL_CONTRACT_VERSION = "goal_harness_worker_bridge_install_con
 WORKER_BRIDGE_SURFACE = "goal_harness_worker_bridge_source_mount_v0"
 GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER = "<goal-harness-project-root>"
 GOAL_HARNESS_RUNTIME_ROOT_PLACEHOLDER = "<goal-harness-runtime-root>"
+GOAL_HARNESS_ACTIVE_USER_HOST_DIR_PLACEHOLDER = "<active-user-host-dir>"
 DEFAULT_WORKER_BRIDGE_TRACE_DIR = "/logs/agent"
+DEFAULT_WORKER_BRIDGE_ACTIVE_USER_MOUNT_TARGET = "/goal-harness-active-user"
 DEFAULT_WORKER_BRIDGE_COUNTER_TRACE_JSON = (
     DEFAULT_WORKER_BRIDGE_TRACE_DIR + "/goal-harness-counter-trace.jsonl"
 )
@@ -94,10 +96,12 @@ def build_worker_bridge_mounts(
     *,
     project_root: str = GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER,
     runtime_root: str = GOAL_HARNESS_RUNTIME_ROOT_PLACEHOLDER,
+    active_user_host_dir: str | None = None,
+    active_user_mount_target: str = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_MOUNT_TARGET,
 ) -> list[dict[str, Any]]:
     """Build read-only source/runtime mounts for a worker-side Goal Harness CLI."""
 
-    return [
+    mounts = [
         {
             "type": "bind",
             "source": project_root,
@@ -111,6 +115,16 @@ def build_worker_bridge_mounts(
             "read_only": True,
         },
     ]
+    if active_user_host_dir:
+        mounts.append(
+            {
+                "type": "bind",
+                "source": active_user_host_dir,
+                "target": active_user_mount_target,
+                "read_only": False,
+            }
+        )
+    return mounts
 
 
 def build_worker_bridge_command_prefix(
@@ -481,6 +495,8 @@ def build_worker_bridge_install_contract(
     benchmark_run_json: str = DEFAULT_WORKER_BRIDGE_BENCHMARK_RUN_JSON,
     counter_trace_json: str = DEFAULT_WORKER_BRIDGE_COUNTER_TRACE_JSON,
     classification: str = "<classification>",
+    active_user_host_dir: str | None = None,
+    active_user_mount_target: str = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_MOUNT_TARGET,
 ) -> dict[str, Any]:
     """Build a runner-agnostic worker bridge/install contract.
 
@@ -500,6 +516,12 @@ def build_worker_bridge_install_contract(
         python_bin=python_bin,
         module=module,
     )
+    active_user_feed_jsonl = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL
+    active_user_observation_json = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON
+    if active_user_host_dir:
+        mount_target = active_user_mount_target.rstrip("/")
+        active_user_feed_jsonl = f"{mount_target}/goal-harness-active-user-interventions.jsonl"
+        active_user_observation_json = f"{mount_target}/goal-harness-active-user-observation.json"
     benchmark_run_writeback_contract = (
         build_worker_bridge_benchmark_run_writeback_contract(
             benchmark_run_json=benchmark_run_json,
@@ -513,6 +535,8 @@ def build_worker_bridge_install_contract(
             runtime_root=runtime_root,
             python_bin=python_bin,
             module=module,
+            feed_jsonl=active_user_feed_jsonl,
+            observation_json=active_user_observation_json,
         )
     )
     return {
@@ -527,7 +551,15 @@ def build_worker_bridge_install_contract(
         "mounts": build_worker_bridge_mounts(
             project_root=project_root,
             runtime_root=runtime_root,
+            active_user_host_dir=active_user_host_dir,
+            active_user_mount_target=active_user_mount_target,
         ),
+        "active_user_external_update_mount": {
+            "enabled": bool(active_user_host_dir),
+            "target": active_user_mount_target if active_user_host_dir else None,
+            "read_only": False if active_user_host_dir else None,
+            "raw_host_path_recorded": False,
+        },
         "command_prefix": command_prefix,
         "agent_kwargs": {
             "goal_harness_command_prefix": command_prefix,
