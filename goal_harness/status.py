@@ -87,6 +87,8 @@ WORKER_BRIDGE_INGEST_HEALTH_SCHEMA_VERSION = "worker_bridge_ingest_health_note_v
 BENCHMARK_EXPERIMENT_REPORT_SCHEMA_VERSION = "benchmark_experiment_report_v0"
 BENCHMARK_EXPERIMENT_REPORT_READINESS_SCHEMA_VERSION = "benchmark_experiment_report_readiness_note_v0"
 BENCHMARK_EXPERIMENT_REPORT_REPLAY_DECISION_SCHEMA_VERSION = "benchmark_experiment_report_replay_decision_v0"
+ACTIVE_USER_ASSISTED_PILOT_SCHEMA_VERSION = "active_user_assisted_pilot_v0"
+OPERATOR_SIMULATOR_RUN_SCHEMA_VERSION = "operator_simulator_run_v0"
 CONTROL_PLANE_SCORE_SCHEMA_VERSION = "control_plane_score_core_v0"
 CONTROL_PLANE_SCORE_COMPONENTS = (
     "restartability",
@@ -1676,6 +1678,186 @@ def benchmark_experiment_report_replay_decision(readiness_note: dict[str, Any] |
     return decision
 
 
+def _active_user_assisted_pilot_source(run: dict[str, Any]) -> dict[str, Any] | None:
+    nested = run.get("active_user_assisted_pilot")
+    if isinstance(nested, dict) and nested.get("schema_version") == ACTIVE_USER_ASSISTED_PILOT_SCHEMA_VERSION:
+        return nested
+    if run.get("schema_version") == ACTIVE_USER_ASSISTED_PILOT_SCHEMA_VERSION:
+        return run
+    return None
+
+
+def compact_active_user_assisted_pilot(run: dict[str, Any]) -> dict[str, Any] | None:
+    source = _active_user_assisted_pilot_source(run)
+    if not source:
+        return None
+
+    compact: dict[str, Any] = {"schema_version": ACTIVE_USER_ASSISTED_PILOT_SCHEMA_VERSION}
+    for field in ("pilot_id", "benchmark_id", "task_id"):
+        value = public_safe_compact_text(source.get(field), limit=140)
+        if value:
+            compact[field] = value
+
+    trigger = source.get("trigger") if isinstance(source.get("trigger"), dict) else {}
+    compact_trigger: dict[str, Any] = {}
+    for field in ("kind", "assisted_score_kind"):
+        value = public_safe_compact_text(trigger.get(field), limit=120)
+        if value:
+            compact_trigger[field] = value
+    if isinstance(trigger.get("both_autonomous_modes_failed"), bool):
+        compact_trigger["both_autonomous_modes_failed"] = trigger.get("both_autonomous_modes_failed")
+    failed_modes = trigger.get("failed_autonomous_modes") if isinstance(trigger.get("failed_autonomous_modes"), list) else []
+    if failed_modes:
+        compact_trigger["failed_autonomous_mode_count"] = len(failed_modes)
+        mode_names = []
+        for item in failed_modes:
+            if isinstance(item, str):
+                mode = public_safe_compact_text(item, limit=100)
+            elif isinstance(item, dict):
+                mode = public_safe_compact_text(item.get("mode"), limit=100)
+            else:
+                continue
+            if mode:
+                mode_names.append(mode)
+            if len(mode_names) >= MAX_BENCHMARK_RUN_LIST_ITEMS:
+                break
+        if mode_names:
+            compact_trigger["failed_autonomous_modes"] = mode_names
+    if compact_trigger:
+        compact["trigger"] = compact_trigger
+
+    active = source.get("active_injection_contract") if isinstance(source.get("active_injection_contract"), dict) else {}
+    compact_active: dict[str, Any] = {}
+    for field in ("schema_version", "simulator_setting"):
+        value = public_safe_compact_text(active.get(field), limit=120)
+        if value:
+            compact_active[field] = value
+    for field in ("proactive_intervention_allowed", "directive_feedback_allowed", "artificial_mildness_required"):
+        if isinstance(active.get(field), bool):
+            compact_active[field] = active.get(field)
+    if compact_active:
+        compact["active_injection_contract"] = compact_active
+
+    budget = source.get("frequency_budget") if isinstance(source.get("frequency_budget"), dict) else {}
+    compact_budget = _compact_numeric_map(
+        budget,
+        keys=(
+            "max_interventions",
+            "max_proactive_interventions",
+            "min_worker_events_between_proactive",
+            "max_chars_per_intervention",
+        ),
+    )
+    if compact_budget:
+        compact["frequency_budget"] = compact_budget
+
+    visibility = source.get("visibility_policy") if isinstance(source.get("visibility_policy"), dict) else {}
+    compact_visibility: dict[str, Any] = {}
+    policy_id = public_safe_compact_text(visibility.get("policy_id"), limit=140)
+    if policy_id:
+        compact_visibility["policy_id"] = policy_id
+    visibility_allowed_source = visibility.get("allowed")
+    if visibility_allowed_source is None:
+        visibility_allowed_source = visibility.get("allowed_visibility")
+    allowed_visibility = public_safe_compact_list(visibility_allowed_source, limit=MAX_BENCHMARK_RUN_LIST_ITEMS)
+    if allowed_visibility:
+        compact_visibility["allowed_visibility"] = allowed_visibility
+    if compact_visibility:
+        compact["visibility_policy"] = compact_visibility
+
+    operator_run = source.get("operator_simulator_run") if isinstance(source.get("operator_simulator_run"), dict) else {}
+    compact_operator: dict[str, Any] = {}
+    if operator_run.get("schema_version") == OPERATOR_SIMULATOR_RUN_SCHEMA_VERSION:
+        compact_operator["schema_version"] = OPERATOR_SIMULATOR_RUN_SCHEMA_VERSION
+    simulator_identity = (
+        operator_run.get("simulator_identity")
+        if isinstance(operator_run.get("simulator_identity"), dict)
+        else operator_run
+    )
+    for field in ("setting", "model_family", "seed"):
+        value = public_safe_compact_text(simulator_identity.get(field), limit=140)
+        if value:
+            compact_operator[field] = value
+    interventions = operator_run.get("interventions") if isinstance(operator_run.get("interventions"), list) else []
+    if interventions:
+        compact_operator["intervention_count"] = len(interventions)
+        compact_operator["proactive_intervention_count"] = sum(
+            1 for item in interventions if isinstance(item, dict) and item.get("proactive") is True
+        )
+        compact_operator["no_oracle_audit_passed"] = all(
+            isinstance(item, dict)
+            and isinstance(item.get("no_oracle_audit"), dict)
+            and not any(bool(value) for value in item["no_oracle_audit"].values())
+            for item in interventions
+        )
+    else:
+        for field in ("intervention_count", "proactive_intervention_count"):
+            if isinstance(operator_run.get(field), int):
+                compact_operator[field] = operator_run.get(field)
+        if isinstance(operator_run.get("no_oracle_audit_passed"), bool):
+            compact_operator["no_oracle_audit_passed"] = operator_run.get("no_oracle_audit_passed")
+    official = (
+        operator_run.get("official_task_score_reference")
+        if isinstance(operator_run.get("official_task_score_reference"), dict)
+        else {}
+    )
+    official_kind = public_safe_compact_text(official.get("kind"), limit=100)
+    if not official_kind:
+        official_kind = public_safe_compact_text(operator_run.get("official_task_score_kind"), limit=100)
+    if official_kind:
+        compact_operator["official_task_score_kind"] = official_kind
+    if isinstance(operator_run.get("simulator_induced_error_count"), int):
+        compact_operator["simulator_induced_error_count"] = operator_run.get("simulator_induced_error_count")
+    frequency_audit = (
+        operator_run.get("frequency_budget_audit")
+        if isinstance(operator_run.get("frequency_budget_audit"), dict)
+        else {}
+    )
+    if isinstance(frequency_audit.get("min_worker_events_between_proactive_satisfied"), bool):
+        compact_operator["frequency_budget_satisfied"] = frequency_audit.get(
+            "min_worker_events_between_proactive_satisfied"
+        )
+    elif isinstance(operator_run.get("frequency_budget_satisfied"), bool):
+        compact_operator["frequency_budget_satisfied"] = operator_run.get("frequency_budget_satisfied")
+    side_effect_audit = (
+        operator_run.get("side_effect_audit")
+        if isinstance(operator_run.get("side_effect_audit"), dict)
+        else {}
+    )
+    if side_effect_audit:
+        compact_operator["side_effect_audit_passed"] = not any(bool(value) for value in side_effect_audit.values())
+    elif isinstance(operator_run.get("side_effect_audit_passed"), bool):
+        compact_operator["side_effect_audit_passed"] = operator_run.get("side_effect_audit_passed")
+    if compact_operator:
+        compact["operator_simulator_run"] = compact_operator
+
+    claim_boundary = source.get("claim_boundary") if isinstance(source.get("claim_boundary"), dict) else {}
+    compact_boundary: dict[str, Any] = {}
+    for field in ("official_score_claim_allowed", "assisted_collaboration_claim_allowed", "leaderboard_claim_allowed"):
+        if isinstance(claim_boundary.get(field), bool):
+            compact_boundary[field] = claim_boundary.get(field)
+    if compact_boundary:
+        compact["claim_boundary"] = compact_boundary
+
+    next_decision = source.get("next_run_decision") if isinstance(source.get("next_run_decision"), dict) else {}
+    if not next_decision and isinstance(operator_run.get("next_run_decision"), dict):
+        next_decision = operator_run.get("next_run_decision")  # type: ignore[assignment]
+    compact_next: dict[str, Any] = {}
+    for field in ("decision", "minimum_next_evidence"):
+        value = public_safe_compact_text(next_decision.get(field), limit=180)
+        if value:
+            compact_next[field] = value
+    for field in ("requires_real_runner_approval", "keep_official_scores_separate"):
+        if isinstance(next_decision.get(field), bool):
+            compact_next[field] = next_decision.get(field)
+    if compact_next:
+        compact["next_run_decision"] = compact_next
+
+    if set(compact.keys()) == {"schema_version"}:
+        return None
+    return compact
+
+
 def parse_state_frontmatter(state_text: str) -> dict[str, str]:
     if not state_text.startswith("---"):
         return {}
@@ -2718,6 +2900,9 @@ def compact_post_handoff_run(run: dict[str, Any], profile: dict[str, Any] | None
             replay_decision = benchmark_experiment_report_replay_decision(readiness_note)
             if replay_decision:
                 compact["benchmark_experiment_report_replay_decision"] = replay_decision
+    active_user_pilot = compact_active_user_assisted_pilot(run)
+    if active_user_pilot:
+        compact["active_user_assisted_pilot_summary"] = active_user_pilot
     return compact
 
 
@@ -3986,6 +4171,9 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
             replay_decision = benchmark_experiment_report_replay_decision(readiness_note)
             if replay_decision:
                 compact["benchmark_experiment_report_replay_decision"] = replay_decision
+    active_user_pilot = compact_active_user_assisted_pilot(run)
+    if active_user_pilot:
+        compact["active_user_assisted_pilot_summary"] = active_user_pilot
     return compact
 
 
@@ -4113,6 +4301,7 @@ def event_ledger_event_class(run: dict[str, Any]) -> str:
         or compact_benchmark_result(run)
         or compact_benchmark_comparison(run)
         or compact_benchmark_experiment_report(run)
+        or compact_active_user_assisted_pilot(run)
     ):
         return "evidence"
     if (

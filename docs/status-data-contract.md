@@ -1547,6 +1547,24 @@ accepts only a compact `benchmark_experiment_report_v0` JSON object; it does
 not run a benchmark, invoke a model or simulator, read runner directories, parse
 private artifacts, or infer leaderboard claims.
 
+When a compact run record includes `active_user_assisted_pilot_summary`, it is a
+redacted projection of `active_user_assisted_pilot_v0`. The summary is for
+assisted-collaboration research only: compact pilot identity, failure trigger,
+active-injection contract flags, frequency budget, visibility policy,
+operator-simulator audit counts, claim boundary, and next-run decision. It must
+not include raw simulator messages, worker chat transcripts, local artifact
+paths, hidden tests, expected solutions, benchmark answer keys, private traces,
+credentials, or leaderboard submission artifacts. It must also keep the
+assisted-collaboration claim separate from official benchmark score claims.
+
+`goal-harness history append-active-user-assisted-pilot --active-user-pilot-json
+<path>` is the matching append path for this projection. It is dry-run by
+default and accepts only a compactable `active_user_assisted_pilot_v0` JSON
+object; the CLI compacts the input before writing durable history. It does not
+run a benchmark, call a model-backed simulator, read private runner artifacts,
+interact with a worker, infer hidden test results, or authorize leaderboard
+claims.
+
 When `benchmark_experiment_report_summary` is present, status may also include
 `benchmark_experiment_report_readiness_note`. This is a derived consumer note,
 not a new benchmark event or publication approval. It turns the compact report
