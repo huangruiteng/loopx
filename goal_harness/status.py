@@ -849,7 +849,14 @@ def _compact_benchmark_private_runner_launch(value: Any) -> dict[str, Any]:
         return {}
 
     compact: dict[str, Any] = {}
-    for field in ("schema_version", "launch_schema_version", "first_blocker", "argv_binary_name"):
+    for field in (
+        "schema_version",
+        "launch_schema_version",
+        "first_blocker",
+        "argv_binary_name",
+        "task_material_readiness_status",
+        "task_material_first_blocker",
+    ):
         text = public_safe_compact_text(value.get(field), limit=120)
         if text:
             compact[field] = text
@@ -866,15 +873,23 @@ def _compact_benchmark_private_runner_launch(value: Any) -> dict[str, Any]:
         "agent_import_path_present",
         "goal_harness_agent_kwargs_present",
         "goal_harness_worker_bridge_requested",
+        "task_material_readiness_checked",
+        "task_material_ready",
         "auth_values_recorded",
         "raw_env_recorded",
         "raw_paths_recorded",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
-    count = value.get("env_probe_path_coverage_count")
-    if isinstance(count, int) and not isinstance(count, bool):
-        compact["env_probe_path_coverage_count"] = count
+    for field in (
+        "env_probe_path_coverage_count",
+        "task_material_candidate_count",
+        "task_material_instruction_md_present_count",
+        "task_material_task_toml_present_count",
+    ):
+        count = value.get(field)
+        if isinstance(count, int) and not isinstance(count, bool):
+            compact[field] = count
     active_user_mount_count = value.get("active_user_writable_mount_count")
     if isinstance(active_user_mount_count, int) and not isinstance(active_user_mount_count, bool):
         compact["active_user_writable_mount_count"] = active_user_mount_count

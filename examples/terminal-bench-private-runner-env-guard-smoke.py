@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 
@@ -17,6 +18,7 @@ from goal_harness.benchmark import (  # noqa: E402
     build_terminal_bench_managed_harbor_command,
     build_terminal_bench_private_runner_env,
     build_terminal_bench_private_runner_launch,
+    build_terminal_bench_task_material_readiness,
     normalize_terminal_bench_private_runner_invocation,
     resolve_terminal_bench_runner_binary,
     summarize_terminal_bench_private_runner_launch,
@@ -33,6 +35,50 @@ def expect_raises(callable_obj, needle: str) -> None:
 
 
 def main() -> None:
+    with tempfile.TemporaryDirectory(prefix="goal-harness-task-material-") as tmp:
+        dataset = Path(tmp) / "terminal-bench-local"
+        good_task = dataset / "good-task"
+        good_task.mkdir(parents=True)
+        (good_task / "task.toml").write_text('version = "1.0"\n', encoding="utf-8")
+        (good_task / "instruction.md").write_text("fixture instruction\n", encoding="utf-8")
+        bad_task = dataset / "bad-task"
+        bad_task.mkdir(parents=True)
+        (bad_task / "task.toml").write_text('version = "1.0"\n', encoding="utf-8")
+
+        good_material = build_terminal_bench_task_material_readiness(
+            dataset=str(dataset),
+            task_id="good-task",
+        )
+        assert good_material["checked"] is True, good_material
+        assert good_material["ready"] is True, good_material
+        assert good_material["status"] == "ready", good_material
+        assert good_material["raw_paths_recorded"] is False, good_material
+
+        bad_material = build_terminal_bench_task_material_readiness(
+            dataset=str(dataset),
+            task_id="bad-task",
+        )
+        assert bad_material["checked"] is True, bad_material
+        assert bad_material["ready"] is False, bad_material
+        assert bad_material["first_blocker"] == "task_material_missing_instruction_md", bad_material
+
+        bad_launch = build_terminal_bench_private_runner_launch(
+            dataset=str(dataset),
+            task_id="bad-task",
+            jobs_dir="<private-jobs-dir>",
+            job_name="terminal_bench_bad_material_env_guard_smoke",
+            goal_harness_mode="codex_goal_harness",
+            goal_harness_goal_id="goal-harness-meta",
+            goal_harness_cli_bridge_enabled=True,
+        )
+        assert bad_launch["first_blocker"] == "task_material_missing_instruction_md", bad_launch
+        assert bad_launch["ready"] is False, bad_launch
+        bad_summary = summarize_terminal_bench_private_runner_launch(bad_launch)
+        assert bad_summary["task_material_readiness_checked"] is True, bad_summary
+        assert bad_summary["task_material_ready"] is False, bad_summary
+        assert bad_summary["task_material_first_blocker"] == "task_material_missing_instruction_md", bad_summary
+        assert bad_summary["raw_paths_recorded"] is False, bad_summary
+
     previous = os.environ.get("CODEX_FORCE_AUTH_JSON")
     os.environ["CODEX_FORCE_AUTH_JSON"] = "****"
     try:

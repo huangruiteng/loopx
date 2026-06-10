@@ -68,6 +68,9 @@ TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_CHANNEL_SCHEMA = (
 TERMINAL_BENCH_ACTIVE_USER_PRIVATE_LAUNCHER_PLAN_SCHEMA = (
     "terminal_bench_active_user_private_launcher_plan_v0"
 )
+TERMINAL_BENCH_TASK_MATERIAL_READINESS_SCHEMA = (
+    "terminal_bench_task_material_readiness_v0"
+)
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_SETTING = "codex_cli_user_simulator"
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER = (
     "missing_simulator_to_worker_injection_channel"
@@ -1504,6 +1507,92 @@ def _private_runner_command_kwargs(command_kwargs: dict[str, Any]) -> dict[str, 
     return resolved
 
 
+def build_terminal_bench_task_material_readiness(
+    *,
+    dataset: str = TERMINAL_BENCH_DEFAULT_DATASET,
+    task_id: str | None = TERMINAL_BENCH_DEFAULT_TASK,
+    harbor_task_cache_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Return a public-safe readiness summary for selected task material.
+
+    This deliberately checks only file presence, not task prompt contents. It is
+    scoped to Terminal-Bench/Harbor launch safety: unknown or not-yet-cached
+    material is reported as non-blocking, while cached material that is missing
+    core files can block a private launch before spending a worker trial.
+    """
+
+    task_label = str(task_id or "")
+    dataset_label = str(dataset or "")
+    if not task_label:
+        return {
+            "schema_version": TERMINAL_BENCH_TASK_MATERIAL_READINESS_SCHEMA,
+            "dataset": dataset_label,
+            "task_id": "",
+            "checked": False,
+            "ready": None,
+            "status": "not_checked_batch_or_no_task_selected",
+            "first_blocker": "",
+            "candidate_count": 0,
+            "instruction_md_present_count": 0,
+            "task_toml_present_count": 0,
+            "raw_paths_recorded": False,
+        }
+
+    candidates: list[Path] = []
+    dataset_path = Path(dataset_label).expanduser()
+    if dataset_path.exists() and dataset_path.is_dir():
+        local_candidate = dataset_path / task_label
+        if local_candidate.exists() and local_candidate.is_dir():
+            candidates.append(local_candidate)
+    else:
+        cache_root = Path(
+            harbor_task_cache_root
+            or os.environ.get("GOAL_HARNESS_HARBOR_TASK_CACHE_ROOT", "")
+            or Path("~/.cache/harbor/tasks").expanduser()
+        )
+        if cache_root.exists() and cache_root.is_dir():
+            candidates.extend(
+                sorted(
+                    path
+                    for path in cache_root.glob(f"*/{task_label}")
+                    if path.exists() and path.is_dir()
+                )
+            )
+
+    instruction_count = sum(1 for path in candidates if (path / "instruction.md").exists())
+    task_toml_count = sum(1 for path in candidates if (path / "task.toml").exists())
+    if not candidates:
+        status = "not_cached_or_not_locally_resolved"
+        first_blocker = ""
+        ready: bool | None = None
+    elif instruction_count > 0 and task_toml_count > 0:
+        status = "ready"
+        first_blocker = ""
+        ready = True
+    elif instruction_count == 0:
+        status = "missing_instruction_md"
+        first_blocker = "task_material_missing_instruction_md"
+        ready = False
+    else:
+        status = "missing_task_toml"
+        first_blocker = "task_material_missing_task_toml"
+        ready = False
+
+    return {
+        "schema_version": TERMINAL_BENCH_TASK_MATERIAL_READINESS_SCHEMA,
+        "dataset": dataset_label,
+        "task_id": task_label,
+        "checked": bool(candidates),
+        "ready": ready,
+        "status": status,
+        "first_blocker": first_blocker,
+        "candidate_count": len(candidates),
+        "instruction_md_present_count": instruction_count,
+        "task_toml_present_count": task_toml_count,
+        "raw_paths_recorded": False,
+    }
+
+
 def build_terminal_bench_private_runner_launch(**command_kwargs: Any) -> dict[str, Any]:
     """Build the real private Harbor launch argv together with its env.
 
@@ -1556,13 +1645,24 @@ def build_terminal_bench_private_runner_launch(**command_kwargs: Any) -> dict[st
     else:
         raise ValueError(f"unsupported private runner launch mode: {mode}")
     surface = collect_terminal_bench_managed_preflight_surface(env=env)
+    material_readiness = build_terminal_bench_task_material_readiness(
+        dataset=str(resolved_command_kwargs.get("dataset", TERMINAL_BENCH_DEFAULT_DATASET)),
+        task_id=resolved_command_kwargs.get("task_id", TERMINAL_BENCH_DEFAULT_TASK),
+    )
     first_blocker = _managed_preflight_first_blocker(surface)
+    if (
+        first_blocker == "ready_for_private_managed_no_upload_pilot_review"
+        and material_readiness.get("checked") is True
+        and material_readiness.get("ready") is False
+    ):
+        first_blocker = str(material_readiness.get("first_blocker") or "task_material_not_ready")
     return {
         "schema_version": "terminal_bench_private_runner_launch_v0",
         "argv": argv,
         "env": env,
         "uses_private_runner_env": True,
         "preflight_surface": surface,
+        "task_material_readiness": material_readiness,
         "first_blocker": first_blocker,
         "ready": first_blocker == "ready_for_private_managed_no_upload_pilot_review",
     }
@@ -1583,6 +1683,11 @@ def summarize_terminal_bench_private_runner_launch(
     boundary = (
         preflight_surface.get("boundary")
         if isinstance(preflight_surface.get("boundary"), dict)
+        else {}
+    )
+    task_material = (
+        launch.get("task_material_readiness")
+        if isinstance(launch.get("task_material_readiness"), dict)
         else {}
     )
     path_value = env.get("PATH") if isinstance(env.get("PATH"), str) else ""
@@ -1637,6 +1742,21 @@ def summarize_terminal_bench_private_runner_launch(
         "env_path_present": bool(path_value),
         "env_probe_path_coverage": probe_coverage,
         "env_probe_path_coverage_count": sum(1 for ready in probe_coverage.values() if ready),
+        "task_material_readiness_status": str(task_material.get("status") or ""),
+        "task_material_first_blocker": str(task_material.get("first_blocker") or ""),
+        "task_material_readiness_checked": task_material.get("checked") is True,
+        "task_material_ready": (
+            task_material.get("ready") is True
+            if task_material.get("checked") is True
+            else None
+        ),
+        "task_material_candidate_count": int(task_material.get("candidate_count") or 0),
+        "task_material_instruction_md_present_count": int(
+            task_material.get("instruction_md_present_count") or 0
+        ),
+        "task_material_task_toml_present_count": int(
+            task_material.get("task_toml_present_count") or 0
+        ),
         "auth_surface_names_present": auth_names_present,
         "auth_values_recorded": False,
         "raw_env_recorded": False,
