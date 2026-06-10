@@ -118,6 +118,10 @@ def main() -> None:
         launch["first_blocker"] == "ready_for_private_managed_no_upload_pilot_review"
     ), launch
     summary = summarize_terminal_bench_private_runner_launch(launch)
+    assert summary["ready"] == launch["ready"], summary
+    assert summary["first_blocker"] == launch["first_blocker"], summary
+    assert summary["no_upload_boundary"] is True, summary
+    assert summary["submit_eligible"] is False, summary
     assert summary["agent_name"] == "", summary
     assert summary["agent_import_path_present"] is True, summary
     assert summary["goal_harness_agent_kwargs_present"] is True, summary
@@ -134,6 +138,10 @@ def main() -> None:
     assert "goal_harness_mode=hardened_codex_baseline" in baseline_launch["argv"], baseline_launch["argv"]
     assert "--mounts" not in baseline_launch["argv"], baseline_launch["argv"]
     baseline_summary = summarize_terminal_bench_private_runner_launch(baseline_launch)
+    assert baseline_summary["ready"] == baseline_launch["ready"], baseline_summary
+    assert baseline_summary["first_blocker"] == baseline_launch["first_blocker"], baseline_summary
+    assert baseline_summary["no_upload_boundary"] is True, baseline_summary
+    assert baseline_summary["submit_eligible"] is False, baseline_summary
     assert baseline_summary["agent_import_path_present"] is True, baseline_summary
     assert baseline_summary["goal_harness_agent_kwargs_present"] is True, baseline_summary
     assert baseline_summary["goal_harness_worker_bridge_requested"] is False, baseline_summary

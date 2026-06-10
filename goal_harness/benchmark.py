@@ -3102,15 +3102,16 @@ def build_terminal_bench_benchmark_run(
             case_result_writeback="runner_only",
         )
 
+    runner_job_name = (
+        f"{dataset.replace('@', '_').replace('.', '_')}_"
+        f"{str(task_id).replace('-', '_')}_{contract['event_mode']}"
+    )
     managed_runner_command_preview = (
         build_terminal_bench_managed_harbor_command(
-            job_name=(
-                "terminal_bench_sample_build_cython_ext_codex_goal_harness_pilot"
-                if mode == "codex-goal-harness"
-                else "terminal_bench_hardened_codex_baseline"
-                if mode == "hardened-codex"
-                else "terminal_bench_sample_build_cython_ext_goal_harness_managed_codex_pilot"
-            ),
+            dataset=dataset,
+            task_id=task_id,
+            model=model,
+            job_name=runner_job_name,
             goal_harness_mode=(
                 "codex_goal_harness"
                 if mode == "codex-goal-harness"
@@ -3149,48 +3150,38 @@ def build_terminal_bench_benchmark_run(
         else []
     )
     private_runner_launch_summary: dict[str, Any] = {}
-    if mode in ("codex-goal-harness", "goal-harness-managed-codex") and preflight_guard:
+    if mode in (
+        "codex-goal-harness",
+        "goal-harness-managed-codex",
+        "hardened-codex",
+    ) and preflight_guard:
         private_runner_launch_summary = summarize_terminal_bench_private_runner_launch(
-            {
-                "schema_version": "terminal_bench_private_runner_launch_v0",
-                "argv": build_terminal_bench_managed_harbor_command(
-                    job_name=(
-                        "terminal_bench_sample_build_cython_ext_codex_goal_harness_pilot"
-                        if mode == "codex-goal-harness"
-                        else "terminal_bench_sample_build_cython_ext_goal_harness_managed_codex_pilot"
-                    ),
-                    goal_harness_mode=(
-                        "codex_goal_harness"
-                        if mode == "codex-goal-harness"
-                        else "goal_harness_managed_codex"
-                    ),
-                    goal_harness_cli_bridge_enabled=(
-                        worker_cli_bridge_fixture or active_cli_bridge_preflight
-                    ),
-                    goal_harness_active_user_intervention_enabled=(
-                        active_user_assisted_treatment_preflight
-                    ),
-                    timeout_multiplier=timeout_multiplier,
-                    agent_timeout_multiplier=agent_timeout_multiplier,
-                    verifier_timeout_multiplier=verifier_timeout_multiplier,
-                    agent_setup_timeout_multiplier=agent_setup_timeout_multiplier,
-                    environment_build_timeout_multiplier=environment_build_timeout_multiplier,
-                    resolve_cli_paths=True,
+            build_terminal_bench_private_runner_launch(
+                mode=mode,
+                dataset=dataset,
+                task_id=task_id,
+                model=model,
+                job_name=runner_job_name,
+                goal_harness_cli_bridge_enabled=(
+                    mode == "codex-goal-harness"
+                    and (worker_cli_bridge_fixture or active_cli_bridge_preflight)
                 ),
-                "env": build_terminal_bench_private_runner_env(),
-                "uses_private_runner_env": True,
-                "preflight_surface": surface,
-                "first_blocker": first_blocker,
-                "ready": first_blocker == "ready_for_private_managed_no_upload_pilot_review"
-                and not active_user_assisted_treatment_preflight,
-            }
+                goal_harness_active_user_intervention_enabled=(
+                    active_user_assisted_treatment_preflight
+                ),
+                timeout_multiplier=timeout_multiplier,
+                agent_timeout_multiplier=agent_timeout_multiplier,
+                verifier_timeout_multiplier=verifier_timeout_multiplier,
+                agent_setup_timeout_multiplier=agent_setup_timeout_multiplier,
+                environment_build_timeout_multiplier=environment_build_timeout_multiplier,
+            )
         )
 
     benchmark_run: dict[str, Any] = {
         "schema_version": "benchmark_run_v0",
         "source_runner": "goal_harness_terminal_bench_cli_skeleton",
         "benchmark_id": dataset,
-        "job_name": f"{dataset.replace('@', '_').replace('.', '_')}_{task_id}_{contract['event_mode']}",
+        "job_name": runner_job_name,
         "mode": contract["event_mode"],
         "worker_mode": contract["worker_mode"],
         "agent": {

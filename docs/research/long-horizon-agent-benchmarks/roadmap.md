@@ -441,6 +441,10 @@ separate from external benchmark execution.
   branches.
 - [ ] [P2] Add a low-frequency Codex CLI benchmark lane for Terminal-Bench or a
   comparable long-horizon SWE benchmark, keeping local smokes deterministic.
+- [ ] [P1/P2] Triage Agents' Last Exam as a follow-on benchmark lane after the
+  first Terminal-Bench paired pilot. Build an ALE adapter dossier from the
+  official arXiv/repo surfaces before any cloud sandbox, GUI, model API, paid
+  compute, or leaderboard path.
 - [ ] [P2] Run or dry-run tau2/tau3 only as a simulator research pilot, not as
   the headline long-horizon leaderboard target.
 - [x] [P2] Maintain a paper-ready experiment report template that separates

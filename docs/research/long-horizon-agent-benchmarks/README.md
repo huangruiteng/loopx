@@ -167,6 +167,10 @@ work still belongs in the existing code, examples, and contract documents:
   paired-run invariants for `hardened-codex` versus `codex-goal-harness`,
   claim boundaries, metrics, and stop conditions before any full 89-task run or
   leaderboard path.
+- `agents-last-exam-triage-v0.md`: source-backed triage note adding Agents'
+  Last Exam to the benchmark backlog. It records the Xiaohongshu discovery
+  signal, verifies the arXiv and public GitHub surfaces, and keeps ALE behind
+  the current Terminal-Bench paired pilot until an adapter dossier exists.
 - `terminal-bench-cli-dry-run-fake-worker-v0.md`: public CLI skeleton for
   `goal-harness benchmark run terminal-bench`. The command defaults to dry-run,
   exposes `hardened-codex`, `codex-goal-harness`, passive observation, and
