@@ -6,7 +6,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -607,6 +607,10 @@ def _iso_duration_seconds(started_at: str | None, finished_at: str | None) -> fl
         finish = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if finish.tzinfo is None:
+        finish = finish.replace(tzinfo=timezone.utc)
     return max(0.0, (finish - start).total_seconds())
 
 

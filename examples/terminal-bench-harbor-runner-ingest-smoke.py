@@ -15,7 +15,10 @@ import sys
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import build_terminal_bench_harbor_result_benchmark_run  # noqa: E402
+from goal_harness.benchmark import (  # noqa: E402
+    _iso_duration_seconds,
+    build_terminal_bench_harbor_result_benchmark_run,
+)
 from goal_harness.status import compact_benchmark_run  # noqa: E402
 
 GOAL_ID = "terminal-bench-harbor-runner-ingest-fixture"
@@ -655,6 +658,11 @@ def assert_public_safe(payload: dict) -> None:
 
 
 def main() -> None:
+    assert _iso_duration_seconds(
+        "2026-06-10T17:50:00",
+        "2026-06-10T17:50:03+00:00",
+    ) == 3.0
+
     with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-runner-ingest-") as tmp:
         payload = build_terminal_bench_harbor_result_benchmark_run(write_fixture(Path(tmp)))
 
