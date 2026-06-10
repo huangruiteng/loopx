@@ -25,6 +25,13 @@ DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL = (
 DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON = (
     DEFAULT_WORKER_BRIDGE_TRACE_DIR + "/goal-harness-active-user-observation.json"
 )
+DEFAULT_ACTIVE_USER_CODEX_BIN = "/opt/homebrew/bin/codex"
+DEFAULT_ACTIVE_USER_SIMULATOR_CONTEXT_DIR = "<active-user-public-context-dir>"
+DEFAULT_ACTIVE_USER_SIMULATOR_PROMPT_JSON = "<active-user-simulator-prompt.json>"
+DEFAULT_ACTIVE_USER_SIMULATOR_OUTPUT_JSON = "<active-user-simulator-output.json>"
+DEFAULT_ACTIVE_USER_SIMULATOR_OUTPUT_SCHEMA_JSON = (
+    "<active-user-simulator-output-schema.json>"
+)
 DEFAULT_WORKER_BRIDGE_PYTHON_BIN = "python3"
 DEFAULT_WORKER_BRIDGE_MODULE = "goal_harness.cli"
 WORKER_BRIDGE_PYTHON_RUNTIME_POLICY = "ensure_python3_before_worker_cli_bridge"
@@ -41,6 +48,25 @@ ACTIVE_USER_INTERVENTION_OBSERVATION_VERSION = (
 )
 ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE = (
     "goal_harness_active_user_external_update_loop_v0"
+)
+ACTIVE_USER_CODEX_SIMULATOR_CONTRACT_VERSION = (
+    "goal_harness_active_user_codex_cli_simulator_contract_v0"
+)
+ACTIVE_USER_SIMULATOR_OUTPUT_VERSION = (
+    "goal_harness_active_user_simulator_output_v0"
+)
+ACTIVE_USER_SIMULATOR_ALLOWED_EVIDENCE_BASIS = (
+    "public task prompt visible to worker",
+    "worker public artifacts",
+    "compact Goal Harness status and run metadata",
+)
+ACTIVE_USER_SIMULATOR_NO_ORACLE_AUDIT_KEYS = (
+    "hidden_tests_visible",
+    "expected_solution_visible",
+    "benchmark_answer_key_visible",
+    "credential_values_visible",
+    "private_material_visible",
+    "solution_patch_visible",
 )
 DEFAULT_WORKER_BRIDGE_CLI_CALL_MINIMUM = 1
 DEFAULT_WORKER_BRIDGE_WALL_TIME_LIMIT_SECONDS = 900.0
@@ -334,6 +360,242 @@ def build_active_user_intervention_channel_contract(
     }
 
 
+def active_user_simulator_output_json_schema() -> dict[str, Any]:
+    """Return the strict JSON shape expected from a Codex CLI user simulator."""
+
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "schema_version",
+            "simulator_kind",
+            "trigger",
+            "message",
+            "visible_evidence_basis",
+            "no_oracle_audit",
+            "controller_authored_message",
+        ],
+        "properties": {
+            "schema_version": {
+                "type": "string",
+                "const": ACTIVE_USER_SIMULATOR_OUTPUT_VERSION,
+            },
+            "simulator_kind": {"type": "string", "const": "codex_cli"},
+            "trigger": {"type": "string", "minLength": 1, "maxLength": 120},
+            "message": {"type": "string", "minLength": 1, "maxLength": 500},
+            "visible_evidence_basis": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": True,
+                "items": {
+                    "type": "string",
+                    "enum": list(ACTIVE_USER_SIMULATOR_ALLOWED_EVIDENCE_BASIS),
+                },
+            },
+            "no_oracle_audit": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": list(ACTIVE_USER_SIMULATOR_NO_ORACLE_AUDIT_KEYS),
+                "properties": {
+                    key: {"type": "boolean", "const": False}
+                    for key in ACTIVE_USER_SIMULATOR_NO_ORACLE_AUDIT_KEYS
+                },
+            },
+            "controller_authored_message": {"type": "boolean", "const": False},
+        },
+    }
+
+
+def build_active_user_codex_simulator_contract(
+    *,
+    project_root: str = GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER,
+    python_bin: str = DEFAULT_WORKER_BRIDGE_PYTHON_BIN,
+    module: str = DEFAULT_WORKER_BRIDGE_MODULE,
+    codex_bin: str = DEFAULT_ACTIVE_USER_CODEX_BIN,
+    context_dir: str = DEFAULT_ACTIVE_USER_SIMULATOR_CONTEXT_DIR,
+    prompt_json: str = DEFAULT_ACTIVE_USER_SIMULATOR_PROMPT_JSON,
+    simulator_output_json: str = DEFAULT_ACTIVE_USER_SIMULATOR_OUTPUT_JSON,
+    simulator_output_schema_json: str = DEFAULT_ACTIVE_USER_SIMULATOR_OUTPUT_SCHEMA_JSON,
+    feed_jsonl: str = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+) -> dict[str, Any]:
+    """Build the model-backed active-user simulator launch contract.
+
+    The formal treatment path uses this contract instead of controller-written
+    feed messages: a separate Codex CLI run reads only public context, writes a
+    bounded JSON object, and Goal Harness validates it before appending to the
+    worker-visible feed.
+    """
+
+    safe_codex_bin = shlex.quote(codex_bin)
+    safe_context_dir = shlex.quote(context_dir)
+    safe_schema_json = shlex.quote(simulator_output_schema_json)
+    safe_output_json = shlex.quote(simulator_output_json)
+    safe_prompt_json = shlex.quote(prompt_json)
+    command_prefix = build_worker_bridge_command_prefix(
+        project_root=project_root,
+        python_bin=python_bin,
+        module=module,
+    )
+    codex_exec_command = (
+        f"{safe_codex_bin} exec "
+        f"--cd {safe_context_dir} "
+        "--sandbox read-only "
+        "--ask-for-approval never "
+        "--ephemeral "
+        f"--output-schema {safe_schema_json} "
+        f"--output-last-message {safe_output_json} "
+        f"- < {safe_prompt_json}"
+    )
+    append_validated_output_command = (
+        f"{command_prefix} worker-bridge active-user-simulator-output "
+        "--seq <next-seq> "
+        f"--simulator-output-json {safe_output_json} "
+        "--jsonl "
+        f">> {shlex.quote(feed_jsonl)}"
+    )
+    return {
+        "ok": True,
+        "schema_version": ACTIVE_USER_CODEX_SIMULATOR_CONTRACT_VERSION,
+        "bridge_surface": WORKER_BRIDGE_SURFACE,
+        "channel_surface": ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
+        "simulator_kind": "codex_cli",
+        "formal_treatment_requires_model_backed_simulator": True,
+        "manual_controller_feed_allowed": False,
+        "codex_cli": {
+            "codex_bin": codex_bin,
+            "exec_command": codex_exec_command,
+            "sandbox": "read-only",
+            "approval_policy": "never",
+            "ephemeral": True,
+        },
+        "simulator_input_contract": {
+            "prompt_json": prompt_json,
+            "context_dir": context_dir,
+            "allowed_context": list(ACTIVE_USER_SIMULATOR_ALLOWED_EVIDENCE_BASIS),
+            "must_not_include": [
+                "hidden tests",
+                "expected solutions",
+                "benchmark answer keys",
+                "credentials",
+                "private project material",
+                "controller-authored intervention text",
+            ],
+        },
+        "simulator_output_contract": {
+            "schema_version": ACTIVE_USER_SIMULATOR_OUTPUT_VERSION,
+            "output_json": simulator_output_json,
+            "output_schema_json": simulator_output_schema_json,
+            "json_schema": active_user_simulator_output_json_schema(),
+        },
+        "append_validated_output_command": append_validated_output_command,
+        "claim_boundary": {
+            "official_score_claim_allowed": False,
+            "leaderboard_claim_allowed": False,
+            "assisted_collaboration_claim_allowed": True,
+            "direct_codex_chat_injection": False,
+            "worker_pull_required": True,
+            "controller_authored_feed_allowed": False,
+        },
+        "public_boundary": {
+            "raw_paths_recorded": False,
+            "raw_transcript_recorded": False,
+            "credential_values_recorded": False,
+            "no_upload": True,
+        },
+    }
+
+
+def build_active_user_intervention_from_simulator_output(
+    *,
+    seq: int,
+    simulator_output: dict[str, Any],
+    created_after_worker_start: bool = True,
+) -> dict[str, Any]:
+    """Validate a Codex CLI simulator output and convert it to feed JSON."""
+
+    if not isinstance(simulator_output, dict):
+        raise ValueError("simulator_output must be a JSON object")
+    allowed_top_level_keys = {
+        "schema_version",
+        "simulator_kind",
+        "trigger",
+        "message",
+        "visible_evidence_basis",
+        "no_oracle_audit",
+        "controller_authored_message",
+    }
+    extra_top_level_keys = [
+        key for key in simulator_output if key not in allowed_top_level_keys
+    ]
+    if extra_top_level_keys:
+        raise ValueError("simulator_output contains unsupported fields")
+    if simulator_output.get("schema_version") != ACTIVE_USER_SIMULATOR_OUTPUT_VERSION:
+        raise ValueError(
+            "simulator_output must have "
+            f"schema_version={ACTIVE_USER_SIMULATOR_OUTPUT_VERSION}"
+        )
+    if simulator_output.get("simulator_kind") != "codex_cli":
+        raise ValueError("simulator_output must have simulator_kind=codex_cli")
+    if simulator_output.get("controller_authored_message") is not False:
+        raise ValueError("simulator_output must not be controller-authored")
+
+    evidence_basis = simulator_output.get("visible_evidence_basis")
+    if not isinstance(evidence_basis, list) or not evidence_basis:
+        raise ValueError("visible_evidence_basis must be a non-empty list")
+    evidence_basis_text = [
+        _coerce_public_safe_worker_text(str(item), field="visible_evidence_basis", limit=120)
+        for item in evidence_basis
+    ]
+    invalid_basis = [
+        item
+        for item in evidence_basis_text
+        if item not in ACTIVE_USER_SIMULATOR_ALLOWED_EVIDENCE_BASIS
+    ]
+    if invalid_basis:
+        raise ValueError("visible_evidence_basis contains non-public or unsupported evidence")
+
+    audit = simulator_output.get("no_oracle_audit")
+    if not isinstance(audit, dict):
+        raise ValueError("no_oracle_audit must be an object")
+    extra_audit_keys = [
+        key for key in audit if key not in ACTIVE_USER_SIMULATOR_NO_ORACLE_AUDIT_KEYS
+    ]
+    if extra_audit_keys:
+        raise ValueError("no_oracle_audit contains unsupported fields")
+    missing_audit_keys = [
+        key for key in ACTIVE_USER_SIMULATOR_NO_ORACLE_AUDIT_KEYS if key not in audit
+    ]
+    if missing_audit_keys:
+        raise ValueError("no_oracle_audit is missing required keys")
+    leaked_audit_keys = [
+        key for key in ACTIVE_USER_SIMULATOR_NO_ORACLE_AUDIT_KEYS if audit.get(key) is not False
+    ]
+    if leaked_audit_keys:
+        raise ValueError("simulator_output failed no-oracle audit")
+
+    intervention = build_active_user_intervention(
+        seq=seq,
+        message=str(simulator_output.get("message") or ""),
+        trigger=str(simulator_output.get("trigger") or "codex_cli_simulator_public_guidance"),
+        channel="codex_cli_user_simulator",
+        created_after_worker_start=created_after_worker_start,
+    )
+    intervention.update(
+        {
+            "simulator_kind": "codex_cli",
+            "simulator_output_schema_version": ACTIVE_USER_SIMULATOR_OUTPUT_VERSION,
+            "controller_authored_message": False,
+            "formal_treatment_eligible": True,
+            "manual_controller_feed": False,
+            "visible_evidence_basis": evidence_basis_text,
+            "no_oracle_audit": {
+                key: False for key in ACTIVE_USER_SIMULATOR_NO_ORACLE_AUDIT_KEYS
+            },
+        }
+    )
+    return intervention
+
+
 def build_active_user_intervention(
     *,
     seq: int,
@@ -430,6 +692,10 @@ def observe_active_user_intervention_feed(
             "expected_solution_visible": latest.get("expected_solution_visible") is True,
             "credential_values_visible": latest.get("credential_values_visible") is True,
             "private_material_visible": latest.get("private_material_visible") is True,
+            "simulator_kind": latest.get("simulator_kind"),
+            "formal_treatment_eligible": latest.get("formal_treatment_eligible") is True,
+            "manual_controller_feed": latest.get("manual_controller_feed") is True,
+            "controller_authored_message": latest.get("controller_authored_message") is True,
         }
     return {
         "ok": True,
@@ -967,6 +1233,23 @@ def write_worker_bridge_benchmark_run_file(
 
 
 def render_worker_bridge_install_contract_markdown(payload: dict[str, Any]) -> str:
+    if payload.get("schema_version") == ACTIVE_USER_CODEX_SIMULATOR_CONTRACT_VERSION:
+        cli = payload.get("codex_cli") or {}
+        boundary = payload.get("claim_boundary") or {}
+        lines = [
+            "# Goal Harness Active User Codex Simulator Contract",
+            "",
+            f"- ok: `{payload.get('ok')}`",
+            f"- schema_version: `{payload.get('schema_version')}`",
+            f"- simulator_kind: `{payload.get('simulator_kind')}`",
+            f"- manual_controller_feed_allowed: `{payload.get('manual_controller_feed_allowed')}`",
+            f"- codex_bin: `{cli.get('codex_bin')}`",
+            f"- official_score_claim_allowed: `{boundary.get('official_score_claim_allowed')}`",
+            f"- direct_codex_chat_injection: `{boundary.get('direct_codex_chat_injection')}`",
+            f"- controller_authored_feed_allowed: `{boundary.get('controller_authored_feed_allowed')}`",
+        ]
+        return "\n".join(lines) + "\n"
+
     if payload.get("schema_version") == ACTIVE_USER_INTERVENTION_CHANNEL_CONTRACT_VERSION:
         budget = payload.get("frequency_budget") or {}
         boundary = payload.get("claim_boundary") or {}
@@ -996,6 +1279,8 @@ def render_worker_bridge_install_contract_markdown(payload: dict[str, Any]) -> s
             f"- trigger: `{payload.get('trigger')}`",
             f"- created_after_worker_start: `{payload.get('created_after_worker_start')}`",
             f"- oracle_free: `{payload.get('oracle_free')}`",
+            f"- simulator_kind: `{payload.get('simulator_kind')}`",
+            f"- formal_treatment_eligible: `{payload.get('formal_treatment_eligible')}`",
         ]
         return "\n".join(lines) + "\n"
 
