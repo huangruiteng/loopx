@@ -696,10 +696,36 @@ def _compact_active_user_private_launcher_plan(value: Any) -> dict[str, Any]:
         "worker_start_marker",
         "active_user_feed_jsonl",
         "active_user_observation_json",
+        "simulator_setting",
     ):
         text = public_safe_compact_text(value.get(field), limit=140)
         if text:
             compact[field] = text
+    contract = (
+        value.get("codex_simulator_contract")
+        if isinstance(value.get("codex_simulator_contract"), dict)
+        else {}
+    )
+    compact_contract: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "simulator_kind",
+        "codex_exec_command",
+        "append_validated_output_command",
+        "simulator_output_schema_version",
+    ):
+        text = public_safe_compact_text(contract.get(field), limit=500)
+        if text:
+            compact_contract[field] = text
+    for field in (
+        "manual_controller_feed_allowed",
+        "formal_treatment_requires_model_backed_simulator",
+        "controller_authored_feed_allowed",
+    ):
+        if isinstance(contract.get(field), bool):
+            compact_contract[field] = contract[field]
+    if compact_contract:
+        compact["codex_simulator_contract"] = compact_contract
     if isinstance(value.get("ready"), bool):
         compact["ready"] = value["ready"]
     for field in ("sequence_steps", "required_evidence", "stop_conditions"):
