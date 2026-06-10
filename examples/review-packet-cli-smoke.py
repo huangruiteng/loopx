@@ -780,6 +780,104 @@ def assert_decision_freshness_warning_packet() -> None:
     assert_no_local_paths(payload, "decision freshness warning packet")
 
 
+def assert_dense_handoff_stays_within_budget() -> None:
+    goal_id = "dense-handoff-budget"
+    status_payload = {
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "status": "active_user_observation_benchmark_ingest_fixture_v0",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "recommended_action": "advance one bounded backlog segment",
+                    "project_asset": {
+                        "owner": "codex",
+                        "gate": "none",
+                        "next_action": "advance one bounded backlog segment",
+                        "stop_condition": "stop before private material or production actions",
+                        "agent_todos": {
+                            "first_open_items": [
+                                {
+                                    "text": "[P2] Observe public-safe dependency state transitions without spending consecutive meta turns on dependency-only work.",
+                                },
+                                {
+                                    "text": "[P2] Keep canary/default release readiness, heartbeat prompt freshness, quota health, and state projection consistency observable.",
+                                },
+                                {
+                                    "text": "[P1] Prefer e2e benchmark evidence when private/no-upload boundaries are satisfied, then ingest compact runner evidence.",
+                                },
+                            ]
+                        },
+                    },
+                    "handoff_readiness": {
+                        "handoff_status": "post_handoff_run_seen",
+                        "post_handoff_run_seen": True,
+                        "post_handoff_latest_run": {
+                            "generated_at": "2026-06-10T18:09:17+08:00",
+                            "classification": "active_user_observation_benchmark_ingest_fixture_v0",
+                            "delivery_batch_scale": "implementation",
+                        },
+                        "post_handoff_small_scale_streak": 0,
+                    },
+                    "source": "latest_run",
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": goal_id,
+                    "status": "active_user_observation_benchmark_ingest_fixture_v0",
+                    "registry_member": True,
+                    "authority_registry": {
+                        "declared": True,
+                        "topic_authority_count": 95,
+                        "project_material_count": 6,
+                        "project_material_repository_count": 1,
+                        "project_material_owner_review_required_count": 0,
+                        "project_material_stale_count": 0,
+                        "project_material_current_authority_count": 4,
+                        "conflict_risk": "low",
+                    },
+                    "latest_runs": [
+                        {
+                            "generated_at": "2026-06-10T18:09:17+08:00",
+                            "classification": "active_user_observation_benchmark_ingest_fixture_v0",
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    payload = build_review_packet(status_payload, goal_id=goal_id)
+    assert payload["ok"] is True, payload
+    handoff = payload["project_agent_handoff"]
+    assert_project_agent_handoff_compact(
+        handoff,
+        "dense project-agent handoff",
+        goal_id=goal_id,
+    )
+    assert_handoff_interface_budget(payload, "dense project-agent handoff")
+    assert (
+        "goal-harness --registry ./fixtures/registry.json --runtime-root "
+        "./fixtures/runtime history --goal-id dense-handoff-budget --limit 3"
+    ) in handoff, handoff
+    assert_no_local_paths(payload, "dense project-agent handoff")
+
+    handoff_only = review_packet_handoff_only_payload(payload)
+    assert handoff_only["handoff_text"] == handoff, handoff_only
+    assert_handoff_interface_budget(
+        handoff_only,
+        "dense handoff-only json",
+        text_key="handoff_text",
+    )
+    assert_handoff_only_top_level_budget(handoff_only, "dense handoff-only json")
+
+
 def main() -> int:
     help_result = subprocess.run(
         [sys.executable, "-m", "goal_harness.cli", "review-packet", "--help"],
@@ -798,6 +896,7 @@ def main() -> int:
     assert_focus_wait_owner_blocker_packet()
     assert_missing_project_asset_review_packet_fallback()
     assert_decision_freshness_warning_packet()
+    assert_dense_handoff_stays_within_budget()
     with tempfile.TemporaryDirectory(prefix="goal-harness-review-packet-") as tmp:
         root = Path(tmp)
         registry_path = write_planned_registry(root)

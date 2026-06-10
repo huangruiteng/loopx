@@ -50,6 +50,47 @@ def command_block(command: str | None, *, compact: bool = False) -> str:
     return "\n".join(["```bash", command, "```"])
 
 
+def compact_last_bash_command_block(text: str) -> str:
+    lines = text.splitlines()
+    try:
+        start = len(lines) - 1 - lines[::-1].index("```bash")
+    except ValueError:
+        return text
+    try:
+        end = start + 1 + lines[start + 1 :].index("```")
+    except ValueError:
+        return text
+    command = "\n".join(lines[start + 1 : end])
+    compact_command = compact_shell_command(command)
+    return "\n".join([*lines[: start + 1], compact_command, *lines[end:]])
+
+
+def fit_project_agent_handoff_budget(text: str) -> str:
+    if build_handoff_interface_budget(text)["within_budget"]:
+        return text
+
+    candidate = compact_last_bash_command_block(text)
+    if build_handoff_interface_budget(candidate)["within_budget"]:
+        return candidate
+
+    lines = candidate.splitlines()
+    for prefixes in (
+        ("Agent 待办候选 ",),
+        ("材料上下文：",),
+        ("交付观测：",),
+        ("交付合同：",),
+    ):
+        lines = [
+            line
+            for line in lines
+            if not any(line.startswith(prefix) for prefix in prefixes)
+        ]
+        candidate = "\n".join(lines)
+        if build_handoff_interface_budget(candidate)["within_budget"]:
+            return candidate
+    return candidate
+
+
 def build_status_command(status_payload: dict[str, Any]) -> str:
     return "\n".join(
         [
@@ -950,7 +991,7 @@ def project_agent_section(
             "",
             command_block(command),
         ]
-    return "\n".join(line for line in lines if line)
+    return fit_project_agent_handoff_budget("\n".join(line for line in lines if line))
 
 
 def build_review_packet(
