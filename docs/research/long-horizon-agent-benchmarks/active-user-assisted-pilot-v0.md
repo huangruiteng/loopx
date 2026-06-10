@@ -61,6 +61,8 @@ This channel is intentionally pull-based:
 
 - the worker must observe an intervention with `seq > worker_start_seq`;
 - observation is recorded as compact JSON without raw paths or transcripts;
+- simulator append commands must emit single-line JSONL before redirecting to
+  the feed;
 - direct Codex chat injection remains a separate optional surface;
 - official score and leaderboard claims remain disallowed for assisted runs.
 
@@ -75,6 +77,7 @@ The deterministic smoke is:
 ```bash
 python3 examples/active-user-assisted-pilot-smoke.py
 python3 examples/worker-bridge-active-user-feed-smoke.py
+python3 examples/worker-bridge-active-user-after-start-observation-smoke.py
 ```
 
 It performs no model call, no benchmark run, no Docker or cloud sandbox use, no

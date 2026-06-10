@@ -267,6 +267,7 @@ def build_active_user_intervention_channel_contract(
         "--seq <next-seq> "
         "--trigger public_progress_or_stall_signal "
         "--message '<public-safe-user-message>' "
+        "--jsonl "
         f">> {shlex.quote(feed_jsonl)}"
     )
     return {

@@ -690,6 +690,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Mark this intervention as created before the worker start marker.",
     )
+    active_user_intervention_parser.add_argument(
+        "--jsonl",
+        action="store_true",
+        help="Print compact single-line JSON for appending to an intervention feed.",
+    )
     active_user_observe_parser = worker_bridge_sub.add_parser(
         "active-user-observe",
         help="Observe active-user interventions created after the worker start marker.",
@@ -1607,6 +1612,9 @@ def main(argv: list[str] | None = None) -> int:
                     channel=args.channel,
                     created_after_worker_start=not bool(args.before_worker_start),
                 )
+                if args.jsonl:
+                    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+                    return 0
             else:
                 payload = observe_active_user_intervention_feed(
                     args.feed_jsonl,

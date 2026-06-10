@@ -2003,6 +2003,8 @@ def build_terminal_bench_goal_harness_access_packet(
             active_user_observe_command,
             limit=500,
         )
+        if active_user_observe_command_text is None:
+            active_user_observe_command_text = "<active-user-observe-command-redacted>"
         base = (
             f"{command_prefix} --format json --registry {registry_arg_quoted} "
             f"--runtime-root {runtime_root_arg_quoted}"
