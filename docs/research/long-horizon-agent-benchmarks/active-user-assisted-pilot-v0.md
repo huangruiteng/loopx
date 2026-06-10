@@ -50,6 +50,20 @@ pilot controls risk through budgets and audits:
 - every no-oracle audit field must be false;
 - any suspected oracle leak or overguidance must become a failure label.
 
+## Worker Channel
+
+The first public implementation uses an audited external update loop rather
+than a direct Codex chat-session injection. The simulator appends compact
+user-style messages to a worker-visible feed, and the worker polls
+`goal-harness worker-bridge active-user-observe` after its own start marker.
+
+This channel is intentionally pull-based:
+
+- the worker must observe an intervention with `seq > worker_start_seq`;
+- observation is recorded as compact JSON without raw paths or transcripts;
+- direct Codex chat injection remains a separate optional surface;
+- official score and leaderboard claims remain disallowed for assisted runs.
+
 ## Claim Boundary
 
 This pilot can support only assisted-collaboration claims. It cannot be used as
@@ -60,6 +74,7 @@ The deterministic smoke is:
 
 ```bash
 python3 examples/active-user-assisted-pilot-smoke.py
+python3 examples/worker-bridge-active-user-feed-smoke.py
 ```
 
 It performs no model call, no benchmark run, no Docker or cloud sandbox use, no

@@ -11,6 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from .worker_bridge import (
+    ACTIVE_USER_INTERVENTION_CHANNEL_CONTRACT_VERSION,
+    ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
+    DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL as TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+    DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON as TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
     DEFAULT_WORKER_BRIDGE_BENCHMARK_RUN_JSON as TERMINAL_BENCH_WORKER_BRIDGE_BENCHMARK_RUN_JSON,
     DEFAULT_WORKER_BRIDGE_COUNTER_TRACE_JSON as TERMINAL_BENCH_WORKER_BRIDGE_COUNTER_TRACE_JSON,
     GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER as TERMINAL_BENCH_WORKER_BRIDGE_PROJECT_ROOT_PLACEHOLDER,
@@ -51,6 +55,9 @@ TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_CHANNEL_SCHEMA = (
 )
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER = (
     "missing_simulator_to_worker_injection_channel"
+)
+TERMINAL_BENCH_ACTIVE_USER_REAL_WORKER_OBSERVATION_FIRST_BLOCKER = (
+    "missing_real_assisted_worker_observation"
 )
 TERMINAL_BENCH_HARDENED_CODEX_BASELINE_PREFLIGHT_MODE = (
     "hardened_codex_baseline_preflight_guard"
@@ -144,8 +151,9 @@ def build_terminal_bench_active_user_injection_channel_probe(
     *,
     active_cli_bridge_preflight: bool,
 ) -> dict[str, Any]:
-    """Describe why active-user treatment cannot yet inject mid-run messages."""
+    """Describe active-user treatment channels and remaining run blocker."""
 
+    external_update_loop_available = bool(active_cli_bridge_preflight)
     checked_channels = [
         {
             "channel": "initial_prompt_instruction_append",
@@ -160,26 +168,51 @@ def build_terminal_bench_active_user_injection_channel_probe(
             "reason": "worker can query Goal Harness state, but the simulator cannot push a fresh user turn into the active Codex run",
         },
         {
+            "channel": "audited_external_update_loop",
+            "available": external_update_loop_available,
+            "verdict": (
+                "available_worker_pull_channel"
+                if external_update_loop_available
+                else "requires_active_worker_cli_bridge"
+            ),
+            "reason": "simulator can append a public-safe intervention feed and the worker can poll active-user-observe after start",
+            "channel_surface": ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
+            "contract_schema_version": ACTIVE_USER_INTERVENTION_CHANNEL_CONTRACT_VERSION,
+        },
+        {
             "channel": "interactive_worker_session_bridge",
             "available": False,
-            "verdict": "required_missing",
+            "verdict": "optional_direct_chat_missing",
             "reason": "current Harbor custom agent surface invokes one Codex worker run through a single super-run instruction",
         },
     ]
+    first_blocker = (
+        TERMINAL_BENCH_ACTIVE_USER_REAL_WORKER_OBSERVATION_FIRST_BLOCKER
+        if external_update_loop_available
+        else TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER
+    )
     return {
         "schema_version": TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_CHANNEL_SCHEMA,
-        "channel_available": False,
-        "first_blocker": TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER,
-        "required_capability": "inject_user_message_during_codex_worker_run",
-        "current_agent_surface": "single_super_run_instruction_call",
+        "channel_available": external_update_loop_available,
+        "first_blocker": first_blocker,
+        "required_capability": "worker_observes_simulator_message_after_start",
+        "current_agent_surface": (
+            ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE
+            if external_update_loop_available
+            else "single_super_run_instruction_call"
+        ),
+        "direct_codex_chat_injection_available": False,
+        "audited_external_update_loop_available": external_update_loop_available,
+        "active_user_feed_jsonl": TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+        "active_user_observation_json": TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
         "initial_prompt_only_is_not_active_intervention": True,
         "no_user_message_injected": True,
         "model_api_invoked": False,
         "raw_transcript_recorded": False,
         "checked_channel_count": len(checked_channels),
         "checked_channels": checked_channels,
-        "next_channel_requirement": "controller_to_worker_user_message_push_or_audited_external_update_loop",
-        "minimum_next_implementation": "prove a worker can observe a new simulator intervention after the Codex run starts",
+        "next_channel_requirement": "wire_worker_prompt_to_poll_active_user_observe_during_assisted_treatment",
+        "minimum_next_implementation": "run a worker sample that observes a post-start active-user intervention",
     }
 
 
@@ -1911,6 +1944,11 @@ def build_terminal_bench_goal_harness_access_packet(
     counter_trace_json: str = "<counter-trace-jsonl>",
     classification: str = "<classification>",
     append_execute_enabled: bool = False,
+    active_user_intervention_enabled: bool = False,
+    active_user_feed_jsonl: str = TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+    active_user_observation_json: str = TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
+    active_user_observe_command: str = "<active-user-observe-command>",
+    active_user_channel_surface: str = ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
 ) -> str:
     """Build the public-safe worker access packet for the Goal Harness arm.
 
@@ -1961,6 +1999,10 @@ def build_terminal_bench_goal_harness_access_packet(
         scan_path_quoted = shlex.quote(scan_path)
         benchmark_run_json_quoted = shlex.quote(benchmark_run_json)
         classification_quoted = shlex.quote(classification)
+        active_user_observe_command_text = _public_safe_benchmark_label(
+            active_user_observe_command,
+            limit=500,
+        )
         base = (
             f"{command_prefix} --format json --registry {registry_arg_quoted} "
             f"--runtime-root {runtime_root_arg_quoted}"
@@ -2014,6 +2056,26 @@ def build_terminal_bench_goal_harness_access_packet(
             "worker_benchmark_run_json_must_omit: "
             + ",".join(WORKER_BRIDGE_BENCHMARK_RUN_FORBIDDEN_PUBLIC_FIELDS),
         ]
+        if active_user_intervention_enabled:
+            bridge_lines.extend(
+                [
+                    "active_user_intervention_channel_enabled: true",
+                    "active_user_intervention_channel_surface: "
+                    + active_user_channel_surface,
+                    "active_user_intervention_feed_jsonl: " + active_user_feed_jsonl,
+                    "active_user_intervention_observation_json: "
+                    + active_user_observation_json,
+                    "active_user_intervention_observe_command: "
+                    + active_user_observe_command_text,
+                    "active_user_worker_start_marker: worker_start_seq",
+                    "active_user_worker_must_poll_after_start: true",
+                    "active_user_direct_codex_chat_injection: false",
+                    "active_user_official_score_claim_allowed: false",
+                    "active_user_leaderboard_claim_allowed: false",
+                    "active_user_no_hidden_tests_expected_solutions_or_credentials: true",
+                    "active_user_frequency_budget_required: true",
+                ]
+            )
         if compact_mode:
             bridge_lines.extend(
                 [
@@ -2254,6 +2316,7 @@ def build_terminal_bench_managed_harbor_command(
     goal_harness_ablation_mode: str = "goal_harness_managed",
     goal_harness_goal_id: str = "<goal-id>",
     goal_harness_cli_bridge_enabled: bool = False,
+    goal_harness_active_user_intervention_enabled: bool = False,
     goal_harness_project_root: str = (
         TERMINAL_BENCH_WORKER_BRIDGE_PROJECT_ROOT_PLACEHOLDER
     ),
@@ -2398,6 +2461,25 @@ def build_terminal_bench_managed_harbor_command(
                 f"goal_harness_classification={agent_kwargs['goal_harness_classification']}",
             ]
         )
+        if goal_harness_active_user_intervention_enabled:
+            command.extend(
+                [
+                    "--agent-kwarg",
+                    "goal_harness_active_user_intervention_enabled=true",
+                    "--agent-kwarg",
+                    "goal_harness_active_user_feed_jsonl="
+                    + agent_kwargs["goal_harness_active_user_feed_jsonl"],
+                    "--agent-kwarg",
+                    "goal_harness_active_user_observation_json="
+                    + agent_kwargs["goal_harness_active_user_observation_json"],
+                    "--agent-kwarg",
+                    "goal_harness_active_user_observe_command="
+                    + agent_kwargs["goal_harness_active_user_observe_command"],
+                    "--agent-kwarg",
+                    "goal_harness_active_user_channel_surface="
+                    + agent_kwargs["goal_harness_active_user_channel_surface"],
+                ]
+            )
     if not no_upload:
         raise ValueError("managed Terminal-Bench pilot command is no-upload only")
     return normalize_terminal_bench_private_runner_invocation(command)
@@ -2544,7 +2626,7 @@ def build_terminal_bench_benchmark_run(
             "event_mode": event_mode,
             "trace_publicness": trace_publicness,
             "first_blocker": (
-                TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER
+                TERMINAL_BENCH_ACTIVE_USER_REAL_WORKER_OBSERVATION_FIRST_BLOCKER
                 if active_user_assisted_treatment_preflight
                 else first_blocker
             ),
@@ -2600,11 +2682,17 @@ def build_terminal_bench_benchmark_run(
         validation["worker_cli_bridge_trace_required_before_claim"] = True
         validation["no_worker_cli_calls_observed_in_preflight"] = True
     if active_user_assisted_treatment_preflight:
+        validation_channel_probe = build_terminal_bench_active_user_injection_channel_probe(
+            active_cli_bridge_preflight=active_cli_bridge_preflight,
+        )
         validation["active_user_assisted_treatment_preflight"] = True
         validation["active_user_simulator_contract_checked"] = True
         validation["simulator_to_worker_injection_channel_checked"] = True
         validation["simulator_to_worker_injection_channel_probe_checked"] = True
-        validation["missing_simulator_to_worker_injection_channel_recorded"] = True
+        validation["simulator_to_worker_external_update_loop_available"] = bool(
+            validation_channel_probe.get("audited_external_update_loop_available")
+        )
+        validation["real_assisted_worker_observation_missing"] = True
         validation["no_real_user_message_injected"] = True
         validation["no_model_backed_simulator_invoked"] = True
         validation["no_oracle_audit_required"] = True
@@ -2735,7 +2823,7 @@ def build_terminal_bench_benchmark_run(
                 else
                 "fake_worker_fixture_observed"
                 if fake_worker
-                else "active_user_assisted_treatment_preflight_no_injection_channel"
+                else "active_user_assisted_treatment_preflight_external_update_loop_no_worker_observation"
                 if active_user_assisted_treatment_preflight
                 else "active_bridge_preflight_no_worker_trace"
                 if active_cli_bridge_preflight
@@ -2788,6 +2876,9 @@ def build_terminal_bench_benchmark_run(
                 mode == "codex-goal-harness"
                 and (worker_cli_bridge_fixture or active_cli_bridge_preflight)
             ),
+            goal_harness_active_user_intervention_enabled=(
+                active_user_assisted_treatment_preflight
+            ),
             timeout_multiplier=timeout_multiplier,
             agent_timeout_multiplier=agent_timeout_multiplier,
             verifier_timeout_multiplier=verifier_timeout_multiplier,
@@ -2819,6 +2910,9 @@ def build_terminal_bench_benchmark_run(
                     ),
                     goal_harness_cli_bridge_enabled=(
                         worker_cli_bridge_fixture or active_cli_bridge_preflight
+                    ),
+                    goal_harness_active_user_intervention_enabled=(
+                        active_user_assisted_treatment_preflight
                     ),
                     timeout_multiplier=timeout_multiplier,
                     agent_timeout_multiplier=agent_timeout_multiplier,
@@ -2871,6 +2965,8 @@ def build_terminal_bench_benchmark_run(
                     "goal_harness_registry_arg",
                     "goal_harness_runtime_root_arg",
                     "goal_harness_benchmark_run_json",
+                    "goal_harness_active_user_feed_jsonl",
+                    "goal_harness_active_user_observe_command",
                 ]
                 if active_cli_bridge_preflight or worker_cli_bridge_fixture
                 else []
@@ -3076,11 +3172,13 @@ def build_terminal_bench_benchmark_run(
             "official_score_claim_allowed": False,
             "leaderboard_claim_allowed": False,
             "simulator_to_worker_injection_channel": injection_channel_probe,
-            "next_step": "add_or_select_runner_surface_that_can_inject_user_messages_during_worker_run",
+            "next_step": injection_channel_probe["next_channel_requirement"],
         }
         benchmark_run["assisted_collaboration_claim_allowed"] = True
         benchmark_run["official_score_claim_allowed"] = False
-        benchmark_run["active_user_simulator_injection_channel_available"] = False
+        benchmark_run["active_user_simulator_injection_channel_available"] = bool(
+            injection_channel_probe.get("channel_available")
+        )
     if mode == "codex-goal-harness":
         benchmark_run["goal_harness_access_packet"] = {
             "schema_version": TERMINAL_BENCH_GOAL_HARNESS_ACCESS_PACKET_VERSION,
@@ -3374,7 +3472,9 @@ def build_terminal_bench_benchmark_run(
                     {
                         "active_user_assisted_treatment": True,
                         "simulator_setting": "deterministic_scripted_user",
-                        "simulator_to_worker_injection_channel_available": False,
+                        "simulator_to_worker_injection_channel_available": bool(
+                            injection_channel_probe.get("channel_available")
+                        ),
                         "simulator_to_worker_injection_channel": injection_channel_probe,
                         "interactive_user_message_injection_checked": True,
                         "initial_prompt_only_is_not_active_intervention": True,
@@ -3419,7 +3519,7 @@ def terminal_bench_recommended_action(
     if mode == "hardened-codex":
         return "run hardened-codex baseline and codex-goal-harness treatment in parallel on the same hard task; do not launch bare-codex"
     if active_user_assisted_treatment_preflight:
-        return "add or select a runner channel that can inject user messages during the Codex worker run before launching real active-user assisted treatment"
+        return "wire the worker prompt to poll active-user-observe, then run a no-upload assisted worker sample that proves after-start simulator observation"
     if active_cli_bridge_preflight:
         return "run the private no-upload codex-goal-harness sample repeat with active worker Goal Harness CLI bridge, then require nonzero worker_goal_harness_cli_calls before any in-case use claim"
     if worker_cli_bridge_fixture:

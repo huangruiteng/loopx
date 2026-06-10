@@ -17,12 +17,28 @@ DEFAULT_WORKER_BRIDGE_COUNTER_TRACE_JSON = (
 DEFAULT_WORKER_BRIDGE_BENCHMARK_RUN_JSON = (
     DEFAULT_WORKER_BRIDGE_TRACE_DIR + "/goal-harness-worker-benchmark-run.json"
 )
+DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL = (
+    DEFAULT_WORKER_BRIDGE_TRACE_DIR + "/goal-harness-active-user-interventions.jsonl"
+)
+DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON = (
+    DEFAULT_WORKER_BRIDGE_TRACE_DIR + "/goal-harness-active-user-observation.json"
+)
 DEFAULT_WORKER_BRIDGE_PYTHON_BIN = "python3"
 DEFAULT_WORKER_BRIDGE_MODULE = "goal_harness.cli"
 WORKER_BRIDGE_PYTHON_RUNTIME_POLICY = "ensure_python3_before_worker_cli_bridge"
 WORKER_BRIDGE_OUTCOME_SCHEMA_VERSION = "goal_harness_worker_bridge_outcome_v0"
 WORKER_BRIDGE_BENCHMARK_RUN_WRITEBACK_CONTRACT_VERSION = (
     "goal_harness_worker_benchmark_run_writeback_contract_v0"
+)
+ACTIVE_USER_INTERVENTION_CHANNEL_CONTRACT_VERSION = (
+    "goal_harness_active_user_intervention_channel_contract_v0"
+)
+ACTIVE_USER_INTERVENTION_EVENT_VERSION = "goal_harness_active_user_intervention_v0"
+ACTIVE_USER_INTERVENTION_OBSERVATION_VERSION = (
+    "goal_harness_active_user_intervention_observation_v0"
+)
+ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE = (
+    "goal_harness_active_user_external_update_loop_v0"
 )
 DEFAULT_WORKER_BRIDGE_CLI_CALL_MINIMUM = 1
 DEFAULT_WORKER_BRIDGE_WALL_TIME_LIMIT_SECONDS = 900.0
@@ -56,6 +72,21 @@ WORKER_BRIDGE_BENCHMARK_RUN_FORBIDDEN_PUBLIC_FIELDS = (
     "raw_sessions",
     "credential_values",
     "auth_values",
+)
+ACTIVE_USER_PUBLIC_TEXT_FORBIDDEN_MARKERS = (
+    "/" + "Users/",
+    "/" + "tmp/",
+    ".local/",
+    ".goal-harness",
+    "OPENAI" + "_API_KEY",
+    "ARK" + "_API_KEY",
+    "CODEX" + "_AUTH_JSON",
+    "Author" + "ization:",
+    "Bear" + "er ",
+    "-----BEGIN",
+    "sk-",
+    "tok" + "en=",
+    "pass" + "word=",
 )
 
 
@@ -181,6 +212,264 @@ def build_worker_bridge_benchmark_run_writeback_contract(
     }
 
 
+def _coerce_public_safe_worker_text(
+    value: str,
+    *,
+    field: str,
+    limit: int,
+) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"{field} is required")
+    leaked = [marker for marker in ACTIVE_USER_PUBLIC_TEXT_FORBIDDEN_MARKERS if marker in text]
+    if leaked:
+        raise ValueError(f"{field} contains a non-public marker")
+    return text[:limit].rstrip()
+
+
+def build_active_user_intervention_channel_contract(
+    *,
+    project_root: str = GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER,
+    runtime_root: str = GOAL_HARNESS_RUNTIME_ROOT_PLACEHOLDER,
+    python_bin: str = DEFAULT_WORKER_BRIDGE_PYTHON_BIN,
+    module: str = DEFAULT_WORKER_BRIDGE_MODULE,
+    feed_jsonl: str = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+    observation_json: str = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
+    min_interval_seconds: int = 300,
+    max_interventions_per_task: int = 3,
+) -> dict[str, Any]:
+    """Build the pull-based active-user update channel for a worker run."""
+
+    min_interval = _coerce_non_negative_int(
+        int(min_interval_seconds),
+        field="min_interval_seconds",
+    )
+    max_interventions = _coerce_non_negative_int(
+        int(max_interventions_per_task),
+        field="max_interventions_per_task",
+    )
+    if max_interventions <= 0:
+        raise ValueError("max_interventions_per_task must be greater than zero")
+    command_prefix = build_worker_bridge_command_prefix(
+        project_root=project_root,
+        python_bin=python_bin,
+        module=module,
+    )
+    observe_command = (
+        f"{command_prefix} worker-bridge active-user-observe "
+        f"--feed-jsonl {shlex.quote(feed_jsonl)} "
+        "--worker-start-seq <worker-start-seq> "
+        f"--observation-json {shlex.quote(observation_json)} "
+        "--format json"
+    )
+    simulator_append_command = (
+        f"{command_prefix} worker-bridge active-user-intervention "
+        "--seq <next-seq> "
+        "--trigger public_progress_or_stall_signal "
+        "--message '<public-safe-user-message>' "
+        f">> {shlex.quote(feed_jsonl)}"
+    )
+    return {
+        "ok": True,
+        "schema_version": ACTIVE_USER_INTERVENTION_CHANNEL_CONTRACT_VERSION,
+        "bridge_surface": WORKER_BRIDGE_SURFACE,
+        "channel_surface": ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
+        "mode": "audited_external_update_loop",
+        "feed_jsonl": feed_jsonl,
+        "observation_json": observation_json,
+        "worker_observe_command": observe_command,
+        "simulator_append_command": simulator_append_command,
+        "worker_start_marker": {
+            "kind": "worker_start_seq",
+            "proof_rule": "worker must observe an intervention with seq greater than worker_start_seq",
+        },
+        "frequency_budget": {
+            "min_interval_seconds": min_interval,
+            "max_interventions_per_task": max_interventions,
+            "simulator_may_be_proactive": True,
+            "artificial_mildness_required": False,
+        },
+        "visibility_policy": {
+            "simulator_may_read": [
+                "public task prompt visible to worker",
+                "worker public artifacts",
+                "compact Goal Harness status and run metadata",
+            ],
+            "simulator_must_not_read": [
+                "hidden tests",
+                "expected solutions",
+                "benchmark answer keys",
+                "credentials",
+                "private project material",
+            ],
+        },
+        "claim_boundary": {
+            "official_score_claim_allowed": False,
+            "leaderboard_claim_allowed": False,
+            "assisted_collaboration_claim_allowed": True,
+            "direct_codex_chat_injection": False,
+            "worker_pull_required": True,
+        },
+        "public_boundary": {
+            "raw_paths_recorded": False,
+            "raw_transcript_recorded": False,
+            "credential_values_recorded": False,
+            "no_upload": True,
+        },
+    }
+
+
+def build_active_user_intervention(
+    *,
+    seq: int,
+    message: str,
+    trigger: str = "public_progress_or_stall_signal",
+    channel: str = "simulator_proactive_user_message",
+    created_after_worker_start: bool = True,
+) -> dict[str, Any]:
+    """Build one public-safe active-user intervention event."""
+
+    intervention_seq = _coerce_non_negative_int(seq, field="seq")
+    safe_message = _coerce_public_safe_worker_text(
+        message,
+        field="message",
+        limit=500,
+    )
+    safe_trigger = _coerce_public_safe_worker_text(
+        trigger,
+        field="trigger",
+        limit=120,
+    )
+    safe_channel = _coerce_public_safe_worker_text(
+        channel,
+        field="channel",
+        limit=120,
+    )
+    return {
+        "ok": True,
+        "schema_version": ACTIVE_USER_INTERVENTION_EVENT_VERSION,
+        "channel_surface": ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
+        "seq": intervention_seq,
+        "channel": safe_channel,
+        "type": "active_user_instruction",
+        "trigger": safe_trigger,
+        "message": safe_message,
+        "created_after_worker_start": bool(created_after_worker_start),
+        "oracle_free": True,
+        "hidden_tests_visible": False,
+        "expected_solution_visible": False,
+        "credential_values_visible": False,
+        "private_material_visible": False,
+        "official_score_claim_allowed": False,
+        "leaderboard_claim_allowed": False,
+    }
+
+
+def observe_active_user_intervention_feed(
+    feed_jsonl: str | Path,
+    *,
+    worker_start_seq: int = 0,
+) -> dict[str, Any]:
+    """Read a public-safe intervention feed and summarize worker-observable updates."""
+
+    start_seq = _coerce_non_negative_int(worker_start_seq, field="worker_start_seq")
+    feed_path = Path(feed_jsonl)
+    valid_events: list[dict[str, Any]] = []
+    invalid_line_count = 0
+    if feed_path.exists():
+        for line in feed_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                invalid_line_count += 1
+                continue
+            if not isinstance(item, dict):
+                invalid_line_count += 1
+                continue
+            if item.get("schema_version") != ACTIVE_USER_INTERVENTION_EVENT_VERSION:
+                invalid_line_count += 1
+                continue
+            seq = item.get("seq")
+            if isinstance(seq, bool) or not isinstance(seq, int) or seq < 0:
+                invalid_line_count += 1
+                continue
+            valid_events.append(item)
+    observable = [
+        item
+        for item in valid_events
+        if item.get("seq", -1) > start_seq and item.get("created_after_worker_start") is True
+    ]
+    latest = max(observable, key=lambda item: item["seq"], default=None)
+    latest_summary: dict[str, Any] = {}
+    if latest:
+        latest_summary = {
+            "seq": latest.get("seq"),
+            "channel": latest.get("channel"),
+            "type": latest.get("type"),
+            "trigger": latest.get("trigger"),
+            "message": latest.get("message"),
+            "oracle_free": latest.get("oracle_free") is True,
+            "hidden_tests_visible": latest.get("hidden_tests_visible") is True,
+            "expected_solution_visible": latest.get("expected_solution_visible") is True,
+            "credential_values_visible": latest.get("credential_values_visible") is True,
+            "private_material_visible": latest.get("private_material_visible") is True,
+        }
+    return {
+        "ok": True,
+        "schema_version": ACTIVE_USER_INTERVENTION_OBSERVATION_VERSION,
+        "bridge_surface": WORKER_BRIDGE_SURFACE,
+        "channel_surface": ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
+        "feed_present": feed_path.exists(),
+        "feed_path_recorded": False,
+        "worker_start_seq": start_seq,
+        "valid_intervention_count": len(valid_events),
+        "invalid_line_count": invalid_line_count,
+        "observed_after_worker_start": bool(latest),
+        "observed_intervention_count": len(observable),
+        "latest_intervention": latest_summary,
+        "worker_observation_proof": bool(latest),
+        "claim_boundary": {
+            "official_score_claim_allowed": False,
+            "leaderboard_claim_allowed": False,
+            "assisted_collaboration_claim_allowed": bool(latest),
+            "direct_codex_chat_injection": False,
+            "worker_pull_channel": True,
+        },
+        "public_boundary": {
+            "raw_paths_recorded": False,
+            "raw_transcript_recorded": False,
+            "credential_values_recorded": False,
+        },
+        "next_action": (
+            "wire the worker prompt to poll active-user-observe during assisted treatment"
+            if latest
+            else "append a public-safe simulator intervention after worker start and poll again"
+        ),
+    }
+
+
+def write_active_user_observation_file(
+    path: str | Path | None,
+    payload: dict[str, Any],
+) -> bool:
+    """Write compact active-user observation without exposing raw path values."""
+
+    if not path:
+        return False
+    output_path = Path(path)
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(payload, ensure_ascii=True, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        return False
+    return True
+
+
 def build_worker_bridge_install_contract(
     *,
     project_root: str = GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER,
@@ -217,6 +506,14 @@ def build_worker_bridge_install_contract(
             classification=classification,
         )
     )
+    active_user_intervention_channel_contract = (
+        build_active_user_intervention_channel_contract(
+            project_root=project_root,
+            runtime_root=runtime_root,
+            python_bin=python_bin,
+            module=module,
+        )
+    )
     return {
         "ok": True,
         "schema_version": WORKER_BRIDGE_INSTALL_CONTRACT_VERSION,
@@ -244,11 +541,32 @@ def build_worker_bridge_install_contract(
             ),
             "goal_harness_counter_trace_json": counter_trace_json,
             "goal_harness_classification": classification,
+            "goal_harness_active_user_feed_jsonl": (
+                active_user_intervention_channel_contract["feed_jsonl"]
+            ),
+            "goal_harness_active_user_observation_json": (
+                active_user_intervention_channel_contract["observation_json"]
+            ),
+            "goal_harness_active_user_observe_command": (
+                active_user_intervention_channel_contract["worker_observe_command"]
+            ),
+            "goal_harness_active_user_channel_surface": (
+                ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE
+            ),
         },
         "benchmark_run_writeback_contract": benchmark_run_writeback_contract,
+        "active_user_intervention_channel_contract": (
+            active_user_intervention_channel_contract
+        ),
         "trace": {
             "counter_trace_json": counter_trace_json,
             "benchmark_run_json": benchmark_run_json,
+            "active_user_feed_jsonl": active_user_intervention_channel_contract[
+                "feed_jsonl"
+            ],
+            "active_user_observation_json": active_user_intervention_channel_contract[
+                "observation_json"
+            ],
             "write_surface": "worker_agent_logs",
             "raw_trace_public": False,
         },
@@ -616,6 +934,57 @@ def write_worker_bridge_benchmark_run_file(
 
 
 def render_worker_bridge_install_contract_markdown(payload: dict[str, Any]) -> str:
+    if payload.get("schema_version") == ACTIVE_USER_INTERVENTION_CHANNEL_CONTRACT_VERSION:
+        budget = payload.get("frequency_budget") or {}
+        boundary = payload.get("claim_boundary") or {}
+        lines = [
+            "# Goal Harness Active User Intervention Channel",
+            "",
+            f"- ok: `{payload.get('ok')}`",
+            f"- schema_version: `{payload.get('schema_version')}`",
+            f"- channel_surface: `{payload.get('channel_surface')}`",
+            f"- mode: `{payload.get('mode')}`",
+            f"- max_interventions_per_task: `{budget.get('max_interventions_per_task')}`",
+            f"- min_interval_seconds: `{budget.get('min_interval_seconds')}`",
+            f"- official_score_claim_allowed: `{boundary.get('official_score_claim_allowed')}`",
+            f"- direct_codex_chat_injection: `{boundary.get('direct_codex_chat_injection')}`",
+            f"- worker_pull_required: `{boundary.get('worker_pull_required')}`",
+        ]
+        return "\n".join(lines) + "\n"
+
+    if payload.get("schema_version") == ACTIVE_USER_INTERVENTION_EVENT_VERSION:
+        lines = [
+            "# Goal Harness Active User Intervention",
+            "",
+            f"- schema_version: `{payload.get('schema_version')}`",
+            f"- channel_surface: `{payload.get('channel_surface')}`",
+            f"- seq: `{payload.get('seq')}`",
+            f"- channel: `{payload.get('channel')}`",
+            f"- trigger: `{payload.get('trigger')}`",
+            f"- created_after_worker_start: `{payload.get('created_after_worker_start')}`",
+            f"- oracle_free: `{payload.get('oracle_free')}`",
+        ]
+        return "\n".join(lines) + "\n"
+
+    if payload.get("schema_version") == ACTIVE_USER_INTERVENTION_OBSERVATION_VERSION:
+        latest = payload.get("latest_intervention") or {}
+        boundary = payload.get("claim_boundary") or {}
+        lines = [
+            "# Goal Harness Active User Intervention Observation",
+            "",
+            f"- ok: `{payload.get('ok')}`",
+            f"- schema_version: `{payload.get('schema_version')}`",
+            f"- channel_surface: `{payload.get('channel_surface')}`",
+            f"- observed_after_worker_start: `{payload.get('observed_after_worker_start')}`",
+            f"- observed_intervention_count: `{payload.get('observed_intervention_count')}`",
+            f"- latest_seq: `{latest.get('seq')}`",
+            f"- latest_trigger: `{latest.get('trigger')}`",
+            f"- official_score_claim_allowed: `{boundary.get('official_score_claim_allowed')}`",
+            f"- direct_codex_chat_injection: `{boundary.get('direct_codex_chat_injection')}`",
+            f"- next_action: `{payload.get('next_action')}`",
+        ]
+        return "\n".join(lines) + "\n"
+
     if payload.get("schema_version") == "benchmark_run_v0":
         outcome = payload.get("worker_bridge_outcome") or {}
         progress = payload.get("progress") or {}

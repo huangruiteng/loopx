@@ -31,6 +31,9 @@ from goal_harness.benchmark import (
     build_terminal_bench_single_agent_episode_policy,
 )
 from goal_harness.worker_bridge import (
+    ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
+    DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+    DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
     DEFAULT_WORKER_BRIDGE_BENCHMARK_RUN_JSON,
     DEFAULT_WORKER_BRIDGE_COUNTER_TRACE_JSON,
     GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER,
@@ -84,6 +87,11 @@ def build_managed_terminal_bench_instruction(
     goal_harness_counter_trace_json: str = DEFAULT_WORKER_BRIDGE_COUNTER_TRACE_JSON,
     goal_harness_classification: str = "<classification>",
     goal_harness_append_execute_enabled: bool = False,
+    goal_harness_active_user_intervention_enabled: bool = False,
+    goal_harness_active_user_feed_jsonl: str = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+    goal_harness_active_user_observation_json: str = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
+    goal_harness_active_user_observe_command: str = "<active-user-observe-command>",
+    goal_harness_active_user_channel_surface: str = ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
 ) -> str:
     """Wrap a benchmark task with the minimal Goal Harness managed policy."""
 
@@ -113,6 +121,13 @@ def build_managed_terminal_bench_instruction(
             counter_trace_json=goal_harness_counter_trace_json,
             classification=goal_harness_classification,
             append_execute_enabled=goal_harness_append_execute_enabled,
+            active_user_intervention_enabled=(
+                goal_harness_active_user_intervention_enabled
+            ),
+            active_user_feed_jsonl=goal_harness_active_user_feed_jsonl,
+            active_user_observation_json=goal_harness_active_user_observation_json,
+            active_user_observe_command=goal_harness_active_user_observe_command,
+            active_user_channel_surface=goal_harness_active_user_channel_surface,
         )
         access_packet = (
             "\nGoal Harness access packet for this case:\n\n"
@@ -409,6 +424,11 @@ class GoalHarnessManagedCodex(Codex):
         goal_harness_counter_trace_json: str = DEFAULT_WORKER_BRIDGE_COUNTER_TRACE_JSON,
         goal_harness_classification: str = "<classification>",
         goal_harness_append_execute_enabled: bool = False,
+        goal_harness_active_user_intervention_enabled: bool = False,
+        goal_harness_active_user_feed_jsonl: str = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+        goal_harness_active_user_observation_json: str = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
+        goal_harness_active_user_observe_command: str = "<active-user-observe-command>",
+        goal_harness_active_user_channel_surface: str = ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
         **kwargs: Any,
     ) -> None:
         self.goal_harness_policy_version = goal_harness_policy_version
@@ -435,6 +455,19 @@ class GoalHarnessManagedCodex(Codex):
         self.goal_harness_classification = goal_harness_classification
         self.goal_harness_append_execute_enabled = bool(
             goal_harness_append_execute_enabled
+        )
+        self.goal_harness_active_user_intervention_enabled = bool(
+            goal_harness_active_user_intervention_enabled
+        )
+        self.goal_harness_active_user_feed_jsonl = goal_harness_active_user_feed_jsonl
+        self.goal_harness_active_user_observation_json = (
+            goal_harness_active_user_observation_json
+        )
+        self.goal_harness_active_user_observe_command = (
+            goal_harness_active_user_observe_command
+        )
+        self.goal_harness_active_user_channel_surface = (
+            goal_harness_active_user_channel_surface
         )
         self._goal_harness_context_metadata: dict[str, Any] = {}
         super().__init__(*args, **kwargs)
@@ -677,6 +710,19 @@ class GoalHarnessManagedCodex(Codex):
             goal_harness_counter_trace_json=self.goal_harness_counter_trace_json,
             goal_harness_classification=self.goal_harness_classification,
             goal_harness_append_execute_enabled=self.goal_harness_append_execute_enabled,
+            goal_harness_active_user_intervention_enabled=(
+                self.goal_harness_active_user_intervention_enabled
+            ),
+            goal_harness_active_user_feed_jsonl=self.goal_harness_active_user_feed_jsonl,
+            goal_harness_active_user_observation_json=(
+                self.goal_harness_active_user_observation_json
+            ),
+            goal_harness_active_user_observe_command=(
+                self.goal_harness_active_user_observe_command
+            ),
+            goal_harness_active_user_channel_surface=(
+                self.goal_harness_active_user_channel_surface
+            ),
         )
         access_packet_injected = (
             self.goal_harness_mode == CODEX_GOAL_HARNESS_MODE
@@ -713,6 +759,26 @@ class GoalHarnessManagedCodex(Codex):
                 TERMINAL_BENCH_GOAL_HARNESS_CLI_BRIDGE_CONTRACT_VERSION
                 if access_packet_injected
                 else None
+            ),
+            "goal_harness_active_user_intervention_enabled": (
+                self.goal_harness_active_user_intervention_enabled
+                if access_packet_injected and self.goal_harness_cli_bridge_enabled
+                else False
+            ),
+            "goal_harness_active_user_channel_surface": (
+                self.goal_harness_active_user_channel_surface
+                if self.goal_harness_active_user_intervention_enabled
+                else None
+            ),
+            "goal_harness_active_user_feed_declared": (
+                bool(self.goal_harness_active_user_feed_jsonl)
+                if self.goal_harness_active_user_intervention_enabled
+                else False
+            ),
+            "goal_harness_active_user_observe_command_declared": (
+                bool(self.goal_harness_active_user_observe_command)
+                if self.goal_harness_active_user_intervention_enabled
+                else False
             ),
             "goal_harness_prompt_only_until_cli_bridge": (
                 access_packet_injected

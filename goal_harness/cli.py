@@ -118,6 +118,8 @@ from .status_server import (
 from .todos import add_goal_todo, render_todo_markdown
 from .upgrade import build_upgrade_plan, render_upgrade_plan_markdown
 from .worker_bridge import (
+    DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+    DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
     DEFAULT_WORKER_BRIDGE_BENCHMARK_RUN_JSON,
     DEFAULT_WORKER_BRIDGE_COUNTER_TRACE_JSON,
     DEFAULT_WORKER_BRIDGE_MODULE,
@@ -125,10 +127,14 @@ from .worker_bridge import (
     DEFAULT_WORKER_BRIDGE_WALL_TIME_LIMIT_SECONDS,
     GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER,
     GOAL_HARNESS_RUNTIME_ROOT_PLACEHOLDER,
+    build_active_user_intervention,
+    build_active_user_intervention_channel_contract,
     build_worker_bridge_benchmark_run,
     build_worker_bridge_install_contract,
     build_worker_bridge_outcome,
+    observe_active_user_intervention_feed,
     render_worker_bridge_install_contract_markdown,
+    write_active_user_observation_file,
 )
 
 
@@ -613,6 +619,96 @@ def main(argv: list[str] | None = None) -> int:
         "--side-effect-audit-failed",
         action="store_true",
         help="Mark the side-effect audit as failed.",
+    )
+    active_user_contract_parser = worker_bridge_sub.add_parser(
+        "active-user-contract",
+        help="Render the active-user simulator external-update channel contract.",
+    )
+    add_subcommand_format(active_user_contract_parser)
+    active_user_contract_parser.add_argument(
+        "--project-root",
+        default=GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER,
+        help="Container-visible Goal Harness project root. Defaults to a public placeholder.",
+    )
+    active_user_contract_parser.add_argument(
+        "--runtime-root",
+        dest="active_user_runtime_root",
+        default=GOAL_HARNESS_RUNTIME_ROOT_PLACEHOLDER,
+        help="Container-visible Goal Harness runtime root. Defaults to a public placeholder.",
+    )
+    active_user_contract_parser.add_argument(
+        "--python-bin",
+        default=DEFAULT_WORKER_BRIDGE_PYTHON_BIN,
+        help="Python executable inside the worker environment.",
+    )
+    active_user_contract_parser.add_argument(
+        "--module",
+        default=DEFAULT_WORKER_BRIDGE_MODULE,
+        help="Goal Harness CLI module import path.",
+    )
+    active_user_contract_parser.add_argument(
+        "--feed-jsonl",
+        default=DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+        help="Worker-visible active-user intervention feed JSONL path.",
+    )
+    active_user_contract_parser.add_argument(
+        "--observation-json",
+        default=DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
+        help="Worker-visible active-user observation JSON path.",
+    )
+    active_user_contract_parser.add_argument(
+        "--min-interval-seconds",
+        type=int,
+        default=300,
+        help="Minimum interval between proactive simulator interventions.",
+    )
+    active_user_contract_parser.add_argument(
+        "--max-interventions-per-task",
+        type=int,
+        default=3,
+        help="Maximum proactive simulator interventions per task.",
+    )
+    active_user_intervention_parser = worker_bridge_sub.add_parser(
+        "active-user-intervention",
+        help="Render one public-safe active-user simulator intervention event.",
+    )
+    add_subcommand_format(active_user_intervention_parser)
+    active_user_intervention_parser.add_argument("--seq", type=int, required=True)
+    active_user_intervention_parser.add_argument("--message", required=True)
+    active_user_intervention_parser.add_argument(
+        "--trigger",
+        default="public_progress_or_stall_signal",
+        help="Public-safe intervention trigger label.",
+    )
+    active_user_intervention_parser.add_argument(
+        "--channel",
+        default="simulator_proactive_user_message",
+        help="Public-safe intervention channel label.",
+    )
+    active_user_intervention_parser.add_argument(
+        "--before-worker-start",
+        action="store_true",
+        help="Mark this intervention as created before the worker start marker.",
+    )
+    active_user_observe_parser = worker_bridge_sub.add_parser(
+        "active-user-observe",
+        help="Observe active-user interventions created after the worker start marker.",
+    )
+    add_subcommand_format(active_user_observe_parser)
+    active_user_observe_parser.add_argument(
+        "--feed-jsonl",
+        required=True,
+        help="Active-user intervention feed JSONL path to read.",
+    )
+    active_user_observe_parser.add_argument(
+        "--worker-start-seq",
+        type=int,
+        default=0,
+        help="Worker start marker sequence; only later interventions are observable.",
+    )
+    active_user_observe_parser.add_argument(
+        "--observation-json",
+        help="Optional path to write the compact observation JSON.",
     )
 
     promotion_gate_parser = sub.add_parser(
@@ -1421,13 +1517,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if payload.get("ok") else 1
 
     if args.command == "worker-bridge":
-        if args.worker_bridge_command not in ("contract", "outcome", "benchmark-run"):
+        if args.worker_bridge_command not in (
+            "contract",
+            "outcome",
+            "benchmark-run",
+            "active-user-contract",
+            "active-user-intervention",
+            "active-user-observe",
+        ):
             payload = {
                 "ok": False,
                 "mode": "worker-bridge",
                 "error": (
                     "worker-bridge requires a subcommand; use `contract`, "
-                    "`outcome`, or `benchmark-run`."
+                    "`outcome`, `benchmark-run`, `active-user-contract`, "
+                    "`active-user-intervention`, or `active-user-observe`."
                 ),
             }
             print_payload(payload, args.format, render_worker_bridge_install_contract_markdown)
@@ -1460,7 +1564,7 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                     side_effect_audit_passed=not bool(args.side_effect_audit_failed),
                 )
-            else:
+            elif args.worker_bridge_command == "benchmark-run":
                 payload = build_worker_bridge_benchmark_run(
                     source_runner=args.source_runner,
                     benchmark_id=args.benchmark_id,
@@ -1484,6 +1588,35 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                     side_effect_audit_passed=not bool(args.side_effect_audit_failed),
                 )
+            elif args.worker_bridge_command == "active-user-contract":
+                payload = build_active_user_intervention_channel_contract(
+                    project_root=args.project_root,
+                    runtime_root=args.active_user_runtime_root,
+                    python_bin=args.python_bin,
+                    module=args.module,
+                    feed_jsonl=args.feed_jsonl,
+                    observation_json=args.observation_json,
+                    min_interval_seconds=args.min_interval_seconds,
+                    max_interventions_per_task=args.max_interventions_per_task,
+                )
+            elif args.worker_bridge_command == "active-user-intervention":
+                payload = build_active_user_intervention(
+                    seq=args.seq,
+                    message=args.message,
+                    trigger=args.trigger,
+                    channel=args.channel,
+                    created_after_worker_start=not bool(args.before_worker_start),
+                )
+            else:
+                payload = observe_active_user_intervention_feed(
+                    args.feed_jsonl,
+                    worker_start_seq=args.worker_start_seq,
+                )
+                if args.observation_json:
+                    payload["observation_written"] = write_active_user_observation_file(
+                        args.observation_json,
+                        payload,
+                    )
         except Exception as exc:
             payload = {
                 "ok": False,

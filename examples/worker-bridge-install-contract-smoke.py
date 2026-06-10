@@ -76,6 +76,19 @@ def assert_contract(payload: dict) -> None:
         agent_kwargs["goal_harness_counter_trace_json"]
         == "/logs/agent/goal-harness-counter-trace.jsonl"
     ), payload
+    assert (
+        agent_kwargs["goal_harness_active_user_feed_jsonl"]
+        == "/logs/agent/goal-harness-active-user-interventions.jsonl"
+    ), payload
+    assert (
+        agent_kwargs["goal_harness_active_user_observation_json"]
+        == "/logs/agent/goal-harness-active-user-observation.json"
+    ), payload
+    assert (
+        agent_kwargs["goal_harness_active_user_channel_surface"]
+        == "goal_harness_active_user_external_update_loop_v0"
+    ), payload
+    assert "active-user-observe" in agent_kwargs["goal_harness_active_user_observe_command"], payload
     assert agent_kwargs["goal_harness_benchmark_run_schema_version"] == "benchmark_run_v0", payload
     assert (
         agent_kwargs["goal_harness_benchmark_run_writeback_contract"]
@@ -115,6 +128,19 @@ def assert_contract(payload: dict) -> None:
         == "rewrite_minimal_benchmark_run_v0_and_retry_once"
     ), payload
     assert writeback["retry_policy"]["do_not_retry_with_raw_logs_or_raw_paths"] is True, payload
+    active_user_channel = payload["active_user_intervention_channel_contract"]
+    assert (
+        active_user_channel["schema_version"]
+        == "goal_harness_active_user_intervention_channel_contract_v0"
+    ), payload
+    assert (
+        active_user_channel["channel_surface"]
+        == "goal_harness_active_user_external_update_loop_v0"
+    ), payload
+    assert active_user_channel["mode"] == "audited_external_update_loop", payload
+    assert active_user_channel["frequency_budget"]["max_interventions_per_task"] == 3, payload
+    assert active_user_channel["claim_boundary"]["direct_codex_chat_injection"] is False, payload
+    assert active_user_channel["claim_boundary"]["worker_pull_required"] is True, payload
     assert payload["boundary"]["no_upload"] is True, payload
     assert_public_safe(payload)
 
