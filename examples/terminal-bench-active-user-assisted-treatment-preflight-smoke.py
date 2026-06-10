@@ -32,6 +32,7 @@ WORKER_MODE = "codex_goal_harness_cli"
 CLASSIFICATION = "terminal_bench_active_user_assisted_treatment_preflight_v0"
 FIRST_BLOCKER = "missing_real_assisted_worker_observation"
 LAUNCHER_PLAN_SCHEMA = "terminal_bench_active_user_private_launcher_plan_v0"
+SIMULATOR_SETTING = "codex_cli_user_simulator"
 
 FORBIDDEN_TEXT = [
     "/" + "Users/",
@@ -194,7 +195,7 @@ def assert_preflight_guard(guard: dict[str, Any]) -> None:
     assert guard["first_blocker"] == FIRST_BLOCKER, guard
     assert guard["active_cli_bridge_enabled"] is True, guard
     assert guard["active_user_assisted_treatment"] is True, guard
-    assert guard["simulator_setting"] == "deterministic_scripted_user", guard
+    assert guard["simulator_setting"] == SIMULATOR_SETTING, guard
     assert guard["simulator_to_worker_injection_channel_available"] is True, guard
     assert guard["interactive_user_message_injection_checked"] is True, guard
     assert guard["initial_prompt_only_is_not_active_intervention"] is True, guard
@@ -258,7 +259,7 @@ def assert_active_user_preflight(preflight: dict[str, Any], *, compact: bool = F
     assert preflight["pilot_schema_version"] == "active_user_assisted_pilot_v0", preflight
     assert preflight["active_injection_schema_version"] == "active_user_simulator_injection_v0", preflight
     assert preflight["operator_simulator_run_schema_version"] == "operator_simulator_run_v0", preflight
-    assert preflight["simulator_setting"] == "deterministic_scripted_user", preflight
+    assert preflight["simulator_setting"] == SIMULATOR_SETTING, preflight
     assert preflight["proactive_intervention_allowed"] is True, preflight
     assert preflight["directive_feedback_allowed"] is True, preflight
     assert preflight["artificial_mildness_required"] is False, preflight
@@ -289,15 +290,37 @@ def assert_private_launcher_plan(plan: dict[str, Any]) -> None:
     assert plan["worker_start_marker"] == "worker_start_seq", plan
     assert "goal-harness-active-user-interventions.jsonl" in plan["active_user_feed_jsonl"], plan
     assert "goal-harness-active-user-observation.json" in plan["active_user_observation_json"], plan
+    assert plan["simulator_setting"] == SIMULATOR_SETTING, plan
+    contract = plan["codex_simulator_contract"]
+    assert (
+        contract["schema_version"]
+        == "goal_harness_active_user_codex_cli_simulator_contract_v0"
+    ), plan
+    assert contract["simulator_kind"] == "codex_cli", plan
+    assert contract["manual_controller_feed_allowed"] is False, plan
+    assert contract["controller_authored_feed_allowed"] is False, plan
+    assert contract["formal_treatment_requires_model_backed_simulator"] is True, plan
+    assert "codex exec" in contract["codex_exec_command"], plan
+    assert "active-user-simulator-output" in contract["append_validated_output_command"], plan
+    assert (
+        contract["simulator_output_schema_version"]
+        == "goal_harness_active_user_simulator_output_v0"
+    ), plan
     assert plan["sequence_steps"] == [
         "launch_single_codex_goal_harness_worker_with_no_upload",
         "record_worker_start_seq_before_first_poll",
-        "append_public_safe_simulator_intervention_with_seq_gt_worker_start_seq",
+        "build_public_simulator_context_without_hidden_tests_or_solutions",
+        "run_codex_cli_user_simulator_with_output_schema",
+        "validate_codex_simulator_output_with_no_oracle_audit",
+        "append_validated_simulator_intervention_with_seq_gt_worker_start_seq",
         "worker_polls_active_user_observe_after_start",
         "ingest_worker_observation_as_non_official_collaboration_evidence",
     ], plan
     assert "worker_observation_proof_true" in plan["required_evidence"], plan
+    assert "codex_cli_simulator_output_validated" in plan["required_evidence"], plan
     assert "leaderboard_or_upload_requested" in plan["stop_conditions"], plan
+    assert "controller_authored_feed_needed" in plan["stop_conditions"], plan
+    assert "codex_simulator_output_schema_rejected" in plan["stop_conditions"], plan
     assert plan["claim_boundary"]["assisted_collaboration_claim_allowed"] is True, plan
     assert plan["claim_boundary"]["official_score_claim_allowed"] is False, plan
     assert plan["claim_boundary"]["leaderboard_claim_allowed"] is False, plan

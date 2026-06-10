@@ -26,6 +26,7 @@ from .worker_bridge import (
     WORKER_BRIDGE_BENCHMARK_RUN_REQUIRED_TOP_LEVEL_FIELDS,
     WORKER_BRIDGE_BENCHMARK_RUN_WRITEBACK_CONTRACT_VERSION,
     WORKER_BRIDGE_SURFACE,
+    build_active_user_codex_simulator_contract,
     build_active_user_intervention,
     build_worker_bridge_install_contract,
 )
@@ -67,6 +68,7 @@ TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_CHANNEL_SCHEMA = (
 TERMINAL_BENCH_ACTIVE_USER_PRIVATE_LAUNCHER_PLAN_SCHEMA = (
     "terminal_bench_active_user_private_launcher_plan_v0"
 )
+TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_SETTING = "codex_cli_user_simulator"
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER = (
     "missing_simulator_to_worker_injection_channel"
 )
@@ -2051,6 +2053,9 @@ def build_terminal_bench_active_user_private_launcher_plan(
     channel = build_terminal_bench_active_user_injection_channel_probe(
         active_cli_bridge_preflight=active_cli_bridge_preflight,
     )
+    codex_simulator_contract = build_active_user_codex_simulator_contract(
+        feed_jsonl=TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+    )
     channel_available = bool(channel.get("channel_available"))
     first_blocker = (
         "ready_for_private_no_upload_assisted_worker_sample"
@@ -2068,15 +2073,49 @@ def build_terminal_bench_active_user_private_launcher_plan(
         "active_user_observation_json": (
             TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON
         ),
+        "simulator_setting": TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_SETTING,
+        "codex_simulator_contract": {
+            "schema_version": codex_simulator_contract.get("schema_version"),
+            "simulator_kind": codex_simulator_contract.get("simulator_kind"),
+            "manual_controller_feed_allowed": codex_simulator_contract.get(
+                "manual_controller_feed_allowed"
+            ),
+            "formal_treatment_requires_model_backed_simulator": (
+                codex_simulator_contract.get(
+                    "formal_treatment_requires_model_backed_simulator"
+                )
+            ),
+            "codex_exec_command": (
+                (codex_simulator_contract.get("codex_cli") or {}).get(
+                    "exec_command"
+                )
+            ),
+            "append_validated_output_command": codex_simulator_contract.get(
+                "append_validated_output_command"
+            ),
+            "simulator_output_schema_version": (
+                codex_simulator_contract.get("simulator_output_contract") or {}
+            ).get("schema_version"),
+            "controller_authored_feed_allowed": (
+                (codex_simulator_contract.get("claim_boundary") or {}).get(
+                    "controller_authored_feed_allowed"
+                )
+            ),
+        },
         "sequence_steps": [
             "launch_single_codex_goal_harness_worker_with_no_upload",
             "record_worker_start_seq_before_first_poll",
-            "append_public_safe_simulator_intervention_with_seq_gt_worker_start_seq",
+            "build_public_simulator_context_without_hidden_tests_or_solutions",
+            "run_codex_cli_user_simulator_with_output_schema",
+            "validate_codex_simulator_output_with_no_oracle_audit",
+            "append_validated_simulator_intervention_with_seq_gt_worker_start_seq",
             "worker_polls_active_user_observe_after_start",
             "ingest_worker_observation_as_non_official_collaboration_evidence",
         ],
         "required_evidence": [
             "worker_start_seq_recorded",
+            "codex_cli_simulator_contract_recorded",
+            "codex_cli_simulator_output_validated",
             "post_start_intervention_seq_recorded",
             "active_user_observe_worker_cli_call_recorded",
             "worker_observation_proof_true",
@@ -2085,6 +2124,8 @@ def build_terminal_bench_active_user_private_launcher_plan(
         "stop_conditions": [
             "hidden_tests_or_expected_solution_visible",
             "credential_value_needed",
+            "controller_authored_feed_needed",
+            "codex_simulator_output_schema_rejected",
             "leaderboard_or_upload_requested",
             "raw_transcript_required",
             "worker_observation_missing",
@@ -3385,7 +3426,7 @@ def build_terminal_bench_benchmark_run(
             "pilot_schema_version": "active_user_assisted_pilot_v0",
             "active_injection_schema_version": "active_user_simulator_injection_v0",
             "operator_simulator_run_schema_version": "operator_simulator_run_v0",
-            "simulator_setting": "deterministic_scripted_user",
+            "simulator_setting": TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_SETTING,
             "proactive_intervention_allowed": True,
             "directive_feedback_allowed": True,
             "artificial_mildness_required": False,
@@ -3702,7 +3743,7 @@ def build_terminal_bench_benchmark_run(
                 benchmark_run["preflight_guard"].update(
                     {
                         "active_user_assisted_treatment": True,
-                        "simulator_setting": "deterministic_scripted_user",
+                        "simulator_setting": TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_SETTING,
                         "simulator_to_worker_injection_channel_available": bool(
                             injection_channel_probe.get("channel_available")
                         ),
