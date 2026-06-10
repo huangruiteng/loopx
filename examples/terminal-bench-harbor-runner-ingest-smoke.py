@@ -332,6 +332,82 @@ def write_verifier_dependency_failure_fixture(root: Path) -> Path:
     return job_dir
 
 
+def write_verifier_platform_probe_failure_fixture(root: Path) -> Path:
+    job_dir = root / "terminal_bench_sample_verifier_platform_probe_failure"
+    trial_dir = job_dir / "make-mips-interpreter__platformfail"
+    agent = {
+        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "model_name": "gpt-5.5",
+        "kwargs": {
+            "goal_harness_mode": "codex_goal_harness",
+            "goal_harness_cli_bridge_enabled": True,
+        },
+    }
+    write_json(
+        job_dir / "lock.json",
+        {
+            "schema_version": 1,
+            "invocation": [
+                "harbor",
+                "run",
+                "--dataset",
+                "terminal-bench@2.0",
+                "--include-task-name",
+                "make-mips-interpreter",
+            ],
+            "trials": [
+                {
+                    "task": {
+                        "name": "make-mips-interpreter",
+                        "source": "terminal-bench",
+                    },
+                    "agent": agent,
+                }
+            ],
+        },
+    )
+    write_json(job_dir / "config.json", {"job_name": job_dir.name})
+    write_json(
+        job_dir / "result.json",
+        {
+            "started_at": "2026-06-08T18:20:00Z",
+            "updated_at": "2026-06-08T18:30:00Z",
+            "finished_at": "2026-06-08T18:30:00Z",
+            "n_total_trials": 1,
+            "stats": {"n_completed_trials": 1, "n_errored_trials": 0},
+        },
+    )
+    write_json(
+        trial_dir / "result.json",
+        {
+            "task_name": "make-mips-interpreter",
+            "trial_name": "make-mips-interpreter__platformfail",
+            "source": "terminal-bench",
+            "config": {"agent": agent},
+            "agent_result": {"n_input_tokens": 1200, "n_output_tokens": 100},
+            "verifier_result": {"rewards": {"reward": 0.0}},
+            "exception_info": {},
+        },
+    )
+    (trial_dir / "agent").mkdir(parents=True, exist_ok=True)
+    (trial_dir / "agent" / "trajectory.json").write_text("{}\n", encoding="utf-8")
+    write_json(
+        trial_dir / "agent" / "goal-harness-worker-benchmark-run.json",
+        {"schema_version": "benchmark_run_v0"},
+    )
+    (trial_dir / "agent" / "goal-harness-counter-trace.jsonl").write_text(
+        json.dumps({"command": "check", "ok": True}, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (trial_dir / "verifier").mkdir(parents=True, exist_ok=True)
+    (trial_dir / "verifier" / "reward.txt").write_text("0.0\n", encoding="utf-8")
+    (trial_dir / "verifier" / "test-stdout.txt").write_text(
+        "platform probe failed: unknown platform bitness\n",
+        encoding="utf-8",
+    )
+    return job_dir
+
+
 def write_bare_codex_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_bare_codex_baseline"
     trial_dir = job_dir / "build-cython-ext__bare"
@@ -969,6 +1045,50 @@ def main() -> None:
     ), failure_compact
     assert_public_safe(failure_payload)
     assert_public_safe(failure_compact)
+    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-platform-failure-") as tmp:
+        platform_payload = build_terminal_bench_harbor_result_benchmark_run(
+            write_verifier_platform_probe_failure_fixture(Path(tmp))
+        )
+    assert platform_payload["official_task_score"]["value"] == 0.0, platform_payload
+    assert platform_payload["official_task_score"]["passed"] is False, platform_payload
+    assert (
+        platform_payload["score_failure_attribution"]
+        == "verifier_platform_probe_failure"
+    ), platform_payload
+    assert platform_payload["verifier_dependency_failure_count"] == 0, platform_payload
+    assert platform_payload["verifier_failure_attribution_count"] == 1, platform_payload
+    assert "verifier_platform_probe_failure" in platform_payload[
+        "failure_attribution_labels"
+    ], platform_payload
+    platform_trial = platform_payload["trials"][0]
+    assert (
+        platform_trial["verifier_failure_attribution"]
+        == "verifier_infrastructure_failure"
+    ), platform_trial
+    assert (
+        "verifier_platform_probe_failure"
+        in platform_trial["verifier_failure_attribution_labels"]
+    ), platform_trial
+    assert (
+        platform_payload["worker_bridge_outcome"]["score_failure_attribution"]
+        == "verifier_platform_probe_failure"
+    ), platform_payload
+    platform_compact = compact_benchmark_run(platform_payload)
+    assert (
+        platform_compact["score_failure_attribution"]
+        == "verifier_platform_probe_failure"
+    ), platform_compact
+    assert platform_compact["verifier_dependency_failure_count"] == 0, platform_compact
+    assert platform_compact["verifier_failure_attribution_count"] == 1, platform_compact
+    assert "verifier_platform_probe_failure" in platform_compact[
+        "failure_attribution_labels"
+    ], platform_compact
+    assert (
+        platform_compact["trials"][0]["verifier_failure_attribution"]
+        == "verifier_infrastructure_failure"
+    ), platform_compact
+    assert_public_safe(platform_payload)
+    assert_public_safe(platform_compact)
     print("terminal-bench-harbor-runner-ingest-smoke ok")
 
 
