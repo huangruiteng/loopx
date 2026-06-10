@@ -75,9 +75,37 @@ def main() -> None:
         assert bad_launch["ready"] is False, bad_launch
         bad_summary = summarize_terminal_bench_private_runner_launch(bad_launch)
         assert bad_summary["task_material_readiness_checked"] is True, bad_summary
+        assert bad_summary["task_material_ready_required"] is False, bad_summary
         assert bad_summary["task_material_ready"] is False, bad_summary
         assert bad_summary["task_material_first_blocker"] == "task_material_missing_instruction_md", bad_summary
         assert bad_summary["raw_paths_recorded"] is False, bad_summary
+
+        strict_unknown_launch = build_terminal_bench_private_runner_launch(
+            dataset=str(dataset),
+            task_id="missing-task",
+            jobs_dir="<private-jobs-dir>",
+            job_name="terminal_bench_missing_material_env_guard_smoke",
+            goal_harness_mode="codex_goal_harness",
+            goal_harness_goal_id="goal-harness-meta",
+            goal_harness_cli_bridge_enabled=True,
+            require_task_material_ready=True,
+        )
+        assert (
+            strict_unknown_launch["first_blocker"]
+            == "task_material_not_cached_or_not_locally_resolved"
+        ), strict_unknown_launch
+        assert strict_unknown_launch["ready"] is False, strict_unknown_launch
+        strict_unknown_summary = summarize_terminal_bench_private_runner_launch(
+            strict_unknown_launch
+        )
+        assert strict_unknown_summary["task_material_readiness_checked"] is False, strict_unknown_summary
+        assert strict_unknown_summary["task_material_ready_required"] is True, strict_unknown_summary
+        assert strict_unknown_summary["task_material_ready"] is None, strict_unknown_summary
+        assert (
+            strict_unknown_summary["task_material_readiness_status"]
+            == "not_cached_or_not_locally_resolved"
+        ), strict_unknown_summary
+        assert strict_unknown_summary["raw_paths_recorded"] is False, strict_unknown_summary
 
     previous = os.environ.get("CODEX_FORCE_AUTH_JSON")
     os.environ["CODEX_FORCE_AUTH_JSON"] = "****"
@@ -166,6 +194,7 @@ def main() -> None:
     summary = summarize_terminal_bench_private_runner_launch(launch)
     assert summary["ready"] == launch["ready"], summary
     assert summary["first_blocker"] == launch["first_blocker"], summary
+    assert summary["task_material_ready_required"] is False, summary
     assert summary["no_upload_boundary"] is True, summary
     assert summary["submit_eligible"] is False, summary
     assert summary["agent_name"] == "", summary

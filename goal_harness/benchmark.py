@@ -1608,6 +1608,9 @@ def build_terminal_bench_private_runner_launch(**command_kwargs: Any) -> dict[st
 
     env = build_terminal_bench_private_runner_env()
     resolved_command_kwargs = _private_runner_command_kwargs(command_kwargs)
+    task_material_ready_required = bool(
+        resolved_command_kwargs.pop("require_task_material_ready", False)
+    )
     mode = str(
         resolved_command_kwargs.pop("mode", None)
         or resolved_command_kwargs.pop("runner_mode", None)
@@ -1660,6 +1663,15 @@ def build_terminal_bench_private_runner_launch(**command_kwargs: Any) -> dict[st
         and material_readiness.get("ready") is False
     ):
         first_blocker = str(material_readiness.get("first_blocker") or "task_material_not_ready")
+    elif (
+        first_blocker == "ready_for_private_managed_no_upload_pilot_review"
+        and task_material_ready_required
+        and material_readiness.get("ready") is not True
+    ):
+        status = str(material_readiness.get("status") or "not_ready")
+        first_blocker = str(
+            material_readiness.get("first_blocker") or f"task_material_{status}"
+        )
     return {
         "schema_version": "terminal_bench_private_runner_launch_v0",
         "argv": argv,
@@ -1667,6 +1679,7 @@ def build_terminal_bench_private_runner_launch(**command_kwargs: Any) -> dict[st
         "uses_private_runner_env": True,
         "preflight_surface": surface,
         "task_material_readiness": material_readiness,
+        "task_material_ready_required": task_material_ready_required,
         "first_blocker": first_blocker,
         "ready": first_blocker == "ready_for_private_managed_no_upload_pilot_review",
     }
@@ -1749,6 +1762,7 @@ def summarize_terminal_bench_private_runner_launch(
         "task_material_readiness_status": str(task_material.get("status") or ""),
         "task_material_first_blocker": str(task_material.get("first_blocker") or ""),
         "task_material_readiness_checked": task_material.get("checked") is True,
+        "task_material_ready_required": launch.get("task_material_ready_required") is True,
         "task_material_ready": (
             task_material.get("ready") is True
             if task_material.get("checked") is True
@@ -2855,6 +2869,7 @@ def build_terminal_bench_benchmark_run(
     active_cli_bridge_preflight: bool = False,
     active_user_assisted_treatment_preflight: bool = False,
     active_user_observation_fixture: bool = False,
+    require_task_material_ready: bool = False,
     timeout_multiplier: float | None = None,
     agent_timeout_multiplier: float | None = None,
     verifier_timeout_multiplier: float | None = None,
@@ -2885,6 +2900,8 @@ def build_terminal_bench_benchmark_run(
         raise ValueError(
             "--preflight-guard is only supported for hardened-codex, codex-goal-harness, or goal-harness-managed-codex"
         )
+    if require_task_material_ready and not preflight_guard:
+        raise ValueError("--require-task-material-ready requires --preflight-guard")
     if cli_bridge_contract and mode != "codex-goal-harness":
         raise ValueError("--cli-bridge-contract is only supported for codex-goal-harness")
     if cli_bridge_contract and fake_worker:
@@ -3298,8 +3315,22 @@ def build_terminal_bench_benchmark_run(
                 verifier_timeout_multiplier=verifier_timeout_multiplier,
                 agent_setup_timeout_multiplier=agent_setup_timeout_multiplier,
                 environment_build_timeout_multiplier=environment_build_timeout_multiplier,
+                require_task_material_ready=require_task_material_ready,
             )
         )
+        if (
+            require_task_material_ready
+            and private_runner_launch_summary.get("ready") is not True
+            and contract.get("first_blocker")
+            == "ready_for_private_managed_no_upload_pilot_review"
+        ):
+            contract = {
+                **contract,
+                "first_blocker": str(
+                    private_runner_launch_summary.get("first_blocker")
+                    or "task_material_not_ready"
+                ),
+            }
 
     benchmark_run: dict[str, Any] = {
         "schema_version": "benchmark_run_v0",
@@ -3779,6 +3810,7 @@ def build_terminal_bench_benchmark_run(
             "auth_values_read": False,
             "artifact_redaction_required": True,
             "first_blocker": contract["first_blocker"],
+            "task_material_ready_required": require_task_material_ready,
         }
         runner_surface = (
             surface.get("runner_surface")

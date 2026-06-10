@@ -1020,6 +1020,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     benchmark_run_parser.add_argument(
+        "--require-task-material-ready",
+        action="store_true",
+        help=(
+            "With --preflight-guard, require locally resolved Terminal-Bench task material "
+            "before the private launch summary can be ready. Unknown or uncached material is "
+            "reported as a blocker; no task prompt text is read."
+        ),
+    )
+    benchmark_run_parser.add_argument(
         "--cli-bridge-contract",
         action="store_true",
         help=(
@@ -1913,6 +1922,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.harbor_job_dir and (
                     args.fake_worker
                     or args.preflight_guard
+                    or args.require_task_material_ready
                     or args.cli_bridge_contract
                     or args.worker_cli_bridge_fixture
                     or args.active_cli_bridge
@@ -1922,6 +1932,8 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError(
                         "--harbor-job-dir cannot be combined with fixture or preflight flags"
                     )
+                if args.require_task_material_ready and not args.preflight_guard:
+                    raise ValueError("--require-task-material-ready requires --preflight-guard")
                 timeout_multiplier_preview_requested = any(
                     value is not None
                     for value in (
@@ -1978,6 +1990,7 @@ def main(argv: list[str] | None = None) -> int:
                         active_user_observation_fixture=bool(
                             args.active_user_observation_fixture
                         ),
+                        require_task_material_ready=bool(args.require_task_material_ready),
                         timeout_multiplier=args.timeout_multiplier,
                         agent_timeout_multiplier=args.agent_timeout_multiplier,
                         verifier_timeout_multiplier=args.verifier_timeout_multiplier,
@@ -2030,6 +2043,7 @@ def main(argv: list[str] | None = None) -> int:
                     "mode_source": benchmark_cli_mode_source,
                     "fake_worker": bool(args.fake_worker),
                     "preflight_guard": bool(args.preflight_guard),
+                    "require_task_material_ready": bool(args.require_task_material_ready),
                     "cli_bridge_contract": bool(args.cli_bridge_contract),
                     "worker_cli_bridge_fixture": bool(args.worker_cli_bridge_fixture),
                     "active_cli_bridge": bool(args.active_cli_bridge),
