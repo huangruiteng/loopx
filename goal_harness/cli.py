@@ -129,10 +129,17 @@ from .worker_bridge import (
     DEFAULT_WORKER_BRIDGE_MODULE,
     DEFAULT_WORKER_BRIDGE_PYTHON_BIN,
     DEFAULT_WORKER_BRIDGE_WALL_TIME_LIMIT_SECONDS,
+    DEFAULT_ACTIVE_USER_CODEX_BIN,
+    DEFAULT_ACTIVE_USER_SIMULATOR_CONTEXT_DIR,
+    DEFAULT_ACTIVE_USER_SIMULATOR_OUTPUT_JSON,
+    DEFAULT_ACTIVE_USER_SIMULATOR_OUTPUT_SCHEMA_JSON,
+    DEFAULT_ACTIVE_USER_SIMULATOR_PROMPT_JSON,
     GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER,
     GOAL_HARNESS_RUNTIME_ROOT_PLACEHOLDER,
+    build_active_user_codex_simulator_contract,
     build_active_user_intervention,
     build_active_user_intervention_channel_contract,
+    build_active_user_intervention_from_simulator_output,
     build_worker_bridge_benchmark_run,
     build_worker_bridge_install_contract,
     build_worker_bridge_outcome,
@@ -672,6 +679,56 @@ def main(argv: list[str] | None = None) -> int:
         default=3,
         help="Maximum proactive simulator interventions per task.",
     )
+    active_user_codex_simulator_contract_parser = worker_bridge_sub.add_parser(
+        "active-user-codex-simulator-contract",
+        help="Render the formal Codex CLI active-user simulator launch contract.",
+    )
+    add_subcommand_format(active_user_codex_simulator_contract_parser)
+    active_user_codex_simulator_contract_parser.add_argument(
+        "--project-root",
+        default=GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER,
+        help="Goal Harness project root visible to the simulator launcher.",
+    )
+    active_user_codex_simulator_contract_parser.add_argument(
+        "--python-bin",
+        default=DEFAULT_WORKER_BRIDGE_PYTHON_BIN,
+        help="Python executable used to append the validated simulator output.",
+    )
+    active_user_codex_simulator_contract_parser.add_argument(
+        "--module",
+        default=DEFAULT_WORKER_BRIDGE_MODULE,
+        help="Goal Harness CLI module import path.",
+    )
+    active_user_codex_simulator_contract_parser.add_argument(
+        "--codex-bin",
+        default=DEFAULT_ACTIVE_USER_CODEX_BIN,
+        help="Codex CLI executable used for the user simulator.",
+    )
+    active_user_codex_simulator_contract_parser.add_argument(
+        "--context-dir",
+        default=DEFAULT_ACTIVE_USER_SIMULATOR_CONTEXT_DIR,
+        help="Public context directory made readable to the Codex CLI simulator.",
+    )
+    active_user_codex_simulator_contract_parser.add_argument(
+        "--prompt-json",
+        default=DEFAULT_ACTIVE_USER_SIMULATOR_PROMPT_JSON,
+        help="Prompt/context JSON file passed to Codex CLI on stdin.",
+    )
+    active_user_codex_simulator_contract_parser.add_argument(
+        "--simulator-output-json",
+        default=DEFAULT_ACTIVE_USER_SIMULATOR_OUTPUT_JSON,
+        help="Path where Codex CLI writes the simulator JSON output.",
+    )
+    active_user_codex_simulator_contract_parser.add_argument(
+        "--simulator-output-schema-json",
+        default=DEFAULT_ACTIVE_USER_SIMULATOR_OUTPUT_SCHEMA_JSON,
+        help="JSON Schema file constraining the Codex CLI simulator response.",
+    )
+    active_user_codex_simulator_contract_parser.add_argument(
+        "--feed-jsonl",
+        default=DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+        help="Worker-visible active-user intervention feed JSONL path.",
+    )
     active_user_intervention_parser = worker_bridge_sub.add_parser(
         "active-user-intervention",
         help="Render one public-safe active-user simulator intervention event.",
@@ -695,6 +752,27 @@ def main(argv: list[str] | None = None) -> int:
         help="Mark this intervention as created before the worker start marker.",
     )
     active_user_intervention_parser.add_argument(
+        "--jsonl",
+        action="store_true",
+        help="Print compact single-line JSON for appending to an intervention feed.",
+    )
+    active_user_simulator_output_parser = worker_bridge_sub.add_parser(
+        "active-user-simulator-output",
+        help="Validate a Codex CLI simulator JSON output and render feed JSON.",
+    )
+    add_subcommand_format(active_user_simulator_output_parser)
+    active_user_simulator_output_parser.add_argument("--seq", type=int, required=True)
+    active_user_simulator_output_parser.add_argument(
+        "--simulator-output-json",
+        required=True,
+        help="Path to Codex CLI simulator JSON output, or '-' for stdin.",
+    )
+    active_user_simulator_output_parser.add_argument(
+        "--before-worker-start",
+        action="store_true",
+        help="Mark the resulting intervention as created before the worker start marker.",
+    )
+    active_user_simulator_output_parser.add_argument(
         "--jsonl",
         action="store_true",
         help="Print compact single-line JSON for appending to an intervention feed.",
@@ -1546,7 +1624,9 @@ def main(argv: list[str] | None = None) -> int:
             "outcome",
             "benchmark-run",
             "active-user-contract",
+            "active-user-codex-simulator-contract",
             "active-user-intervention",
+            "active-user-simulator-output",
             "active-user-observe",
         ):
             payload = {
@@ -1555,7 +1635,9 @@ def main(argv: list[str] | None = None) -> int:
                 "error": (
                     "worker-bridge requires a subcommand; use `contract`, "
                     "`outcome`, `benchmark-run`, `active-user-contract`, "
-                    "`active-user-intervention`, or `active-user-observe`."
+                    "`active-user-codex-simulator-contract`, "
+                    "`active-user-intervention`, `active-user-simulator-output`, "
+                    "or `active-user-observe`."
                 ),
             }
             print_payload(payload, args.format, render_worker_bridge_install_contract_markdown)
@@ -1623,12 +1705,41 @@ def main(argv: list[str] | None = None) -> int:
                     min_interval_seconds=args.min_interval_seconds,
                     max_interventions_per_task=args.max_interventions_per_task,
                 )
+            elif args.worker_bridge_command == "active-user-codex-simulator-contract":
+                payload = build_active_user_codex_simulator_contract(
+                    project_root=args.project_root,
+                    python_bin=args.python_bin,
+                    module=args.module,
+                    codex_bin=args.codex_bin,
+                    context_dir=args.context_dir,
+                    prompt_json=args.prompt_json,
+                    simulator_output_json=args.simulator_output_json,
+                    simulator_output_schema_json=args.simulator_output_schema_json,
+                    feed_jsonl=args.feed_jsonl,
+                )
             elif args.worker_bridge_command == "active-user-intervention":
                 payload = build_active_user_intervention(
                     seq=args.seq,
                     message=args.message,
                     trigger=args.trigger,
                     channel=args.channel,
+                    created_after_worker_start=not bool(args.before_worker_start),
+                )
+                if args.jsonl:
+                    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+                    return 0
+            elif args.worker_bridge_command == "active-user-simulator-output":
+                if args.simulator_output_json == "-":
+                    simulator_output = json.loads(sys.stdin.read())
+                else:
+                    simulator_output = json.loads(
+                        Path(args.simulator_output_json).expanduser().read_text(
+                            encoding="utf-8"
+                        )
+                    )
+                payload = build_active_user_intervention_from_simulator_output(
+                    seq=args.seq,
+                    simulator_output=simulator_output,
                     created_after_worker_start=not bool(args.before_worker_start),
                 )
                 if args.jsonl:
