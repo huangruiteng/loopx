@@ -1550,6 +1550,7 @@ def compact_benchmark_comparison(run: dict[str, Any]) -> dict[str, Any] | None:
         "scenario_count",
         "official_task_score_delta",
         "control_plane_score_delta",
+        "cost_delta_usd",
         "with_goal_harness_overhead_ms",
         "with_goal_harness_extra_writebacks",
         "with_goal_harness_extra_spends",
@@ -1569,10 +1570,37 @@ def compact_benchmark_comparison(run: dict[str, Any]) -> dict[str, Any] | None:
         if isinstance(source.get(field), bool):
             compact[field] = source.get(field)
 
-    for field in ("metrics_compared", "interrupt_fixture_markers", "stop_conditions"):
+    for field in ("metrics_compared", "interrupt_fixture_markers", "stop_conditions", "failure_attribution_labels"):
         values = public_safe_compact_list(source.get(field), limit=MAX_BENCHMARK_RUN_LIST_ITEMS)
         if values:
             compact[field] = values
+
+    claim_boundary = source.get("claim_boundary")
+    if isinstance(claim_boundary, dict):
+        compact_claim_boundary: dict[str, bool] = {}
+        for field in (
+            "leaderboard_claim_allowed",
+            "official_score_uplift_claim_allowed",
+            "assisted_collaboration_claim_allowed",
+            "raw_trace_excluded",
+            "credential_values_recorded",
+        ):
+            if isinstance(claim_boundary.get(field), bool):
+                compact_claim_boundary[field] = claim_boundary[field]
+        if compact_claim_boundary:
+            compact["claim_boundary"] = compact_claim_boundary
+
+    decision = source.get("decision")
+    if isinstance(decision, dict):
+        compact_decision: dict[str, Any] = {}
+        for field in ("score_uplift", "validation_enhancement_point"):
+            if isinstance(decision.get(field), bool):
+                compact_decision[field] = decision[field]
+        why = public_safe_compact_text(decision.get("why"), limit=240)
+        if why:
+            compact_decision["why"] = why
+        if compact_decision:
+            compact["decision"] = compact_decision
 
     result_refs: list[dict[str, Any]] = []
     for item in source.get("result_refs") or []:
@@ -1622,6 +1650,21 @@ def benchmark_comparison_decision_note(comparison: dict[str, Any] | None) -> dic
     both_success = comparison.get("both_success") if isinstance(comparison.get("both_success"), bool) else None
     submit_ready = comparison.get("ready_to_submit_leaderboard")
     real_ready = comparison.get("ready_to_run_real_benchmark")
+    decision_summary = comparison.get("decision") if isinstance(comparison.get("decision"), dict) else {}
+    validation_enhancement = (
+        decision_summary.get("validation_enhancement_point")
+        if isinstance(decision_summary.get("validation_enhancement_point"), bool)
+        else None
+    )
+    score_uplift = (
+        decision_summary.get("score_uplift")
+        if isinstance(decision_summary.get("score_uplift"), bool)
+        else None
+    )
+    failure_labels = public_safe_compact_list(
+        comparison.get("failure_attribution_labels"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
 
     evidence_layer = "comparison_summary"
     decision = "repeat"
@@ -1647,6 +1690,12 @@ def benchmark_comparison_decision_note(comparison: dict[str, Any] | None) -> dic
         minimum_next_evidence = "verify benchmark protocol, submit eligibility, and side-effect audit before claiming official uplift"
         may_claim.append("official score candidate exists")
         must_not_claim.append("official uplift before protocol and submit-eligibility verification")
+    elif official_delta == 0 and validation_enhancement is True and score_uplift is False:
+        evidence_layer = "validation_enhancement_no_score_uplift"
+        decision = "continue"
+        minimum_next_evidence = "repeat on a stronger target or harden the recorded failure-attribution/writeback path"
+        may_claim.append("validation or failure-attribution evidence improved while official score delta stayed zero")
+        must_not_claim.append("official score uplift")
     elif both_success is False:
         evidence_layer = "failure_analysis"
         decision = "repeat"
@@ -1681,6 +1730,12 @@ def benchmark_comparison_decision_note(comparison: dict[str, Any] | None) -> dic
         note["control_plane_score_delta"] = control_delta
     elif isinstance(comparison.get("control_plane_score_delta"), str):
         note["control_plane_score_delta"] = public_safe_compact_text(comparison.get("control_plane_score_delta"), limit=120)
+    if failure_labels:
+        note["failure_attribution_labels"] = failure_labels
+    if validation_enhancement is not None:
+        note["validation_enhancement_point"] = validation_enhancement
+    if score_uplift is not None:
+        note["score_uplift"] = score_uplift
     return note
 
 

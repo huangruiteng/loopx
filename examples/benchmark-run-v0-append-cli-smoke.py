@@ -16,7 +16,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from goal_harness.review_packet import build_review_packet  # noqa: E402
-from goal_harness.status import collect_status  # noqa: E402
+from goal_harness.status import (  # noqa: E402
+    benchmark_comparison_decision_note,
+    collect_status,
+    compact_benchmark_comparison,
+)
 
 
 GOAL_ID = "benchmark-append-cli-fixture"
@@ -173,9 +177,25 @@ def benchmark_comparison_event() -> dict[str, Any]:
         "both_success": True,
         "official_task_score_delta": 0.0,
         "control_plane_score_delta": 0.143,
+        "cost_delta_usd": 0.274,
         "with_goal_harness_overhead_ms": 12.5,
         "with_goal_harness_extra_writebacks": 3,
         "with_goal_harness_extra_spends": 3,
+        "failure_attribution_labels": ["verifier_platform_probe_failure"],
+        "claim_boundary": {
+            "leaderboard_claim_allowed": False,
+            "official_score_uplift_claim_allowed": False,
+            "assisted_collaboration_claim_allowed": True,
+            "raw_trace_excluded": True,
+            "credential_values_recorded": False,
+            "private_path_recorded": True,
+        },
+        "decision": {
+            "score_uplift": False,
+            "validation_enhancement_point": True,
+            "why": "Worker writeback and failure attribution improved while official score delta stayed zero.",
+            "raw_log_path": "/" + "tmp/private/raw.log",
+        },
         "result_refs": [
             {
                 "scenario_id": "without_goal_harness",
@@ -442,7 +462,19 @@ def main() -> None:
         assert comparison_summary["mode_pair"] == ["without_goal_harness", "with_goal_harness"], comparison_summary
         assert comparison_summary["official_task_score_delta"] == 0.0, comparison_summary
         assert comparison_summary["control_plane_score_delta"] == 0.143, comparison_summary
+        assert comparison_summary["cost_delta_usd"] == 0.274, comparison_summary
         assert comparison_summary["both_success"] is True, comparison_summary
+        assert comparison_summary["failure_attribution_labels"] == ["verifier_platform_probe_failure"], comparison_summary
+        assert comparison_summary["claim_boundary"] == {
+            "leaderboard_claim_allowed": False,
+            "official_score_uplift_claim_allowed": False,
+            "assisted_collaboration_claim_allowed": True,
+            "raw_trace_excluded": True,
+            "credential_values_recorded": False,
+        }, comparison_summary
+        assert comparison_summary["decision"]["score_uplift"] is False, comparison_summary
+        assert comparison_summary["decision"]["validation_enhancement_point"] is True, comparison_summary
+        assert "raw_log_path" not in json.dumps(comparison_summary["decision"], sort_keys=True), comparison_summary
         assert "raw_thread_path" not in comparison_summary, comparison_summary
         assert "raw_log_path" not in json.dumps(comparison_summary, sort_keys=True), comparison_summary
         assert_no_private_surface(comparison_summary)
@@ -453,10 +485,46 @@ def main() -> None:
         assert decision_note["evidence_layer"] == "control_plane_only", decision_note
         assert decision_note["official_task_score_delta"] == 0.0, decision_note
         assert decision_note["control_plane_score_delta"] == 0.143, decision_note
+        assert decision_note["failure_attribution_labels"] == ["verifier_platform_probe_failure"], decision_note
+        assert decision_note["validation_enhancement_point"] is True, decision_note
+        assert decision_note["score_uplift"] is False, decision_note
         assert "control-plane delta improved while official score delta stayed zero" in decision_note["may_claim"], decision_note
         assert "official leaderboard uplift" in decision_note["must_not_claim"], decision_note
         assert decision_note["report_section_hint"] == ["claim_boundary", "next_decision"], decision_note
         assert_no_private_surface(decision_note)
+
+        failure_comparison = compact_benchmark_comparison(
+            {
+                "schema_version": "benchmark_comparison_v0",
+                "task_id": "torch-tensor-parallelism",
+                "comparison_id": "torch_tensor_parallelism_failure_triage",
+                "benchmark_id": "terminal-bench@2.0",
+                "mode_pair": ["hardened_codex_baseline", "codex_goal_harness_active_user"],
+                "both_success": False,
+                "official_task_score_delta": 0.0,
+                "failure_attribution_labels": ["verifier_platform_probe_failure"],
+                "decision": {
+                    "score_uplift": False,
+                    "validation_enhancement_point": True,
+                    "why": "Treatment preserved worker writeback and failure attribution without changing official score.",
+                },
+                "claim_boundary": {
+                    "leaderboard_claim_allowed": False,
+                    "official_score_uplift_claim_allowed": False,
+                    "assisted_collaboration_claim_allowed": True,
+                    "raw_trace_excluded": True,
+                    "credential_values_recorded": False,
+                },
+            }
+        )
+        failure_note = benchmark_comparison_decision_note(failure_comparison)
+        assert failure_note["evidence_layer"] == "validation_enhancement_no_score_uplift", failure_note
+        assert failure_note["decision"] == "continue", failure_note
+        assert failure_note["failure_attribution_labels"] == ["verifier_platform_probe_failure"], failure_note
+        assert failure_note["validation_enhancement_point"] is True, failure_note
+        assert failure_note["score_uplift"] is False, failure_note
+        assert "official score uplift" in failure_note["must_not_claim"], failure_note
+        assert_no_private_surface(failure_note)
 
         index_records = [
             json.loads(line)
