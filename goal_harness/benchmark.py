@@ -934,6 +934,7 @@ def _terminal_bench_overhead_attribution_counters(
     worker_counter_trace_trial_count: int,
     worker_benchmark_run_file_count: int,
     worker_benchmark_run_schema_ok_count: int,
+    worker_submit_eligible_mismatch_count: int,
     worker_bridge_writeback_loss_count: int,
     pre_worker_agent_setup_failure_count: int,
     codex_runtime_goal_tool_trial_count: int,
@@ -1009,6 +1010,12 @@ def _terminal_bench_overhead_attribution_counters(
         "worker_counter_trace_trial_count": worker_counter_trace_trial_count,
         "worker_benchmark_run_file_count": worker_benchmark_run_file_count,
         "worker_benchmark_run_schema_ok_count": worker_benchmark_run_schema_ok_count,
+        "worker_submit_eligible_mismatch_count": worker_submit_eligible_mismatch_count,
+        "worker_submit_eligible_mismatch_reason": (
+            "worker_file_submit_eligible_true_under_runner_no_upload_boundary"
+            if worker_submit_eligible_mismatch_count
+            else "none"
+        ),
         "worker_bridge_writeback_loss_count": worker_bridge_writeback_loss_count,
         "pre_worker_agent_setup_failure_count": pre_worker_agent_setup_failure_count,
         "codex_runtime_goal_tool_trial_count": codex_runtime_goal_tool_trial_count,
@@ -1054,6 +1061,7 @@ def build_terminal_bench_harbor_result_benchmark_run(
     job_result = _load_json_object(job_path / "result.json")
     stats = job_result.get("stats") if isinstance(job_result.get("stats"), dict) else {}
     invocation = lock.get("invocation") if isinstance(lock.get("invocation"), list) else []
+    no_upload_requested = "--upload" not in invocation and "upload" not in invocation
     lock_trials = lock.get("trials") if isinstance(lock.get("trials"), list) else []
     first_lock_trial = lock_trials[0] if lock_trials and isinstance(lock_trials[0], dict) else {}
     task_config = first_lock_trial.get("task") if isinstance(first_lock_trial.get("task"), dict) else {}
@@ -1107,6 +1115,7 @@ def build_terminal_bench_harbor_result_benchmark_run(
     worker_counter_trace_trial_count = 0
     worker_benchmark_run_file_count = 0
     worker_benchmark_run_schema_ok_count = 0
+    worker_submit_eligible_mismatch_count = 0
     pre_worker_agent_setup_failure_count = 0
     verifier_failure_attribution_count = 0
     verifier_dependency_failure_count = 0
@@ -1157,6 +1166,11 @@ def build_terminal_bench_harbor_result_benchmark_run(
             worker_benchmark_run = _load_json_object(worker_benchmark_run_path)
             if _is_compactable_benchmark_run_v0(worker_benchmark_run):
                 worker_benchmark_run_schema_ok_count += 1
+                if (
+                    no_upload_requested
+                    and worker_benchmark_run.get("submit_eligible") is True
+                ):
+                    worker_submit_eligible_mismatch_count += 1
         trial_reward_value = _numeric_reward_value(rewards)
         verifier_attribution = (
             _terminal_bench_verifier_failure_attribution(trial_dir)
@@ -1221,6 +1235,9 @@ def build_terminal_bench_harbor_result_benchmark_run(
         interaction_counters["worker_benchmark_run_schema_ok_count"] = (
             worker_benchmark_run_schema_ok_count
         )
+        interaction_counters["worker_submit_eligible_mismatch_count"] = (
+            worker_submit_eligible_mismatch_count
+        )
         interaction_counters["pre_worker_agent_setup_failure_count"] = (
             pre_worker_agent_setup_failure_count
         )
@@ -1264,12 +1281,20 @@ def build_terminal_bench_harbor_result_benchmark_run(
         )
     else:
         worker_bridge_writeback_loss_reason = "none"
+    worker_submit_eligible_mismatch_reason = (
+        "worker_file_submit_eligible_true_under_runner_no_upload_boundary"
+        if worker_submit_eligible_mismatch_count
+        else "none"
+    )
     if interaction_counters:
         interaction_counters["worker_bridge_writeback_loss_count"] = (
             worker_bridge_writeback_loss_count
         )
         interaction_counters["worker_bridge_writeback_loss_reason"] = (
             worker_bridge_writeback_loss_reason
+        )
+        interaction_counters["worker_submit_eligible_mismatch_reason"] = (
+            worker_submit_eligible_mismatch_reason
         )
     wall_time_seconds = _iso_duration_seconds(
         job_result.get("started_at"),
@@ -1291,13 +1316,12 @@ def build_terminal_bench_harbor_result_benchmark_run(
         worker_counter_trace_trial_count=worker_counter_trace_trial_count,
         worker_benchmark_run_file_count=worker_benchmark_run_file_count,
         worker_benchmark_run_schema_ok_count=worker_benchmark_run_schema_ok_count,
+        worker_submit_eligible_mismatch_count=worker_submit_eligible_mismatch_count,
         worker_bridge_writeback_loss_count=worker_bridge_writeback_loss_count,
         pre_worker_agent_setup_failure_count=pre_worker_agent_setup_failure_count,
         codex_runtime_goal_tool_trial_count=codex_runtime_goal_tool_trial_count,
         trace_publicness=trace_publicness,
     )
-    no_upload_requested = "--upload" not in invocation and "upload" not in invocation
-
     validation = {
         "job_lock_present": (job_path / "lock.json").exists(),
         "job_result_present": (job_path / "result.json").exists(),
@@ -1319,6 +1343,9 @@ def build_terminal_bench_harbor_result_benchmark_run(
         ),
         "worker_benchmark_run_present_for_traced_trials": (
             worker_benchmark_run_file_count >= worker_counter_trace_trial_count
+        ),
+        "worker_submit_eligible_matches_runner_boundary": (
+            worker_submit_eligible_mismatch_count == 0
         ),
         "pre_worker_agent_setup_failures_classified": True,
         "verifier_failure_attribution_public_safe": True,
@@ -1370,6 +1397,8 @@ def build_terminal_bench_harbor_result_benchmark_run(
         "worker_counter_trace_trial_count": worker_counter_trace_trial_count,
         "worker_benchmark_run_file_count": worker_benchmark_run_file_count,
         "worker_benchmark_run_schema_ok_count": worker_benchmark_run_schema_ok_count,
+        "worker_submit_eligible_mismatch_count": worker_submit_eligible_mismatch_count,
+        "worker_submit_eligible_mismatch_reason": worker_submit_eligible_mismatch_reason,
         "worker_bridge_writeback_loss_count": worker_bridge_writeback_loss_count,
         "worker_bridge_writeback_loss_reason": worker_bridge_writeback_loss_reason,
         "pre_worker_agent_setup_failure_count": pre_worker_agent_setup_failure_count,
@@ -1443,6 +1472,11 @@ def build_terminal_bench_harbor_result_benchmark_run(
             "worker_bridge_writeback_loss_observed": bool(
                 worker_bridge_writeback_loss_count
             ),
+            "worker_submit_eligible_mismatch_observed": bool(
+                worker_submit_eligible_mismatch_count
+            ),
+            "worker_submit_eligible_mismatch_count": worker_submit_eligible_mismatch_count,
+            "worker_submit_eligible_mismatch_reason": worker_submit_eligible_mismatch_reason,
             "worker_bridge_writeback_loss_count": worker_bridge_writeback_loss_count,
             "worker_bridge_writeback_loss_reason": worker_bridge_writeback_loss_reason,
             "worker_goal_harness_cli_call_total": worker_cli_total,

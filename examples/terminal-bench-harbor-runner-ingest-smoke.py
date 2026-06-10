@@ -393,7 +393,11 @@ def write_verifier_platform_probe_failure_fixture(root: Path) -> Path:
     (trial_dir / "agent" / "trajectory.json").write_text("{}\n", encoding="utf-8")
     write_json(
         trial_dir / "agent" / "goal-harness-worker-benchmark-run.json",
-        {"schema_version": "benchmark_run_v0"},
+        {
+            "schema_version": "benchmark_run_v0",
+            "submit_eligible": True,
+            "leaderboard_evidence": False,
+        },
     )
     (trial_dir / "agent" / "goal-harness-counter-trace.jsonl").write_text(
         json.dumps({"command": "check", "ok": True}, sort_keys=True) + "\n",
@@ -849,6 +853,10 @@ def main() -> None:
     assert payload["worker_counter_trace_trial_count"] == 1, payload
     assert payload["worker_benchmark_run_file_count"] == 1, payload
     assert payload["worker_benchmark_run_schema_ok_count"] == 1, payload
+    assert payload["worker_submit_eligible_mismatch_count"] == 0, payload
+    assert (
+        payload["worker_submit_eligible_mismatch_reason"] == "none"
+    ), payload
     assert payload["pre_worker_agent_setup_failure_count"] == 1, payload
     assert payload["interaction_counters"]["goal_harness_cli_calls"]["append_benchmark_run"] == 2, payload
     assert payload["interaction_counters"]["append_benchmark_run_success_count"] == 1, payload
@@ -856,6 +864,11 @@ def main() -> None:
     assert payload["interaction_counters"]["worker_counter_trace_trial_count"] == 1, payload
     assert payload["interaction_counters"]["worker_benchmark_run_file_count"] == 1, payload
     assert payload["interaction_counters"]["worker_benchmark_run_schema_ok_count"] == 1, payload
+    assert payload["interaction_counters"]["worker_submit_eligible_mismatch_count"] == 0, payload
+    assert (
+        payload["interaction_counters"]["worker_submit_eligible_mismatch_reason"]
+        == "none"
+    ), payload
     assert payload["interaction_counters"]["pre_worker_agent_setup_failure_count"] == 1, payload
     assert payload["interaction_counters"]["case_result_writeback"] == "worker_bridge_append_benchmark_run_dry_run", payload
     overhead = payload["overhead_attribution_counters"]
@@ -878,6 +891,8 @@ def main() -> None:
     assert overhead["goal_harness_required_cli_call_total"] == 3, overhead
     assert overhead["goal_harness_optional_context_cli_call_total"] == 3, overhead
     assert overhead["append_benchmark_run_success_count"] == 1, overhead
+    assert overhead["worker_submit_eligible_mismatch_count"] == 0, overhead
+    assert overhead["worker_submit_eligible_mismatch_reason"] == "none", overhead
     assert payload["official_task_score"]["value"] == 1.0, payload
     assert payload["progress"]["n_errored_trials"] == 2, payload
     assert payload["trials"][0]["exception_type"] == "AgentTimeoutError", payload
@@ -907,11 +922,21 @@ def main() -> None:
     assert policy["expected_true_long_task_bar_met"] is False, policy
     assert policy["true_long_task_bar_met"] is False, policy
     assert payload["worker_bridge_outcome"]["runner_side_writeback_guaranteed"] is True, payload
+    assert (
+        payload["worker_bridge_outcome"]["worker_submit_eligible_mismatch_observed"]
+        is False
+    ), payload
+    assert (
+        payload["validation"]["worker_submit_eligible_matches_runner_boundary"]
+        is True
+    ), payload
     compact = compact_benchmark_run(payload)
     assert compact and compact["worker_goal_harness_cli_call_total"] == 6, compact
     assert compact["worker_counter_trace_trial_count"] == 1, compact
     assert compact["worker_benchmark_run_file_count"] == 1, compact
     assert compact["worker_benchmark_run_schema_ok_count"] == 1, compact
+    assert compact["worker_submit_eligible_mismatch_count"] == 0, compact
+    assert compact["worker_submit_eligible_mismatch_reason"] == "none", compact
     assert compact["pre_worker_agent_setup_failure_count"] == 1, compact
     assert compact["interaction_counters"]["append_benchmark_run_success_count"] == 1, compact
     assert compact["interaction_counters"]["append_benchmark_run_schema_rejected_count"] == 1, compact
@@ -925,6 +950,7 @@ def main() -> None:
     ), compact_overhead
     assert compact_overhead["goal_harness_cli_call_total"] == 6, compact_overhead
     assert compact_overhead["worker_bridge_event_count"] == 6, compact_overhead
+    assert compact_overhead["worker_submit_eligible_mismatch_count"] == 0, compact_overhead
     assert compact["trials"][0]["exception_type"] == "AgentTimeoutError", compact
     compact_setup_trial = next(
         trial for trial in compact["trials"] if trial["task_id"] == "fix-code-vulnerability"
@@ -1155,6 +1181,32 @@ def main() -> None:
     ), platform_payload
     assert platform_payload["verifier_dependency_failure_count"] == 0, platform_payload
     assert platform_payload["verifier_failure_attribution_count"] == 1, platform_payload
+    assert platform_payload["submit_eligible"] is False, platform_payload
+    assert platform_payload["worker_submit_eligible_mismatch_count"] == 1, platform_payload
+    assert (
+        platform_payload["worker_submit_eligible_mismatch_reason"]
+        == "worker_file_submit_eligible_true_under_runner_no_upload_boundary"
+    ), platform_payload
+    assert (
+        platform_payload["validation"]["worker_submit_eligible_matches_runner_boundary"]
+        is False
+    ), platform_payload
+    assert (
+        platform_payload["interaction_counters"]["worker_submit_eligible_mismatch_count"]
+        == 1
+    ), platform_payload
+    assert (
+        platform_payload["overhead_attribution_counters"][
+            "worker_submit_eligible_mismatch_count"
+        ]
+        == 1
+    ), platform_payload
+    assert (
+        platform_payload["worker_bridge_outcome"][
+            "worker_submit_eligible_mismatch_observed"
+        ]
+        is True
+    ), platform_payload
     assert "verifier_platform_probe_failure" in platform_payload[
         "failure_attribution_labels"
     ], platform_payload
@@ -1178,6 +1230,20 @@ def main() -> None:
     ), platform_compact
     assert platform_compact["verifier_dependency_failure_count"] == 0, platform_compact
     assert platform_compact["verifier_failure_attribution_count"] == 1, platform_compact
+    assert platform_compact["worker_submit_eligible_mismatch_count"] == 1, platform_compact
+    assert (
+        platform_compact["worker_submit_eligible_mismatch_reason"]
+        == "worker_file_submit_eligible_true_under_runner_no_upload_boundary"
+    ), platform_compact
+    assert "worker_submit_eligible_matches_runner_boundary" in platform_compact[
+        "validation"
+    ]["failed_checks"], platform_compact
+    assert (
+        platform_compact["worker_bridge_outcome"][
+            "worker_submit_eligible_mismatch_observed"
+        ]
+        is True
+    ), platform_compact
     assert "verifier_platform_probe_failure" in platform_compact[
         "failure_attribution_labels"
     ], platform_compact
