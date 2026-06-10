@@ -687,6 +687,229 @@ def inspect_index_duplicates(
     }
 
 
+STRUCTURED_INDEX_KEYS = (
+    "benchmark_run",
+    "benchmark_result",
+    "benchmark_comparison",
+    "benchmark_experiment_report",
+    "active_user_assisted_pilot",
+)
+
+
+def _index_identity(record: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(record.get("generated_at") or ""),
+        str(record.get("json_path") or ""),
+        str(record.get("markdown_path") or ""),
+    )
+
+
+def _has_structured_index_payload(record: dict[str, Any]) -> bool:
+    return any(isinstance(record.get(key), dict) for key in STRUCTURED_INDEX_KEYS)
+
+
+def _duplicate_repair_decision(records: list[tuple[int, dict[str, Any]]]) -> dict[str, Any]:
+    line_numbers = [line_number for line_number, _ in records]
+    reward_records = sum(1 for _, record in records if isinstance(record.get("human_reward"), dict))
+    normalized = [
+        {record_key: value for record_key, value in record.items() if record_key != "human_reward"}
+        for _, record in records
+    ]
+    normalized_keys = {json.dumps(record, sort_keys=True, ensure_ascii=False) for record in normalized}
+    classifications = {str(record.get("classification") or "") for _, record in records}
+    health_checks = {str(record.get("health_check") or "") for _, record in records}
+
+    if reward_records and len(normalized_keys) == 1:
+        return {
+            "action": "preserve_reward_overlay",
+            "repairable": False,
+            "line_numbers": line_numbers,
+            "kept_line_numbers": line_numbers,
+            "removed_line_numbers": [],
+            "reason": "reward overlay rows are intentionally merged by status checks",
+        }
+
+    if len(normalized_keys) == 1:
+        return {
+            "action": "drop_plain_duplicate_rows",
+            "repairable": True,
+            "line_numbers": line_numbers,
+            "kept_line_numbers": [line_numbers[0]],
+            "removed_line_numbers": line_numbers[1:],
+            "reason": "duplicate rows are byte-equivalent after reward fields are ignored",
+        }
+
+    structured_rows = [
+        (line_number, record)
+        for line_number, record in records
+        if _has_structured_index_payload(record)
+    ]
+    if (
+        len(structured_rows) == 1
+        and len(classifications) == 1
+        and len(health_checks) > 1
+        and all(
+            (
+                _has_structured_index_payload(record)
+                or all(key not in record for key in STRUCTURED_INDEX_KEYS)
+            )
+            for _, record in records
+        )
+    ):
+        kept_line = structured_rows[0][0]
+        return {
+            "action": "keep_structured_artifact_row",
+            "repairable": True,
+            "line_numbers": line_numbers,
+            "kept_line_numbers": [kept_line],
+            "removed_line_numbers": [line_number for line_number in line_numbers if line_number != kept_line],
+            "reason": "one row carries the compact structured artifact payload and siblings only repeat the artifact identity",
+        }
+
+    return {
+        "action": "blocked_artifact_identity_collision",
+        "repairable": False,
+        "line_numbers": line_numbers,
+        "kept_line_numbers": line_numbers,
+        "removed_line_numbers": [],
+        "reason": "artifact identity collision is not auto-repairable without reviewed merge semantics",
+    }
+
+
+def repair_index_duplicates(
+    *,
+    registry_path: Path,
+    runtime_root_override: str | None,
+    goal_id: str | None,
+    limit: int,
+    execute: bool,
+) -> dict[str, Any]:
+    registry = load_registry(registry_path)
+    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    checked_goal_count = 0
+    raw_index_records = 0
+    removed_row_count = 0
+    preserved_reward_overlay_rows = 0
+    unrepaired_group_count = 0
+    groups: list[dict[str, Any]] = []
+
+    for current_goal_id in discover_goal_ids(runtime_root, registry, goal_id):
+        checked_goal_count += 1
+        index_path = runtime_root / "goals" / current_goal_id / "runs" / "index.jsonl"
+        if not index_path.exists():
+            continue
+
+        raw_lines = index_path.read_text(encoding="utf-8").splitlines()
+        grouped: dict[tuple[str, str, str], list[tuple[int, dict[str, Any]]]] = {}
+        for line_number, line in enumerate(raw_lines, start=1):
+            if not line.strip():
+                continue
+            raw_index_records += 1
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(item, dict):
+                continue
+            grouped.setdefault(_index_identity(item), []).append((line_number, item))
+
+        remove_lines: set[int] = set()
+        for records in grouped.values():
+            if len(records) <= 1:
+                continue
+            decision = _duplicate_repair_decision(records)
+            removed_lines = list(decision.get("removed_line_numbers") or [])
+            if decision.get("action") == "preserve_reward_overlay":
+                preserved_reward_overlay_rows += len(records) - 1
+            elif decision.get("repairable"):
+                remove_lines.update(int(line_number) for line_number in removed_lines)
+                removed_row_count += len(removed_lines)
+            else:
+                unrepaired_group_count += 1
+
+            first_record = records[0][1]
+            groups.append(
+                {
+                    "goal_id": current_goal_id,
+                    "index_path": str(index_path),
+                    "generated_at": first_record.get("generated_at"),
+                    "json_path": first_record.get("json_path"),
+                    "markdown_path": first_record.get("markdown_path"),
+                    "action": decision.get("action"),
+                    "repairable": decision.get("repairable"),
+                    "line_numbers": decision.get("line_numbers"),
+                    "kept_line_numbers": decision.get("kept_line_numbers"),
+                    "removed_line_numbers": removed_lines,
+                    "reason": decision.get("reason"),
+                }
+            )
+
+        if execute and remove_lines:
+            rewritten = [
+                line
+                for line_number, line in enumerate(raw_lines, start=1)
+                if line_number not in remove_lines
+            ]
+            tmp_path = index_path.with_suffix(index_path.suffix + ".tmp")
+            tmp_path.write_text("".join(line + "\n" for line in rewritten), encoding="utf-8")
+            tmp_path.replace(index_path)
+
+    limited_groups = groups[: max(0, limit)]
+    return {
+        "ok": True,
+        "dry_run": not execute,
+        "repaired": bool(execute and removed_row_count),
+        "registry": str(registry_path),
+        "runtime_root": str(runtime_root),
+        "goal_filter": goal_id,
+        "checked_goal_count": checked_goal_count,
+        "raw_index_records": raw_index_records,
+        "removed_row_count": removed_row_count,
+        "preserved_reward_overlay_rows": preserved_reward_overlay_rows,
+        "unrepaired_group_count": unrepaired_group_count,
+        "groups": limited_groups,
+        "truncated": len(groups) > len(limited_groups),
+        "limit": limit,
+    }
+
+
+def render_index_duplicate_repair_markdown(payload: dict[str, Any]) -> str:
+    if not payload.get("ok"):
+        return "# Goal Harness Index Duplicate Repair\n\n- ok: `False`\n- error: " + str(payload.get("error"))
+
+    lines = [
+        "# Goal Harness Index Duplicate Repair",
+        "",
+        f"- dry_run: `{payload.get('dry_run')}`",
+        f"- repaired: `{payload.get('repaired')}`",
+        f"- runtime_root: `{payload.get('runtime_root')}`",
+        f"- registry: `{payload.get('registry')}`",
+        f"- goal_filter: `{payload.get('goal_filter')}`",
+        f"- checked_goals: `{payload.get('checked_goal_count')}`",
+        f"- raw_index_records: `{payload.get('raw_index_records')}`",
+        f"- removed_rows: `{payload.get('removed_row_count')}`",
+        f"- preserved_reward_overlay_rows: `{payload.get('preserved_reward_overlay_rows')}`",
+        f"- unrepaired_groups: `{payload.get('unrepaired_group_count')}`",
+        f"- truncated: `{payload.get('truncated')}`",
+        "",
+        "| goal | generated_at | action | repairable | kept | removed | reason |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for group in payload.get("groups") or []:
+        reason = str(group.get("reason") or "").replace("|", "\\|")
+        lines.append(
+            "| "
+            f"`{group.get('goal_id')}` | "
+            f"`{group.get('generated_at')}` | "
+            f"`{group.get('action')}` | "
+            f"`{group.get('repairable')}` | "
+            f"`{group.get('kept_line_numbers')}` | "
+            f"`{group.get('removed_line_numbers')}` | "
+            f"{reason} |"
+        )
+    return "\n".join(lines)
+
+
 def render_history_markdown(payload: dict[str, Any]) -> str:
     if not payload.get("ok"):
         return "# Goal Harness Run History\n\n- ok: `False`\n- error: " + str(payload.get("error"))

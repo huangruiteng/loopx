@@ -55,6 +55,7 @@ from .history import (
     collect_history,
     inspect_index_duplicates,
     load_registry,
+    repair_index_duplicates,
     render_active_user_assisted_pilot_append_markdown,
     render_benchmark_comparison_append_markdown,
     render_benchmark_experiment_report_append_markdown,
@@ -62,6 +63,7 @@ from .history import (
     render_benchmark_run_append_markdown,
     render_history_markdown,
     render_index_duplicate_inspection_markdown,
+    render_index_duplicate_repair_markdown,
 )
 from .operator_gate import (
     DEFAULT_OPERATOR_GATE,
@@ -818,11 +820,12 @@ def main(argv: list[str] | None = None) -> int:
             "append-benchmark-report",
             "append-active-user-assisted-pilot",
             "inspect-index-duplicates",
+            "repair-index-duplicates",
         ],
         help=(
             "Append a compact benchmark_run_v0, benchmark_result_v0, benchmark_comparison_v0, "
-            "benchmark_experiment_report_v0, or active_user_assisted_pilot_v0 event; or inspect "
-            "duplicate run-index identities without writing runtime state."
+            "benchmark_experiment_report_v0, or active_user_assisted_pilot_v0 event; inspect "
+            "duplicate run-index identities; or repair safe duplicate index rows."
         ),
     )
     history_parser.add_argument("--goal-id", help="Only show one goal.")
@@ -863,7 +866,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional delivery outcome label for the run index.",
     )
     history_parser.add_argument("--dry-run", action="store_true", help="Preview append without writing. This is the default.")
-    history_parser.add_argument("--execute", action="store_true", help="Append the compact benchmark event.")
+    history_parser.add_argument("--execute", action="store_true", help="Append or repair. Without this flag, history write actions are dry-run previews.")
     history_parser.add_argument("--no-global-sync", action="store_true", help="Skip global registry sync after append.")
 
     benchmark_parser = sub.add_parser(
@@ -1998,6 +2001,29 @@ def main(argv: list[str] | None = None) -> int:
                     "error": str(exc),
                 }
             print_payload(payload, args.format, render_index_duplicate_inspection_markdown)
+            return 0 if payload.get("ok") else 1
+
+        if args.history_action == "repair-index-duplicates":
+            try:
+                payload = repair_index_duplicates(
+                    registry_path=registry_path,
+                    runtime_root_override=args.runtime_root,
+                    goal_id=args.goal_id,
+                    limit=args.limit,
+                    execute=bool(args.execute),
+                )
+            except Exception as exc:
+                registry = load_registry(registry_path)
+                runtime_root = resolve_runtime_root(registry, args.runtime_root)
+                payload = {
+                    "ok": False,
+                    "dry_run": not bool(args.execute),
+                    "registry": str(registry_path),
+                    "runtime_root": str(runtime_root),
+                    "goal_filter": args.goal_id,
+                    "error": str(exc),
+                }
+            print_payload(payload, args.format, render_index_duplicate_repair_markdown)
             return 0 if payload.get("ok") else 1
 
         if args.history_action == "append-benchmark-run":
