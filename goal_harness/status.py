@@ -677,6 +677,76 @@ def _compact_active_user_assisted_treatment_preflight(value: Any) -> dict[str, A
     return compact
 
 
+def _compact_active_user_observation(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for field in ("schema_version", "bridge_surface", "channel_surface", "next_action"):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    for field in (
+        "feed_present",
+        "feed_path_recorded",
+        "observed_after_worker_start",
+        "worker_observation_proof",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in (
+        "worker_start_seq",
+        "valid_intervention_count",
+        "invalid_line_count",
+        "observed_intervention_count",
+    ):
+        if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
+            compact[field] = value[field]
+
+    latest = (
+        value.get("latest_intervention")
+        if isinstance(value.get("latest_intervention"), dict)
+        else {}
+    )
+    compact_latest: dict[str, Any] = {}
+    for field in ("channel", "type", "trigger", "message"):
+        text = public_safe_compact_text(latest.get(field), limit=160)
+        if text:
+            compact_latest[field] = text
+    if isinstance(latest.get("seq"), int) and not isinstance(latest.get("seq"), bool):
+        compact_latest["seq"] = latest["seq"]
+    for field in (
+        "oracle_free",
+        "hidden_tests_visible",
+        "expected_solution_visible",
+        "credential_values_visible",
+        "private_material_visible",
+    ):
+        if isinstance(latest.get(field), bool):
+            compact_latest[field] = latest[field]
+    if compact_latest:
+        compact["latest_intervention"] = compact_latest
+
+    for source_field, compact_field in (
+        ("claim_boundary", "claim_boundary"),
+        ("public_boundary", "public_boundary"),
+    ):
+        source = (
+            value.get(source_field)
+            if isinstance(value.get(source_field), dict)
+            else {}
+        )
+        compact_boundary: dict[str, Any] = {}
+        for key, boundary_value in source.items():
+            if isinstance(key, str) and isinstance(boundary_value, bool):
+                safe_key = public_safe_compact_text(key, limit=80)
+                if safe_key:
+                    compact_boundary[safe_key] = boundary_value
+        if compact_boundary:
+            compact[compact_field] = compact_boundary
+    return compact
+
+
 def _compact_benchmark_claim_gate(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -1032,6 +1102,12 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if active_user_preflight:
         compact["active_user_assisted_treatment_preflight"] = active_user_preflight
+
+    active_user_observation = _compact_active_user_observation(
+        source.get("active_user_observation")
+    )
+    if active_user_observation:
+        compact["active_user_observation"] = active_user_observation
 
     claim_gate = _compact_benchmark_claim_gate(source.get("claim_gate"))
     if claim_gate:
