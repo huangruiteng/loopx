@@ -367,6 +367,12 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert event["active_user_simulator_injection_channel_available"] is True, event
     assert_private_launcher_plan(event["active_user_private_launcher_plan"])
     launch_summary = event["private_runner_launch_summary"]
+    assert launch_summary["first_blocker"] == "ready_for_private_managed_no_upload_pilot_review", launch_summary
+    assert launch_summary["ready"] is True, launch_summary
+    assert event["first_blocker"] == "missing_real_assisted_worker_observation", event
+    assert launch_summary["agent_import_path_present"] is True, launch_summary
+    assert launch_summary["goal_harness_agent_kwargs_present"] is True, launch_summary
+    assert launch_summary["goal_harness_worker_bridge_requested"] is True, launch_summary
     assert launch_summary["active_user_writable_mount_requested"] is True, launch_summary
     assert launch_summary["active_user_writable_mount_count"] == 1, launch_summary
     assert launch_summary["raw_paths_recorded"] is False, launch_summary
