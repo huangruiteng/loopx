@@ -481,6 +481,25 @@ def _terminal_bench_verifier_failure_attribution(trial_dir: Path) -> dict[str, A
     }
 
 
+def _terminal_bench_score_failure_attribution(
+    *,
+    official_score: Any,
+    verifier_dependency_failure_count: int,
+    failure_attribution_labels: set[str],
+) -> str:
+    """Summarize score-failure cause without collapsing verifier probes to none."""
+
+    if official_score != 0:
+        return "none"
+    if verifier_dependency_failure_count:
+        return "verifier_dependency_install_failure"
+    if "verifier_platform_probe_failure" in failure_attribution_labels:
+        return "verifier_platform_probe_failure"
+    if any(label.startswith("verifier_") for label in failure_attribution_labels):
+        return "verifier_infrastructure_failure"
+    return "none"
+
+
 def _is_pre_worker_agent_setup_failure(
     *,
     trial_dir: Path,
@@ -1215,10 +1234,10 @@ def build_terminal_bench_harbor_result_benchmark_run(
     if official_score is None:
         official_score = _first_numeric_reward(trials)
         official_score_source = "trial_reward_fallback"
-    score_failure_attribution = (
-        "verifier_dependency_install_failure"
-        if official_score == 0 and verifier_dependency_failure_count
-        else "none"
+    score_failure_attribution = _terminal_bench_score_failure_attribution(
+        official_score=official_score,
+        verifier_dependency_failure_count=verifier_dependency_failure_count,
+        failure_attribution_labels=failure_attribution_labels,
     )
     runner_return_status = (
         "completed_with_agent_timeout"
