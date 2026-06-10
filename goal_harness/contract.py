@@ -102,6 +102,14 @@ def _index_duplicate_summary(index_path: Path) -> dict[str, Any]:
     }
 
 
+def _index_duplicate_warning(goal_id: object, raw: int, unique: int) -> str:
+    safe_goal_id = str(goal_id)
+    return (
+        f"{safe_goal_id}: duplicate index rows raw={raw} unique={unique}; "
+        f"inspect with `goal-harness history inspect-index-duplicates --goal-id {safe_goal_id}`"
+    )
+
+
 def iter_scan_files(scan_root: Path) -> list[Path]:
     if scan_root.is_file():
         return [scan_root]
@@ -187,14 +195,14 @@ def check_contract(
         if raw > unique:
             duplicate_summary = _index_duplicate_summary(Path(str(item.get("index_path") or "")))
             if duplicate_summary.get("unexpected_duplicate_rows"):
-                warnings.append(f"{item.get('id')}: duplicate index rows raw={raw} unique={unique}")
+                warnings.append(_index_duplicate_warning(item.get("id"), raw, unique))
             elif duplicate_summary.get("reward_overlay_rows"):
                 checks.append(
                     f"{item.get('id')}: reward overlay rows raw={raw} unique={unique} "
                     f"overlays={duplicate_summary.get('reward_overlay_rows')}"
                 )
             else:
-                warnings.append(f"{item.get('id')}: duplicate index rows raw={raw} unique={unique}")
+                warnings.append(_index_duplicate_warning(item.get("id"), raw, unique))
 
     boundary = scan_public_boundary(scan_roots)
     if boundary.get("ok"):
