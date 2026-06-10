@@ -615,10 +615,49 @@ def _compact_active_user_assisted_treatment_preflight(value: Any) -> dict[str, A
         "first_blocker",
         "required_capability",
         "current_agent_surface",
+        "next_channel_requirement",
+        "minimum_next_implementation",
+        "required_missing_channel",
     ):
         text = public_safe_compact_text(channel.get(field), limit=140)
         if text:
             compact_channel[field] = text
+    if isinstance(channel.get("checked_channel_count"), int) and not isinstance(
+        channel.get("checked_channel_count"), bool
+    ):
+        compact_channel["checked_channel_count"] = channel["checked_channel_count"]
+    checked_channels = (
+        channel.get("checked_channels")
+        if isinstance(channel.get("checked_channels"), list)
+        else []
+    )
+    existing_channel_names = (
+        channel.get("checked_channel_names")
+        if isinstance(channel.get("checked_channel_names"), list)
+        else []
+    )
+    channel_names: list[str] = [
+        name
+        for name in (
+            public_safe_compact_text(item, limit=80)
+            for item in existing_channel_names
+        )
+        if name
+    ]
+    required_missing_channel = ""
+    for item in checked_channels:
+        if not isinstance(item, dict):
+            continue
+        name = public_safe_compact_text(item.get("channel"), limit=80)
+        verdict = public_safe_compact_text(item.get("verdict"), limit=80)
+        if name:
+            channel_names.append(name)
+        if verdict == "required_missing" and name and not required_missing_channel:
+            required_missing_channel = name
+    if channel_names:
+        compact_channel["checked_channel_names"] = channel_names[:5]
+    if required_missing_channel:
+        compact_channel["required_missing_channel"] = required_missing_channel
     for field in (
         "channel_available",
         "initial_prompt_only_is_not_active_intervention",
@@ -1021,6 +1060,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "active_user_assisted_treatment_preflight",
             "active_user_simulator_contract_checked",
             "simulator_to_worker_injection_channel_checked",
+            "simulator_to_worker_injection_channel_probe_checked",
             "missing_simulator_to_worker_injection_channel_recorded",
             "no_real_user_message_injected",
             "no_model_backed_simulator_invoked",

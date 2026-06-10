@@ -49,6 +49,9 @@ TERMINAL_BENCH_ACTIVE_USER_ASSISTED_TREATMENT_PREFLIGHT_SCHEMA = (
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_CHANNEL_SCHEMA = (
     "terminal_bench_active_user_simulator_injection_channel_v0"
 )
+TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER = (
+    "missing_simulator_to_worker_injection_channel"
+)
 TERMINAL_BENCH_HARDENED_CODEX_BASELINE_PREFLIGHT_MODE = (
     "hardened_codex_baseline_preflight_guard"
 )
@@ -135,6 +138,51 @@ TERMINAL_BENCH_GOAL_HARNESS_CLI_BRIDGE_SURFACE = (
 TERMINAL_BENCH_CODEX_WORKER_CLI_BRIDGE_SURFACE = (
     "codex_worker_goal_harness_cli_bridge_v0"
 )
+
+
+def build_terminal_bench_active_user_injection_channel_probe(
+    *,
+    active_cli_bridge_preflight: bool,
+) -> dict[str, Any]:
+    """Describe why active-user treatment cannot yet inject mid-run messages."""
+
+    checked_channels = [
+        {
+            "channel": "initial_prompt_instruction_append",
+            "available": True,
+            "verdict": "rejected_for_active_intervention",
+            "reason": "initial prompt changes start state but cannot inject user messages during the worker run",
+        },
+        {
+            "channel": "worker_goal_harness_cli_pull",
+            "available": bool(active_cli_bridge_preflight),
+            "verdict": "partial_worker_pull_not_user_push",
+            "reason": "worker can query Goal Harness state, but the simulator cannot push a fresh user turn into the active Codex run",
+        },
+        {
+            "channel": "interactive_worker_session_bridge",
+            "available": False,
+            "verdict": "required_missing",
+            "reason": "current Harbor custom agent surface invokes one Codex worker run through a single super-run instruction",
+        },
+    ]
+    return {
+        "schema_version": TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_CHANNEL_SCHEMA,
+        "channel_available": False,
+        "first_blocker": TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER,
+        "required_capability": "inject_user_message_during_codex_worker_run",
+        "current_agent_surface": "single_super_run_instruction_call",
+        "initial_prompt_only_is_not_active_intervention": True,
+        "no_user_message_injected": True,
+        "model_api_invoked": False,
+        "raw_transcript_recorded": False,
+        "checked_channel_count": len(checked_channels),
+        "checked_channels": checked_channels,
+        "next_channel_requirement": "controller_to_worker_user_message_push_or_audited_external_update_loop",
+        "minimum_next_implementation": "prove a worker can observe a new simulator intervention after the Codex run starts",
+    }
+
+
 TERMINAL_BENCH_CODEX_AUTH_SURFACE_NAMES = (
     "CODEX_FORCE_AUTH_JSON",
     "OPENAI_API_KEY",
@@ -2496,7 +2544,7 @@ def build_terminal_bench_benchmark_run(
             "event_mode": event_mode,
             "trace_publicness": trace_publicness,
             "first_blocker": (
-                "missing_simulator_to_worker_injection_channel"
+                TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER
                 if active_user_assisted_treatment_preflight
                 else first_blocker
             ),
@@ -2555,6 +2603,7 @@ def build_terminal_bench_benchmark_run(
         validation["active_user_assisted_treatment_preflight"] = True
         validation["active_user_simulator_contract_checked"] = True
         validation["simulator_to_worker_injection_channel_checked"] = True
+        validation["simulator_to_worker_injection_channel_probe_checked"] = True
         validation["missing_simulator_to_worker_injection_channel_recorded"] = True
         validation["no_real_user_message_injected"] = True
         validation["no_model_backed_simulator_invoked"] = True
@@ -3008,6 +3057,9 @@ def build_terminal_bench_benchmark_run(
         else 0
     )
     if active_user_assisted_treatment_preflight:
+        injection_channel_probe = build_terminal_bench_active_user_injection_channel_probe(
+            active_cli_bridge_preflight=active_cli_bridge_preflight,
+        )
         benchmark_run["active_user_assisted_treatment_preflight"] = {
             "schema_version": TERMINAL_BENCH_ACTIVE_USER_ASSISTED_TREATMENT_PREFLIGHT_SCHEMA,
             "pilot_schema_version": "active_user_assisted_pilot_v0",
@@ -3023,17 +3075,7 @@ def build_terminal_bench_benchmark_run(
             "assisted_collaboration_claim_allowed": True,
             "official_score_claim_allowed": False,
             "leaderboard_claim_allowed": False,
-            "simulator_to_worker_injection_channel": {
-                "schema_version": TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_CHANNEL_SCHEMA,
-                "channel_available": False,
-                "first_blocker": "missing_simulator_to_worker_injection_channel",
-                "required_capability": "inject_user_message_during_codex_worker_run",
-                "current_agent_surface": "single_super_run_instruction_call",
-                "initial_prompt_only_is_not_active_intervention": True,
-                "no_user_message_injected": True,
-                "model_api_invoked": False,
-                "raw_transcript_recorded": False,
-            },
+            "simulator_to_worker_injection_channel": injection_channel_probe,
             "next_step": "add_or_select_runner_surface_that_can_inject_user_messages_during_worker_run",
         }
         benchmark_run["assisted_collaboration_claim_allowed"] = True
@@ -3325,11 +3367,15 @@ def build_terminal_bench_benchmark_run(
                 }
             )
             if active_user_assisted_treatment_preflight:
+                injection_channel_probe = build_terminal_bench_active_user_injection_channel_probe(
+                    active_cli_bridge_preflight=active_cli_bridge_preflight,
+                )
                 benchmark_run["preflight_guard"].update(
                     {
                         "active_user_assisted_treatment": True,
                         "simulator_setting": "deterministic_scripted_user",
                         "simulator_to_worker_injection_channel_available": False,
+                        "simulator_to_worker_injection_channel": injection_channel_probe,
                         "interactive_user_message_injection_checked": True,
                         "initial_prompt_only_is_not_active_intervention": True,
                         "no_oracle_audit_required": True,

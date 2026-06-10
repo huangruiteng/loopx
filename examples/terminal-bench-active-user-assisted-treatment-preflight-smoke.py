@@ -203,7 +203,52 @@ def assert_preflight_guard(guard: dict[str, Any]) -> None:
     assert guard["required_worker_goal_harness_cli_call_total_min"] == 1, guard
 
 
-def assert_active_user_preflight(preflight: dict[str, Any]) -> None:
+def assert_channel_probe(channel: dict[str, Any]) -> None:
+    assert channel["schema_version"] == "terminal_bench_active_user_simulator_injection_channel_v0", channel
+    assert channel["channel_available"] is False, channel
+    assert channel["first_blocker"] == FIRST_BLOCKER, channel
+    assert channel["required_capability"] == "inject_user_message_during_codex_worker_run", channel
+    assert channel["current_agent_surface"] == "single_super_run_instruction_call", channel
+    assert channel["initial_prompt_only_is_not_active_intervention"] is True, channel
+    assert channel["no_user_message_injected"] is True, channel
+    assert channel["model_api_invoked"] is False, channel
+    assert channel["raw_transcript_recorded"] is False, channel
+    assert channel["checked_channel_count"] == 3, channel
+    checked = channel["checked_channels"]
+    assert [item["channel"] for item in checked] == [
+        "initial_prompt_instruction_append",
+        "worker_goal_harness_cli_pull",
+        "interactive_worker_session_bridge",
+    ], channel
+    verdicts = {item["channel"]: item["verdict"] for item in checked}
+    assert verdicts["initial_prompt_instruction_append"] == "rejected_for_active_intervention", channel
+    assert verdicts["worker_goal_harness_cli_pull"] == "partial_worker_pull_not_user_push", channel
+    assert verdicts["interactive_worker_session_bridge"] == "required_missing", channel
+    assert channel["next_channel_requirement"] == (
+        "controller_to_worker_user_message_push_or_audited_external_update_loop"
+    ), channel
+    assert channel["minimum_next_implementation"] == (
+        "prove a worker can observe a new simulator intervention after the Codex run starts"
+    ), channel
+
+
+def assert_compact_channel_probe(channel: dict[str, Any]) -> None:
+    assert channel["schema_version"] == "terminal_bench_active_user_simulator_injection_channel_v0", channel
+    assert channel["channel_available"] is False, channel
+    assert channel["first_blocker"] == FIRST_BLOCKER, channel
+    assert channel["checked_channel_count"] == 3, channel
+    assert channel["checked_channel_names"] == [
+        "initial_prompt_instruction_append",
+        "worker_goal_harness_cli_pull",
+        "interactive_worker_session_bridge",
+    ], channel
+    assert channel["required_missing_channel"] == "interactive_worker_session_bridge", channel
+    assert channel["next_channel_requirement"] == (
+        "controller_to_worker_user_message_push_or_audited_external_update_loop"
+    ), channel
+
+
+def assert_active_user_preflight(preflight: dict[str, Any], *, compact: bool = False) -> None:
     assert preflight["schema_version"] == CLASSIFICATION, preflight
     assert preflight["pilot_schema_version"] == "active_user_assisted_pilot_v0", preflight
     assert preflight["active_injection_schema_version"] == "active_user_simulator_injection_v0", preflight
@@ -223,15 +268,10 @@ def assert_active_user_preflight(preflight: dict[str, Any]) -> None:
         == "add_or_select_runner_surface_that_can_inject_user_messages_during_worker_run"
     ), preflight
     channel = preflight["simulator_to_worker_injection_channel"]
-    assert channel["schema_version"] == "terminal_bench_active_user_simulator_injection_channel_v0", channel
-    assert channel["channel_available"] is False, channel
-    assert channel["first_blocker"] == FIRST_BLOCKER, channel
-    assert channel["required_capability"] == "inject_user_message_during_codex_worker_run", channel
-    assert channel["current_agent_surface"] == "single_super_run_instruction_call", channel
-    assert channel["initial_prompt_only_is_not_active_intervention"] is True, channel
-    assert channel["no_user_message_injected"] is True, channel
-    assert channel["model_api_invoked"] is False, channel
-    assert channel["raw_transcript_recorded"] is False, channel
+    if compact:
+        assert_compact_channel_probe(channel)
+    else:
+        assert_channel_probe(channel)
 
 
 def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
@@ -273,6 +313,7 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert event["validation"]["active_user_assisted_treatment_preflight"] is True, event
     assert event["validation"]["active_user_simulator_contract_checked"] is True, event
     assert event["validation"]["simulator_to_worker_injection_channel_checked"] is True, event
+    assert event["validation"]["simulator_to_worker_injection_channel_probe_checked"] is True, event
     assert event["validation"]["missing_simulator_to_worker_injection_channel_recorded"] is True, event
     assert event["validation"]["no_real_user_message_injected"] is True, event
     assert event["validation"]["no_model_backed_simulator_invoked"] is True, event
@@ -284,7 +325,7 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert counters["case_result_writeback"] == "not_observed_active_user_assisted_treatment_preflight", counters
     assert counters["counter_trust_level"] == "active_user_assisted_treatment_preflight_no_injection_channel", counters
     assert_preflight_guard(event["preflight_guard"])
-    assert_active_user_preflight(event["active_user_assisted_treatment_preflight"])
+    assert_active_user_preflight(event["active_user_assisted_treatment_preflight"], compact=True)
     assert_public_safe(payload)
 
 
@@ -306,7 +347,7 @@ def assert_status_projection(registry_path: Path, runtime: Path) -> None:
     assert summary["official_score_claim_allowed"] is False, summary
     assert summary["active_user_simulator_injection_channel_available"] is False, summary
     assert_preflight_guard(summary["preflight_guard"])
-    assert_active_user_preflight(summary["active_user_assisted_treatment_preflight"])
+    assert_active_user_preflight(summary["active_user_assisted_treatment_preflight"], compact=True)
     assert_public_safe(summary)
 
 
