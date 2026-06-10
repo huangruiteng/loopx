@@ -40,6 +40,15 @@ TERMINAL_BENCH_PREFLIGHT_MODE = "goal_harness_managed_codex_real_run_preflight_g
 TERMINAL_BENCH_CODEX_GOAL_HARNESS_PREFLIGHT_MODE = (
     "codex_goal_harness_no_upload_preflight_guard"
 )
+TERMINAL_BENCH_ACTIVE_USER_ASSISTED_TREATMENT_PREFLIGHT_MODE = (
+    "codex_goal_harness_active_user_assisted_treatment_preflight"
+)
+TERMINAL_BENCH_ACTIVE_USER_ASSISTED_TREATMENT_PREFLIGHT_SCHEMA = (
+    "terminal_bench_active_user_assisted_treatment_preflight_v0"
+)
+TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_CHANNEL_SCHEMA = (
+    "terminal_bench_active_user_simulator_injection_channel_v0"
+)
 TERMINAL_BENCH_HARDENED_CODEX_BASELINE_PREFLIGHT_MODE = (
     "hardened_codex_baseline_preflight_guard"
 )
@@ -2361,6 +2370,7 @@ def build_terminal_bench_benchmark_run(
     cli_bridge_trace: dict[str, Any] | None = None,
     worker_cli_bridge_fixture: bool = False,
     active_cli_bridge_preflight: bool = False,
+    active_user_assisted_treatment_preflight: bool = False,
     timeout_multiplier: float | None = None,
     agent_timeout_multiplier: float | None = None,
     verifier_timeout_multiplier: float | None = None,
@@ -2413,6 +2423,16 @@ def build_terminal_bench_benchmark_run(
         raise ValueError("--active-cli-bridge cannot be combined with --cli-bridge-contract")
     if active_cli_bridge_preflight and worker_cli_bridge_fixture:
         raise ValueError("--active-cli-bridge cannot be combined with --worker-cli-bridge-fixture")
+    if active_user_assisted_treatment_preflight and mode != "codex-goal-harness":
+        raise ValueError("--active-user-assisted-treatment is only supported for codex-goal-harness")
+    if active_user_assisted_treatment_preflight and not preflight_guard:
+        raise ValueError("--active-user-assisted-treatment requires --preflight-guard")
+    if active_user_assisted_treatment_preflight and not active_cli_bridge_preflight:
+        raise ValueError("--active-user-assisted-treatment requires --active-cli-bridge")
+    if active_user_assisted_treatment_preflight and worker_cli_bridge_fixture:
+        raise ValueError("--active-user-assisted-treatment cannot be combined with --worker-cli-bridge-fixture")
+    if active_user_assisted_treatment_preflight and cli_bridge_contract:
+        raise ValueError("--active-user-assisted-treatment cannot be combined with --cli-bridge-contract")
     if active_cli_bridge_preflight and agent_timeout_multiplier is None:
         agent_timeout_multiplier = (
             TERMINAL_BENCH_PRIVATE_EXTENDED_AGENT_TIMEOUT_MULTIPLIER
@@ -2450,7 +2470,9 @@ def build_terminal_bench_benchmark_run(
         surface = preflight_surface or collect_terminal_bench_managed_preflight_surface()
         first_blocker = _managed_preflight_first_blocker(surface)
         event_mode = (
-            "codex_goal_harness_active_cli_bridge_preflight"
+            TERMINAL_BENCH_ACTIVE_USER_ASSISTED_TREATMENT_PREFLIGHT_MODE
+            if active_user_assisted_treatment_preflight
+            else "codex_goal_harness_active_cli_bridge_preflight"
             if active_cli_bridge_preflight and mode == "codex-goal-harness"
             else TERMINAL_BENCH_CODEX_GOAL_HARNESS_PREFLIGHT_MODE
             if mode == "codex-goal-harness"
@@ -2459,7 +2481,9 @@ def build_terminal_bench_benchmark_run(
             else TERMINAL_BENCH_PREFLIGHT_MODE
         )
         trace_publicness = (
-            "public_codex_goal_harness_active_cli_bridge_preflight"
+            "public_active_user_assisted_treatment_preflight"
+            if active_user_assisted_treatment_preflight
+            else "public_codex_goal_harness_active_cli_bridge_preflight"
             if active_cli_bridge_preflight and mode == "codex-goal-harness"
             else "public_codex_goal_harness_no_upload_preflight_guard"
             if mode == "codex-goal-harness"
@@ -2471,7 +2495,11 @@ def build_terminal_bench_benchmark_run(
             **contract,
             "event_mode": event_mode,
             "trace_publicness": trace_publicness,
-            "first_blocker": first_blocker,
+            "first_blocker": (
+                "missing_simulator_to_worker_injection_channel"
+                if active_user_assisted_treatment_preflight
+                else first_blocker
+            ),
         }
     fake_result: dict[str, Any] = {}
     if fake_worker and mode == "codex-goal-harness":
@@ -2523,6 +2551,15 @@ def build_terminal_bench_benchmark_run(
         validation["worker_cli_bridge_command_preview_checked"] = True
         validation["worker_cli_bridge_trace_required_before_claim"] = True
         validation["no_worker_cli_calls_observed_in_preflight"] = True
+    if active_user_assisted_treatment_preflight:
+        validation["active_user_assisted_treatment_preflight"] = True
+        validation["active_user_simulator_contract_checked"] = True
+        validation["simulator_to_worker_injection_channel_checked"] = True
+        validation["missing_simulator_to_worker_injection_channel_recorded"] = True
+        validation["no_real_user_message_injected"] = True
+        validation["no_model_backed_simulator_invoked"] = True
+        validation["no_oracle_audit_required"] = True
+        validation["assisted_score_kept_separate_from_official"] = True
     if preflight_guard:
         validation["preflight_guard"] = True
         validation["auth_values_not_read"] = True
@@ -2630,6 +2667,8 @@ def build_terminal_bench_benchmark_run(
                 else
                 "worker_goal_harness_writeback"
                 if fake_worker
+                else "not_observed_active_user_assisted_treatment_preflight"
+                if active_user_assisted_treatment_preflight
                 else "not_observed_active_cli_bridge_preflight"
                 if active_cli_bridge_preflight
                 else "not_observed_prompt_only_no_cli_bridge"
@@ -2647,6 +2686,8 @@ def build_terminal_bench_benchmark_run(
                 else
                 "fake_worker_fixture_observed"
                 if fake_worker
+                else "active_user_assisted_treatment_preflight_no_injection_channel"
+                if active_user_assisted_treatment_preflight
                 else "active_bridge_preflight_no_worker_trace"
                 if active_cli_bridge_preflight
                 else "preflight_prompt_only_no_cli_bridge"
@@ -2741,7 +2782,8 @@ def build_terminal_bench_benchmark_run(
                 "uses_private_runner_env": True,
                 "preflight_surface": surface,
                 "first_blocker": first_blocker,
-                "ready": first_blocker == "ready_for_private_managed_no_upload_pilot_review",
+                "ready": first_blocker == "ready_for_private_managed_no_upload_pilot_review"
+                and not active_user_assisted_treatment_preflight,
             }
         )
 
@@ -2965,6 +3007,38 @@ def build_terminal_bench_benchmark_run(
         if active_cli_bridge_preflight
         else 0
     )
+    if active_user_assisted_treatment_preflight:
+        benchmark_run["active_user_assisted_treatment_preflight"] = {
+            "schema_version": TERMINAL_BENCH_ACTIVE_USER_ASSISTED_TREATMENT_PREFLIGHT_SCHEMA,
+            "pilot_schema_version": "active_user_assisted_pilot_v0",
+            "active_injection_schema_version": "active_user_simulator_injection_v0",
+            "operator_simulator_run_schema_version": "operator_simulator_run_v0",
+            "simulator_setting": "deterministic_scripted_user",
+            "proactive_intervention_allowed": True,
+            "directive_feedback_allowed": True,
+            "artificial_mildness_required": False,
+            "frequency_budget_required": True,
+            "visibility_policy_required": True,
+            "no_oracle_audit_required": True,
+            "assisted_collaboration_claim_allowed": True,
+            "official_score_claim_allowed": False,
+            "leaderboard_claim_allowed": False,
+            "simulator_to_worker_injection_channel": {
+                "schema_version": TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_CHANNEL_SCHEMA,
+                "channel_available": False,
+                "first_blocker": "missing_simulator_to_worker_injection_channel",
+                "required_capability": "inject_user_message_during_codex_worker_run",
+                "current_agent_surface": "single_super_run_instruction_call",
+                "initial_prompt_only_is_not_active_intervention": True,
+                "no_user_message_injected": True,
+                "model_api_invoked": False,
+                "raw_transcript_recorded": False,
+            },
+            "next_step": "add_or_select_runner_surface_that_can_inject_user_messages_during_worker_run",
+        }
+        benchmark_run["assisted_collaboration_claim_allowed"] = True
+        benchmark_run["official_score_claim_allowed"] = False
+        benchmark_run["active_user_simulator_injection_channel_available"] = False
     if mode == "codex-goal-harness":
         benchmark_run["goal_harness_access_packet"] = {
             "schema_version": TERMINAL_BENCH_GOAL_HARNESS_ACCESS_PACKET_VERSION,
@@ -3091,19 +3165,25 @@ def build_terminal_bench_benchmark_run(
     if preflight_guard:
         if mode == "codex-goal-harness":
             benchmark_run["source_runner"] = (
-                "goal_harness_terminal_bench_codex_goal_harness_active_cli_bridge_preflight"
+                "goal_harness_terminal_bench_active_user_assisted_treatment_preflight"
+                if active_user_assisted_treatment_preflight
+                else "goal_harness_terminal_bench_codex_goal_harness_active_cli_bridge_preflight"
                 if active_cli_bridge_preflight
                 else "goal_harness_terminal_bench_codex_goal_harness_no_upload_preflight_guard"
             )
             benchmark_run["evidence_files"] = [
                 (
-                    "doc:terminal-bench-codex-goal-harness-active-cli-bridge-v0.md"
+                    "doc:active-user-assisted-pilot-v0.md"
+                    if active_user_assisted_treatment_preflight
+                    else "doc:terminal-bench-codex-goal-harness-active-cli-bridge-v0.md"
                     if active_cli_bridge_preflight
                     else "doc:terminal-bench-codex-goal-harness-preflight-guard-v0.md"
                 ),
                 "doc:terminal-bench-codex-goal-harness-custom-agent-v0.md",
                 (
-                    "smoke:terminal-bench-codex-goal-harness-active-cli-bridge-smoke.py"
+                    "smoke:terminal-bench-active-user-assisted-treatment-preflight-smoke.py"
+                    if active_user_assisted_treatment_preflight
+                    else "smoke:terminal-bench-codex-goal-harness-active-cli-bridge-smoke.py"
                     if active_cli_bridge_preflight
                     else "smoke:terminal-bench-codex-goal-harness-preflight-guard-smoke.py"
                 ),
@@ -3111,12 +3191,18 @@ def build_terminal_bench_benchmark_run(
             benchmark_run["resume_or_inspect_commands"] = [
                 (
                     "goal-harness benchmark run terminal-bench --mode codex-goal-harness "
+                    "--preflight-guard --active-cli-bridge --active-user-assisted-treatment"
+                    if active_user_assisted_treatment_preflight
+                    else "goal-harness benchmark run terminal-bench --mode codex-goal-harness "
                     "--preflight-guard --active-cli-bridge"
                     if active_cli_bridge_preflight
                     else "goal-harness benchmark run terminal-bench --mode codex-goal-harness --preflight-guard"
                 ),
                 (
                     "goal-harness benchmark run terminal-bench --mode codex-goal-harness "
+                    "--preflight-guard --active-cli-bridge --active-user-assisted-treatment --execute"
+                    if active_user_assisted_treatment_preflight
+                    else "goal-harness benchmark run terminal-bench --mode codex-goal-harness "
                     "--preflight-guard --active-cli-bridge --execute"
                     if active_cli_bridge_preflight
                     else "goal-harness benchmark run terminal-bench --mode codex-goal-harness --preflight-guard --execute"
@@ -3148,7 +3234,9 @@ def build_terminal_bench_benchmark_run(
             ]
         benchmark_run["preflight_guard"] = {
             "schema_version": (
-                "terminal_bench_codex_goal_harness_active_cli_bridge_preflight_v0"
+                TERMINAL_BENCH_ACTIVE_USER_ASSISTED_TREATMENT_PREFLIGHT_SCHEMA
+                if active_user_assisted_treatment_preflight
+                else "terminal_bench_codex_goal_harness_active_cli_bridge_preflight_v0"
                 if active_cli_bridge_preflight and mode == "codex-goal-harness"
                 else
                 "terminal_bench_codex_goal_harness_preflight_guard_v0"
@@ -3236,6 +3324,18 @@ def build_terminal_bench_benchmark_run(
                     "uplift_claim_allowed": False,
                 }
             )
+            if active_user_assisted_treatment_preflight:
+                benchmark_run["preflight_guard"].update(
+                    {
+                        "active_user_assisted_treatment": True,
+                        "simulator_setting": "deterministic_scripted_user",
+                        "simulator_to_worker_injection_channel_available": False,
+                        "interactive_user_message_injection_checked": True,
+                        "initial_prompt_only_is_not_active_intervention": True,
+                        "no_oracle_audit_required": True,
+                        "assisted_score_kept_separate_from_official": True,
+                    }
+                )
         if active_cli_bridge_preflight:
             benchmark_run["goal_harness_cli_bridge_surface"] = (
                 TERMINAL_BENCH_CODEX_WORKER_CLI_BRIDGE_SURFACE
@@ -3268,9 +3368,12 @@ def terminal_bench_recommended_action(
     cli_bridge_contract: bool = False,
     worker_cli_bridge_fixture: bool = False,
     active_cli_bridge_preflight: bool = False,
+    active_user_assisted_treatment_preflight: bool = False,
 ) -> str:
     if mode == "hardened-codex":
         return "run hardened-codex baseline and codex-goal-harness treatment in parallel on the same hard task; do not launch bare-codex"
+    if active_user_assisted_treatment_preflight:
+        return "add or select a runner channel that can inject user messages during the Codex worker run before launching real active-user assisted treatment"
     if active_cli_bridge_preflight:
         return "run the private no-upload codex-goal-harness sample repeat with active worker Goal Harness CLI bridge, then require nonzero worker_goal_harness_cli_calls before any in-case use claim"
     if worker_cli_bridge_fixture:

@@ -859,6 +859,15 @@ def main(argv: list[str] | None = None) -> int:
             "requires worker-side CLI call counters before any in-case use claim."
         ),
     )
+    benchmark_run_parser.add_argument(
+        "--active-user-assisted-treatment",
+        action="store_true",
+        help=(
+            "With codex-goal-harness --preflight-guard --active-cli-bridge, build "
+            "the active-user assisted treatment preflight contract. This does not "
+            "run Harbor, Codex, a simulator, or inject user messages."
+        ),
+    )
     benchmark_run_parser.add_argument("--classification")
     benchmark_run_parser.add_argument("--recommended-action")
     benchmark_run_parser.add_argument(
@@ -1589,6 +1598,9 @@ def main(argv: list[str] | None = None) -> int:
                     "terminal_bench_harbor_runner_result_ingest_v0"
                     if args.harbor_job_dir
                     else
+                    "terminal_bench_active_user_assisted_treatment_preflight_v0"
+                    if args.active_user_assisted_treatment
+                    else
                     "terminal_bench_codex_goal_harness_active_cli_bridge_preflight_v0"
                     if args.active_cli_bridge
                     else
@@ -1630,6 +1642,7 @@ def main(argv: list[str] | None = None) -> int:
                     or args.cli_bridge_contract
                     or args.worker_cli_bridge_fixture
                     or args.active_cli_bridge
+                    or args.active_user_assisted_treatment
                 ):
                     raise ValueError(
                         "--harbor-job-dir cannot be combined with fixture or preflight flags"
@@ -1684,6 +1697,9 @@ def main(argv: list[str] | None = None) -> int:
                         cli_bridge_trace=cli_bridge_trace,
                         worker_cli_bridge_fixture=bool(args.worker_cli_bridge_fixture),
                         active_cli_bridge_preflight=bool(args.active_cli_bridge),
+                        active_user_assisted_treatment_preflight=bool(
+                            args.active_user_assisted_treatment
+                        ),
                         timeout_multiplier=args.timeout_multiplier,
                         agent_timeout_multiplier=args.agent_timeout_multiplier,
                         verifier_timeout_multiplier=args.verifier_timeout_multiplier,
@@ -1720,6 +1736,9 @@ def main(argv: list[str] | None = None) -> int:
                         cli_bridge_contract=bool(args.cli_bridge_contract),
                         worker_cli_bridge_fixture=bool(args.worker_cli_bridge_fixture),
                         active_cli_bridge_preflight=bool(args.active_cli_bridge),
+                        active_user_assisted_treatment_preflight=bool(
+                            args.active_user_assisted_treatment
+                        ),
                         )
                     ),
                     delivery_batch_scale=args.delivery_batch_scale,
@@ -1736,6 +1755,9 @@ def main(argv: list[str] | None = None) -> int:
                     "cli_bridge_contract": bool(args.cli_bridge_contract),
                     "worker_cli_bridge_fixture": bool(args.worker_cli_bridge_fixture),
                     "active_cli_bridge": bool(args.active_cli_bridge),
+                    "active_user_assisted_treatment": bool(
+                        args.active_user_assisted_treatment
+                    ),
                     "harbor_job_result_ingested": bool(args.harbor_job_dir),
                     "timeout_multiplier_preview_requested": (
                         timeout_multiplier_preview_requested
@@ -1775,6 +1797,9 @@ def main(argv: list[str] | None = None) -> int:
                     "goal_id": args.goal_id,
                     "classification": args.classification
                     or (
+                        "terminal_bench_active_user_assisted_treatment_preflight_v0"
+                        if getattr(args, "active_user_assisted_treatment", False)
+                        else
                         "terminal_bench_codex_goal_harness_worker_cli_bridge_fixture_v0"
                         if getattr(args, "worker_cli_bridge_fixture", False)
                         else

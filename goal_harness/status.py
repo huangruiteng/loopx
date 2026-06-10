@@ -527,6 +527,7 @@ def _compact_benchmark_preflight_guard(value: Any) -> dict[str, Any]:
         "first_blocker",
         "goal_harness_mode_kwarg",
         "runner_binary_resolution_policy",
+        "simulator_setting",
     ):
         text = public_safe_compact_text(value.get(field), limit=120)
         if text:
@@ -545,6 +546,12 @@ def _compact_benchmark_preflight_guard(value: Any) -> dict[str, Any]:
         "claim_requires_worker_cli_calls",
         "real_interface_use_observed",
         "uplift_claim_allowed",
+        "active_user_assisted_treatment",
+        "simulator_to_worker_injection_channel_available",
+        "interactive_user_message_injection_checked",
+        "initial_prompt_only_is_not_active_intervention",
+        "no_oracle_audit_required",
+        "assisted_score_kept_separate_from_official",
         "uvx_cli_present",
         "uvx_version_probe_ok",
         "docker_cli_present",
@@ -563,6 +570,66 @@ def _compact_benchmark_preflight_guard(value: Any) -> dict[str, Any]:
     for field in ("required_worker_goal_harness_cli_call_total_min",):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
+    return compact
+
+
+def _compact_active_user_assisted_treatment_preflight(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "pilot_schema_version",
+        "active_injection_schema_version",
+        "operator_simulator_run_schema_version",
+        "simulator_setting",
+        "next_step",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    for field in (
+        "proactive_intervention_allowed",
+        "directive_feedback_allowed",
+        "artificial_mildness_required",
+        "frequency_budget_required",
+        "visibility_policy_required",
+        "no_oracle_audit_required",
+        "assisted_collaboration_claim_allowed",
+        "official_score_claim_allowed",
+        "leaderboard_claim_allowed",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+
+    channel = (
+        value.get("simulator_to_worker_injection_channel")
+        if isinstance(value.get("simulator_to_worker_injection_channel"), dict)
+        else {}
+    )
+    compact_channel: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "first_blocker",
+        "required_capability",
+        "current_agent_surface",
+    ):
+        text = public_safe_compact_text(channel.get(field), limit=140)
+        if text:
+            compact_channel[field] = text
+    for field in (
+        "channel_available",
+        "initial_prompt_only_is_not_active_intervention",
+        "no_user_message_injected",
+        "model_api_invoked",
+        "raw_transcript_recorded",
+    ):
+        if isinstance(channel.get(field), bool):
+            compact_channel[field] = channel[field]
+    if compact_channel:
+        compact["simulator_to_worker_injection_channel"] = compact_channel
+
     return compact
 
 
@@ -820,6 +887,9 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "goal_harness_cli_bridge_trace_observed",
         "goal_harness_worker_cli_bridge_available",
         "goal_harness_worker_cli_bridge_trace_observed",
+        "assisted_collaboration_claim_allowed",
+        "official_score_claim_allowed",
+        "active_user_simulator_injection_channel_available",
     ):
         if isinstance(source.get(field), bool):
             compact[field] = source.get(field)
@@ -913,6 +983,12 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     if preflight_guard:
         compact["preflight_guard"] = preflight_guard
 
+    active_user_preflight = _compact_active_user_assisted_treatment_preflight(
+        source.get("active_user_assisted_treatment_preflight")
+    )
+    if active_user_preflight:
+        compact["active_user_assisted_treatment_preflight"] = active_user_preflight
+
     claim_gate = _compact_benchmark_claim_gate(source.get("claim_gate"))
     if claim_gate:
         compact["claim_gate"] = claim_gate
@@ -936,10 +1012,23 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             for key, value in validation.items()
             if isinstance(key, str) and isinstance(value, bool) and not value
         ][:MAX_BENCHMARK_RUN_LIST_ITEMS]
-        compact["validation"] = {
+        compact_validation: dict[str, Any] = {
             "all_passed": not failed and all(bool(value) for value in validation.values() if isinstance(value, bool)),
             "failed_checks": failed,
         }
+        for field in (
+            "active_user_assisted_treatment_preflight",
+            "active_user_simulator_contract_checked",
+            "simulator_to_worker_injection_channel_checked",
+            "missing_simulator_to_worker_injection_channel_recorded",
+            "no_real_user_message_injected",
+            "no_model_backed_simulator_invoked",
+            "no_oracle_audit_required",
+            "assisted_score_kept_separate_from_official",
+        ):
+            if isinstance(validation.get(field), bool):
+                compact_validation[field] = validation[field]
+        compact["validation"] = compact_validation
 
     trials: list[dict[str, Any]] = []
     for trial in source.get("trials") or []:
