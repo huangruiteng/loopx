@@ -350,7 +350,11 @@ the same or similar long-horizon task slice:
 - comparison against native and passive control-plane modes.
 
 This pilot answers whether Goal Harness can model supervised long-horizon work,
-not whether the base agent is autonomous SOTA.
+not whether the base agent is autonomous SOTA. The first deterministic
+active-user assisted pilot is fixture-only and uses a previously failed compact
+Terminal-Bench case to validate intervention budgets, no-oracle audits, and
+score-claim separation before any model-backed simulator or real assisted
+runner path.
 
 ### P2: Tau Simulator Research Pilot
 
@@ -425,6 +429,13 @@ separate from external benchmark execution.
   `operator-simulator-overlay-smoke.py`; the remaining work is to run an
   assisted overlay only after passive baseline evidence or a documented
   passive-baseline negative result exists.
+- [x] [P1] Add the deterministic active-user assisted pilot shape after a
+  documented compact negative result. Completed 2026-06-10 via
+  `active-user-assisted-pilot-v0.md` and
+  `active-user-assisted-pilot-smoke.py`, using the failed
+  `terminal-bench@2.0/train-fasttext` compact reference without running a
+  model-backed simulator, benchmark runner, private artifact read, or
+  leaderboard path.
 - [ ] [P2] Define `benchmark_run_v0` and Goal Tick writeback fields for public
   benchmark runs, then connect them to status/history without adding prompt
   branches.

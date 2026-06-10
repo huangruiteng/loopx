@@ -48,6 +48,10 @@ work still belongs in the existing code, examples, and contract documents:
   protocol after the passive baseline, including active user injection,
   comparison modes, simulator matrix, visibility limits, intervention budget,
   failure taxonomy, and the `operator_simulator_run_v0` row shape.
+- `active-user-assisted-pilot-v0.md`: deterministic active-user assisted pilot
+  shape for a previously failed compact Terminal-Bench case, keeping proactive
+  user interventions, no-oracle audits, frequency budgets, and official score
+  separation in one public-safe fixture.
 - `benchmark-experiment-report-template-v0.md`: paper-ready
   `benchmark_experiment_report_v0` template that keeps official scores,
   passive control-plane metrics, assisted operator-simulator ablations,
