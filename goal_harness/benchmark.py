@@ -62,6 +62,9 @@ TERMINAL_BENCH_ACTIVE_USER_ASSISTED_OBSERVATION_FIXTURE_SCHEMA = (
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_CHANNEL_SCHEMA = (
     "terminal_bench_active_user_simulator_injection_channel_v0"
 )
+TERMINAL_BENCH_ACTIVE_USER_PRIVATE_LAUNCHER_PLAN_SCHEMA = (
+    "terminal_bench_active_user_private_launcher_plan_v0"
+)
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER = (
     "missing_simulator_to_worker_injection_channel"
 )
@@ -1993,6 +1996,68 @@ def collect_terminal_bench_goal_harness_cli_bridge_trace(
     }
 
 
+def build_terminal_bench_active_user_private_launcher_plan(
+    *,
+    active_cli_bridge_preflight: bool,
+) -> dict[str, Any]:
+    """Describe the non-executing plan for a real private assisted sample."""
+
+    channel = build_terminal_bench_active_user_injection_channel_probe(
+        active_cli_bridge_preflight=active_cli_bridge_preflight,
+    )
+    channel_available = bool(channel.get("channel_available"))
+    first_blocker = (
+        "ready_for_private_no_upload_assisted_worker_sample"
+        if channel_available
+        else TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER
+    )
+    return {
+        "schema_version": TERMINAL_BENCH_ACTIVE_USER_PRIVATE_LAUNCHER_PLAN_SCHEMA,
+        "launch_surface": "private_no_upload_terminal_bench_single_worker",
+        "ready": channel_available,
+        "first_blocker": first_blocker,
+        "required_capability": "worker_observes_simulator_message_after_start",
+        "worker_start_marker": "worker_start_seq",
+        "active_user_feed_jsonl": TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
+        "active_user_observation_json": (
+            TERMINAL_BENCH_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON
+        ),
+        "sequence_steps": [
+            "launch_single_codex_goal_harness_worker_with_no_upload",
+            "record_worker_start_seq_before_first_poll",
+            "append_public_safe_simulator_intervention_with_seq_gt_worker_start_seq",
+            "worker_polls_active_user_observe_after_start",
+            "ingest_worker_observation_as_non_official_collaboration_evidence",
+        ],
+        "required_evidence": [
+            "worker_start_seq_recorded",
+            "post_start_intervention_seq_recorded",
+            "active_user_observe_worker_cli_call_recorded",
+            "worker_observation_proof_true",
+            "official_score_kind_not_run_or_separate",
+        ],
+        "stop_conditions": [
+            "hidden_tests_or_expected_solution_visible",
+            "credential_value_needed",
+            "leaderboard_or_upload_requested",
+            "raw_transcript_required",
+            "worker_observation_missing",
+        ],
+        "claim_boundary": {
+            "assisted_collaboration_claim_allowed": True,
+            "official_score_claim_allowed": False,
+            "leaderboard_claim_allowed": False,
+            "official_score_must_remain_separate": True,
+        },
+        "public_boundary": {
+            "no_upload": True,
+            "raw_paths_recorded": False,
+            "raw_transcript_recorded": False,
+            "credential_values_recorded": False,
+        },
+    }
+
+
 def build_terminal_bench_goal_harness_access_packet(
     *,
     mode: str = "codex_goal_harness",
@@ -3254,6 +3319,9 @@ def build_terminal_bench_benchmark_run(
         injection_channel_probe = build_terminal_bench_active_user_injection_channel_probe(
             active_cli_bridge_preflight=active_cli_bridge_preflight,
         )
+        private_launcher_plan = build_terminal_bench_active_user_private_launcher_plan(
+            active_cli_bridge_preflight=active_cli_bridge_preflight,
+        )
         benchmark_run["active_user_assisted_treatment_preflight"] = {
             "schema_version": TERMINAL_BENCH_ACTIVE_USER_ASSISTED_TREATMENT_PREFLIGHT_SCHEMA,
             "pilot_schema_version": "active_user_assisted_pilot_v0",
@@ -3270,8 +3338,10 @@ def build_terminal_bench_benchmark_run(
             "official_score_claim_allowed": False,
             "leaderboard_claim_allowed": False,
             "simulator_to_worker_injection_channel": injection_channel_probe,
+            "private_launcher_plan": private_launcher_plan,
             "next_step": injection_channel_probe["next_channel_requirement"],
         }
+        benchmark_run["active_user_private_launcher_plan"] = private_launcher_plan
         benchmark_run["assisted_collaboration_claim_allowed"] = True
         benchmark_run["official_score_claim_allowed"] = False
         benchmark_run["active_user_simulator_injection_channel_available"] = bool(

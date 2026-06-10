@@ -31,6 +31,7 @@ RUN_MODE = "codex_goal_harness_active_user_assisted_treatment_preflight"
 WORKER_MODE = "codex_goal_harness_cli"
 CLASSIFICATION = "terminal_bench_active_user_assisted_treatment_preflight_v0"
 FIRST_BLOCKER = "missing_real_assisted_worker_observation"
+LAUNCHER_PLAN_SCHEMA = "terminal_bench_active_user_private_launcher_plan_v0"
 
 FORBIDDEN_TEXT = [
     "/" + "Users/",
@@ -276,6 +277,35 @@ def assert_active_user_preflight(preflight: dict[str, Any], *, compact: bool = F
         assert_compact_channel_probe(channel)
     else:
         assert_channel_probe(channel)
+    assert_private_launcher_plan(preflight["private_launcher_plan"])
+
+
+def assert_private_launcher_plan(plan: dict[str, Any]) -> None:
+    assert plan["schema_version"] == LAUNCHER_PLAN_SCHEMA, plan
+    assert plan["launch_surface"] == "private_no_upload_terminal_bench_single_worker", plan
+    assert plan["ready"] is True, plan
+    assert plan["first_blocker"] == "ready_for_private_no_upload_assisted_worker_sample", plan
+    assert plan["required_capability"] == "worker_observes_simulator_message_after_start", plan
+    assert plan["worker_start_marker"] == "worker_start_seq", plan
+    assert "goal-harness-active-user-interventions.jsonl" in plan["active_user_feed_jsonl"], plan
+    assert "goal-harness-active-user-observation.json" in plan["active_user_observation_json"], plan
+    assert plan["sequence_steps"] == [
+        "launch_single_codex_goal_harness_worker_with_no_upload",
+        "record_worker_start_seq_before_first_poll",
+        "append_public_safe_simulator_intervention_with_seq_gt_worker_start_seq",
+        "worker_polls_active_user_observe_after_start",
+        "ingest_worker_observation_as_non_official_collaboration_evidence",
+    ], plan
+    assert "worker_observation_proof_true" in plan["required_evidence"], plan
+    assert "leaderboard_or_upload_requested" in plan["stop_conditions"], plan
+    assert plan["claim_boundary"]["assisted_collaboration_claim_allowed"] is True, plan
+    assert plan["claim_boundary"]["official_score_claim_allowed"] is False, plan
+    assert plan["claim_boundary"]["leaderboard_claim_allowed"] is False, plan
+    assert plan["claim_boundary"]["official_score_must_remain_separate"] is True, plan
+    assert plan["public_boundary"]["no_upload"] is True, plan
+    assert plan["public_boundary"]["raw_paths_recorded"] is False, plan
+    assert plan["public_boundary"]["raw_transcript_recorded"] is False, plan
+    assert plan["public_boundary"]["credential_values_recorded"] is False, plan
 
 
 def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
@@ -312,6 +342,7 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert event["assisted_collaboration_claim_allowed"] is True, event
     assert event["official_score_claim_allowed"] is False, event
     assert event["active_user_simulator_injection_channel_available"] is True, event
+    assert_private_launcher_plan(event["active_user_private_launcher_plan"])
     assert event["validation"]["all_passed"] is True, event
     assert event["validation"]["failed_checks"] == [], event
     assert event["validation"]["active_user_assisted_treatment_preflight"] is True, event
@@ -354,6 +385,7 @@ def assert_status_projection(registry_path: Path, runtime: Path) -> None:
     assert summary["assisted_collaboration_claim_allowed"] is True, summary
     assert summary["official_score_claim_allowed"] is False, summary
     assert summary["active_user_simulator_injection_channel_available"] is True, summary
+    assert_private_launcher_plan(summary["active_user_private_launcher_plan"])
     assert_preflight_guard(summary["preflight_guard"])
     assert_active_user_preflight(summary["active_user_assisted_treatment_preflight"], compact=True)
     assert_public_safe(summary)

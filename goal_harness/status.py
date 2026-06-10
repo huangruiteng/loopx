@@ -674,6 +674,53 @@ def _compact_active_user_assisted_treatment_preflight(value: Any) -> dict[str, A
     if compact_channel:
         compact["simulator_to_worker_injection_channel"] = compact_channel
 
+    launcher_plan = _compact_active_user_private_launcher_plan(
+        value.get("private_launcher_plan")
+    )
+    if launcher_plan:
+        compact["private_launcher_plan"] = launcher_plan
+
+    return compact
+
+
+def _compact_active_user_private_launcher_plan(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "launch_surface",
+        "first_blocker",
+        "required_capability",
+        "worker_start_marker",
+        "active_user_feed_jsonl",
+        "active_user_observation_json",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    if isinstance(value.get("ready"), bool):
+        compact["ready"] = value["ready"]
+    for field in ("sequence_steps", "required_evidence", "stop_conditions"):
+        items = public_safe_compact_list(value.get(field), limit=8)
+        if items:
+            compact[field] = items
+    for nested_name in ("claim_boundary", "public_boundary"):
+        nested = value.get(nested_name) if isinstance(value.get(nested_name), dict) else {}
+        compact_nested: dict[str, Any] = {}
+        for key, nested_value in nested.items():
+            safe_key = public_safe_compact_text(key, limit=80)
+            if not safe_key:
+                continue
+            if isinstance(nested_value, bool):
+                compact_nested[safe_key] = nested_value
+            else:
+                text = public_safe_compact_text(nested_value, limit=120)
+                if text:
+                    compact_nested[safe_key] = text
+        if compact_nested:
+            compact[nested_name] = compact_nested
     return compact
 
 
@@ -1102,6 +1149,12 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if active_user_preflight:
         compact["active_user_assisted_treatment_preflight"] = active_user_preflight
+
+    active_user_launcher_plan = _compact_active_user_private_launcher_plan(
+        source.get("active_user_private_launcher_plan")
+    )
+    if active_user_launcher_plan:
+        compact["active_user_private_launcher_plan"] = active_user_launcher_plan
 
     active_user_observation = _compact_active_user_observation(
         source.get("active_user_observation")
