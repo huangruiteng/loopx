@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 from typing import Any
@@ -29,6 +30,7 @@ SCHEMA = "agents_last_exam_triage_v0"
 BENCHMARK_ID = "agents-last-exam"
 ARXIV_ID = "2606.05405"
 XHS_NOTE_ID = "6a29525a0000000022023914"
+GOAL_ID = "agents-last-exam-result-append-cli-fixture"
 
 REQUIRED_DOC_SNIPPETS = [
     "Agents' Last Exam Triage V0",
@@ -94,6 +96,25 @@ def assert_public_safe(value: Any) -> None:
     leaked = [marker for marker in FORBIDDEN_TEXT if marker in text]
     assert not leaked, leaked
     assert len(text) < 10000, len(text)
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def run_cli(args: list[str]) -> dict[str, Any]:
+    result = subprocess.run(
+        [sys.executable, "-m", "goal_harness.cli", *args],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    payload = json.loads(result.stdout)
+    assert isinstance(payload, dict), payload
+    return payload
 
 
 def assert_doc_contract() -> None:
@@ -186,6 +207,52 @@ def write_synthetic_ale_run(root: Path) -> Path:
     return run_dir
 
 
+def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
+    project = root / "project"
+    runtime = root / "runtime"
+    state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    registry_path = project / ".goal-harness" / "registry.json"
+    run_dir = write_synthetic_ale_run(root)
+
+    (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
+    (project / state_file).write_text(
+        "---\n"
+        "status: active-read-only\n"
+        "updated_at: 2026-06-11T00:00:00+00:00\n"
+        "---\n\n"
+        "# Agents Last Exam Result Append CLI Fixture\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] Append compact ALE result report through the CLI.\n\n"
+        "## Next Action\n\n"
+        "- Inspect the appended compact ALE result projection.\n",
+        encoding="utf-8",
+    )
+    write_json(
+        registry_path,
+        {
+            "schema_version": 1,
+            "updated_at": "2026-06-11T00:00:00+00:00",
+            "common_runtime_root": str(runtime),
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "domain": "benchmark-report-projection",
+                    "status": "active-read-only",
+                    "repo": str(project),
+                    "state_file": state_file,
+                    "adapter": {
+                        "kind": "harness_self_improvement",
+                        "status": "connected-read-only",
+                    },
+                    "quota": {"compute": 1.0, "window_hours": 24},
+                    "authority_sources": [],
+                }
+            ],
+        },
+    )
+    return registry_path, runtime, run_dir
+
+
 def assert_ale_result_ingest_contract() -> None:
     with tempfile.TemporaryDirectory(prefix="goal-harness-ale-ingest-") as tmp:
         run_dir = write_synthetic_ale_run(Path(tmp))
@@ -225,11 +292,76 @@ def assert_ale_result_ingest_contract() -> None:
     assert_public_safe(note)
 
 
+def assert_ale_result_append_cli() -> None:
+    with tempfile.TemporaryDirectory(prefix="goal-harness-ale-append-cli-") as tmp:
+        registry_path, runtime, run_dir = write_cli_fixture(Path(tmp))
+        index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
+        args = [
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(runtime),
+            "--format",
+            "json",
+            "history",
+            "append-agents-last-exam-result-report",
+            "--goal-id",
+            GOAL_ID,
+            "--agents-last-exam-run-dir",
+            str(run_dir),
+            "--report-id",
+            "agents-last-exam-cli-append-smoke",
+            "--delivery-batch-scale",
+            "implementation",
+            "--delivery-outcome",
+            "primary_goal_outcome",
+            "--no-global-sync",
+        ]
+
+        dry_run = run_cli(args)
+        assert dry_run["ok"], dry_run
+        assert dry_run["dry_run"] is True, dry_run
+        assert dry_run["appended"] is False, dry_run
+        assert not index_path.exists(), index_path
+        assert dry_run["classification"] == "agents_last_exam_result_report_v0", dry_run
+        assert dry_run["benchmark_report_source"]["raw_surfaces_excluded"] is True, dry_run
+        assert_public_safe(dry_run["benchmark_experiment_report"])
+        assert_public_safe(dry_run["benchmark_report_source"])
+
+        appended = run_cli([*args, "--execute"])
+        assert appended["ok"], appended
+        assert appended["dry_run"] is False, appended
+        assert appended["appended"] is True, appended
+        assert index_path.exists(), index_path
+        assert appended["classification"] == "agents_last_exam_result_report_v0", appended
+        assert appended["benchmark_report_source"]["raw_surface_content_recorded"] is False, appended
+        assert_public_safe(appended["benchmark_experiment_report"])
+        assert_public_safe(appended["benchmark_report_source"])
+
+        records = [
+            json.loads(line)
+            for line in index_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert len(records) == 1, records
+        record = records[0]
+        assert record["classification"] == "agents_last_exam_result_report_v0", record
+        report = record["benchmark_experiment_report"]
+        assert report["schema_version"] == "benchmark_experiment_report_v0", report
+        assert report["experiment_identity"]["report_id"] == "agents-last-exam-cli-append-smoke", report
+        assert report["experiment_identity"]["benchmark_id"] == BENCHMARK_ID, report
+        assert report["official_score"]["submit_eligible"] is False, report
+        assert report["official_score"]["leaderboard_evidence"] is False, report
+        assert "single_arm_no_delta" in report["negative_results"]["negative_evidence_layers"], report
+        assert_public_safe(report)
+
+
 def main() -> None:
     assert_doc_contract()
     payload = triage_payload()
     assert_triage_payload(payload)
     assert_ale_result_ingest_contract()
+    assert_ale_result_append_cli()
     print(
         "agents-last-exam-triage-smoke ok "
         f"benchmark={payload['benchmark_id']} "

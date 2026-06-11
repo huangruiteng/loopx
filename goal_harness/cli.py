@@ -24,6 +24,7 @@ from .benchmark import (
     TERMINAL_BENCH_DEFAULT_TASK,
     TERMINAL_BENCH_HARDENED_CODEX_BASELINE_PREFLIGHT_MODE,
     TERMINAL_BENCH_MODES,
+    build_agents_last_exam_result_benchmark_report,
     build_terminal_bench_benchmark_run,
     build_terminal_bench_harbor_result_benchmark_run,
     collect_terminal_bench_goal_harness_cli_bridge_trace,
@@ -949,14 +950,16 @@ def main(argv: list[str] | None = None) -> int:
             "append-benchmark-result",
             "append-benchmark-comparison",
             "append-benchmark-report",
+            "append-agents-last-exam-result-report",
             "append-active-user-assisted-pilot",
             "inspect-index-duplicates",
             "repair-index-duplicates",
         ],
         help=(
             "Append a compact benchmark_run_v0, benchmark_result_v0, benchmark_comparison_v0, "
-            "benchmark_experiment_report_v0, or active_user_assisted_pilot_v0 event; inspect "
-            "duplicate run-index identities; or repair safe duplicate index rows."
+            "benchmark_experiment_report_v0, ALE compact result report, or "
+            "active_user_assisted_pilot_v0 event; inspect duplicate run-index identities; "
+            "or repair safe duplicate index rows."
         ),
     )
     history_parser.add_argument("--goal-id", help="Only show one goal.")
@@ -976,6 +979,19 @@ def main(argv: list[str] | None = None) -> int:
     history_parser.add_argument(
         "--benchmark-report-json",
         help="Path to a benchmark_experiment_report_v0 JSON object. Use '-' to read stdin.",
+    )
+    history_parser.add_argument(
+        "--agents-last-exam-run-dir",
+        help=(
+            "Path to an existing Agents' Last Exam run directory. The ingest reads "
+            "only run.json, eval_result.json, and events.jsonl; raw trajectory, "
+            "origin_log, output, task bodies, screenshots, credentials, and local "
+            "absolute paths are excluded."
+        ),
+    )
+    history_parser.add_argument(
+        "--report-id",
+        help="Optional public-safe report id for append-agents-last-exam-result-report.",
     )
     history_parser.add_argument(
         "--active-user-pilot-json",
@@ -2499,6 +2515,75 @@ def main(argv: list[str] | None = None) -> int:
                     "runtime_root": args.runtime_root,
                     "goal_id": args.goal_id,
                     "classification": args.classification or "benchmark_experiment_report_v0",
+                    "error": str(exc),
+                }
+            print_payload(payload, args.format, render_benchmark_experiment_report_append_markdown)
+            return 0 if payload.get("ok") else 1
+
+        if args.history_action == "append-agents-last-exam-result-report":
+            try:
+                if args.dry_run and args.execute:
+                    raise ValueError(
+                        "history append-agents-last-exam-result-report accepts either --dry-run or --execute, not both"
+                    )
+                if not args.goal_id:
+                    raise ValueError("history append-agents-last-exam-result-report requires --goal-id")
+                if not args.agents_last_exam_run_dir:
+                    raise ValueError(
+                        "history append-agents-last-exam-result-report requires --agents-last-exam-run-dir"
+                    )
+
+                benchmark_report_input = build_agents_last_exam_result_benchmark_report(
+                    Path(args.agents_last_exam_run_dir).expanduser(),
+                    report_id=args.report_id,
+                )
+                benchmark_report = compact_benchmark_experiment_report(benchmark_report_input)
+                if not benchmark_report:
+                    raise ValueError(
+                        "--agents-last-exam-run-dir did not produce a compactable benchmark_experiment_report_v0 object"
+                    )
+
+                dry_run = not bool(args.execute)
+                payload = append_benchmark_experiment_report(
+                    registry_path=registry_path,
+                    runtime_root_override=args.runtime_root,
+                    goal_id=args.goal_id,
+                    benchmark_experiment_report=benchmark_report,
+                    classification=args.classification or "agents_last_exam_result_report_v0",
+                    recommended_action=args.recommended_action,
+                    delivery_batch_scale=args.delivery_batch_scale,
+                    delivery_outcome=args.delivery_outcome,
+                    dry_run=dry_run,
+                )
+                payload["benchmark_report_source"] = {
+                    "kind": "agents_last_exam_run_dir",
+                    "raw_surfaces_excluded": True,
+                    "raw_surface_content_recorded": False,
+                    "local_paths_recorded": False,
+                }
+                if args.no_global_sync:
+                    payload["global_sync"] = {
+                        "ok": True,
+                        "dry_run": dry_run,
+                        "skipped": True,
+                        "reason": "disabled by --no-global-sync",
+                    }
+                else:
+                    payload["global_sync"] = sync_project_registry_to_global(
+                        registry_path=registry_path,
+                        runtime_root_override=args.runtime_root,
+                        goal_id=args.goal_id,
+                        dry_run=dry_run,
+                    )
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "dry_run": not bool(args.execute),
+                    "appended": False,
+                    "registry": str(registry_path),
+                    "runtime_root": args.runtime_root,
+                    "goal_id": args.goal_id,
+                    "classification": args.classification or "agents_last_exam_result_report_v0",
                     "error": str(exc),
                 }
             print_payload(payload, args.format, render_benchmark_experiment_report_append_markdown)
