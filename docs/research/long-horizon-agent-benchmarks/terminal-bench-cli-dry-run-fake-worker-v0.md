@@ -42,7 +42,7 @@ The CLI-generated event keeps:
 | --- | --- |
 | `schema_version` | `benchmark_run_v0` |
 | `source_runner` | `goal_harness_terminal_bench_cli_skeleton` |
-| `benchmark_id` | default `terminal-bench-sample@2.0` |
+| `benchmark_id` | default `terminal-bench@2.0` |
 | `task_id` | default `build-cython-ext` |
 | `real_run` | `false` |
 | `submit_eligible` | `false` |

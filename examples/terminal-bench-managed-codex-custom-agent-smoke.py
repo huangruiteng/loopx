@@ -202,7 +202,7 @@ def assert_command_contract() -> None:
     assert "--agent-import-path" in command, command
     assert TERMINAL_BENCH_MANAGED_AGENT_IMPORT_PATH in command, command
     assert "--agent-kwarg" in command, command
-    assert "terminal-bench-sample@2.0" in command, command
+    assert "terminal-bench@2.0" in command, command
     assert "build-cython-ext" in command, command
     assert "--upload" not in command, command
     assert "--public" not in command, command

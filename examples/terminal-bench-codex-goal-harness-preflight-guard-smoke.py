@@ -25,7 +25,7 @@ DOC = TOPIC_DIR / "terminal-bench-codex-goal-harness-preflight-guard-v0.md"
 README = TOPIC_DIR / "README.md"
 
 GOAL_ID = "terminal-bench-codex-goal-harness-preflight-fixture"
-BENCHMARK_ID = "terminal-bench-sample@2.0"
+BENCHMARK_ID = "terminal-bench@2.0"
 TASK_ID = "build-cython-ext"
 RUN_MODE = "codex_goal_harness_no_upload_preflight_guard"
 WORKER_MODE = "codex_goal_harness_cli"

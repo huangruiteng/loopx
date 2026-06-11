@@ -28,6 +28,7 @@ from .benchmark import (
     build_terminal_bench_benchmark_run,
     build_terminal_bench_harbor_result_benchmark_run,
     collect_terminal_bench_goal_harness_cli_bridge_trace,
+    filter_public_benchmark_artifact_paths,
     terminal_bench_recommended_action,
 )
 from .configure_goal import configure_goal, render_configure_goal_markdown
@@ -160,6 +161,25 @@ def print_payload(payload: dict[str, object], fmt: str, markdown_renderer) -> No
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(markdown_renderer(payload))
+
+
+def render_benchmark_artifact_path_filter_markdown(payload: dict[str, object]) -> str:
+    lines = [
+        "# Benchmark Artifact Path Filter",
+        "",
+        f"- Schema: `{payload.get('schema_version')}`",
+        f"- Allowed to read: `{payload.get('allowed_to_read_count')}`",
+        f"- Blocked: `{payload.get('blocked_count')}`",
+        f"- Full paths recorded: `{payload.get('path_recorded')}`",
+    ]
+    allowed = payload.get("allowed_artifact_basenames")
+    if isinstance(allowed, list) and allowed:
+        lines.append("- Allowed basenames: " + ", ".join(f"`{item}`" for item in allowed))
+    blocked = payload.get("blocked_reasons")
+    if isinstance(blocked, dict) and blocked:
+        reasons = ", ".join(f"`{key}`={value}" for key, value in blocked.items())
+        lines.append("- Blocked reasons: " + reasons)
+    return "\n".join(lines) + "\n"
 
 
 def add_subcommand_format(arg_parser: argparse.ArgumentParser) -> None:
@@ -1160,6 +1180,21 @@ def main(argv: list[str] | None = None) -> int:
     benchmark_run_parser.add_argument("--execute", action="store_true", help="Append the compact fixture event.")
     benchmark_run_parser.add_argument("--no-global-sync", action="store_true", help="Skip global registry sync after append.")
 
+    benchmark_artifact_filter_parser = benchmark_sub.add_parser(
+        "classify-artifacts",
+        help=(
+            "Classify benchmark artifact paths before reading them. The classifier "
+            "returns basenames and blocker reasons only; it does not read files or "
+            "echo host directories."
+        ),
+    )
+    add_subcommand_format(benchmark_artifact_filter_parser)
+    benchmark_artifact_filter_parser.add_argument(
+        "artifact_paths",
+        nargs="+",
+        help="Candidate benchmark artifact paths to classify without reading.",
+    )
+
     archive_runtime_parser = sub.add_parser(
         "archive-runtime",
         help="Move an obsolete runtime goal directory into the archive area. Defaults to dry-run.",
@@ -1993,6 +2028,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if payload.get("ok") else 1
 
     if args.command == "benchmark":
+        if args.benchmark_command == "classify-artifacts":
+            payload = filter_public_benchmark_artifact_paths(args.artifact_paths)
+            print_payload(
+                payload,
+                output_format(args),
+                render_benchmark_artifact_path_filter_markdown,
+            )
+            return 0
         if args.benchmark_command == "run":
             try:
                 if args.dry_run and args.execute:

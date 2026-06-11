@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from .worker_bridge import (
     ACTIVE_USER_INTERVENTION_CHANNEL_CONTRACT_VERSION,
@@ -39,7 +39,7 @@ TERMINAL_BENCH_MODES = (
     "goal-harness-managed-codex",
 )
 
-TERMINAL_BENCH_DEFAULT_DATASET = "terminal-bench-sample@2.0"
+TERMINAL_BENCH_DEFAULT_DATASET = "terminal-bench@2.0"
 TERMINAL_BENCH_DEFAULT_TASK = "build-cython-ext"
 TERMINAL_BENCH_DEFAULT_MODEL = "gpt-5.5"
 TERMINAL_BENCH_HARBOR_REF = (
@@ -182,6 +182,104 @@ AGENTS_LAST_EXAM_RAW_SURFACES_EXCLUDED = (
     "origin_log",
     "output",
 )
+BENCHMARK_PUBLIC_ARTIFACT_SUFFIXES = (
+    ".compact.json",
+    ".public.json",
+)
+BENCHMARK_PUBLIC_ARTIFACT_FILENAMES = (
+    "paired_comparison.compact.json",
+    "launch_status.public.json",
+    "launch_summaries.public.json",
+)
+BENCHMARK_RAW_PRIVATE_PATH_MARKERS = (
+    "/agent/trajectory.json",
+    "/sessions/",
+    "/logs/",
+    "/raw/",
+    "trajectory.json",
+    "origin_log",
+    "instruction.md",
+    "task.md",
+)
+BENCHMARK_PRIVATE_MANIFEST_SUFFIXES = (
+    ".local.json",
+    ".private.json",
+)
+
+
+def classify_benchmark_artifact_path(path: str | Path) -> dict[str, Any]:
+    """Classify a benchmark artifact path without echoing host directories."""
+
+    normalized = str(path).replace("\\", "/").rstrip("/")
+    basename = normalized.rsplit("/", 1)[-1] if normalized else ""
+    lower_path = normalized.lower()
+    lower_basename = basename.lower()
+    public_compact_candidate = (
+        lower_basename.endswith(BENCHMARK_PUBLIC_ARTIFACT_SUFFIXES)
+        or lower_basename in BENCHMARK_PUBLIC_ARTIFACT_FILENAMES
+    )
+    raw_marker = next(
+        (marker for marker in BENCHMARK_RAW_PRIVATE_PATH_MARKERS if marker in lower_path),
+        "",
+    )
+    private_manifest = lower_basename.endswith(BENCHMARK_PRIVATE_MANIFEST_SUFFIXES)
+
+    allowed_to_read = (
+        public_compact_candidate
+        and not raw_marker
+        and not private_manifest
+    )
+    if allowed_to_read:
+        first_blocker = ""
+        recommended_action = "read only this compact/public artifact, then ingest its reduced fields"
+    elif raw_marker:
+        first_blocker = "raw_private_surface"
+        recommended_action = "do not read; use a compact/public sibling artifact or runner-side reducer"
+    elif private_manifest:
+        first_blocker = "private_or_local_manifest"
+        recommended_action = "do not read; summarize via a public compact launch summary instead"
+    else:
+        first_blocker = "not_compact_public_artifact"
+        recommended_action = "skip unless a benchmark-specific reducer explicitly whitelists it"
+
+    return {
+        "schema_version": "benchmark_artifact_path_classification_v0",
+        "path_recorded": False,
+        "basename": basename,
+        "public_compact_candidate": public_compact_candidate,
+        "private_raw_surface": bool(raw_marker or private_manifest),
+        "first_blocker": first_blocker,
+        "allowed_to_read": allowed_to_read,
+        "recommended_action": recommended_action,
+    }
+
+
+def filter_public_benchmark_artifact_paths(
+    paths: Iterable[str | Path],
+) -> dict[str, Any]:
+    classifications = [classify_benchmark_artifact_path(path) for path in paths]
+    allowed = [item for item in classifications if item["allowed_to_read"]]
+    blocked = [item for item in classifications if not item["allowed_to_read"]]
+    blocked_reasons: dict[str, int] = {}
+    for item in blocked:
+        reason = str(item.get("first_blocker") or "unknown")
+        blocked_reasons[reason] = blocked_reasons.get(reason, 0) + 1
+    return {
+        "schema_version": "benchmark_artifact_path_filter_v0",
+        "path_recorded": False,
+        "allowed_to_read_count": len(allowed),
+        "blocked_count": len(blocked),
+        "allowed_artifact_basenames": [item["basename"] for item in allowed],
+        "blocked_artifact_basenames": [item["basename"] for item in blocked],
+        "blocked_reasons": blocked_reasons,
+        "classifications": classifications,
+        "public_boundary": {
+            "full_paths_recorded": False,
+            "raw_task_text_read": False,
+            "trajectory_or_origin_log_read": False,
+            "intended_use": "preflight benchmark artifact reads before compact ingest",
+        },
+    }
 
 
 def build_terminal_bench_active_user_injection_channel_probe(
@@ -3003,7 +3101,7 @@ def build_terminal_bench_managed_harbor_command(
     task_id: str | None = TERMINAL_BENCH_DEFAULT_TASK,
     model: str = TERMINAL_BENCH_DEFAULT_MODEL,
     jobs_dir: str = "<private-jobs-dir>",
-    job_name: str = "terminal_bench_sample_build_cython_ext_goal_harness_managed_codex_pilot",
+    job_name: str | None = None,
     goal_harness_mode: str = "goal_harness_managed_codex",
     goal_harness_ablation_mode: str = "goal_harness_managed",
     goal_harness_goal_id: str = "<goal-id>",
@@ -3052,6 +3150,17 @@ def build_terminal_bench_managed_harbor_command(
         raise ValueError(
             "goal_harness_access_packet_mode must be one of: "
             + ", ".join(TERMINAL_BENCH_GOAL_HARNESS_ACCESS_PACKET_MODES)
+        )
+    if job_name is None:
+        event_mode = (
+            "goal_harness_managed_codex_cli_dry_run"
+            if goal_harness_mode == "goal_harness_managed_codex"
+            else goal_harness_mode
+        )
+        task_label = str(task_id or "all").replace("-", "_")
+        job_name = (
+            f"{dataset.replace('@', '_').replace('.', '_')}_"
+            f"{task_label}_{event_mode}"
         )
 
     command = [

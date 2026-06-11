@@ -25,7 +25,7 @@ DOC = TOPIC_DIR / "terminal-bench-managed-real-run-preflight-guard-v0.md"
 README = TOPIC_DIR / "README.md"
 
 GOAL_ID = "terminal-bench-managed-preflight-fixture"
-BENCHMARK_ID = "terminal-bench-sample@2.0"
+BENCHMARK_ID = "terminal-bench@2.0"
 TASK_ID = "build-cython-ext"
 RUN_MODE = "goal_harness_managed_codex_real_run_preflight_guard"
 WORKER_MODE = "goal_harness_managed_codex_cli"

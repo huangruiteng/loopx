@@ -23,7 +23,7 @@ DOC = TOPIC_DIR / "terminal-bench-codex-goal-harness-fake-worker-v0.md"
 README = TOPIC_DIR / "README.md"
 
 GOAL_ID = "terminal-bench-codex-goal-harness-fixture"
-BENCHMARK_ID = "terminal-bench-sample@2.0"
+BENCHMARK_ID = "terminal-bench@2.0"
 TASK_ID = "build-cython-ext"
 MODE = "codex-goal-harness"
 RUN_MODE = "codex_goal_harness_fake_worker_wrapper"

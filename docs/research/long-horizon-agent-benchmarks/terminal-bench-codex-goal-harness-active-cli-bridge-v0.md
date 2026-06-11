@@ -172,7 +172,7 @@ passes an in-container command prefix to the Codex worker:
 ```
 
 This is the route to test before another private no-upload
-`terminal-bench-sample@2.0` repeat.
+`terminal-bench@2.0` repeat.
 
 For private local repeats, the runner must use the Goal Harness private runner
 environment, which prepends the probe PATH (`~/.local/bin`, Homebrew, and

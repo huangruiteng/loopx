@@ -23,7 +23,7 @@ DOC = TOPIC_DIR / "terminal-bench-cli-dry-run-fake-worker-v0.md"
 README = TOPIC_DIR / "README.md"
 
 GOAL_ID = "terminal-bench-cli-dry-run-fixture"
-BENCHMARK_ID = "terminal-bench-sample@2.0"
+BENCHMARK_ID = "terminal-bench@2.0"
 TASK_ID = "build-cython-ext"
 RUN_MODE = "goal_harness_managed_codex_fake_worker_wrapper"
 WORKER_MODE = "goal_harness_managed_codex_cli"
