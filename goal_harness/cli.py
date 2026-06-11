@@ -31,6 +31,7 @@ from .benchmark import (
     TERMINAL_BENCH_MANAGED_CODEX_GOAL_HARNESS_KWARGS,
     agent_kwargs_from_invocation,
     build_agents_last_exam_local_dry_run_plan,
+    build_agents_last_exam_local_exact_dry_run_result,
     build_agents_last_exam_local_preflight,
     build_agents_last_exam_local_runner_readiness,
     build_agents_last_exam_local_source_readiness,
@@ -398,6 +399,39 @@ def render_agents_last_exam_local_launch_packet_markdown(
         f"- Mode: `{launch_packet.get('mode')}`",
         f"- Will execute/start container: `{launch_packet.get('will_execute')}`/`{launch_packet.get('will_start_container')}`",
         f"- Will upload/submit: `{launch_packet.get('will_upload')}`/`{launch_packet.get('will_submit')}`",
+        f"- Next action: {decision.get('next_allowed_action')}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def render_agents_last_exam_local_exact_dry_run_result_markdown(
+    payload: dict[str, object],
+) -> str:
+    environment = (
+        payload.get("environment")
+        if isinstance(payload.get("environment"), dict)
+        else {}
+    )
+    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    decision = (
+        payload.get("decision") if isinstance(payload.get("decision"), dict) else {}
+    )
+    lines = [
+        "# Agents Last Exam Local Exact Dry-Run Result",
+        "",
+        f"- Schema: `{payload.get('schema_version')}`",
+        f"- Ready: `{payload.get('ready')}`",
+        f"- First blocker: `{payload.get('first_blocker')}`",
+        f"- Exit code: `{payload.get('exit_code')}`",
+        f"- Experiment: `{payload.get('experiment')}`",
+        f"- Environment: `{environment.get('kind')}` / `{environment.get('route')}`",
+        f"- Concurrency: `{payload.get('concurrency')}`",
+        f"- Unit count declared/parsed: `{payload.get('unit_count_declared')}`/`{payload.get('unit_count_parsed')}`",
+        f"- Raw stdout recorded: `{boundary.get('raw_stdout_recorded')}`",
+        f"- Container started: `{boundary.get('container_started')}`",
+        f"- Task body read: `{boundary.get('task_body_read')}`",
+        f"- Model API invoked: `{boundary.get('model_api_invoked')}`",
+        f"- Upload/submit eligible: `{boundary.get('no_upload')}`/`{boundary.get('submit_eligible')}`",
         f"- Next action: {decision.get('next_allowed_action')}",
     ]
     return "\n".join(lines) + "\n"
@@ -1983,6 +2017,43 @@ def main(argv: list[str] | None = None) -> int:
         help="Do not call Docker; emit a fixture-like blocked launch packet.",
     )
 
+    ale_local_exact_dry_run_result_parser = benchmark_sub.add_parser(
+        "ale-local-exact-dry-run-result",
+        help=(
+            "Reduce ALE `run --dry-run` stdout into a compact public-safe result. "
+            "This reads only the provided dry-run stdout file and records labels "
+            "and counts, never raw stdout, task text, paths, trajectories, "
+            "screenshots, credentials, uploads, or command argv."
+        ),
+    )
+    add_subcommand_format(ale_local_exact_dry_run_result_parser)
+    ale_local_exact_dry_run_result_parser.add_argument(
+        "--stdout-file",
+        required=True,
+        help=(
+            "File containing ALE dry-run stdout to reduce. The path and raw text "
+            "are not recorded."
+        ),
+    )
+    ale_local_exact_dry_run_result_parser.add_argument(
+        "--exit-code",
+        required=True,
+        help="Exit code from the ALE dry-run command.",
+    )
+    ale_local_exact_dry_run_result_parser.add_argument(
+        "--expected-task-id",
+        help="Optional public task id expected in the dry-run matrix.",
+    )
+    ale_local_exact_dry_run_result_parser.add_argument(
+        "--expected-agent-id",
+        help="Optional public agent id expected in the dry-run matrix.",
+    )
+    ale_local_exact_dry_run_result_parser.add_argument(
+        "--require-ready",
+        action="store_true",
+        help="Return non-zero unless the compact dry-run result is ready.",
+    )
+
     benchmark_post_launch_parser = benchmark_sub.add_parser(
         "summarize-post-launch",
         help=(
@@ -3397,6 +3468,46 @@ def main(argv: list[str] | None = None) -> int:
                 payload,
                 output_format(args),
                 render_agents_last_exam_local_launch_packet_markdown,
+            )
+            return 0 if payload.get("ok") else 1
+        if args.benchmark_command == "ale-local-exact-dry-run-result":
+            try:
+                stdout_text = Path(args.stdout_file).expanduser().read_text(
+                    encoding="utf-8"
+                )
+                payload = build_agents_last_exam_local_exact_dry_run_result(
+                    stdout_text=stdout_text,
+                    exit_code=args.exit_code,
+                    expected_task_id=args.expected_task_id,
+                    expected_agent_id=args.expected_agent_id,
+                )
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "schema_version": "agents_last_exam_local_exact_dry_run_result_v0",
+                    "error": "ale_local_exact_dry_run_result_failed",
+                    "error_type": type(exc).__name__,
+                    "read_boundary": {
+                        "compact_only": True,
+                        "raw_stdout_recorded": False,
+                        "task_text_read": False,
+                        "raw_artifacts_read": False,
+                        "local_paths_recorded": False,
+                        "container_started": False,
+                    },
+                }
+            else:
+                payload["ok"] = True
+                if args.require_ready and payload.get("ready") is not True:
+                    payload["ok"] = False
+                    payload["error"] = (
+                        payload.get("first_blocker")
+                        or "ale_local_exact_dry_run_result_not_ready"
+                    )
+            print_payload(
+                payload,
+                output_format(args),
+                render_agents_last_exam_local_exact_dry_run_result_markdown,
             )
             return 0 if payload.get("ok") else 1
         if args.benchmark_command == "review-claim":

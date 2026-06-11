@@ -237,6 +237,9 @@ AGENTS_LAST_EXAM_LOCAL_SOURCE_READINESS_SCHEMA_VERSION = (
 AGENTS_LAST_EXAM_LOCAL_LAUNCH_PACKET_SCHEMA_VERSION = (
     "agents_last_exam_local_launch_packet_v0"
 )
+AGENTS_LAST_EXAM_LOCAL_EXACT_DRY_RUN_RESULT_SCHEMA_VERSION = (
+    "agents_last_exam_local_exact_dry_run_result_v0"
+)
 AGENTS_LAST_EXAM_TRACE_PUBLICNESS = (
     "compact_public_safe_no_task_body_no_trajectory_no_output"
 )
@@ -298,6 +301,7 @@ BENCHMARK_ARTIFACT_POLICY_REGISTRY: dict[str, dict[str, tuple[str, ...]]] = {
             "agents-last-exam-local-runner-readiness.json",
             "agents-last-exam-local-source-readiness.json",
             "agents-last-exam-local-launch-packet.json",
+            "agents-last-exam-local-exact-dry-run-result.json",
         ),
         "raw_private_markers": (
             "trajectory.json",
@@ -2309,6 +2313,171 @@ def _agents_last_exam_first_public_id(*values: Any, default: str) -> str:
         if label:
             return label
     return default
+
+
+def _agents_last_exam_parse_int(value: Any) -> int | None:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def build_agents_last_exam_local_exact_dry_run_result(
+    *,
+    stdout_text: str | None,
+    exit_code: int | str | None,
+    expected_task_id: str | None = None,
+    expected_agent_id: str | None = None,
+) -> dict[str, Any]:
+    """Reduce ALE ``--dry-run`` stdout to a compact public-safe artifact.
+
+    The raw stdout is intentionally not returned. The reducer keeps only
+    public labels and matrix counts, so callers can persist the result without
+    copying paths, task text, trajectories, screenshots, credentials, or command
+    argv into Goal Harness state.
+    """
+
+    parsed_exit_code = _agents_last_exam_parse_int(exit_code)
+    text = stdout_text if isinstance(stdout_text, str) else ""
+    lines = [line.rstrip() for line in text.splitlines()]
+    experiment_label: str | None = None
+    environment_label: str | None = None
+    environment_route_label: str | None = None
+    concurrency: int | None = None
+    declared_unit_count: int | None = None
+    units: list[dict[str, Any]] = []
+    in_units = False
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("experiment:"):
+            experiment_label = _agents_last_exam_public_id(
+                line.split(":", 1)[1],
+                limit=160,
+            )
+            in_units = False
+            continue
+        if line.startswith("environment:"):
+            value = line.split(":", 1)[1].strip()
+            before_route, _, route = value.partition("(")
+            environment_label = _agents_last_exam_public_id(
+                before_route.strip(),
+                limit=80,
+            )
+            environment_route_label = _agents_last_exam_public_id(
+                route.rstrip(")").replace("->", "-to-") if route else value,
+                limit=160,
+            )
+            in_units = False
+            continue
+        if line.startswith("concurrency:"):
+            concurrency = _agents_last_exam_parse_int(line.split(":", 1)[1])
+            in_units = False
+            continue
+        if line.startswith("units (") and line.endswith("):"):
+            count_text = line[len("units (") : -len("):")]
+            declared_unit_count = _agents_last_exam_parse_int(count_text)
+            in_units = True
+            continue
+        if in_units:
+            parts = line.split()
+            if len(parts) >= 3:
+                agent_label = _agents_last_exam_public_id(parts[0], limit=80)
+                task_label = _agents_last_exam_public_id(parts[1], limit=180)
+                variant_label = _agents_last_exam_public_id(parts[2], limit=40)
+                units.append(
+                    {
+                        "agent": agent_label,
+                        "task": task_label,
+                        "variant": variant_label,
+                    }
+                )
+
+    expected_task_label = _agents_last_exam_public_id(expected_task_id, limit=180)
+    expected_agent_label = _agents_last_exam_public_id(expected_agent_id, limit=80)
+    blockers: list[str] = []
+    if parsed_exit_code != 0:
+        blockers.append("ale_dry_run_exit_nonzero")
+    if declared_unit_count is None:
+        blockers.append("ale_dry_run_unit_count_missing")
+    elif declared_unit_count != len(units):
+        blockers.append("ale_dry_run_unit_count_mismatch")
+    if expected_task_label and expected_task_label not in {
+        str(unit.get("task") or "") for unit in units
+    }:
+        blockers.append("expected_task_not_in_dry_run_matrix")
+    if expected_agent_label and expected_agent_label not in {
+        str(unit.get("agent") or "") for unit in units
+    }:
+        blockers.append("expected_agent_not_in_dry_run_matrix")
+
+    ready = not blockers
+    return {
+        "schema_version": AGENTS_LAST_EXAM_LOCAL_EXACT_DRY_RUN_RESULT_SCHEMA_VERSION,
+        "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
+        "ready": ready,
+        "first_blocker": blockers[0]
+        if blockers
+        else "ready_for_compact_ale_dry_run_result_ingest",
+        "blockers": blockers,
+        "exit_code": parsed_exit_code,
+        "experiment": experiment_label,
+        "environment": {
+            "kind": environment_label,
+            "route": environment_route_label,
+        },
+        "concurrency": concurrency,
+        "unit_count_declared": declared_unit_count,
+        "unit_count_parsed": len(units),
+        "units": units[:50],
+        "unit_list_truncated": len(units) > 50,
+        "expected": {
+            "agent": expected_agent_label,
+            "task": expected_task_label,
+        },
+        "boundary": {
+            "local_only": True,
+            "no_upload": True,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+            "container_started": False,
+            "task_body_read": False,
+            "model_api_invoked": False,
+            "raw_trajectory_read": False,
+            "screenshot_captured": False,
+            "credential_values_recorded": False,
+            "hidden_references_allowed": False,
+            "production_actions_allowed": False,
+            "local_paths_recorded": False,
+            "command_argv_recorded": False,
+            "raw_stdout_recorded": False,
+        },
+        "decision": {
+            "next_allowed_action": "use_compact_ale_dry_run_result_for_run_gate"
+            if ready
+            else "repair_ale_dry_run_result_before_run_gate",
+            "minimum_next_evidence": (
+                "A compact ALE dry-run matrix with exit_code=0, matching expected "
+                "agent/task labels, and no raw stdout/path/task-body leakage."
+            ),
+            "must_not_claim": [
+                "ALE task success",
+                "ALE score uplift",
+                "Goal Harness treatment advantage",
+                "leaderboard evidence",
+            ],
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "raw_stdout_recorded": False,
+            "task_text_read": False,
+            "raw_artifacts_read": False,
+            "local_paths_recorded": False,
+            "container_started": False,
+        },
+    }
 
 
 def _agents_last_exam_event_type_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
