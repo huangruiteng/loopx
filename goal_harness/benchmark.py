@@ -197,6 +197,7 @@ BENCHMARK_PUBLIC_ARTIFACT_FILENAMES = (
     "paired_comparison.compact.json",
     "launch_status.public.json",
     "launch_summaries.public.json",
+    "goal-harness-active-user-observation.json",
 )
 BENCHMARK_RAW_PRIVATE_PATH_MARKERS = (
     "/agent/trajectory.json",
