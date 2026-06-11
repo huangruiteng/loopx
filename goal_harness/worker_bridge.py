@@ -93,6 +93,11 @@ WORKER_BRIDGE_BENCHMARK_RUN_REQUIRED_TOP_LEVEL_FIELDS = (
     "validation",
     "trials",
 )
+WORKER_BRIDGE_BENCHMARK_RUN_REQUIRED_FIXED_FIELDS = {
+    "real_run": True,
+    "submit_eligible": False,
+    "leaderboard_evidence": False,
+}
 WORKER_BRIDGE_BENCHMARK_RUN_FORBIDDEN_PUBLIC_FIELDS = (
     "raw_paths",
     "raw_logs",
@@ -222,6 +227,9 @@ def build_worker_bridge_benchmark_run_writeback_contract(
         "classification": classification,
         "required_top_level_fields": list(
             WORKER_BRIDGE_BENCHMARK_RUN_REQUIRED_TOP_LEVEL_FIELDS
+        ),
+        "required_fixed_fields": dict(
+            WORKER_BRIDGE_BENCHMARK_RUN_REQUIRED_FIXED_FIELDS
         ),
         "required_validation_flags": [
             "worker_bridge_trace_observed",

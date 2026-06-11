@@ -23,6 +23,7 @@ from .worker_bridge import (
     GOAL_HARNESS_PROJECT_ROOT_PLACEHOLDER as TERMINAL_BENCH_WORKER_BRIDGE_PROJECT_ROOT_PLACEHOLDER,
     GOAL_HARNESS_RUNTIME_ROOT_PLACEHOLDER as TERMINAL_BENCH_WORKER_BRIDGE_RUNTIME_ROOT_PLACEHOLDER,
     WORKER_BRIDGE_BENCHMARK_RUN_FORBIDDEN_PUBLIC_FIELDS,
+    WORKER_BRIDGE_BENCHMARK_RUN_REQUIRED_FIXED_FIELDS,
     WORKER_BRIDGE_BENCHMARK_RUN_REQUIRED_TOP_LEVEL_FIELDS,
     WORKER_BRIDGE_BENCHMARK_RUN_WRITEBACK_CONTRACT_VERSION,
     WORKER_BRIDGE_SURFACE,
@@ -3391,6 +3392,15 @@ def build_terminal_bench_goal_harness_access_packet(
             + ",".join(WORKER_BRIDGE_BENCHMARK_RUN_REQUIRED_TOP_LEVEL_FIELDS),
             "worker_benchmark_run_json_must_omit: "
             + ",".join(WORKER_BRIDGE_BENCHMARK_RUN_FORBIDDEN_PUBLIC_FIELDS),
+            "worker_benchmark_run_json_required_fixed_fields: "
+            + ",".join(
+                f"{key}={str(value).lower()}"
+                for key, value in WORKER_BRIDGE_BENCHMARK_RUN_REQUIRED_FIXED_FIELDS.items()
+            ),
+            "worker_benchmark_run_json_real_run_must_be_true: true",
+            "worker_benchmark_run_json_submit_eligible_must_be_false: true",
+            "worker_benchmark_run_json_leaderboard_evidence_must_be_false: true",
+            "worker_benchmark_run_json_runner_no_upload_boundary_overrides_worker_guess: true",
         ]
         if active_user_intervention_enabled:
             bridge_lines.extend(

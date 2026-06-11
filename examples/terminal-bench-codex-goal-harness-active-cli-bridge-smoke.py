@@ -54,6 +54,9 @@ REQUIRED_DOC_SNIPPETS = [
     "worker_benchmark_run_json_top_level_must_be_schema_version: true",
     "do_not_wrap_worker_benchmark_run_json_in_benchmark_run_key: true",
     "worker_benchmark_run_json_minimal_shape",
+    "worker_benchmark_run_json_required_fixed_fields: real_run=true,submit_eligible=false,leaderboard_evidence=false",
+    "worker_benchmark_run_json_submit_eligible_must_be_false: true",
+    "worker_benchmark_run_json_runner_no_upload_boundary_overrides_worker_guess: true",
     "run_finally_worker_benchmark_run_checkpoint: true",
     "goal_harness_cli_bridge_call_policy_mode: lean_preflight_check_and_final_append",
     "goal_harness_cli_bridge_placeholder_policy_version: terminal_bench_goal_harness_cli_bridge_placeholder_policy_v0",
@@ -165,6 +168,18 @@ def assert_active_bridge_prompt_and_metadata() -> None:
     ), instruction
     assert "worker_benchmark_run_json_minimal_shape:" in instruction, instruction
     assert "worker_benchmark_run_json_must_omit:" in instruction, instruction
+    assert (
+        "worker_benchmark_run_json_required_fixed_fields: "
+        "real_run=true,submit_eligible=false,leaderboard_evidence=false"
+    ) in instruction, instruction
+    assert (
+        "worker_benchmark_run_json_submit_eligible_must_be_false: true"
+        in instruction
+    ), instruction
+    assert (
+        "worker_benchmark_run_json_runner_no_upload_boundary_overrides_worker_guess: true"
+        in instruction
+    ), instruction
     assert "raw_task_prompt" in instruction and "credential_values" in instruction, instruction
     assert (
         "if_append_benchmark_run_schema_rejected_rewrite_minimal_benchmark_run_v0_and_retry_once: true"

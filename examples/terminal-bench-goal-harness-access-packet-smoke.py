@@ -119,6 +119,18 @@ def assert_compact_bridge_packet() -> None:
     assert "optional_status_quota_todo_history_commands_omitted_from_prompt: true" in packet, packet
     assert "runner_side_archive_remains_authoritative_for_final_outcome: true" in packet, packet
     assert "goal_harness_cli_bridge_default_required_calls: check,append_benchmark_run" in packet, packet
+    assert (
+        "worker_benchmark_run_json_required_fixed_fields: "
+        "real_run=true,submit_eligible=false,leaderboard_evidence=false"
+    ) in packet, packet
+    assert (
+        "worker_benchmark_run_json_submit_eligible_must_be_false: true"
+        in packet
+    ), packet
+    assert (
+        "worker_benchmark_run_json_runner_no_upload_boundary_overrides_worker_guess: true"
+        in packet
+    ), packet
     assert "do_not_call_status_quota_todo_history_by_default: true" not in packet, packet
     assert_public_safe(packet)
 

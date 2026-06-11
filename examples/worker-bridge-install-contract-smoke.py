@@ -264,6 +264,11 @@ def assert_module_contract() -> None:
     writeback_contract = build_worker_bridge_benchmark_run_writeback_contract()
     assert writeback_contract["schema_version"] == "goal_harness_worker_benchmark_run_writeback_contract_v0", writeback_contract
     assert writeback_contract["benchmark_run_schema_version"] == "benchmark_run_v0", writeback_contract
+    assert writeback_contract["required_fixed_fields"] == {
+        "real_run": True,
+        "submit_eligible": False,
+        "leaderboard_evidence": False,
+    }, writeback_contract
     assert_public_safe(writeback_contract)
     assert_outcome(
         build_worker_bridge_outcome(
