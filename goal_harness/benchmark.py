@@ -172,6 +172,16 @@ TERMINAL_BENCH_GOAL_HARNESS_CLI_BRIDGE_SURFACE = (
 TERMINAL_BENCH_CODEX_WORKER_CLI_BRIDGE_SURFACE = (
     "codex_worker_goal_harness_cli_bridge_v0"
 )
+AGENTS_LAST_EXAM_BENCHMARK_ID = "agents-last-exam"
+AGENTS_LAST_EXAM_RESULT_INGEST_POLICY_VERSION = "ale-result-ingest-contract-v0"
+AGENTS_LAST_EXAM_TRACE_PUBLICNESS = (
+    "compact_public_safe_no_task_body_no_trajectory_no_output"
+)
+AGENTS_LAST_EXAM_RAW_SURFACES_EXCLUDED = (
+    "trajectory.json",
+    "origin_log",
+    "output",
+)
 
 
 def build_terminal_bench_active_user_injection_channel_probe(
@@ -680,6 +690,248 @@ def _public_safe_benchmark_label(value: Any, *, limit: int = 120) -> str | None:
     if not text or "/" in text or "\\" in text:
         return None
     return text[:limit]
+
+
+def _agents_last_exam_public_id(value: Any, *, limit: int = 140) -> str | None:
+    """Return a public-safe ALE id without preserving host paths or task bodies."""
+
+    if not isinstance(value, str):
+        return None
+    text = value.strip().replace("\\", "/")
+    if not text or text.startswith("/") or text.startswith("~"):
+        return None
+    parts = [part for part in text.split("/") if part]
+    if any(part in {".", ".."} for part in parts):
+        return None
+    cleaned = []
+    for char in "__".join(parts):
+        cleaned.append(char.lower() if char.isalnum() or char in {"-", "_", "."} else "-")
+    label = "".join(cleaned).strip("-_.")
+    while "--" in label:
+        label = label.replace("--", "-")
+    return (label or None)[:limit]
+
+
+def _agents_last_exam_first_public_id(*values: Any, default: str) -> str:
+    for value in values:
+        label = _agents_last_exam_public_id(value)
+        if label:
+            return label
+    return default
+
+
+def _agents_last_exam_event_type_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        event_type = _agents_last_exam_public_id(
+            row.get("type") or row.get("event_type") or row.get("event"),
+            limit=80,
+        )
+        if not event_type:
+            continue
+        counts[event_type] = counts.get(event_type, 0) + 1
+    return dict(sorted(counts.items())[:10])
+
+
+def _agents_last_exam_nested(source: dict[str, Any], field: str) -> Any:
+    value = source.get(field)
+    if value is not None:
+        return value
+    unit = source.get("unit") if isinstance(source.get("unit"), dict) else {}
+    value = unit.get(field)
+    if value is not None:
+        return value
+    meta = source.get("meta") if isinstance(source.get("meta"), dict) else {}
+    return meta.get(field)
+
+
+def build_agents_last_exam_result_benchmark_report(
+    run_dir: str | Path,
+    *,
+    report_id: str | None = None,
+    harness_identity: str = "goal-harness-meta",
+    runner_source: str = "ale_run_run_writer_v2",
+    harness_policy_version: str = AGENTS_LAST_EXAM_RESULT_INGEST_POLICY_VERSION,
+    trace_publicness: str = AGENTS_LAST_EXAM_TRACE_PUBLICNESS,
+) -> dict[str, Any]:
+    """Compact an ALE run directory into benchmark_experiment_report_v0.
+
+    The compactor reads only ALE's compact top-level files: ``run.json``,
+    ``eval_result.json``, and ``events.jsonl``. It deliberately does not read or
+    record ``trajectory.json``, ``origin_log/``, ``output/``, task bodies,
+    screenshots, credential values, or local absolute paths.
+    """
+
+    path = Path(run_dir)
+    run_json = _load_json_object(path / "run.json")
+    eval_result = _load_json_object(path / "eval_result.json")
+    events = _load_jsonl_objects(path / "events.jsonl")
+    score = _optional_float(eval_result.get("score"))
+    eval_status = _agents_last_exam_public_id(eval_result.get("eval_status"), limit=80)
+    run_status = _agents_last_exam_public_id(
+        _agents_last_exam_nested(run_json, "status"),
+        limit=80,
+    )
+    task_label = _agents_last_exam_first_public_id(
+        _agents_last_exam_nested(run_json, "task_path"),
+        _agents_last_exam_nested(run_json, "task_id"),
+        _agents_last_exam_nested(run_json, "task"),
+        default="unknown_task",
+    )
+    agent_label = _agents_last_exam_first_public_id(
+        _agents_last_exam_nested(run_json, "agent_id"),
+        _agents_last_exam_nested(run_json, "agent"),
+        default="unknown_agent",
+    )
+    model_label = _agents_last_exam_first_public_id(
+        _agents_last_exam_nested(run_json, "model"),
+        default="unknown_model",
+    )
+    run_id = _agents_last_exam_public_id(
+        run_json.get("run_id") or path.name,
+        limit=160,
+    ) or "unknown_run"
+    report_label = (
+        _agents_last_exam_public_id(report_id, limit=160)
+        if report_id
+        else f"{AGENTS_LAST_EXAM_BENCHMARK_ID}-{run_id}"
+    )
+    event_counts = _agents_last_exam_event_type_counts(events)
+    error = eval_result.get("error") if isinstance(eval_result.get("error"), dict) else {}
+    error_type = _agents_last_exam_public_id(
+        error.get("type") or error.get("exception_type") or error.get("class"),
+        limit=80,
+    )
+    duration_s = _optional_float(
+        run_json.get("duration_s")
+        or run_json.get("elapsed_s")
+        or _agents_last_exam_nested(run_json, "duration_s")
+    )
+    eval_duration_s = _optional_float(eval_result.get("eval_duration_s"))
+    raw_surface_presence = {
+        "trajectory_json_present": (path / "trajectory.json").exists(),
+        "origin_log_dir_present": (path / "origin_log").exists(),
+        "output_dir_present": (path / "output").exists(),
+    }
+    run_json_present = bool(run_json)
+    eval_result_present = bool(eval_result)
+    events_jsonl_present = (path / "events.jsonl").exists()
+    completed = eval_status in {"passed", "completed", "success", "ok"} or (
+        score is not None and not error_type
+    )
+    source_events = [
+        "ale run.json parsed" if run_json_present else "ale run.json missing",
+        "ale eval_result.json parsed" if eval_result_present else "ale eval_result.json missing",
+        "ale events.jsonl counted" if events_jsonl_present else "ale events.jsonl missing",
+        "raw ALE trajectory/origin_log/output excluded",
+    ]
+    negative_layers = ["single_arm_no_delta", "raw_surfaces_excluded"]
+    if not run_json_present:
+        negative_layers.append("run_json_missing")
+    if not eval_result_present:
+        negative_layers.append("eval_result_missing")
+    if error_type:
+        negative_layers.append("eval_error_present")
+
+    return {
+        "schema_version": "benchmark_experiment_report_v0",
+        "experiment_identity": {
+            "report_id": report_label,
+            "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
+            "task_slice": task_label,
+            "worker_surface": "ale_run_compact_result_ingest",
+            "harness_identity": harness_identity,
+            "harness_policy_version": harness_policy_version,
+            "trace_publicness": trace_publicness,
+        },
+        "official_score": {
+            "kind": "ale_eval_result" if score is not None else "ale_eval_result_missing",
+            "task_id_or_split": task_label,
+            "runner_source": runner_source,
+            "native_score": score if score is not None else 0.0,
+            "wrapped_score": score if score is not None else 0.0,
+            "delta": 0.0,
+            "repetitions": 1 if eval_result_present else 0,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+        },
+        "passive_control_plane_score": {
+            "restartability": 1.0 if run_json_present and events_jsonl_present else 0.5,
+            "stale_state_avoidance": 1.0,
+            "evidence_discipline": 1.0,
+            "writeback_quality": 1.0 if eval_result_present else 0.5,
+            "failure_attribution": 1.0 if error_type or completed else 0.5,
+            "overhead_bounded": True,
+            "regression_avoidance_passed": True,
+            "source_events": source_events,
+        },
+        "operator_simulator_ablation": {
+            "enabled": False,
+            "leaderboard_evidence": False,
+            "intervention_count": 0,
+            "reason": "ALE compact result ingest is passive; simulator evidence must be a separate treatment layer.",
+        },
+        "cost_latency_overhead": {
+            "duration_s": duration_s,
+            "eval_duration_s": eval_duration_s,
+            "event_count": len(events),
+            "event_type_counts": event_counts,
+            "raw_trace_recorded": False,
+            "raw_output_recorded": False,
+        },
+        "failure_taxonomy": {
+            "run_status": run_status or "unknown",
+            "eval_status": eval_status or "unknown",
+            "error_type": error_type or "none",
+            "score_missing": score is None,
+            "single_arm_no_delta": True,
+        },
+        "reproducibility_artifacts": {
+            "run_json_present": run_json_present,
+            "eval_result_json_present": eval_result_present,
+            "events_jsonl_present": events_jsonl_present,
+            "event_count": len(events),
+            "event_type_counts": event_counts,
+            "agent_id": agent_label,
+            "model": model_label,
+            "task_id": task_label,
+            "raw_surfaces_excluded": list(AGENTS_LAST_EXAM_RAW_SURFACES_EXCLUDED),
+            "raw_surface_presence_checked": raw_surface_presence,
+            "raw_surface_content_recorded": False,
+            "local_paths_recorded": False,
+            "credential_values_recorded": False,
+        },
+        "claim_boundary": {
+            "may_claim": [
+                "ALE compact run/eval/events artifacts can be reduced to benchmark_experiment_report_v0",
+                "Raw trajectory, origin logs, outputs, task bodies, screenshots, credentials, and local paths are excluded",
+                "The report is a single-arm compact ingest artifact, not a paired treatment comparison",
+            ],
+            "must_not_claim": [
+                "ALE leaderboard evidence",
+                "Goal Harness treatment advantage",
+                "baseline-versus-treatment score delta",
+                "task solution quality from raw trajectory or outputs",
+            ],
+            "source_decision_note_schema": "agents_last_exam_result_ingest_contract_v0",
+            "source_evidence_layer": "compact_run_eval_events_only",
+        },
+        "negative_results": {
+            "null_official_delta": True,
+            "failed_hypothesis_count": 0,
+            "negative_evidence_layers": negative_layers,
+            "overhead_regression_count": 0,
+        },
+        "next_decision": {
+            "decision": "wire_ale_report_append_or_authorize_no_upload_dry_run",
+            "minimum_next_evidence": "Append a synthetic ALE compact report through history, or run an operator-approved no-upload ALE dry-run without reading task bodies.",
+            "stop_condition": "Stop before GCP setup, VM launch, model API use, paid compute, output upload, leaderboard submission, hidden refs, task solutions, task body copying, raw trajectories, screenshots, local absolute paths, credential values, or production actions.",
+            "source_decision_note_schema": "benchmark_experiment_report_v0",
+            "readiness_decision": "compact_ingest_ready",
+            "failure_decision": "do_not_infer_pairwise_uplift_from_single_arm_ingest",
+        },
+        "section_count": 10,
+    }
 
 
 def build_terminal_bench_single_agent_episode_policy(
