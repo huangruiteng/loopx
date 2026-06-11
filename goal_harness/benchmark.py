@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import shlex
@@ -1983,6 +1984,52 @@ def _agents_last_exam_runner_binary_probe(runner_binary: str | None) -> dict[str
     }
 
 
+def _agents_last_exam_python_module_probe(module_name: str | None) -> dict[str, Any]:
+    module = _agents_last_exam_public_id(module_name, limit=100)
+    if not module_name:
+        return {
+            "module": None,
+            "declared": False,
+            "available": False,
+            "first_blocker": "runner_python_module_missing",
+            "path_recorded": False,
+        }
+    if not module or "/" in module_name or "\\" in module_name:
+        return {
+            "module": None,
+            "declared": True,
+            "available": False,
+            "first_blocker": "runner_python_module_not_public_safe",
+            "path_recorded": False,
+        }
+    parts = module_name.split(".")
+    if not parts or any(not part.isidentifier() for part in parts):
+        return {
+            "module": module,
+            "declared": True,
+            "available": False,
+            "first_blocker": "runner_python_module_not_public_safe",
+            "path_recorded": False,
+        }
+    available = importlib.util.find_spec(module_name) is not None
+    return {
+        "module": module,
+        "declared": True,
+        "available": available,
+        "first_blocker": None if available else "runner_python_module_not_found",
+        "path_recorded": False,
+    }
+
+
+def _agents_last_exam_runner_binary_requires_python_module(
+    runner_binary: str | None,
+) -> bool:
+    if not isinstance(runner_binary, str):
+        return False
+    binary = Path(runner_binary).name.lower()
+    return binary == "python" or binary.startswith("python3")
+
+
 def build_agents_last_exam_local_runner_readiness(
     *,
     selected_task_id: str | None = None,
@@ -1991,6 +2038,7 @@ def build_agents_last_exam_local_runner_readiness(
     image_ref: str = AGENTS_LAST_EXAM_DEFAULT_DOCKER_IMAGE,
     alternate_image_ref: str = AGENTS_LAST_EXAM_DEFAULT_ALT_DOCKER_IMAGE,
     runner_binary: str | None = None,
+    runner_python_module: str | None = None,
     runner_command_label: str | None = None,
     operator_authorized: bool = False,
     allow_public_task_material: bool = False,
@@ -2037,9 +2085,18 @@ def build_agents_last_exam_local_runner_readiness(
         )
     )
     runner_probe = _agents_last_exam_runner_binary_probe(runner_binary)
+    module_probe = _agents_last_exam_python_module_probe(runner_python_module)
     command_label = _agents_last_exam_public_id(
-        runner_command_label or runner_probe.get("binary"),
+        runner_command_label
+        or (
+            f"{runner_probe.get('binary')}-m-{module_probe.get('module')}"
+            if runner_probe.get("binary") and module_probe.get("module")
+            else runner_probe.get("binary")
+        ),
         limit=120,
+    )
+    module_required = _agents_last_exam_runner_binary_requires_python_module(
+        runner_binary
     )
     blockers: list[str] = []
     if operator_authorized is not True:
@@ -2057,6 +2114,13 @@ def build_agents_last_exam_local_runner_readiness(
         blockers.append(
             _agents_last_exam_public_id(runner_probe.get("first_blocker"), limit=80)
             or "runner_binary_not_available"
+        )
+    if module_required and module_probe.get("declared") is not True:
+        blockers.append("runner_python_module_missing")
+    if module_probe.get("declared") is True and module_probe.get("available") is not True:
+        blockers.append(
+            _agents_last_exam_public_id(module_probe.get("first_blocker"), limit=80)
+            or "runner_python_module_not_available"
         )
     ready = not blockers
 
@@ -2078,6 +2142,10 @@ def build_agents_last_exam_local_runner_readiness(
             "binary": runner_probe.get("binary"),
             "binary_declared": runner_probe.get("declared") is True,
             "binary_available": runner_probe.get("available") is True,
+            "python_module": module_probe.get("module"),
+            "python_module_declared": module_probe.get("declared") is True,
+            "python_module_available": module_probe.get("available") is True,
+            "python_module_path_recorded": False,
             "binary_path_recorded": False,
             "command_argv_recorded": False,
             "first_blocker": _agents_last_exam_public_id(

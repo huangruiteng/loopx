@@ -297,6 +297,8 @@ def render_agents_last_exam_local_runner_readiness_markdown(
         f"- Dry-run plan ready: `{payload.get('dry_run_plan_ready')}`",
         f"- Runner binary: `{runner_probe.get('binary')}`",
         f"- Runner binary available: `{runner_probe.get('binary_available')}`",
+        f"- Runner Python module: `{runner_probe.get('python_module')}`",
+        f"- Runner Python module available: `{runner_probe.get('python_module_available')}`",
         f"- Container started: `{boundary.get('container_started')}`",
         f"- Public task material authorized: `{boundary.get('operator_authorized_public_task_material')}`",
         f"- Upload/submit allowed: `{boundary.get('upload_allowed')}`/`{boundary.get('submit_allowed')}`",
@@ -1606,6 +1608,13 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     ale_local_runner_readiness_parser.add_argument(
+        "--runner-python-module",
+        help=(
+            "Optional Python module to probe when the runner command is "
+            "`python -m <module>`. The module path is never recorded."
+        ),
+    )
+    ale_local_runner_readiness_parser.add_argument(
         "--runner-command-label",
         help=(
             "Public-safe label for the configured runner command. The command "
@@ -2731,6 +2740,7 @@ def main(argv: list[str] | None = None) -> int:
                     image_ref=args.image,
                     alternate_image_ref=args.alternate_image,
                     runner_binary=args.runner_binary,
+                    runner_python_module=args.runner_python_module,
                     runner_command_label=args.runner_command_label,
                     operator_authorized=bool(args.operator_authorized),
                     allow_public_task_material=bool(args.allow_public_task_material),

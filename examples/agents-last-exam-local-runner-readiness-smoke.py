@@ -104,6 +104,7 @@ def run_fixture_smoke() -> None:
     ready = build_agents_last_exam_local_runner_readiness(
         preflight=ready_preflight(),
         runner_binary="python3",
+        runner_python_module="json",
         runner_command_label="ale-local-no-upload-dry-run",
         operator_authorized=True,
         allow_public_task_material=True,
@@ -126,9 +127,21 @@ def run_fixture_smoke() -> None:
     assert "runner_binary_missing" in missing_runner["blockers"]
     assert_no_execution(missing_runner)
 
+    missing_module = build_agents_last_exam_local_runner_readiness(
+        preflight=ready_preflight(),
+        runner_binary="python3",
+        runner_command_label="ale-local-no-upload-dry-run",
+        operator_authorized=True,
+        allow_public_task_material=True,
+    )
+    assert missing_module["ready"] is False
+    assert "runner_python_module_missing" in missing_module["blockers"]
+    assert_no_execution(missing_module)
+
     unapproved = build_agents_last_exam_local_runner_readiness(
         preflight=ready_preflight(),
         runner_binary="python3",
+        runner_python_module="json",
         runner_command_label="ale-local-no-upload-dry-run",
     )
     assert unapproved["ready"] is False
@@ -150,6 +163,8 @@ def run_cli_smoke() -> None:
         "computing_math/os_log_permission_guard_v1",
         "--runner-binary",
         "python3",
+        "--runner-python-module",
+        "ale_run",
         "--runner-command-label",
         "ale-local-no-upload-dry-run",
         "--operator-authorized",
@@ -167,6 +182,8 @@ def run_cli_smoke() -> None:
     assert payload["ok"] is True
     assert payload["ready"] is False
     assert payload["first_blocker"] == "docker_probe_disabled"
+    assert payload["runner_probe"]["python_module"] == "ale_run"
+    assert payload["runner_probe"]["python_module_available"] is False
     assert_no_execution(payload)
 
     require_ready = subprocess.run(
