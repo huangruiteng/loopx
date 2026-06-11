@@ -75,6 +75,9 @@ TERMINAL_BENCH_ACTIVE_USER_PRIVATE_LAUNCHER_PLAN_SCHEMA = (
 TERMINAL_BENCH_TASK_MATERIAL_READINESS_SCHEMA = (
     "terminal_bench_task_material_readiness_v0"
 )
+TERMINAL_BENCH_POST_LAUNCH_MATERIALIZATION_SCHEMA = (
+    "terminal_bench_post_launch_materialization_v0"
+)
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_SETTING = "codex_cli_user_simulator"
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER = (
     "missing_simulator_to_worker_injection_channel"
@@ -2568,8 +2571,92 @@ def build_terminal_bench_private_runner_launch(**command_kwargs: Any) -> dict[st
     }
 
 
+def summarize_terminal_bench_post_launch_materialization(
+    jobs_dir: str | Path,
+    *,
+    job_name: str | None = None,
+) -> dict[str, Any]:
+    """Summarize whether Harbor produced a pollable job directory after launch.
+
+    The summary intentionally records only booleans, counts, and optional job
+    basenames. It does not read logs, task text, trajectories, or file contents,
+    and it never echoes local paths.
+    """
+
+    jobs_dir_text = str(jobs_dir)
+    public_job_name = Path(str(job_name)).name if job_name else ""
+    placeholder = "<" in jobs_dir_text or ">" in jobs_dir_text
+    summary: dict[str, Any] = {
+        "schema_version": TERMINAL_BENCH_POST_LAUNCH_MATERIALIZATION_SCHEMA,
+        "checked": not placeholder,
+        "ready_for_launch_state": False,
+        "ready_for_compact_result_ingest": False,
+        "first_blocker": "jobs_dir_placeholder" if placeholder else "",
+        "job_name": public_job_name,
+        "jobs_dir_present": False,
+        "job_root_present": False,
+        "job_lock_present": False,
+        "job_result_present": False,
+        "trial_result_present_count": 0,
+        "candidate_job_root_count": 0,
+        "raw_paths_recorded": False,
+        "raw_logs_read": False,
+        "raw_task_text_read": False,
+        "trajectory_read": False,
+    }
+    if placeholder:
+        return summary
+
+    root = Path(jobs_dir).expanduser()
+    jobs_dir_present = root.is_dir()
+    summary["jobs_dir_present"] = jobs_dir_present
+    if not jobs_dir_present:
+        summary["first_blocker"] = "jobs_dir_missing"
+        return summary
+
+    if public_job_name:
+        candidates = [root / public_job_name]
+    else:
+        candidates = [path for path in sorted(root.iterdir()) if path.is_dir()]
+    existing_candidates = [path for path in candidates if path.is_dir()]
+    summary["candidate_job_root_count"] = len(existing_candidates)
+    if not existing_candidates:
+        summary["first_blocker"] = "job_root_missing"
+        return summary
+
+    job_root = existing_candidates[0]
+    lock_present = (job_root / "lock.json").is_file()
+    result_present = (job_root / "result.json").is_file()
+    trial_result_count = sum(
+        1
+        for child in job_root.iterdir()
+        if child.is_dir() and (child / "result.json").is_file()
+    )
+    summary.update(
+        {
+            "job_root_present": True,
+            "job_lock_present": lock_present,
+            "job_result_present": result_present,
+            "trial_result_present_count": trial_result_count,
+            "ready_for_launch_state": lock_present,
+            "ready_for_compact_result_ingest": (
+                result_present and trial_result_count > 0
+            ),
+        }
+    )
+    if not lock_present:
+        summary["first_blocker"] = "job_lock_missing"
+    elif not result_present or trial_result_count <= 0:
+        summary["first_blocker"] = "ready_for_compact_polling"
+    else:
+        summary["first_blocker"] = "ready_for_compact_result_ingest"
+    return summary
+
+
 def summarize_terminal_bench_private_runner_launch(
     launch: dict[str, Any],
+    *,
+    post_launch_materialization: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a public-safe summary of a private Harbor launch contract."""
 
@@ -2620,7 +2707,7 @@ def summarize_terminal_bench_private_runner_launch(
     auth_names_present = [
         name for name in TERMINAL_BENCH_CODEX_AUTH_SURFACE_NAMES if name in env
     ]
-    return {
+    summary = {
         "schema_version": "terminal_bench_private_runner_launch_summary_v0",
         "launch_schema_version": str(launch.get("schema_version") or ""),
         "uses_private_runner_env": launch.get("uses_private_runner_env") is True,
@@ -2663,6 +2750,16 @@ def summarize_terminal_bench_private_runner_launch(
         "raw_env_recorded": False,
         "raw_paths_recorded": False,
     }
+    materialization = (
+        post_launch_materialization
+        if isinstance(post_launch_materialization, dict)
+        else launch.get("post_launch_materialization")
+        if isinstance(launch.get("post_launch_materialization"), dict)
+        else None
+    )
+    if materialization:
+        summary["post_launch_materialization"] = materialization
+    return summary
 
 
 def normalize_terminal_bench_private_runner_invocation(

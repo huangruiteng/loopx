@@ -924,6 +924,42 @@ def _compact_benchmark_private_runner_launch(value: Any) -> dict[str, Any]:
     )
     if names:
         compact["auth_surface_names_present"] = names
+    materialization = _compact_benchmark_post_launch_materialization(
+        value.get("post_launch_materialization")
+    )
+    if materialization:
+        compact["post_launch_materialization"] = materialization
+    return compact
+
+
+def _compact_benchmark_post_launch_materialization(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for field in ("schema_version", "first_blocker", "job_name"):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    for field in (
+        "checked",
+        "ready_for_launch_state",
+        "ready_for_compact_result_ingest",
+        "jobs_dir_present",
+        "job_root_present",
+        "job_lock_present",
+        "job_result_present",
+        "raw_paths_recorded",
+        "raw_logs_read",
+        "raw_task_text_read",
+        "trajectory_read",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in ("trial_result_present_count", "candidate_job_root_count"):
+        count = value.get(field)
+        if isinstance(count, int) and not isinstance(count, bool):
+            compact[field] = count
     return compact
 
 

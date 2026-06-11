@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import os
+import json
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -21,8 +23,10 @@ from goal_harness.benchmark import (  # noqa: E402
     build_terminal_bench_task_material_readiness,
     normalize_terminal_bench_private_runner_invocation,
     resolve_terminal_bench_runner_binary,
+    summarize_terminal_bench_post_launch_materialization,
     summarize_terminal_bench_private_runner_launch,
 )
+from goal_harness.status import compact_benchmark_run  # noqa: E402
 
 
 def expect_raises(callable_obj, needle: str) -> None:
@@ -201,6 +205,127 @@ def main() -> None:
     assert summary["agent_import_path_present"] is True, summary
     assert summary["goal_harness_agent_kwargs_present"] is True, summary
     assert summary["goal_harness_worker_bridge_requested"] is True, summary
+
+    missing_materialization = summarize_terminal_bench_post_launch_materialization(
+        "<private-jobs-dir>",
+        job_name="terminal_bench_env_guard_smoke",
+    )
+    assert missing_materialization["checked"] is False, missing_materialization
+    assert missing_materialization["ready_for_launch_state"] is False, missing_materialization
+    assert missing_materialization["first_blocker"] == "jobs_dir_placeholder", missing_materialization
+    assert missing_materialization["raw_paths_recorded"] is False, missing_materialization
+
+    with tempfile.TemporaryDirectory(prefix="goal-harness-post-launch-") as tmp:
+        jobs_dir = Path(tmp) / "jobs"
+        job_root = jobs_dir / "terminal_bench_env_guard_smoke"
+        job_root.mkdir(parents=True)
+        job_root_pollable = summarize_terminal_bench_post_launch_materialization(
+            jobs_dir,
+            job_name="terminal_bench_env_guard_smoke",
+        )
+        assert job_root_pollable["jobs_dir_present"] is True, job_root_pollable
+        assert job_root_pollable["job_root_present"] is True, job_root_pollable
+        assert job_root_pollable["job_lock_present"] is False, job_root_pollable
+        assert job_root_pollable["ready_for_launch_state"] is False, job_root_pollable
+        assert job_root_pollable["first_blocker"] == "job_lock_missing", job_root_pollable
+
+        blocked_cli = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "goal_harness.cli",
+                "--format",
+                "json",
+                "benchmark",
+                "summarize-post-launch",
+                "terminal-bench",
+                "--jobs-dir",
+                str(jobs_dir),
+                "--job-name",
+                "terminal_bench_env_guard_smoke",
+                "--require-ready-for-launch-state",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert blocked_cli.returncode == 1, blocked_cli.stdout + blocked_cli.stderr
+        blocked_payload = json.loads(blocked_cli.stdout)
+        assert blocked_payload["ok"] is False, blocked_payload
+        assert blocked_payload["first_blocker"] == "job_lock_missing", blocked_payload
+        assert str(jobs_dir) not in blocked_cli.stdout, blocked_cli.stdout
+
+        (job_root / "lock.json").write_text("{}\n", encoding="utf-8")
+        job_root_pollable = summarize_terminal_bench_post_launch_materialization(
+            jobs_dir,
+            job_name="terminal_bench_env_guard_smoke",
+        )
+        assert job_root_pollable["job_lock_present"] is True, job_root_pollable
+        assert job_root_pollable["ready_for_launch_state"] is True, job_root_pollable
+        assert job_root_pollable["ready_for_compact_result_ingest"] is False, job_root_pollable
+        assert job_root_pollable["first_blocker"] == "ready_for_compact_polling", job_root_pollable
+        assert job_root_pollable["raw_logs_read"] is False, job_root_pollable
+        ready_cli = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "goal_harness.cli",
+                "--format",
+                "json",
+                "benchmark",
+                "summarize-post-launch",
+                "terminal-bench",
+                "--jobs-dir",
+                str(jobs_dir),
+                "--job-name",
+                "terminal_bench_env_guard_smoke",
+                "--require-ready-for-launch-state",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert ready_cli.returncode == 0, ready_cli.stdout + ready_cli.stderr
+        ready_payload = json.loads(ready_cli.stdout)
+        assert ready_payload["ok"] is True, ready_payload
+        assert ready_payload["ready_for_launch_state"] is True, ready_payload
+        assert ready_payload["raw_paths_recorded"] is False, ready_payload
+        assert str(jobs_dir) not in ready_cli.stdout, ready_cli.stdout
+
+        (job_root / "result.json").write_text("{}\n", encoding="utf-8")
+        trial_root = job_root / "good-task__trial"
+        trial_root.mkdir()
+        (trial_root / "result.json").write_text("{}\n", encoding="utf-8")
+        job_root_complete = summarize_terminal_bench_post_launch_materialization(
+            jobs_dir,
+            job_name="terminal_bench_env_guard_smoke",
+        )
+        assert job_root_complete["ready_for_launch_state"] is True, job_root_complete
+        assert job_root_complete["ready_for_compact_result_ingest"] is True, job_root_complete
+        assert job_root_complete["trial_result_present_count"] == 1, job_root_complete
+        assert job_root_complete["first_blocker"] == "ready_for_compact_result_ingest", job_root_complete
+
+        summary_with_materialization = summarize_terminal_bench_private_runner_launch(
+            launch,
+            post_launch_materialization=job_root_complete,
+        )
+        nested = summary_with_materialization["post_launch_materialization"]
+        assert nested["schema_version"] == "terminal_bench_post_launch_materialization_v0", nested
+        assert nested["ready_for_launch_state"] is True, nested
+        assert nested["raw_paths_recorded"] is False, nested
+        compact = compact_benchmark_run(
+            {
+                "schema_version": "benchmark_run_v0",
+                "private_runner_launch_summary": summary_with_materialization,
+            }
+        )
+        compact_nested = compact["private_runner_launch_summary"][
+            "post_launch_materialization"
+        ]
+        assert compact_nested["ready_for_launch_state"] is True, compact_nested
+        assert compact_nested["raw_paths_recorded"] is False, compact_nested
 
     baseline_launch = build_terminal_bench_private_runner_launch(
         mode="hardened-codex",

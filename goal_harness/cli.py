@@ -31,6 +31,7 @@ from .benchmark import (
     build_terminal_bench_harbor_result_benchmark_run,
     collect_terminal_bench_goal_harness_cli_bridge_trace,
     filter_public_benchmark_artifact_paths,
+    summarize_terminal_bench_post_launch_materialization,
     terminal_bench_recommended_action,
 )
 from .configure_goal import configure_goal, render_configure_goal_markdown
@@ -241,6 +242,34 @@ def render_benchmark_verifier_attribution_review_markdown(
         f"- Compact only: `{read_boundary.get('compact_only')}`",
         f"- Raw artifacts read: `{read_boundary.get('raw_artifacts_read')}`",
     ]
+    return "\n".join(lines) + "\n"
+
+
+def render_terminal_bench_post_launch_materialization_markdown(
+    payload: dict[str, object],
+) -> str:
+    lines = [
+        "# Terminal-Bench Post-Launch Materialization",
+        "",
+        f"- Schema: `{payload.get('schema_version')}`",
+        f"- Checked: `{payload.get('checked')}`",
+        f"- Ready for launch state: `{payload.get('ready_for_launch_state')}`",
+        "- Ready for compact result ingest: "
+        f"`{payload.get('ready_for_compact_result_ingest')}`",
+        f"- First blocker: `{payload.get('first_blocker')}`",
+        f"- Job name: `{payload.get('job_name')}`",
+        f"- Jobs dir present: `{payload.get('jobs_dir_present')}`",
+        f"- Job root present: `{payload.get('job_root_present')}`",
+        f"- Job lock present: `{payload.get('job_lock_present')}`",
+        f"- Job result present: `{payload.get('job_result_present')}`",
+        f"- Trial results: `{payload.get('trial_result_present_count')}`",
+        f"- Raw paths recorded: `{payload.get('raw_paths_recorded')}`",
+        f"- Raw logs read: `{payload.get('raw_logs_read')}`",
+        f"- Task text read: `{payload.get('raw_task_text_read')}`",
+        f"- Trajectory read: `{payload.get('trajectory_read')}`",
+    ]
+    if payload.get("error"):
+        lines.append(f"- Error: {payload.get('error')}")
     return "\n".join(lines) + "\n"
 
 
@@ -1257,6 +1286,42 @@ def main(argv: list[str] | None = None) -> int:
         help="Candidate benchmark artifact paths to classify without reading.",
     )
 
+    benchmark_post_launch_parser = benchmark_sub.add_parser(
+        "summarize-post-launch",
+        help=(
+            "Summarize whether a Terminal-Bench Harbor launch materialized a "
+            "pollable job directory. This records booleans, counts, and job "
+            "basenames only; it does not read logs, task text, trajectories, "
+            "Docker, model APIs, or uploads."
+        ),
+    )
+    add_subcommand_format(benchmark_post_launch_parser)
+    benchmark_post_launch_parser.add_argument(
+        "benchmark_name",
+        choices=["terminal-bench"],
+        help="Benchmark family.",
+    )
+    benchmark_post_launch_parser.add_argument(
+        "--jobs-dir",
+        required=True,
+        help=(
+            "Private Harbor jobs directory to check. The value is used only for "
+            "local filesystem probing and is not echoed in output."
+        ),
+    )
+    benchmark_post_launch_parser.add_argument(
+        "--job-name",
+        help="Expected Harbor job directory basename.",
+    )
+    benchmark_post_launch_parser.add_argument(
+        "--require-ready-for-launch-state",
+        action="store_true",
+        help=(
+            "Return non-zero unless the job root and lock.json are present. "
+            "Use this before declaring a private launch state durable."
+        ),
+    )
+
     benchmark_claim_review_parser = benchmark_sub.add_parser(
         "review-claim",
         help=(
@@ -2224,6 +2289,55 @@ def main(argv: list[str] | None = None) -> int:
                 payload,
                 output_format(args),
                 render_benchmark_verifier_attribution_review_markdown,
+            )
+            return 0 if payload.get("ok") else 1
+        if args.benchmark_command == "summarize-post-launch":
+            try:
+                if args.benchmark_name != "terminal-bench":
+                    raise ValueError("only terminal-bench is supported")
+                payload = summarize_terminal_bench_post_launch_materialization(
+                    args.jobs_dir,
+                    job_name=args.job_name,
+                )
+                ready = payload.get("ready_for_launch_state") is True
+                payload["ok"] = (
+                    ready if args.require_ready_for_launch_state else True
+                )
+                payload["require_ready_for_launch_state"] = bool(
+                    args.require_ready_for_launch_state
+                )
+                payload["read_boundary"] = {
+                    "raw_paths_recorded": False,
+                    "raw_logs_read": False,
+                    "task_text_read": False,
+                    "trajectory_read": False,
+                    "docker_invoked": False,
+                    "model_api_invoked": False,
+                    "upload_invoked": False,
+                }
+                if args.require_ready_for_launch_state and not ready:
+                    payload["error"] = (
+                        "post-launch materialization is not ready for launch state"
+                    )
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "schema_version": "terminal_bench_post_launch_materialization_v0",
+                    "error": str(exc),
+                    "read_boundary": {
+                        "raw_paths_recorded": False,
+                        "raw_logs_read": False,
+                        "task_text_read": False,
+                        "trajectory_read": False,
+                        "docker_invoked": False,
+                        "model_api_invoked": False,
+                        "upload_invoked": False,
+                    },
+                }
+            print_payload(
+                payload,
+                output_format(args),
+                render_terminal_bench_post_launch_materialization_markdown,
             )
             return 0 if payload.get("ok") else 1
         if args.benchmark_command == "run":
