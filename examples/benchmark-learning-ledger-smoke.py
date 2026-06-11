@@ -16,6 +16,16 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from goal_harness.benchmark import build_benchmark_learning_ledger  # noqa: E402
+from goal_harness.review_packet import build_review_packet  # noqa: E402
+from goal_harness.status import collect_status  # noqa: E402
+
+
+GOAL_ID = "benchmark-learning-ledger-fixture"
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def comparison(
@@ -278,6 +288,178 @@ def test_cli_require_actionable_learning_blocks_no_signal() -> None:
         assert str(root) not in result.stdout, result.stdout
 
 
+def write_append_fixture(root: Path) -> tuple[Path, Path, Path]:
+    project = root / "project"
+    runtime = root / "runtime"
+    state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    registry_path = project / ".goal-harness" / "registry.json"
+    ledger_path = root / "benchmark_learning_ledger.json"
+
+    (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
+    (project / state_file).write_text(
+        "---\n"
+        "status: active-read-only\n"
+        "updated_at: 2026-06-11T00:00:00+00:00\n"
+        "---\n\n"
+        "# Benchmark Learning Ledger Fixture\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] Append compact benchmark_learning_ledger_v0 through the CLI.\n\n",
+        encoding="utf-8",
+    )
+    write_json(
+        registry_path,
+        {
+            "schema_version": 1,
+            "updated_at": "2026-06-11T00:00:00+00:00",
+            "common_runtime_root": str(runtime),
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "domain": "benchmark-learning-ledger",
+                    "status": "active-read-only",
+                    "repo": str(project),
+                    "state_file": state_file,
+                    "adapter": {
+                        "kind": "harness_self_improvement",
+                        "status": "connected-read-only",
+                    },
+                    "quota": {"compute": 1.0, "window_hours": 24},
+                    "authority_sources": [],
+                }
+            ],
+        },
+    )
+    ledger = build_benchmark_learning_ledger(
+        comparison(
+            -1.0,
+            comparison_id="append-startup-failure",
+            failure_labels=["treatment_pre_worker_agent_setup_failed"],
+        ),
+        benchmark_runs=[
+            benchmark_run("hardened-codex", 1.0),
+            benchmark_run(
+                "codex-goal-harness",
+                0.0,
+                first_blocker="pre_worker_agent_setup_failed",
+                failure_labels=["treatment_pre_worker_agent_setup_failed"],
+            ),
+        ],
+    )
+    ledger["local_artifact_path"] = str(root / "private" / "raw.log")
+    write_json(ledger_path, ledger)
+    return registry_path, runtime, ledger_path
+
+
+def assert_no_private_surface(summary: dict[str, Any]) -> None:
+    text = json.dumps(summary, sort_keys=True)
+    forbidden = [
+        "/" + "Users/",
+        "/" + "tmp/",
+        "private/raw.log",
+        "local_artifact_path",
+        "OPENAI" + "_API_KEY",
+        "auth.json",
+        "sessions/",
+    ]
+    leaked = [needle for needle in forbidden if needle in text]
+    assert not leaked, leaked
+
+
+def test_cli_append_learning_ledger_to_history() -> None:
+    with tempfile.TemporaryDirectory(prefix="benchmark-learning-ledger-append-") as tmp:
+        registry_path, runtime, ledger_path = write_append_fixture(Path(tmp))
+        index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
+        args = [
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(runtime),
+            "--format",
+            "json",
+            "history",
+            "append-benchmark-learning-ledger",
+            "--goal-id",
+            GOAL_ID,
+            "--benchmark-learning-ledger-json",
+            str(ledger_path),
+            "--recommended-action",
+            "repair or validate adapter startup argument contract before another candidate",
+            "--delivery-batch-scale",
+            "implementation",
+            "--delivery-outcome",
+            "primary_goal_outcome",
+            "--no-global-sync",
+        ]
+
+        dry_run = subprocess.run(
+            [sys.executable, "-m", "goal_harness.cli", *args],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        dry_payload = json.loads(dry_run.stdout)
+        assert dry_payload["ok"] is True, dry_payload
+        assert dry_payload["dry_run"] is True, dry_payload
+        assert dry_payload["appended"] is False, dry_payload
+        assert not index_path.exists(), index_path
+        assert_no_private_surface(dry_payload["benchmark_learning_ledger"])
+
+        appended = subprocess.run(
+            [sys.executable, "-m", "goal_harness.cli", *args, "--execute"],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        append_payload = json.loads(appended.stdout)
+        assert append_payload["ok"] is True, append_payload
+        assert append_payload["dry_run"] is False, append_payload
+        assert append_payload["appended"] is True, append_payload
+        assert index_path.exists(), index_path
+        assert_no_private_surface(append_payload["benchmark_learning_ledger"])
+
+        records = [
+            json.loads(line)
+            for line in index_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert len(records) == 1, records
+        record = records[0]
+        assert record["classification"] == "benchmark_learning_ledger_v0", record
+        assert_no_private_surface(record["benchmark_learning_ledger"])
+
+        status = collect_status(
+            registry_path=registry_path,
+            runtime_root_override=str(runtime),
+            scan_roots=[],
+            limit=5,
+        )
+        assert status["ok"], status
+        latest_runs = status["run_history"]["goals"][0]["latest_runs"]
+        ledger_run = next(
+            run for run in latest_runs if run.get("classification") == "benchmark_learning_ledger_v0"
+        )
+        summary = ledger_run["benchmark_learning_ledger_summary"]
+        assert summary["schema_version"] == "benchmark_learning_ledger_v0", summary
+        assert summary["learning_status"] == "generic_goal_harness_repair_or_attribution_required", summary
+        assert "adapter_startup_argument_contract" in summary["repair_candidates"], summary
+        assert summary["learning_quota_gate"]["spend_allowed"] is True, summary
+        assert summary["routing"]["new_candidate_allowed"] is False, summary
+        assert (
+            summary["routing"]["next_allowed_action"]
+            == "repair_or_validate_adapter_startup_argument_contract"
+        ), summary
+        assert_no_private_surface(summary)
+
+        packet = build_review_packet(status, goal_id=GOAL_ID)
+        handoff = packet["project_agent_handoff"]
+        assert "learning=generic_goal_harness_repair_or_attribution_required" in handoff, handoff
+        assert "repair=adapter_startup_argument_contract" in handoff, handoff
+        assert "next=repair_or_validate_adapter_startup_argument_contract" in handoff, handoff
+        assert_no_private_surface({"handoff": handoff})
+
+
 def main() -> int:
     test_startup_failure_routes_to_adapter_contract()
     test_materialization_blocker_is_countable_but_not_repeatable()
@@ -285,6 +467,7 @@ def main() -> int:
     test_no_learning_signal_blocks_learning_spend()
     test_cli_learning_ledger()
     test_cli_require_actionable_learning_blocks_no_signal()
+    test_cli_append_learning_ledger_to_history()
     print("benchmark-learning-ledger-smoke ok")
     return 0
 

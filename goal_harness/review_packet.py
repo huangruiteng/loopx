@@ -472,6 +472,35 @@ def handoff_followthrough_summary(item: dict[str, Any] | None) -> str | None:
             f"layer={benchmark_decision.get('evidence_layer') or 'unknown'}",
         ]
         benchmark_decision_text = "; " + ", ".join(decision_parts)
+    benchmark_learning_ledger = (
+        latest_run.get("benchmark_learning_ledger_summary")
+        if isinstance(latest_run.get("benchmark_learning_ledger_summary"), dict)
+        else {}
+    )
+    benchmark_learning_text = ""
+    if benchmark_learning_ledger:
+        learning_parts = [
+            f"learning={benchmark_learning_ledger.get('learning_status') or 'unknown'}",
+        ]
+        routing = (
+            benchmark_learning_ledger.get("routing")
+            if isinstance(benchmark_learning_ledger.get("routing"), dict)
+            else {}
+        )
+        gate = (
+            benchmark_learning_ledger.get("learning_quota_gate")
+            if isinstance(benchmark_learning_ledger.get("learning_quota_gate"), dict)
+            else {}
+        )
+        if benchmark_learning_ledger.get("repair_candidates"):
+            learning_parts.append(
+                f"repair={','.join(str(item) for item in benchmark_learning_ledger.get('repair_candidates')[:2])}"
+            )
+        if gate.get("spend_allowed") is not None:
+            learning_parts.append(f"spend_allowed={gate.get('spend_allowed')}")
+        if routing.get("next_allowed_action"):
+            learning_parts.append(f"next={routing.get('next_allowed_action')}")
+        benchmark_learning_text = "; " + ", ".join(learning_parts)
     worker_bridge_health = (
         latest_run.get("worker_bridge_ingest_health_note")
         if isinstance(latest_run.get("worker_bridge_ingest_health_note"), dict)
@@ -542,7 +571,7 @@ def handoff_followthrough_summary(item: dict[str, Any] | None) -> str | None:
             report_parts.append(f"negative_layers={','.join(str(layer) for layer in layers[:2])}")
         benchmark_report_text = "; " + ", ".join(report_parts)
     return compact_packet_text(
-        f"post_handoff_run={classification}, scale={scale}{streak_text}{suffix}{benchmark_text}{benchmark_result_text}{benchmark_comparison_text}{benchmark_decision_text}{worker_bridge_health_text}{benchmark_report_text}",
+        f"post_handoff_run={classification}, scale={scale}{streak_text}{suffix}{benchmark_text}{benchmark_result_text}{benchmark_comparison_text}{benchmark_decision_text}{benchmark_learning_text}{worker_bridge_health_text}{benchmark_report_text}",
         limit=440,
     )
 

@@ -64,6 +64,7 @@ from .history import (
     append_active_user_assisted_pilot,
     append_benchmark_comparison,
     append_benchmark_experiment_report,
+    append_benchmark_learning_ledger,
     append_benchmark_result,
     append_benchmark_run,
     collect_history,
@@ -73,6 +74,7 @@ from .history import (
     render_active_user_assisted_pilot_append_markdown,
     render_benchmark_comparison_append_markdown,
     render_benchmark_experiment_report_append_markdown,
+    render_benchmark_learning_ledger_append_markdown,
     render_benchmark_result_append_markdown,
     render_benchmark_run_append_markdown,
     render_history_markdown,
@@ -123,6 +125,7 @@ from .status import (
     compact_active_user_assisted_pilot,
     compact_benchmark_comparison,
     compact_benchmark_experiment_report,
+    compact_benchmark_learning_ledger,
     compact_benchmark_result,
     compact_benchmark_run,
     render_status_markdown,
@@ -1319,6 +1322,7 @@ def main(argv: list[str] | None = None) -> int:
             "append-benchmark-run",
             "append-benchmark-result",
             "append-benchmark-comparison",
+            "append-benchmark-learning-ledger",
             "append-benchmark-report",
             "append-agents-last-exam-result-report",
             "append-active-user-assisted-pilot",
@@ -1327,7 +1331,7 @@ def main(argv: list[str] | None = None) -> int:
         ],
         help=(
             "Append a compact benchmark_run_v0, benchmark_result_v0, benchmark_comparison_v0, "
-            "benchmark_experiment_report_v0, ALE compact result report, or "
+            "benchmark_learning_ledger_v0, benchmark_experiment_report_v0, ALE compact result report, or "
             "active_user_assisted_pilot_v0 event; inspect duplicate run-index identities; "
             "or repair safe duplicate index rows."
         ),
@@ -1345,6 +1349,10 @@ def main(argv: list[str] | None = None) -> int:
     history_parser.add_argument(
         "--benchmark-comparison-json",
         help="Path to a benchmark_comparison_v0 JSON object. Use '-' to read stdin.",
+    )
+    history_parser.add_argument(
+        "--benchmark-learning-ledger-json",
+        help="Path to a benchmark_learning_ledger_v0 JSON object. Use '-' to read stdin.",
     )
     history_parser.add_argument(
         "--benchmark-report-json",
@@ -3725,6 +3733,73 @@ def main(argv: list[str] | None = None) -> int:
                     "error": str(exc),
                 }
             print_payload(payload, args.format, render_benchmark_comparison_append_markdown)
+            return 0 if payload.get("ok") else 1
+
+        if args.history_action == "append-benchmark-learning-ledger":
+            try:
+                if args.dry_run and args.execute:
+                    raise ValueError(
+                        "history append-benchmark-learning-ledger accepts either --dry-run or --execute, not both"
+                    )
+                if not args.goal_id:
+                    raise ValueError("history append-benchmark-learning-ledger requires --goal-id")
+                if not args.benchmark_learning_ledger_json:
+                    raise ValueError(
+                        "history append-benchmark-learning-ledger requires --benchmark-learning-ledger-json"
+                    )
+
+                if args.benchmark_learning_ledger_json == "-":
+                    ledger_input = json.loads(sys.stdin.read())
+                else:
+                    ledger_input = json.loads(
+                        Path(args.benchmark_learning_ledger_json).expanduser().read_text(encoding="utf-8")
+                    )
+                if not isinstance(ledger_input, dict):
+                    raise ValueError("--benchmark-learning-ledger-json must contain a JSON object")
+                benchmark_learning_ledger = compact_benchmark_learning_ledger(ledger_input)
+                if not benchmark_learning_ledger:
+                    raise ValueError(
+                        "--benchmark-learning-ledger-json did not contain a compactable benchmark_learning_ledger_v0 object"
+                    )
+
+                dry_run = not bool(args.execute)
+                payload = append_benchmark_learning_ledger(
+                    registry_path=registry_path,
+                    runtime_root_override=args.runtime_root,
+                    goal_id=args.goal_id,
+                    benchmark_learning_ledger=benchmark_learning_ledger,
+                    classification=args.classification or "benchmark_learning_ledger_v0",
+                    recommended_action=args.recommended_action,
+                    delivery_batch_scale=args.delivery_batch_scale,
+                    delivery_outcome=args.delivery_outcome,
+                    dry_run=dry_run,
+                )
+                if args.no_global_sync:
+                    payload["global_sync"] = {
+                        "ok": True,
+                        "dry_run": dry_run,
+                        "skipped": True,
+                        "reason": "disabled by --no-global-sync",
+                    }
+                else:
+                    payload["global_sync"] = sync_project_registry_to_global(
+                        registry_path=registry_path,
+                        runtime_root_override=args.runtime_root,
+                        goal_id=args.goal_id,
+                        dry_run=dry_run,
+                    )
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "dry_run": not bool(args.execute),
+                    "appended": False,
+                    "registry": str(registry_path),
+                    "runtime_root": args.runtime_root,
+                    "goal_id": args.goal_id,
+                    "classification": args.classification or "benchmark_learning_ledger_v0",
+                    "error": str(exc),
+                }
+            print_payload(payload, args.format, render_benchmark_learning_ledger_append_markdown)
             return 0 if payload.get("ok") else 1
 
         if args.history_action == "append-benchmark-report":
