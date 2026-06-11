@@ -25,6 +25,7 @@ from .benchmark import (
     TERMINAL_BENCH_HARDENED_CODEX_BASELINE_PREFLIGHT_MODE,
     TERMINAL_BENCH_MODES,
     build_agents_last_exam_result_benchmark_report,
+    build_benchmark_claim_review,
     build_terminal_bench_benchmark_run,
     build_terminal_bench_harbor_result_benchmark_run,
     collect_terminal_bench_goal_harness_cli_bridge_trace,
@@ -179,6 +180,38 @@ def render_benchmark_artifact_path_filter_markdown(payload: dict[str, object]) -
     if isinstance(blocked, dict) and blocked:
         reasons = ", ".join(f"`{key}`={value}" for key, value in blocked.items())
         lines.append("- Blocked reasons: " + reasons)
+    return "\n".join(lines) + "\n"
+
+
+def render_benchmark_claim_review_markdown(payload: dict[str, object]) -> str:
+    decision = payload.get("decision") if isinstance(payload.get("decision"), dict) else {}
+    treatment = (
+        payload.get("treatment_worker_evidence")
+        if isinstance(payload.get("treatment_worker_evidence"), dict)
+        else {}
+    )
+    read_boundary = (
+        payload.get("read_boundary")
+        if isinstance(payload.get("read_boundary"), dict)
+        else {}
+    )
+    lines = [
+        "# Benchmark Claim Review",
+        "",
+        f"- Schema: `{payload.get('schema_version')}`",
+        f"- Task: `{payload.get('task_id')}`",
+        f"- Comparison: `{payload.get('comparison_id')}`",
+        f"- Official delta: `{payload.get('official_task_score_delta')}`",
+        f"- Claim strength: `{decision.get('claim_strength')}`",
+        f"- Validation candidate: `{decision.get('validation_enhancement_candidate')}`",
+        f"- Clean validation: `{decision.get('clean_validation_enhancement')}`",
+        f"- Blockers: `{decision.get('blockers')}`",
+        f"- Next action: {decision.get('next_action')}",
+        f"- Treatment worker GH calls: `{treatment.get('worker_goal_harness_cli_call_total')}`",
+        f"- Baseline attribution: `{payload.get('baseline_score_failure_attribution')}`",
+        f"- Compact only: `{read_boundary.get('compact_only')}`",
+        f"- Raw artifacts read: `{read_boundary.get('raw_artifacts_read')}`",
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -1195,6 +1228,30 @@ def main(argv: list[str] | None = None) -> int:
         help="Candidate benchmark artifact paths to classify without reading.",
     )
 
+    benchmark_claim_review_parser = benchmark_sub.add_parser(
+        "review-claim",
+        help=(
+            "Review compact benchmark comparison/run JSON and classify claim strength. "
+            "This reads only compact JSON inputs, not raw task text, logs, traces, "
+            "Harbor job directories, Docker, model APIs, or uploads."
+        ),
+    )
+    add_subcommand_format(benchmark_claim_review_parser)
+    benchmark_claim_review_parser.add_argument(
+        "--benchmark-comparison-json",
+        required=True,
+        help="Path to a compact benchmark_comparison_v0 JSON object.",
+    )
+    benchmark_claim_review_parser.add_argument(
+        "--benchmark-run-json",
+        action="append",
+        default=[],
+        help=(
+            "Path to a compact benchmark_run_v0 JSON object. Repeat for baseline "
+            "and treatment compact run files."
+        ),
+    )
+
     archive_runtime_parser = sub.add_parser(
         "archive-runtime",
         help="Move an obsolete runtime goal directory into the archive area. Defaults to dry-run.",
@@ -2036,6 +2093,53 @@ def main(argv: list[str] | None = None) -> int:
                 render_benchmark_artifact_path_filter_markdown,
             )
             return 0
+        if args.benchmark_command == "review-claim":
+            try:
+                comparison_input = json.loads(
+                    Path(args.benchmark_comparison_json).expanduser().read_text(encoding="utf-8")
+                )
+                if not isinstance(comparison_input, dict):
+                    raise ValueError("--benchmark-comparison-json must contain a JSON object")
+                comparison = compact_benchmark_comparison(comparison_input)
+                if not comparison:
+                    raise ValueError(
+                        "--benchmark-comparison-json did not contain a compactable benchmark_comparison_v0 object"
+                    )
+                runs = []
+                for run_json in args.benchmark_run_json:
+                    run_input = json.loads(Path(run_json).expanduser().read_text(encoding="utf-8"))
+                    if not isinstance(run_input, dict):
+                        raise ValueError("--benchmark-run-json must contain JSON objects")
+                    run = compact_benchmark_run(run_input)
+                    if not run:
+                        raise ValueError(
+                            "--benchmark-run-json did not contain a compactable benchmark_run_v0 object"
+                        )
+                    runs.append(run)
+                payload = build_benchmark_claim_review(
+                    comparison,
+                    benchmark_runs=runs,
+                )
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "schema_version": "benchmark_claim_review_v0",
+                    "error": str(exc),
+                    "read_boundary": {
+                        "compact_only": True,
+                        "raw_artifacts_read": False,
+                        "task_text_read": False,
+                        "local_paths_recorded": False,
+                    },
+                }
+            else:
+                payload["ok"] = True
+            print_payload(
+                payload,
+                output_format(args),
+                render_benchmark_claim_review_markdown,
+            )
+            return 0 if payload.get("ok") else 1
         if args.benchmark_command == "run":
             try:
                 if args.dry_run and args.execute:

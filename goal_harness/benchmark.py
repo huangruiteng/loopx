@@ -42,6 +42,7 @@ TERMINAL_BENCH_MODES = (
 TERMINAL_BENCH_DEFAULT_DATASET = "terminal-bench@2.0"
 TERMINAL_BENCH_DEFAULT_TASK = "build-cython-ext"
 TERMINAL_BENCH_DEFAULT_MODEL = "gpt-5.5"
+BENCHMARK_CLAIM_REVIEW_SCHEMA_VERSION = "benchmark_claim_review_v0"
 TERMINAL_BENCH_HARBOR_REF = (
     "git+https://github.com/harbor-framework/harbor@"
     "a56546feb7d2da0b3196bbd7b05adacb72449391"
@@ -278,6 +279,213 @@ def filter_public_benchmark_artifact_paths(
             "raw_task_text_read": False,
             "trajectory_or_origin_log_read": False,
             "intended_use": "preflight benchmark artifact reads before compact ingest",
+        },
+    }
+
+
+def _claim_review_numeric(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _claim_review_run_mode(run: dict[str, Any]) -> str:
+    return str(run.get("mode") or "").strip().lower().replace("_", "-")
+
+
+def _claim_review_run_score(run: dict[str, Any]) -> float | None:
+    official = run.get("official_task_score") if isinstance(run.get("official_task_score"), dict) else {}
+    return _claim_review_numeric(official.get("value"))
+
+
+def _claim_review_worker_evidence(run: dict[str, Any]) -> dict[str, Any]:
+    interaction = run.get("interaction_counters") if isinstance(run.get("interaction_counters"), dict) else {}
+    calls = interaction.get("goal_harness_cli_calls") if isinstance(interaction.get("goal_harness_cli_calls"), dict) else {}
+    worker_cli_total = run.get("worker_goal_harness_cli_call_total")
+    if not isinstance(worker_cli_total, int) or isinstance(worker_cli_total, bool):
+        worker_cli_total = calls.get("total", 0)
+    if not isinstance(worker_cli_total, int) or isinstance(worker_cli_total, bool):
+        worker_cli_total = 0
+    observation = run.get("active_user_observation") if isinstance(run.get("active_user_observation"), dict) else {}
+    worker_file_count = run.get("worker_benchmark_run_schema_ok_count")
+    if not isinstance(worker_file_count, int) or isinstance(worker_file_count, bool):
+        worker_file_count = 0
+    present = bool(
+        worker_cli_total > 0
+        or worker_file_count > 0
+        or observation.get("observed_after_worker_start")
+        or observation.get("worker_observation_proof")
+    )
+    return {
+        "worker_goal_harness_cli_call_total": worker_cli_total,
+        "worker_benchmark_run_schema_ok_count": worker_file_count,
+        "active_user_observed_after_worker_start": bool(
+            observation.get("observed_after_worker_start")
+            or observation.get("worker_observation_proof")
+        ),
+        "present": present,
+    }
+
+
+def _claim_review_failure_labels(run: dict[str, Any]) -> list[str]:
+    labels = run.get("failure_attribution_labels")
+    if not isinstance(labels, list):
+        return []
+    return [
+        str(label)
+        for label in labels
+        if isinstance(label, (str, int, float)) and not isinstance(label, bool)
+    ][:8]
+
+
+def _claim_review_score_failure_attribution(run: dict[str, Any]) -> str:
+    value = run.get("score_failure_attribution")
+    return str(value).strip() if isinstance(value, str) and value.strip() else "none"
+
+
+def _claim_review_pick_runs(
+    runs: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    baseline: dict[str, Any] | None = None
+    treatment: dict[str, Any] | None = None
+    for run in runs:
+        mode = _claim_review_run_mode(run)
+        job_name = str(run.get("job_name") or "").lower().replace("_", "-")
+        if baseline is None and (
+            "hardened-codex" in mode
+            or "bare-codex" in mode
+            or run.get("hardened_install_baseline") is True
+        ):
+            baseline = run
+        if treatment is None and (
+            "codex-goal-harness" in mode
+            or "codex-goal-harness" in job_name
+            or _claim_review_worker_evidence(run)["present"]
+        ):
+            treatment = run
+    if baseline is None and runs:
+        baseline = runs[0]
+    if treatment is None and len(runs) > 1:
+        treatment = runs[1]
+    return baseline, treatment
+
+
+def build_benchmark_claim_review(
+    benchmark_comparison: dict[str, Any],
+    *,
+    benchmark_runs: Iterable[dict[str, Any]] = (),
+) -> dict[str, Any]:
+    """Review compact benchmark evidence without reading raw artifacts."""
+
+    runs = [run for run in benchmark_runs if isinstance(run, dict)]
+    baseline, treatment = _claim_review_pick_runs(runs)
+    official_delta = _claim_review_numeric(
+        benchmark_comparison.get("official_task_score_delta")
+    )
+    if official_delta is None and baseline and treatment:
+        baseline_score = _claim_review_run_score(baseline)
+        treatment_score = _claim_review_run_score(treatment)
+        if baseline_score is not None and treatment_score is not None:
+            official_delta = treatment_score - baseline_score
+
+    treatment_evidence = _claim_review_worker_evidence(treatment) if treatment else {"present": False}
+    baseline_labels = _claim_review_failure_labels(baseline or {})
+    baseline_attribution = _claim_review_score_failure_attribution(baseline or {})
+    attribution_caveat = baseline_attribution in {
+        "verifier_platform_probe_failure",
+        "verifier_infrastructure_failure",
+        "verifier_dependency_install_failure",
+    } or any(label.startswith("verifier_") for label in baseline_labels)
+    boundary_mismatch_count = sum(
+        int(run.get("worker_submit_eligible_mismatch_count") or 0)
+        for run in runs
+        if isinstance(run.get("worker_submit_eligible_mismatch_count"), int)
+        and not isinstance(run.get("worker_submit_eligible_mismatch_count"), bool)
+    )
+
+    blockers: list[str] = []
+    if official_delta is None:
+        blockers.append("missing_official_task_score_delta")
+    elif official_delta <= 0:
+        blockers.append("no_positive_official_task_score_delta")
+    if official_delta is not None and official_delta > 0 and not treatment_evidence.get("present"):
+        blockers.append("missing_treatment_worker_goal_harness_evidence")
+    if official_delta is not None and official_delta > 0 and attribution_caveat:
+        blockers.append("baseline_failure_attribution_caveat")
+    if boundary_mismatch_count:
+        blockers.append("worker_submit_eligible_boundary_mismatch")
+
+    positive_delta = official_delta is not None and official_delta > 0
+    assisted_evidence = bool(treatment_evidence.get("present"))
+    clean_validation = positive_delta and assisted_evidence and not blockers
+    candidate_validation = positive_delta and assisted_evidence
+    if clean_validation:
+        claim_strength = "strong_goal_harness_assisted_score_recovery"
+    elif candidate_validation:
+        claim_strength = "candidate_score_recovery_needs_attribution_review"
+    elif positive_delta:
+        claim_strength = "score_delta_without_assisted_worker_evidence"
+    elif assisted_evidence:
+        claim_strength = "loop_validation_no_score_uplift"
+    else:
+        claim_strength = "no_validation_enhancement"
+
+    if "baseline_failure_attribution_caveat" in blockers:
+        next_action = (
+            "run a same-protocol reliability repeat or add finer compact "
+            "verifier-side attribution before making a clean score-recovery claim"
+        )
+    elif "missing_treatment_worker_goal_harness_evidence" in blockers:
+        next_action = "collect compact worker-visible Goal Harness evidence before claiming assisted recovery"
+    elif "worker_submit_eligible_boundary_mismatch" in blockers:
+        next_action = "normalize the compact worker submit boundary before public claim review"
+    elif clean_validation:
+        next_action = "record as clean compact score-recovery evidence while preserving no-leaderboard claim boundary"
+    else:
+        next_action = "treat as loop/attribution evidence and seek a stronger paired sample"
+
+    claim_boundary = benchmark_comparison.get("claim_boundary") if isinstance(benchmark_comparison.get("claim_boundary"), dict) else {}
+    return {
+        "schema_version": BENCHMARK_CLAIM_REVIEW_SCHEMA_VERSION,
+        "input_schema_versions": {
+            "benchmark_comparison": benchmark_comparison.get("schema_version"),
+            "benchmark_runs": [
+                run.get("schema_version") for run in runs if run.get("schema_version")
+            ],
+        },
+        "task_id": benchmark_comparison.get("task_id"),
+        "comparison_id": benchmark_comparison.get("comparison_id"),
+        "official_task_score_delta": official_delta,
+        "control_plane_score_delta": benchmark_comparison.get("control_plane_score_delta"),
+        "treatment_worker_evidence": treatment_evidence,
+        "baseline_score_failure_attribution": baseline_attribution,
+        "baseline_failure_attribution_labels": baseline_labels,
+        "boundary_mismatch_count": boundary_mismatch_count,
+        "claim_boundary": {
+            "leaderboard_claim_allowed": bool(claim_boundary.get("leaderboard_claim_allowed")),
+            "official_score_uplift_claim_allowed": bool(claim_boundary.get("official_score_uplift_claim_allowed")),
+            "assisted_collaboration_claim_allowed": bool(claim_boundary.get("assisted_collaboration_claim_allowed")),
+            "raw_trace_excluded": claim_boundary.get("raw_trace_excluded") is not False,
+        },
+        "decision": {
+            "claim_strength": claim_strength,
+            "validation_enhancement_candidate": candidate_validation,
+            "clean_validation_enhancement": clean_validation,
+            "blockers": blockers,
+            "next_action": next_action,
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "raw_artifacts_read": False,
+            "task_text_read": False,
+            "local_paths_recorded": False,
         },
     }
 
