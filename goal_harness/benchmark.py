@@ -183,9 +183,15 @@ TERMINAL_BENCH_CODEX_WORKER_CLI_BRIDGE_SURFACE = (
 )
 AGENTS_LAST_EXAM_BENCHMARK_ID = "agents-last-exam"
 AGENTS_LAST_EXAM_RESULT_INGEST_POLICY_VERSION = "ale-result-ingest-contract-v0"
+AGENTS_LAST_EXAM_LOCAL_PREFLIGHT_SCHEMA_VERSION = (
+    "agents_last_exam_local_preflight_v0"
+)
 AGENTS_LAST_EXAM_TRACE_PUBLICNESS = (
     "compact_public_safe_no_task_body_no_trajectory_no_output"
 )
+AGENTS_LAST_EXAM_DEFAULT_DOCKER_IMAGE = "agentslastexam/ale-kasm:latest"
+AGENTS_LAST_EXAM_DEFAULT_ALT_DOCKER_IMAGE = "ale-ubuntu22-docker:latest"
+AGENTS_LAST_EXAM_DEFAULT_SNAPSHOT = "cpu-free-ubuntu"
 AGENTS_LAST_EXAM_RAW_SURFACES_EXCLUDED = (
     "trajectory.json",
     "origin_log",
@@ -1552,6 +1558,226 @@ def _agents_last_exam_nested(source: dict[str, Any], field: str) -> Any:
         return value
     meta = source.get("meta") if isinstance(source.get("meta"), dict) else {}
     return meta.get(field)
+
+
+def _agents_last_exam_docker_image_metadata(image_ref: str) -> dict[str, Any]:
+    """Inspect local Docker image metadata without starting a container."""
+
+    if not shutil.which("docker"):
+        return {
+            "image_ref": image_ref,
+            "present": False,
+            "probe_available": False,
+            "first_blocker": "docker_cli_missing",
+        }
+    try:
+        result = subprocess.run(
+            ["docker", "image", "inspect", image_ref, "--format", "{{json .}}"],
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=20,
+        )
+    except Exception:
+        return {
+            "image_ref": image_ref,
+            "present": False,
+            "probe_available": False,
+            "first_blocker": "docker_image_inspect_failed",
+        }
+    if result.returncode != 0 or not result.stdout.strip():
+        return {
+            "image_ref": image_ref,
+            "present": False,
+            "probe_available": True,
+            "first_blocker": "docker_image_missing",
+        }
+    try:
+        raw = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {
+            "image_ref": image_ref,
+            "present": False,
+            "probe_available": True,
+            "first_blocker": "docker_image_inspect_not_json",
+        }
+    repo_digests = raw.get("RepoDigests") if isinstance(raw.get("RepoDigests"), list) else []
+    metadata = raw.get("Metadata") if isinstance(raw.get("Metadata"), dict) else {}
+    return {
+        "image_ref": image_ref,
+        "present": True,
+        "probe_available": True,
+        "id": _agents_last_exam_public_id(raw.get("Id"), limit=160),
+        "digest": _agents_last_exam_public_id(
+            next((item for item in repo_digests if isinstance(item, str)), None),
+            limit=180,
+        ),
+        "architecture": _agents_last_exam_public_id(raw.get("Architecture"), limit=40),
+        "os": _agents_last_exam_public_id(raw.get("Os"), limit=40),
+        "size_bytes": int(raw.get("Size"))
+        if isinstance(raw.get("Size"), int) and not isinstance(raw.get("Size"), bool)
+        else None,
+        "created": _agents_last_exam_public_id(raw.get("Created"), limit=80),
+        "last_tag_time": _agents_last_exam_public_id(
+            metadata.get("LastTagTime"),
+            limit=80,
+        ),
+        "first_blocker": None,
+    }
+
+
+def _agents_last_exam_public_image_metadata(
+    metadata: dict[str, Any],
+    *,
+    fallback_image_ref: str,
+) -> dict[str, Any]:
+    """Reduce Docker image metadata to compact public-safe fields."""
+
+    image_ref = metadata.get("image_ref") or fallback_image_ref
+    reduced: dict[str, Any] = {
+        "image_ref": _agents_last_exam_public_id(image_ref, limit=180)
+        or "image_ref_unavailable",
+        "present": metadata.get("present") is True,
+        "probe_available": metadata.get("probe_available") is True,
+        "first_blocker": _agents_last_exam_public_id(
+            metadata.get("first_blocker"),
+            limit=80,
+        ),
+    }
+    for field, limit in (
+        ("id", 160),
+        ("digest", 180),
+        ("architecture", 40),
+        ("os", 40),
+        ("created", 80),
+        ("last_tag_time", 80),
+    ):
+        value = _agents_last_exam_public_id(metadata.get(field), limit=limit)
+        if value:
+            reduced[field] = value
+    size_bytes = metadata.get("size_bytes")
+    if isinstance(size_bytes, int) and not isinstance(size_bytes, bool):
+        reduced["size_bytes"] = size_bytes
+    return reduced
+
+
+def _agents_last_exam_disk_headroom() -> dict[str, Any]:
+    usage = shutil.disk_usage(Path.cwd())
+    free_gib = usage.free / (1024**3)
+    total_gib = usage.total / (1024**3)
+    used_pct = (usage.used / usage.total * 100.0) if usage.total else 0.0
+    return {
+        "free_gib": round(free_gib, 2),
+        "total_gib": round(total_gib, 2),
+        "used_percent": round(used_pct, 2),
+        "path_recorded": False,
+    }
+
+
+def build_agents_last_exam_local_preflight(
+    *,
+    selected_task_id: str | None = None,
+    snapshot: str = AGENTS_LAST_EXAM_DEFAULT_SNAPSHOT,
+    provider_kind: str = "docker",
+    image_ref: str = AGENTS_LAST_EXAM_DEFAULT_DOCKER_IMAGE,
+    alternate_image_ref: str = AGENTS_LAST_EXAM_DEFAULT_ALT_DOCKER_IMAGE,
+    image_metadata: dict[str, Any] | None = None,
+    alternate_image_metadata: dict[str, Any] | None = None,
+    disk_headroom: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a local ALE adapter preflight without task/body/run execution."""
+
+    task_label = (
+        _agents_last_exam_public_id(selected_task_id, limit=160)
+        or "metadata_only_candidate"
+    )
+    primary_raw = (
+        image_metadata
+        if isinstance(image_metadata, dict)
+        else _agents_last_exam_docker_image_metadata(image_ref)
+    )
+    alternate_raw = (
+        alternate_image_metadata
+        if isinstance(alternate_image_metadata, dict)
+        else _agents_last_exam_docker_image_metadata(alternate_image_ref)
+    )
+    primary = _agents_last_exam_public_image_metadata(
+        primary_raw,
+        fallback_image_ref=image_ref,
+    )
+    alternate = _agents_last_exam_public_image_metadata(
+        alternate_raw,
+        fallback_image_ref=alternate_image_ref,
+    )
+    disk = (
+        disk_headroom
+        if isinstance(disk_headroom, dict)
+        else _agents_last_exam_disk_headroom()
+    )
+    no_cloud = provider_kind == "docker"
+    no_upload = True
+    required_image_present = primary.get("present") is True
+    ready = bool(no_cloud and no_upload and required_image_present)
+    if not no_cloud:
+        first_blocker = "provider_is_not_local_docker"
+    elif not primary.get("probe_available", True):
+        first_blocker = primary.get("first_blocker") or "docker_probe_unavailable"
+    elif not required_image_present:
+        first_blocker = primary.get("first_blocker") or "required_docker_image_missing"
+    else:
+        first_blocker = "ready_for_local_no_upload_preflight"
+
+    return {
+        "schema_version": AGENTS_LAST_EXAM_LOCAL_PREFLIGHT_SCHEMA_VERSION,
+        "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
+        "task_id": task_label,
+        "snapshot": _agents_last_exam_public_id(snapshot, limit=80)
+        or AGENTS_LAST_EXAM_DEFAULT_SNAPSHOT,
+        "provider": {
+            "kind": provider_kind,
+            "no_cloud": no_cloud,
+            "required_image": primary,
+            "alternate_image": alternate,
+        },
+        "disk_headroom": disk,
+        "ready": ready,
+        "first_blocker": first_blocker,
+        "boundary": {
+            "local_only": True,
+            "no_cloud": no_cloud,
+            "no_upload": no_upload,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+            "container_started": False,
+            "task_body_read": False,
+            "model_api_invoked": False,
+            "raw_trajectory_read": False,
+            "screenshot_captured": False,
+            "credential_values_recorded": False,
+            "local_paths_recorded": False,
+        },
+        "decision": {
+            "next_allowed_action": "run_no_upload_adapter_dry_run"
+            if ready
+            else "repair_preflight_blocker_before_ale_run",
+            "minimum_next_evidence": (
+                "A no-cloud/no-upload ALE adapter dry-run that confirms local "
+                "Docker provider selection and compact ingest boundaries."
+            ),
+            "must_not_claim": [
+                "ALE task success",
+                "ALE score uplift",
+                "leaderboard evidence",
+                "Goal Harness treatment advantage",
+            ],
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "task_text_read": False,
+            "raw_artifacts_read": False,
+            "local_paths_recorded": False,
+        },
+    }
 
 
 def build_agents_last_exam_result_benchmark_report(
