@@ -35,6 +35,7 @@ from .benchmark import (
     build_agents_last_exam_local_launch_packet,
     build_benchmark_claim_review,
     build_benchmark_learning_ledger,
+    build_benchmark_lifecycle_state,
     build_benchmark_verifier_attribution_review,
     build_terminal_bench_benchmark_run,
     build_terminal_bench_harbor_result_benchmark_run,
@@ -467,6 +468,31 @@ def render_benchmark_learning_ledger_markdown(payload: dict[str, object]) -> str
         f"- Raw artifacts read: `{read_boundary.get('raw_artifacts_read')}`",
     ]
     return "\n".join(lines) + "\n"
+
+
+def render_benchmark_lifecycle_state_markdown(payload: dict[str, object]) -> str:
+    gates = payload.get("gates") if isinstance(payload.get("gates"), dict) else {}
+    read_boundary = (
+        payload.get("read_boundary")
+        if isinstance(payload.get("read_boundary"), dict)
+        else {}
+    )
+    return "\n".join(
+        [
+            "# Benchmark Lifecycle State",
+            "",
+            f"- Schema: `{payload.get('schema_version')}`",
+            f"- Current phase: `{payload.get('current_phase')}`",
+            f"- First blocker: `{payload.get('first_blocker')}`",
+            f"- Next transition: `{payload.get('next_required_transition')}`",
+            f"- Launch state countable: `{gates.get('launch_state_countable')}`",
+            f"- Compact ingest allowed: `{gates.get('compact_result_ingest_allowed')}`",
+            f"- Budget count allowed: `{gates.get('budget_count_allowed')}`",
+            f"- New candidate allowed: `{gates.get('new_candidate_allowed')}`",
+            f"- Compact only: `{read_boundary.get('compact_only')}`",
+            f"- Raw artifacts read: `{read_boundary.get('raw_artifacts_read')}`",
+        ]
+    ) + "\n"
 
 
 def render_benchmark_verifier_attribution_review_markdown(
@@ -1943,6 +1969,50 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
 
+    benchmark_lifecycle_state_parser = benchmark_sub.add_parser(
+        "lifecycle-state",
+        help=(
+            "Reduce compact benchmark preflight/launch/materialization/result/"
+            "comparison/ledger JSON into an explicit lifecycle state without "
+            "opening raw task text, logs, traces, job directories, Docker, model "
+            "APIs, or uploads."
+        ),
+    )
+    add_subcommand_format(benchmark_lifecycle_state_parser)
+    benchmark_lifecycle_state_parser.add_argument(
+        "--preflight-json",
+        help="Path to compact benchmark preflight JSON.",
+    )
+    benchmark_lifecycle_state_parser.add_argument(
+        "--launch-json",
+        help="Path to compact launch summary JSON.",
+    )
+    benchmark_lifecycle_state_parser.add_argument(
+        "--post-launch-json",
+        help="Path to compact post-launch materialization JSON.",
+    )
+    benchmark_lifecycle_state_parser.add_argument(
+        "--benchmark-run-json",
+        help="Path to compact benchmark_run_v0 JSON.",
+    )
+    benchmark_lifecycle_state_parser.add_argument(
+        "--benchmark-comparison-json",
+        help="Path to compact benchmark_comparison_v0 JSON.",
+    )
+    benchmark_lifecycle_state_parser.add_argument(
+        "--claim-review-json",
+        help="Path to compact benchmark_claim_review_v0 JSON.",
+    )
+    benchmark_lifecycle_state_parser.add_argument(
+        "--benchmark-learning-ledger-json",
+        help="Path to compact benchmark_learning_ledger_v0 JSON.",
+    )
+    benchmark_lifecycle_state_parser.add_argument(
+        "--require-budget-count-allowed",
+        action="store_true",
+        help="Return non-zero unless the lifecycle state allows budget counting.",
+    )
+
     benchmark_verifier_attribution_parser = benchmark_sub.add_parser(
         "review-verifier-attribution",
         help=(
@@ -3184,6 +3254,99 @@ def main(argv: list[str] | None = None) -> int:
                 payload,
                 output_format(args),
                 render_benchmark_learning_ledger_markdown,
+            )
+            return 0 if payload.get("ok") else 1
+        if args.benchmark_command == "lifecycle-state":
+            def read_optional_json(path_text: str | None) -> dict[str, object] | None:
+                if not path_text:
+                    return None
+                payload = json.loads(Path(path_text).expanduser().read_text(encoding="utf-8"))
+                if not isinstance(payload, dict):
+                    raise ValueError("lifecycle input JSON must contain an object")
+                return payload
+
+            try:
+                preflight = read_optional_json(args.preflight_json)
+                launch = read_optional_json(args.launch_json)
+                post_launch = read_optional_json(args.post_launch_json)
+
+                benchmark_run = None
+                run_input = read_optional_json(args.benchmark_run_json)
+                if run_input is not None:
+                    benchmark_run = compact_benchmark_run(run_input)
+                    if not benchmark_run:
+                        raise ValueError(
+                            "--benchmark-run-json did not contain a compactable benchmark_run_v0 object"
+                        )
+
+                benchmark_comparison = None
+                comparison_input = read_optional_json(args.benchmark_comparison_json)
+                if comparison_input is not None:
+                    benchmark_comparison = compact_benchmark_comparison(comparison_input)
+                    if not benchmark_comparison:
+                        raise ValueError(
+                            "--benchmark-comparison-json did not contain a compactable benchmark_comparison_v0 object"
+                        )
+
+                claim_review = read_optional_json(args.claim_review_json)
+                if (
+                    claim_review is not None
+                    and claim_review.get("schema_version") != "benchmark_claim_review_v0"
+                ):
+                    raise ValueError("--claim-review-json must contain benchmark_claim_review_v0")
+
+                learning_ledger = None
+                ledger_input = read_optional_json(args.benchmark_learning_ledger_json)
+                if ledger_input is not None:
+                    learning_ledger = compact_benchmark_learning_ledger(ledger_input)
+                    if not learning_ledger:
+                        raise ValueError(
+                            "--benchmark-learning-ledger-json did not contain a compactable benchmark_learning_ledger_v0 object"
+                        )
+
+                payload = build_benchmark_lifecycle_state(
+                    preflight=preflight,
+                    launch=launch,
+                    post_launch_materialization=post_launch,
+                    benchmark_run=benchmark_run,
+                    benchmark_comparison=benchmark_comparison,
+                    claim_review=claim_review,
+                    learning_ledger=learning_ledger,
+                )
+                payload["ok"] = True
+                gates = payload.get("gates") if isinstance(payload.get("gates"), dict) else {}
+                if (
+                    args.require_budget_count_allowed
+                    and gates.get("budget_count_allowed") is not True
+                ):
+                    payload["ok"] = False
+                    payload["error"] = (
+                        payload.get("first_blocker")
+                        or "benchmark_lifecycle_budget_count_not_allowed"
+                    )
+                payload["require_budget_count_allowed"] = bool(
+                    args.require_budget_count_allowed
+                )
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "schema_version": "benchmark_lifecycle_state_v0",
+                    "error": str(exc),
+                    "read_boundary": {
+                        "compact_only": True,
+                        "raw_artifacts_read": False,
+                        "task_text_read": False,
+                        "trajectory_read": False,
+                        "local_paths_recorded": False,
+                        "docker_invoked": False,
+                        "model_api_invoked": False,
+                        "upload_invoked": False,
+                    },
+                }
+            print_payload(
+                payload,
+                output_format(args),
+                render_benchmark_lifecycle_state_markdown,
             )
             return 0 if payload.get("ok") else 1
         if args.benchmark_command == "review-verifier-attribution":

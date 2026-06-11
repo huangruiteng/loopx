@@ -47,6 +47,7 @@ TERMINAL_BENCH_DEFAULT_TASK = "build-cython-ext"
 TERMINAL_BENCH_DEFAULT_MODEL = "gpt-5.5"
 BENCHMARK_CLAIM_REVIEW_SCHEMA_VERSION = "benchmark_claim_review_v0"
 BENCHMARK_LEARNING_LEDGER_SCHEMA_VERSION = "benchmark_learning_ledger_v0"
+BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION = "benchmark_lifecycle_state_v0"
 BENCHMARK_VERIFIER_ATTRIBUTION_REVIEW_SCHEMA_VERSION = (
     "benchmark_verifier_attribution_review_v0"
 )
@@ -933,6 +934,187 @@ def _verifier_attribution_run_review(run: dict[str, Any]) -> dict[str, Any]:
         "verifier_caveat": verifier_caveat,
         "claim_caveat_resolved": caveat_resolved,
         "next_action": next_action,
+    }
+
+
+def _benchmark_lifecycle_schema(value: dict[str, Any] | None) -> str:
+    if not isinstance(value, dict):
+        return ""
+    return str(value.get("schema_version") or "")
+
+
+def _benchmark_lifecycle_ready_preflight(value: dict[str, Any] | None) -> bool:
+    if not isinstance(value, dict) or not value:
+        return False
+    if value.get("ready") is True:
+        return True
+    if value.get("ok") is True and str(value.get("first_blocker") or "").startswith("ready"):
+        return True
+    return str(value.get("first_blocker") or "") in {
+        "ready_for_private_managed_no_upload_pilot_review",
+        "ready_for_operator_triggered_no_upload_ale_dry_run",
+    }
+
+
+def _benchmark_lifecycle_launched(value: dict[str, Any] | None) -> bool:
+    if not isinstance(value, dict) or not value:
+        return False
+    for field in ("process_started", "launched", "started", "pid"):
+        if value.get(field):
+            return True
+    return False
+
+
+def _benchmark_lifecycle_budget_count_allowed(
+    learning_ledger: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(learning_ledger, dict):
+        return False
+    lifecycle_gate = (
+        learning_ledger.get("lifecycle_gate")
+        if isinstance(learning_ledger.get("lifecycle_gate"), dict)
+        else {}
+    )
+    return lifecycle_gate.get("budget_count_allowed") is True
+
+
+def build_benchmark_lifecycle_state(
+    *,
+    preflight: dict[str, Any] | None = None,
+    launch: dict[str, Any] | None = None,
+    post_launch_materialization: dict[str, Any] | None = None,
+    benchmark_run: dict[str, Any] | None = None,
+    benchmark_comparison: dict[str, Any] | None = None,
+    claim_review: dict[str, Any] | None = None,
+    learning_ledger: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Reduce compact benchmark evidence into an explicit lifecycle state."""
+
+    preflight_ready = _benchmark_lifecycle_ready_preflight(preflight)
+    process_launched = _benchmark_lifecycle_launched(launch)
+    materialized = (
+        isinstance(post_launch_materialization, dict)
+        and post_launch_materialization.get("ready_for_launch_state") is True
+    )
+    compact_ready = (
+        isinstance(post_launch_materialization, dict)
+        and post_launch_materialization.get("ready_for_compact_result_ingest") is True
+    ) or _benchmark_lifecycle_schema(benchmark_run) == "benchmark_run_v0"
+    result_ingested = _benchmark_lifecycle_schema(benchmark_run) == "benchmark_run_v0"
+    paired_compared = (
+        _benchmark_lifecycle_schema(benchmark_comparison)
+        == "benchmark_comparison_v0"
+    )
+    claim_reviewed = (
+        _benchmark_lifecycle_schema(claim_review)
+        == BENCHMARK_CLAIM_REVIEW_SCHEMA_VERSION
+    )
+    learning_ledgered = (
+        _benchmark_lifecycle_schema(learning_ledger)
+        == BENCHMARK_LEARNING_LEDGER_SCHEMA_VERSION
+    )
+    budget_count_allowed = _benchmark_lifecycle_budget_count_allowed(learning_ledger)
+
+    transitions = [
+        ("preflight_ready", preflight_ready),
+        ("launched_process", process_launched),
+        ("post_launch_materialized", materialized),
+        ("compact_result_ready", compact_ready),
+        ("result_ingested", result_ingested),
+        ("paired_compared", paired_compared),
+        ("claim_reviewed", claim_reviewed),
+        ("learning_ledgered", learning_ledgered),
+        ("budget_counted", budget_count_allowed),
+    ]
+    achieved = [name for name, ready in transitions if ready]
+    current_phase = achieved[-1] if achieved else "not_started"
+
+    first_blocker = "ready_for_budget_count" if budget_count_allowed else ""
+    if not preflight_ready:
+        first_blocker = "preflight_not_ready"
+    elif process_launched and not materialized:
+        first_blocker = "post_launch_materialization_missing"
+    elif materialized and not compact_ready:
+        first_blocker = "compact_result_not_ready"
+    elif compact_ready and not result_ingested:
+        first_blocker = "compact_result_not_ingested"
+    elif result_ingested and not paired_compared:
+        first_blocker = "paired_comparison_missing"
+    elif paired_compared and not claim_reviewed:
+        first_blocker = "claim_review_missing"
+    elif claim_reviewed and not learning_ledgered:
+        first_blocker = "benchmark_learning_ledger_missing"
+    elif learning_ledgered and not budget_count_allowed:
+        first_blocker = "budget_count_blocked_by_learning_ledger"
+
+    next_required_transition = ""
+    for name, ready in transitions:
+        if not ready:
+            next_required_transition = name
+            break
+
+    routing = (
+        learning_ledger.get("routing")
+        if isinstance(learning_ledger, dict)
+        and isinstance(learning_ledger.get("routing"), dict)
+        else {}
+    )
+    learning_gate = (
+        learning_ledger.get("learning_quota_gate")
+        if isinstance(learning_ledger, dict)
+        and isinstance(learning_ledger.get("learning_quota_gate"), dict)
+        else {}
+    )
+    post_launch_blocker = (
+        str(post_launch_materialization.get("first_blocker") or "")
+        if isinstance(post_launch_materialization, dict)
+        else ""
+    )
+    return {
+        "schema_version": BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION,
+        "current_phase": current_phase,
+        "achieved_transitions": achieved,
+        "next_required_transition": next_required_transition,
+        "first_blocker": first_blocker,
+        "transition_ready": {name: ready for name, ready in transitions},
+        "gates": {
+            "launch_state_countable": materialized,
+            "compact_result_ingest_allowed": compact_ready,
+            "budget_count_allowed": budget_count_allowed,
+            "new_candidate_allowed": routing.get("new_candidate_allowed")
+            if isinstance(routing.get("new_candidate_allowed"), bool)
+            else False,
+            "repeat_allowed": routing.get("repeat_allowed")
+            if isinstance(routing.get("repeat_allowed"), bool)
+            else False,
+            "learning_spend_allowed": learning_gate.get("spend_allowed")
+            if isinstance(learning_gate.get("spend_allowed"), bool)
+            else False,
+        },
+        "inputs": {
+            "preflight_schema": _benchmark_lifecycle_schema(preflight),
+            "launch_present": isinstance(launch, dict) and bool(launch),
+            "post_launch_schema": _benchmark_lifecycle_schema(
+                post_launch_materialization
+            ),
+            "post_launch_first_blocker": post_launch_blocker,
+            "benchmark_run_schema": _benchmark_lifecycle_schema(benchmark_run),
+            "benchmark_comparison_schema": _benchmark_lifecycle_schema(
+                benchmark_comparison
+            ),
+            "claim_review_schema": _benchmark_lifecycle_schema(claim_review),
+            "learning_ledger_schema": _benchmark_lifecycle_schema(learning_ledger),
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "raw_artifacts_read": False,
+            "task_text_read": False,
+            "trajectory_read": False,
+            "local_paths_recorded": False,
+            "docker_invoked": False,
+            "model_api_invoked": False,
+            "upload_invoked": False,
+        },
     }
 
 
