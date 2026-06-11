@@ -5,10 +5,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
+import tempfile
 from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from goal_harness.benchmark import build_agents_last_exam_result_benchmark_report  # noqa: E402
+from goal_harness.status import (  # noqa: E402
+    benchmark_experiment_report_readiness_note,
+    compact_benchmark_experiment_report,
+)
+
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
 DOC = TOPIC_DIR / "agents-last-exam-triage-v0.md"
 README = TOPIC_DIR / "README.md"
@@ -41,6 +52,8 @@ FORBIDDEN_TEXT = [
     "raw" + "_thread",
     "session" + "_history",
     "sk-" + "example",
+    "SHOULD_NOT_APPEAR",
+    "private-output-marker",
 ]
 
 
@@ -110,10 +123,113 @@ def assert_triage_payload(payload: dict[str, Any]) -> None:
     assert_public_safe(payload)
 
 
+def write_synthetic_ale_run(root: Path) -> Path:
+    run_dir = root / "synthetic_ale_run"
+    (run_dir / "origin_log" / "codex").mkdir(parents=True)
+    (run_dir / "output").mkdir()
+    (run_dir / "run.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "run_id": "codex__openai-gpt-5-4__demo__hello__v0__20260611_000000",
+                "agent_id": "codex_goal_harness",
+                "model": "openai/gpt-5.4",
+                "task_path": "demo/hello",
+                "variant_index": 0,
+                "status": "completed",
+                "duration_s": 321.5,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "eval_result.json").write_text(
+        json.dumps(
+            {
+                "eval_status": "passed",
+                "score": 1.0,
+                "eval_duration_s": 12.25,
+                "error": None,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    events = [
+        {
+            "ts": "2026-06-11T00:00:00Z",
+            "type": "unit_started",
+            "data": {
+                "private_path": "/" + "Users/bytedance/private",
+                "task_prompt": "SHOULD_NOT_APPEAR",
+            },
+        },
+        {"ts": "2026-06-11T00:01:00Z", "type": "agent_finished", "data": {}},
+        {"ts": "2026-06-11T00:01:10Z", "type": "eval_finished", "data": {"score": 1.0}},
+    ]
+    (run_dir / "events.jsonl").write_text(
+        "\n".join(json.dumps(row, sort_keys=True) for row in events) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "trajectory.json").write_text(
+        json.dumps({"raw": "SHOULD_NOT_APPEAR"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "output" / "answer.txt").write_text(
+        "private-output-marker\n",
+        encoding="utf-8",
+    )
+    return run_dir
+
+
+def assert_ale_result_ingest_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="goal-harness-ale-ingest-") as tmp:
+        run_dir = write_synthetic_ale_run(Path(tmp))
+        report = build_agents_last_exam_result_benchmark_report(
+            run_dir,
+            report_id="agents-last-exam-synthetic-ingest-smoke",
+        )
+
+    assert report["schema_version"] == "benchmark_experiment_report_v0", report
+    identity = report["experiment_identity"]
+    assert identity["benchmark_id"] == BENCHMARK_ID, identity
+    assert identity["task_slice"] == "demo__hello", identity
+    official = report["official_score"]
+    assert official["kind"] == "ale_eval_result", official
+    assert official["native_score"] == 1.0, official
+    assert official["submit_eligible"] is False, official
+    assert official["leaderboard_evidence"] is False, official
+    artifacts = report["reproducibility_artifacts"]
+    assert artifacts["run_json_present"] is True, artifacts
+    assert artifacts["eval_result_json_present"] is True, artifacts
+    assert artifacts["events_jsonl_present"] is True, artifacts
+    assert artifacts["raw_surface_content_recorded"] is False, artifacts
+    assert artifacts["local_paths_recorded"] is False, artifacts
+    assert artifacts["event_type_counts"]["unit_started"] == 1, artifacts
+    assert "single_arm_no_delta" in report["negative_results"]["negative_evidence_layers"], report
+
+    compact = compact_benchmark_experiment_report(report)
+    assert compact is not None, report
+    assert compact["experiment_identity"]["benchmark_id"] == BENCHMARK_ID, compact
+    assert compact["official_score"]["kind"] == "ale_eval_result", compact
+    note = benchmark_experiment_report_readiness_note(compact)
+    assert note is not None, compact
+    assert note["next_run_authorization"] == "fixture_only", note
+    assert note["leaderboard_evidence"] is False, note
+    assert_public_safe(report)
+    assert_public_safe(compact)
+    assert_public_safe(note)
+
+
 def main() -> None:
     assert_doc_contract()
     payload = triage_payload()
     assert_triage_payload(payload)
+    assert_ale_result_ingest_contract()
     print(
         "agents-last-exam-triage-smoke ok "
         f"benchmark={payload['benchmark_id']} "
