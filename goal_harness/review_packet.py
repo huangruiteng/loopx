@@ -14,6 +14,20 @@ from .handoff_budget import build_handoff_interface_budget
 
 
 BENCHMARK_REPORT_CHAIN_MAP_DOC = "benchmark-report-chain-map-v0.md"
+HANDOFF_TODO_PRIORITY_PATTERN = re.compile(r"^\s*\[(P[0-4])", re.IGNORECASE)
+HANDOFF_MONITOR_TASK_CLASSES = {"continuous_monitor", "monitor"}
+HANDOFF_ADVANCEMENT_TASK_CLASSES = {"advancement_task", "execution_task", "delivery_task"}
+HANDOFF_MONITOR_MARKERS = (
+    "monitor",
+    "observation",
+    "readiness",
+    "watch",
+    "poll",
+    "dependency monitor",
+    "观察",
+    "监控",
+    "等待",
+)
 
 LOCAL_ABSOLUTE_PATH_PATTERN = re.compile(
     r"(^|[\s`'\"=:(])(?:/[A-Za-z0-9._-]+(?:/[^\s`'\",)]+)+|[A-Za-z]:[\\/][^\s`'\",)]+)"
@@ -275,21 +289,56 @@ def stale_latest_run_packet_lines(warning: dict[str, Any] | None) -> list[str]:
     return [redact_local_absolute_paths(line) for line in lines]
 
 
-def open_todo_texts(todos: Any, *, limit: int = 3) -> list[str]:
+def handoff_todo_priority_rank(text: str) -> int:
+    match = HANDOFF_TODO_PRIORITY_PATTERN.match(text)
+    if not match:
+        return 50
+    return int(match.group(1)[1])
+
+
+def handoff_todo_task_rank(item: dict[str, Any], text: str) -> int:
+    task_class = str(item.get("task_class") or "").strip().lower()
+    if task_class in HANDOFF_ADVANCEMENT_TASK_CLASSES:
+        return 0
+    if task_class in HANDOFF_MONITOR_TASK_CLASSES:
+        return 1
+    lowered = text.lower()
+    if any(marker in lowered for marker in HANDOFF_MONITOR_MARKERS):
+        return 1
+    return 0
+
+
+def handoff_todo_rank(item: dict[str, Any], text: str, ordinal: int) -> tuple[int, int, int]:
+    index = item.get("index")
+    stable_index = index if isinstance(index, int) else ordinal
+    return (
+        handoff_todo_task_rank(item, text),
+        handoff_todo_priority_rank(text),
+        stable_index,
+    )
+
+
+def open_todo_texts(todos: Any, *, limit: int = 3, rank_for_handoff: bool = False) -> list[str]:
     if not isinstance(todos, dict):
         return []
     items = todos.get("items") if isinstance(todos.get("items"), list) else []
     if not items and isinstance(todos.get("first_open_items"), list):
         items = todos.get("first_open_items") or []
     result: list[str] = []
-    for item in items:
+    ranked_result: list[tuple[tuple[int, int, int], str]] = []
+    for ordinal, item in enumerate(items):
         if not isinstance(item, dict) or item.get("done"):
             continue
         text = str(item.get("text") or "").strip()
         if text:
+            if rank_for_handoff:
+                ranked_result.append((handoff_todo_rank(item, text, ordinal), compact_packet_text(text)))
+                continue
             result.append(compact_packet_text(text))
             if len(result) >= limit:
                 return result
+    if rank_for_handoff:
+        return [text for _, text in sorted(ranked_result, key=lambda ranked: ranked[0])[:limit]]
     return result
 
 
@@ -308,13 +357,14 @@ def todo_texts_from_project_asset(item: dict[str, Any] | None, key: str, *, limi
         return []
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     summary = project_asset.get(key) if isinstance(project_asset.get(key), dict) else {}
-    summary_items = open_todo_texts(summary, limit=limit)
+    rank_for_handoff = key == "agent_todos"
+    summary_items = open_todo_texts(summary, limit=limit, rank_for_handoff=rank_for_handoff)
     if summary_items:
         return summary_items
     next_text = str(summary.get("next") or "").strip()
     if next_text:
         return [compact_packet_text(next_text)]
-    return open_todo_texts(item.get(key), limit=limit)
+    return open_todo_texts(item.get(key), limit=limit, rank_for_handoff=rank_for_handoff)
 
 
 def project_asset_source(item: dict[str, Any] | None) -> str:

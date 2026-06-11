@@ -393,6 +393,86 @@ def assert_attention_queue_drives_approved_handoff_over_stale_history() -> None:
     assert "不 spend" in small_packet, small_packet
 
 
+def assert_project_agent_handoff_prioritizes_advancement_todos() -> None:
+    goal_id = "goal-harness-meta"
+    status_payload = {
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "status": "benchmark_handoff_projection_compacted",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "recommended_action": "Continue the benchmark evidence lane.",
+                    "agent_command": f"goal-harness --format json quota should-run --goal-id {goal_id}",
+                    "project_asset": {
+                        "owner": "codex",
+                        "gate": "none",
+                        "next_action": "Continue the benchmark evidence lane.",
+                        "stop_condition": "stop before private materials or uploads",
+                        "agent_todos": {
+                            "items": [
+                                {
+                                    "index": 4,
+                                    "task_class": "continuous_monitor",
+                                    "text": "[P2] Side-bypass dependency monitor: keep sibling controller visible.",
+                                },
+                                {
+                                    "index": 5,
+                                    "task_class": "continuous_monitor",
+                                    "text": "[P2] Meta canary/readiness observation lane: watch automation health.",
+                                },
+                                {
+                                    "index": 6,
+                                    "task_class": "advancement_task",
+                                    "text": "[P1] Benchmark e2e-first evidence lane: repeat db-wal-recovery protocol.",
+                                },
+                            ],
+                        },
+                    },
+                    "source": "latest_run",
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": goal_id,
+                    "status": "benchmark_handoff_projection_compacted",
+                    "registry_member": True,
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+
+    payload = build_review_packet(status_payload, goal_id=goal_id)
+    handoff = payload["project_agent_handoff"]
+
+    assert payload["ok"] is True, payload
+    assert payload["agent_todo_text"].startswith("[P1] Benchmark e2e-first evidence lane"), payload
+    assert payload["agent_todo_items"][0].startswith("[P1] Benchmark e2e-first evidence lane"), payload
+    assert payload["agent_todo_items"][1].startswith("[P2] Side-bypass dependency monitor"), payload
+    assert "Agent 待办：[P1] Benchmark e2e-first evidence lane" in handoff, handoff
+    assert "Agent 待办候选 2：[P2] Side-bypass dependency monitor" in handoff, handoff
+    assert_order(
+        handoff,
+        [
+            "Agent 待办：[P1] Benchmark e2e-first evidence lane",
+            "Agent 待办候选 2：[P2] Side-bypass dependency monitor",
+            "Agent 待办候选 3：[P2] Meta canary/readiness observation lane",
+        ],
+    )
+    assert_project_agent_handoff_compact(
+        handoff,
+        "project-agent handoff advancement todo ranking",
+        goal_id=goal_id,
+    )
+    assert_handoff_interface_budget(payload, "project-agent handoff advancement todo ranking")
+
+
 def assert_connected_delivery_surface_loop_requires_macro_evidence() -> None:
     goal_id = "delivery-side-bypass"
     status_payload = {
@@ -892,6 +972,7 @@ def main() -> int:
 
     assert_status_data_contract_documents_handoff_budget()
     assert_attention_queue_drives_approved_handoff_over_stale_history()
+    assert_project_agent_handoff_prioritizes_advancement_todos()
     assert_connected_delivery_surface_loop_requires_macro_evidence()
     assert_focus_wait_owner_blocker_packet()
     assert_missing_project_asset_review_packet_fallback()
