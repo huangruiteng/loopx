@@ -20,6 +20,7 @@ DOCS = [
     "agentissue-bench-codex-cli-runner-synthetic-staging-v0.md",
     "agentissue-bench-codex-cli-runner-execution-gate-v0.md",
     "agentissue-bench-codex-cli-runner-first-run-handoff-v0.md",
+    "agentissue-bench-codex-cli-runner-workflow-check-v0.md",
     "agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md",
 ]
 
@@ -30,15 +31,17 @@ SMOKES = [
     "agentissue-bench-codex-cli-runner-synthetic-staging-smoke.py",
     "agentissue-bench-codex-cli-runner-execution-gate-smoke.py",
     "agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py",
+    "agentissue-bench-codex-cli-runner-workflow-check-smoke.py",
     "agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py",
 ]
 
 REQUIRED_PACKET_SNIPPETS = [
     "AgentIssue-Bench Codex CLI Runner PR-Ready Packet V0",
-    "contract -> flow plan -> dry-run wrapper -> synthetic staging -> execution gate -> first-run handoff -> PR-ready packet",
+    "contract -> flow plan -> dry-run wrapper -> synthetic staging -> execution gate -> first-run handoff -> workflow check -> PR-ready packet",
     "--synthetic-staging-root",
     "--execution-gate-root",
     "--first-run-handoff-root",
+    "--workflow-check-root",
     "real_run=false",
     "submit_eligible=false",
     "leaderboard_evidence=false",
@@ -49,10 +52,13 @@ REQUIRED_SOURCE_SNIPPETS = [
     "AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION",
     "AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION",
     "AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION",
+    "AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_SCHEMA_VERSION",
     "materialize_agentissue_codex_cli_runner_synthetic_staging",
     "materialize_agentissue_codex_cli_runner_execution_gate",
     "materialize_agentissue_codex_cli_runner_first_run_handoff",
+    "materialize_agentissue_codex_cli_runner_workflow_check",
     "--first-run-handoff-root",
+    "--workflow-check-root",
 ]
 
 FORBIDDEN_TEXT = [
@@ -121,7 +127,7 @@ def main() -> None:
     assert_public_boundary()
     print(
         "agentissue-bench-codex-cli-runner-pr-ready-packet-smoke ok "
-        "docs=7 smokes=7 real_run=False"
+        "docs=8 smokes=8 real_run=False"
     )
 
 

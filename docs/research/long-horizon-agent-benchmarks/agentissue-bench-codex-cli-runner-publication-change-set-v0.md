@@ -32,6 +32,7 @@ docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-dr
 docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-synthetic-staging-v0.md
 docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-execution-gate-v0.md
 docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-first-run-handoff-v0.md
+docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-workflow-check-v0.md
 docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md
 docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-publication-change-set-v0.md
 ```
@@ -45,6 +46,7 @@ examples/agentissue-bench-codex-cli-runner-dry-run-wrapper-smoke.py
 examples/agentissue-bench-codex-cli-runner-synthetic-staging-smoke.py
 examples/agentissue-bench-codex-cli-runner-execution-gate-smoke.py
 examples/agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py
+examples/agentissue-bench-codex-cli-runner-workflow-check-smoke.py
 examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py
 examples/agentissue-bench-codex-cli-runner-publication-change-set-smoke.py
 ```
@@ -77,18 +79,21 @@ AGENTISSUE_CODEX_CLI_RUNNER_WRAPPER_SCHEMA_VERSION
 AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION
 AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION
 AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION
+AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_SCHEMA_VERSION
 build_agentissue_codex_cli_runner_wrapper
 materialize_agentissue_codex_cli_runner_synthetic_staging
 materialize_agentissue_codex_cli_runner_execution_gate
 materialize_agentissue_codex_cli_runner_first_run_handoff
+materialize_agentissue_codex_cli_runner_workflow_check
 agentissue-codex-runner-flow
 --synthetic-staging-root
 --execution-gate-root
 --first-run-handoff-root
+--workflow-check-root
 read_boundary
 ```
 
-The README hunks that belong to this change set are the eight
+The README hunks that belong to this change set are the nine
 `agentissue-bench-codex-cli-runner-*` bullets. Earlier
 `agentissue-bench-lagent239-*` research packets are useful historical evidence,
 but they are not part of this runner-flow publication change set.
@@ -129,6 +134,7 @@ python3 examples/agentissue-bench-codex-cli-runner-dry-run-wrapper-smoke.py &&
 python3 examples/agentissue-bench-codex-cli-runner-synthetic-staging-smoke.py &&
 python3 examples/agentissue-bench-codex-cli-runner-execution-gate-smoke.py &&
 python3 examples/agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py &&
+python3 examples/agentissue-bench-codex-cli-runner-workflow-check-smoke.py &&
 python3 examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py &&
 python3 examples/agentissue-bench-codex-cli-runner-publication-change-set-smoke.py
 ```
@@ -146,6 +152,7 @@ python3 -m py_compile \
   examples/agentissue-bench-codex-cli-runner-synthetic-staging-smoke.py \
   examples/agentissue-bench-codex-cli-runner-execution-gate-smoke.py \
   examples/agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py \
+  examples/agentissue-bench-codex-cli-runner-workflow-check-smoke.py \
   examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py \
   examples/agentissue-bench-codex-cli-runner-publication-change-set-smoke.py
 
@@ -160,6 +167,7 @@ goal-harness check \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-synthetic-staging-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-execution-gate-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-first-run-handoff-v0.md \
+  --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-workflow-check-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-publication-change-set-v0.md
 ```

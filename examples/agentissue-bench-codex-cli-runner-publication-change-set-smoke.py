@@ -21,6 +21,7 @@ DOCS = [
     "agentissue-bench-codex-cli-runner-synthetic-staging-v0.md",
     "agentissue-bench-codex-cli-runner-execution-gate-v0.md",
     "agentissue-bench-codex-cli-runner-first-run-handoff-v0.md",
+    "agentissue-bench-codex-cli-runner-workflow-check-v0.md",
     "agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md",
     "agentissue-bench-codex-cli-runner-publication-change-set-v0.md",
 ]
@@ -32,6 +33,7 @@ SMOKES = [
     "agentissue-bench-codex-cli-runner-synthetic-staging-smoke.py",
     "agentissue-bench-codex-cli-runner-execution-gate-smoke.py",
     "agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py",
+    "agentissue-bench-codex-cli-runner-workflow-check-smoke.py",
     "agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py",
     "agentissue-bench-codex-cli-runner-publication-change-set-smoke.py",
 ]
@@ -49,14 +51,17 @@ REQUIRED_SOURCE_SNIPPETS = [
     "AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION",
     "AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION",
     "AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION",
+    "AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_SCHEMA_VERSION",
     "build_agentissue_codex_cli_runner_wrapper",
     "materialize_agentissue_codex_cli_runner_synthetic_staging",
     "materialize_agentissue_codex_cli_runner_execution_gate",
     "materialize_agentissue_codex_cli_runner_first_run_handoff",
+    "materialize_agentissue_codex_cli_runner_workflow_check",
     "agentissue-codex-runner-flow",
     "--synthetic-staging-root",
     "--execution-gate-root",
     "--first-run-handoff-root",
+    "--workflow-check-root",
     "read_boundary",
 ]
 
@@ -82,6 +87,7 @@ def git_diff_name_only() -> set[str] | None:
     for diff_args in (
         ["git", "diff", "--name-only", "--"],
         ["git", "diff", "--cached", "--name-only", "--"],
+        ["git", "diff", "--name-only", "origin/main", "--"],
     ):
         result = subprocess.run(
             diff_args + MIXED_TRACKED_FILES,
@@ -153,7 +159,7 @@ def main() -> None:
     assert_public_boundary()
     print(
         "agentissue-bench-codex-cli-runner-publication-change-set-smoke ok "
-        "docs=8 smokes=8 mixed_files=4 real_run=False"
+        "docs=9 smokes=9 mixed_files=4 real_run=False"
     )
 
 

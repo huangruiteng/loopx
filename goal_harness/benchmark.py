@@ -216,6 +216,12 @@ AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION = (
 AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_MODE = (
     "agentissue_codex_cli_runner_first_run_handoff_packet"
 )
+AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_workflow_check_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_MODE = (
+    "agentissue_codex_cli_runner_workflow_check_packet"
+)
 AGENTISSUE_CODEX_CLI_RUNNER_SOURCE_RUNNER = (
     "goal_harness_agentissue_codex_cli_runner"
 )
@@ -1202,6 +1208,191 @@ def materialize_agentissue_codex_cli_runner_first_run_handoff(
         "recommended_next_action": (
             "use the no-execute first-run handoff packet as the checklist for a "
             "later operator-triggered AgentIssue-Bench lagent_239 e2e run"
+        ),
+    }
+
+
+def materialize_agentissue_codex_cli_runner_workflow_check(
+    workflow_check_root: str | Path,
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Create a no-execute workflow check packet for AgentIssue lagent_239."""
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner workflow check currently only supports selected tag lagent_239"
+        )
+    root = Path(workflow_check_root).expanduser()
+    handoff = materialize_agentissue_codex_cli_runner_first_run_handoff(
+        root,
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    runner_plan_path = root / "runner-flow-plan.public.json"
+    gate_path = root / "execution-gate.public.json"
+    handoff_path = root / "first-run-handoff.public.json"
+    workflow_path = root / "workflow-check.public.json"
+    compact_run_path = root / "benchmark_run.compact.json"
+
+    runner_plan = json.loads(runner_plan_path.read_text(encoding="utf-8"))
+    gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    handoff_public = json.loads(handoff_path.read_text(encoding="utf-8"))
+
+    codex_command = runner_plan["command_placeholders"]["codex_patch_worker"]
+    eval_command = runner_plan["command_placeholders"]["single_tag_eval"]
+    patch_export = runner_plan["command_placeholders"]["patch_export"]
+    budget_auth = handoff_public["budget_auth_boundary"]
+    no_execute = handoff_public["no_execute_assertions"]
+    required_public_files = [
+        "runner-flow-plan.public.json",
+        "execution-gate.public.json",
+        "first-run-handoff.public.json",
+        "first-run-handoff.md",
+        "workflow-check.public.json",
+        "benchmark_run.compact.json",
+    ]
+    required_private_dirs = [
+        "context/",
+        "buggy-source/",
+        "Patches/lagent_239/",
+    ]
+    checks = {
+        "single_selected_tag": runner_plan["selected_tag"] == gate["selected_tag"] == handoff_public["selected_tag"] == tag,
+        "selected_image_consistent": runner_plan["selected_image"] == gate["selected_image"] == handoff_public["selected_image"],
+        "source_extracted_before_codex": bool(codex_command.get("runs_after_buggy_source_extraction")),
+        "host_codex_uses_ephemeral": "--ephemeral" in codex_command.get("argv", []),
+        "host_codex_auth_not_synced": codex_command.get("auth_material_synced") is False and budget_auth["codex_home_synced"] is False,
+        "worker_no_network_or_docker": codex_command.get("worker_network_allowed") is False and codex_command.get("worker_docker_allowed") is False,
+        "patch_from_buggy_source_git_diff": patch_export["input_source"] == "buggy_source_git_diff",
+        "attempt_patch_relative_path": patch_export["output_relative_path"] == AGENTISSUE_PATCH_RELATIVE_PATH,
+        "single_tag_eval_no_upload_submit": eval_command["upload"] is False and eval_command["submit"] is False,
+        "single_tag_eval_no_public_ranking": eval_command["public_ranking_path"] is False,
+        "no_execute_packet": all(value is False for value in no_execute.values()),
+        "public_files_compact_or_public": all(
+            path.endswith((".public.json", ".compact.json", ".md"))
+            for path in required_public_files
+        ),
+        "private_dirs_not_public_artifacts": all(path.endswith("/") for path in required_private_dirs),
+    }
+    failed_checks = [name for name, passed in checks.items() if not passed]
+    workflow_check = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "ready": not failed_checks,
+        "materialized": True,
+        "path_recorded": False,
+        "default_mode": "no_execute",
+        "input_packets": {
+            "runner_plan": "runner-flow-plan.public.json",
+            "execution_gate": "execution-gate.public.json",
+            "first_run_handoff": "first-run-handoff.public.json",
+        },
+        "required_public_files": required_public_files,
+        "required_private_dirs": required_private_dirs,
+        "workflow_checks": checks,
+        "failed_checks": failed_checks,
+        "execution_boundary": {
+            "codex_cli_invoked": False,
+            "model_api_invoked": False,
+            "docker_image_pulled": False,
+            "docker_container_started": False,
+            "source_extracted": False,
+            "git_baseline_created": False,
+            "patch_generated": False,
+            "patch_evaluated": False,
+            "credential_values_recorded": False,
+            "auth_material_synced": False,
+            "upload": False,
+            "submit": False,
+            "public_ranking_path": False,
+        },
+        "stop_before_later_e2e_unless": [
+            "private_job_root_selected",
+            "operator_explicitly_triggers_real_run",
+            "runner_artifact_reducer_writes_compact_public_result",
+        ],
+    }
+
+    benchmark_run = json.loads(json.dumps(handoff["benchmark_run"]))
+    benchmark_run.update(
+        {
+            "job_name": "agentissue_lagent_239_codex_cli_runner_workflow_check",
+            "mode": AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_MODE,
+            "worker_mode": "trusted_host_codex_cli_no_execute_workflow_check",
+            "first_blocker": "workflow_check_only_no_real_case",
+            "score_failure_attribution": "not_run_workflow_check_only",
+            "failure_attribution_labels": [
+                "workflow_check_packet_only",
+                "ready_for_later_operator_triggered_e2e_run"
+                if not failed_checks
+                else "workflow_check_failed_before_real_run",
+            ],
+            "evidence_files": required_public_files,
+        }
+    )
+    benchmark_run["validation"].update(
+        {
+            "workflow_check_materialized": True,
+            "workflow_check_all_passed": not failed_checks,
+            "workflow_check_failed_checks": failed_checks,
+            "single_selected_tag": checks["single_selected_tag"],
+            "selected_image_consistent": checks["selected_image_consistent"],
+            "source_extracted_before_codex": checks["source_extracted_before_codex"],
+            "host_codex_uses_ephemeral": checks["host_codex_uses_ephemeral"],
+            "host_codex_auth_not_synced": checks["host_codex_auth_not_synced"],
+            "worker_no_network_or_docker": checks["worker_no_network_or_docker"],
+            "patch_from_buggy_source_git_diff": checks["patch_from_buggy_source_git_diff"],
+            "single_tag_eval_no_upload_submit": checks["single_tag_eval_no_upload_submit"],
+            "single_tag_eval_no_public_ranking": checks["single_tag_eval_no_public_ranking"],
+        }
+    )
+    for trial in benchmark_run.get("trials") or []:
+        if isinstance(trial, dict):
+            trial["exception_type"] = "workflow_check_only_no_real_case"
+
+    workflow_path.write_text(
+        json.dumps(workflow_check, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    compact_run_path.write_text(
+        json.dumps(benchmark_run, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "ready": not failed_checks,
+        "materialized": True,
+        "path_recorded": False,
+        "workflow_check_root_path_recorded": False,
+        "first_run_handoff": {
+            "schema_version": handoff["schema_version"],
+            "ready": handoff["ready"],
+            "handoff_relative_path": handoff["handoff_relative_path"],
+            "path_recorded": False,
+        },
+        "created_relative_paths": [
+            *handoff["created_relative_paths"],
+            "workflow-check.public.json",
+        ],
+        "workflow_check_relative_path": "workflow-check.public.json",
+        "compact_run_relative_path": "benchmark_run.compact.json",
+        "workflow_checks": checks,
+        "failed_checks": failed_checks,
+        "execution_boundary": workflow_check["execution_boundary"],
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "use workflow-check.public.json as the pre-run invariant packet before "
+            "any later operator-triggered AgentIssue-Bench lagent_239 e2e run"
         ),
     }
 

@@ -221,15 +221,21 @@ work still belongs in the existing code, examples, and contract documents:
   checklist for a later operator-triggered e2e run without running Codex,
   Docker, source extraction, patch generation/evaluation, uploads, submits, or
   public ranking paths.
+- `agentissue-bench-codex-cli-runner-workflow-check-v0.md`: no-execute
+  `--workflow-check-root` packet for `lagent_239`. It materializes the
+  first-run handoff plus `workflow-check.public.json`, checking phase order,
+  host-Codex auth isolation, no worker network/Docker access, patch-source
+  provenance, selected-tag eval boundaries, and compact/public artifact
+  allowlists before any later operator-triggered e2e run.
 - `agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md`: public-safe
   consolidation packet for the full `lagent_239` runner-flow chain. It ties
   together the contract, flow plan, dry-run wrapper, synthetic staging,
-  execution gate, first-run handoff, and seven matching smokes into one
-  reviewable route while preserving no-run/no-upload/no-submit/no-public-ranking
-  boundaries.
+  execution gate, first-run handoff, workflow check, and eight matching smokes
+  into one reviewable route while preserving no-run/no-upload/no-submit/
+  no-public-ranking boundaries.
 - `agentissue-bench-codex-cli-runner-publication-change-set-v0.md`: staging
   and review packet for publishing only the AgentIssue runner-flow change set.
-  It lists the eight docs and eight smokes that should move together, marks
+  It lists the nine docs and nine smokes that should move together, marks
   `goal_harness/benchmark.py`, `goal_harness/cli.py`, and this README as mixed
   tracked files that need hunk-level staging, and excludes unrelated benchmark
   lanes, runtime state, credentials, raw artifacts, uploads, submits, and

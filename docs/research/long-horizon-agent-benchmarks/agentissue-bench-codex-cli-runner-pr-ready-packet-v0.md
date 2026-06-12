@@ -31,6 +31,7 @@ docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-dr
 docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-synthetic-staging-v0.md
 docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-execution-gate-v0.md
 docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-first-run-handoff-v0.md
+docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-workflow-check-v0.md
 docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md
 ```
 
@@ -43,6 +44,7 @@ examples/agentissue-bench-codex-cli-runner-dry-run-wrapper-smoke.py
 examples/agentissue-bench-codex-cli-runner-synthetic-staging-smoke.py
 examples/agentissue-bench-codex-cli-runner-execution-gate-smoke.py
 examples/agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py
+examples/agentissue-bench-codex-cli-runner-workflow-check-smoke.py
 examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py
 ```
 
@@ -51,7 +53,7 @@ examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py
 The route narrows from high-level contract to no-execute handoff:
 
 ```text
-contract -> flow plan -> dry-run wrapper -> synthetic staging -> execution gate -> first-run handoff -> PR-ready packet
+contract -> flow plan -> dry-run wrapper -> synthetic staging -> execution gate -> first-run handoff -> workflow check -> PR-ready packet
 ```
 
 The CLI surfaces are:
@@ -61,6 +63,7 @@ goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239
 goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --synthetic-staging-root <private-root>
 goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --execution-gate-root <private-root>
 goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --first-run-handoff-root <private-root>
+goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --workflow-check-root <private-root>
 ```
 
 All root options are mutually exclusive. They materialize public-safe packet
@@ -76,8 +79,8 @@ forbidden public evidence: issue body, patch content, raw logs, trajectories, sc
 ```
 
 The later e2e run remains separate from this PR-ready packet. A later operator
-can use the first-run handoff checklist to trigger a real run, but that is not
-part of this packet.
+can use the workflow check plus first-run handoff checklist before triggering a
+real run, but that real run is not part of this packet.
 
 ## Validation
 
