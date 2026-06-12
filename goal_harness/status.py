@@ -1369,6 +1369,24 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         if values:
             compact[field] = values
 
+    read_boundary = source.get("read_boundary")
+    if isinstance(read_boundary, dict):
+        compact_boundary: dict[str, bool] = {}
+        for field in (
+            "compact_only",
+            "raw_artifacts_read",
+            "task_text_read",
+            "trajectory_read",
+            "local_paths_recorded",
+            "docker_invoked",
+            "model_api_invoked",
+            "upload_invoked",
+        ):
+            if isinstance(read_boundary.get(field), bool):
+                compact_boundary[field] = read_boundary[field]
+        if compact_boundary:
+            compact["read_boundary"] = compact_boundary
+
     if set(compact.keys()) == {"schema_version"}:
         return None
     return compact

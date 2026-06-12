@@ -171,6 +171,75 @@ work still belongs in the existing code, examples, and contract documents:
   Last Exam to the benchmark backlog. It records the Xiaohongshu discovery
   signal, verifies the arXiv and public GitHub surfaces, and keeps ALE behind
   the current Terminal-Bench paired pilot until an adapter dossier exists.
+- `agentissue-bench-codex-cli-runner-contract-v0.md`: runner contract that
+  replaces ad hoc agent execution with a Codex CLI benchmark flow for
+  AgentIssue-Bench. It records that no official Codex CLI AgentIssue-Bench
+  metric was found, freezes other benchmark candidates, and defines the
+  correct runner sequence: fetch public issue context, pull one selected image,
+  extract the container's buggy source, initialize a local git baseline, run
+  host-local `codex exec --ephemeral` in that source tree, write
+  `Patches/lagent_239/attempt.patch`, evaluate the same single tag, and reduce
+  only compact hash/count/status evidence.
+- `agentissue-bench-codex-cli-runner-flow-plan-v0.md`: no-execution command
+  flow plan for the same selected tag. It turns the runner contract into
+  deterministic host-Codex and single-tag Docker command shapes with absolute
+  private-job-root placeholders, explicit phase ordering, compact reducer
+  fields, and stop rules before Codex/model execution, Docker starts, auth
+  sync, all-tag helpers, uploads, submits, public ranking paths, raw artifacts,
+  fixed/oracle material, or current-HEAD patch generation.
+- `agentissue-bench-codex-cli-runner-dry-run-wrapper-v0.md`: CLI
+  materialization of that flow as
+  `goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239`.
+  It defaults to dry-run and `--execute` appends only compact no-run
+  `benchmark_run_v0` readiness, while still avoiding Codex/model execution,
+  Docker starts, auth sync, patch generation/evaluation, uploads, submits,
+  public ranking paths, raw artifacts, fixed/oracle material, or current-HEAD
+  patch generation.
+- `agentissue-bench-codex-cli-runner-synthetic-staging-v0.md`: opt-in
+  `--synthetic-staging-root` fixture for the same CLI wrapper. It creates only
+  synthetic private-job-root placeholders for `context/prompt.md`, extracted
+  source, `Patches/lagent_239/attempt.patch` parent placement,
+  `runner-flow-plan.public.json`, and `benchmark_run.compact.json`, while still
+  avoiding real AgentIssue task material, Codex/model execution, Docker starts,
+  auth sync, patch generation/evaluation, uploads, submits, public ranking
+  paths, raw artifacts, fixed/oracle material, or current-HEAD patch
+  generation.
+- `agentissue-bench-codex-cli-runner-execution-gate-v0.md`: guarded
+  no-execute `--execution-gate-root` packet for `lagent_239`. It materializes
+  the synthetic staging files plus `execution-gate.public.json`, rendering the
+  selected-container source extraction, private git baseline, host-local
+  `codex exec --ephemeral`, patch export, and selected-tag eval command shapes
+  while keeping real AgentIssue task material, Codex/model execution, Docker
+  pull/start, auth sync, patch generation/evaluation, uploads, submits, public
+  ranking paths, raw artifacts, fixed/oracle material, and current-HEAD patch
+  generation behind a future run-specific gate.
+- `agentissue-bench-codex-cli-runner-first-run-handoff-v0.md`: no-execute
+  `--first-run-handoff-root` packet for `lagent_239`. It materializes the
+  execution gate plus `first-run-handoff.public.json` and
+  `first-run-handoff.md`, naming the exact command shape, private artifact
+  boundary, expected compact outputs, budget/auth boundary, and safety
+  checklist for a later operator-triggered e2e run without running Codex,
+  Docker, source extraction, patch generation/evaluation, uploads, submits, or
+  public ranking paths.
+- `agentissue-bench-codex-cli-runner-workflow-check-v0.md`: no-execute
+  `--workflow-check-root` packet for `lagent_239`. It materializes the
+  first-run handoff plus `workflow-check.public.json`, checking phase order,
+  host-Codex auth isolation, no worker network/Docker access, patch-source
+  provenance, selected-tag eval boundaries, and compact/public artifact
+  allowlists before any later operator-triggered e2e run.
+- `agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md`: public-safe
+  consolidation packet for the full `lagent_239` runner-flow chain. It ties
+  together the contract, flow plan, dry-run wrapper, synthetic staging,
+  execution gate, first-run handoff, workflow check, and eight matching smokes
+  into one reviewable route while preserving no-run/no-upload/no-submit/
+  no-public-ranking boundaries.
+- `agentissue-bench-codex-cli-runner-publication-change-set-v0.md`: staging
+  and review packet for publishing only the AgentIssue runner-flow change set.
+  It lists the nine docs and nine smokes that should move together, marks
+  `goal_harness/benchmark.py`, `goal_harness/cli.py`, and this README as mixed
+  tracked files that need hunk-level staging, and excludes unrelated benchmark
+  lanes, runtime state, credentials, raw artifacts, uploads, submits, and
+  public ranking paths.
 - `terminal-bench-cli-dry-run-fake-worker-v0.md`: public CLI skeleton for
   `goal-harness benchmark run terminal-bench`. The command defaults to dry-run,
   exposes `hardened-codex`, `codex-goal-harness`, passive observation, and
