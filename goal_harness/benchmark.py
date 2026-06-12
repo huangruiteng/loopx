@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -190,6 +191,37 @@ AGENTS_LAST_EXAM_RAW_SURFACES_EXCLUDED = (
     "origin_log",
     "output",
 )
+AGENTISSUE_BENCHMARK_ID = "agentissue-bench"
+AGENTISSUE_CODEX_CLI_RUNNER_WRAPPER_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_dry_run_wrapper_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_BENCHMARK_RUN_MODE = (
+    "agentissue_codex_cli_runner_dry_run_wrapper"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_synthetic_staging_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_MODE = (
+    "agentissue_codex_cli_runner_synthetic_staging_fixture"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_execution_gate_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_MODE = (
+    "agentissue_codex_cli_runner_execution_gate"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_first_run_handoff_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_MODE = (
+    "agentissue_codex_cli_runner_first_run_handoff_packet"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_SOURCE_RUNNER = (
+    "goal_harness_agentissue_codex_cli_runner"
+)
+AGENTISSUE_DEFAULT_TAG = "lagent_239"
+AGENTISSUE_DEFAULT_IMAGE = "alfin06/agentissue-bench:lagent_239"
+AGENTISSUE_PATCH_RELATIVE_PATH = "Patches/lagent_239/attempt.patch"
 BENCHMARK_PUBLIC_ARTIFACT_SUFFIXES = (
     ".compact.json",
     ".public.json",
@@ -290,6 +322,888 @@ def filter_public_benchmark_artifact_paths(
         },
     }
 
+
+
+def _agentissue_public_label(value: Any, *, limit: int = 120) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("agentissue label is required")
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", text):
+        raise ValueError("agentissue label must be public-safe")
+    return text[:limit]
+
+
+def build_agentissue_codex_cli_runner_wrapper(
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+    job_root_placeholder: str = "<abs-private-job-root>",
+) -> dict[str, Any]:
+    """Build a dry-run-default AgentIssue-Bench Codex CLI runner wrapper.
+
+    The wrapper deliberately renders command and staging shapes only. It never
+    calls Codex, Docker, model APIs, or benchmark helpers; callers that append
+    the embedded benchmark_run_v0 are recording readiness, not a task score.
+    """
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner wrapper currently only supports selected tag lagent_239"
+        )
+    codex = _agentissue_public_label(codex_binary, limit=80)
+    docker = _agentissue_public_label(docker_binary, limit=80)
+    image = AGENTISSUE_DEFAULT_IMAGE
+    buggy_source = f"{job_root_placeholder}/buggy-source"
+    context_dir = f"{job_root_placeholder}/context"
+    patch_dir = f"{job_root_placeholder}/Patches/lagent_239"
+    prompt_path = f"{context_dir}/prompt.md"
+    last_message = f"{job_root_placeholder}/codex-last-message.txt"
+    compact_run_path = f"{job_root_placeholder}/benchmark_run.compact.json"
+
+    phase_order = [
+        "prepare_private_job_root",
+        "write_public_issue_context_to_private_context",
+        "pull_selected_image_opt_in",
+        "extract_buggy_source_from_selected_container_opt_in",
+        "initialize_git_baseline_in_buggy_source",
+        "run_host_local_codex_cli_patch_worker_opt_in",
+        "write_attempt_patch_from_buggy_source_git_diff",
+        "evaluate_selected_tag_container_opt_in",
+        "reduce_compact_public_evidence",
+    ]
+    codex_argv = [
+        codex,
+        "exec",
+        "--ephemeral",
+        "--ignore-rules",
+        "--sandbox",
+        "workspace-write",
+        "--cd",
+        buggy_source,
+        "--add-dir",
+        job_root_placeholder,
+        "--output-last-message",
+        last_message,
+        prompt_path,
+    ]
+    eval_argv = [
+        docker,
+        "run",
+        "--platform",
+        "linux/amd64",
+        "--rm",
+        "--entrypoint",
+        "bash",
+        "-v",
+        f"{patch_dir}:/patches:ro",
+        image,
+        "-c",
+        "<apply_patch_and_test_patched>",
+    ]
+    wrapper = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_WRAPPER_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": image,
+        "dry_run_default": True,
+        "real_execution_done": False,
+        "single_tag_only": True,
+        "staging_plan": {
+            "private_job_root_placeholder": job_root_placeholder,
+            "path_recorded": False,
+            "buggy_source_placeholder": buggy_source,
+            "context_dir_placeholder": context_dir,
+            "patch_dir_placeholder": patch_dir,
+            "prompt_path_placeholder": prompt_path,
+            "last_message_placeholder": last_message,
+            "compact_run_placeholder": compact_run_path,
+            "phase_order": phase_order,
+        },
+        "commands": {
+            "codex_patch_worker": {
+                "argv": codex_argv,
+                "runs_on_host": True,
+                "runs_after_buggy_source_extraction": True,
+                "copy_codex_home": False,
+                "auth_material_synced": False,
+                "worker_network_allowed": False,
+                "worker_docker_allowed": False,
+                "reads_fixed_diff_or_oracle": False,
+                "execute_by_default": False,
+            },
+            "patch_export": {
+                "input_source": "buggy_source_git_diff",
+                "output_relative_path": AGENTISSUE_PATCH_RELATIVE_PATH,
+                "raw_patch_public": False,
+                "patch_hash_public": True,
+            },
+            "single_tag_eval": {
+                "argv": eval_argv,
+                "official_all_tag_helper_allowed": False,
+                "docker_env_credentials": False,
+                "upload": False,
+                "submit": False,
+                "public_ranking_path": False,
+                "execute_by_default": False,
+            },
+        },
+        "execution_boundary": {
+            "codex_cli_invoked": False,
+            "model_api_invoked": False,
+            "docker_image_pulled": False,
+            "docker_container_started": False,
+            "patch_generated": False,
+            "patch_evaluated": False,
+            "raw_issue_text_read": False,
+            "raw_patch_recorded": False,
+            "raw_log_recorded": False,
+            "credential_values_recorded": False,
+        },
+        "reducer_contract": {
+            "allowed_public_fields": [
+                "tag",
+                "image_digest",
+                "patch_sha256",
+                "patch_bytes",
+                "changed_file_count",
+                "hunk_count",
+                "exit_code",
+                "resolved",
+                "duration_seconds",
+                "log_sha256",
+                "no_upload",
+                "no_submit",
+                "no_public_ranking_path",
+            ],
+            "raw_issue_text_public": False,
+            "raw_patch_public": False,
+            "raw_log_public": False,
+            "absolute_paths_public": False,
+        },
+        "stop_rules": {
+            "stop_before_codex_auth_sync": True,
+            "stop_before_current_head_patch_source": True,
+            "stop_before_fixed_diff_or_oracle_read": True,
+            "stop_before_all_tag_helpers": True,
+            "stop_before_upload_submit_or_public_ranking": True,
+            "stop_before_raw_artifact_publication": True,
+            "stop_before_destructive_git_or_production": True,
+        },
+    }
+    benchmark_run = {
+        "schema_version": "benchmark_run_v0",
+        "source_runner": AGENTISSUE_CODEX_CLI_RUNNER_SOURCE_RUNNER,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "job_name": "agentissue_lagent_239_codex_cli_runner_dry_run",
+        "mode": AGENTISSUE_CODEX_CLI_RUNNER_BENCHMARK_RUN_MODE,
+        "worker_mode": "trusted_host_codex_cli_dry_run_wrapper",
+        "trace_publicness": "compact_public_no_issue_text_no_patch_no_logs",
+        "first_blocker": "dry_run_wrapper_only_no_real_case",
+        "score_failure_attribution": "not_run_wrapper_readiness_only",
+        "real_run": False,
+        "submit_eligible": False,
+        "leaderboard_evidence": False,
+        "official_score_comparable_to_native_codex": False,
+        "official_score_claim_allowed": False,
+        "control_plane_score_applicable": True,
+        "official_task_score": {
+            "kind": "agentissue_bench_single_tag_container_eval_not_run",
+            "status": "not_run",
+            "value": None,
+            "resolved": None,
+        },
+        "progress": {
+            "n_total_trials": 1,
+            "n_completed_trials": 0,
+            "n_errored_trials": 0,
+            "n_running_trials": 0,
+            "n_pending_trials": 1,
+            "n_cancelled_trials": 0,
+            "n_retries": 0,
+        },
+        "metrics": {
+            "input_tokens": 0,
+            "cache_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 0,
+        },
+        "validation": {
+            "runner_wrapper_built": True,
+            "dry_run_default": True,
+            "single_tag_only": True,
+            "absolute_private_job_root_placeholders": True,
+            "buggy_source_before_codex_patch": True,
+            "patch_from_buggy_source_git_diff": True,
+            "selected_tag_eval_only": True,
+            "compact_reducer_declared": True,
+            "no_codex_cli_invoked": True,
+            "no_model_api_invoked": True,
+            "no_docker_container_started": True,
+            "no_patch_generated": True,
+            "no_patch_evaluated": True,
+            "no_auth_material_sync": True,
+            "no_current_public_head_patch_source": True,
+            "no_fixed_diff_or_oracle_read": True,
+            "no_upload": True,
+            "no_submit": True,
+            "no_public_ranking_path": True,
+        },
+        "trials": [
+            {
+                "task_id": tag,
+                "trial_name": tag,
+                "source": "selected_public_tag",
+                "exception_type": "dry_run_wrapper_only_no_real_case",
+                "trajectory_present": False,
+                "artifact_manifest_present": False,
+                "trial_result_present": False,
+            }
+        ],
+        "failure_attribution_labels": [
+            "no_execution_wrapper_only",
+            "ready_for_synthetic_job_root_staging",
+        ],
+        "evidence_files": [
+            "benchmark_run.compact.json",
+            "runner-flow-plan.public.json",
+        ],
+        "stop_conditions": [
+            "codex_auth_sync_requested",
+            "current_head_patch_source_requested",
+            "fixed_diff_or_oracle_requested",
+            "all_tag_helper_requested",
+            "upload_submit_or_public_ranking_requested",
+            "raw_artifact_publication_requested",
+        ],
+        "read_boundary": {
+            "compact_only": True,
+            "raw_artifacts_read": False,
+            "task_text_read": False,
+            "trajectory_read": False,
+            "local_paths_recorded": False,
+            "docker_invoked": False,
+            "model_api_invoked": False,
+            "upload_invoked": False,
+        },
+    }
+    return {
+        **wrapper,
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "run this wrapper against a synthetic private job root, then gate any real "
+            "Codex/Docker execution behind explicit opt-in"
+        ),
+    }
+
+
+def materialize_agentissue_codex_cli_runner_synthetic_staging(
+    staging_root: str | Path,
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Create a synthetic AgentIssue runner job root without real task material."""
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner synthetic staging currently only supports selected tag lagent_239"
+        )
+    root = Path(staging_root).expanduser()
+    if not str(root):
+        raise ValueError("synthetic staging root is required")
+
+    wrapper = build_agentissue_codex_cli_runner_wrapper(
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    context_dir = root / "context"
+    buggy_source_dir = root / "buggy-source"
+    patch_dir = root / "Patches" / tag
+    prompt_path = context_dir / "prompt.md"
+    runner_plan_path = root / "runner-flow-plan.public.json"
+    compact_run_path = root / "benchmark_run.compact.json"
+
+    prompt_text = (
+        "# Synthetic AgentIssue-Bench lagent_239 Prompt Placeholder\n\n"
+        "This fixture contains no real issue statement, source diff, test patch, "
+        "expected patch, auth value, trajectory, screenshot, or raw log.\n\n"
+        f"Expected patch output path: {AGENTISSUE_PATCH_RELATIVE_PATH}\n\n"
+        "Run boundary: do not invoke Codex, Docker, model APIs, upload, submit, "
+        "or public ranking paths from this fixture.\n"
+    )
+    benchmark_run = json.loads(json.dumps(wrapper["benchmark_run"]))
+    benchmark_run.update(
+        {
+            "job_name": "agentissue_lagent_239_codex_cli_runner_synthetic_staging",
+            "mode": AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_MODE,
+            "worker_mode": "trusted_host_codex_cli_synthetic_staging_fixture",
+            "first_blocker": "synthetic_staging_only_no_real_case",
+            "score_failure_attribution": "not_run_synthetic_staging_only",
+            "failure_attribution_labels": [
+                "synthetic_staging_fixture_only",
+                "ready_for_guarded_private_source_extraction_gate",
+            ],
+            "evidence_files": [
+                "benchmark_run.compact.json",
+                "runner-flow-plan.public.json",
+            ],
+        }
+    )
+    benchmark_run["validation"].update(
+        {
+            "synthetic_private_job_root_materialized": True,
+            "context_dir_created": True,
+            "buggy_source_dir_created": True,
+            "patch_dir_created": True,
+            "prompt_placeholder_written": True,
+            "prompt_path_rendered": True,
+            "patch_output_parent_reserved": True,
+            "compact_run_filename_reserved": True,
+            "runner_flow_plan_public_json_written": True,
+            "no_absolute_paths_public": True,
+        }
+    )
+    for trial in benchmark_run.get("trials") or []:
+        if isinstance(trial, dict):
+            trial["exception_type"] = "synthetic_staging_only_no_real_case"
+
+    runner_plan = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "path_recorded": False,
+        "relative_paths": {
+            "context_dir": "context",
+            "buggy_source_dir": "buggy-source",
+            "patch_dir": "Patches/lagent_239",
+            "prompt": "context/prompt.md",
+            "expected_patch": AGENTISSUE_PATCH_RELATIVE_PATH,
+            "compact_run": "benchmark_run.compact.json",
+            "runner_plan": "runner-flow-plan.public.json",
+        },
+        "command_placeholders": wrapper["commands"],
+        "execution_boundary": wrapper["execution_boundary"],
+        "stop_rules": wrapper["stop_rules"],
+    }
+
+    context_dir.mkdir(parents=True, exist_ok=True)
+    buggy_source_dir.mkdir(parents=True, exist_ok=True)
+    patch_dir.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(prompt_text, encoding="utf-8")
+    (buggy_source_dir / ".gitkeep").write_text("", encoding="utf-8")
+    (patch_dir / ".gitkeep").write_text("", encoding="utf-8")
+    runner_plan_path.write_text(
+        json.dumps(runner_plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    compact_run_path.write_text(
+        json.dumps(benchmark_run, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    created_relative_paths = [
+        "context/",
+        "context/prompt.md",
+        "buggy-source/",
+        "buggy-source/.gitkeep",
+        "Patches/lagent_239/",
+        "Patches/lagent_239/.gitkeep",
+        "runner-flow-plan.public.json",
+        "benchmark_run.compact.json",
+    ]
+    return {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "ready": True,
+        "materialized": True,
+        "path_recorded": False,
+        "staging_root_path_recorded": False,
+        "created_relative_paths": created_relative_paths,
+        "prompt_relative_path": "context/prompt.md",
+        "expected_patch_relative_path": AGENTISSUE_PATCH_RELATIVE_PATH,
+        "compact_run_relative_path": "benchmark_run.compact.json",
+        "runner_plan_relative_path": "runner-flow-plan.public.json",
+        "command_rendering_checks": {
+            "codex_argv_uses_prompt_placeholder": True,
+            "codex_argv_uses_buggy_source_placeholder": True,
+            "eval_argv_uses_selected_image": True,
+            "patch_output_parent_reserved": True,
+            "compact_reducer_filename_reserved": True,
+        },
+        "execution_boundary": {
+            "codex_cli_invoked": False,
+            "model_api_invoked": False,
+            "docker_image_pulled": False,
+            "docker_container_started": False,
+            "patch_generated": False,
+            "patch_evaluated": False,
+            "raw_issue_text_read": False,
+            "raw_patch_recorded": False,
+            "raw_log_recorded": False,
+            "credential_values_recorded": False,
+        },
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "add a guarded opt-in real-source extraction and host-Codex execution "
+            "gate for lagent_239, still defaulting to no-execute"
+        ),
+    }
+
+
+def materialize_agentissue_codex_cli_runner_execution_gate(
+    gate_root: str | Path,
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Create a no-execute gate packet for the first real AgentIssue runner step."""
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner execution gate currently only supports selected tag lagent_239"
+        )
+    root = Path(gate_root).expanduser()
+    staging = materialize_agentissue_codex_cli_runner_synthetic_staging(
+        root,
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    wrapper = build_agentissue_codex_cli_runner_wrapper(
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    docker = _agentissue_public_label(docker_binary, limit=80)
+    image = AGENTISSUE_DEFAULT_IMAGE
+    container_label = "<tmp-agentissue-lagent-239-container>"
+    job_root = "<abs-private-job-root>"
+    buggy_source = f"{job_root}/buggy-source"
+    patch_path = f"{job_root}/{AGENTISSUE_PATCH_RELATIVE_PATH}"
+    gate_path = root / "execution-gate.public.json"
+    compact_run_path = root / "benchmark_run.compact.json"
+
+    extraction_commands = {
+        "inspect_selected_image": [docker, "image", "inspect", image],
+        "create_selected_container": [
+            docker,
+            "create",
+            "--name",
+            container_label,
+            image,
+        ],
+        "copy_buggy_source": [
+            docker,
+            "cp",
+            f"{container_label}:/workspace/.",
+            buggy_source,
+        ],
+        "remove_selected_container": [docker, "rm", container_label],
+    }
+    git_baseline_commands = {
+        "init": ["git", "-C", buggy_source, "init"],
+        "add": ["git", "-C", buggy_source, "add", "."],
+        "commit": [
+            "git",
+            "-C",
+            buggy_source,
+            "commit",
+            "-m",
+            "agentissue-bench-buggy-source-baseline",
+        ],
+    }
+    patch_export = {
+        "input_source": "buggy_source_git_diff",
+        "command_shape": f"git -C {buggy_source} diff --binary > {patch_path}",
+        "output_relative_path": AGENTISSUE_PATCH_RELATIVE_PATH,
+    }
+    gate = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": image,
+        "path_recorded": False,
+        "default_mode": "no_execute",
+        "future_opt_in_required": True,
+        "single_tag_only": True,
+        "relative_paths": {
+            "context_prompt": "context/prompt.md",
+            "buggy_source_dir": "buggy-source",
+            "attempt_patch": AGENTISSUE_PATCH_RELATIVE_PATH,
+            "execution_gate": "execution-gate.public.json",
+            "compact_run": "benchmark_run.compact.json",
+        },
+        "source_extraction_gate": {
+            "commands": extraction_commands,
+            "selected_container_only": True,
+            "execute_by_default": False,
+            "docker_invoked": False,
+            "docker_pull_or_start_allowed": False,
+        },
+        "private_git_baseline_gate": {
+            "commands": git_baseline_commands,
+            "execute_by_default": False,
+            "destructive_git": False,
+        },
+        "host_codex_gate": {
+            "command": wrapper["commands"]["codex_patch_worker"],
+            "execute_by_default": False,
+            "codex_cli_invoked": False,
+            "auth_material_synced": False,
+        },
+        "patch_output_gate": patch_export,
+        "eval_gate": wrapper["commands"]["single_tag_eval"],
+        "stop_rules": {
+            **wrapper["stop_rules"],
+            "stop_before_real_source_extraction_without_future_gate": True,
+            "stop_before_host_codex_execution_without_future_gate": True,
+        },
+    }
+
+    benchmark_run = json.loads(json.dumps(staging["benchmark_run"]))
+    benchmark_run.update(
+        {
+            "job_name": "agentissue_lagent_239_codex_cli_runner_execution_gate",
+            "mode": AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_MODE,
+            "worker_mode": "trusted_host_codex_cli_no_execute_gate",
+            "first_blocker": "execution_gate_only_no_real_case",
+            "score_failure_attribution": "not_run_execution_gate_only",
+            "failure_attribution_labels": [
+                "execution_gate_fixture_only",
+                "ready_for_future_run_specific_opt_in",
+            ],
+            "evidence_files": [
+                "execution-gate.public.json",
+                "benchmark_run.compact.json",
+                "runner-flow-plan.public.json",
+            ],
+        }
+    )
+    benchmark_run["validation"].update(
+        {
+            "execution_gate_materialized": True,
+            "synthetic_staging_reused": True,
+            "selected_container_source_extraction_commands_rendered": True,
+            "private_git_baseline_commands_rendered": True,
+            "host_codex_command_readiness_rendered": True,
+            "attempt_patch_output_placement_checked": True,
+            "compact_run_filename_checked": True,
+            "future_execution_opt_in_required": True,
+            "no_real_source_extraction": True,
+            "no_real_codex_execution": True,
+            "no_docker_pull_or_start": True,
+            "no_auth_sync_to_shared_host": True,
+            "no_fixed_diff_or_oracle_read": True,
+        }
+    )
+    for trial in benchmark_run.get("trials") or []:
+        if isinstance(trial, dict):
+            trial["exception_type"] = "execution_gate_only_no_real_case"
+
+    gate_path.write_text(
+        json.dumps(gate, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    compact_run_path.write_text(
+        json.dumps(benchmark_run, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": image,
+        "ready": True,
+        "materialized": True,
+        "path_recorded": False,
+        "gate_root_path_recorded": False,
+        "synthetic_staging": {
+            "schema_version": staging["schema_version"],
+            "ready": staging["ready"],
+            "created_relative_paths": staging["created_relative_paths"],
+            "path_recorded": False,
+        },
+        "created_relative_paths": [
+            *staging["created_relative_paths"],
+            "execution-gate.public.json",
+        ],
+        "gate_relative_path": "execution-gate.public.json",
+        "compact_run_relative_path": "benchmark_run.compact.json",
+        "attempt_patch_relative_path": AGENTISSUE_PATCH_RELATIVE_PATH,
+        "gate_checks": {
+            "selected_container_source_extraction_commands_rendered": True,
+            "private_git_baseline_commands_rendered": True,
+            "host_codex_command_readiness_rendered": True,
+            "attempt_patch_output_placement_checked": True,
+            "future_execution_opt_in_required": True,
+        },
+        "execution_boundary": {
+            "codex_cli_invoked": False,
+            "model_api_invoked": False,
+            "docker_image_pulled": False,
+            "docker_container_started": False,
+            "source_extracted": False,
+            "git_baseline_created": False,
+            "patch_generated": False,
+            "patch_evaluated": False,
+            "credential_values_recorded": False,
+            "auth_material_synced": False,
+        },
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "build a no-execute first-run handoff packet for lagent_239"
+        ),
+    }
+
+
+def materialize_agentissue_codex_cli_runner_first_run_handoff(
+    handoff_root: str | Path,
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Create a no-execute first-run handoff packet for AgentIssue lagent_239."""
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner first-run handoff currently only supports selected tag lagent_239"
+        )
+    root = Path(handoff_root).expanduser()
+    gate = materialize_agentissue_codex_cli_runner_execution_gate(
+        root,
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    handoff_path = root / "first-run-handoff.public.json"
+    handoff_markdown_path = root / "first-run-handoff.md"
+    compact_run_path = root / "benchmark_run.compact.json"
+
+    no_execute_cli_argv = [
+        "goal-harness",
+        "benchmark",
+        "agentissue-codex-runner-flow",
+        "--goal-id",
+        "<goal-id>",
+        "--tag",
+        tag,
+        "--execution-gate-root",
+        "<private-gate-root>",
+        "--delivery-batch-scale",
+        "multi_surface",
+        "--delivery-outcome",
+        "outcome_progress",
+        "--execute",
+    ]
+    safety_checklist = [
+        {
+            "item": "private_job_root_selected",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": False,
+        },
+        {
+            "item": "codex_auth_stays_on_host",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": True,
+        },
+        {
+            "item": "no_codex_home_sync_to_shared_host",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": True,
+        },
+        {
+            "item": "selected_container_source_extraction_planned",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": False,
+        },
+        {
+            "item": "attempt_patch_compact_reducer_planned",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": True,
+        },
+        {
+            "item": "upload_submit_public_ranking_disabled",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": True,
+        },
+    ]
+    handoff = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "path_recorded": False,
+        "default_mode": "no_execute",
+        "later_operator_triggered_e2e": True,
+        "real_run_done": False,
+        "exact_command_shape": {
+            "argv": no_execute_cli_argv,
+            "runs_real_benchmark": False,
+            "appends_compact_no_run_event": True,
+        },
+        "private_artifact_boundary": {
+            "root_placeholder": "<private-gate-root>",
+            "root_path_recorded": False,
+            "public_relative_files": [
+                "runner-flow-plan.public.json",
+                "execution-gate.public.json",
+                "first-run-handoff.public.json",
+                "first-run-handoff.md",
+                "benchmark_run.compact.json",
+            ],
+            "private_relative_dirs": [
+                "context/",
+                "buggy-source/",
+                "Patches/lagent_239/",
+            ],
+            "raw_artifacts_public": False,
+            "absolute_paths_public": False,
+        },
+        "expected_compact_outputs": {
+            "benchmark_run_mode": AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_MODE,
+            "compact_run": "benchmark_run.compact.json",
+            "history_event": "benchmark_run_v0",
+            "official_score_claim_allowed": False,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+        },
+        "budget_auth_boundary": {
+            "codex_auth_values_read": False,
+            "codex_home_synced": False,
+            "model_api_invoked": False,
+            "model_budget_spent_by_packet": False,
+            "docker_invoked_by_packet": False,
+            "shared_remote_host_receives_codex_auth": False,
+        },
+        "safety_checklist": safety_checklist,
+        "no_execute_assertions": {
+            "source_extracted": False,
+            "codex_cli_invoked": False,
+            "docker_container_started": False,
+            "patch_generated": False,
+            "patch_evaluated": False,
+            "upload": False,
+            "submit": False,
+            "public_ranking_path": False,
+            "destructive_git": False,
+            "production_action": False,
+        },
+    }
+    handoff_markdown = (
+        "# AgentIssue-Bench lagent_239 First-Run Handoff\n\n"
+        "This packet is no-execute. It names the command shape, private artifact "
+        "boundary, compact outputs, budget/auth boundary, and safety checklist "
+        "for a later operator-triggered e2e run.\n\n"
+        "## Command Shape\n\n"
+        "```text\n"
+        + " ".join(no_execute_cli_argv)
+        + "\n```\n\n"
+        "## Boundary\n\n"
+        "- Codex auth stays on the host and is not copied to a shared machine.\n"
+        "- Public files are limited to `*.public.json`, `*.compact.json`, and this packet.\n"
+        "- No source extraction, Docker start, Codex invocation, patch generation, "
+        "evaluation, upload, submit, public ranking, destructive git, or production "
+        "action is performed by this packet.\n"
+    )
+
+    benchmark_run = json.loads(json.dumps(gate["benchmark_run"]))
+    benchmark_run.update(
+        {
+            "job_name": "agentissue_lagent_239_codex_cli_runner_first_run_handoff",
+            "mode": AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_MODE,
+            "worker_mode": "trusted_host_codex_cli_no_execute_first_run_handoff",
+            "first_blocker": "first_run_handoff_only_no_real_case",
+            "score_failure_attribution": "not_run_first_run_handoff_only",
+            "failure_attribution_labels": [
+                "first_run_handoff_packet_only",
+                "ready_for_later_operator_triggered_e2e_run",
+            ],
+            "evidence_files": [
+                "first-run-handoff.public.json",
+                "first-run-handoff.md",
+                "execution-gate.public.json",
+                "benchmark_run.compact.json",
+                "runner-flow-plan.public.json",
+            ],
+        }
+    )
+    benchmark_run["validation"].update(
+        {
+            "first_run_handoff_materialized": True,
+            "exact_command_shape_rendered": True,
+            "private_artifact_boundary_declared": True,
+            "expected_compact_outputs_declared": True,
+            "budget_auth_boundary_declared": True,
+            "safety_checklist_declared": True,
+            "no_execute_packet": True,
+            "no_codex_auth_value_read": True,
+            "no_codex_home_sync": True,
+            "no_model_budget_spent_by_packet": True,
+        }
+    )
+    for trial in benchmark_run.get("trials") or []:
+        if isinstance(trial, dict):
+            trial["exception_type"] = "first_run_handoff_only_no_real_case"
+
+    handoff_path.write_text(
+        json.dumps(handoff, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    handoff_markdown_path.write_text(handoff_markdown, encoding="utf-8")
+    compact_run_path.write_text(
+        json.dumps(benchmark_run, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "ready": True,
+        "materialized": True,
+        "path_recorded": False,
+        "handoff_root_path_recorded": False,
+        "execution_gate": {
+            "schema_version": gate["schema_version"],
+            "ready": gate["ready"],
+            "gate_relative_path": gate["gate_relative_path"],
+            "path_recorded": False,
+        },
+        "created_relative_paths": [
+            *gate["created_relative_paths"],
+            "first-run-handoff.public.json",
+            "first-run-handoff.md",
+        ],
+        "handoff_relative_path": "first-run-handoff.public.json",
+        "handoff_markdown_relative_path": "first-run-handoff.md",
+        "compact_run_relative_path": "benchmark_run.compact.json",
+        "handoff_checks": {
+            "exact_command_shape_rendered": True,
+            "private_artifact_boundary_declared": True,
+            "expected_compact_outputs_declared": True,
+            "budget_auth_boundary_declared": True,
+            "safety_checklist_declared": True,
+            "later_operator_triggered_e2e": True,
+        },
+        "execution_boundary": handoff["no_execute_assertions"],
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "use the no-execute first-run handoff packet as the checklist for a "
+            "later operator-triggered AgentIssue-Bench lagent_239 e2e run"
+        ),
+    }
 
 def _claim_review_numeric(value: Any) -> float | None:
     if value is None or isinstance(value, bool):

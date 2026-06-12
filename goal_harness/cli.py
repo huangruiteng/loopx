@@ -19,6 +19,16 @@ from .bootstrap import (
     render_bootstrap_markdown,
 )
 from .benchmark import (
+    AGENTISSUE_BENCHMARK_ID,
+    AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION,
+    AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION,
+    AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION,
+    AGENTISSUE_CODEX_CLI_RUNNER_WRAPPER_SCHEMA_VERSION,
+    AGENTISSUE_DEFAULT_TAG,
+    build_agentissue_codex_cli_runner_wrapper,
+    materialize_agentissue_codex_cli_runner_execution_gate,
+    materialize_agentissue_codex_cli_runner_first_run_handoff,
+    materialize_agentissue_codex_cli_runner_synthetic_staging,
     TERMINAL_BENCH_DEFAULT_DATASET,
     TERMINAL_BENCH_DEFAULT_MODEL,
     TERMINAL_BENCH_DEFAULT_TASK,
@@ -1271,6 +1281,84 @@ def main(argv: list[str] | None = None) -> int:
     benchmark_run_parser.add_argument("--execute", action="store_true", help="Append the compact fixture event.")
     benchmark_run_parser.add_argument("--no-global-sync", action="store_true", help="Skip global registry sync after append.")
 
+    agentissue_runner_flow_parser = benchmark_sub.add_parser(
+        "agentissue-codex-runner-flow",
+        help=(
+            "Render or append the AgentIssue-Bench lagent_239 Codex CLI runner "
+            "dry-run wrapper. No Codex, Docker, model API, upload, or submit is run."
+        ),
+    )
+    add_subcommand_format(agentissue_runner_flow_parser)
+    agentissue_runner_flow_parser.add_argument("--goal-id", required=True, help="Goal id for dry-run/append context.")
+    agentissue_runner_flow_parser.add_argument(
+        "--tag",
+        default=AGENTISSUE_DEFAULT_TAG,
+        help="Selected public AgentIssue-Bench tag. Currently only lagent_239 is supported.",
+    )
+    agentissue_runner_flow_parser.add_argument(
+        "--codex-binary",
+        default="codex",
+        help="Public command label for host-local Codex CLI command rendering.",
+    )
+    agentissue_runner_flow_parser.add_argument(
+        "--docker-binary",
+        default="docker",
+        help="Public command label for selected-tag Docker eval command rendering.",
+    )
+    agentissue_runner_flow_parser.add_argument(
+        "--synthetic-staging-root",
+        help=(
+            "Materialize a synthetic private job root at PATH with placeholder "
+            "prompt, patch-output parent, and compact reducer files. Still no "
+            "Codex, Docker, model API, upload, submit, or real task material."
+        ),
+    )
+    agentissue_runner_flow_parser.add_argument(
+        "--execution-gate-root",
+        help=(
+            "Materialize a guarded no-execute real-source/host-Codex gate at "
+            "PATH. It renders selected-container source extraction, private git "
+            "baseline, host Codex, patch export, and eval command shapes without "
+            "running Codex, Docker, model APIs, upload, submit, or real task material."
+        ),
+    )
+    agentissue_runner_flow_parser.add_argument(
+        "--first-run-handoff-root",
+        help=(
+            "Materialize a no-execute first-run handoff packet at PATH. It "
+            "includes the execution gate plus public handoff JSON/Markdown with "
+            "command shape, private artifact boundary, compact outputs, and "
+            "budget/auth safety checks."
+        ),
+    )
+    agentissue_runner_flow_parser.add_argument("--classification")
+    agentissue_runner_flow_parser.add_argument("--recommended-action")
+    agentissue_runner_flow_parser.add_argument(
+        "--delivery-batch-scale",
+        choices=DELIVERY_BATCH_SCALE_CHOICES,
+        help="Optional delivery scale label for the run index.",
+    )
+    agentissue_runner_flow_parser.add_argument(
+        "--delivery-outcome",
+        choices=DELIVERY_OUTCOME_CHOICES,
+        help="Optional delivery outcome label for the run index.",
+    )
+    agentissue_runner_flow_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview append without writing. This is the default.",
+    )
+    agentissue_runner_flow_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Append the compact no-run wrapper readiness event.",
+    )
+    agentissue_runner_flow_parser.add_argument(
+        "--no-global-sync",
+        action="store_true",
+        help="Skip global registry sync after append.",
+    )
+
     benchmark_artifact_filter_parser = benchmark_sub.add_parser(
         "classify-artifacts",
         help=(
@@ -2198,6 +2286,161 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if payload.get("ok") else 1
 
     if args.command == "benchmark":
+        if args.benchmark_command == "agentissue-codex-runner-flow":
+            classification = (
+                args.classification
+                or (
+                    AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION
+                    if args.first_run_handoff_root
+                    else (
+                        AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION
+                        if args.execution_gate_root
+                        else (
+                            AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION
+                            if args.synthetic_staging_root
+                            else AGENTISSUE_CODEX_CLI_RUNNER_WRAPPER_SCHEMA_VERSION
+                        )
+                    )
+                )
+            )
+            try:
+                if args.dry_run and args.execute:
+                    raise ValueError(
+                        "agentissue-codex-runner-flow accepts either --dry-run or --execute, not both"
+                    )
+                selected_roots = [
+                    value
+                    for value in (
+                        args.synthetic_staging_root,
+                        args.execution_gate_root,
+                        args.first_run_handoff_root,
+                    )
+                    if value
+                ]
+                if len(selected_roots) > 1:
+                    raise ValueError(
+                        "agentissue-codex-runner-flow accepts at most one root option, not both: --synthetic-staging-root, --execution-gate-root, or --first-run-handoff-root"
+                    )
+                wrapper = build_agentissue_codex_cli_runner_wrapper(
+                    selected_tag=args.tag,
+                    codex_binary=args.codex_binary,
+                    docker_binary=args.docker_binary,
+                )
+                synthetic_staging = None
+                execution_gate = None
+                first_run_handoff = None
+                benchmark_run_source = wrapper["benchmark_run"]
+                if args.first_run_handoff_root:
+                    first_run_handoff = (
+                        materialize_agentissue_codex_cli_runner_first_run_handoff(
+                            args.first_run_handoff_root,
+                            selected_tag=args.tag,
+                            codex_binary=args.codex_binary,
+                            docker_binary=args.docker_binary,
+                        )
+                    )
+                    benchmark_run_source = first_run_handoff["benchmark_run"]
+                elif args.execution_gate_root:
+                    execution_gate = materialize_agentissue_codex_cli_runner_execution_gate(
+                        args.execution_gate_root,
+                        selected_tag=args.tag,
+                        codex_binary=args.codex_binary,
+                        docker_binary=args.docker_binary,
+                    )
+                    benchmark_run_source = execution_gate["benchmark_run"]
+                elif args.synthetic_staging_root:
+                    synthetic_staging = (
+                        materialize_agentissue_codex_cli_runner_synthetic_staging(
+                            args.synthetic_staging_root,
+                            selected_tag=args.tag,
+                            codex_binary=args.codex_binary,
+                            docker_binary=args.docker_binary,
+                        )
+                    )
+                    benchmark_run_source = synthetic_staging["benchmark_run"]
+                benchmark_run = compact_benchmark_run(benchmark_run_source)
+                if not benchmark_run:
+                    raise ValueError(
+                        "agentissue Codex runner wrapper did not produce a compactable benchmark_run_v0"
+                    )
+                dry_run = not bool(args.execute)
+                payload = append_benchmark_run(
+                    registry_path=registry_path,
+                    runtime_root_override=args.runtime_root,
+                    goal_id=args.goal_id,
+                    benchmark_run=benchmark_run,
+                    classification=classification,
+                    recommended_action=args.recommended_action
+                    or (
+                        first_run_handoff["recommended_next_action"]
+                        if first_run_handoff
+                        else (
+                            execution_gate["recommended_next_action"]
+                            if execution_gate
+                            else (
+                                synthetic_staging["recommended_next_action"]
+                                if synthetic_staging
+                                else wrapper["recommended_next_action"]
+                            )
+                        )
+                    ),
+                    delivery_batch_scale=args.delivery_batch_scale,
+                    delivery_outcome=args.delivery_outcome,
+                    dry_run=dry_run,
+                )
+                payload["benchmark_cli"] = {
+                    "benchmark": AGENTISSUE_BENCHMARK_ID,
+                    "command": "agentissue-codex-runner-flow",
+                    "tag": args.tag,
+                    "dry_run_default": True,
+                    "real_runner_invoked": False,
+                    "real_codex_invoked": False,
+                    "real_docker_invoked": False,
+                    "model_api_invoked": False,
+                    "auth_values_read": False,
+                    "submit_eligible": False,
+                    "leaderboard_evidence": False,
+                    "synthetic_staging_materialized": bool(synthetic_staging),
+                    "synthetic_staging_root_path_recorded": False,
+                    "execution_gate_materialized": bool(execution_gate),
+                    "execution_gate_root_path_recorded": False,
+                    "first_run_handoff_materialized": bool(first_run_handoff),
+                    "first_run_handoff_root_path_recorded": False,
+                }
+                payload["agentissue_runner_flow"] = wrapper
+                if synthetic_staging:
+                    payload["agentissue_synthetic_staging"] = synthetic_staging
+                if execution_gate:
+                    payload["agentissue_execution_gate"] = execution_gate
+                if first_run_handoff:
+                    payload["agentissue_first_run_handoff"] = first_run_handoff
+                if args.no_global_sync:
+                    payload["global_sync"] = {
+                        "ok": True,
+                        "dry_run": dry_run,
+                        "skipped": True,
+                        "reason": "disabled by --no-global-sync",
+                    }
+                else:
+                    payload["global_sync"] = sync_project_registry_to_global(
+                        registry_path=registry_path,
+                        runtime_root_override=args.runtime_root,
+                        goal_id=args.goal_id,
+                        dry_run=dry_run,
+                    )
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "dry_run": not bool(getattr(args, "execute", False)),
+                    "appended": False,
+                    "registry": str(registry_path),
+                    "runtime_root": args.runtime_root,
+                    "goal_id": args.goal_id,
+                    "classification": classification,
+                    "error": str(exc),
+                }
+            print_payload(payload, args.format, render_benchmark_run_append_markdown)
+            return 0 if payload.get("ok") else 1
         if args.benchmark_command == "classify-artifacts":
             payload = filter_public_benchmark_artifact_paths(args.artifact_paths)
             print_payload(
