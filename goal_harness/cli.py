@@ -22,6 +22,7 @@ from .benchmark import (
     AGENTISSUE_BENCHMARK_ID,
     AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION,
     AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION,
+    AGENTISSUE_CODEX_CLI_RUNNER_RUN_GATE_SCHEMA_VERSION,
     AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION,
     AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_SCHEMA_VERSION,
     AGENTISSUE_CODEX_CLI_RUNNER_WRAPPER_SCHEMA_VERSION,
@@ -29,6 +30,7 @@ from .benchmark import (
     build_agentissue_codex_cli_runner_wrapper,
     materialize_agentissue_codex_cli_runner_execution_gate,
     materialize_agentissue_codex_cli_runner_first_run_handoff,
+    materialize_agentissue_codex_cli_runner_run_gate,
     materialize_agentissue_codex_cli_runner_synthetic_staging,
     materialize_agentissue_codex_cli_runner_workflow_check,
     TERMINAL_BENCH_DEFAULT_DATASET,
@@ -1342,6 +1344,15 @@ def main(argv: list[str] | None = None) -> int:
             "Codex, Docker, model APIs, upload, submit, or real task material."
         ),
     )
+    agentissue_runner_flow_parser.add_argument(
+        "--run-gate-root",
+        help=(
+            "Materialize a no-execute run-specific gate packet at PATH. It "
+            "includes the workflow check plus run-specific owner/agent gates "
+            "for a later no-upload lagent_239 run without running Codex, Docker, "
+            "model APIs, upload, submit, or real task material."
+        ),
+    )
     agentissue_runner_flow_parser.add_argument("--classification")
     agentissue_runner_flow_parser.add_argument("--recommended-action")
     agentissue_runner_flow_parser.add_argument(
@@ -2304,15 +2315,19 @@ def main(argv: list[str] | None = None) -> int:
                     AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_SCHEMA_VERSION
                     if args.workflow_check_root
                     else (
-                        AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION
-                        if args.first_run_handoff_root
+                        AGENTISSUE_CODEX_CLI_RUNNER_RUN_GATE_SCHEMA_VERSION
+                        if args.run_gate_root
                         else (
-                            AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION
-                            if args.execution_gate_root
+                            AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION
+                            if args.first_run_handoff_root
                             else (
-                                AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION
-                                if args.synthetic_staging_root
-                                else AGENTISSUE_CODEX_CLI_RUNNER_WRAPPER_SCHEMA_VERSION
+                                AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION
+                                if args.execution_gate_root
+                                else (
+                                    AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION
+                                    if args.synthetic_staging_root
+                                    else AGENTISSUE_CODEX_CLI_RUNNER_WRAPPER_SCHEMA_VERSION
+                                )
                             )
                         )
                     )
@@ -2330,12 +2345,13 @@ def main(argv: list[str] | None = None) -> int:
                         args.execution_gate_root,
                         args.first_run_handoff_root,
                         args.workflow_check_root,
+                        args.run_gate_root,
                     )
                     if value
                 ]
                 if len(selected_roots) > 1:
                     raise ValueError(
-                        "agentissue-codex-runner-flow accepts at most one root option, not both: --synthetic-staging-root, --execution-gate-root, --first-run-handoff-root, or --workflow-check-root"
+                        "agentissue-codex-runner-flow accepts at most one root option, not both: --synthetic-staging-root, --execution-gate-root, --first-run-handoff-root, --workflow-check-root, or --run-gate-root"
                     )
                 wrapper = build_agentissue_codex_cli_runner_wrapper(
                     selected_tag=args.tag,
@@ -2346,8 +2362,17 @@ def main(argv: list[str] | None = None) -> int:
                 execution_gate = None
                 first_run_handoff = None
                 workflow_check = None
+                run_gate = None
                 benchmark_run_source = wrapper["benchmark_run"]
-                if args.workflow_check_root:
+                if args.run_gate_root:
+                    run_gate = materialize_agentissue_codex_cli_runner_run_gate(
+                        args.run_gate_root,
+                        selected_tag=args.tag,
+                        codex_binary=args.codex_binary,
+                        docker_binary=args.docker_binary,
+                    )
+                    benchmark_run_source = run_gate["benchmark_run"]
+                elif args.workflow_check_root:
                     workflow_check = materialize_agentissue_codex_cli_runner_workflow_check(
                         args.workflow_check_root,
                         selected_tag=args.tag,
@@ -2397,18 +2422,22 @@ def main(argv: list[str] | None = None) -> int:
                     classification=classification,
                     recommended_action=args.recommended_action
                     or (
-                        workflow_check["recommended_next_action"]
-                        if workflow_check
+                        run_gate["recommended_next_action"]
+                        if run_gate
                         else (
-                            first_run_handoff["recommended_next_action"]
-                            if first_run_handoff
+                            workflow_check["recommended_next_action"]
+                            if workflow_check
                             else (
-                                execution_gate["recommended_next_action"]
-                                if execution_gate
+                                first_run_handoff["recommended_next_action"]
+                                if first_run_handoff
                                 else (
-                                    synthetic_staging["recommended_next_action"]
-                                    if synthetic_staging
-                                    else wrapper["recommended_next_action"]
+                                    execution_gate["recommended_next_action"]
+                                    if execution_gate
+                                    else (
+                                        synthetic_staging["recommended_next_action"]
+                                        if synthetic_staging
+                                        else wrapper["recommended_next_action"]
+                                    )
                                 )
                             )
                         )
@@ -2437,6 +2466,8 @@ def main(argv: list[str] | None = None) -> int:
                     "first_run_handoff_root_path_recorded": False,
                     "workflow_check_materialized": bool(workflow_check),
                     "workflow_check_root_path_recorded": False,
+                    "run_gate_materialized": bool(run_gate),
+                    "run_gate_root_path_recorded": False,
                 }
                 payload["agentissue_runner_flow"] = wrapper
                 if synthetic_staging:
@@ -2447,6 +2478,8 @@ def main(argv: list[str] | None = None) -> int:
                     payload["agentissue_first_run_handoff"] = first_run_handoff
                 if workflow_check:
                     payload["agentissue_workflow_check"] = workflow_check
+                if run_gate:
+                    payload["agentissue_run_gate"] = run_gate
                 if args.no_global_sync:
                     payload["global_sync"] = {
                         "ok": True,

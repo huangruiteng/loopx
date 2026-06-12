@@ -22,6 +22,7 @@ DOCS = [
     "agentissue-bench-codex-cli-runner-execution-gate-v0.md",
     "agentissue-bench-codex-cli-runner-first-run-handoff-v0.md",
     "agentissue-bench-codex-cli-runner-workflow-check-v0.md",
+    "agentissue-bench-codex-cli-runner-run-gate-v0.md",
     "agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md",
     "agentissue-bench-codex-cli-runner-publication-change-set-v0.md",
 ]
@@ -34,6 +35,7 @@ SMOKES = [
     "agentissue-bench-codex-cli-runner-execution-gate-smoke.py",
     "agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py",
     "agentissue-bench-codex-cli-runner-workflow-check-smoke.py",
+    "agentissue-bench-codex-cli-runner-run-gate-smoke.py",
     "agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py",
     "agentissue-bench-codex-cli-runner-publication-change-set-smoke.py",
 ]
@@ -52,16 +54,19 @@ REQUIRED_SOURCE_SNIPPETS = [
     "AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION",
     "AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION",
     "AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_SCHEMA_VERSION",
+    "AGENTISSUE_CODEX_CLI_RUNNER_RUN_GATE_SCHEMA_VERSION",
     "build_agentissue_codex_cli_runner_wrapper",
     "materialize_agentissue_codex_cli_runner_synthetic_staging",
     "materialize_agentissue_codex_cli_runner_execution_gate",
     "materialize_agentissue_codex_cli_runner_first_run_handoff",
     "materialize_agentissue_codex_cli_runner_workflow_check",
+    "materialize_agentissue_codex_cli_runner_run_gate",
     "agentissue-codex-runner-flow",
     "--synthetic-staging-root",
     "--execution-gate-root",
     "--first-run-handoff-root",
     "--workflow-check-root",
+    "--run-gate-root",
     "read_boundary",
 ]
 
@@ -137,8 +142,11 @@ def assert_mixed_files_are_detected() -> None:
         missing_paths = [name for name in MIXED_TRACKED_FILES if not (REPO_ROOT / name).exists()]
         assert not missing_paths, missing_paths
         return
-    missing = [name for name in MIXED_TRACKED_FILES if name not in changed]
-    assert not missing, missing
+    unexpected = [name for name in changed if name not in MIXED_TRACKED_FILES]
+    assert not unexpected, unexpected
+    assert "goal_harness/benchmark.py" in changed, changed
+    assert "goal_harness/cli.py" in changed, changed
+    assert "docs/research/long-horizon-agent-benchmarks/README.md" in changed, changed
 
 
 def assert_public_boundary() -> None:
@@ -159,7 +167,7 @@ def main() -> None:
     assert_public_boundary()
     print(
         "agentissue-bench-codex-cli-runner-publication-change-set-smoke ok "
-        "docs=9 smokes=9 mixed_files=4 real_run=False"
+        "docs=10 smokes=10 mixed_files_subset_documented real_run=False"
     )
 
 

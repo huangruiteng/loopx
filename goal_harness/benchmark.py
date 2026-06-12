@@ -222,6 +222,12 @@ AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_SCHEMA_VERSION = (
 AGENTISSUE_CODEX_CLI_RUNNER_WORKFLOW_CHECK_MODE = (
     "agentissue_codex_cli_runner_workflow_check_packet"
 )
+AGENTISSUE_CODEX_CLI_RUNNER_RUN_GATE_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_run_gate_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_RUN_GATE_MODE = (
+    "agentissue_codex_cli_runner_run_gate_packet"
+)
 AGENTISSUE_CODEX_CLI_RUNNER_SOURCE_RUNNER = (
     "goal_harness_agentissue_codex_cli_runner"
 )
@@ -1393,6 +1399,307 @@ def materialize_agentissue_codex_cli_runner_workflow_check(
         "recommended_next_action": (
             "use workflow-check.public.json as the pre-run invariant packet before "
             "any later operator-triggered AgentIssue-Bench lagent_239 e2e run"
+        ),
+    }
+
+def materialize_agentissue_codex_cli_runner_run_gate(
+    run_gate_root: str | Path,
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Create a no-execute run-specific gate packet for AgentIssue lagent_239."""
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner run-specific gate currently only supports selected tag lagent_239"
+        )
+    root = Path(run_gate_root).expanduser()
+    workflow = materialize_agentissue_codex_cli_runner_workflow_check(
+        root,
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    workflow_path = root / "workflow-check.public.json"
+    gate_path = root / "execution-gate.public.json"
+    handoff_path = root / "first-run-handoff.public.json"
+    run_gate_path = root / "run-specific-gate.public.json"
+    run_gate_markdown_path = root / "run-specific-gate.md"
+    compact_run_path = root / "benchmark_run.compact.json"
+
+    workflow_check = json.loads(workflow_path.read_text(encoding="utf-8"))
+    execution_gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+
+    gate_items = [
+        {
+            "id": "selected_tag_and_image_locked",
+            "owner": "agent",
+            "required_before_real_run": True,
+            "satisfied_by_packet": workflow_check["workflow_checks"]["single_selected_tag"]
+            and workflow_check["workflow_checks"]["selected_image_consistent"],
+            "public_evidence": "workflow-check.public.json",
+        },
+        {
+            "id": "host_codex_auth_local_only",
+            "owner": "agent",
+            "required_before_real_run": True,
+            "satisfied_by_packet": workflow_check["workflow_checks"]["host_codex_auth_not_synced"],
+            "public_evidence": "workflow-check.public.json",
+        },
+        {
+            "id": "private_job_root_selected",
+            "owner": "agent",
+            "required_before_real_run": True,
+            "satisfied_by_packet": False,
+            "stop_if_missing": True,
+        },
+        {
+            "id": "operator_explicit_real_run_trigger",
+            "owner": "owner",
+            "required_before_real_run": True,
+            "satisfied_by_packet": False,
+            "stop_if_missing": True,
+        },
+        {
+            "id": "selected_container_source_extracted",
+            "owner": "agent",
+            "required_before_real_run": True,
+            "satisfied_by_packet": False,
+            "public_command_shape": "execution-gate.public.json",
+            "stop_if_missing": True,
+        },
+        {
+            "id": "private_git_baseline_created_before_codex",
+            "owner": "agent",
+            "required_before_real_run": True,
+            "satisfied_by_packet": False,
+            "public_command_shape": "execution-gate.public.json",
+            "stop_if_missing": True,
+        },
+        {
+            "id": "host_codex_exec_ephemeral_from_buggy_source",
+            "owner": "agent",
+            "required_before_real_run": True,
+            "satisfied_by_packet": False,
+            "public_command_shape": "execution-gate.public.json",
+            "stop_if_missing": True,
+        },
+        {
+            "id": "attempt_patch_reducer_configured",
+            "owner": "agent",
+            "required_before_real_run": True,
+            "satisfied_by_packet": workflow_check["workflow_checks"]["patch_from_buggy_source_git_diff"]
+            and workflow_check["workflow_checks"]["attempt_patch_relative_path"],
+            "public_evidence": AGENTISSUE_PATCH_RELATIVE_PATH,
+        },
+        {
+            "id": "selected_tag_eval_no_upload_submit_ranking",
+            "owner": "agent",
+            "required_before_real_run": True,
+            "satisfied_by_packet": workflow_check["workflow_checks"]["single_tag_eval_no_upload_submit"]
+            and workflow_check["workflow_checks"]["single_tag_eval_no_public_ranking"],
+            "public_evidence": "workflow-check.public.json",
+        },
+        {
+            "id": "compact_public_reducer_enabled",
+            "owner": "agent",
+            "required_before_real_run": True,
+            "satisfied_by_packet": workflow_check["workflow_checks"]["public_files_compact_or_public"],
+            "public_evidence": "benchmark_run.compact.json",
+        },
+        {
+            "id": "raw_artifact_and_auth_leak_stop_rules_enabled",
+            "owner": "agent",
+            "required_before_real_run": True,
+            "satisfied_by_packet": True,
+            "stop_if_raw_task_patch_log_trajectory_screenshot_or_auth_material_public": True,
+        },
+    ]
+    blocking_gate_ids = [
+        item["id"]
+        for item in gate_items
+        if item["required_before_real_run"] and not item["satisfied_by_packet"]
+    ]
+    run_gate = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_RUN_GATE_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "default_mode": "no_execute",
+        "materialized": True,
+        "path_recorded": False,
+        "real_run_authorized": False,
+        "ready_for_real_run": False,
+        "ready_for_operator_review": True,
+        "blocking_gate_ids": blocking_gate_ids,
+        "input_packets": {
+            "workflow_check": "workflow-check.public.json",
+            "first_run_handoff": "first-run-handoff.public.json",
+            "execution_gate": "execution-gate.public.json",
+        },
+        "owner_agent_gate_items": gate_items,
+        "phase_order": [
+            "select_private_job_root",
+            "extract_selected_container_buggy_source",
+            "create_private_git_baseline",
+            "run_host_codex_exec_ephemeral_from_buggy_source",
+            "export_attempt_patch_from_buggy_source_git_diff",
+            "run_selected_tag_eval_no_upload_submit_ranking",
+            "reduce_to_compact_public_result",
+        ],
+        "public_artifact_policy": {
+            "allowed_public_relative_files": [
+                "runner-flow-plan.public.json",
+                "execution-gate.public.json",
+                "first-run-handoff.public.json",
+                "workflow-check.public.json",
+                "run-specific-gate.public.json",
+                "run-specific-gate.md",
+                "benchmark_run.compact.json",
+            ],
+            "raw_task_material_public": False,
+            "patch_content_public": False,
+            "raw_logs_public": False,
+            "trajectories_public": False,
+            "screenshots_public": False,
+            "absolute_paths_public": False,
+            "credential_values_public": False,
+        },
+        "credential_boundary": {
+            "codex_auth_values_read_by_packet": False,
+            "codex_home_synced": False,
+            "shared_remote_host_receives_codex_auth": False,
+            "host_codex_auth_local_only": True,
+        },
+        "stop_conditions": [
+            "private_job_root_missing",
+            "operator_real_run_trigger_missing",
+            "selected_container_source_not_extracted",
+            "private_git_baseline_missing_before_codex",
+            "host_codex_not_ephemeral_or_not_from_buggy_source",
+            "attempt_patch_missing_or_not_from_buggy_source_git_diff",
+            "eval_attempts_upload_submit_or_public_ranking",
+            "public_artifact_contains_raw_task_patch_log_trajectory_screenshot_auth_or_absolute_path",
+        ],
+        "execution_boundary": {
+            **workflow_check["execution_boundary"],
+            "real_run_authorized": False,
+            "operator_trigger_recorded": False,
+        },
+        "rendered_command_sources": {
+            "source_extraction_gate": execution_gate["source_extraction_gate"]["commands"],
+            "private_git_baseline_gate": execution_gate["private_git_baseline_gate"]["commands"],
+            "host_codex_gate": execution_gate["host_codex_gate"]["command"],
+            "patch_output_gate": execution_gate["patch_output_gate"],
+            "eval_gate": execution_gate["eval_gate"],
+        },
+    }
+    markdown = (
+        "# AgentIssue-Bench lagent_239 Run-Specific Gate\n\n"
+        "This packet is no-execute. It separates the gates that are already "
+        "covered by public/compact no-run packets from the gates that still "
+        "block a real no-upload run.\n\n"
+        "## Blocking Gates\n\n"
+        + "\n".join(f"- {gate_id}" for gate_id in blocking_gate_ids)
+        + "\n\n## Public Boundary\n\n"
+        "- Codex auth stays on the host; no Codex home or auth material is synced.\n"
+        "- Public artifacts stay compact/public and relative-path only.\n"
+        "- Raw task material, patch content, raw logs, trajectories, screenshots, "
+        "credentials, and absolute private paths remain private.\n"
+    )
+
+    benchmark_run = json.loads(json.dumps(workflow["benchmark_run"]))
+    benchmark_run.update(
+        {
+            "job_name": "agentissue_lagent_239_codex_cli_runner_run_gate",
+            "mode": AGENTISSUE_CODEX_CLI_RUNNER_RUN_GATE_MODE,
+            "worker_mode": "trusted_host_codex_cli_no_execute_run_gate",
+            "first_blocker": "run_gate_packet_only_real_run_not_authorized",
+            "score_failure_attribution": "not_run_run_gate_only",
+            "failure_attribution_labels": [
+                "run_specific_gate_packet_only",
+                "real_run_blocked_until_gate_items_satisfied",
+            ],
+            "evidence_files": run_gate["public_artifact_policy"][
+                "allowed_public_relative_files"
+            ],
+        }
+    )
+    benchmark_run["validation"].update(
+        {
+            "run_specific_gate_materialized": True,
+            "owner_agent_gate_items_declared": True,
+            "blocking_gate_ids_declared": True,
+            "ready_for_operator_review": True,
+            "real_run_authorized": False,
+            "private_job_root_required": True,
+            "operator_trigger_required": True,
+            "phase_order_declared": True,
+            "credential_boundary_declared": True,
+            "public_artifact_policy_declared": True,
+            "stop_conditions_declared": True,
+            "no_execute_packet": True,
+            "no_real_source_extraction": True,
+            "no_real_codex_execution": True,
+            "no_docker_pull_or_start": True,
+            "no_auth_sync_to_shared_host": True,
+        }
+    )
+    for trial in benchmark_run.get("trials") or []:
+        if isinstance(trial, dict):
+            trial["exception_type"] = "run_gate_packet_only_no_real_case"
+
+    run_gate_path.write_text(
+        json.dumps(run_gate, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    run_gate_markdown_path.write_text(markdown, encoding="utf-8")
+    compact_run_path.write_text(
+        json.dumps(benchmark_run, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_RUN_GATE_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "ready_for_operator_review": True,
+        "ready_for_real_run": False,
+        "materialized": True,
+        "path_recorded": False,
+        "run_gate_root_path_recorded": False,
+        "blocking_gate_ids": blocking_gate_ids,
+        "workflow_check": {
+            "schema_version": workflow["schema_version"],
+            "ready": workflow["ready"],
+            "workflow_check_relative_path": workflow["workflow_check_relative_path"],
+            "path_recorded": False,
+        },
+        "created_relative_paths": [
+            *workflow["created_relative_paths"],
+            "run-specific-gate.public.json",
+            "run-specific-gate.md",
+        ],
+        "run_gate_relative_path": "run-specific-gate.public.json",
+        "run_gate_markdown_relative_path": "run-specific-gate.md",
+        "compact_run_relative_path": "benchmark_run.compact.json",
+        "gate_checks": {
+            "owner_agent_gate_items_declared": True,
+            "blocking_gate_ids_declared": True,
+            "credential_boundary_declared": True,
+            "public_artifact_policy_declared": True,
+            "stop_conditions_declared": True,
+            "real_run_authorized": False,
+        },
+        "execution_boundary": run_gate["execution_boundary"],
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "review run-specific gate packet before any later real no-upload "
+            "AgentIssue-Bench lagent_239 Docker/Codex execution"
         ),
     }
 
