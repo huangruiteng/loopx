@@ -126,6 +126,27 @@ JSONL log, Goal Tick phases, validation, writeback, and spend accounting:
 python3 examples/codex-cli-long-run-real-worker-contract-smoke.py
 ```
 
+Real Codex CLI behavior regressions that consume an actual local Codex run live
+under `regression/`, not `examples/`. They should be run deliberately during a
+release or control-plane contract change:
+
+```bash
+python3 regression/external-evidence-observation-real-codex.py --real-codex
+```
+
+That probe feeds a compact `quota should-run` payload to real `codex exec` with
+an output schema and verifies the worker chooses compact blocker writeback when
+an external-evidence monitor has no observable handle. The contract-only mode
+can be run without consuming a Codex run:
+
+```bash
+python3 regression/external-evidence-observation-real-codex.py
+```
+
+The real probe pins a current supported model by default with
+`--codex-model gpt-5.4-mini`, avoiding accidental dependence on a stale local
+Codex CLI default model.
+
 ## Failure Criteria
 
 - Any worker reads or requires real chat/session history.

@@ -148,8 +148,9 @@ the worker to create a concrete advancement todo or write a blocker instead of
 quietly waiting on monitors. The heartbeat recommendation may say
 `follow_work_lane_contract` or `monitor_quiet_until_material_transition`, but it
 should not restate the lane semantics; unchanged monitor polls remain quiet
-no-spend checks, while a material dependency-state transition may be written
-back once when it changes the selected goal decision.
+no-spend checks with `should_run=false` and
+`effective_action=monitor_quiet_skip`, while a material dependency-state
+transition may be written back once when it changes the selected goal decision.
 `handoff_readiness.handoff_interface_budget` declares the machine-readable
 budget for the minimal project-agent handoff: `mode=project_agent_handoff`,
 `max_lines=16`, and `max_chars=1800`. `goal-harness review-packet
@@ -859,16 +860,28 @@ into a silent skip.
 When the payload includes `notify_user_on_open_todo=true`, the open
 `user_todo_summary` is the current blocker-push surface even if there is no
 operator gate. This is intended for `focus_wait`, `waiting`,
-`external_evidence`, and monitor-only eligible lanes where a short user/owner
-answer can unlock progress or stop repeated meaningless polling. Executors
-should list at most three open todos, include
+and `external_evidence` lanes where a short user/owner answer can unlock
+progress or stop repeated meaningless polling. Executors should list at most
+three open todos, include
 `open_todo_notify_reason`, skip implementation work, and skip quota spend for
 that blocker-push turn. When the payload also includes
 `open_todo_notification_policy=repeat_until_resolved`, the
-executor should repeat the notification on every monitor-only no-transition poll
-until the todo is done, deferred, or replaced; do not suppress it as a recently
-surfaced blocker. Other blocker-push cases may still be de-duplicated when the
-same blocker was surfaced recently.
+executor should repeat the notification until the todo is done, deferred, or
+replaced; do not suppress it as a recently surfaced blocker. Other blocker-push
+cases may still be de-duplicated when the same blocker was surfaced recently.
+Eligible monitor-only no-transition polls keep open user todos in
+`user_todo_summary`, but do not force repeated notification or set
+`requires_user_action=true`; they should surface as a quiet
+`monitor_quiet_skip` rather than an executable run.
+When the payload includes `external_evidence_observation`, the goal is waiting
+on an external monitor that still requires a read-only observation contract.
+This is not prompt-specific advice: `quota should-run` should also set
+`effective_action=external_evidence_observe` and
+`execution_obligation.kind=external_evidence_observation_required`. Executors
+must check for a concrete observable handle or compact writeback surface, such
+as a thread id, automation id, job id, lock/result marker, or result path. If no
+handle exists, the correct action is a compact blocker or launch-readiness
+writeback, not a quiet no-op and not benchmark execution.
 When the payload includes `heartbeat_recommendation`, executors should follow
 that generic lifecycle hint before inventing local automation behavior:
 `run_first_read_only_map` runs and saves one real read-only map before spending
@@ -898,22 +911,48 @@ This warning is a checklist hygiene signal only: it does not change quota
 eligibility, grant write or production permission, or supersede open user/agent
 todo blockers.
 When the payload includes `autonomous_replan_obligation`, the active state's
-current `Next Action` or `Operating Lessons` carries public-safe evidence that
-the controller may be stuck in a periodic-review threshold, no-progress streak,
-repeated-action loop, phase transition, backlog mismatch, or evidence
-contradiction. Historical progress entries and completed todos are intentionally
-not trigger sources. Executors should treat the object as a machine-readable
-planning contract: inspect `triggers`, apply the compact `todo_actions` as
-split/add/retire guidance, run `next_validation_command` after the selected
-slice, and stop at `stop_condition`. For eligible goals without open user
-todos, `heartbeat_recommendation.recommended_mode` may become
-`autonomous_replan_required`; this is intended to keep monitor-only work from
-consuming the primary executable backlog, not to grant new private,
-destructive, production, or owner-only authority.
+current `Next Action` or `Operating Lessons`, or the recent public run history,
+carries public-safe evidence that the controller may be stuck in a
+periodic-review threshold, no-progress streak, repeated-action loop, phase
+transition, backlog mismatch, evidence contradiction, or two repeated public
+monitor/no-progress run records. Historical progress entries and completed
+todos are intentionally not active-state trigger sources. Executors should
+treat the object as a machine-readable planning contract, not prompt advice:
+inspect `triggers`, apply the compact `todo_actions` as split/add/retire
+guidance, run `next_validation_command` after the selected slice, and stop at
+`stop_condition`. The default stall threshold is 2 consecutive stalled turns or
+public run records. A `quota_monitor_poll` record is status-neutral for latest
+dashboard state, but it is still public stalled-run evidence for this specific
+replan detector. For eligible goals,
+`heartbeat_recommendation.recommended_mode` may become
+`autonomous_replan_required`, and `execution_obligation.kind` may become
+`autonomous_replan_required` with `must_attempt_work=true`, even when open user
+todos remain visible, as long as the selected slice stays outside private,
+destructive, production, or owner-only authority and honors `stop_condition`.
+This is intended to keep monitor-only work from consuming the primary
+executable backlog, not to bypass real gates.
+The payload includes `interaction_contract.schema_version =
+goal_harness_interaction_contract_v0`, which is the primary user/agent/CLI
+protocol for a selected goal. It groups the current turn into a stable
+`mode` such as `bounded_delivery`, `user_gate`, `user_todo_blocker_push`,
+`external_evidence_observation`, `monitor_quiet_skip`, `autonomous_replan`,
+`outcome_floor_recovery`, `mapped_noop_if_unchanged`, or `quota_throttled`.
+Its `user_channel` says whether to interrupt the user and why;
+`agent_channel` says whether Codex must attempt work, whether delivery is
+allowed, whether quiet no-op is allowed, and the primary action; `cli_channel`
+says which CLI transitions and spend policy apply. Executors should read
+`interaction_contract` first. `execution_obligation`,
+`heartbeat_recommendation`, `work_lane_contract`,
+`external_evidence_observation`, `goal_boundary`, and
+`protocol_action_packet` remain compatibility and drill-down fields under that
+contract, not competing sources of truth.
 The payload also includes `execution_obligation`, which is the compatibility
-entry point for workers deciding whether a quiet no-op is allowed.
+entry point for older workers deciding whether a quiet no-op is allowed.
 `heartbeat_recommendation.notify` is only a user-facing notification policy. It
 must not be interpreted as an execution gate. If
+`execution_obligation.kind=external_evidence_observation_required`, ordinary
+delivery is still blocked, but the worker must perform one read-only
+observation or write a compact missing-handle blocker before it may stop. If
 `execution_obligation.must_attempt_work=true`, the worker should choose one
 bounded segment under `work_lane_contract` when present, otherwise under
 `effective_action` / `goal_boundary`, validate it, write durable state/events,

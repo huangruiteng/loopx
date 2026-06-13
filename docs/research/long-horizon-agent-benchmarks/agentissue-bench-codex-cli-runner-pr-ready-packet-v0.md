@@ -1,0 +1,96 @@
+# AgentIssue-Bench Codex CLI Runner PR-Ready Packet V0
+
+Date: 2026-06-13
+
+## Scope
+
+This packet consolidates the AgentIssue-Bench `lagent_239` Codex CLI runner
+route into one public-safe review surface. It does not run Codex, Docker, a
+model API, source extraction, patch generation, patch evaluation, upload,
+submit, or public ranking paths.
+
+The route is intentionally single-benchmark and single-tag:
+
+```text
+benchmark=agentissue-bench
+selected_tag=lagent_239
+selected_image=alfin06/agentissue-bench:lagent_239
+real_run=false
+submit_eligible=false
+leaderboard_evidence=false
+```
+
+## Consolidated Artifacts
+
+The PR-ready packet is complete only when these public artifacts move together:
+
+```text
+docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-contract-v0.md
+docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-flow-plan-v0.md
+docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-dry-run-wrapper-v0.md
+docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-synthetic-staging-v0.md
+docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-execution-gate-v0.md
+docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-first-run-handoff-v0.md
+docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md
+```
+
+And these public smokes:
+
+```text
+examples/agentissue-bench-codex-cli-runner-contract-smoke.py
+examples/agentissue-bench-codex-cli-runner-flow-smoke.py
+examples/agentissue-bench-codex-cli-runner-dry-run-wrapper-smoke.py
+examples/agentissue-bench-codex-cli-runner-synthetic-staging-smoke.py
+examples/agentissue-bench-codex-cli-runner-execution-gate-smoke.py
+examples/agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py
+examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py
+```
+
+## Route Summary
+
+The route narrows from high-level contract to no-execute handoff:
+
+```text
+contract -> flow plan -> dry-run wrapper -> synthetic staging -> execution gate -> first-run handoff -> PR-ready packet
+```
+
+The CLI surfaces are:
+
+```text
+goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239
+goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --synthetic-staging-root <private-root>
+goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --execution-gate-root <private-root>
+goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --first-run-handoff-root <private-root>
+```
+
+All root options are mutually exclusive. They materialize public-safe packet
+shapes only; root paths are not recorded in public payloads.
+
+## Public Boundary
+
+The public boundary for this route is:
+
+```text
+allowed public evidence: schema/mode, selected tag, selected image label, command shape, relative file names, compact validation booleans, hash/count/status field names
+forbidden public evidence: issue body, patch content, raw logs, trajectories, screenshots, local absolute paths, auth files, token names, API keys, fixed/oracle material
+```
+
+The later e2e run remains separate from this PR-ready packet. A later operator
+can use the first-run handoff checklist to trigger a real run, but that is not
+part of this packet.
+
+## Validation
+
+```bash
+python3 examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py
+python3 -m py_compile \
+  goal_harness/benchmark.py \
+  goal_harness/cli.py \
+  examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py
+goal-harness check \
+  --scan-path goal_harness/benchmark.py \
+  --scan-path goal_harness/cli.py \
+  --scan-path examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py \
+  --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md \
+  --scan-path docs/research/long-horizon-agent-benchmarks/README.md
+```

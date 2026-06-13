@@ -42,7 +42,70 @@ def make_source_root(root: Path) -> Path:
         check=True,
         capture_output=True,
     )
+    subprocess.run(
+        ["git", "update-ref", "refs/remotes/origin/main", "HEAD"],
+        cwd=source_root,
+        check=True,
+        capture_output=True,
+    )
+    current_branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=source_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "branch", "--set-upstream-to", "origin/main", current_branch],
+        cwd=source_root,
+        check=True,
+        capture_output=True,
+    )
     return source_root
+
+
+def advance_origin_main_without_advancing_head(source_root: Path) -> None:
+    head_before = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    (source_root / "upstream-only.txt").write_text("new upstream fixture\n", encoding="utf-8")
+    subprocess.run(["git", "add", "upstream-only.txt"], cwd=source_root, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "upstream fixture"],
+        cwd=source_root,
+        check=True,
+        capture_output=True,
+    )
+    upstream_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    current_branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=source_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "update-ref", "refs/remotes/origin/main", upstream_head],
+        cwd=source_root,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "update-ref", f"refs/heads/{current_branch}", head_before],
+        cwd=source_root,
+        check=True,
+        capture_output=True,
+    )
 
 
 def ready_image_metadata() -> dict[str, object]:
@@ -93,6 +156,7 @@ def assert_no_execution(payload: dict[str, object]) -> None:
     source_lock = payload["source_lock"]
     assert isinstance(source_lock, dict)
     assert source_lock["source_root_path_recorded"] is False
+    assert source_lock["fetch_origin_attempted"] in {False, True}
     runner = payload["runner"]
     assert isinstance(runner, dict)
     assert runner["source_root_path_recorded"] is False
@@ -122,9 +186,45 @@ def run_fixture_smoke() -> None:
         assert payload["ready"] is True
         assert payload["first_blocker"] == "ready_for_operator_triggered_no_upload_ale_dry_run"
         assert payload["source_lock"]["remote_matches_expected"] is True
+        assert payload["source_lock"]["head_matches_upstream"] is True
         assert payload["runner"]["python_module_available"] is True
         assert payload["experiment_spec"]["exists"] is True
         assert_no_execution(payload)
+
+        fresh_required = build_agents_last_exam_local_launch_packet(
+            source_root=str(source_root),
+            experiment_spec_relative_path="example_exp.yaml",
+            runner_binary="python3",
+            runner_python_module="ale_run",
+            runner_command_label="python-m-ale-run",
+            operator_authorized=True,
+            allow_public_task_material=True,
+            require_upstream_current=True,
+            image_metadata=ready_image_metadata(),
+            alternate_image_metadata=blocked_image_metadata(),
+        )
+        assert fresh_required["ready"] is True
+        assert fresh_required["source_lock"]["require_upstream_current"] is True
+        assert_no_execution(fresh_required)
+
+        advance_origin_main_without_advancing_head(source_root)
+        stale_source = build_agents_last_exam_local_launch_packet(
+            source_root=str(source_root),
+            experiment_spec_relative_path="example_exp.yaml",
+            runner_binary="python3",
+            runner_python_module="ale_run",
+            runner_command_label="python-m-ale-run",
+            operator_authorized=True,
+            allow_public_task_material=True,
+            require_upstream_current=True,
+            image_metadata=ready_image_metadata(),
+            alternate_image_metadata=blocked_image_metadata(),
+        )
+        assert stale_source["ready"] is False
+        assert stale_source["first_blocker"] == "source_root_behind_upstream"
+        assert stale_source["source_lock"]["head_matches_upstream"] is False
+        assert stale_source["source_lock"]["upstream_behind_count"] == 1
+        assert_no_execution(stale_source)
 
         missing_spec = build_agents_last_exam_local_launch_packet(
             source_root=str(source_root),
@@ -180,6 +280,32 @@ def run_cli_smoke() -> None:
         assert payload["first_blocker"] == "docker_probe_disabled"
         assert payload["experiment_spec"]["exists"] is True
         assert_no_execution(payload)
+
+        fresh_required = subprocess.run(
+            [*base_cmd, "--require-upstream-current"],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        fresh_payload = json.loads(fresh_required.stdout)
+        assert fresh_payload["ok"] is True
+        assert fresh_payload["source_lock"]["head_matches_upstream"] is True
+        assert_no_execution(fresh_payload)
+
+        advance_origin_main_without_advancing_head(source_root)
+        stale = subprocess.run(
+            [*base_cmd, "--require-upstream-current", "--require-ready"],
+            cwd=REPO_ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        assert stale.returncode == 1
+        stale_payload = json.loads(stale.stdout)
+        assert stale_payload["ok"] is False
+        assert stale_payload["error"] == "source_root_behind_upstream"
+        assert_no_execution(stale_payload)
 
         require_ready = subprocess.run(
             [*base_cmd, "--require-ready"],

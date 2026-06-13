@@ -24,6 +24,8 @@ PROTOCOL = TOPIC_DIR / "passive-baseline-protocol-v0.md"
 GOAL_ID = "passive-baseline-fixture"
 TASK_ID = "mini_control_plane_repair_v0"
 BENCHMARK_ID = "goal-harness-local-passive-baseline@v0"
+BASELINE_MODE = "codex_goal_mode_baseline"
+TREATMENT_MODE = "passive_goal_harness_wrapper"
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -70,7 +72,7 @@ def benchmark_run_event(mode: str, *, control_value: float, spend_count: int) ->
                     "output_tokens": 0,
                     "cost_usd": 0.0,
                 },
-                "trajectory_present": mode == "passive_goal_harness_wrapper",
+                "trajectory_present": mode == TREATMENT_MODE,
                 "verifier_reward_present": True,
                 "artifact_manifest_present": True,
                 "trial_result_present": True,
@@ -81,7 +83,8 @@ def benchmark_run_event(mode: str, *, control_value: float, spend_count: int) ->
             "no_operator_simulator": True,
             "official_task_score_delta_zero": True,
             "control_plane_score_recorded": True,
-            "spend_after_validation_only": spend_count > 0 or mode == "bare_codex_cli",
+            "codex_goal_mode_enabled": True,
+            "spend_after_validation_only": spend_count > 0 or mode == BASELINE_MODE,
             "no_leaderboard_upload_requested": True,
             "paths_redacted": True,
         },
@@ -108,8 +111,8 @@ def write_fixture(root: Path) -> tuple[Path, Path, dict[str, Path]]:
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     registry_path = project / ".goal-harness" / "registry.json"
     event_paths = {
-        "bare_codex_cli": root / "bare_codex_cli.benchmark_run.json",
-        "passive_goal_harness_wrapper": root / "passive_goal_harness_wrapper.benchmark_run.json",
+        BASELINE_MODE: root / f"{BASELINE_MODE}.benchmark_run.json",
+        TREATMENT_MODE: root / f"{TREATMENT_MODE}.benchmark_run.json",
     }
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
@@ -120,7 +123,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, dict[str, Path]]:
         "---\n\n"
         "# Passive Baseline Fixture\n\n"
         "## Agent Todo\n\n"
-        "- [ ] Append bare and passive-wrapper benchmark_run_v0 rows.\n\n"
+        "- [ ] Append Codex goal-mode baseline and passive-wrapper benchmark_run_v0 rows.\n\n"
         "## Next Action\n\n"
         "- Inspect the paired passive baseline benchmark rows.\n",
         encoding="utf-8",
@@ -149,12 +152,12 @@ def write_fixture(root: Path) -> tuple[Path, Path, dict[str, Path]]:
         },
     )
     write_json(
-        event_paths["bare_codex_cli"],
-        benchmark_run_event("bare_codex_cli", control_value=0.70, spend_count=0),
+        event_paths[BASELINE_MODE],
+        benchmark_run_event(BASELINE_MODE, control_value=0.70, spend_count=0),
     )
     write_json(
-        event_paths["passive_goal_harness_wrapper"],
-        benchmark_run_event("passive_goal_harness_wrapper", control_value=0.86, spend_count=3),
+        event_paths[TREATMENT_MODE],
+        benchmark_run_event(TREATMENT_MODE, control_value=0.86, spend_count=3),
     )
     return registry_path, runtime, event_paths
 
@@ -221,8 +224,9 @@ def assert_doc_contract() -> None:
     compact_doc = " ".join(doc.split())
     required = [
         "Passive Baseline Protocol V0",
-        "`bare_codex_cli`",
+        "`codex_goal_mode_baseline`",
         "`passive_goal_harness_wrapper`",
+        "`codex_goal_mode_enabled`",
         "no simulated operator intervention is allowed",
         "`benchmark_result_v0`",
         "`benchmark_comparison_v0`",
@@ -248,8 +252,8 @@ def main() -> None:
         ]
         assert all(item["ok"] and item["appended"] for item in appended), appended
         assert {item["benchmark_run"]["mode"] for item in appended} == {
-            "bare_codex_cli",
-            "passive_goal_harness_wrapper",
+            BASELINE_MODE,
+            TREATMENT_MODE,
         }, appended
 
         status = collect_status(
@@ -266,7 +270,7 @@ def main() -> None:
             if isinstance(run.get("benchmark_run_summary"), dict)
         ]
         modes = {summary["mode"] for summary in summaries}
-        assert modes == {"bare_codex_cli", "passive_goal_harness_wrapper"}, summaries
+        assert modes == {BASELINE_MODE, TREATMENT_MODE}, summaries
         assert status["event_ledger_summary"]["totals"]["benchmark_runs_24h"] == 2, status
         for summary in summaries:
             assert summary["benchmark_id"] == BENCHMARK_ID, summary

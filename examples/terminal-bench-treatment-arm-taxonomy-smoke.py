@@ -14,9 +14,9 @@ DOC = TOPIC_DIR / "terminal-bench-treatment-arm-taxonomy-v0.md"
 README = TOPIC_DIR / "README.md"
 
 ARMS = (
-    "hardened_codex_baseline",
     "codex_goal_mode",
     "codex_goal_harness",
+    "hardened_codex_calibration",
     "passive_goal_harness_observer",
 )
 
@@ -39,11 +39,12 @@ FORBIDDEN_TEXT = [
 
 REQUIRED_SNIPPETS = [
     "Terminal-Bench Treatment Arm Taxonomy V0",
-    "hardened_codex_baseline",
-    "hardened_install_baseline",
     "codex_goal_mode",
     "codex_goal_harness",
+    "hardened_codex_calibration",
     "passive_goal_harness_observer",
+    "primary_paired_baseline",
+    "calibration_only",
     "codex_runtime_goal_tool_calls",
     "goal_harness_cli_calls",
     "goal_harness_state_reads",
@@ -63,28 +64,36 @@ def taxonomy_payload() -> dict[str, Any]:
     return {
         "schema_version": "terminal_bench_treatment_arm_taxonomy_v0",
         "arms": {
-            "hardened_codex_baseline": {
-                "goal_harness_inside_case": False,
-                "official_score_comparable_to_native_codex": False,
-                "official_score_comparable_to_goal_harness_treatment": True,
-                "uses_codex_runtime_goal_tools": False,
-                "uses_goal_harness_interfaces": False,
-                "hardened_install_baseline": True,
-                "task_prompt_changed": False,
-            },
             "codex_goal_mode": {
                 "goal_harness_inside_case": False,
                 "official_score_comparable_to_native_codex": False,
                 "uses_codex_runtime_goal_tools": True,
                 "uses_goal_harness_interfaces": False,
+                "codex_goal_mode_enabled": True,
+                "primary_paired_baseline": True,
+                "calibration_only": False,
             },
             "codex_goal_harness": {
                 "goal_harness_inside_case": True,
                 "official_score_comparable_to_native_codex": False,
                 "uses_codex_runtime_goal_tools": "allowed_but_separately_counted",
                 "uses_goal_harness_interfaces": "requires_cli_bridge_or_trace",
+                "codex_goal_mode_enabled": True,
+                "primary_paired_baseline": False,
+                "calibration_only": False,
                 "current_v0_interface_surface": "prompt_packet_only_no_cli_bridge",
                 "current_v0_cli_bridge_available": False,
+            },
+            "hardened_codex_calibration": {
+                "goal_harness_inside_case": False,
+                "official_score_comparable_to_native_codex": False,
+                "official_score_comparable_to_goal_harness_treatment": False,
+                "uses_codex_runtime_goal_tools": False,
+                "uses_goal_harness_interfaces": False,
+                "codex_goal_mode_enabled": False,
+                "primary_paired_baseline": False,
+                "calibration_only": True,
+                "task_prompt_changed": False,
             },
             "passive_goal_harness_observer": {
                 "goal_harness_inside_case": False,
@@ -138,23 +147,31 @@ def main() -> None:
 
     payload = taxonomy_payload()
     assert tuple(payload["arms"]) == ARMS, payload
-    hardened = payload["arms"]["hardened_codex_baseline"]
     codex_goal = payload["arms"]["codex_goal_mode"]
     harness = payload["arms"]["codex_goal_harness"]
+    calibration = payload["arms"]["hardened_codex_calibration"]
     passive = payload["arms"]["passive_goal_harness_observer"]
     sample = payload["first_managed_sample_reclassification"]
 
-    assert hardened["hardened_install_baseline"] is True, hardened
-    assert hardened["task_prompt_changed"] is False, hardened
-    assert hardened["uses_goal_harness_interfaces"] is False, hardened
-    assert hardened["official_score_comparable_to_native_codex"] is False, hardened
-    assert hardened["official_score_comparable_to_goal_harness_treatment"] is True, hardened
+    assert codex_goal["codex_goal_mode_enabled"] is True, codex_goal
+    assert codex_goal["primary_paired_baseline"] is True, codex_goal
+    assert codex_goal["calibration_only"] is False, codex_goal
     assert codex_goal["uses_codex_runtime_goal_tools"] is True, codex_goal
     assert codex_goal["uses_goal_harness_interfaces"] is False, codex_goal
     assert harness["goal_harness_inside_case"] is True, harness
+    assert harness["codex_goal_mode_enabled"] is True, harness
+    assert harness["primary_paired_baseline"] is False, harness
+    assert harness["calibration_only"] is False, harness
     assert harness["uses_goal_harness_interfaces"] == "requires_cli_bridge_or_trace", harness
     assert harness["current_v0_interface_surface"] == "prompt_packet_only_no_cli_bridge", harness
     assert harness["current_v0_cli_bridge_available"] is False, harness
+    assert calibration["calibration_only"] is True, calibration
+    assert calibration["primary_paired_baseline"] is False, calibration
+    assert calibration["codex_goal_mode_enabled"] is False, calibration
+    assert calibration["task_prompt_changed"] is False, calibration
+    assert calibration["uses_goal_harness_interfaces"] is False, calibration
+    assert calibration["official_score_comparable_to_native_codex"] is False, calibration
+    assert calibration["official_score_comparable_to_goal_harness_treatment"] is False, calibration
     assert passive["uses_goal_harness_interfaces"] == "outside_case_only", passive
     assert sample["codex_runtime_goal_tool_calls"]["total"] == 2, sample
     assert sample["goal_harness_cli_calls"] == 0, sample

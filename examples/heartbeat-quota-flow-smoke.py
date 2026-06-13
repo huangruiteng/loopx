@@ -37,6 +37,27 @@ def run_cli(root: Path, *args: str, registry_path: Path, runtime: Path) -> dict:
     return json.loads(result.stdout)
 
 
+def run_cli_result(root: Path, *args: str, registry_path: Path, runtime: Path) -> tuple[int, dict]:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "goal_harness.cli",
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(runtime),
+            "--format",
+            "json",
+            *args,
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, json.loads(result.stdout)
+
+
 def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
@@ -104,7 +125,11 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
 
 
 def count_spend_events(runtime: Path) -> int:
-    index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
+    return count_events(runtime, "quota_slot_spent")
+
+
+def count_events(runtime: Path, classification: str, *, goal_id: str = GOAL_ID) -> int:
+    index_path = runtime / "goals" / goal_id / "runs" / "index.jsonl"
     if not index_path.exists():
         return 0
     count = 0
@@ -112,9 +137,272 @@ def count_spend_events(runtime: Path) -> int:
         if not line.strip():
             continue
         item = json.loads(line)
-        if item.get("classification") == "quota_slot_spent":
+        if item.get("classification") == classification:
             count += 1
     return count
+
+
+def write_monitor_fixture(root: Path) -> tuple[Path, Path, Path]:
+    project = root / "monitor-project"
+    runtime = root / "monitor-runtime"
+    state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_path = project / state_file
+    registry_path = project / ".goal-harness" / "registry.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        "---\n"
+        "status: benchmark_execution_route_selection_v0\n"
+        "owner_mode: goal\n"
+        'objective: "Exercise monitor poll accounting."\n'
+        "updated_at: 2026-01-01T00:00:00+00:00\n"
+        "---\n\n"
+        "# Monitor Poll Main Control\n\n"
+        "## Next Action\n\n"
+        "- Wait for the owner gate before any real benchmark execution.\n\n"
+        "## User Todo / Owner Review Reading Queue\n\n"
+        "No open owner action for this monitor-only fixture.\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] [P2] Meta canary/readiness observation lane: keep status observable and repair only material transitions.\n",
+        encoding="utf-8",
+    )
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [
+                    {
+                        "id": GOAL_ID,
+                        "domain": "heartbeat-flow-fixture",
+                        "status": "active-read-only",
+                        "repo": str(project),
+                        "state_file": state_file,
+                        "adapter": {
+                            "kind": "harness_self_improvement",
+                            "status": "connected-read-only",
+                        },
+                        "authority_sources": [],
+                        "quota": {
+                            "compute": 1.0,
+                            "window_hours": 24,
+                            "allowed_slots": 5,
+                        },
+                        "control_plane": {
+                            "self_repair": {
+                                "enabled": True,
+                                "allow_health_blocker_repair": True,
+                                "allow_waiting_projection_repair": True,
+                            }
+                        },
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    runs_dir = runtime / "goals" / GOAL_ID / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    progress_record = {
+        "generated_at": "2026-01-01T00:00:00+00:00",
+        "goal_id": GOAL_ID,
+        "classification": "benchmark_execution_route_selection_v0",
+        "recommended_action": "Wait for the owner gate before any real benchmark execution.",
+        "health_check": "state_file 1/1; registry_goal 1/1",
+        "delivery_batch_scale": "multi_surface",
+        "delivery_outcome": "outcome_progress",
+        "json_path": str(runs_dir / "2026-01-01T00-00-00+00-00.json"),
+        "markdown_path": str(runs_dir / "2026-01-01T00-00-00+00-00.md"),
+    }
+    Path(progress_record["json_path"]).write_text(json.dumps(progress_record) + "\n", encoding="utf-8")
+    Path(progress_record["markdown_path"]).write_text("# Fixture Progress\n", encoding="utf-8")
+    with (runs_dir / "index.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(progress_record) + "\n")
+    return project, runtime, registry_path
+
+
+def write_external_evidence_fixture(
+    root: Path,
+    *,
+    latest_classification: str = "waiting_for_external_worker_result_v0",
+    registry_waiting_on: bool = True,
+) -> tuple[Path, Path, Path]:
+    project = root / "external-evidence-project"
+    runtime = root / "external-evidence-runtime"
+    state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_path = project / state_file
+    registry_path = project / ".goal-harness" / "registry.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        "---\n"
+        "status: waiting-for-agentissue-result\n"
+        "owner_mode: goal\n"
+        'objective: "Exercise external evidence observation contracts."\n'
+        "updated_at: 2026-01-01T00:00:00+00:00\n"
+        "---\n\n"
+        "# External Evidence Observation Fixture\n\n"
+        "## Next Action\n\n"
+        "- Observe for a compact result from the separate benchmark execution thread.\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] [P1] Target execution-thread result monitor: observe whether the relay packet has produced a compact execution result or blocker from a separate benchmark execution thread. If no new compact result/blocker exists, quiet no-op without quota spend; do not run Docker/Codex/model APIs from the meta heartbeat.\n",
+        encoding="utf-8",
+    )
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_goal = {
+        "id": GOAL_ID,
+        "domain": "heartbeat-flow-fixture",
+        "status": "waiting-for-agentissue-result",
+        "repo": str(project),
+        "state_file": state_file,
+        "adapter": {
+            "kind": "harness_self_improvement",
+            "status": "connected-read-only",
+        },
+        "authority_sources": [],
+        "quota": {
+            "compute": 1.0,
+            "window_hours": 24,
+            "allowed_slots": 5,
+        },
+    }
+    if registry_waiting_on:
+        registry_goal["waiting_on"] = "external_evidence"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [registry_goal],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    runs_dir = runtime / "goals" / GOAL_ID / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    progress_record = {
+        "generated_at": "2026-01-01T00:00:00+00:00",
+        "goal_id": GOAL_ID,
+        "classification": latest_classification,
+        "recommended_action": "Observe for a compact result from the separate benchmark execution thread.",
+        "health_check": "state_file 1/1; registry_goal 1/1",
+        "delivery_batch_scale": "single_surface",
+        "json_path": str(runs_dir / "2026-01-01T00-00-00+00-00.json"),
+        "markdown_path": str(runs_dir / "2026-01-01T00-00-00+00-00.md"),
+    }
+    Path(progress_record["json_path"]).write_text(json.dumps(progress_record) + "\n", encoding="utf-8")
+    Path(progress_record["markdown_path"]).write_text("# Fixture External Evidence Wait\n", encoding="utf-8")
+    with (runs_dir / "index.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(progress_record) + "\n")
+    return project, runtime, registry_path
+
+
+def write_operator_gate_fixture(root: Path) -> tuple[Path, Path, Path]:
+    project = root / "operator-gate-project"
+    runtime = root / "operator-gate-runtime"
+    state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_path = project / state_file
+    registry_path = project / ".goal-harness" / "registry.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        "---\n"
+        "status: ready_for_controller_opt_in\n"
+        "owner_mode: goal\n"
+        'objective: "Exercise operator gate interaction contract."\n'
+        "updated_at: 2026-01-01T00:00:00+00:00\n"
+        "---\n\n"
+        "# Operator Gate Fixture\n\n"
+        "## Next Action\n\n"
+        "- Ask the owner whether this planned adapter may run.\n\n"
+        "## User Todo / Owner Review Reading Queue\n\n"
+        "- [ ] [P1] Approve or defer the planned adapter opt-in.\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] [P2] If the gate is already surfaced, prepare a read-only checklist that does not execute the gated adapter.\n",
+        encoding="utf-8",
+    )
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [
+                    {
+                        "id": GOAL_ID,
+                        "domain": "heartbeat-flow-fixture",
+                        "status": "ready_for_controller_opt_in",
+                        "repo": str(project),
+                        "state_file": state_file,
+                        "adapter": {
+                            "kind": "planned_adapter_v0",
+                            "status": "planned",
+                        },
+                        "authority_sources": [],
+                        "waiting_on": "controller",
+                        "operator_gate": "controller_opt_in",
+                        "quota": {
+                            "compute": 1.0,
+                            "window_hours": 24,
+                            "allowed_slots": 5,
+                        },
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    runs_dir = runtime / "goals" / GOAL_ID / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    progress_record = {
+        "generated_at": "2026-01-01T00:00:00+00:00",
+        "goal_id": GOAL_ID,
+        "classification": "ready_for_controller_opt_in",
+        "recommended_action": "Ask the owner whether this planned adapter may run.",
+        "health_check": "state_file 1/1; registry_goal 1/1",
+        "json_path": str(runs_dir / "2026-01-01T00-00-00+00-00.json"),
+        "markdown_path": str(runs_dir / "2026-01-01T00-00-00+00-00.md"),
+    }
+    Path(progress_record["json_path"]).write_text(json.dumps(progress_record) + "\n", encoding="utf-8")
+    Path(progress_record["markdown_path"]).write_text("# Fixture Operator Gate\n", encoding="utf-8")
+    with (runs_dir / "index.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(progress_record) + "\n")
+    return project, runtime, registry_path
+
+
+def fake_codex_executor_decision(guard: dict) -> dict:
+    """Model the minimum Codex-side behavior expected from the quota payload."""
+
+    obligation = guard.get("execution_obligation") if isinstance(guard.get("execution_obligation"), dict) else {}
+    observation = (
+        guard.get("external_evidence_observation")
+        if isinstance(guard.get("external_evidence_observation"), dict)
+        else {}
+    )
+    if obligation.get("kind") == "external_evidence_observation_required":
+        assert obligation.get("must_attempt_work") is True, guard
+        assert observation.get("required") is True, guard
+        assert observation.get("requires_observable_handle") is True, guard
+        return {
+            "quiet_noop_allowed": False,
+            "delivery_allowed": False,
+            "benchmark_execution_allowed": False,
+            "allowed_next_actions": [
+                "read_only_observation",
+                "compact_blocker_writeback",
+            ],
+        }
+    return {"quiet_noop_allowed": obligation.get("must_attempt_work") is not True}
 
 
 def main() -> int:
@@ -137,6 +425,14 @@ def main() -> int:
         assert guard["should_run"] is True, guard
         assert guard["quota"]["spent_slots"] == 0, guard
         assert guard["quota"]["allowed_slots"] == 2, guard
+        interaction = guard["interaction_contract"]
+        assert interaction["schema_version"] == "goal_harness_interaction_contract_v0", interaction
+        assert interaction["mode"] == "bounded_delivery", interaction
+        assert interaction["user_channel"]["action_required"] is False, interaction
+        assert interaction["agent_channel"]["must_attempt"] is True, interaction
+        assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
+        assert interaction["cli_channel"]["spend_allowed_now"] is False, interaction
+        assert interaction["cli_channel"]["spend_after_validation"] is True, interaction
 
         marker = project / "heartbeat-work-marker.txt"
         marker.write_text("bounded heartbeat work completed\n", encoding="utf-8")
@@ -206,6 +502,320 @@ def main() -> int:
         assert follow_up["quota"]["allowed_slots"] == 2, follow_up
         assert LONG_NEXT_ACTION_TAIL in follow_up["recommended_action"], follow_up
         assert registry_path.read_text(encoding="utf-8") == registry_before
+
+    with tempfile.TemporaryDirectory(prefix="goal-harness-heartbeat-operator-gate-") as tmp:
+        root = Path(tmp)
+        project, runtime, registry_path = write_operator_gate_fixture(root)
+        gate_guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert gate_guard["should_run"] is False, gate_guard
+        assert gate_guard["state"] == "operator_gate", gate_guard
+        assert gate_guard["requires_user_action"] is True, gate_guard
+        assert gate_guard["safe_bypass_allowed"] is True, gate_guard
+        interaction = gate_guard["interaction_contract"]
+        assert interaction["mode"] == "user_gate", interaction
+        assert interaction["user_channel"]["action_required"] is True, interaction
+        assert interaction["agent_channel"]["must_attempt"] is False, interaction
+        assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
+        assert interaction["cli_channel"]["spend_after_validation"] is False, interaction
+        assert interaction["fallback_policy"]["do_not_cancel_on_block"] is True, interaction
+
+    with tempfile.TemporaryDirectory(prefix="goal-harness-heartbeat-monitor-poll-") as tmp:
+        root = Path(tmp)
+        project, runtime, registry_path = write_monitor_fixture(root)
+        first_guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert first_guard["effective_action"] == "monitor_quiet_skip", first_guard
+        assert first_guard["should_run"] is False, first_guard
+        assert first_guard["execution_obligation"]["must_attempt_work"] is False, first_guard
+        assert first_guard["automation_liveness"]["automation_action"] == "keep_active_quiet", first_guard
+        assert first_guard["automation_liveness"]["keep_active"] is True, first_guard
+        assert first_guard["automation_liveness"]["pause_allowed"] is False, first_guard
+        assert "not a self-stop signal" in first_guard["automation_liveness"]["reason"], first_guard
+        assert "automation=keep_active_quiet" in first_guard["protocol_action_packet"]["summary"], first_guard
+        assert "pause_allowed=false" in first_guard["protocol_action_packet"]["summary"], first_guard
+        interaction = first_guard["interaction_contract"]
+        assert interaction["mode"] == "monitor_quiet_skip", interaction
+        assert interaction["user_channel"]["action_required"] is False, interaction
+        assert interaction["agent_channel"]["must_attempt"] is False, interaction
+        assert interaction["agent_channel"]["quiet_noop_allowed"] is True, interaction
+        assert interaction["cli_channel"]["spend_after_validation"] is False, interaction
+        assert "quota monitor-poll" in interaction["cli_channel"]["next_cli_actions"][0], interaction
+
+        for index in range(2):
+            poll = run_cli(
+                root,
+                "quota",
+                "monitor-poll",
+                "--goal-id",
+                GOAL_ID,
+                "--source",
+                "heartbeat",
+                "--execute",
+                "--scan-path",
+                str(project),
+                registry_path=registry_path,
+                runtime=runtime,
+            )
+            assert poll["ok"] is True, poll
+            assert poll["appended"] is True, poll
+            assert poll["registry_mutated"] is False, poll
+            assert poll["classification"] == "quota_monitor_poll", poll
+            assert poll["monitor_event"]["before"]["effective_action"] == "monitor_quiet_skip", poll
+            assert count_spend_events(runtime) == 0, poll
+            assert count_events(runtime, "quota_monitor_poll") == index + 1, poll
+
+        replan_guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert replan_guard["should_run"] is True, replan_guard
+        assert replan_guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", replan_guard
+        assert replan_guard["execution_obligation"]["kind"] == "autonomous_replan_required", replan_guard
+        assert replan_guard["execution_obligation"]["must_attempt_work"] is True, replan_guard
+        assert replan_guard["automation_liveness"]["automation_action"] == "execute_bounded_work", replan_guard
+        assert replan_guard["automation_liveness"]["pause_allowed"] is False, replan_guard
+        assert "automation=execute_bounded_work" in replan_guard["protocol_action_packet"]["summary"], replan_guard
+        interaction = replan_guard["interaction_contract"]
+        assert interaction["mode"] == "autonomous_replan", interaction
+        assert interaction["agent_channel"]["must_attempt"] is True, interaction
+        assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
+        assert interaction["cli_channel"]["spend_after_validation"] is True, interaction
+
+        refresh = run_cli(
+            root,
+            "refresh-state",
+            "--goal-id",
+            GOAL_ID,
+            "--classification",
+            "monitor_poll_autonomous_replan_recorded_v0",
+            "--delivery-batch-scale",
+            "single_surface",
+            "--delivery-outcome",
+            "outcome_progress",
+            "--no-global-sync",
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert refresh["ok"] is True, refresh
+        assert refresh["delivery_outcome"] == "outcome_progress", refresh
+
+        post_refresh_guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert post_refresh_guard.get("autonomous_replan_obligation") is None, post_refresh_guard
+
+        spend = run_cli(
+            root,
+            "quota",
+            "spend-slot",
+            "--goal-id",
+            GOAL_ID,
+            "--slots",
+            "1",
+            "--source",
+            "heartbeat",
+            "--execute",
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert spend["ok"] is True, spend
+        assert spend["delivery_completion_spend"] is True, spend
+        assert spend["quota_event"]["delivery_run_classification"] == (
+            "monitor_poll_autonomous_replan_recorded_v0"
+        ), spend
+        assert spend["quota_event"]["delivery_run_generated_at"] == refresh["generated_at"], spend
+        assert count_spend_events(runtime) == 1, spend
+
+        duplicate_rc, duplicate = run_cli_result(
+            root,
+            "quota",
+            "spend-slot",
+            "--goal-id",
+            GOAL_ID,
+            "--slots",
+            "1",
+            "--source",
+            "heartbeat",
+            "--execute",
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert duplicate_rc == 1, duplicate
+        assert duplicate["ok"] is False, duplicate
+        assert count_spend_events(runtime) == 1, duplicate
+
+        ack = run_cli(
+            root,
+            "refresh-state",
+            "--goal-id",
+            GOAL_ID,
+            "--classification",
+            "delivery_completion_spend_accounted_v0",
+            "--no-global-sync",
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert ack["ok"] is True, ack
+        assert ack.get("delivery_outcome") is None, ack
+
+        for index in range(2):
+            poll = run_cli(
+                root,
+                "quota",
+                "monitor-poll",
+                "--goal-id",
+                GOAL_ID,
+                "--source",
+                "heartbeat",
+                "--execute",
+                "--scan-path",
+                str(project),
+                registry_path=registry_path,
+                runtime=runtime,
+            )
+            assert poll["ok"] is True, poll
+            assert poll["classification"] == "quota_monitor_poll", poll
+            assert count_spend_events(runtime) == 1, poll
+            assert count_events(runtime, "quota_monitor_poll") == index + 3, poll
+
+        post_ack_guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert post_ack_guard["effective_action"] == "monitor_quiet_skip", post_ack_guard
+        assert post_ack_guard["execution_obligation"]["must_attempt_work"] is False, post_ack_guard
+        assert post_ack_guard.get("autonomous_replan_obligation") is None, post_ack_guard
+        assert (
+            post_ack_guard["heartbeat_recommendation"]["recommended_mode"]
+            == "monitor_quiet_until_material_transition"
+        ), post_ack_guard
+
+    with tempfile.TemporaryDirectory(prefix="goal-harness-external-evidence-observation-") as tmp:
+        root = Path(tmp)
+        project, runtime, registry_path = write_external_evidence_fixture(root)
+        guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert guard["should_run"] is False, guard
+        assert guard["state"] == "waiting", guard
+        assert guard["waiting_on"] == "external_evidence", guard
+        assert guard["effective_action"] == "external_evidence_observe", guard
+        assert (
+            guard["heartbeat_recommendation"]["recommended_mode"]
+            == "external_evidence_observe_or_blocker"
+        ), guard
+        observation = guard["external_evidence_observation"]
+        assert observation["schema_version"] == "external_evidence_observation_obligation_v0", observation
+        assert observation["required"] is True, observation
+        assert observation["scope"] == "read_only_observation", observation
+        assert observation["requires_observable_handle"] is True, observation
+        assert "thread_id" in observation["observable_handle_examples"], observation
+        assert "compact_writeback_path" in observation["observable_handle_examples"], observation
+        assert "missing worker/controller handle" in observation["if_handle_missing"], observation
+        assert "separate benchmark execution thread" in observation["observation_target"], observation
+        assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+        assert (
+            guard["execution_obligation"]["kind"]
+            == "external_evidence_observation_required"
+        ), guard
+        interaction = guard["interaction_contract"]
+        assert interaction["mode"] == "external_evidence_observation", interaction
+        assert interaction["user_channel"]["action_required"] is False, interaction
+        assert interaction["agent_channel"]["must_attempt"] is True, interaction
+        assert interaction["agent_channel"]["delivery_allowed"] is False, interaction
+        assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
+        assert interaction["cli_channel"]["spend_after_validation"] is True, interaction
+        executor = fake_codex_executor_decision(guard)
+        assert executor["quiet_noop_allowed"] is False, executor
+        assert executor["delivery_allowed"] is False, executor
+        assert executor["benchmark_execution_allowed"] is False, executor
+        assert executor["allowed_next_actions"] == [
+            "read_only_observation",
+            "compact_blocker_writeback",
+        ], executor
+        assert count_spend_events(runtime) == 0, guard
+
+    with tempfile.TemporaryDirectory(prefix="goal-harness-external-evidence-projection-") as tmp:
+        root = Path(tmp)
+        project, runtime, registry_path = write_external_evidence_fixture(
+            root,
+            latest_classification="external_evidence_observation_contract_validated_v0",
+            registry_waiting_on=False,
+        )
+        guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert guard["should_run"] is False, guard
+        assert guard["state"] == "waiting", guard
+        assert guard["waiting_on"] == "external_evidence", guard
+        assert guard["effective_action"] == "external_evidence_observe", guard
+        assert (
+            guard["execution_obligation"]["kind"]
+            == "external_evidence_observation_required"
+        ), guard
+        assert guard["external_evidence_observation"]["required"] is True, guard
+        assert guard["interaction_contract"]["mode"] == "external_evidence_observation", guard
 
     print("heartbeat-quota-flow-smoke ok")
     return 0

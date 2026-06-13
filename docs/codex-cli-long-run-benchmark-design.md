@@ -72,14 +72,16 @@ Codex only a short wakeup prompt plus the Goal Harness CLI. The worker must:
 
 ### Without Goal Harness
 
-The runner creates the same project fixture but no registry, runtime, quota, or
-Goal Harness review packet. Codex receives a plain task prompt and must manage
-state on its own. The worker may still use normal shell/git/test tools, but the
-runner records only external observations and produced artifacts.
+The runner creates the same project fixture but no Goal Harness registry,
+runtime, quota, or review packet. Codex runs through its declared goal-mode
+baseline surface and must manage task state with Codex's own goal affordances
+rather than Goal Harness state. The worker may still use normal shell/git/test
+tools, but the runner records only external observations and produced
+artifacts.
 
 This mode is not a punishment baseline. It measures what Codex can do without a
-durable control plane, so the comparison can show which coordination failures
-Goal Harness actually prevents.
+Goal Harness durable control plane, so the comparison can show which
+coordination failures Goal Harness actually prevents beyond Codex goal mode.
 
 ## Metrics
 
@@ -114,6 +116,7 @@ Core v0 fields:
 | `worker_mode` | `shim`, `fake_real_codex`, or `real_codex`. |
 | `harness_identity` | Harness name, such as `none` or `goal_harness`. |
 | `worker_surface` | Execution surface, such as Codex CLI, fake worker, or deterministic shim. |
+| `codex_goal_mode_enabled` | Whether the baseline/treatment declares Codex goal mode as the worker surface. |
 | `terminal_state` | `success`, `public_safe_blocker`, or `failure`. |
 | `official_task_score` | Native task score, reward, pass/fail, or deterministic fixture score. |
 | `control_plane_score` | Compact control-plane score with the few components used in this fixture. |
@@ -239,9 +242,9 @@ It generates the same `mini_control_plane_repair_v0` fixture for
 default, and emits `benchmark_result_v0` for both scenarios plus a
 `benchmark_comparison_v0` summary. The with-harness path records Goal Tick
 phase coverage, refresh-state writebacks, and quota spend after validation. The
-without-harness path performs the same public fixture repairs without Goal
-Harness quota/writeback surfaces, giving the comparison a real A/B baseline
-while keeping CI deterministic.
+without-harness path performs the same public fixture repairs as a Codex
+goal-mode baseline without Goal Harness quota/writeback surfaces, giving the
+comparison a real A/B baseline while keeping CI deterministic.
 
 The current smoke emits the core v0 score layers. Both scenarios can reach the
 same `official_task_score`, while the with-harness path must produce a higher

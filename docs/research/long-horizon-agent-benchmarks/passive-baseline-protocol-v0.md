@@ -8,13 +8,14 @@ This protocol is the first Goal Harness baseline that answers whether the
 control plane helps without any operator simulator. It compares the same
 autonomous engineering slice in two modes:
 
-- `bare_codex_cli`: Codex CLI or a deterministic Codex-like fixture receives a
-  plain task prompt and no Goal Harness registry, quota, review packet, Goal
-  Tick output, or runtime writeback surface.
-- `passive_goal_harness_wrapper`: the same worker and task are wrapped with
-  Goal Harness state, quota, review packet, Goal Tick phases, validation
-  writeback, and run-history append support, but no simulated operator
-  intervention is allowed.
+- `codex_goal_mode_baseline`: Codex CLI or a deterministic Codex-like fixture
+  runs through the declared Codex goal-mode baseline surface and receives no
+  Goal Harness registry, quota, review packet, Goal Tick output, or runtime
+  writeback surface.
+- `passive_goal_harness_wrapper`: the same goal-mode worker and task are
+  wrapped with Goal Harness state, quota, review packet, Goal Tick phases,
+  validation writeback, and run-history append support, but no simulated
+  operator intervention is allowed.
 
 The protocol is deliberately passive. It may record and validate control-plane
 events, but it must not change task prompts, benchmark tests, scoring, resource
@@ -47,9 +48,10 @@ Each paired result must preserve these fields:
 
 | Field | Rule |
 | --- | --- |
-| `scenario_id` | `bare_codex_cli` or `passive_goal_harness_wrapper`. |
+| `scenario_id` | `codex_goal_mode_baseline` or `passive_goal_harness_wrapper`. |
 | `task_id` | Same task id for both modes. |
 | `worker_surface` | Same worker class unless the experiment explicitly records an ablation. |
+| `codex_goal_mode_enabled` | `true` for both primary modes. |
 | `official_task_score` | Native or deterministic task score; local fixture should keep the delta at `0`. |
 | `control_plane_score` | Goal Harness coordination score; passive wrapper may improve this. |
 | `restartability` | Whether another worker can resume from public artifacts. |

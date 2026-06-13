@@ -33,8 +33,11 @@ two separate layers:
   --thin`, preferred as the local machine default when the target Codex agent is
   trusted to inspect Goal Harness registry/global quota truth, active state,
   status/run history, repo state, and project signals at wakeup time. It does
-  not paste command branches into the automation prompt; it makes the Codex
-  thread a replaceable worker and leaves durable task truth in Goal Harness.
+  not paste command branches into the automation prompt; it may point the worker
+  to the installed `goal-harness-project` skill for procedural details, but the
+  runtime source of truth is still the CLI payload, especially
+  `quota should-run.interaction_contract`. This makes the Codex thread a
+  replaceable worker and leaves durable task truth in Goal Harness.
 
 Do not paste the full lifecycle protocol into the visible goal text, and do not
 use a short goal text such as "advance TODO" as the recurring automation body.
@@ -45,6 +48,9 @@ Project-specific behavior belongs in the Goal Harness registry, active-state
 sections, adapter output, or narrow boundary rules. If a lifecycle rule is
 generally useful, add it to `goal-harness heartbeat-prompt` and its smoke
 contract so every project inherits it.
+When the generated prompt and the installed skill disagree, the worker should
+trust the current CLI `interaction_contract` first, then use the skill as the
+operation manual and the prompt only as a bootstrap.
 
 You can generate the task body from the CLI. Prefer the registry-backed form
 for connected goals, so the installed automation does not hard-code a state-file
@@ -145,12 +151,10 @@ Replace the placeholders before installing the automation:
 ```text
 Advance the goal described in <ACTIVE_GOAL_STATE_PATH>.
 
-This heartbeat body is the generic Goal Harness lifecycle. Do not add
-project-specific branching to the automation prompt. Put project-specific
-policy in the Goal Harness registry, active-state sections, adapter output, or
-quota should-run.goal_boundary, or narrow public/private boundary rules; if a
-new lifecycle rule is needed, update goal-harness heartbeat-prompt so all
-projects inherit it.
+Generic Goal Harness lifecycle. Keep project-specific branching out of the
+automation prompt. Put local policy in registry, active-state sections, adapter
+output, quota should-run.goal_boundary, or boundary rules; if a lifecycle rule
+is needed, update goal-harness heartbeat-prompt so all projects inherit it.
 
 Before spending delivery compute, first make the Goal Harness CLI reachable in
 this automation shell, then run the quota guard:
@@ -190,11 +194,9 @@ If the result says should_run=false:
 - If the payload says notify_user_on_open_todo=true, treat the existing open
   user_todo_summary as a blocker-push opportunity, not as a silent skip. This
   is especially important for state=focus_wait, state=waiting, and
-  waiting_on=external_evidence, plus monitor-only eligible polls with no
-  material transition, where a short user/owner answer can unlock a quiet
-  project or stop meaningless repeated polling. If
-  heartbeat_recommendation.recommended_mode=monitor_user_todo_notify or
-  open_todo_notification_policy=repeat_until_resolved, return
+  waiting_on=external_evidence, where a short user/owner answer can unlock a
+  quiet project or stop meaningless repeated polling. If the payload explicitly
+  includes open_todo_notification_policy=repeat_until_resolved, return
   heartbeat NOTIFY on every such poll until the user todo is done, deferred, or
   replaced. Otherwise, if the same blocker ask has not already been surfaced in
   the recent visible thread, return heartbeat NOTIFY with one concise Chinese
@@ -211,12 +213,23 @@ If the result says should_run=false:
   another P0/P1 item that does not depend on that gate. If you do a safe-bypass
   step, validate it, write back progress/critic/next action, optionally refresh
   state, append exactly one spend event, and report compactly. If
-  user_todo_summary.open_count > 0, that report must include the existing open
-  user todos and must not say there is "no new user action". If
+  user_todo_summary.open_count > 0, include those todos and do not say there is
+  "no new user action". If
   agent_todo_summary.open_count > 0, the report should also name the first safe
   agent todo it can execute next. If no useful
   safe-bypass step exists, report the pending gate compactly instead of doing
   work.
+- If effective_action=monitor_quiet_skip, append at most one no-spend monitor
+  evidence event for this heartbeat:
+
+  goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota monitor-poll --goal-id <GOAL_ID> --source heartbeat --execute
+
+  Then rerun quota should-run. If it remains monitor-only, return quiet
+  DONT_NOTIFY: no delivery edits and no spend. Keep the automation active:
+  unchanged monitor-only polls are not self-stop signals. If the next guard
+  reports autonomous_replan_required or another hard
+  replan contract, follow that contract. Do not append more than one monitor
+  poll event for a single heartbeat turn.
 - If waiting_on=external_evidence or state=waiting, and this automation is
   explicitly a monitor, run at most one bounded read-only observation poll using
   project-approved status/log/metric/marker surfaces named in active state,
@@ -279,16 +292,22 @@ If the result says should_run=true:
    goal is currently bottlenecked by user experience, agent capability,
    evidence quality, adapter readiness, or priority-rule gaps, and promote one
    concrete bottleneck candidate when it should outrank the nearest local TODO.
-3. Run the no-progress self-stop check before choosing delivery work. Inspect
-   recent active-state progress and run history for consecutive eligible
-   heartbeat turns. Count a turn as no-progress only when it produced no
-   substantive artifact, no adapter or implementation progress, no new gate or
-   user decision, no new validation signal, and only repeated
-   status/brief-check/compact-checkpoint state edits. If 5 consecutive eligible
-   heartbeats are no-progress loops, delete or pause this heartbeat automation
-   through the Codex App automation management path, do not append a quota spend
-   for that self-cancel turn, and return NOTIFY explaining that the automation
-   was cancelled because it was spinning without progress.
+3. Run the no-progress self-repair check before choosing delivery work. First
+   obey any machine-readable `autonomous_replan_obligation` or
+   `execution_obligation.must_attempt_work=true` returned by
+   `quota should-run`; that hard contract overrides a quiet no-op even when the
+   heartbeat prompt is short. Inspect recent active-state progress and public
+   run history for consecutive eligible heartbeat turns. Count a turn as
+   no-progress only when it produced no substantive artifact, no adapter or
+   implementation progress, no new gate or user decision, no new validation
+   signal, and only repeated status/brief-check/compact-checkpoint state edits.
+   Treat `quota_monitor_poll` events as no-spend stall evidence for this guard.
+   If 2 consecutive eligible heartbeats are no-progress loops, run one bounded
+   self-repair/replan segment before another quiet no-op. Delete or pause the
+   automation only when that repair path is itself stuck for 2 more eligible
+   turns, do not append a quota spend for the self-cancel turn, and return
+   NOTIFY explaining that the automation was cancelled because it was spinning
+   without progress.
 4. Choose one bounded, verifiable progress segment from that audit. It may be a
    coherent batch across related implementation, test, doc, and state-writeback
    files when the write scope is clear and validation is explicit; it should not
@@ -366,8 +385,7 @@ the payload says `notify_user_on_open_todo=true`, ask up to three open
 `user_todo_summary` items as a blocker-push NOTIFY and do not spend quota for
 that blocker-push turn. If
 `open_todo_notification_policy=repeat_until_resolved`, repeat
-that NOTIFY on every monitor-only no-transition poll until the todo is done,
-deferred, or replaced. If
+that NOTIFY until the todo is done, deferred, or replaced. If
 it returns `should_run=true` with `effective_action=outcome_floor_recovery` or
 `recovery_delivery_allowed=true`, run only the bounded evidence/blocker
 recovery before any ordinary delivery. If
@@ -384,8 +402,9 @@ record dependency or sibling-goal todos without letting them consume the whole
 eligible turn,
 apply a continuation check for
 repeated topics, then read `execution_obligation` and `heartbeat_recommendation`:
-when `execution_obligation.must_attempt_work=true`, do one bounded segment even
-if `heartbeat_recommendation.notify=DONT_NOTIFY`; quiet no-op requires
+when `execution_obligation.must_attempt_work=true`, do one bounded progress
+segment even if `heartbeat_recommendation.notify=DONT_NOTIFY`; quiet no-op
+requires
 `execution_obligation.must_attempt_work=false` and no
 `notify_user_on_open_todo=true` blocker-push notification. Run
 `recommended_mode=run_first_read_only_map` as one real read-only map and spend
@@ -394,10 +413,15 @@ quiet no-op without another dry-run, file edit, or quota spend when no new
 instruction/evidence/todo/stale source/safe handoff exists. Check
 `delivery_batch_scale`, `delivery_outcome`,
 `post_handoff_outcome_gap_streak`, and `handoff_delivery_contract`; for
-repeated-small or surface-only loops, obey the contract. Then run the
-no-progress self-stop check, do one bounded verifiable progress segment when a
-real step exists, validate it, write back changed files / validation / critic /
-next action, append exactly one
+repeated-small or surface-only loops, obey the contract. Then obey any
+machine-readable `autonomous_replan_obligation` or
+`execution_obligation.must_attempt_work=true`; if 2 consecutive eligible
+heartbeats are no-progress loops, run bounded self-repair/replan before another
+quiet no-op. Do one bounded verifiable progress batch when a real boundary
+exists: implementation, validation, docs, and state writeback may belong in the
+same batch. Do not stop at the first tiny substep when the validation/writeback
+boundary is already clear. Validate it, write back changed files / validation /
+critic / next action, append exactly one
 `goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute`
 event after the completed turn and before any state-only refresh that might
 close the active delivery lane. Then refresh state if needed. Use `--slots 1` for minute-based
@@ -414,15 +438,19 @@ For every automatic heartbeat turn, the agent-facing checklist is:
    and run the local installer fallback before declaring preflight failure.
 2. If `should_run=false` with `state=operator_gate`, ask the user/controller the
    current gate unless the same unresolved gate was already surfaced recently.
+   If `effective_action=monitor_quiet_skip`, append at most one no-spend
+   `quota monitor-poll --execute` event, rerun the guard, then return quiet
+   `DONT_NOTIFY` if it remains monitor-only. Keep monitor todos visible but do
+   no delivery edits and no spend until material evidence changes or the next
+   guard exposes `autonomous_replan_required` /
+   `execution_obligation.must_attempt_work=true`.
 3. If `notify_user_on_open_todo=true`, ask up to three open user todos as a
    blocker-push notification and do not spend quota for that blocker-push turn.
    If `open_todo_notification_policy=repeat_until_resolved`,
    repeat the notification every poll until the todo is done, deferred, or
    replaced; do not suppress it as a recently surfaced blocker. Otherwise,
    ordinary blocker-push asks may be de-duplicated when the same blocker was
-   surfaced recently. This also applies when `should_run=true` but
-   `execution_obligation.must_attempt_work=false`, such as a monitor-only poll
-   with no material transition.
+   surfaced recently.
 4. If `effective_action=outcome_floor_recovery` or
    `recovery_delivery_allowed=true`, treat `should_run=true` as a recovery turn:
    run only the bounded evidence/blocker recovery and spend only after
@@ -438,23 +466,25 @@ For every automatic heartbeat turn, the agent-facing checklist is:
    owner/gate/stop authority. Use `run_history.latest_runs` only as evidence or drill-down.
 9. Follow `execution_obligation` before deciding quiet no-op:
    `heartbeat_recommendation.notify` is not an execution gate. If
-   `must_attempt_work=true`, do one bounded segment even when
-   `notify=DONT_NOTIFY`; quiet no-op only when `must_attempt_work=false` and no
-   `notify_user_on_open_todo=true` blocker-push notification is pending.
+   `must_attempt_work=true`, do one bounded progress batch or segment even
+   when `notify=DONT_NOTIFY`; quiet no-op only when
+   `must_attempt_work=false` and no `notify_user_on_open_todo=true`
+   blocker-push notification is pending.
    Then follow `heartbeat_recommendation`: first connected read-only goals should run
    one real `read-only-map`, while already mapped unchanged goals should return
    a quiet no-op without another dry-run or quota spend.
 10. Check `delivery_batch_scale`, `delivery_outcome`,
    `post_handoff_outcome_gap_streak`, and `handoff_delivery_contract`; for
    repeated-small or surface-only loops, obey the contract.
-11. Cancel or pause the automation instead of spending if 5 consecutive eligible
-   turns are only repeated no-progress status loops.
+11. Start bounded self-repair/replan if 2 consecutive eligible turns are only
+   repeated no-progress status loops. Cancel or pause instead of spending only
+   if that repair path is itself stuck for 2 more eligible turns.
 12. Treat routine public commit, push, and PR creation as autonomous after clean
    validation and a public/private boundary scan; stop for private/company
    material, credentials, destructive git, production actions, or repo rules
    that explicitly require review.
-13. Work bounded when `should_run=true`; a coherent implementation/test/state
-    batch is fine when scope and validation are clear.
+13. Work bounded when `should_run=true`; a coherent implementation/test/doc/state
+    batch is preferred over a tiny substep when scope and validation are clear.
 14. Validate before reporting.
 15. Spend exactly once after validation/writeback and before a state-only refresh.
 16. Refresh state when needed after spend; for validated progress artifacts,

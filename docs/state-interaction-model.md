@@ -105,6 +105,90 @@ work item without re-reading stale thread context. Detailed action packets,
 review materials, run history, and raw adapter fields remain drill-down
 surfaces.
 
+## Three-Actor Interaction Protocol
+
+The current failure mode is not lack of prompt detail. It is ambiguity about
+which actor owns the next transition. When that boundary is implicit, an agent
+can wait for a thread that was never launched, ask the user for small public
+gates, stop a healthy automation because the top lane is blocked, or spend a
+turn on a monitor that had no material transition.
+
+Goal Harness should therefore expose one machine-readable interaction contract
+per selected goal:
+
+```text
+goal-harness --format json quota should-run --goal-id <goal-id>
+```
+
+The guard's `interaction_contract` is the first-class protocol. Older fields
+such as `execution_obligation`, `heartbeat_recommendation`,
+`work_lane_contract`, `external_evidence_observation`, `goal_boundary`, and
+`protocol_action_packet` remain compatibility and drill-down fields.
+
+### Actor Boundaries
+
+| Actor | Owns | Must not own |
+| --- | --- | --- |
+| User/operator | Boundary decisions, reward, private material, credentials, paid/cloud resources, destructive git, production actions, public submissions/claims, explicit product-direction changes. | Routine public reads, task-row access, todo splitting, local state writeback, public-safe validation, or choosing among already-authorized P1/P2 work. |
+| Agent/Codex executor | One bounded transition per turn: inspect current state, choose the highest safe lane, implement or observe, validate, write back, and spend only after delivery. | Durable truth, implicit approval, unrecorded reward, hidden long-term memory, silent cancellation, or credential copying. |
+| Goal Harness CLI | Projection of goal truth, waiting owner, quota, interaction mode, machine obligations, spend policy, liveness, and compatible next commands. | Human judgment, private evidence interpretation beyond compact projections, or project-specific branching inside automation prompts. |
+| Skill | Procedural operator/agent manual for using the CLI safely. | Runtime routing authority or a second state machine that overrides `quota should-run`. |
+| Automation prompt | Thin bootstrap: wake, preflight, run the CLI guard, use the skill if available, follow `interaction_contract`, and stop for global safety boundaries. | Long project-specific control flow, stale TODO memory, or handwritten exceptions. |
+
+### Interaction Modes
+
+`interaction_contract.mode` should make these patterns explicit:
+
+- `bounded_delivery`: Codex owns one validated work segment. It should run the
+  steering audit, choose a P0/P1/P2 lane, implement, validate, write back, and
+  spend exactly once after delivery.
+- `user_gate`: the user/controller owns the next decision. The agent asks a
+  concise question and does not run the gated path. If the CLI exposes safe
+  bypass, a later turn may do unrelated bounded P1/P2 work after the gate has
+  been surfaced.
+- `user_todo_blocker_push`: the user owns an open todo. The agent notifies,
+  does not spend, and should not describe the turn as "no user action".
+- `external_evidence_observation`: Codex does not run benchmark/model/Docker
+  delivery. It must first verify an observable handle such as a thread id, job
+  id, marker, or compact writeback channel. If no handle exists, write a compact
+  blocker instead of quiet waiting.
+- `monitor_quiet_skip`: no material transition is present. The agent may append
+  at most one no-spend monitor-poll event, rerun the guard, then stay quiet.
+  The automation stays active.
+- `autonomous_replan`: repeated no-progress evidence has crossed the self-repair
+  threshold. Codex must run one bounded replan/repair segment or write a
+  concrete blocker before another quiet no-op.
+- `outcome_floor_recovery`: the current path is allowed only to recover the
+  missing outcome-scale evidence or write the blocker; surface-only work is not
+  allowed.
+- `mapped_noop_if_unchanged` and `quota_throttled`: quiet no-op is allowed only
+  after checking the contract's preconditions; it is not an automation cancel
+  signal.
+
+### Long-Running Todo Execution
+
+Long-horizon execution should be a series of compact transitions, not an
+unbounded "continue the last thing" loop:
+
+1. Run `quota should-run`.
+2. Follow `interaction_contract` first.
+3. If the contract allows agent work, choose one lane from active `agent_todos`,
+   the priority stack, and current blockers.
+4. If the top P0 lane is blocked, record or surface the blocker, then continue
+   with a verifiable P1/P2 lane only when the CLI contract permits safe
+   bypass, recovery, self-repair, or another bounded obligation. Otherwise keep
+   automation active without spend, or let the global scheduler pick another
+   eligible goal.
+5. Validate and write durable state before spending.
+6. Spend exactly once after validated delivery, blocker writeback, or material
+   transition.
+7. Refresh state after spend when the dashboard/control plane needs the new
+   compact truth.
+
+This keeps the user's role high-value: the user resolves real boundaries and
+reward judgments, while Goal Harness prevents the agent from stalling on
+routine routing choices.
+
 ## State Stores
 
 | Store | Owner | Reader | Writer | Purpose |

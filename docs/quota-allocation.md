@@ -142,6 +142,12 @@ Current self-repair settings:
 Self-repair is deliberately opt-in per goal. A short heartbeat can read the
 machine contract from `quota should-run`, but ordinary goals without this
 registry policy stay in their existing skip, waiting, or health-blocked lanes.
+Independent of opt-in health/projection repair, status may project an
+`autonomous_replan_obligation` when active state or public run history shows 2
+consecutive stalled monitor/no-progress turns. In that case
+`execution_obligation.kind=autonomous_replan_required` and
+`must_attempt_work=true`; launchers should run a bounded replan slice before
+another quiet no-op, then spend only after validated writeback.
 
 ## Allocation Contract
 
@@ -199,6 +205,11 @@ If all visible open todos are monitor-class and no open todo is hidden, the
 same contract uses `obligation=quiet_until_material_monitor_transition` and
 `must_attempt_work=false`. Hidden open todos are treated as advancement work to
 avoid false quiet no-ops from a truncated top-N todo projection.
+Open agent todos that explicitly say not to run/launch until owner evidence,
+credentials, substrate proof, or another prerequisite is present are
+monitor-class blockers rather than executable advancement work; with an open
+user todo they should keep that todo visible in `user_todo_summary` without
+turning an unchanged eligible monitor poll into a blocker-push notification.
 If the selected goal's `next_action`/`recommended_action` explicitly points to
 a planning/self-repair or advancement-class lane, monitor-only todos are not
 allowed to make the goal quiet. The contract instead uses
@@ -209,9 +220,56 @@ advancement todo or write the blocker that prevents it.
 `monitor_quiet_until_material_transition` instead of encoding another
 project-specific branch. An executor may still record one material
 dependency-state transition when it changes the selected goal decision, but
-unchanged monitor polls are quiet no-spend checks. This keeps monitoring useful
-without letting it consume every eligible turn, and it keeps the hard routing
-rule in one small machine contract.
+unchanged monitor polls are quiet no-spend checks with `should_run=false` and
+`effective_action=monitor_quiet_skip`. This keeps monitoring useful without
+letting it consume every eligible turn, and it keeps the hard routing rule in
+one small machine contract.
+
+External-evidence waits have an additional CLI-level observation contract. When
+the selected goal is `state=waiting`, `waiting_on=external_evidence`, and its
+current lane is a continuous monitor, `quota should-run` returns
+`external_evidence_observation.schema_version =
+external_evidence_observation_obligation_v0`. The guard keeps
+`should_run=false` so ordinary delivery remains blocked, but sets
+`effective_action=external_evidence_observe` and
+`execution_obligation.kind=external_evidence_observation_required` with
+`must_attempt_work=true`. The executor must verify a read-only observable
+handle such as a thread id, automation id, job id, lock/result marker, or
+compact writeback path before treating the poll as unchanged evidence. If that
+handle is missing, stale, or never launched, write back a compact blocker or
+launch-readiness fault instead of returning a quiet no-op.
+
+For autonomous heartbeats, unchanged monitor polls can be recorded as
+no-spend stall evidence with:
+
+```bash
+goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota monitor-poll --goal-id <GOAL_ID> --source heartbeat --execute
+```
+
+`quota monitor-poll` is valid only when the current guard is
+`effective_action=monitor_quiet_skip` and
+`recommended_mode=monitor_quiet_until_material_transition`. It appends a
+`quota_monitor_poll` run record, does not mutate the registry, and does not
+append `quota_slot_spent`. Two consecutive public stalled monitor records can
+feed `autonomous_replan_obligation`, so the next independent `quota should-run`
+may flip to `autonomous_replan_required` /
+`execution_obligation.must_attempt_work=true`; the executor should then perform
+one bounded replan slice instead of another quiet skip.
+
+After that bounded replan or accounting slice is acknowledged by a compact
+state run such as `monitor_poll_autonomous_replan_recorded_v0` or
+`delivery_completion_spend_accounted_v0`, later empty monitor polls for the
+same acknowledged wait do not repeatedly retrigger replan. They remain
+no-spend liveness checks until a material monitor transition, regression, or
+concrete blocker appears.
+
+The same guard exposes `automation_liveness`. For
+`monitor_quiet_skip`, it must say `automation_action=keep_active_quiet`,
+`keep_active=true`, and `pause_allowed=false`: unchanged monitor-only polls are
+not a reason to cancel recurring automation. Pausing/deleting is reserved for a
+bounded self-repair or replan path that is itself stuck for two more eligible
+turns. This keeps recurring controllers alive while still preventing quota
+spend on empty monitor checks.
 
 ## Compute States
 
@@ -331,19 +389,19 @@ should use that summary as its next safe follow-up checklist instead of mining
 chat history or an overlong `Next Action`.
 For `state=focus_wait`, `state=waiting`, or
 `waiting_on=external_evidence`, an open user todo can be the smallest unlock
-for a quiet project. The same rule applies when an eligible monitor-only poll
-has no material transition: do not silently report "nothing to do" while a
-current open user todo explains what the user can do next. In that case,
-`quota should-run` should set
+for a quiet project. In that case, `quota should-run` should set
 `notify_user_on_open_todo=true` and include `open_todo_notify_reason`. The
 target heartbeat should return a compact `NOTIFY` listing at most three open
 user todos and the expected reply (`done`, `defer/not now`, or new evidence
 link/date/conclusion), while skipping delivery work and quota spend for that
-blocker-push turn. For monitor-only no-transition polls, quota also sets
-`open_todo_notification_policy=repeat_until_resolved`; repeat
-that notification on every such poll until the todo is done, deferred, or
-replaced. Other blocker-push cases may still be de-duplicated when the same
-blocker was already surfaced recently.
+blocker-push turn. If quota also sets
+`open_todo_notification_policy=repeat_until_resolved`, repeat
+that notification until the todo is done, deferred, or replaced. Otherwise,
+blocker-push cases may still be de-duplicated when the same blocker was already
+surfaced recently. Eligible monitor-only polls with no material transition keep
+the open user todo visible in `user_todo_summary`, but do not force a repeated
+notification, make the turn a user-action gate, or leave the top-level
+`should_run` set for an otherwise quiet no-op.
 For every registered goal, `quota should-run` also includes a `todo_write_hint`
 so agent executors know to write newly discovered user/owner work with
 `goal-harness todo add --role user` instead of hiding it in `Next Action`,
@@ -385,12 +443,25 @@ common modes are:
   implementation/test/state batch is valid when scope and validation are clear;
   the contract is bounded, not tiny.
 
-The same response also includes `execution_obligation`, which separates worker
-execution from user-facing notification. `heartbeat_recommendation.notify`
-answers "should this heartbeat interrupt the user?", not "may the worker skip
-work?" When `execution_obligation.kind=work_lane_contract`, the hard routing
-rule is `work_lane_contract.obligation`; `execution_obligation` should merely
-point the worker to that object. When
+The same response includes `interaction_contract.schema_version =
+goal_harness_interaction_contract_v0`, the top-level user/agent/CLI protocol
+for the selected turn. It tells a worker whether this is a user gate, blocker
+push, bounded delivery, external-evidence observation, monitor quiet skip,
+autonomous replan, outcome-floor recovery, mapped no-op, or quota throttle. It
+also names whether the user must be interrupted, whether Codex must attempt
+work, whether delivery is allowed, whether quiet no-op is allowed, and whether
+quota spend is allowed only after validation. Executors should read this object
+first.
+The response also includes `execution_obligation`, which is the compatibility
+field that separates worker execution from user-facing notification.
+`heartbeat_recommendation.notify` answers "should this heartbeat interrupt the
+user?", not "may the worker skip work?" When
+`execution_obligation.kind=work_lane_contract`, the hard routing rule is
+`work_lane_contract.obligation`; `execution_obligation` should merely point the
+worker to that object. When
+`execution_obligation.kind=external_evidence_observation_required`, delivery is
+still blocked but a read-only observation or compact blocker writeback is
+mandatory before quiet no-op. When
 `execution_obligation.must_attempt_work=true`, a short heartbeat must attempt
 one bounded segment, validate it, write durable state/events, and spend once
 after successful delivery. A quiet no-op is only allowed when the machine
@@ -426,9 +497,14 @@ Post-turn accounting protocol:
 - call `quota should-run` before spending delivery compute;
 - do the bounded automatic turn, validation, and state writeback;
 - append exactly one `quota spend-slot --execute` event for that completed
-  turn before any state-only refresh that might close the active delivery lane;
-- refresh state after spend when the dashboard or controller needs the updated
-  state projection;
+  turn after validated writeback. When the writeback is a state refresh that
+  moves the guard from eligible/replan to waiting, `spend-slot` may still
+  account the latest unspent `outcome_progress` delivery run once; a later
+  duplicate spend is rejected because the latest run is then the spend event,
+  not the delivery run.
+- for unchanged `monitor_quiet_skip` heartbeat polls, append at most one
+  no-spend `quota monitor-poll --execute` event and rerun `quota should-run`
+  before choosing quiet no-op versus autonomous replan;
 - do not append spend for quiet `should_run=false` skips, preflight failures,
   pure dry-run previews, or duplicate accounting attempts;
 - if `should_run=false` but `safe_bypass_allowed=true` and the agent actually
@@ -455,6 +531,8 @@ Codex turn actually consumes quota. The smallest public-safe event is
     "source": "heartbeat",
     "slots": 1,
     "reason_summary": "one automatic Codex turn completed under an eligible quota guard",
+    "delivery_run_generated_at": null,
+    "delivery_run_classification": null,
     "before": {
       "should_run": true,
       "state": "eligible",

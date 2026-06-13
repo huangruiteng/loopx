@@ -14,9 +14,9 @@ Codex, model APIs, uploads, shares, or leaderboard paths.
 
 | Arm | Worker condition | Goal Harness inside case | Official score comparable to native Codex | Primary question |
 | --- | --- | --- | --- | --- |
-| `hardened_codex_baseline` | The custom Codex install hardening is the true Codex baseline for this experiment. The worker receives the original benchmark task prompt unchanged and no Goal Harness packet, skill, CLI bridge, or state. | No | No to native Codex leaderboard comparison; yes as the paired baseline for `codex_goal_harness`. | Can Codex solve the same hard task under the hardened install surface without Goal Harness help? |
-| `codex_goal_mode` | Codex CLI is encouraged to use Codex runtime goal tools such as `create_goal` and `update_goal`. | No | No, unless the goal prompt/tool surface is declared as native for that baseline. | Does Codex's own goal mode improve long-horizon execution? |
-| `codex_goal_harness` | Codex receives a Goal Harness access packet or skill plus real Goal Harness interfaces. Current V0 is only `prompt_packet_only_no_cli_bridge` until that bridge exists. | Yes, only after bridge/trace evidence | No | Does Goal Harness improve monitored long-horizon execution? |
+| `codex_goal_mode` | Codex CLI runs with the declared native goal-mode surface and no Goal Harness packet, skill, CLI bridge, or state. | No | No, unless the goal-mode prompt/tool surface is declared as native for that benchmark baseline. | Can Codex's own goal mode solve the same hard task without Goal Harness help? |
+| `codex_goal_harness` | The same goal-mode Codex worker receives a Goal Harness access packet or skill plus real Goal Harness interfaces. Current V0 is only `prompt_packet_only_no_cli_bridge` until that bridge exists. | Yes, only after bridge/trace evidence | No | Does Goal Harness improve monitored long-horizon execution beyond Codex goal mode? |
+| `hardened_codex_calibration` | The custom Codex install hardening receives the original benchmark task prompt unchanged and no Codex goal-mode instruction, Goal Harness packet, skill, CLI bridge, or state. | No | No; startup/install/debug control only. | Is a failure caused by install/startup/environment rather than goal-mode or Goal Harness behavior? |
 | `passive_goal_harness_observer` | Native Codex solves the unchanged task while Goal Harness observes outside the case. | No | Yes | Can Goal Harness observe and write back evidence without perturbing the case? |
 
 The old label `goal-harness-managed-codex` is too broad. It must be split into
@@ -36,7 +36,9 @@ Each real or fixture result should report these counters separately:
 | `goal_harness_state_writes` | Goal Harness writeback actions initiated from inside the worker. | `1` |
 | `harness_skill_or_packet_injected` | Whether the worker received the Goal Harness access instructions. | `true` |
 | `case_result_writeback` | Where the final compact result was written. | `runner_only` or `worker_goal_harness_writeback` |
-| `hardened_install_baseline` | Whether the arm is the current paired Codex baseline with hardened install and no Goal Harness state. | `true` for `hardened_codex_baseline` |
+| `codex_goal_mode_enabled` | Whether the arm used the declared Codex goal-mode invocation surface. | `true` for `codex_goal_mode` and `codex_goal_harness` |
+| `primary_paired_baseline` | Whether the arm is the paired baseline for Goal Harness uplift analysis. | `true` for `codex_goal_mode` |
+| `calibration_only` | Whether the arm is only a startup/install/environment control. | `true` for `hardened_codex_calibration` |
 
 `codex_runtime_goal_tool_calls` is useful, but it is not Goal Harness usage.
 For the first managed sample trace, the correct public-safe classification is:

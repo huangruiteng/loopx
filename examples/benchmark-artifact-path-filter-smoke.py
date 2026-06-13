@@ -26,9 +26,17 @@ PATHS = [
     f"{PRIVATE_ROOT}/tasks/demo/instruction.md",
 ]
 ALE_POLICY_PATHS = [
+    f"{PRIVATE_ROOT}/agents-last-exam-local-preflight.json",
+    f"{PRIVATE_ROOT}/agents-last-exam-local-dry-run-plan.json",
     f"{PRIVATE_ROOT}/agents-last-exam-local-launch-packet.json",
     f"{PRIVATE_ROOT}/agents-last-exam-local-runner-readiness.json",
+    f"{PRIVATE_ROOT}/agents-last-exam-local-source-readiness.json",
+    f"{PRIVATE_ROOT}/agents-last-exam-task-material-readiness.json",
+    f"{PRIVATE_ROOT}/agents-last-exam-candidate-task-data-scan.json",
     f"{PRIVATE_ROOT}/agents-last-exam-local-exact-dry-run-result.json",
+    f"{PRIVATE_ROOT}/agents-last-exam-host-codex-cli-route.json",
+    f"{PRIVATE_ROOT}/agents-last-exam-host-codex-cua-no-task-smoke.json",
+    f"{PRIVATE_ROOT}/agents-last-exam-validation-run-gate.json",
     f"{PRIVATE_ROOT}/trajectory.json",
     f"{PRIVATE_ROOT}/screenshots/final.png",
 ]
@@ -76,7 +84,7 @@ def main() -> None:
 
     default_ale_payload = filter_public_benchmark_artifact_paths(ALE_POLICY_PATHS)
     assert default_ale_payload["allowed_to_read_count"] == 0, default_ale_payload
-    assert default_ale_payload["blocked_reasons"]["not_compact_public_artifact"] == 3, default_ale_payload
+    assert default_ale_payload["blocked_reasons"]["not_compact_public_artifact"] == 11, default_ale_payload
     assert default_ale_payload["blocked_reasons"]["raw_private_surface"] == 2, default_ale_payload
     assert_no_path_leak(default_ale_payload)
 
@@ -86,9 +94,17 @@ def main() -> None:
     )
     assert ale_payload["artifact_policy"]["adapter_kind"] == "agents-last-exam", ale_payload
     assert ale_payload["allowed_artifact_basenames"] == [
+        "agents-last-exam-local-preflight.json",
+        "agents-last-exam-local-dry-run-plan.json",
         "agents-last-exam-local-launch-packet.json",
         "agents-last-exam-local-runner-readiness.json",
+        "agents-last-exam-local-source-readiness.json",
+        "agents-last-exam-task-material-readiness.json",
+        "agents-last-exam-candidate-task-data-scan.json",
         "agents-last-exam-local-exact-dry-run-result.json",
+        "agents-last-exam-host-codex-cli-route.json",
+        "agents-last-exam-host-codex-cua-no-task-smoke.json",
+        "agents-last-exam-validation-run-gate.json",
     ], ale_payload
     assert ale_payload["blocked_reasons"]["raw_private_surface"] == 2, ale_payload
     assert_no_path_leak(ale_payload)
@@ -127,9 +143,11 @@ def main() -> None:
     )
     cli_payload = json.loads(result.stdout)
     assert cli_payload["artifact_policy"]["adapter_kind"] == "agents-last-exam", cli_payload
-    assert cli_payload["allowed_to_read_count"] == 7, cli_payload
+    assert cli_payload["allowed_to_read_count"] == 15, cli_payload
     assert cli_payload["blocked_count"] == 6, cli_payload
     assert "agents-last-exam-local-launch-packet.json" in cli_payload["allowed_artifact_basenames"], cli_payload
+    assert "agents-last-exam-candidate-task-data-scan.json" in cli_payload["allowed_artifact_basenames"], cli_payload
+    assert "agents-last-exam-validation-run-gate.json" in cli_payload["allowed_artifact_basenames"], cli_payload
     assert "custom-observation-proof.json" in cli_payload["allowed_artifact_basenames"], cli_payload
     assert_no_path_leak(cli_payload)
     print("ok")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -234,11 +235,32 @@ AGENTS_LAST_EXAM_LOCAL_RUNNER_READINESS_SCHEMA_VERSION = (
 AGENTS_LAST_EXAM_LOCAL_SOURCE_READINESS_SCHEMA_VERSION = (
     "agents_last_exam_local_source_readiness_v0"
 )
+AGENTS_LAST_EXAM_TASK_MATERIAL_READINESS_SCHEMA_VERSION = (
+    "agents_last_exam_task_material_readiness_v0"
+)
+AGENTS_LAST_EXAM_BAKED_TASK_INPUT_READINESS_SCHEMA_VERSION = (
+    "agents_last_exam_baked_task_input_readiness_v0"
+)
+AGENTS_LAST_EXAM_BAKED_TASK_INPUT_SCAN_SCHEMA_VERSION = (
+    "agents_last_exam_baked_task_input_scan_v0"
+)
+AGENTS_LAST_EXAM_CANDIDATE_TASK_DATA_SCAN_SCHEMA_VERSION = (
+    "agents_last_exam_candidate_task_data_scan_v0"
+)
 AGENTS_LAST_EXAM_LOCAL_LAUNCH_PACKET_SCHEMA_VERSION = (
     "agents_last_exam_local_launch_packet_v0"
 )
 AGENTS_LAST_EXAM_LOCAL_EXACT_DRY_RUN_RESULT_SCHEMA_VERSION = (
     "agents_last_exam_local_exact_dry_run_result_v0"
+)
+AGENTS_LAST_EXAM_HOST_CODEX_CLI_ROUTE_SCHEMA_VERSION = (
+    "agents_last_exam_host_codex_cli_route_v0"
+)
+AGENTS_LAST_EXAM_HOST_CODEX_CUA_NO_TASK_SMOKE_SCHEMA_VERSION = (
+    "agents_last_exam_host_codex_cua_no_task_smoke_v0"
+)
+AGENTS_LAST_EXAM_VALIDATION_RUN_GATE_SCHEMA_VERSION = (
+    "agents_last_exam_validation_run_gate_v0"
 )
 AGENTS_LAST_EXAM_TRACE_PUBLICNESS = (
     "compact_public_safe_no_task_body_no_trajectory_no_output"
@@ -254,6 +276,49 @@ AGENTS_LAST_EXAM_RAW_SURFACES_EXCLUDED = (
     "origin_log",
     "output",
 )
+AGENTISSUE_BENCHMARK_ID = "agentissue-bench"
+AGENTISSUE_CODEX_CLI_RUNNER_WRAPPER_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_dry_run_wrapper_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_BENCHMARK_RUN_MODE = (
+    "agentissue_codex_cli_runner_dry_run_wrapper"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_synthetic_staging_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_MODE = (
+    "agentissue_codex_cli_runner_synthetic_staging_fixture"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_execution_gate_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_MODE = (
+    "agentissue_codex_cli_runner_execution_gate"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_first_run_handoff_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_MODE = (
+    "agentissue_codex_cli_runner_first_run_handoff_packet"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_REAL_RESULT_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_real_result_reducer_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_REAL_RESULT_MODE = (
+    "agentissue_codex_cli_runner_real_result_reducer"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_PRIVATE_SCRIPT_SCHEMA_VERSION = (
+    "agentissue_bench_codex_cli_runner_private_script_v0"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_PRIVATE_SCRIPT_MODE = (
+    "agentissue_codex_cli_runner_private_script"
+)
+AGENTISSUE_CODEX_CLI_RUNNER_SOURCE_RUNNER = (
+    "goal_harness_agentissue_codex_cli_runner"
+)
+AGENTISSUE_DEFAULT_TAG = "lagent_239"
+AGENTISSUE_DEFAULT_IMAGE = "alfin06/agentissue-bench:lagent_239"
+AGENTISSUE_PATCH_RELATIVE_PATH = "Patches/lagent_239/attempt.patch"
 BENCHMARK_PUBLIC_ARTIFACT_SUFFIXES = (
     ".compact.json",
     ".public.json",
@@ -300,8 +365,15 @@ BENCHMARK_ARTIFACT_POLICY_REGISTRY: dict[str, dict[str, tuple[str, ...]]] = {
             "agents-last-exam-local-dry-run-plan.json",
             "agents-last-exam-local-runner-readiness.json",
             "agents-last-exam-local-source-readiness.json",
+            "agents-last-exam-task-material-readiness.json",
+            "agents-last-exam-baked-task-input-readiness.json",
+            "agents-last-exam-baked-task-input-scan.json",
+            "agents-last-exam-candidate-task-data-scan.json",
             "agents-last-exam-local-launch-packet.json",
             "agents-last-exam-local-exact-dry-run-result.json",
+            "agents-last-exam-host-codex-cli-route.json",
+            "agents-last-exam-host-codex-cua-no-task-smoke.json",
+            "agents-last-exam-validation-run-gate.json",
         ),
         "raw_private_markers": (
             "trajectory.json",
@@ -486,6 +558,1783 @@ def filter_public_benchmark_artifact_paths(
             "trajectory_or_origin_log_read": False,
             "intended_use": "preflight benchmark artifact reads before compact ingest",
         },
+    }
+
+
+def _agentissue_public_label(value: Any, *, limit: int = 120) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("agentissue label is required")
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", text):
+        raise ValueError("agentissue label must be public-safe")
+    return text[:limit]
+
+
+def build_agentissue_codex_cli_runner_wrapper(
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+    job_root_placeholder: str = "<abs-private-job-root>",
+) -> dict[str, Any]:
+    """Build a dry-run-default AgentIssue-Bench Codex CLI runner wrapper.
+
+    The wrapper deliberately renders command and staging shapes only. It never
+    calls Codex, Docker, model APIs, or benchmark helpers; callers that append
+    the embedded benchmark_run_v0 are recording readiness, not a task score.
+    """
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner wrapper currently only supports selected tag lagent_239"
+        )
+    codex = _agentissue_public_label(codex_binary, limit=80)
+    docker = _agentissue_public_label(docker_binary, limit=80)
+    image = AGENTISSUE_DEFAULT_IMAGE
+    buggy_source = f"{job_root_placeholder}/buggy-source"
+    context_dir = f"{job_root_placeholder}/context"
+    patch_dir = f"{job_root_placeholder}/Patches/lagent_239"
+    prompt_path = f"{context_dir}/prompt.md"
+    last_message = f"{job_root_placeholder}/codex-last-message.txt"
+    compact_run_path = f"{job_root_placeholder}/benchmark_run.compact.json"
+
+    phase_order = [
+        "prepare_private_job_root",
+        "write_public_issue_context_to_private_context",
+        "pull_selected_image_opt_in",
+        "extract_buggy_source_from_selected_container_opt_in",
+        "initialize_git_baseline_in_buggy_source",
+        "run_host_local_codex_cli_patch_worker_opt_in",
+        "write_attempt_patch_from_buggy_source_git_diff",
+        "evaluate_selected_tag_container_opt_in",
+        "reduce_compact_public_evidence",
+    ]
+    codex_argv = [
+        codex,
+        "exec",
+        "--ephemeral",
+        "--ignore-rules",
+        "--sandbox",
+        "workspace-write",
+        "--cd",
+        buggy_source,
+        "--add-dir",
+        job_root_placeholder,
+        "--output-last-message",
+        last_message,
+        prompt_path,
+    ]
+    eval_argv = [
+        docker,
+        "run",
+        "--platform",
+        "linux/amd64",
+        "--rm",
+        "--entrypoint",
+        "bash",
+        "-v",
+        f"{patch_dir}:/patches:ro",
+        image,
+        "-c",
+        "<apply_patch_and_test_patched>",
+    ]
+    wrapper = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_WRAPPER_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": image,
+        "dry_run_default": True,
+        "real_execution_done": False,
+        "single_tag_only": True,
+        "staging_plan": {
+            "private_job_root_placeholder": job_root_placeholder,
+            "path_recorded": False,
+            "buggy_source_placeholder": buggy_source,
+            "context_dir_placeholder": context_dir,
+            "patch_dir_placeholder": patch_dir,
+            "prompt_path_placeholder": prompt_path,
+            "last_message_placeholder": last_message,
+            "compact_run_placeholder": compact_run_path,
+            "phase_order": phase_order,
+        },
+        "commands": {
+            "codex_patch_worker": {
+                "argv": codex_argv,
+                "runs_on_host": True,
+                "runs_after_buggy_source_extraction": True,
+                "copy_codex_home": False,
+                "auth_material_synced": False,
+                "worker_network_allowed": False,
+                "worker_docker_allowed": False,
+                "reads_fixed_diff_or_oracle": False,
+                "execute_by_default": False,
+            },
+            "patch_export": {
+                "input_source": "buggy_source_git_diff",
+                "output_relative_path": AGENTISSUE_PATCH_RELATIVE_PATH,
+                "raw_patch_public": False,
+                "patch_hash_public": True,
+            },
+            "single_tag_eval": {
+                "argv": eval_argv,
+                "official_all_tag_helper_allowed": False,
+                "docker_env_credentials": False,
+                "upload": False,
+                "submit": False,
+                "public_ranking_path": False,
+                "execute_by_default": False,
+            },
+        },
+        "execution_boundary": {
+            "codex_cli_invoked": False,
+            "model_api_invoked": False,
+            "docker_image_pulled": False,
+            "docker_container_started": False,
+            "patch_generated": False,
+            "patch_evaluated": False,
+            "raw_issue_text_read": False,
+            "raw_patch_recorded": False,
+            "raw_log_recorded": False,
+            "credential_values_recorded": False,
+        },
+        "reducer_contract": {
+            "allowed_public_fields": [
+                "tag",
+                "image_digest",
+                "patch_sha256",
+                "patch_bytes",
+                "changed_file_count",
+                "hunk_count",
+                "exit_code",
+                "resolved",
+                "duration_seconds",
+                "log_sha256",
+                "no_upload",
+                "no_submit",
+                "no_public_ranking_path",
+            ],
+            "raw_issue_text_public": False,
+            "raw_patch_public": False,
+            "raw_log_public": False,
+            "absolute_paths_public": False,
+        },
+        "stop_rules": {
+            "stop_before_codex_auth_sync": True,
+            "stop_before_current_head_patch_source": True,
+            "stop_before_fixed_diff_or_oracle_read": True,
+            "stop_before_all_tag_helpers": True,
+            "stop_before_upload_submit_or_public_ranking": True,
+            "stop_before_raw_artifact_publication": True,
+            "stop_before_destructive_git_or_production": True,
+        },
+    }
+    benchmark_run = {
+        "schema_version": "benchmark_run_v0",
+        "source_runner": AGENTISSUE_CODEX_CLI_RUNNER_SOURCE_RUNNER,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "job_name": "agentissue_lagent_239_codex_cli_runner_dry_run",
+        "mode": AGENTISSUE_CODEX_CLI_RUNNER_BENCHMARK_RUN_MODE,
+        "worker_mode": "trusted_host_codex_cli_dry_run_wrapper",
+        "trace_publicness": "compact_public_no_issue_text_no_patch_no_logs",
+        "first_blocker": "dry_run_wrapper_only_no_real_case",
+        "score_failure_attribution": "not_run_wrapper_readiness_only",
+        "real_run": False,
+        "submit_eligible": False,
+        "leaderboard_evidence": False,
+        "official_score_comparable_to_native_codex": False,
+        "official_score_claim_allowed": False,
+        "control_plane_score_applicable": True,
+        "official_task_score": {
+            "kind": "agentissue_bench_single_tag_container_eval_not_run",
+            "status": "not_run",
+            "value": None,
+            "resolved": None,
+        },
+        "progress": {
+            "n_total_trials": 1,
+            "n_completed_trials": 0,
+            "n_errored_trials": 0,
+            "n_running_trials": 0,
+            "n_pending_trials": 1,
+            "n_cancelled_trials": 0,
+            "n_retries": 0,
+        },
+        "metrics": {
+            "input_tokens": 0,
+            "cache_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 0,
+        },
+        "validation": {
+            "runner_wrapper_built": True,
+            "dry_run_default": True,
+            "single_tag_only": True,
+            "absolute_private_job_root_placeholders": True,
+            "buggy_source_before_codex_patch": True,
+            "patch_from_buggy_source_git_diff": True,
+            "selected_tag_eval_only": True,
+            "compact_reducer_declared": True,
+            "no_codex_cli_invoked": True,
+            "no_model_api_invoked": True,
+            "no_docker_container_started": True,
+            "no_patch_generated": True,
+            "no_patch_evaluated": True,
+            "no_auth_material_sync": True,
+            "no_current_public_head_patch_source": True,
+            "no_fixed_diff_or_oracle_read": True,
+            "no_upload": True,
+            "no_submit": True,
+            "no_public_ranking_path": True,
+        },
+        "trials": [
+            {
+                "task_id": tag,
+                "trial_name": tag,
+                "source": "selected_public_tag",
+                "exception_type": "dry_run_wrapper_only_no_real_case",
+                "trajectory_present": False,
+                "artifact_manifest_present": False,
+                "trial_result_present": False,
+            }
+        ],
+        "failure_attribution_labels": [
+            "no_execution_wrapper_only",
+            "ready_for_synthetic_job_root_staging",
+        ],
+        "evidence_files": [
+            "benchmark_run.compact.json",
+            "runner-flow-plan.public.json",
+        ],
+        "stop_conditions": [
+            "codex_auth_sync_requested",
+            "current_head_patch_source_requested",
+            "fixed_diff_or_oracle_requested",
+            "all_tag_helper_requested",
+            "upload_submit_or_public_ranking_requested",
+            "raw_artifact_publication_requested",
+        ],
+        "read_boundary": {
+            "compact_only": True,
+            "raw_artifacts_read": False,
+            "task_text_read": False,
+            "trajectory_read": False,
+            "local_paths_recorded": False,
+            "docker_invoked": False,
+            "model_api_invoked": False,
+            "upload_invoked": False,
+        },
+    }
+    return {
+        **wrapper,
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "run this wrapper against a synthetic private job root, then gate any real "
+            "Codex/Docker execution behind explicit opt-in"
+        ),
+    }
+
+
+def materialize_agentissue_codex_cli_runner_synthetic_staging(
+    staging_root: str | Path,
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Create a synthetic AgentIssue runner job root without real task material."""
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner synthetic staging currently only supports selected tag lagent_239"
+        )
+    root = Path(staging_root).expanduser()
+    if not str(root):
+        raise ValueError("synthetic staging root is required")
+
+    wrapper = build_agentissue_codex_cli_runner_wrapper(
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    context_dir = root / "context"
+    buggy_source_dir = root / "buggy-source"
+    patch_dir = root / "Patches" / tag
+    prompt_path = context_dir / "prompt.md"
+    runner_plan_path = root / "runner-flow-plan.public.json"
+    compact_run_path = root / "benchmark_run.compact.json"
+
+    prompt_text = (
+        "# Synthetic AgentIssue-Bench lagent_239 Prompt Placeholder\n\n"
+        "This fixture contains no real issue statement, source diff, test patch, "
+        "expected patch, auth value, trajectory, screenshot, or raw log.\n\n"
+        f"Expected patch output path: {AGENTISSUE_PATCH_RELATIVE_PATH}\n\n"
+        "Run boundary: do not invoke Codex, Docker, model APIs, upload, submit, "
+        "or public ranking paths from this fixture.\n"
+    )
+    benchmark_run = json.loads(json.dumps(wrapper["benchmark_run"]))
+    benchmark_run.update(
+        {
+            "job_name": "agentissue_lagent_239_codex_cli_runner_synthetic_staging",
+            "mode": AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_MODE,
+            "worker_mode": "trusted_host_codex_cli_synthetic_staging_fixture",
+            "first_blocker": "synthetic_staging_only_no_real_case",
+            "score_failure_attribution": "not_run_synthetic_staging_only",
+            "failure_attribution_labels": [
+                "synthetic_staging_fixture_only",
+                "ready_for_guarded_private_source_extraction_gate",
+            ],
+            "evidence_files": [
+                "benchmark_run.compact.json",
+                "runner-flow-plan.public.json",
+            ],
+        }
+    )
+    benchmark_run["validation"].update(
+        {
+            "synthetic_private_job_root_materialized": True,
+            "context_dir_created": True,
+            "buggy_source_dir_created": True,
+            "patch_dir_created": True,
+            "prompt_placeholder_written": True,
+            "prompt_path_rendered": True,
+            "patch_output_parent_reserved": True,
+            "compact_run_filename_reserved": True,
+            "runner_flow_plan_public_json_written": True,
+            "no_absolute_paths_public": True,
+        }
+    )
+    for trial in benchmark_run.get("trials") or []:
+        if isinstance(trial, dict):
+            trial["exception_type"] = "synthetic_staging_only_no_real_case"
+
+    runner_plan = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "path_recorded": False,
+        "relative_paths": {
+            "context_dir": "context",
+            "buggy_source_dir": "buggy-source",
+            "patch_dir": "Patches/lagent_239",
+            "prompt": "context/prompt.md",
+            "expected_patch": AGENTISSUE_PATCH_RELATIVE_PATH,
+            "compact_run": "benchmark_run.compact.json",
+            "runner_plan": "runner-flow-plan.public.json",
+        },
+        "command_placeholders": wrapper["commands"],
+        "execution_boundary": wrapper["execution_boundary"],
+        "stop_rules": wrapper["stop_rules"],
+    }
+
+    context_dir.mkdir(parents=True, exist_ok=True)
+    buggy_source_dir.mkdir(parents=True, exist_ok=True)
+    patch_dir.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(prompt_text, encoding="utf-8")
+    (buggy_source_dir / ".gitkeep").write_text("", encoding="utf-8")
+    (patch_dir / ".gitkeep").write_text("", encoding="utf-8")
+    runner_plan_path.write_text(
+        json.dumps(runner_plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    compact_run_path.write_text(
+        json.dumps(benchmark_run, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    created_relative_paths = [
+        "context/",
+        "context/prompt.md",
+        "buggy-source/",
+        "buggy-source/.gitkeep",
+        "Patches/lagent_239/",
+        "Patches/lagent_239/.gitkeep",
+        "runner-flow-plan.public.json",
+        "benchmark_run.compact.json",
+    ]
+    return {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_SYNTHETIC_STAGING_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "ready": True,
+        "materialized": True,
+        "path_recorded": False,
+        "staging_root_path_recorded": False,
+        "created_relative_paths": created_relative_paths,
+        "prompt_relative_path": "context/prompt.md",
+        "expected_patch_relative_path": AGENTISSUE_PATCH_RELATIVE_PATH,
+        "compact_run_relative_path": "benchmark_run.compact.json",
+        "runner_plan_relative_path": "runner-flow-plan.public.json",
+        "command_rendering_checks": {
+            "codex_argv_uses_prompt_placeholder": True,
+            "codex_argv_uses_buggy_source_placeholder": True,
+            "eval_argv_uses_selected_image": True,
+            "patch_output_parent_reserved": True,
+            "compact_reducer_filename_reserved": True,
+        },
+        "execution_boundary": {
+            "codex_cli_invoked": False,
+            "model_api_invoked": False,
+            "docker_image_pulled": False,
+            "docker_container_started": False,
+            "patch_generated": False,
+            "patch_evaluated": False,
+            "raw_issue_text_read": False,
+            "raw_patch_recorded": False,
+            "raw_log_recorded": False,
+            "credential_values_recorded": False,
+        },
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "add a guarded opt-in real-source extraction and host-Codex execution "
+            "gate for lagent_239, still defaulting to no-execute"
+        ),
+    }
+
+
+def materialize_agentissue_codex_cli_runner_execution_gate(
+    gate_root: str | Path,
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Create a no-execute gate packet for the first real AgentIssue runner step."""
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner execution gate currently only supports selected tag lagent_239"
+        )
+    root = Path(gate_root).expanduser()
+    staging = materialize_agentissue_codex_cli_runner_synthetic_staging(
+        root,
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    wrapper = build_agentissue_codex_cli_runner_wrapper(
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    docker = _agentissue_public_label(docker_binary, limit=80)
+    image = AGENTISSUE_DEFAULT_IMAGE
+    container_label = "<tmp-agentissue-lagent-239-container>"
+    job_root = "<abs-private-job-root>"
+    buggy_source = f"{job_root}/buggy-source"
+    patch_path = f"{job_root}/{AGENTISSUE_PATCH_RELATIVE_PATH}"
+    gate_path = root / "execution-gate.public.json"
+    compact_run_path = root / "benchmark_run.compact.json"
+
+    extraction_commands = {
+        "inspect_selected_image": [docker, "image", "inspect", image],
+        "create_selected_container": [
+            docker,
+            "create",
+            "--name",
+            container_label,
+            image,
+        ],
+        "copy_buggy_source": [
+            docker,
+            "cp",
+            f"{container_label}:/workspace/.",
+            buggy_source,
+        ],
+        "remove_selected_container": [docker, "rm", container_label],
+    }
+    git_baseline_commands = {
+        "init": ["git", "-C", buggy_source, "init"],
+        "add": ["git", "-C", buggy_source, "add", "."],
+        "commit": [
+            "git",
+            "-C",
+            buggy_source,
+            "commit",
+            "-m",
+            "agentissue-bench-buggy-source-baseline",
+        ],
+    }
+    patch_export = {
+        "input_source": "buggy_source_git_diff",
+        "command_shape": f"git -C {buggy_source} diff --binary > {patch_path}",
+        "output_relative_path": AGENTISSUE_PATCH_RELATIVE_PATH,
+    }
+    gate = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": image,
+        "path_recorded": False,
+        "default_mode": "no_execute",
+        "future_opt_in_required": True,
+        "single_tag_only": True,
+        "relative_paths": {
+            "context_prompt": "context/prompt.md",
+            "buggy_source_dir": "buggy-source",
+            "attempt_patch": AGENTISSUE_PATCH_RELATIVE_PATH,
+            "execution_gate": "execution-gate.public.json",
+            "compact_run": "benchmark_run.compact.json",
+        },
+        "source_extraction_gate": {
+            "commands": extraction_commands,
+            "selected_container_only": True,
+            "execute_by_default": False,
+            "docker_invoked": False,
+            "docker_pull_or_start_allowed": False,
+        },
+        "private_git_baseline_gate": {
+            "commands": git_baseline_commands,
+            "execute_by_default": False,
+            "destructive_git": False,
+        },
+        "host_codex_gate": {
+            "command": wrapper["commands"]["codex_patch_worker"],
+            "execute_by_default": False,
+            "codex_cli_invoked": False,
+            "auth_material_synced": False,
+        },
+        "patch_output_gate": patch_export,
+        "eval_gate": wrapper["commands"]["single_tag_eval"],
+        "stop_rules": {
+            **wrapper["stop_rules"],
+            "stop_before_real_source_extraction_without_future_gate": True,
+            "stop_before_host_codex_execution_without_future_gate": True,
+        },
+    }
+
+    benchmark_run = json.loads(json.dumps(staging["benchmark_run"]))
+    benchmark_run.update(
+        {
+            "job_name": "agentissue_lagent_239_codex_cli_runner_execution_gate",
+            "mode": AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_MODE,
+            "worker_mode": "trusted_host_codex_cli_no_execute_gate",
+            "first_blocker": "execution_gate_only_no_real_case",
+            "score_failure_attribution": "not_run_execution_gate_only",
+            "failure_attribution_labels": [
+                "execution_gate_fixture_only",
+                "ready_for_future_run_specific_opt_in",
+            ],
+            "evidence_files": [
+                "execution-gate.public.json",
+                "benchmark_run.compact.json",
+                "runner-flow-plan.public.json",
+            ],
+        }
+    )
+    benchmark_run["validation"].update(
+        {
+            "execution_gate_materialized": True,
+            "synthetic_staging_reused": True,
+            "selected_container_source_extraction_commands_rendered": True,
+            "private_git_baseline_commands_rendered": True,
+            "host_codex_command_readiness_rendered": True,
+            "attempt_patch_output_placement_checked": True,
+            "compact_run_filename_checked": True,
+            "future_execution_opt_in_required": True,
+            "no_real_source_extraction": True,
+            "no_real_codex_execution": True,
+            "no_docker_pull_or_start": True,
+            "no_auth_sync_to_shared_host": True,
+            "no_fixed_diff_or_oracle_read": True,
+        }
+    )
+    for trial in benchmark_run.get("trials") or []:
+        if isinstance(trial, dict):
+            trial["exception_type"] = "execution_gate_only_no_real_case"
+
+    gate_path.write_text(
+        json.dumps(gate, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    compact_run_path.write_text(
+        json.dumps(benchmark_run, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_EXECUTION_GATE_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": image,
+        "ready": True,
+        "materialized": True,
+        "path_recorded": False,
+        "gate_root_path_recorded": False,
+        "synthetic_staging": {
+            "schema_version": staging["schema_version"],
+            "ready": staging["ready"],
+            "created_relative_paths": staging["created_relative_paths"],
+            "path_recorded": False,
+        },
+        "created_relative_paths": [
+            *staging["created_relative_paths"],
+            "execution-gate.public.json",
+        ],
+        "gate_relative_path": "execution-gate.public.json",
+        "compact_run_relative_path": "benchmark_run.compact.json",
+        "attempt_patch_relative_path": AGENTISSUE_PATCH_RELATIVE_PATH,
+        "gate_checks": {
+            "selected_container_source_extraction_commands_rendered": True,
+            "private_git_baseline_commands_rendered": True,
+            "host_codex_command_readiness_rendered": True,
+            "attempt_patch_output_placement_checked": True,
+            "future_execution_opt_in_required": True,
+        },
+        "execution_boundary": {
+            "codex_cli_invoked": False,
+            "model_api_invoked": False,
+            "docker_image_pulled": False,
+            "docker_container_started": False,
+            "source_extracted": False,
+            "git_baseline_created": False,
+            "patch_generated": False,
+            "patch_evaluated": False,
+            "credential_values_recorded": False,
+            "auth_material_synced": False,
+        },
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "build a no-execute first-run handoff packet for lagent_239"
+        ),
+    }
+
+
+def materialize_agentissue_codex_cli_runner_first_run_handoff(
+    handoff_root: str | Path,
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Create a no-execute first-run handoff packet for AgentIssue lagent_239."""
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner first-run handoff currently only supports selected tag lagent_239"
+        )
+    root = Path(handoff_root).expanduser()
+    gate = materialize_agentissue_codex_cli_runner_execution_gate(
+        root,
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    handoff_path = root / "first-run-handoff.public.json"
+    handoff_markdown_path = root / "first-run-handoff.md"
+    compact_run_path = root / "benchmark_run.compact.json"
+
+    no_execute_cli_argv = [
+        "goal-harness",
+        "benchmark",
+        "agentissue-codex-runner-flow",
+        "--goal-id",
+        "<goal-id>",
+        "--tag",
+        tag,
+        "--execution-gate-root",
+        "<private-gate-root>",
+        "--delivery-batch-scale",
+        "multi_surface",
+        "--delivery-outcome",
+        "outcome_progress",
+        "--execute",
+    ]
+    safety_checklist = [
+        {
+            "item": "private_job_root_selected",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": False,
+        },
+        {
+            "item": "codex_auth_stays_on_host",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": True,
+        },
+        {
+            "item": "no_codex_home_sync_to_shared_host",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": True,
+        },
+        {
+            "item": "selected_container_source_extraction_planned",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": False,
+        },
+        {
+            "item": "attempt_patch_compact_reducer_planned",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": True,
+        },
+        {
+            "item": "upload_submit_public_ranking_disabled",
+            "required_before_later_e2e": True,
+            "satisfied_by_this_packet": True,
+        },
+    ]
+    handoff = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "path_recorded": False,
+        "default_mode": "no_execute",
+        "later_operator_triggered_e2e": True,
+        "real_run_done": False,
+        "exact_command_shape": {
+            "argv": no_execute_cli_argv,
+            "runs_real_benchmark": False,
+            "appends_compact_no_run_event": True,
+        },
+        "private_artifact_boundary": {
+            "root_placeholder": "<private-gate-root>",
+            "root_path_recorded": False,
+            "public_relative_files": [
+                "runner-flow-plan.public.json",
+                "execution-gate.public.json",
+                "first-run-handoff.public.json",
+                "first-run-handoff.md",
+                "benchmark_run.compact.json",
+            ],
+            "private_relative_dirs": [
+                "context/",
+                "buggy-source/",
+                "Patches/lagent_239/",
+            ],
+            "raw_artifacts_public": False,
+            "absolute_paths_public": False,
+        },
+        "expected_compact_outputs": {
+            "benchmark_run_mode": AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_MODE,
+            "compact_run": "benchmark_run.compact.json",
+            "history_event": "benchmark_run_v0",
+            "official_score_claim_allowed": False,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+        },
+        "budget_auth_boundary": {
+            "codex_auth_values_read": False,
+            "codex_home_synced": False,
+            "model_api_invoked": False,
+            "model_budget_spent_by_packet": False,
+            "docker_invoked_by_packet": False,
+            "shared_remote_host_receives_codex_auth": False,
+        },
+        "safety_checklist": safety_checklist,
+        "no_execute_assertions": {
+            "source_extracted": False,
+            "codex_cli_invoked": False,
+            "docker_container_started": False,
+            "patch_generated": False,
+            "patch_evaluated": False,
+            "upload": False,
+            "submit": False,
+            "public_ranking_path": False,
+            "destructive_git": False,
+            "production_action": False,
+        },
+    }
+    handoff_markdown = (
+        "# AgentIssue-Bench lagent_239 First-Run Handoff\n\n"
+        "This packet is no-execute. It names the command shape, private artifact "
+        "boundary, compact outputs, budget/auth boundary, and safety checklist "
+        "for a later operator-triggered e2e run.\n\n"
+        "## Command Shape\n\n"
+        "```text\n"
+        + " ".join(no_execute_cli_argv)
+        + "\n```\n\n"
+        "## Boundary\n\n"
+        "- Codex auth stays on the host and is not copied to a shared machine.\n"
+        "- Public files are limited to `*.public.json`, `*.compact.json`, and this packet.\n"
+        "- No source extraction, Docker start, Codex invocation, patch generation, "
+        "evaluation, upload, submit, public ranking, destructive git, or production "
+        "action is performed by this packet.\n"
+    )
+
+    benchmark_run = json.loads(json.dumps(gate["benchmark_run"]))
+    benchmark_run.update(
+        {
+            "job_name": "agentissue_lagent_239_codex_cli_runner_first_run_handoff",
+            "mode": AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_MODE,
+            "worker_mode": "trusted_host_codex_cli_no_execute_first_run_handoff",
+            "first_blocker": "first_run_handoff_only_no_real_case",
+            "score_failure_attribution": "not_run_first_run_handoff_only",
+            "failure_attribution_labels": [
+                "first_run_handoff_packet_only",
+                "ready_for_later_operator_triggered_e2e_run",
+            ],
+            "evidence_files": [
+                "first-run-handoff.public.json",
+                "first-run-handoff.md",
+                "execution-gate.public.json",
+                "benchmark_run.compact.json",
+                "runner-flow-plan.public.json",
+            ],
+        }
+    )
+    benchmark_run["validation"].update(
+        {
+            "first_run_handoff_materialized": True,
+            "exact_command_shape_rendered": True,
+            "private_artifact_boundary_declared": True,
+            "expected_compact_outputs_declared": True,
+            "budget_auth_boundary_declared": True,
+            "safety_checklist_declared": True,
+            "no_execute_packet": True,
+            "no_codex_auth_value_read": True,
+            "no_codex_home_sync": True,
+            "no_model_budget_spent_by_packet": True,
+        }
+    )
+    for trial in benchmark_run.get("trials") or []:
+        if isinstance(trial, dict):
+            trial["exception_type"] = "first_run_handoff_only_no_real_case"
+
+    handoff_path.write_text(
+        json.dumps(handoff, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    handoff_markdown_path.write_text(handoff_markdown, encoding="utf-8")
+    compact_run_path.write_text(
+        json.dumps(benchmark_run, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_FIRST_RUN_HANDOFF_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "ready": True,
+        "materialized": True,
+        "path_recorded": False,
+        "handoff_root_path_recorded": False,
+        "execution_gate": {
+            "schema_version": gate["schema_version"],
+            "ready": gate["ready"],
+            "gate_relative_path": gate["gate_relative_path"],
+            "path_recorded": False,
+        },
+        "created_relative_paths": [
+            *gate["created_relative_paths"],
+            "first-run-handoff.public.json",
+            "first-run-handoff.md",
+        ],
+        "handoff_relative_path": "first-run-handoff.public.json",
+        "handoff_markdown_relative_path": "first-run-handoff.md",
+        "compact_run_relative_path": "benchmark_run.compact.json",
+        "handoff_checks": {
+            "exact_command_shape_rendered": True,
+            "private_artifact_boundary_declared": True,
+            "expected_compact_outputs_declared": True,
+            "budget_auth_boundary_declared": True,
+            "safety_checklist_declared": True,
+            "later_operator_triggered_e2e": True,
+        },
+        "execution_boundary": handoff["no_execute_assertions"],
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "use the no-execute first-run handoff packet as the checklist for a "
+            "later operator-triggered AgentIssue-Bench lagent_239 e2e run"
+        ),
+    }
+
+
+def _agentissue_private_runner_script_text(
+    *,
+    tag: str,
+    image: str,
+    codex_binary: str,
+    docker_binary: str,
+) -> str:
+    codex = shlex.quote(_agentissue_public_label(codex_binary, limit=80))
+    docker = shlex.quote(_agentissue_public_label(docker_binary, limit=80))
+    quoted_tag = shlex.quote(tag)
+    quoted_image = shlex.quote(image)
+    eval_apply = "apply_patch < /patches/attempt.patch"
+    eval_test = "test_patched"
+    return f"""#!/usr/bin/env bash
+set -euo pipefail
+
+TAG="${{TAG:-{quoted_tag}}}"
+IMAGE="${{IMAGE:-{quoted_image}}}"
+CODEX_BIN="${{CODEX_BIN:-{codex}}}"
+DOCKER_BIN="${{DOCKER_BIN:-{docker}}}"
+GOAL_HARNESS_BIN="${{GOAL_HARNESS_BIN:-goal-harness}}"
+GOAL_ID="${{GOAL_ID:-goal-harness-meta}}"
+ALLOW_DOCKER_PULL="${{ALLOW_DOCKER_PULL:-0}}"
+APPEND_HISTORY="${{APPEND_HISTORY:-0}}"
+PATCH_APPLY_SH="${{PATCH_APPLY_SH:-{eval_apply}}}"
+PATCH_TEST_SH="${{PATCH_TEST_SH:-{eval_test}}}"
+JOB_ROOT="${{JOB_ROOT:-$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)}}"
+CONTEXT_DIR="$JOB_ROOT/context"
+PROMPT_PATH="${{PROMPT_PATH:-$CONTEXT_DIR/prompt.md}}"
+BUGGY_SOURCE="$JOB_ROOT/buggy-source"
+PATCH_DIR="$JOB_ROOT/Patches/lagent_239"
+PATCH_PATH="$PATCH_DIR/attempt.patch"
+LAST_MESSAGE="$JOB_ROOT/codex-last-message.txt"
+MARKER_DIR="$JOB_ROOT/result-markers"
+BENCHMARK_RUN_JSON="$JOB_ROOT/benchmark_run.compact.json"
+BENCHMARK_RESULT_JSON="$JOB_ROOT/benchmark_result.compact.json"
+TMP_CONTAINER=""
+
+fail() {{
+  printf 'agentissue-runner: %s\\n' "$*" >&2
+  exit 1
+}}
+
+cleanup() {{
+  if [ -n "$TMP_CONTAINER" ]; then
+    "$DOCKER_BIN" rm -f "$TMP_CONTAINER" >/dev/null 2>&1 || true
+  fi
+}}
+trap cleanup EXIT
+
+require_selected_lagent239() {{
+  [ "$TAG" = "lagent_239" ] || fail "only lagent_239 is supported"
+  [ "$IMAGE" = "{image}" ] || fail "only the selected lagent_239 image is supported"
+}}
+
+prepare_private_job_root() {{
+  require_selected_lagent239
+  mkdir -p "$CONTEXT_DIR" "$PATCH_DIR" "$MARKER_DIR"
+  [ -s "$PROMPT_PATH" ] || fail "missing private context/prompt.md"
+  if grep -q "Synthetic AgentIssue-Bench lagent_239 Prompt Placeholder" "$PROMPT_PATH"; then
+    fail "replace the synthetic prompt placeholder before running Codex"
+  fi
+}}
+
+extract_buggy_source_from_selected_container() {{
+  if [ -d "$BUGGY_SOURCE/.git" ]; then
+    return 0
+  fi
+  if [ -e "$BUGGY_SOURCE" ] && [ "$(find "$BUGGY_SOURCE" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" != "0" ]; then
+    fail "buggy-source is non-empty but has no git baseline; move it aside or set up baseline first"
+  fi
+  mkdir -p "$BUGGY_SOURCE"
+  if ! "$DOCKER_BIN" image inspect "$IMAGE" >/dev/null 2>&1; then
+    [ "$ALLOW_DOCKER_PULL" = "1" ] || fail "selected image is missing; set ALLOW_DOCKER_PULL=1 to pull it"
+    "$DOCKER_BIN" pull "$IMAGE"
+  fi
+  TMP_CONTAINER="agentissue-lagent-239-extract-$$"
+  "$DOCKER_BIN" create --name "$TMP_CONTAINER" "$IMAGE" >/dev/null
+  "$DOCKER_BIN" cp "$TMP_CONTAINER:/workspace/." "$BUGGY_SOURCE"
+  "$DOCKER_BIN" rm "$TMP_CONTAINER" >/dev/null
+  TMP_CONTAINER=""
+  [ "$(find "$BUGGY_SOURCE" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" != "0" ] || fail "buggy source extraction produced no files"
+}}
+
+initialize_git_baseline_in_buggy_source() {{
+  git -C "$BUGGY_SOURCE" rev-parse --is-inside-work-tree >/dev/null 2>&1 && return 0
+  git -C "$BUGGY_SOURCE" init
+  git -C "$BUGGY_SOURCE" config user.email "goal-harness@example.invalid"
+  git -C "$BUGGY_SOURCE" config user.name "Goal Harness"
+  git -C "$BUGGY_SOURCE" add .
+  git -C "$BUGGY_SOURCE" commit -m "agentissue-bench-buggy-source-baseline"
+}}
+
+run_host_local_codex_cli_patch_worker() {{
+  "$CODEX_BIN" exec \\
+    --ephemeral \\
+    --ignore-rules \\
+    --sandbox workspace-write \\
+    --cd "$BUGGY_SOURCE" \\
+    --add-dir "$JOB_ROOT" \\
+    --output-last-message "$LAST_MESSAGE" \\
+    "$PROMPT_PATH"
+  touch "$MARKER_DIR/host_codex_cli_invoked"
+}}
+
+write_attempt_patch_from_buggy_source_git_diff() {{
+  git -C "$BUGGY_SOURCE" diff --binary > "$PATCH_PATH"
+  [ -s "$PATCH_PATH" ] || fail "Codex run produced an empty git diff"
+}}
+
+evaluate_selected_tag_container() {{
+  rm -f "$MARKER_DIR/patch_applied" "$MARKER_DIR/test_success"
+  set +e
+  "$DOCKER_BIN" run \\
+    --platform linux/amd64 \\
+    --rm \\
+    --entrypoint bash \\
+    -v "$PATCH_DIR:/patches:ro" \\
+    -v "$MARKER_DIR:/markers" \\
+    -e PATCH_APPLY_SH="$PATCH_APPLY_SH" \\
+    -e PATCH_TEST_SH="$PATCH_TEST_SH" \\
+    "$IMAGE" \\
+    -lc 'set -euo pipefail; eval "$PATCH_APPLY_SH"; touch /markers/patch_applied; eval "$PATCH_TEST_SH"; touch /markers/test_success'
+  local exit_code=$?
+  set -e
+  printf '%s\\n' "$exit_code" > "$MARKER_DIR/patched_exit_code"
+}}
+
+write_compact_public_evidence() {{
+  python3 - "$BENCHMARK_RUN_JSON" "$BENCHMARK_RESULT_JSON" <<'PY'
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+run_path = Path(sys.argv[1])
+result_path = Path(sys.argv[2])
+tag = os.environ["TAG"]
+image = os.environ["IMAGE"]
+source = Path(os.environ["BUGGY_SOURCE"])
+patch = Path(os.environ["PATCH_PATH"])
+markers = Path(os.environ["MARKER_DIR"])
+patched_exit = int((markers / "patched_exit_code").read_text().strip())
+patch_bytes = patch.stat().st_size if patch.exists() else 0
+patch_sha = hashlib.sha256(patch.read_bytes()).hexdigest() if patch.exists() else "missing"
+name_result = subprocess.run(
+    ["git", "-C", str(source), "diff", "--name-only"],
+    check=False,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.DEVNULL,
+    text=True,
+)
+changed_files = [line for line in name_result.stdout.splitlines() if line.strip()]
+hunk_count = 0
+if patch.exists():
+    hunk_count = sum(1 for line in patch.read_text(errors="ignore").splitlines() if line.startswith("@@ "))
+patch_applied = (markers / "patch_applied").exists()
+test_success = (markers / "test_success").exists()
+resolved = patched_exit == 0 and test_success
+score = {{
+    "kind": "agentissue_bench_single_tag_container_eval",
+    "resolved": resolved,
+    "value": 1 if resolved else 0,
+}}
+validation = {{
+    "selected_image_only": image == "alfin06/agentissue-bench:lagent_239",
+    "single_tag_only": tag == "lagent_239",
+    "buggy_source_extracted": source.exists(),
+    "fixed_source_not_extracted_to_host": True,
+    "host_codex_cli_invoked": (markers / "host_codex_cli_invoked").exists(),
+    "patch_exported_from_buggy_source_git_diff": patch.exists() and patch_bytes > 0,
+    "patch_applied_in_container": patch_applied,
+    "patched_eval_exit_zero": patched_exit == 0,
+    "patched_eval_success_marker": test_success,
+    "no_upload": True,
+    "no_submit": True,
+    "no_public_ranking_path": True,
+    "raw_logs_public": False,
+    "patch_content_public": False,
+    "credential_values_recorded": False,
+    "codex_auth_synced_to_container_or_remote": False,
+}}
+benchmark_run = {{
+    "schema_version": "benchmark_run_v0",
+    "source_runner": "goal_harness_agentissue_codex_cli_runner",
+    "benchmark_id": "agentissue-bench",
+    "selected_tag": tag,
+    "selected_image": image,
+    "real_run": True,
+    "no_upload": True,
+    "no_submit": True,
+    "no_public_ranking_path": True,
+    "patch_sha256": patch_sha,
+    "patch_bytes": patch_bytes,
+    "changed_file_count": len(changed_files),
+    "hunk_count": hunk_count,
+    "patched_exit_code": patched_exit,
+    "official_task_score": score,
+    "validation": validation,
+}}
+benchmark_result = {{
+    "schema_version": "benchmark_result_v0",
+    "benchmark_id": "agentissue-bench",
+    "selected_tag": tag,
+    "official_task_score": score,
+    "no_upload": True,
+    "no_submit": True,
+    "no_public_ranking_path": True,
+    "patch_sha256": patch_sha,
+    "patch_bytes": patch_bytes,
+    "changed_file_count": len(changed_files),
+}}
+run_path.write_text(json.dumps(benchmark_run, indent=2, sort_keys=True) + "\\n")
+result_path.write_text(json.dumps(benchmark_result, indent=2, sort_keys=True) + "\\n")
+PY
+}}
+
+reduce_compact_public_evidence() {{
+  local args=("$GOAL_HARNESS_BIN" "benchmark" "agentissue-codex-runner-flow" "--goal-id" "$GOAL_ID" "--tag" "$TAG" "--real-result-root" "$JOB_ROOT")
+  if [ "$APPEND_HISTORY" = "1" ]; then
+    args+=("--delivery-batch-scale" "multi_surface" "--delivery-outcome" "primary_goal_outcome" "--execute")
+  fi
+  "${{args[@]}}"
+}}
+
+main() {{
+  prepare_private_job_root
+  extract_buggy_source_from_selected_container
+  initialize_git_baseline_in_buggy_source
+  run_host_local_codex_cli_patch_worker
+  write_attempt_patch_from_buggy_source_git_diff
+  evaluate_selected_tag_container
+  write_compact_public_evidence
+  reduce_compact_public_evidence
+}}
+
+main "$@"
+"""
+
+
+def materialize_agentissue_codex_cli_runner_private_script(
+    script_root: str | Path,
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+    codex_binary: str = "codex",
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Create a private runner script plus public manifest without executing it."""
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner private script currently only supports selected tag lagent_239"
+        )
+    root = Path(script_root).expanduser()
+    handoff = materialize_agentissue_codex_cli_runner_first_run_handoff(
+        root,
+        selected_tag=tag,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    script_path = root / "run-lagent239.private.sh"
+    manifest_path = root / "private-runner.public.json"
+    compact_run_path = root / "benchmark_run.compact.json"
+    phase_order = [
+        "prepare_private_job_root",
+        "extract_buggy_source_from_selected_container",
+        "initialize_git_baseline_in_buggy_source",
+        "run_host_local_codex_cli_patch_worker",
+        "write_attempt_patch_from_buggy_source_git_diff",
+        "evaluate_selected_tag_container",
+        "write_compact_public_evidence",
+        "reduce_compact_public_evidence",
+    ]
+    script_text = _agentissue_private_runner_script_text(
+        tag=tag,
+        image=AGENTISSUE_DEFAULT_IMAGE,
+        codex_binary=codex_binary,
+        docker_binary=docker_binary,
+    )
+    script_path.write_text(script_text, encoding="utf-8")
+    script_path.chmod(0o700)
+
+    manifest = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_PRIVATE_SCRIPT_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "path_recorded": False,
+        "root_path_recorded": False,
+        "private_script_relative_path": "run-lagent239.private.sh",
+        "script_content_public": False,
+        "default_generator_mode": "no_execute",
+        "phase_order": phase_order,
+        "relative_outputs": {
+            "attempt_patch": AGENTISSUE_PATCH_RELATIVE_PATH,
+            "benchmark_run": "benchmark_run.compact.json",
+            "benchmark_result": "benchmark_result.compact.json",
+            "real_result": "real-result.public.json",
+            "private_runner_manifest": "private-runner.public.json",
+        },
+        "operator_inputs_required": [
+            "private context/prompt.md with public issue/task context",
+            "host-local Codex CLI auth already present on the trusted host",
+            "selected lagent_239 image present or ALLOW_DOCKER_PULL=1",
+        ],
+        "script_checks": {
+            "strict_mode": True,
+            "selected_tag_guard": True,
+            "selected_image_guard": True,
+            "buggy_source_extraction_phase": True,
+            "git_baseline_phase": True,
+            "host_codex_phase": True,
+            "patch_export_phase": True,
+            "selected_container_eval_phase": True,
+            "compact_reducer_phase": True,
+            "appends_history_only_when_append_history_is_one": True,
+        },
+        "generator_boundary": {
+            "codex_cli_invoked": False,
+            "model_api_invoked": False,
+            "docker_image_pulled": False,
+            "docker_container_started": False,
+            "source_extracted": False,
+            "patch_generated": False,
+            "patch_evaluated": False,
+            "upload": False,
+            "submit": False,
+            "public_ranking_path": False,
+            "auth_material_synced": False,
+            "credential_values_recorded": False,
+            "raw_logs_public": False,
+            "patch_content_public": False,
+            "absolute_paths_public": False,
+        },
+        "later_script_boundary": {
+            "will_invoke_host_codex_cli": True,
+            "will_start_selected_container": True,
+            "will_write_compact_files": True,
+            "upload": False,
+            "submit": False,
+            "public_ranking_path": False,
+            "auth_material_sync": False,
+            "raw_logs_public": False,
+            "patch_content_public": False,
+        },
+    }
+    _agentissue_assert_compact_public_safe(manifest, label="private-runner.public.json")
+
+    benchmark_run = json.loads(json.dumps(handoff["benchmark_run"]))
+    benchmark_run.update(
+        {
+            "job_name": "agentissue_lagent_239_codex_cli_runner_private_script",
+            "mode": AGENTISSUE_CODEX_CLI_RUNNER_PRIVATE_SCRIPT_MODE,
+            "worker_mode": "trusted_host_codex_cli_private_script_generator",
+            "first_blocker": "private_runner_script_generated_not_executed",
+            "score_failure_attribution": "not_run_private_runner_script_generator_only",
+            "failure_attribution_labels": [
+                "private_runner_script_generator_only",
+                "ready_for_controlled_script_execution_or_real_codex_regression",
+            ],
+            "evidence_files": [
+                "private-runner.public.json",
+                "benchmark_run.compact.json",
+                "first-run-handoff.public.json",
+                "execution-gate.public.json",
+            ],
+        }
+    )
+    benchmark_run["validation"].update(
+        {
+            "private_runner_script_materialized": True,
+            "private_runner_manifest_materialized": True,
+            "script_executable_bit_set": True,
+            "script_content_not_public": True,
+            "script_path_relative_only": True,
+            "phase_order_rendered": True,
+            "script_renders_source_extraction": True,
+            "script_renders_git_baseline": True,
+            "script_renders_host_codex": True,
+            "script_renders_patch_export": True,
+            "script_renders_selected_tag_eval": True,
+            "script_renders_compact_evidence": True,
+            "script_renders_real_result_reducer": True,
+            "no_generator_codex_execution": True,
+            "no_generator_docker_execution": True,
+            "no_generator_model_api_invoked": True,
+            "no_generator_upload": True,
+            "no_generator_submit": True,
+            "no_generator_public_ranking_path": True,
+            "no_auth_material_sync": True,
+            "no_raw_logs_public": True,
+            "no_patch_content_public": True,
+            "no_absolute_paths_public": True,
+        }
+    )
+    for trial in benchmark_run.get("trials") or []:
+        if isinstance(trial, dict):
+            trial["exception_type"] = "private_runner_script_generated_not_executed"
+
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    compact_run_path.write_text(
+        json.dumps(benchmark_run, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_PRIVATE_SCRIPT_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "ready": True,
+        "materialized": True,
+        "path_recorded": False,
+        "script_root_path_recorded": False,
+        "script_relative_path": "run-lagent239.private.sh",
+        "manifest_relative_path": "private-runner.public.json",
+        "compact_run_relative_path": "benchmark_run.compact.json",
+        "benchmark_result_relative_path": "benchmark_result.compact.json",
+        "real_result_relative_path": "real-result.public.json",
+        "created_relative_paths": [
+            *handoff["created_relative_paths"],
+            "run-lagent239.private.sh",
+            "private-runner.public.json",
+        ],
+        "phase_order": phase_order,
+        "script_checks": manifest["script_checks"],
+        "execution_boundary": manifest["generator_boundary"],
+        "later_script_boundary": manifest["later_script_boundary"],
+        "benchmark_run": benchmark_run,
+        "recommended_next_action": (
+            "run the private script only from a trusted local operator context, "
+            "or add a low-frequency real Codex CLI regression that executes it "
+            "without syncing auth material, uploading, submitting, or claiming a public ranking"
+        ),
+    }
+
+
+AGENTISSUE_REAL_RESULT_FORBIDDEN_KEYS = {
+    "access_token",
+    "api_key",
+    "authorization",
+    "codex_auth",
+    "credential",
+    "environment",
+    "file_content",
+    "fixed_diff",
+    "gold_material",
+    "local_path",
+    "password",
+    "patch_content",
+    "problem_statement",
+    "raw_artifact",
+    "raw_comment",
+    "raw_diff",
+    "raw_issue_body",
+    "raw_issue_title",
+    "raw_log",
+    "raw_output",
+    "raw_patch",
+    "screenshot",
+    "session",
+    "solution",
+    "source_diff",
+    "test_body",
+    "test_patch",
+    "trajectory",
+}
+AGENTISSUE_REAL_RESULT_FORBIDDEN_TEXT = (
+    "/" + "Users/",
+    "~/.codex",
+    ".codex/auth.json",
+    "CODEX" + "_ACCESS_TOKEN",
+    "OPENAI" + "_API_KEY",
+    "ANTHROPIC" + "_API_KEY",
+    "GOOGLE" + "_API_KEY",
+    "raw_issue_body",
+    "raw_patch",
+    "trajectory.json",
+)
+
+AGENTISSUE_REAL_RESULT_REQUIRED_PHASE_CHECKS = (
+    "selected_image_only",
+    "single_tag_only",
+    "buggy_source_extracted",
+    "fixed_source_not_extracted_to_host",
+    "host_codex_cli_invoked",
+    "patch_exported_from_buggy_source_git_diff",
+    "patch_applied_in_container",
+)
+
+
+def _agentissue_key_paths(value: Any, *, prefix: str = "") -> list[str]:
+    if isinstance(value, dict):
+        paths: list[str] = []
+        for key, child in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            paths.append(path)
+            paths.extend(_agentissue_key_paths(child, prefix=path))
+        return paths
+    if isinstance(value, list):
+        paths: list[str] = []
+        for index, child in enumerate(value):
+            paths.extend(_agentissue_key_paths(child, prefix=f"{prefix}[{index}]"))
+        return paths
+    return []
+
+
+def _agentissue_leaf(path: str) -> str:
+    segment = path.rsplit(".", 1)[-1]
+    if "[" in segment:
+        segment = segment.split("[", 1)[0]
+    return segment.lower()
+
+
+def _agentissue_public_bool(value: Any) -> bool:
+    return bool(value) if isinstance(value, bool) else False
+
+
+def _agentissue_public_number(value: Any, *, default: int | float = 0) -> int | float:
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return value
+    return default
+
+
+def _agentissue_assert_compact_public_safe(payload: dict[str, Any], *, label: str) -> None:
+    key_hits = [
+        path
+        for path in _agentissue_key_paths(payload)
+        if _agentissue_leaf(path) in AGENTISSUE_REAL_RESULT_FORBIDDEN_KEYS
+    ]
+    if key_hits:
+        raise ValueError(f"{label} contains forbidden compact key(s): {', '.join(key_hits[:4])}")
+    rendered = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    leaked = [marker for marker in AGENTISSUE_REAL_RESULT_FORBIDDEN_TEXT if marker in rendered]
+    if leaked:
+        raise ValueError(f"{label} contains forbidden private marker(s): {', '.join(leaked[:4])}")
+
+
+def _agentissue_compact_official_score(
+    run: dict[str, Any],
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    run_score = run.get("official_task_score") if isinstance(run.get("official_task_score"), dict) else {}
+    result_score = (
+        result.get("official_task_score")
+        if isinstance(result.get("official_task_score"), dict)
+        else {}
+    )
+    source = result_score or run_score
+    kind = _agentissue_public_label(
+        source.get("kind") or "agentissue_bench_single_tag_container_eval",
+        limit=80,
+    )
+    value = _agentissue_public_number(source.get("value"), default=0)
+    resolved = source.get("resolved")
+    if not isinstance(resolved, bool):
+        resolved = value == 1
+    return {
+        "kind": kind,
+        "value": value,
+        "passed": bool(resolved),
+    }
+
+
+def _agentissue_required_phase_checks(validation: dict[str, Any]) -> dict[str, bool]:
+    checks: dict[str, bool] = {}
+    missing: list[str] = []
+    for key in AGENTISSUE_REAL_RESULT_REQUIRED_PHASE_CHECKS:
+        checks[key] = validation.get(key) is True
+        if not checks[key]:
+            missing.append(key)
+    if missing:
+        raise ValueError(
+            "real-result compact inputs are missing required runner phase proof(s): "
+            + ", ".join(missing)
+        )
+    return checks
+
+
+def materialize_agentissue_codex_cli_runner_real_result(
+    real_result_root: str | Path,
+    *,
+    selected_tag: str = AGENTISSUE_DEFAULT_TAG,
+) -> dict[str, Any]:
+    """Reduce an already-completed private AgentIssue run from compact files only."""
+
+    tag = _agentissue_public_label(selected_tag)
+    if tag != AGENTISSUE_DEFAULT_TAG:
+        raise ValueError(
+            "agentissue Codex runner real-result reducer currently only supports selected tag lagent_239"
+        )
+    root = Path(real_result_root).expanduser()
+    run_path = root / "benchmark_run.compact.json"
+    result_path = root / "benchmark_result.compact.json"
+    public_packet_path = root / "real-result.public.json"
+    if not run_path.exists():
+        raise ValueError("real-result root is missing benchmark_run.compact.json")
+    if not result_path.exists():
+        raise ValueError("real-result root is missing benchmark_result.compact.json")
+    run_input = json.loads(run_path.read_text(encoding="utf-8"))
+    result_input = json.loads(result_path.read_text(encoding="utf-8"))
+    if not isinstance(run_input, dict) or run_input.get("schema_version") != "benchmark_run_v0":
+        raise ValueError("benchmark_run.compact.json must contain benchmark_run_v0")
+    if not isinstance(result_input, dict) or result_input.get("schema_version") != "benchmark_result_v0":
+        raise ValueError("benchmark_result.compact.json must contain benchmark_result_v0")
+    _agentissue_assert_compact_public_safe(run_input, label="benchmark_run.compact.json")
+    _agentissue_assert_compact_public_safe(result_input, label="benchmark_result.compact.json")
+
+    selected = _agentissue_public_label(
+        run_input.get("selected_tag")
+        or run_input.get("task_selector_hash")
+        or result_input.get("selected_tag")
+        or tag
+    )
+    if selected != tag:
+        raise ValueError(f"real-result selected tag mismatch: expected {tag}, got {selected}")
+
+    official_score = _agentissue_compact_official_score(run_input, result_input)
+    resolved = bool(official_score.get("passed"))
+    patch_sha = _agentissue_public_label(
+        run_input.get("patch_sha256") or result_input.get("patch_sha256") or "missing",
+        limit=120,
+    )
+    patch_bytes = int(_agentissue_public_number(run_input.get("patch_bytes"), default=0))
+    changed_files = int(
+        _agentissue_public_number(
+            run_input.get("changed_file_count") or result_input.get("changed_file_count"),
+            default=0,
+        )
+    )
+    hunk_count = int(_agentissue_public_number(run_input.get("hunk_count"), default=0))
+    patched_exit = int(_agentissue_public_number(run_input.get("patched_exit_code"), default=0))
+    baseline_exit = int(_agentissue_public_number(run_input.get("baseline_exit_code"), default=0))
+
+    validation = run_input.get("validation") if isinstance(run_input.get("validation"), dict) else {}
+    phase_checks = _agentissue_required_phase_checks(validation)
+    patched_eval_exit_zero = (
+        validation.get("patched_eval_exit_zero")
+        if isinstance(validation.get("patched_eval_exit_zero"), bool)
+        else patched_exit == 0
+    )
+    patched_eval_success_marker = (
+        validation.get("patched_eval_success_marker")
+        if isinstance(validation.get("patched_eval_success_marker"), bool)
+        else resolved
+    )
+    no_upload = _agentissue_public_bool(run_input.get("no_upload")) or _agentissue_public_bool(
+        validation.get("no_upload")
+    )
+    no_submit = _agentissue_public_bool(run_input.get("no_submit")) or _agentissue_public_bool(
+        validation.get("no_submit")
+    )
+    no_public_ranking = _agentissue_public_bool(
+        run_input.get("no_public_ranking_path")
+    ) or _agentissue_public_bool(validation.get("no_public_ranking_path"))
+    if not (no_upload and no_submit and no_public_ranking):
+        raise ValueError(
+            "real-result compact inputs must prove no_upload, no_submit, and no_public_ranking_path"
+        )
+    if validation.get("codex_auth_synced_to_container_or_remote") is True:
+        raise ValueError("real-result compact inputs report Codex auth sync")
+    if validation.get("credential_values_recorded") is True:
+        raise ValueError("real-result compact inputs report credential value recording")
+    if validation.get("raw_logs_public") is True or validation.get("patch_content_public") is True:
+        raise ValueError("real-result compact inputs report raw logs or patch content public")
+
+    result_packet = {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_REAL_RESULT_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "path_recorded": False,
+        "real_run_done": True,
+        "real_runner_invoked_by_reducer": False,
+        "real_codex_invoked_by_reducer": False,
+        "real_docker_invoked_by_reducer": False,
+        "input_files": {
+            "benchmark_run": {
+                "relative_path": "benchmark_run.compact.json",
+                "schema_version": run_input.get("schema_version"),
+                "read": True,
+            },
+            "benchmark_result": {
+                "relative_path": "benchmark_result.compact.json",
+                "schema_version": result_input.get("schema_version"),
+                "read": True,
+            },
+        },
+        "result_summary": {
+            "official_task_score": official_score,
+            "resolved": resolved,
+            "patch_sha256": patch_sha,
+            "patch_bytes": patch_bytes,
+            "changed_file_count": changed_files,
+            "hunk_count": hunk_count,
+            "patched_exit_code": patched_exit,
+            "baseline_exit_code": baseline_exit,
+        },
+        "phase_checks": {
+            **phase_checks,
+            "patched_eval_exit_zero": patched_eval_exit_zero,
+            "patched_eval_success_marker": patched_eval_success_marker,
+        },
+        "boundary": {
+            "no_upload": no_upload,
+            "no_submit": no_submit,
+            "no_public_ranking_path": no_public_ranking,
+            "codex_auth_synced": False,
+            "credential_values_recorded": False,
+            "raw_logs_public": False,
+            "patch_content_public": False,
+            "absolute_paths_public": False,
+        },
+        "public_outputs": [
+            "real-result.public.json",
+            "benchmark_run.compact.json",
+            "benchmark_result.compact.json",
+        ],
+    }
+    _agentissue_assert_compact_public_safe(result_packet, label="real-result.public.json")
+
+    benchmark_run = {
+        "schema_version": "benchmark_run_v0",
+        "source_runner": AGENTISSUE_CODEX_CLI_RUNNER_SOURCE_RUNNER,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "job_name": "agentissue_lagent_239_codex_cli_runner_real_result_reducer",
+        "mode": AGENTISSUE_CODEX_CLI_RUNNER_REAL_RESULT_MODE,
+        "worker_mode": "trusted_host_codex_cli_real_result_reducer",
+        "trace_publicness": "compact_public_no_issue_text_no_patch_no_logs",
+        "score_failure_attribution": (
+            "resolved_single_tag_eval"
+            if resolved
+            else "unresolved_single_tag_eval_compact_result"
+        ),
+        "real_run": True,
+        "submit_eligible": False,
+        "leaderboard_evidence": False,
+        "official_score_comparable_to_native_codex": False,
+        "official_score_claim_allowed": False,
+        "control_plane_score_applicable": True,
+        "official_task_score": official_score,
+        "progress": {
+            "n_total_trials": 1,
+            "n_completed_trials": 1,
+            "n_errored_trials": 0 if resolved else 1,
+            "n_running_trials": 0,
+            "n_pending_trials": 0,
+            "n_cancelled_trials": 0,
+            "n_retries": 0,
+        },
+        "metrics": {
+            "input_tokens": 0,
+            "cache_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 0,
+        },
+        "validation": {
+            "real_result_reducer_materialized": True,
+            "compact_run_read": True,
+            "compact_result_read": True,
+            "selected_tag_checked": True,
+            **phase_checks,
+            "patch_hash_recorded": bool(patch_sha and patch_sha != "missing"),
+            "patched_eval_exit_zero": patched_eval_exit_zero,
+            "patched_eval_success_marker": patched_eval_success_marker,
+            "no_upload": no_upload,
+            "no_submit": no_submit,
+            "no_public_ranking_path": no_public_ranking,
+            "no_raw_logs_public": True,
+            "no_patch_content_public": True,
+            "no_absolute_paths_public": True,
+            "no_codex_auth_sync": True,
+            "no_credential_values_recorded": True,
+            "no_reducer_codex_execution": True,
+            "no_reducer_docker_execution": True,
+        },
+        "trials": [
+            {
+                "task_id": tag,
+                "trial_name": tag,
+                "source": "selected_public_tag",
+                "exception_type": "" if resolved else "unresolved_single_tag_eval",
+                "trajectory_present": False,
+                "artifact_manifest_present": False,
+                "trial_result_present": True,
+            }
+        ],
+        "failure_attribution_labels": (
+            ["resolved_single_tag_eval"]
+            if resolved
+            else ["unresolved_single_tag_eval_compact_result"]
+        ),
+        "evidence_files": [
+            "real-result.public.json",
+            "benchmark_run.compact.json",
+            "benchmark_result.compact.json",
+        ],
+        "stop_conditions": [
+            "raw_log_requested",
+            "patch_content_requested",
+            "absolute_private_path_publication_requested",
+            "upload_submit_or_public_ranking_requested",
+            "codex_auth_sync_requested",
+        ],
+        "read_boundary": {
+            "compact_only": True,
+            "raw_artifacts_read": False,
+            "task_text_read": False,
+            "trajectory_read": False,
+            "local_paths_recorded": False,
+            "docker_invoked": False,
+            "model_api_invoked": False,
+            "upload_invoked": False,
+        },
+    }
+    benchmark_result = {
+        "schema_version": "benchmark_result_v0",
+        "task_id": "agentissue_bench_lagent_239",
+        "scenario_id": AGENTISSUE_CODEX_CLI_RUNNER_REAL_RESULT_MODE,
+        "worker_mode": "trusted_host_codex_cli_real_result_reducer",
+        "harness_identity": "goal_harness",
+        "terminal_state": "resolved" if resolved else "evaluated_unresolved",
+        "trace_publicness": "compact_public_no_issue_text_no_patch_no_logs",
+        "official_task_score": official_score,
+        "validation_pass_count": 14,
+        "validation_fail_count": 0 if resolved else 1,
+        "changed_file_count": changed_files,
+        "forbidden_access_count": 0,
+        "phase_checks": {
+            **phase_checks,
+            "patched_eval_exit_zero": patched_eval_exit_zero,
+            "patched_eval_success_marker": patched_eval_success_marker,
+        },
+        "failure_attribution_labels": benchmark_run["failure_attribution_labels"],
+    }
+    public_packet_path.write_text(
+        json.dumps(result_packet, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "schema_version": AGENTISSUE_CODEX_CLI_RUNNER_REAL_RESULT_SCHEMA_VERSION,
+        "benchmark_id": AGENTISSUE_BENCHMARK_ID,
+        "selected_tag": tag,
+        "selected_image": AGENTISSUE_DEFAULT_IMAGE,
+        "ready": True,
+        "materialized": True,
+        "path_recorded": False,
+        "result_root_path_recorded": False,
+        "real_run_done": True,
+        "result_relative_path": "real-result.public.json",
+        "compact_run_relative_path": "benchmark_run.compact.json",
+        "compact_result_relative_path": "benchmark_result.compact.json",
+        "result_checks": {
+            "compact_run_read": True,
+            "compact_result_read": True,
+            "selected_tag_checked": True,
+            **phase_checks,
+            "patched_eval_exit_zero": patched_eval_exit_zero,
+            "patched_eval_success_marker": patched_eval_success_marker,
+            "resolved": resolved,
+            "no_upload": no_upload,
+            "no_submit": no_submit,
+            "no_public_ranking_path": no_public_ranking,
+            "raw_logs_public": False,
+            "patch_content_public": False,
+            "absolute_paths_public": False,
+        },
+        "execution_boundary": {
+            "codex_cli_invoked_by_reducer": False,
+            "model_api_invoked_by_reducer": False,
+            "docker_container_started_by_reducer": False,
+            "source_extracted_by_reducer": False,
+            "patch_generated_by_reducer": False,
+            "patch_evaluated_by_reducer": False,
+            "upload": False,
+            "submit": False,
+            "public_ranking_path": False,
+        },
+        "benchmark_run": benchmark_run,
+        "benchmark_result": benchmark_result,
+        "public_packet": result_packet,
+        "recommended_next_action": (
+            "use --real-result-root for future AgentIssue-Bench lagent_239 compact "
+            "result reductions, then compare repeat runs or extend to the next selected tag"
+        ),
     }
 
 
@@ -3017,6 +4866,984 @@ def _agents_last_exam_runner_binary_requires_python_module(
     return binary == "python" or binary.startswith("python3")
 
 
+def _agents_last_exam_codex_cli_probe(
+    codex_binary: str | None,
+    *,
+    binary_available: bool | None = None,
+    version_text: str | None = None,
+) -> dict[str, Any]:
+    """Probe host Codex CLI readiness without recording paths or argv."""
+
+    runner_probe = _agents_last_exam_runner_binary_probe(codex_binary)
+    unsafe_binary_blockers = {
+        "runner_binary_must_be_name_not_path",
+        "runner_binary_not_public_safe",
+    }
+    if (
+        binary_available is not None
+        and runner_probe.get("declared") is True
+        and runner_probe.get("first_blocker") not in unsafe_binary_blockers
+    ):
+        runner_probe = {
+            **runner_probe,
+            "available": bool(binary_available),
+            "first_blocker": None
+            if binary_available
+            else (runner_probe.get("first_blocker") or "codex_binary_not_available"),
+        }
+
+    version_label = _agents_last_exam_public_id(version_text, limit=120)
+    version_probe_available = bool(version_label)
+    if (
+        version_text is None
+        and runner_probe.get("available") is True
+        and isinstance(codex_binary, str)
+        and codex_binary
+        and "/" not in codex_binary
+        and "\\" not in codex_binary
+    ):
+        try:
+            result = subprocess.run(
+                [codex_binary, "--version"],
+                check=False,
+                text=True,
+                capture_output=True,
+                timeout=20,
+            )
+        except Exception:
+            result = None
+        if result is not None and result.returncode == 0:
+            version_label = _agents_last_exam_public_id(
+                result.stdout.strip() or result.stderr.strip(),
+                limit=120,
+            )
+            version_probe_available = bool(version_label)
+
+    first_blocker = _agents_last_exam_public_id(
+        runner_probe.get("first_blocker"),
+        limit=80,
+    )
+    if runner_probe.get("available") is True and not version_probe_available:
+        first_blocker = "codex_version_probe_failed"
+
+    return {
+        "binary": runner_probe.get("binary"),
+        "binary_declared": runner_probe.get("declared") is True,
+        "binary_available": runner_probe.get("available") is True,
+        "version": version_label,
+        "version_probe_available": version_probe_available,
+        "binary_path_recorded": False,
+        "command_argv_recorded": False,
+        "first_blocker": first_blocker,
+    }
+
+
+def _agents_last_exam_cua_mcp_assets_probe(
+    assets_root: str | None,
+) -> dict[str, Any]:
+    """Check local CUA MCP server assets without recording host paths."""
+
+    if not assets_root:
+        return {
+            "declared": False,
+            "available": False,
+            "package_json_present": False,
+            "server_entry_present": False,
+            "package_lock_present": False,
+            "path_recorded": False,
+            "first_blocker": "cua_mcp_assets_root_missing",
+        }
+    try:
+        root = Path(assets_root).expanduser()
+    except (OSError, RuntimeError):
+        root = None
+    available = bool(root and root.is_dir())
+    package_json_present = bool(root and (root / "package.json").is_file())
+    package_lock_present = bool(root and (root / "package-lock.json").is_file())
+    server_entry_present = bool(root and (root / "src" / "index.js").is_file())
+    if not available:
+        first_blocker = "cua_mcp_assets_root_not_available"
+    elif not package_json_present:
+        first_blocker = "cua_mcp_package_json_missing"
+    elif not server_entry_present:
+        first_blocker = "cua_mcp_server_entry_missing"
+    else:
+        first_blocker = None
+    return {
+        "declared": True,
+        "available": available,
+        "package_json_present": package_json_present,
+        "server_entry_present": server_entry_present,
+        "package_lock_present": package_lock_present,
+        "path_recorded": False,
+        "first_blocker": first_blocker,
+    }
+
+
+def build_agents_last_exam_host_codex_cli_route(
+    *,
+    codex_binary: str | None = "codex",
+    codex_binary_available: bool | None = None,
+    codex_version_text: str | None = None,
+    host_auth_cache_present: bool | None = None,
+    host_config_present: bool | None = None,
+    require_host_config: bool = False,
+    cua_mcp_assets_root: str | None = None,
+    ale_sandbox_cua_smoke_ready: bool = False,
+    operator_authorized_host_codex_auth: bool = False,
+) -> dict[str, Any]:
+    """Gate the ALE host-Codex route before any task-level execution.
+
+    The contract intentionally checks only host-side existence/probe facts. It
+    must not read, print, copy, or persist Codex auth material or task content.
+    """
+
+    codex_probe = _agents_last_exam_codex_cli_probe(
+        codex_binary,
+        binary_available=codex_binary_available,
+        version_text=codex_version_text,
+    )
+    auth_present = (
+        Path.home().joinpath(".codex", "auth.json").is_file()
+        if host_auth_cache_present is None
+        else bool(host_auth_cache_present)
+    )
+    config_present = (
+        Path.home().joinpath(".codex", "config.toml").is_file()
+        if host_config_present is None
+        else bool(host_config_present)
+    )
+    assets_probe = _agents_last_exam_cua_mcp_assets_probe(cua_mcp_assets_root)
+
+    blockers: list[str] = []
+    if operator_authorized_host_codex_auth is not True:
+        blockers.append("operator_authorization_missing")
+    if codex_probe.get("binary_available") is not True:
+        blockers.append(
+            _agents_last_exam_public_id(codex_probe.get("first_blocker"), limit=80)
+            or "host_codex_binary_not_available"
+        )
+    if codex_probe.get("version_probe_available") is not True:
+        blockers.append("host_codex_version_probe_missing")
+    if auth_present is not True:
+        blockers.append("host_codex_auth_cache_missing")
+    if require_host_config and config_present is not True:
+        blockers.append("host_codex_config_missing")
+    if assets_probe.get("first_blocker"):
+        blockers.append(
+            _agents_last_exam_public_id(assets_probe.get("first_blocker"), limit=80)
+            or "cua_mcp_assets_not_ready"
+        )
+    if ale_sandbox_cua_smoke_ready is not True:
+        blockers.append("ale_sandbox_cua_smoke_not_ready")
+
+    ready = not blockers
+    return {
+        "schema_version": AGENTS_LAST_EXAM_HOST_CODEX_CLI_ROUTE_SCHEMA_VERSION,
+        "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
+        "ready": ready,
+        "first_blocker": blockers[0]
+        if blockers
+        else "ready_for_no_task_host_codex_cua_smoke",
+        "blockers": blockers,
+        "route": {
+            "mode": "host_codex_cli_local_executor",
+            "uses_host_codex_cli": True,
+            "uses_existing_host_codex_auth": True,
+            "runs_codex_inside_ale_sandbox": False,
+            "drives_ale_sandbox_via_cua_mcp": True,
+            "upstream_sandbox_codex_agent_bypassed": True,
+            "upstream_provider_key_path_required": False,
+            "next_smoke": "no_task_host_codex_cli_cua_mcp_smoke",
+        },
+        "host_codex_cli": codex_probe,
+        "host_auth": {
+            "auth_cache_present": auth_present,
+            "config_present": config_present,
+            "config_required": require_host_config,
+            "auth_values_read": False,
+            "config_content_read": False,
+            "credential_values_recorded": False,
+            "auth_material_copied_to_sandbox": False,
+            "whole_codex_dir_copied": False,
+            "paths_recorded": False,
+        },
+        "cua_mcp_assets": assets_probe,
+        "ale_sandbox": {
+            "cua_smoke_ready": ale_sandbox_cua_smoke_ready is True,
+            "container_started_by_this_check": False,
+            "sandbox_auth_material_present": False,
+            "sandbox_auth_values_read": False,
+        },
+        "boundary": {
+            "local_only": True,
+            "no_upload": True,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+            "container_started": False,
+            "task_body_read": False,
+            "model_api_invoked": False,
+            "raw_trajectory_read": False,
+            "screenshot_captured": False,
+            "credential_values_recorded": False,
+            "hidden_references_allowed": False,
+            "production_actions_allowed": False,
+            "local_paths_recorded": False,
+            "command_argv_recorded": False,
+        },
+        "decision": {
+            "next_allowed_action": "run_no_task_host_codex_cli_cua_smoke"
+            if ready
+            else "repair_host_codex_cli_route_blocker",
+            "minimum_next_evidence": (
+                "A no-task host Codex CLI smoke using a project-local temporary "
+                "Codex config and the ALE CUA MCP bridge, with no task prompt, "
+                "no credential values, no upload, no submit, and compact result "
+                "only."
+            ),
+            "must_not_claim": [
+                "ALE task success",
+                "ALE score uplift",
+                "Goal Harness treatment advantage",
+                "leaderboard evidence",
+            ],
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "auth_values_read": False,
+            "config_content_read": False,
+            "task_text_read": False,
+            "raw_artifacts_read": False,
+            "local_paths_recorded": False,
+            "container_started": False,
+        },
+    }
+
+
+def _agents_last_exam_codex_exec_surface_probe(
+    codex_binary: str | None,
+) -> dict[str, Any]:
+    codex_probe = _agents_last_exam_codex_cli_probe(codex_binary)
+    if codex_probe.get("binary_available") is not True:
+        return {
+            "available": False,
+            "exit_code": None,
+            "stdout_recorded": False,
+            "stderr_recorded": False,
+            "command_argv_recorded": False,
+            "model_invoked": False,
+            "first_blocker": codex_probe.get("first_blocker")
+            or "host_codex_binary_not_available",
+        }
+    if not isinstance(codex_binary, str) or "/" in codex_binary or "\\" in codex_binary:
+        return {
+            "available": False,
+            "exit_code": None,
+            "stdout_recorded": False,
+            "stderr_recorded": False,
+            "command_argv_recorded": False,
+            "model_invoked": False,
+            "first_blocker": "host_codex_binary_not_public_safe",
+        }
+    try:
+        result = subprocess.run(
+            [codex_binary, "exec", "--help"],
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=20,
+        )
+    except Exception:
+        return {
+            "available": False,
+            "exit_code": None,
+            "stdout_recorded": False,
+            "stderr_recorded": False,
+            "command_argv_recorded": False,
+            "model_invoked": False,
+            "first_blocker": "codex_exec_help_probe_failed",
+        }
+    ok = result.returncode == 0
+    return {
+        "available": ok,
+        "exit_code": result.returncode,
+        "stdout_recorded": False,
+        "stderr_recorded": False,
+        "command_argv_recorded": False,
+        "model_invoked": False,
+        "first_blocker": None if ok else "codex_exec_help_nonzero",
+    }
+
+
+def _agents_last_exam_codex_mcp_config_probe(
+    codex_binary: str | None,
+    *,
+    cua_mcp_assets_root: str | None,
+    cua_server_url: str,
+) -> dict[str, Any]:
+    codex_probe = _agents_last_exam_codex_cli_probe(codex_binary)
+    assets_probe = _agents_last_exam_cua_mcp_assets_probe(cua_mcp_assets_root)
+    if codex_probe.get("binary_available") is not True:
+        return {
+            "available": False,
+            "server_detected": False,
+            "server_enabled": False,
+            "transport": None,
+            "raw_output_recorded": False,
+            "config_path_recorded": False,
+            "mcp_server_path_recorded": False,
+            "command_argv_recorded": False,
+            "auth_values_read": False,
+            "first_blocker": codex_probe.get("first_blocker")
+            or "host_codex_binary_not_available",
+        }
+    if assets_probe.get("first_blocker"):
+        return {
+            "available": False,
+            "server_detected": False,
+            "server_enabled": False,
+            "transport": None,
+            "raw_output_recorded": False,
+            "config_path_recorded": False,
+            "mcp_server_path_recorded": False,
+            "command_argv_recorded": False,
+            "auth_values_read": False,
+            "first_blocker": assets_probe.get("first_blocker")
+            or "cua_mcp_assets_not_ready",
+        }
+    if not isinstance(codex_binary, str) or "/" in codex_binary or "\\" in codex_binary:
+        return {
+            "available": False,
+            "server_detected": False,
+            "server_enabled": False,
+            "transport": None,
+            "raw_output_recorded": False,
+            "config_path_recorded": False,
+            "mcp_server_path_recorded": False,
+            "command_argv_recorded": False,
+            "auth_values_read": False,
+            "first_blocker": "host_codex_binary_not_public_safe",
+        }
+
+    try:
+        assets_root = Path(str(cua_mcp_assets_root)).expanduser().resolve()
+        with tempfile.TemporaryDirectory(prefix="goal-harness-codex-home-") as tmp:
+            codex_home = Path(tmp)
+            mcp_entry = assets_root / "src" / "index.js"
+            config_text = "\n".join(
+                [
+                    "[mcp_servers.cua]",
+                    'command = "node"',
+                    f'args = ["{mcp_entry}"]',
+                    f'env = {{ CUA_SERVER_URL = "{cua_server_url}" }}',
+                    "",
+                ]
+            )
+            (codex_home / "config.toml").write_text(config_text, encoding="utf-8")
+            env = os.environ.copy()
+            env["CODEX_HOME"] = str(codex_home)
+            result = subprocess.run(
+                [codex_binary, "mcp", "list", "--json"],
+                check=False,
+                text=True,
+                capture_output=True,
+                timeout=20,
+                env=env,
+            )
+    except Exception:
+        return {
+            "available": False,
+            "server_detected": False,
+            "server_enabled": False,
+            "transport": None,
+            "raw_output_recorded": False,
+            "config_path_recorded": False,
+            "mcp_server_path_recorded": False,
+            "command_argv_recorded": False,
+            "auth_values_read": False,
+            "first_blocker": "codex_mcp_config_probe_failed",
+        }
+
+    server_detected = False
+    server_enabled = False
+    transport_type: str | None = None
+    if result.returncode == 0:
+        try:
+            rows = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            rows = []
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, dict) or row.get("name") != "cua":
+                    continue
+                server_detected = True
+                server_enabled = row.get("enabled") is True
+                transport = row.get("transport")
+                if isinstance(transport, dict):
+                    transport_type = _agents_last_exam_public_id(
+                        transport.get("type"),
+                        limit=40,
+                    )
+                break
+    if result.returncode != 0:
+        first_blocker = "codex_mcp_list_nonzero"
+    elif not server_detected:
+        first_blocker = "codex_mcp_cua_server_not_detected"
+    elif not server_enabled:
+        first_blocker = "codex_mcp_cua_server_not_enabled"
+    elif transport_type != "stdio":
+        first_blocker = "codex_mcp_cua_transport_not_stdio"
+    else:
+        first_blocker = None
+    return {
+        "available": first_blocker is None,
+        "server_detected": server_detected,
+        "server_enabled": server_enabled,
+        "transport": transport_type,
+        "raw_output_recorded": False,
+        "config_path_recorded": False,
+        "mcp_server_path_recorded": False,
+        "command_argv_recorded": False,
+        "auth_values_read": False,
+        "first_blocker": first_blocker,
+    }
+
+
+def _agents_last_exam_fake_cua_server():
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import threading
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("content-length") or "0")
+            body = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                request = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                request = {}
+            command = request.get("command")
+            if command == "get_screen_size":
+                payload = {"success": True, "size": {"width": 1024, "height": 768}}
+            elif command == "screenshot":
+                payload = {"success": True, "image_data": "iVBORw0KGgo="}
+            elif command == "get_cursor_position":
+                payload = {"success": True, "position": {"x": 512, "y": 384}}
+            else:
+                payload = {"success": True}
+            data = f"data: {json.dumps(payload)}\n\n".encode("utf-8")
+            self.send_response(200)
+            self.send_header("content-type", "text/event-stream")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *_args: Any) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server
+
+
+def _agents_last_exam_cua_mcp_test_probe(
+    *,
+    cua_mcp_assets_root: str | None,
+    install_node_deps: bool = False,
+) -> dict[str, Any]:
+    assets_probe = _agents_last_exam_cua_mcp_assets_probe(cua_mcp_assets_root)
+    if assets_probe.get("first_blocker"):
+        return {
+            "available": False,
+            "node_available": shutil.which("node") is not None,
+            "npm_install_attempted": False,
+            "fake_cua_server_used": False,
+            "raw_output_recorded": False,
+            "command_argv_recorded": False,
+            "local_paths_recorded": False,
+            "first_blocker": assets_probe.get("first_blocker")
+            or "cua_mcp_assets_not_ready",
+        }
+    if not shutil.which("node"):
+        return {
+            "available": False,
+            "node_available": False,
+            "npm_install_attempted": False,
+            "fake_cua_server_used": False,
+            "raw_output_recorded": False,
+            "command_argv_recorded": False,
+            "local_paths_recorded": False,
+            "first_blocker": "node_cli_missing",
+        }
+
+    server = None
+    try:
+        with tempfile.TemporaryDirectory(prefix="goal-harness-cua-mcp-") as tmp:
+            work_root = Path(tmp) / "cua_mcp_server"
+            shutil.copytree(str(cua_mcp_assets_root), work_root)
+            node_modules = work_root / "node_modules"
+            npm_install_attempted = False
+            if not node_modules.is_dir():
+                if not install_node_deps:
+                    return {
+                        "available": False,
+                        "node_available": True,
+                        "npm_install_attempted": False,
+                        "fake_cua_server_used": False,
+                        "raw_output_recorded": False,
+                        "command_argv_recorded": False,
+                        "local_paths_recorded": False,
+                        "first_blocker": "cua_mcp_node_modules_missing",
+                    }
+                if not shutil.which("npm"):
+                    return {
+                        "available": False,
+                        "node_available": True,
+                        "npm_install_attempted": False,
+                        "fake_cua_server_used": False,
+                        "raw_output_recorded": False,
+                        "command_argv_recorded": False,
+                        "local_paths_recorded": False,
+                        "first_blocker": "npm_cli_missing",
+                    }
+                npm_install_attempted = True
+                npm_result = subprocess.run(
+                    ["npm", "install", "--production", "--silent"],
+                    cwd=work_root,
+                    check=False,
+                    text=True,
+                    capture_output=True,
+                    timeout=120,
+                )
+                if npm_result.returncode != 0:
+                    return {
+                        "available": False,
+                        "node_available": True,
+                        "npm_install_attempted": True,
+                        "fake_cua_server_used": False,
+                        "raw_output_recorded": False,
+                        "command_argv_recorded": False,
+                        "local_paths_recorded": False,
+                        "first_blocker": "cua_mcp_npm_install_failed",
+                    }
+            server = _agents_last_exam_fake_cua_server()
+            port = server.server_address[1]
+            env = os.environ.copy()
+            env["CUA_SERVER_URL"] = f"http://127.0.0.1:{port}"
+            test_result = subprocess.run(
+                ["node", "src/index.js", "--test"],
+                cwd=work_root,
+                check=False,
+                text=True,
+                capture_output=True,
+                timeout=60,
+                env=env,
+            )
+    except Exception:
+        return {
+            "available": False,
+            "node_available": shutil.which("node") is not None,
+            "npm_install_attempted": install_node_deps,
+            "fake_cua_server_used": server is not None,
+            "raw_output_recorded": False,
+            "command_argv_recorded": False,
+            "local_paths_recorded": False,
+            "first_blocker": "cua_mcp_test_probe_failed",
+        }
+    finally:
+        if server is not None:
+            server.shutdown()
+            server.server_close()
+
+    ok = test_result.returncode == 0
+    return {
+        "available": ok,
+        "node_available": True,
+        "npm_install_attempted": npm_install_attempted,
+        "fake_cua_server_used": True,
+        "raw_output_recorded": False,
+        "command_argv_recorded": False,
+        "local_paths_recorded": False,
+        "first_blocker": None if ok else "cua_mcp_test_nonzero",
+    }
+
+
+def build_agents_last_exam_host_codex_cua_no_task_smoke(
+    *,
+    route_gate: dict[str, Any],
+    codex_exec_probe: dict[str, Any],
+    mcp_config_probe: dict[str, Any],
+    cua_mcp_test_probe: dict[str, Any],
+) -> dict[str, Any]:
+    blockers: list[str] = []
+    if route_gate.get("ready") is not True:
+        blockers.append(
+            _agents_last_exam_public_id(route_gate.get("first_blocker"), limit=80)
+            or "host_codex_route_gate_not_ready"
+        )
+    for probe_name, probe in (
+        ("codex_exec_surface", codex_exec_probe),
+        ("codex_mcp_config", mcp_config_probe),
+        ("cua_mcp_bridge", cua_mcp_test_probe),
+    ):
+        if probe.get("available") is not True:
+            blockers.append(
+                _agents_last_exam_public_id(probe.get("first_blocker"), limit=80)
+                or f"{probe_name}_not_ready"
+            )
+    ready = not blockers
+    return {
+        "schema_version": AGENTS_LAST_EXAM_HOST_CODEX_CUA_NO_TASK_SMOKE_SCHEMA_VERSION,
+        "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
+        "ready": ready,
+        "first_blocker": blockers[0]
+        if blockers
+        else "ready_for_task_level_ale_codex_dry_run_gate",
+        "blockers": blockers,
+        "route_gate_ready": route_gate.get("ready") is True,
+        "route_gate": route_gate,
+        "codex_exec_surface": codex_exec_probe,
+        "codex_mcp_config": mcp_config_probe,
+        "cua_mcp_bridge": cua_mcp_test_probe,
+        "boundary": {
+            "local_only": True,
+            "no_upload": True,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+            "container_started": False,
+            "task_body_read": False,
+            "model_api_invoked": False,
+            "codex_prompt_sent": False,
+            "raw_trajectory_read": False,
+            "screenshot_captured": False,
+            "credential_values_recorded": False,
+            "hidden_references_allowed": False,
+            "production_actions_allowed": False,
+            "local_paths_recorded": False,
+            "command_argv_recorded": False,
+            "raw_output_recorded": False,
+        },
+        "decision": {
+            "next_allowed_action": "prepare_operator_authorized_task_level_ale_codex_dry_run"
+            if ready
+            else "repair_no_task_host_codex_cua_smoke_blocker",
+            "minimum_next_evidence": (
+                "An operator-authorized task-level ALE dry-run may proceed only "
+                "after compact route, Codex exec surface, Codex MCP config, and "
+                "CUA MCP bridge probes are ready."
+            ),
+            "must_not_claim": [
+                "ALE task success",
+                "ALE score uplift",
+                "Goal Harness treatment advantage",
+                "leaderboard evidence",
+            ],
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "auth_values_read": False,
+            "config_content_read": False,
+            "task_text_read": False,
+            "raw_artifacts_read": False,
+            "local_paths_recorded": False,
+            "container_started": False,
+        },
+    }
+
+
+def build_agents_last_exam_host_codex_cua_no_task_smoke_from_environment(
+    *,
+    codex_binary: str | None = "codex",
+    codex_binary_available: bool | None = None,
+    codex_version_text: str | None = None,
+    host_auth_cache_present: bool | None = None,
+    host_config_present: bool | None = None,
+    require_host_config: bool = False,
+    cua_mcp_assets_root: str | None = None,
+    cua_server_url: str = "http://127.0.0.1:8000",
+    install_node_deps: bool = False,
+    ale_sandbox_cua_smoke_ready: bool = False,
+    operator_authorized_host_codex_auth: bool = False,
+) -> dict[str, Any]:
+    """Build compact no-task host Codex/CUA readiness evidence.
+
+    This is deliberately a pre-task probe: it checks CLI/help, Codex MCP config
+    loading, and the local CUA MCP bridge without sending a Codex prompt,
+    reading task material, or recording auth/path/raw-output details.
+    """
+
+    route_gate = build_agents_last_exam_host_codex_cli_route(
+        codex_binary=codex_binary,
+        codex_binary_available=codex_binary_available,
+        codex_version_text=codex_version_text,
+        host_auth_cache_present=host_auth_cache_present,
+        host_config_present=host_config_present,
+        require_host_config=require_host_config,
+        cua_mcp_assets_root=cua_mcp_assets_root,
+        ale_sandbox_cua_smoke_ready=ale_sandbox_cua_smoke_ready,
+        operator_authorized_host_codex_auth=operator_authorized_host_codex_auth,
+    )
+    codex_exec_probe = _agents_last_exam_codex_exec_surface_probe(codex_binary)
+    mcp_config_probe = _agents_last_exam_codex_mcp_config_probe(
+        codex_binary,
+        cua_mcp_assets_root=cua_mcp_assets_root,
+        cua_server_url=cua_server_url,
+    )
+    cua_mcp_test_probe = _agents_last_exam_cua_mcp_test_probe(
+        cua_mcp_assets_root=cua_mcp_assets_root,
+        install_node_deps=install_node_deps,
+    )
+    return build_agents_last_exam_host_codex_cua_no_task_smoke(
+        route_gate=route_gate,
+        codex_exec_probe=codex_exec_probe,
+        mcp_config_probe=mcp_config_probe,
+        cua_mcp_test_probe=cua_mcp_test_probe,
+    )
+
+
+def _agents_last_exam_boundary_flag(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    default: bool = False,
+) -> bool:
+    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    return bool(boundary.get(key, default))
+
+
+def _agents_last_exam_ready_input(
+    payload: dict[str, Any],
+    *,
+    schema_version: str,
+    blocker_prefix: str,
+) -> tuple[bool, str | None]:
+    if not isinstance(payload, dict):
+        return False, f"{blocker_prefix}_missing"
+    if payload.get("schema_version") != schema_version:
+        return False, f"{blocker_prefix}_schema_mismatch"
+    if payload.get("ready") is not True:
+        first_blocker = _agents_last_exam_public_id(
+            payload.get("first_blocker"),
+            limit=80,
+        )
+        return False, first_blocker or f"{blocker_prefix}_not_ready"
+    return True, None
+
+
+def _agents_last_exam_source_freshness_input(
+    launch_packet: dict[str, Any] | None,
+    *,
+    required: bool,
+) -> tuple[bool | None, str | None]:
+    if not required:
+        return None, None
+    if not isinstance(launch_packet, dict):
+        return False, "fresh_source_launch_packet_missing"
+    source_lock = launch_packet.get("source_lock")
+    if not isinstance(source_lock, dict):
+        return False, "ale_source_freshness_not_verified"
+    if source_lock.get("fetch_origin_attempted") is not True:
+        return False, "ale_source_fetch_origin_not_attempted"
+    if source_lock.get("fetch_origin_ok") is not True:
+        return False, "ale_source_fetch_origin_failed"
+    if source_lock.get("require_upstream_current") is not True:
+        return False, "ale_source_upstream_current_not_required"
+    if source_lock.get("upstream_declared") is not True:
+        return False, "ale_source_upstream_missing"
+    if source_lock.get("head_matches_upstream") is not True:
+        return False, "ale_source_not_at_upstream_head"
+    if source_lock.get("upstream_ahead_count") != 0:
+        return False, "ale_source_upstream_ahead_count_nonzero"
+    if source_lock.get("upstream_behind_count") != 0:
+        return False, "ale_source_upstream_behind_count_nonzero"
+    return True, None
+
+
+def build_agents_last_exam_validation_run_gate(
+    *,
+    selected_task_id: str | None,
+    validation_hypothesis: str | None,
+    task_material_readiness: dict[str, Any],
+    host_codex_no_task_e2e: dict[str, Any],
+    exact_dry_run_result: dict[str, Any],
+    launch_packet: dict[str, Any] | None = None,
+    result_reducer_ready: bool = False,
+    no_upload: bool = True,
+    submit_enabled: bool = False,
+    leaderboard_enabled: bool = False,
+    formal_score_candidate: bool = False,
+    require_fresh_source: bool = False,
+    expected_formal_agent: str = "host_codex_gpt55_xhigh",
+) -> dict[str, Any]:
+    """Combine compact ALE readiness into a pre-run decision gate."""
+
+    task_label = _agents_last_exam_public_id(selected_task_id, limit=180)
+    hypothesis_label = _agents_last_exam_public_id(validation_hypothesis, limit=240)
+    fresh_source_required = bool(formal_score_candidate or require_fresh_source)
+    blockers: list[str] = []
+    for payload, schema_version, prefix in (
+        (
+            task_material_readiness,
+            AGENTS_LAST_EXAM_TASK_MATERIAL_READINESS_SCHEMA_VERSION,
+            "task_material_readiness",
+        ),
+        (
+            host_codex_no_task_e2e,
+            AGENTS_LAST_EXAM_HOST_CODEX_CUA_NO_TASK_SMOKE_SCHEMA_VERSION,
+            "host_codex_no_task_e2e",
+        ),
+        (
+            exact_dry_run_result,
+            AGENTS_LAST_EXAM_LOCAL_EXACT_DRY_RUN_RESULT_SCHEMA_VERSION,
+            "exact_dry_run_result",
+        ),
+    ):
+        ready, blocker = _agents_last_exam_ready_input(
+            payload,
+            schema_version=schema_version,
+            blocker_prefix=prefix,
+        )
+        if not ready and blocker:
+            blockers.append(blocker)
+
+    launch_packet_ready = None
+    if launch_packet is not None:
+        ready, blocker = _agents_last_exam_ready_input(
+            launch_packet,
+            schema_version=AGENTS_LAST_EXAM_LOCAL_LAUNCH_PACKET_SCHEMA_VERSION,
+            blocker_prefix="launch_packet",
+        )
+        launch_packet_ready = ready
+        if not ready and blocker:
+            blockers.append(blocker)
+
+    fresh_source_ready, fresh_source_blocker = _agents_last_exam_source_freshness_input(
+        launch_packet,
+        required=fresh_source_required,
+    )
+    if fresh_source_blocker:
+        blockers.append(fresh_source_blocker)
+
+    if not hypothesis_label:
+        blockers.append("validation_hypothesis_missing")
+    if result_reducer_ready is not True:
+        blockers.append("compact_result_reducer_not_ready")
+    if no_upload is not True:
+        blockers.append("no_upload_boundary_not_enabled")
+    if submit_enabled:
+        blockers.append("submit_must_remain_disabled")
+    if leaderboard_enabled:
+        blockers.append("leaderboard_must_remain_disabled")
+
+    boundary_payloads = [
+        ("task_material_readiness", task_material_readiness),
+        ("host_codex_no_task_e2e", host_codex_no_task_e2e),
+        ("exact_dry_run_result", exact_dry_run_result),
+    ]
+    if launch_packet is not None:
+        boundary_payloads.append(("launch_packet", launch_packet))
+    for name, payload in boundary_payloads:
+        if _agents_last_exam_boundary_flag(payload, "credential_values_recorded"):
+            blockers.append(f"{name}_credential_values_recorded")
+        if _agents_last_exam_boundary_flag(payload, "local_paths_recorded"):
+            blockers.append(f"{name}_local_paths_recorded")
+        if _agents_last_exam_boundary_flag(payload, "raw_trajectory_read"):
+            blockers.append(f"{name}_raw_trajectory_read")
+        if _agents_last_exam_boundary_flag(payload, "task_body_read"):
+            blockers.append(f"{name}_task_body_read")
+        if _agents_last_exam_boundary_flag(payload, "screenshot_captured"):
+            blockers.append(f"{name}_screenshot_captured")
+        if _agents_last_exam_boundary_flag(payload, "hidden_references_allowed"):
+            blockers.append(f"{name}_hidden_refs_allowed")
+        if _agents_last_exam_boundary_flag(payload, "production_actions_allowed"):
+            blockers.append(f"{name}_production_actions_allowed")
+
+    expected = (
+        exact_dry_run_result.get("expected")
+        if isinstance(exact_dry_run_result.get("expected"), dict)
+        else {}
+    )
+    expected_task = expected.get("task") if isinstance(expected, dict) else None
+    if task_label and expected_task and task_label != expected_task:
+        blockers.append("selected_task_mismatch_exact_dry_run")
+
+    ready = not blockers
+    return {
+        "schema_version": AGENTS_LAST_EXAM_VALIDATION_RUN_GATE_SCHEMA_VERSION,
+        "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
+        "ready": ready,
+        "first_blocker": blockers[0]
+        if blockers
+        else "ready_for_operator_authorized_local_no_upload_ale_validation_run",
+        "blockers": blockers,
+        "selected_task": {
+            "task_id": task_label,
+            "source": "compact_readiness_artifacts",
+        },
+        "validation_hypothesis": hypothesis_label,
+        "readiness_inputs": {
+            "task_material_ready": task_material_readiness.get("ready") is True,
+            "host_codex_no_task_e2e_ready": host_codex_no_task_e2e.get("ready") is True,
+            "exact_dry_run_ready": exact_dry_run_result.get("ready") is True,
+            "launch_packet_ready": launch_packet_ready,
+            "fresh_source_required": fresh_source_required,
+            "fresh_source_ready": fresh_source_ready,
+            "compact_result_reducer_ready": result_reducer_ready is True,
+        },
+        "model_policy": {
+            "connectivity_e2e_model": "gpt-5.3-codex-spark",
+            "formal_score_agent": expected_formal_agent,
+            "formal_score_candidate": bool(formal_score_candidate),
+        },
+        "run_boundary": {
+            "local_only": True,
+            "no_upload": no_upload is True,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+            "operator_authorization_required_before_task_run": True,
+            "task_run_started_by_this_gate": False,
+            "container_started_by_this_gate": False,
+            "model_api_invoked_by_this_gate": False,
+            "codex_prompt_sent_by_this_gate": False,
+            "raw_trajectory_read": False,
+            "task_body_read_by_goal_harness": False,
+            "screenshot_captured": False,
+            "credential_values_recorded": False,
+            "hidden_references_allowed": False,
+            "production_actions_allowed": False,
+            "local_paths_recorded": False,
+            "raw_output_recorded": False,
+        },
+        "decision": {
+            "next_allowed_action": "operator_authorized_local_no_upload_ale_validation_run"
+            if ready
+            else "repair_ale_validation_run_gate_blocker",
+            "minimum_next_evidence": (
+                "A task-level ALE run may proceed only as local/no-upload/no-submit "
+                "work with compact result reduction through the ALE reducer, and "
+                "with a concrete Goal Harness validation hypothesis recorded."
+            ),
+            "must_not_claim": [
+                "ALE task success before compact result ingest",
+                "ALE score uplift before paired evidence",
+                "Goal Harness treatment advantage before paired evidence",
+                "leaderboard evidence",
+            ],
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "task_text_read": False,
+            "task_card_content_read": False,
+            "script_content_read": False,
+            "raw_artifacts_read": False,
+            "local_paths_recorded": False,
+            "container_started": False,
+            "model_api_invoked": False,
+            "codex_prompt_sent": False,
+        },
+    }
+
+
 def _agents_last_exam_normalized_repo_label(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
@@ -3032,6 +5859,7 @@ def _agents_last_exam_source_git_metadata(
     source_root: str | None,
     *,
     expected_repo_url: str = AGENTS_LAST_EXAM_DEFAULT_REPO_URL,
+    fetch_origin: bool = False,
 ) -> dict[str, Any]:
     expected = _agents_last_exam_normalized_repo_label(expected_repo_url)
     source_root_declared = bool(source_root)
@@ -3050,6 +5878,14 @@ def _agents_last_exam_source_git_metadata(
         "remote": None,
         "remote_matches_expected": False,
         "head": None,
+        "upstream_ref": None,
+        "upstream_head": None,
+        "upstream_declared": False,
+        "head_matches_upstream": False,
+        "upstream_ahead_count": None,
+        "upstream_behind_count": None,
+        "fetch_origin_attempted": False,
+        "fetch_origin_ok": False,
         "git_probe_available": shutil.which("git") is not None,
         "is_git_checkout": False,
     }
@@ -3075,17 +5911,61 @@ def _agents_last_exam_source_git_metadata(
             return None
         return result.stdout.strip() or None
 
+    def git_run(*args: str) -> bool:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(source_root_path), *args],
+                check=False,
+                text=True,
+                capture_output=True,
+                timeout=30,
+            )
+        except Exception:
+            return False
+        return result.returncode == 0
+
+    fetch_origin_attempted = bool(fetch_origin)
+    fetch_origin_ok = git_run("fetch", "--prune", "origin") if fetch_origin else False
+
     top_level = git_output("rev-parse", "--show-toplevel")
     is_git_checkout = bool(top_level)
     remote = _agents_last_exam_normalized_repo_label(
         git_output("remote", "get-url", "origin")
     )
     head = _agents_last_exam_public_id(git_output("rev-parse", "HEAD"), limit=80)
+    upstream_ref = _agents_last_exam_public_id(
+        git_output("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"),
+        limit=120,
+    )
+    upstream_head = _agents_last_exam_public_id(
+        git_output("rev-parse", "@{upstream}"),
+        limit=80,
+    )
+    upstream_ahead_count: int | None = None
+    upstream_behind_count: int | None = None
+    rev_counts = git_output("rev-list", "--left-right", "--count", "HEAD...@{upstream}")
+    if rev_counts:
+        parts = rev_counts.split()
+        if len(parts) >= 2:
+            try:
+                upstream_ahead_count = int(parts[0])
+                upstream_behind_count = int(parts[1])
+            except ValueError:
+                upstream_ahead_count = None
+                upstream_behind_count = None
     metadata = {
         **base,
         "remote": remote,
         "remote_matches_expected": bool(remote and expected and remote == expected),
         "head": head,
+        "upstream_ref": upstream_ref,
+        "upstream_head": upstream_head,
+        "upstream_declared": bool(upstream_ref),
+        "head_matches_upstream": bool(head and upstream_head and head == upstream_head),
+        "upstream_ahead_count": upstream_ahead_count,
+        "upstream_behind_count": upstream_behind_count,
+        "fetch_origin_attempted": fetch_origin_attempted,
+        "fetch_origin_ok": fetch_origin_ok,
         "is_git_checkout": is_git_checkout,
     }
     if not is_git_checkout:
@@ -3094,6 +5974,8 @@ def _agents_last_exam_source_git_metadata(
         return {**metadata, "first_blocker": "source_root_origin_missing"}
     if expected and remote != expected:
         return {**metadata, "first_blocker": "source_root_origin_mismatch"}
+    if fetch_origin and not fetch_origin_ok:
+        return {**metadata, "first_blocker": "source_root_fetch_origin_failed"}
     if not head:
         return {**metadata, "first_blocker": "source_root_head_missing"}
     return {**metadata, "first_blocker": None}
@@ -3104,12 +5986,15 @@ def build_agents_last_exam_local_source_readiness(
     source_root: str | None,
     expected_repo_url: str = AGENTS_LAST_EXAM_DEFAULT_REPO_URL,
     runner_python_module: str = "ale_run",
+    fetch_origin: bool = False,
+    require_upstream_current: bool = False,
 ) -> dict[str, Any]:
     """Verify a redacted public ALE source checkout contract without running ALE."""
 
     git_metadata = _agents_last_exam_source_git_metadata(
         source_root,
         expected_repo_url=expected_repo_url,
+        fetch_origin=fetch_origin,
     )
     module_probe = _agents_last_exam_python_module_probe(
         runner_python_module,
@@ -3118,6 +6003,18 @@ def build_agents_last_exam_local_source_readiness(
     blockers: list[str] = []
     if git_metadata.get("first_blocker"):
         blockers.append(str(git_metadata["first_blocker"]))
+    if require_upstream_current:
+        if git_metadata.get("upstream_declared") is not True:
+            blockers.append("source_root_upstream_missing")
+        elif git_metadata.get("head_matches_upstream") is not True:
+            behind = git_metadata.get("upstream_behind_count")
+            ahead = git_metadata.get("upstream_ahead_count")
+            if isinstance(behind, int) and behind > 0:
+                blockers.append("source_root_behind_upstream")
+            elif isinstance(ahead, int) and ahead > 0:
+                blockers.append("source_root_ahead_of_upstream")
+            else:
+                blockers.append("source_root_not_at_upstream_head")
     if module_probe.get("available") is not True:
         blockers.append(
             _agents_last_exam_public_id(module_probe.get("first_blocker"), limit=80)
@@ -3139,6 +6036,17 @@ def build_agents_last_exam_local_source_readiness(
             "remote_matches_expected": git_metadata.get("remote_matches_expected")
             is True,
             "head": git_metadata.get("head"),
+            "upstream_ref": git_metadata.get("upstream_ref"),
+            "upstream_head": git_metadata.get("upstream_head"),
+            "upstream_declared": git_metadata.get("upstream_declared") is True,
+            "head_matches_upstream": git_metadata.get("head_matches_upstream")
+            is True,
+            "upstream_ahead_count": git_metadata.get("upstream_ahead_count"),
+            "upstream_behind_count": git_metadata.get("upstream_behind_count"),
+            "fetch_origin_attempted": git_metadata.get("fetch_origin_attempted")
+            is True,
+            "fetch_origin_ok": git_metadata.get("fetch_origin_ok") is True,
+            "require_upstream_current": bool(require_upstream_current),
             "git_probe_available": git_metadata.get("git_probe_available") is True,
             "is_git_checkout": git_metadata.get("is_git_checkout") is True,
             "source_root_declared": git_metadata.get("source_root_declared") is True,
@@ -3186,6 +6094,1076 @@ def build_agents_last_exam_local_source_readiness(
         "read_boundary": {
             "compact_only": True,
             "task_text_read": False,
+            "raw_artifacts_read": False,
+            "local_paths_recorded": False,
+            "container_started": False,
+        },
+    }
+
+
+def _agents_last_exam_public_task_parts(task_id: str | None) -> tuple[list[str], str | None]:
+    label = _agents_last_exam_public_id(task_id, limit=180)
+    if not isinstance(task_id, str) or not task_id.strip():
+        return [], label
+    text = task_id.strip().replace("\\", "/")
+    parts = [part for part in text.split("/") if part]
+    safe = (
+        not text.startswith("/")
+        and not text.startswith("~")
+        and len(parts) == 2
+        and all(part not in {".", ".."} for part in parts)
+        and all(_agents_last_exam_public_id(part, limit=120) == part for part in parts)
+    )
+    return (parts if safe else []), label
+
+
+def _agents_last_exam_public_task_list_membership(
+    source_root: str | None,
+    task_id: str | None,
+    selected_task_lists: Iterable[str],
+) -> dict[str, Any]:
+    safe_task_id = str(task_id or "").strip().replace("\\", "/")
+    memberships: dict[str, bool] = {}
+    checked = 0
+    present = 0
+    if not source_root:
+        return {
+            "checked": False,
+            "selected_task_lists": [],
+            "membership": memberships,
+            "present_count": present,
+            "path_recorded": False,
+        }
+    try:
+        root = Path(source_root).expanduser()
+        selected_root = root / "selected_tasks"
+        resolved_root = root.resolve()
+    except (OSError, RuntimeError):
+        return {
+            "checked": False,
+            "selected_task_lists": [],
+            "membership": memberships,
+            "present_count": present,
+            "path_recorded": False,
+        }
+    safe_lists: list[str] = []
+    for raw_name in selected_task_lists:
+        label = _agents_last_exam_public_id(raw_name, limit=120)
+        if not label:
+            continue
+        parts = [part for part in str(raw_name).replace("\\", "/").split("/") if part]
+        if not parts or any(part in {".", ".."} for part in parts):
+            continue
+        candidate = selected_root.joinpath(*parts)
+        try:
+            resolved_candidate = candidate.resolve()
+            inside_root = resolved_candidate == resolved_root or (
+                resolved_root in resolved_candidate.parents
+            )
+        except OSError:
+            inside_root = False
+        safe_lists.append(label)
+        if not inside_root or not candidate.is_file():
+            memberships[label] = False
+            continue
+        checked += 1
+        try:
+            lines = candidate.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            memberships[label] = False
+            continue
+        matched = any(line.strip().replace("\\", "/") == safe_task_id for line in lines)
+        memberships[label] = matched
+        if matched:
+            present += 1
+    return {
+        "checked": checked > 0,
+        "selected_task_lists": safe_lists,
+        "membership": memberships,
+        "present_count": present,
+        "path_recorded": False,
+    }
+
+
+def _agents_last_exam_bool_requirement(value: bool | str | None) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "required", "requires_task_data"}:
+        return True
+    if normalized in {"0", "false", "no", "not_required", "none"}:
+        return False
+    return None
+
+
+def build_agents_last_exam_baked_task_input_readiness(
+    *,
+    selected_task_id: str | None,
+    image_ref: str = AGENTS_LAST_EXAM_DEFAULT_DOCKER_IMAGE,
+    image_metadata: dict[str, Any] | None = None,
+    docker_binary: str = "docker",
+    timeout_seconds: int = 60,
+) -> dict[str, Any]:
+    """Probe whether an ALE Docker image contains a task baked input dir.
+
+    This starts a tiny shell in the image to test directory existence/readability.
+    It does not run the task, list files, read task data, or record the checked path.
+    """
+
+    parts, task_label = _agents_last_exam_public_task_parts(selected_task_id)
+    blockers: list[str] = []
+    if not parts:
+        blockers.append("selected_task_id_not_public_safe")
+    docker_label = _agents_last_exam_public_id(docker_binary, limit=80)
+    docker_binary_safe = bool(
+        docker_label
+        and docker_binary == docker_label
+        and "/" not in docker_binary
+        and "\\" not in docker_binary
+    )
+    if not docker_binary_safe:
+        blockers.append("docker_binary_must_be_name_not_path")
+    docker_available = bool(docker_binary_safe and shutil.which(docker_binary))
+    if docker_binary_safe and not docker_available:
+        blockers.append("docker_cli_missing")
+
+    raw_image_metadata = (
+        image_metadata
+        if isinstance(image_metadata, dict)
+        else _agents_last_exam_docker_image_metadata(image_ref)
+    )
+    image = _agents_last_exam_public_image_metadata(
+        raw_image_metadata,
+        fallback_image_ref=image_ref,
+    )
+    if image.get("present") is not True:
+        blockers.append(
+            _agents_last_exam_public_id(image.get("first_blocker"), limit=80)
+            or "docker_image_missing"
+        )
+
+    attempted = False
+    container_started = False
+    baked_input_present = False
+    baked_input_readable = False
+    probe_return_code: int | None = None
+    probe_error: str | None = None
+    if not blockers and parts and docker_binary_safe:
+        baked_input_path = (
+            f"/media/user/data/agenthle/{parts[0]}/{parts[1]}/base/input"
+        )
+        attempted = True
+        try:
+            result = subprocess.run(
+                [
+                    docker_binary,
+                    "run",
+                    "--rm",
+                    "--entrypoint",
+                    "/bin/sh",
+                    image_ref,
+                    "-c",
+                    'test -d "$1" && test -r "$1"',
+                    "sh",
+                    baked_input_path,
+                ],
+                check=False,
+                text=True,
+                capture_output=True,
+                timeout=max(1, int(timeout_seconds)),
+            )
+        except subprocess.TimeoutExpired:
+            probe_error = "baked_task_input_probe_timeout"
+        except Exception:
+            probe_error = "baked_task_input_probe_failed"
+        else:
+            container_started = True
+            probe_return_code = result.returncode
+            if result.returncode == 0:
+                baked_input_present = True
+                baked_input_readable = True
+            else:
+                probe_error = "baked_task_input_missing"
+    if probe_error:
+        blockers.append(probe_error)
+
+    ready = not blockers and baked_input_present and baked_input_readable
+    return {
+        "schema_version": AGENTS_LAST_EXAM_BAKED_TASK_INPUT_READINESS_SCHEMA_VERSION,
+        "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
+        "ready": ready,
+        "first_blocker": blockers[0]
+        if blockers
+        else "ready_for_baked_sandbox_task_data_source",
+        "blockers": blockers,
+        "task": {
+            "task_id": task_label,
+            "category": parts[0] if parts else None,
+            "name": parts[1] if parts else None,
+        },
+        "image": image,
+        "probe": {
+            "kind": "docker_shell_test_directory_only",
+            "attempted": attempted,
+            "container_started": container_started,
+            "baked_input_present": baked_input_present,
+            "baked_input_readable": baked_input_readable,
+            "return_code_zero": probe_return_code == 0
+            if probe_return_code is not None
+            else None,
+            "expected_path_template": "ale_task_base_input",
+            "expected_path_recorded": False,
+            "stdout_recorded": False,
+            "stderr_recorded": False,
+            "command_argv_recorded": False,
+        },
+        "boundary": {
+            "local_only": True,
+            "no_upload": True,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+            "container_started": container_started,
+            "task_run_started": False,
+            "task_body_read": False,
+            "task_card_content_read": False,
+            "script_content_read": False,
+            "task_data_content_read": False,
+            "directory_listed": False,
+            "model_api_invoked": False,
+            "codex_prompt_sent": False,
+            "raw_trajectory_read": False,
+            "screenshot_captured": False,
+            "credential_values_recorded": False,
+            "hidden_references_allowed": False,
+            "production_actions_allowed": False,
+            "local_paths_recorded": False,
+            "command_argv_recorded": False,
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "path_existence_only": True,
+            "task_text_read": False,
+            "task_card_content_read": False,
+            "script_content_read": False,
+            "task_data_content_read": False,
+            "raw_artifacts_read": False,
+            "local_paths_recorded": False,
+        },
+    }
+
+
+def build_agents_last_exam_baked_task_input_scan(
+    *,
+    source_root: str | None,
+    selected_task_lists: Iterable[str] = (
+        "linux_only.txt",
+        "unlicensed/near-term.txt",
+    ),
+    image_ref: str = AGENTS_LAST_EXAM_DEFAULT_DOCKER_IMAGE,
+    image_metadata: dict[str, Any] | None = None,
+    docker_binary: str = "docker",
+    max_tasks: int = 120,
+    timeout_seconds: int = 180,
+    probe_results: dict[str, bool] | None = None,
+) -> dict[str, Any]:
+    """Scan selected public ALE tasks for baked input dirs without reading them."""
+
+    selected = _agents_last_exam_public_selected_task_scan(
+        source_root,
+        selected_task_lists,
+    )
+    task_ids = [
+        task_id
+        for task_id in selected.get("task_ids", [])
+        if _agents_last_exam_public_task_parts(task_id)[0]
+    ]
+    max_count = max(0, int(max_tasks))
+    if max_count:
+        task_ids = task_ids[:max_count]
+    else:
+        task_ids = []
+    blockers: list[str] = []
+    if selected.get("checked") is not True:
+        blockers.append("selected_task_lists_not_checked")
+    if not task_ids:
+        blockers.append("no_selected_tasks_to_probe")
+
+    docker_label = _agents_last_exam_public_id(docker_binary, limit=80)
+    docker_binary_safe = bool(
+        docker_label
+        and docker_binary == docker_label
+        and "/" not in docker_binary
+        and "\\" not in docker_binary
+    )
+    if not docker_binary_safe:
+        blockers.append("docker_binary_must_be_name_not_path")
+    docker_available = bool(docker_binary_safe and shutil.which(docker_binary))
+    raw_image_metadata = (
+        image_metadata
+        if isinstance(image_metadata, dict)
+        else _agents_last_exam_docker_image_metadata(image_ref)
+    )
+    image = _agents_last_exam_public_image_metadata(
+        raw_image_metadata,
+        fallback_image_ref=image_ref,
+    )
+
+    fixture_probe_used = isinstance(probe_results, dict)
+    if not fixture_probe_used:
+        if docker_binary_safe and not docker_available:
+            blockers.append("docker_cli_missing")
+        if image.get("present") is not True:
+            blockers.append(
+                _agents_last_exam_public_id(image.get("first_blocker"), limit=80)
+                or "docker_image_missing"
+            )
+
+    attempted = False
+    container_started = False
+    candidates: list[str] = []
+    probe_error: str | None = None
+    if not blockers and task_ids:
+        attempted = True
+        if fixture_probe_used:
+            for task_id in task_ids:
+                if probe_results.get(task_id) is True:
+                    candidates.append(task_id)
+        else:
+            script = (
+                'while IFS= read -r task; do '
+                'category="${task%%/*}"; name="${task#*/}"; '
+                'path="/media/user/data/agenthle/${category}/${name}/base/input"; '
+                'if test -d "$path" && test -r "$path"; then '
+                'printf "%s\\t1\\n" "$task"; else printf "%s\\t0\\n" "$task"; fi; '
+                "done"
+            )
+            try:
+                result = subprocess.run(
+                    [
+                        docker_binary,
+                        "run",
+                        "--rm",
+                        "--entrypoint",
+                        "/bin/sh",
+                        image_ref,
+                        "-c",
+                        script,
+                    ],
+                    input="\n".join(task_ids) + "\n",
+                    check=False,
+                    text=True,
+                    capture_output=True,
+                    timeout=max(1, int(timeout_seconds)),
+                )
+            except subprocess.TimeoutExpired:
+                probe_error = "baked_task_input_scan_timeout"
+            except Exception:
+                probe_error = "baked_task_input_scan_failed"
+            else:
+                container_started = True
+                if result.returncode != 0:
+                    probe_error = "baked_task_input_scan_nonzero"
+                else:
+                    safe_task_set = set(task_ids)
+                    for line in result.stdout.splitlines():
+                        raw_task_id, _, flag = line.partition("\t")
+                        if flag != "1" or raw_task_id not in safe_task_set:
+                            continue
+                        parts, safe_label = _agents_last_exam_public_task_parts(
+                            raw_task_id
+                        )
+                        if parts and safe_label:
+                            candidates.append(raw_task_id)
+    if probe_error:
+        blockers.append(probe_error)
+    if attempted and not candidates and not blockers:
+        blockers.append("no_baked_input_candidate_found")
+
+    ready = bool(candidates) and not blockers
+    return {
+        "schema_version": AGENTS_LAST_EXAM_BAKED_TASK_INPUT_SCAN_SCHEMA_VERSION,
+        "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
+        "ready": ready,
+        "first_blocker": blockers[0]
+        if blockers
+        else "ready_for_baked_input_formal_candidate_selection",
+        "blockers": blockers,
+        "selected_tasks": {
+            "checked": selected.get("checked") is True,
+            "selected_task_lists": selected.get("selected_task_lists") or [],
+            "selected_task_count": selected.get("selected_task_count"),
+            "probed_task_count": len(task_ids),
+            "max_tasks": max_count,
+            "path_recorded": False,
+        },
+        "image": image,
+        "probe": {
+            "kind": "docker_shell_batch_test_directory_only",
+            "attempted": attempted,
+            "container_started": container_started,
+            "fixture_probe_used": fixture_probe_used,
+            "baked_input_candidate_count": len(candidates),
+            "expected_path_template": "ale_task_base_input",
+            "expected_path_recorded": False,
+            "stdout_recorded": False,
+            "stderr_recorded": False,
+            "command_argv_recorded": False,
+        },
+        "candidates": {
+            "eligible_baked_input_candidates": candidates[:25],
+            "candidate_count": len(candidates),
+            "task_ids_public": True,
+            "task_paths_recorded": False,
+        },
+        "boundary": {
+            "local_only": True,
+            "no_upload": True,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+            "container_started": container_started,
+            "task_run_started": False,
+            "task_body_read": False,
+            "task_card_content_read": False,
+            "script_content_read": False,
+            "task_data_content_read": False,
+            "directory_listed": False,
+            "model_api_invoked": False,
+            "codex_prompt_sent": False,
+            "raw_trajectory_read": False,
+            "screenshot_captured": False,
+            "credential_values_recorded": False,
+            "hidden_references_allowed": False,
+            "production_actions_allowed": False,
+            "local_paths_recorded": False,
+            "command_argv_recorded": False,
+            "raw_output_recorded": False,
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "path_existence_only": True,
+            "selected_task_lists_read": True,
+            "task_text_read": False,
+            "task_card_content_read": False,
+            "script_content_read": False,
+            "task_data_content_read": False,
+            "raw_artifacts_read": False,
+            "local_paths_recorded": False,
+        },
+    }
+
+
+def _agents_last_exam_task_data_source_readiness(
+    *,
+    requires_task_data: bool | str | None,
+    task_data_source: str | None,
+    baked_task_input_present: bool | None,
+    baked_task_input_readiness: dict[str, Any] | None,
+    gcs_sa_key: str | None,
+    gcs_sa_key_present: bool | None,
+    enforce_task_data_source: bool,
+) -> dict[str, Any]:
+    requirement = _agents_last_exam_bool_requirement(requires_task_data)
+    raw_source = task_data_source.strip() if isinstance(task_data_source, str) else ""
+    source = _agents_last_exam_public_id(raw_source, limit=120)
+    official_gcs_source = raw_source.startswith("gs://ale-data-public")
+    gcs_key_declared = bool(gcs_sa_key)
+    gcs_key_file_present = False
+    if gcs_sa_key:
+        try:
+            gcs_key_file_present = Path(gcs_sa_key).expanduser().is_file()
+        except (OSError, RuntimeError):
+            gcs_key_file_present = False
+    effective_gcs_key_present = (
+        bool(gcs_sa_key_present)
+        if gcs_sa_key_present is not None
+        else gcs_key_file_present
+    )
+    baked_probe_declared = isinstance(baked_task_input_readiness, dict)
+    baked_probe_ready = (
+        baked_task_input_readiness.get("schema_version")
+        == AGENTS_LAST_EXAM_BAKED_TASK_INPUT_READINESS_SCHEMA_VERSION
+        and baked_task_input_readiness.get("ready") is True
+        if baked_probe_declared
+        else False
+    )
+    effective_baked_input_present = (
+        bool(baked_task_input_present)
+        if baked_task_input_present is not None
+        else baked_probe_ready
+    )
+    checked = enforce_task_data_source or requirement is not None or bool(source)
+    blockers: list[str] = []
+    if checked and requirement is None:
+        blockers.append("task_data_requirement_unknown")
+    if requirement is True:
+        if not source:
+            blockers.append("task_data_source_missing_for_required_task")
+        elif raw_source == "baked_in_sandbox":
+            if baked_probe_declared and baked_probe_ready is not True:
+                blockers.append(
+                    _agents_last_exam_public_id(
+                        baked_task_input_readiness.get("first_blocker"),
+                        limit=80,
+                    )
+                    or "baked_task_input_not_verified"
+                )
+            elif effective_baked_input_present is not True:
+                blockers.append("baked_task_input_not_verified")
+        elif official_gcs_source:
+            if effective_gcs_key_present is not True:
+                blockers.append("gcs_sa_key_presence_not_verified")
+        elif raw_source in {"none", "local"}:
+            blockers.append("task_data_source_not_sufficient_for_required_task")
+        else:
+            blockers.append("task_data_source_unsupported_for_required_task")
+    ready = checked and not blockers
+    if requirement is False:
+        ready = True
+    return {
+        "checked": checked,
+        "ready": ready,
+        "first_blocker": blockers[0] if blockers else None,
+        "blockers": blockers,
+        "requires_task_data": requirement,
+        "requires_task_data_declared": requirement is not None,
+        "task_data_source": source,
+        "task_data_source_declared": bool(source),
+        "official_gcs_source": official_gcs_source,
+        "baked_input_present": effective_baked_input_present is True,
+        "baked_input_presence_declared": baked_task_input_present is not None
+        or baked_probe_declared,
+        "baked_input_probe_declared": baked_probe_declared,
+        "baked_input_probe_ready": baked_probe_ready,
+        "gcs_sa_key_declared": gcs_key_declared or gcs_sa_key_present is not None,
+        "gcs_sa_key_present": effective_gcs_key_present,
+        "gcs_sa_key_path_recorded": False,
+        "credential_values_read": False,
+        "credential_values_recorded": False,
+        "local_paths_recorded": False,
+    }
+
+
+def build_agents_last_exam_task_material_readiness(
+    *,
+    source_root: str | None,
+    selected_task_id: str | None,
+    selected_task_lists: Iterable[str] = (
+        "linux_only.txt",
+        "unlicensed/near-term.txt",
+    ),
+    requires_task_data: bool | str | None = None,
+    task_data_source: str | None = None,
+    baked_task_input_present: bool | None = None,
+    baked_task_input_readiness: dict[str, Any] | None = None,
+    gcs_sa_key: str | None = None,
+    gcs_sa_key_present: bool | None = None,
+    enforce_task_data_source: bool = False,
+) -> dict[str, Any]:
+    """Check local ALE task material existence without reading task bodies."""
+
+    parts, task_label = _agents_last_exam_public_task_parts(selected_task_id)
+    blockers: list[str] = []
+    if not parts:
+        blockers.append("selected_task_id_not_public_safe")
+    try:
+        root = Path(source_root).expanduser() if source_root else None
+    except (OSError, RuntimeError):
+        root = None
+    source_root_available = bool(root and root.is_dir())
+    if not source_root_available or root is None:
+        blockers.append("source_root_not_available")
+
+    task_dir_available = False
+    task_card_present = False
+    scripts_dir_present = False
+    scorer_script_count = 0
+    task_dir_entry_count = 0
+    if root is not None and source_root_available and parts:
+        task_dir = root / "tasks" / parts[0] / parts[1]
+        try:
+            resolved_root = root.resolve()
+            resolved_task_dir = task_dir.resolve()
+            inside_root = resolved_task_dir == resolved_root or (
+                resolved_root in resolved_task_dir.parents
+            )
+        except OSError:
+            inside_root = False
+        task_dir_available = bool(inside_root and task_dir.is_dir())
+        if task_dir_available:
+            task_card_present = (task_dir / "task_card.json").is_file()
+            scripts_dir = task_dir / "scripts"
+            scripts_dir_present = scripts_dir.is_dir()
+            try:
+                task_dir_entry_count = sum(1 for _ in task_dir.iterdir())
+            except OSError:
+                task_dir_entry_count = 0
+            if scripts_dir_present:
+                try:
+                    scorer_script_count = sum(
+                        1
+                        for path in scripts_dir.iterdir()
+                        if path.is_file()
+                        and path.suffix == ".py"
+                        and "score" in path.name.lower()
+                    )
+                except OSError:
+                    scorer_script_count = 0
+    if not task_dir_available:
+        blockers.append("task_directory_missing")
+    if not task_card_present:
+        blockers.append("task_card_json_missing")
+    if not scripts_dir_present:
+        blockers.append("task_scripts_directory_missing")
+    if scorer_script_count < 1:
+        blockers.append("task_scorer_script_missing")
+
+    membership = _agents_last_exam_public_task_list_membership(
+        source_root,
+        selected_task_id,
+        selected_task_lists,
+    )
+    if membership.get("checked") is not True:
+        blockers.append("selected_task_list_membership_not_checked")
+    elif int(membership.get("present_count") or 0) < 1:
+        blockers.append("selected_task_not_in_public_task_lists")
+    task_data = _agents_last_exam_task_data_source_readiness(
+        requires_task_data=requires_task_data,
+        task_data_source=task_data_source,
+        baked_task_input_present=baked_task_input_present,
+        baked_task_input_readiness=baked_task_input_readiness,
+        gcs_sa_key=gcs_sa_key,
+        gcs_sa_key_present=gcs_sa_key_present,
+        enforce_task_data_source=enforce_task_data_source,
+    )
+    if enforce_task_data_source and task_data.get("ready") is not True:
+        blockers.append(
+            _agents_last_exam_public_id(task_data.get("first_blocker"), limit=80)
+            or "task_data_source_not_ready"
+        )
+
+    ready = not blockers
+    return {
+        "schema_version": AGENTS_LAST_EXAM_TASK_MATERIAL_READINESS_SCHEMA_VERSION,
+        "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
+        "ready": ready,
+        "first_blocker": blockers[0]
+        if blockers
+        else "ready_for_local_no_upload_ale_task_gate",
+        "blockers": blockers,
+        "task": {
+            "task_id": task_label,
+            "category": parts[0] if parts else None,
+            "name": parts[1] if parts else None,
+            "task_dir_available": task_dir_available,
+            "task_card_json_present": task_card_present,
+            "scripts_dir_present": scripts_dir_present,
+            "scorer_script_count": scorer_script_count,
+            "task_dir_entry_count": task_dir_entry_count,
+            "task_dir_path_recorded": False,
+            "task_card_content_read": False,
+            "script_content_read": False,
+        },
+        "task_data": task_data,
+        "public_task_lists": membership,
+        "boundary": {
+            "local_only": True,
+            "no_upload": True,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+            "container_started": False,
+            "task_body_read": False,
+            "task_card_content_read": False,
+            "script_content_read": False,
+            "model_api_invoked": False,
+            "raw_trajectory_read": False,
+            "screenshot_captured": False,
+            "credential_values_recorded": False,
+            "hidden_references_allowed": False,
+            "production_actions_allowed": False,
+            "local_paths_recorded": False,
+            "command_argv_recorded": False,
+            "raw_output_recorded": False,
+        },
+        "decision": {
+            "next_allowed_action": "prepare_local_no_upload_ale_validation_run_gate"
+            if ready
+            else "repair_ale_task_material_readiness_blocker",
+            "minimum_next_evidence": (
+                "A local/no-upload ALE task gate should combine this material "
+                "readiness signal with host Codex no-task E2E readiness and the "
+                "compact result reducer boundary before any task-level run."
+            ),
+            "must_not_claim": [
+                "ALE task success",
+                "ALE score uplift",
+                "Goal Harness treatment advantage",
+                "leaderboard evidence",
+            ],
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "task_text_read": False,
+            "task_card_content_read": False,
+            "script_content_read": False,
+            "raw_artifacts_read": False,
+            "local_paths_recorded": False,
+            "container_started": False,
+        },
+    }
+
+
+_AGENTS_LAST_EXAM_REQUIRES_TASK_DATA_RE = re.compile(
+    r"^\s*(?:self\.)?REQUIRES_TASK_DATA\s*(?::[^=]+)?=\s*(True|False)\b"
+)
+
+
+def _agents_last_exam_public_selected_task_scan(
+    source_root: str | None,
+    selected_task_lists: Iterable[str],
+) -> dict[str, Any]:
+    labels: list[str] = []
+    task_ids: set[str] = set()
+    missing_lists = 0
+    checked_lists = 0
+    unsafe_lists = 0
+    if not source_root:
+        return {
+            "checked": False,
+            "selected_task_lists": labels,
+            "selected_task_count": 0,
+            "checked_list_count": 0,
+            "missing_list_count": 0,
+            "unsafe_list_count": 0,
+            "path_recorded": False,
+            "task_ids": [],
+        }
+    try:
+        root = Path(source_root).expanduser()
+        selected_root = root / "selected_tasks"
+        resolved_root = root.resolve()
+    except (OSError, RuntimeError):
+        return {
+            "checked": False,
+            "selected_task_lists": labels,
+            "selected_task_count": 0,
+            "checked_list_count": 0,
+            "missing_list_count": 0,
+            "unsafe_list_count": 0,
+            "path_recorded": False,
+            "task_ids": [],
+        }
+    for raw_name in selected_task_lists:
+        label = _agents_last_exam_public_id(raw_name, limit=120)
+        if not label:
+            unsafe_lists += 1
+            continue
+        parts = [part for part in str(raw_name).replace("\\", "/").split("/") if part]
+        if not parts or any(part in {".", ".."} for part in parts):
+            labels.append(label)
+            unsafe_lists += 1
+            continue
+        candidate = selected_root.joinpath(*parts)
+        try:
+            resolved_candidate = candidate.resolve()
+            inside_root = resolved_candidate == resolved_root or (
+                resolved_root in resolved_candidate.parents
+            )
+        except OSError:
+            inside_root = False
+        labels.append(label)
+        if not inside_root or not candidate.is_file():
+            missing_lists += 1
+            continue
+        checked_lists += 1
+        try:
+            lines = candidate.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            missing_lists += 1
+            continue
+        for line in lines:
+            raw_task_id = line.strip().replace("\\", "/")
+            if not raw_task_id or raw_task_id.startswith("#"):
+                continue
+            parts, safe_label = _agents_last_exam_public_task_parts(raw_task_id)
+            if parts and safe_label:
+                task_ids.add("/".join(parts))
+    return {
+        "checked": checked_lists > 0,
+        "selected_task_lists": labels,
+        "selected_task_count": len(task_ids),
+        "checked_list_count": checked_lists,
+        "missing_list_count": missing_lists,
+        "unsafe_list_count": unsafe_lists,
+        "path_recorded": False,
+        "task_ids": sorted(task_ids),
+    }
+
+
+def _agents_last_exam_requires_task_data_line_scan(
+    *,
+    source_root: str | None,
+    task_id: str,
+    max_lines: int = 1200,
+) -> dict[str, Any]:
+    parts, task_label = _agents_last_exam_public_task_parts(task_id)
+    if not parts:
+        return {
+            "task_id": task_label,
+            "checked": False,
+            "requires_task_data": None,
+            "requires_task_data_declared": False,
+            "assignment_found": False,
+            "assignment_kind": None,
+            "line_count_scanned": 0,
+            "first_blocker": "selected_task_id_not_public_safe",
+            "task_source_path_recorded": False,
+            "task_source_content_recorded": False,
+        }
+    try:
+        root = Path(source_root).expanduser() if source_root else None
+    except (OSError, RuntimeError):
+        root = None
+    if root is None or not root.is_dir():
+        return {
+            "task_id": task_label,
+            "checked": False,
+            "requires_task_data": None,
+            "requires_task_data_declared": False,
+            "assignment_found": False,
+            "assignment_kind": None,
+            "line_count_scanned": 0,
+            "first_blocker": "source_root_not_available",
+            "task_source_path_recorded": False,
+            "task_source_content_recorded": False,
+        }
+    source_file = root / "tasks" / parts[0] / parts[1] / "main.py"
+    try:
+        resolved_root = root.resolve()
+        resolved_source_file = source_file.resolve()
+        inside_root = resolved_source_file == resolved_root or (
+            resolved_root in resolved_source_file.parents
+        )
+    except OSError:
+        inside_root = False
+    if not inside_root or not source_file.is_file():
+        return {
+            "task_id": task_label,
+            "checked": False,
+            "requires_task_data": None,
+            "requires_task_data_declared": False,
+            "assignment_found": False,
+            "assignment_kind": None,
+            "line_count_scanned": 0,
+            "first_blocker": "task_config_main_py_missing",
+            "task_source_path_recorded": False,
+            "task_source_content_recorded": False,
+        }
+    scanned = 0
+    try:
+        with source_file.open(encoding="utf-8") as handle:
+            for raw_line in handle:
+                scanned += 1
+                match = _AGENTS_LAST_EXAM_REQUIRES_TASK_DATA_RE.match(raw_line)
+                if match:
+                    requires_task_data = match.group(1) == "True"
+                    return {
+                        "task_id": task_label,
+                        "checked": True,
+                        "requires_task_data": requires_task_data,
+                        "requires_task_data_declared": True,
+                        "assignment_found": True,
+                        "assignment_kind": "requires_task_data_bool_assignment",
+                        "line_count_scanned": scanned,
+                        "first_blocker": None,
+                        "task_source_path_recorded": False,
+                        "task_source_content_recorded": False,
+                    }
+                if scanned >= max_lines:
+                    break
+    except OSError:
+        return {
+            "task_id": task_label,
+            "checked": False,
+            "requires_task_data": None,
+            "requires_task_data_declared": False,
+            "assignment_found": False,
+            "assignment_kind": None,
+            "line_count_scanned": scanned,
+            "first_blocker": "task_config_main_py_unreadable",
+            "task_source_path_recorded": False,
+            "task_source_content_recorded": False,
+        }
+    return {
+        "task_id": task_label,
+        "checked": True,
+        "requires_task_data": True,
+        "requires_task_data_declared": False,
+        "assignment_found": False,
+        "assignment_kind": "default_true_when_assignment_missing",
+        "line_count_scanned": scanned,
+        "first_blocker": None,
+        "task_source_path_recorded": False,
+        "task_source_content_recorded": False,
+    }
+
+
+def build_agents_last_exam_candidate_task_data_scan(
+    *,
+    source_root: str | None,
+    selected_task_lists: Iterable[str] = (
+        "linux_only.txt",
+        "unlicensed/near-term.txt",
+    ),
+    allow_demo_candidate: bool = False,
+) -> dict[str, Any]:
+    """Scan selected ALE task configs for local no-task-data candidates.
+
+    This is a bounded config-line scan: it extracts only a
+    ``REQUIRES_TASK_DATA`` boolean assignment signal from task ``main.py`` and
+    never records source paths or source text.
+    """
+
+    selected = _agents_last_exam_public_selected_task_scan(
+        source_root,
+        selected_task_lists,
+    )
+    blockers: list[str] = []
+    if selected.get("checked") is not True:
+        blockers.append("selected_task_lists_not_checked")
+    task_ids = [
+        task_id
+        for task_id in selected.get("task_ids", [])
+        if isinstance(task_id, str)
+    ]
+    if selected.get("checked") is True and not task_ids:
+        blockers.append("selected_task_lists_empty")
+
+    scan_results = [
+        _agents_last_exam_requires_task_data_line_scan(
+            source_root=source_root,
+            task_id=task_id,
+        )
+        for task_id in task_ids
+    ]
+    checked_results = [item for item in scan_results if item.get("checked") is True]
+    no_data_candidates = [
+        str(item.get("task_id"))
+        for item in checked_results
+        if item.get("requires_task_data") is False and item.get("task_id")
+    ]
+    demo_no_data_candidates = [
+        task_id for task_id in no_data_candidates if task_id.startswith("demo__")
+    ]
+    formal_no_data_candidates = [
+        task_id for task_id in no_data_candidates if not task_id.startswith("demo__")
+    ]
+    eligible_candidates = (
+        no_data_candidates if allow_demo_candidate else formal_no_data_candidates
+    )
+    if task_ids and not no_data_candidates:
+        blockers.append("no_no_task_data_candidate_found")
+    elif task_ids and not eligible_candidates:
+        blockers.append("no_formal_no_task_data_candidate_found")
+    ready = not blockers
+    explicit_false_count = sum(
+        1
+        for item in checked_results
+        if item.get("requires_task_data") is False
+        and item.get("requires_task_data_declared") is True
+    )
+    explicit_true_count = sum(
+        1
+        for item in checked_results
+        if item.get("requires_task_data") is True
+        and item.get("requires_task_data_declared") is True
+    )
+    default_true_count = sum(
+        1
+        for item in checked_results
+        if item.get("requires_task_data") is True
+        and item.get("requires_task_data_declared") is False
+    )
+    missing_config_count = sum(
+        1 for item in scan_results if item.get("checked") is not True
+    )
+    return {
+        "schema_version": AGENTS_LAST_EXAM_CANDIDATE_TASK_DATA_SCAN_SCHEMA_VERSION,
+        "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
+        "ready": ready,
+        "first_blocker": blockers[0]
+        if blockers
+        else "ready_for_local_no_task_data_ale_candidate_gate",
+        "blockers": blockers,
+        "selected_task_lists": {
+            key: value
+            for key, value in selected.items()
+            if key != "task_ids"
+        },
+        "scan_summary": {
+            "selected_task_count": len(task_ids),
+            "task_config_checked_count": len(checked_results),
+            "task_config_missing_or_unreadable_count": missing_config_count,
+            "explicit_requires_task_data_false_count": explicit_false_count,
+            "explicit_requires_task_data_true_count": explicit_true_count,
+            "default_requires_task_data_true_count": default_true_count,
+            "no_task_data_candidate_count": len(no_data_candidates),
+            "formal_no_task_data_candidate_count": len(formal_no_data_candidates),
+            "demo_no_task_data_candidate_count": len(demo_no_data_candidates),
+            "allow_demo_candidate": bool(allow_demo_candidate),
+        },
+        "candidate_tasks": {
+            "eligible_no_task_data_candidates": eligible_candidates[:25],
+            "formal_no_task_data_candidates": formal_no_data_candidates[:25],
+            "demo_no_task_data_candidates": demo_no_data_candidates[:25],
+            "candidate_count_truncated": len(eligible_candidates) > 25,
+            "task_ids_public_only": True,
+        },
+        "boundary": {
+            "local_only": True,
+            "no_upload": True,
+            "submit_eligible": False,
+            "leaderboard_evidence": False,
+            "container_started": False,
+            "model_api_invoked": False,
+            "raw_trajectory_read": False,
+            "screenshot_captured": False,
+            "credential_values_recorded": False,
+            "hidden_references_allowed": False,
+            "production_actions_allowed": False,
+            "local_paths_recorded": False,
+            "selected_task_list_content_recorded": False,
+            "task_config_line_scan": True,
+            "task_config_source_content_recorded": False,
+            "task_card_content_read": False,
+            "script_content_read": False,
+            "task_instruction_file_read": False,
+            "raw_output_recorded": False,
+        },
+        "decision": {
+            "next_allowed_action": "prepare_no_task_data_formal_ale_validation_gate"
+            if ready
+            else "do_not_launch_formal_ale_until_task_data_substrate_is_ready",
+            "minimum_next_evidence": (
+                "A formal local/no-upload ALE candidate should either be listed "
+                "as not requiring task data or carry a separately verified "
+                "task-data source readiness signal before any model task run."
+            ),
+            "must_not_claim": [
+                "ALE task success",
+                "ALE score uplift",
+                "Goal Harness treatment advantage",
+                "leaderboard evidence",
+            ],
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "task_config_line_scan": True,
+            "task_config_source_content_recorded": False,
+            "task_card_content_read": False,
+            "script_content_read": False,
+            "task_instruction_file_read": False,
             "raw_artifacts_read": False,
             "local_paths_recorded": False,
             "container_started": False,
@@ -3272,6 +7250,8 @@ def build_agents_last_exam_local_launch_packet(
     runner_command_label: str | None = "python-m-ale-run",
     operator_authorized: bool = False,
     allow_public_task_material: bool = False,
+    fetch_origin: bool = False,
+    require_upstream_current: bool = False,
     image_metadata: dict[str, Any] | None = None,
     alternate_image_metadata: dict[str, Any] | None = None,
     disk_headroom: dict[str, Any] | None = None,
@@ -3282,6 +7262,8 @@ def build_agents_last_exam_local_launch_packet(
         source_root=source_root,
         expected_repo_url=expected_repo_url,
         runner_python_module=runner_python_module or "ale_run",
+        fetch_origin=fetch_origin,
+        require_upstream_current=require_upstream_current,
     )
     runner_readiness = build_agents_last_exam_local_runner_readiness(
         selected_task_id=selected_task_id,
@@ -3347,6 +7329,15 @@ def build_agents_last_exam_local_launch_packet(
             "remote": source.get("remote"),
             "remote_matches_expected": source.get("remote_matches_expected") is True,
             "head": source.get("head"),
+            "upstream_ref": source.get("upstream_ref"),
+            "upstream_head": source.get("upstream_head"),
+            "upstream_declared": source.get("upstream_declared") is True,
+            "head_matches_upstream": source.get("head_matches_upstream") is True,
+            "upstream_ahead_count": source.get("upstream_ahead_count"),
+            "upstream_behind_count": source.get("upstream_behind_count"),
+            "fetch_origin_attempted": source.get("fetch_origin_attempted") is True,
+            "fetch_origin_ok": source.get("fetch_origin_ok") is True,
+            "require_upstream_current": source.get("require_upstream_current") is True,
             "source_root_path_recorded": False,
         },
         "runner": {

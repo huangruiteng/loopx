@@ -65,7 +65,7 @@ def start_server(repo_root: Path, registry: Path, runtime_root: Path, port: int,
         "--port",
         str(port),
         "--scan-root",
-        str(repo_root),
+        str(registry.parent),
     ]
     if write_enabled:
         command.append("--enable-reward-write-api")

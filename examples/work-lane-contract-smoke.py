@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown
+from goal_harness.status import TODO_TASK_CLASS_ADVANCEMENT, normalize_todo_task_class
 
 
 GOAL_ID = "work-lane-fixture"
@@ -166,6 +167,10 @@ def assert_monitor_only_todo_waits_quietly() -> None:
         goal_id=GOAL_ID,
     )
     lane = guard["work_lane_contract"]
+    assert guard["decision"] == "skip", guard
+    assert guard["should_run"] is False, guard
+    assert guard["normal_delivery_allowed"] is False, guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
     assert lane["schema_version"] == "work_lane_contract_v1", lane
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["monitor_kind"] == "todo_monitor", lane
@@ -174,7 +179,7 @@ def assert_monitor_only_todo_waits_quietly() -> None:
     assert lane["must_attempt_work"] is False, lane
     assert lane["reason_codes"] == ["monitor_todo_only"], lane
     assert guard["heartbeat_recommendation"]["recommended_mode"] == "monitor_quiet_until_material_transition", guard
-    assert guard["execution_obligation"]["kind"] == "work_lane_contract", guard
+    assert guard["execution_obligation"]["kind"] == "monitor_quiet_skip", guard
     assert guard["execution_obligation"]["must_attempt_work"] is False, guard
     first_items = guard["agent_todo_summary"]["first_open_items"]
     assert [item["task_class"] for item in first_items] == ["continuous_monitor", "continuous_monitor"], guard
@@ -183,7 +188,7 @@ def assert_monitor_only_todo_waits_quietly() -> None:
     assert "obligation=quiet_until_material_monitor_transition" in markdown, markdown
 
 
-def assert_monitor_only_with_user_todo_notifies_action() -> None:
+def assert_monitor_only_with_user_todo_surfaces_gate_without_execution() -> None:
     user_todo = (
         "[P1] Decide whether to approve a no-submit Terminal-Bench setup check "
         "or provide public official-runner output."
@@ -220,22 +225,140 @@ def assert_monitor_only_with_user_todo_notifies_action() -> None:
         goal_id=GOAL_ID,
     )
     lane = guard["work_lane_contract"]
+    assert guard["decision"] == "skip", guard
+    assert guard["should_run"] is False, guard
+    assert guard["normal_delivery_allowed"] is False, guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["must_attempt_work"] is False, lane
     recommendation = guard["heartbeat_recommendation"]
-    assert recommendation["recommended_mode"] == "monitor_user_todo_notify", recommendation
-    assert recommendation["notify"] == "NOTIFY", recommendation
-    assert recommendation["repeat_notification_required"] is True, recommendation
+    assert recommendation["recommended_mode"] == "monitor_quiet_until_material_transition", recommendation
+    assert recommendation["notify"] == "DONT_NOTIFY", recommendation
+    assert "repeat_notification_required" not in recommendation, recommendation
     assert guard["notify_user_on_open_todo"] is True, guard
-    assert guard["open_todo_notification_policy"] == "repeat_until_resolved", guard
+    assert guard["open_todo_notify_reason"] == (
+        "open user todo should be surfaced before a monitor-only quiet skip"
+    ), guard
+    assert "open_todo_notification_policy" not in guard, guard
     assert guard["requires_user_action"] is True, guard
     assert guard["execution_obligation"]["must_attempt_work"] is False, guard
+    interaction = guard["interaction_contract"]
+    assert interaction["mode"] == "user_todo_blocker_push", interaction
+    assert interaction["user_channel"]["action_required"] is True, interaction
+    assert interaction["agent_channel"]["must_attempt"] is False, interaction
+    assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
+    packet = guard["protocol_action_packet"]
+    assert "actor=user" in packet["summary"], packet
+    assert "user_action_required=true" in packet["summary"], packet
+    assert "agent_action_required=false" in packet["summary"], packet
+    assert "quiet_noop_allowed=false" in packet["summary"], packet
     markdown = render_quota_should_run_markdown(guard)
-    assert "monitor_user_todo_notify" in markdown, markdown
-    assert "heartbeat_repeat_notification_required: `True`" in markdown, markdown
-    assert "notify_user_on_open_todo: `True`" in markdown, markdown
-    assert "open_todo_notification_policy: repeat_until_resolved" in markdown, markdown
+    assert "monitor_quiet_until_material_transition" in markdown, markdown
+    assert "heartbeat_repeat_notification_required" not in markdown, markdown
+    assert "notify_user_on_open_todo" in markdown, markdown
+    assert "open_todo_notification_policy" not in markdown, markdown
     assert user_todo in markdown, markdown
+
+
+def assert_blocked_agent_todo_with_user_gate_notifies_without_execution() -> None:
+    user_todo = (
+        "[P1] Provide GCP_PROJECT plus GCP_SA_KEY before the formal ALE run."
+    )
+    blocked_agent_todo = (
+        "[P1] Prove ALE task-data substrate readiness before any formal local "
+        "no-upload run. The remaining formal ALE path is official gs://ale-data-public "
+        "staging with credential-file presence only. Do not launch any selected "
+        "formal task until official GCS substrate proof is present."
+    )
+    truncated_blocked_agent_todo = (
+        "[P1] Prove ALE task-data substrate readiness before any formal local "
+        "no-upload run. The baked sandbox input route is absent, and the current "
+        "selected pool has 0 baked-input candidates. The remaining formal ALE path is t..."
+    )
+    guard = build_quota_should_run(
+        status_payload(
+            status="ale_substrate_gates_documented_gcs_gate_needed",
+            next_action=(
+                "Formal ALE remains gated on official gs://ale-data-public substrate proof."
+            ),
+            user_todo_items=[
+                {
+                    "index": 1,
+                    "text": user_todo,
+                    "role": "user",
+                    "status": "open",
+                    "priority": "P1",
+                }
+            ],
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": blocked_agent_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "skip", guard
+    assert guard["should_run"] is False, guard
+    assert guard["normal_delivery_allowed"] is False, guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert lane["lane"] == "continuous_monitor", lane
+    assert lane["next_lane"] == "continuous_monitor", lane
+    assert lane["must_attempt_work"] is False, lane
+    assert lane["reason_codes"] == ["monitor_todo_only"], lane
+    first_items = guard["agent_todo_summary"]["first_open_items"]
+    assert first_items[0]["task_class"] == "continuous_monitor", guard
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == "monitor_quiet_until_material_transition", guard
+    assert guard["execution_obligation"]["must_attempt_work"] is False, guard
+    assert guard["notify_user_on_open_todo"] is True, guard
+    assert guard["requires_user_action"] is True, guard
+    assert guard["interaction_contract"]["mode"] == "user_todo_blocker_push", guard
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is False, guard
+    assert "actor=user" in guard["protocol_action_packet"]["summary"], guard
+    assert "user_action_required=true" in guard["protocol_action_packet"]["summary"], guard
+
+    truncated_guard = build_quota_should_run(
+        status_payload(
+            status="ale_substrate_gates_documented_gcs_gate_needed",
+            next_action="Formal ALE remains gated on official substrate proof.",
+            user_todo_items=[
+                {
+                    "index": 1,
+                    "text": user_todo,
+                    "role": "user",
+                    "status": "open",
+                    "priority": "P1",
+                }
+            ],
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": truncated_blocked_agent_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                    "task_class": "advancement_task",
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    truncated_lane = truncated_guard["work_lane_contract"]
+    assert truncated_lane["lane"] == "continuous_monitor", truncated_lane
+    assert truncated_guard["agent_todo_summary"]["first_open_items"][0]["task_class"] == "continuous_monitor", truncated_guard
+    assert truncated_guard["decision"] == "skip", truncated_guard
+    assert truncated_guard["should_run"] is False, truncated_guard
+    assert truncated_guard["effective_action"] == "monitor_quiet_skip", truncated_guard
+    assert truncated_guard["execution_obligation"]["must_attempt_work"] is False, truncated_guard
+    assert truncated_guard["notify_user_on_open_todo"] is True, truncated_guard
+    assert truncated_guard["requires_user_action"] is True, truncated_guard
+    assert truncated_guard["interaction_contract"]["mode"] == "user_todo_blocker_push", truncated_guard
+    assert "actor=user" in truncated_guard["protocol_action_packet"]["summary"], truncated_guard
 
 
 def assert_monitor_only_with_planning_next_action_materializes_advancement() -> None:
@@ -281,6 +404,44 @@ def assert_monitor_only_with_planning_next_action_materializes_advancement() -> 
     assert "work_lane_reason_codes: monitor_todo_only,next_action_requires_advancement" in markdown, markdown
 
 
+def assert_monitor_only_with_adapter_next_action_materializes_advancement() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            status="ale_host_codex_e2e_validated",
+            next_action=(
+                "Continue after ALE host Codex e2e: package the ignored host-Codex "
+                "adapter contract into a public-safe generic artifact, or select one "
+                "local-material-ready ALE task for a concrete Goal Harness validation hypothesis."
+            ),
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": "[P2] Side-bypass dependency monitor: observe public-safe replay state transitions only.",
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P2",
+                },
+                {
+                    "index": 2,
+                    "text": "[P2] Meta canary/readiness observation lane: keep release readiness observable.",
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P2",
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["obligation"] == "materialize_advancement_todo_or_blocker", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["reason_codes"] == ["monitor_todo_only", "next_action_requires_advancement"], lane
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == "steering_audit_then_one_step", guard
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+    assert guard["execution_obligation"]["contract_obligation"] == lane["obligation"], guard
+
+
 def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -313,13 +474,162 @@ def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
     assert [item["task_class"] for item in first_items] == ["continuous_monitor", "advancement_task"], guard
 
 
+def assert_benchmark_readiness_scan_routes_to_advancement() -> None:
+    readiness_scan_todo = (
+        "[P1] Follow-up benchmark readiness scans while SWE-Marathon is blocked "
+        "on local capacity and if the remote GPU route is blocked: AgentIssue-Bench "
+        "first, then PerfBench, then SWE-Bench Pro public. Optimize for low "
+        "frontier-agent success plus local/Docker reproducibility, objective scoring, "
+        "Codex CLI wrapper feasibility, and compact `benchmark_run_v0` / "
+        "`benchmark_result_v0` evidence. Do not spend a fresh benchmark execution "
+        "quota slot until a setup-readiness scan proves a plausible learning run."
+    )
+    guard = build_quota_should_run(
+        status_payload(
+            status="remote_gpu_route_b_runner_plumbing_ready",
+            next_action=(
+                "Resume benchmark-candidate readiness scanning, starting with "
+                "AgentIssue-Bench unless the owner pivots back to an existing route."
+            ),
+            user_todo_items=[
+                {
+                    "index": 1,
+                    "text": "[P1] Optional local runtime cleanup only if returning to SWE-Marathon.",
+                    "role": "user",
+                    "status": "open",
+                    "priority": "P1",
+                }
+            ],
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": readiness_scan_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "run", guard
+    assert guard["should_run"] is True, guard
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["reason_codes"] == ["open_agent_todo"], lane
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == "steering_audit_then_one_step", guard
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+    first_items = guard["agent_todo_summary"]["first_open_items"]
+    assert first_items[0]["task_class"] == "advancement_task", guard
+
+
+def assert_benchmark_source_preflight_routes_to_advancement() -> None:
+    source_preflight_todo = (
+        "[P2] Run a sparse no-task TheAgentCompany source preflight unless the "
+        "owner first approves a gated route. Exclude `workspaces/tasks`, task "
+        "instructions, evaluators, checkpoints, scenarios, setup-script execution, "
+        "Docker image pulls/runs, credential-bearing LLM config, trajectories, "
+        "screenshots, uploads, leaderboard, submit, hidden refs, and shared-host "
+        "workload inspection. The preflight should answer only whether a "
+        "Codex-compatible runner wrapper can be designed from public harness code "
+        "and docs without consuming task material."
+    )
+    assert normalize_todo_task_class(None, text=source_preflight_todo) == TODO_TASK_CLASS_ADVANCEMENT
+    guard = build_quota_should_run(
+        status_payload(
+            status="theagentcompany_setup_readiness_ready_env_gate",
+            next_action=(
+                "TheAgentCompany is setup-readiness ready but environment and "
+                "credential gated; next bounded step is a sparse no-task source "
+                "preflight unless the owner approves Docker service setup."
+            ),
+            user_todo_items=[
+                {
+                    "index": 1,
+                    "text": "[P1] Approve TheAgentCompany Docker service setup before a real run.",
+                    "role": "user",
+                    "status": "open",
+                    "priority": "P1",
+                }
+            ],
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": source_preflight_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P2",
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "run", guard
+    assert guard["should_run"] is True, guard
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["reason_codes"] == ["open_agent_todo"], lane
+    first_items = guard["agent_todo_summary"]["first_open_items"]
+    assert first_items[0]["task_class"] == "advancement_task", guard
+
+
+def assert_behavior_regression_suite_routes_to_advancement() -> None:
+    regression_todo = (
+        "[P1] Behavior regression suite lane: maintain `regression/` as the "
+        "home for Goal Harness CLI plus real Codex CLI interaction regressions. "
+        "Add focused cases when a control-plane behavior previously failed or "
+        "could strand automation, especially external-evidence waits, "
+        "P0-blocked/P1-P2 fallback, no-progress self-repair, compact blocker "
+        "writeback, and Codex credential boundary expectations on shared or "
+        "remote machines."
+    )
+    assert normalize_todo_task_class(None, text=regression_todo) == TODO_TASK_CLASS_ADVANCEMENT
+    guard = build_quota_should_run(
+        status_payload(
+            status="regression_suite_lane_only",
+            next_action=(
+                "Continue the behavior regression suite lane by adding one focused "
+                "Goal Harness CLI plus Codex CLI interaction regression."
+            ),
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": regression_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "run", guard
+    assert guard["should_run"] is True, guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["reason_codes"] == ["open_agent_todo"], lane
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+    assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, guard
+    first_items = guard["agent_todo_summary"]["first_open_items"]
+    assert first_items[0]["task_class"] == "advancement_task", guard
+
+
 def main() -> int:
     assert_dependency_monitor_requires_advancement()
     assert_primary_status_stays_advancement_lane()
     assert_monitor_only_todo_waits_quietly()
-    assert_monitor_only_with_user_todo_notifies_action()
+    assert_monitor_only_with_user_todo_surfaces_gate_without_execution()
+    assert_blocked_agent_todo_with_user_gate_notifies_without_execution()
     assert_monitor_only_with_planning_next_action_materializes_advancement()
+    assert_monitor_only_with_adapter_next_action_materializes_advancement()
     assert_mixed_monitor_and_advancement_routes_to_advancement()
+    assert_benchmark_readiness_scan_routes_to_advancement()
+    assert_benchmark_source_preflight_routes_to_advancement()
+    assert_behavior_regression_suite_routes_to_advancement()
     print("work-lane-contract-smoke ok")
     return 0
 

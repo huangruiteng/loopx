@@ -43,6 +43,10 @@ should answer:
   changing the scoring protocol?
 - Can a separate assisted-mode study add a bounded operator simulator without
   confusing the result with the official leaderboard protocol?
+- What Codex goal-mode baseline failures are observable before any Goal Harness
+  treatment, and which of those failures are plausibly addressable by
+  control-plane state, todo, checkpoint, replan, validation, writeback, or
+  failure attribution?
 
 Initial paper and benchmark scan:
 
@@ -54,6 +58,48 @@ Initial paper and benchmark scan:
 | RoadmapBench | Long-horizon software evolution across version upgrades; large multi-file change targets. | Codex executor support not yet verified. | Watchlist; high fit if runner and baseline are reproducible. |
 | WildClawBench | Real-world long-horizon tasks in reproducible containers with actual CLI agent harnesses. | Search results indicate Codex / Claude Code / OpenClaw / Hermes style executors. | Promising but new; verify paper, code, and scoring before adoption. |
 | Tau2/Tau3 | User-agent-policy interaction with simulator and tools. | Useful for simulator research, not headline long-horizon evidence. | Secondary simulator research track only. |
+
+### Universal: Baseline Failure-Case Mining
+
+Every benchmark lane must pass the same selection gate before Goal Harness
+treatment runs. The goal is not to spend on benchmarks where the base agent only
+fails because of raw model capability, hidden-test ambiguity, missing domain
+knowledge, flaky infrastructure, or an unobservable evaluator.
+
+For each candidate, first gather public-safe Codex goal-mode baseline failure
+evidence:
+
+- stable task or case handle, redacted when needed;
+- runner/scaffold, dataset revision, repository commit, model, timeout, seed,
+  resource envelope, and allowed tools;
+- terminal phase: setup, task understanding, planning, tool use, environment
+  triage, artifact production, validation, verifier, timeout, or writeback;
+- failure class: stale assumption, lost state, duplicated work, missing
+  validation, premature stop, over-broad edit/action, poor evidence trail,
+  source/coverage drift, skill/tool routing miss, artifact provenance gap,
+  policy/gate miss, failure-attribution gap, or ordinary model miss;
+- control-plane leverage: whether Goal Harness could plausibly change the
+  outcome through state truth, todo continuity, checkpoint/restart, bounded
+  replan, validation discipline, policy/gate handling, public-safe writeback, or
+  compact failure attribution.
+
+Only control-plane-addressable failures advance to paired treatment. The paired
+repeat must preserve the benchmark task, prompt, tests, scorer, image, timeout,
+model, runner source, Codex goal-mode invocation surface, and publication
+boundary. If the goal-mode baseline failure is not control-plane-addressable,
+record it as negative selection evidence and choose a different case rather
+than forcing a treatment run.
+
+This gate applies to all benchmark families:
+
+| Family | Baseline failure to mine first | Goal Harness leverage if present |
+| --- | --- | --- |
+| Terminal / CLI / SWE | Long validation loops, dependency triage, stale state, repeated failed fixes, timeout after drift | checkpoint/replan, validation discipline, compact run ledger, failure attribution |
+| Skill benchmarks | Wrong skill chosen, missing skill provenance, unsafe skill reuse, negative transfer | skill-state review, provenance gates, routed-skill exposure trace |
+| Search / research | Coverage gaps, lost source checklist, weak citation trail, stale source reuse | evidence map, source checklist recovery, citation/writeback discipline |
+| Spreadsheet / data / DS | Lost notebook/file state, unverified transformations, artifact mismatch, weak provenance | artifact registry, validation checklist, restartable data pipeline trace |
+| Simulator / policy tasks | Policy ambiguity, simulator-induced failure, tool-state mismatch | separated agent/simulator attribution, policy gate, assisted-mode boundary |
+| GUI / desktop | Unobservable side effects, flaky UI state, screenshot/action trace gaps | only after trace publicness and side-effect audit are reliable |
 
 ### Primary: Long-Horizon Engineering Leaderboards
 
@@ -166,7 +212,7 @@ There are three result modes:
   recovery without changing task policy. It is also the first test of whether
   Goal Harness helps without any operator simulator: if passive mode cannot
   improve restartability, stale-state avoidance, continuation quality, or
-  failure attribution over bare Codex CLI, the operator-simulator work is not
+  failure attribution over Codex CLI goal mode, the operator-simulator work is not
   yet grounded.
 - **Assisted operator-simulator mode:** add a bounded simulated operator that
   can approve plans, ask for scope clarification, decide whether to continue
@@ -202,15 +248,15 @@ comes from assisted operator-simulator intervention.
 ## Passive Baseline Hypotheses
 
 Before using an operator simulator, Goal Harness should prove or falsify a
-passive-control-plane benefit against bare Codex CLI. The benchmark program
+passive-control-plane benefit against Codex CLI goal mode. The benchmark program
 should track these hypotheses:
 
 - **H1: Restartability.** A killed or timed-out worker can resume from the
-  public run ledger and active state with less duplicated work than bare Codex
-  CLI.
+  public run ledger and active state with less duplicated work than Codex CLI
+  goal mode alone.
 - **H2: Stale-state avoidance.** The worker trusts current authority and
   validation state over stale plans, stale latest-run text, or old todos more
-  often than bare Codex CLI.
+  often than Codex CLI goal mode alone.
 - **H3: Continuation quality.** After a completed slice, the next autonomous
   turn selects a high-value follow-up from durable backlog/state instead of
   waiting for the human to re-prompt the same strategic objective.
@@ -291,13 +337,15 @@ Produce a public-safe benchmark selection dossier that ranks Terminal-Bench,
 SWE-Marathon, HORIZON/METR-style leaderboards, LongCLI-Bench, SWE-EVO,
 RALPHBench, tau3/tau2, WebArena, and OSWorld by fit, setup cost, Codex CLI
 relevance, true horizon length, scoring credibility, leaderboard compliance,
-user-simulator relevance, and publishability.
+user-simulator relevance, baseline failure observability, control-plane
+addressability, and publishability.
 
 The dossier must read the SOTA papers or official benchmark reports first. It
 should not select a benchmark only because it sounds aligned with Goal Harness.
 The first recommendation must explicitly name the expected executor path:
-native Codex CLI, a benchmark-provided Codex adapter, or a small public-safe
-Goal Harness passive wrapper around an official executor.
+Codex CLI goal mode, a benchmark-provided Codex adapter with an equivalent goal
+surface, or a small public-safe Goal Harness passive wrapper around an official
+executor.
 
 ### P1: Official Long-Horizon Engineering Pilot
 
@@ -316,12 +364,16 @@ The pilot is successful when it produces comparable official metrics and a
 restartable Goal Harness event ledger without changing task answers, tests, or
 benchmark policy.
 
+The first pilot must begin with a baseline failure record or a documented
+hard-case prior. Goal Harness treatment is justified only when that baseline
+evidence names a control-plane-addressable failure class.
+
 ### P1: Passive Goal Harness Baseline
 
 Run the same selected engineering slice in at least two autonomous modes:
 
-- bare Codex CLI;
-- Codex CLI with a passive Goal Harness wrapper.
+- Codex CLI goal mode without Goal Harness state;
+- Codex CLI goal mode with a passive Goal Harness wrapper.
 
 No operator-simulator intervention is allowed. Compare task success,
 restartability, stale-state errors, duplicated work after interruption,
@@ -351,10 +403,10 @@ the same or similar long-horizon task slice:
 
 This pilot answers whether Goal Harness can model supervised long-horizon work,
 not whether the base agent is autonomous SOTA. The first deterministic
-active-user assisted pilot is fixture-only and uses a previously failed compact
-Terminal-Bench case to validate intervention budgets, no-oracle audits, and
-score-claim separation before any model-backed simulator or real assisted
-runner path.
+active-user assisted pilot remains a deterministic active-user assisted pilot
+fixture: it uses a previously failed compact Terminal-Bench case to validate
+intervention budgets, no-oracle audits, and score-claim separation before any
+model-backed simulator or real assisted runner path.
 
 ### P2: Tau Simulator Research Pilot
 
@@ -378,9 +430,20 @@ tool-state mismatch, or orchestration overhead.
 
 ### P1: Codex CLI Engineering Baseline
 
-Run the selected engineering pilot with native Codex CLI and a Goal Harness
-wrapped Codex CLI worker. Measure completion, validation, restartability,
+Run the selected engineering pilot with Codex CLI goal mode and a Goal Harness
+wrapped goal-mode Codex worker. Measure completion, validation, restartability,
 stale-state errors, overhead, and evidence quality.
+
+### P1/P2: Cross-Benchmark Failure-Case Gate
+
+For every new benchmark family, run a small baseline failure-mining pass before
+any Goal Harness treatment. The output should be a public-safe failure taxonomy,
+a short list of control-plane-addressable cases, and an explicit negative list
+of cases rejected because their failures are model-only, environment-only,
+oracle/hidden-test ambiguous, or not observable enough. Do not spend treatment
+runs until the baseline evidence explains why state, todo, checkpoint, replan,
+validation discipline, policy gates, writeback, or failure attribution could
+change the result.
 
 ### P2: Reproducible Benchmark Pack
 
@@ -405,62 +468,40 @@ separate from external benchmark execution.
 
 ## Active Agent Todo Seed
 
-- [ ] [P1] Write the benchmark selection dossier with the shortlist, scoring
-  criteria, setup cost, SOTA paper usage, open-source runner status, Codex CLI
-  or Codex-adapter baseline availability, operator-simulator overlay
-  feasibility, and first recommended benchmark.
-- [ ] [P1] Run or dry-run the selected long-horizon engineering benchmark setup
-  first, likely Terminal-Bench / SWE-Marathon / HORIZON style, and identify the
-  smallest official-protocol pilot slice that can compare native agent versus
-  Goal Harness wrapped agent.
-- [ ] [P1] Define and run the passive Goal Harness baseline: bare Codex CLI
-  versus Codex CLI with passive Goal Harness wrapper, with no operator-simulator
-  interventions, measuring restartability, stale-state avoidance, continuation
-  quality, evidence discipline, and overhead.
-- [ ] [P1] Add an autonomous planning-trigger regression: after periodic review,
-  no-progress streak, repeated-action loop, phase transition, backlog mismatch,
-  or evidence contradiction, Goal Harness should re-plan, split/add/retire
-  todos, and emit the next bounded validation command.
-- [x] [P1] Specify the user-simulator ablation matrix and failure taxonomy,
-  including same-model, stronger-simulator, weaker-simulator, deterministic
-  scripted-user settings, visibility limits, and intervention budgets for the
-  Goal Harness operator-simulator overlay. Completed 2026-06-07 via
-  `operator-simulator-overlay-v0.md` and
-  `operator-simulator-overlay-smoke.py`; the remaining work is to run an
-  assisted overlay only after passive baseline evidence or a documented
-  passive-baseline negative result exists.
-- [x] [P1] Add the deterministic active-user assisted pilot shape after a
-  documented compact negative result. Completed 2026-06-10 via
-  `active-user-assisted-pilot-v0.md` and
-  `active-user-assisted-pilot-smoke.py`, using the failed
-  `terminal-bench@2.0/train-fasttext` compact reference without running a
-  model-backed simulator, benchmark runner, private artifact read, or
-  leaderboard path.
-- [ ] [P2] Define `benchmark_run_v0` and Goal Tick writeback fields for public
-  benchmark runs, then connect them to status/history without adding prompt
-  branches.
-- [ ] [P2] Add a low-frequency Codex CLI benchmark lane for Terminal-Bench or a
-  comparable long-horizon SWE benchmark, keeping local smokes deterministic.
-- [ ] [P1/P2] Triage Agents' Last Exam as a follow-on benchmark lane after the
-  first Terminal-Bench paired pilot. Build an ALE adapter dossier from the
-  official arXiv/repo surfaces before any cloud sandbox, GUI, model API, paid
-  compute, or leaderboard path.
-- [ ] [P2] Run or dry-run tau2/tau3 only as a simulator research pilot, not as
-  the headline long-horizon leaderboard target.
-- [x] [P2] Maintain a paper-ready experiment report template that separates
-  official leaderboard score, passive control-plane metrics,
-  operator-simulator ablation, cost/latency overhead, failure taxonomy, and
-  reproducibility artifacts. Completed 2026-06-07 via
-  `benchmark-experiment-report-template-v0.md` and
-  `benchmark-experiment-report-template-smoke.py`.
-- [x] [P2] Add the public benchmark report chain map that consolidates
-  `benchmark_run_v0`, `benchmark_result_v0`, `benchmark_comparison_v0`,
-  `benchmark_comparison_decision_note_v0`,
-  `benchmark_experiment_report_v0`,
-  `benchmark_experiment_report_readiness_note_v0`, and
-  `benchmark_experiment_report_replay_decision_v0` into one reviewer-facing
-  handoff. Completed 2026-06-08 via `benchmark-report-chain-map-v0.md` and
-  `benchmark-report-chain-map-smoke.py`.
+- [ ] [P0] Run the Terminal-Bench 2.0 private/no-upload baseline failure gate
+  with Codex CLI goal mode for the selected first case
+  (`fix-code-vulnerability` unless the runner blocker forces a backup). Record
+  a compact baseline event with goal-mode invocation surface, official outcome,
+  terminal phase, failure class, trace boundary, and Goal Harness leverage
+  decision.
+- [ ] [P0] If the Terminal-Bench goal-mode baseline failure is
+  control-plane-addressable, run the matched `codex-goal-harness` treatment on
+  the same case with task, prompt, tests, scorer, image, timeout, model, runner
+  source, and publication boundary unchanged. If it is not addressable, record
+  the negative selection and move to the next selected case.
+- [ ] [P0] Promote the baseline-failure gate into the benchmark event/report
+  contract: every future benchmark run should expose baseline failure class,
+  control-plane addressability, treatment eligibility, and negative-selection
+  reason without adding benchmark-specific prompt branches.
+- [ ] [P1] Build the WildClawBench adapter dossier under the same failure-first
+  gate: identify runner entry, task schema, scoring, baseline failure signals,
+  side-effect audit shape, trace publicness, and one possible canary only if the
+  failure is control-plane-addressable.
+- [ ] [P1] Keep SkillsBench on the AgentLoop / skill-runtime lane. Mine only
+  skill-routing, skill-provenance, unsafe-reuse, or negative-transfer failures;
+  do not spend Goal Harness long-horizon treatment unless the failure requires
+  skill-state review, provenance gates, or exposure/writeback tracing.
+- [ ] [P1/P2] Put WideSearch / DeepWideSearch, SpreadsheetBench, DSBench, and
+  tau-style simulator tasks behind the same baseline-failure gate. For each,
+  define the family-specific failure classes before any paired Goal Harness
+  treatment.
+- [ ] [P1] Keep the autonomous planning-trigger regression in the product track:
+  after repeated no-progress, phase transition, backlog mismatch, or evidence
+  contradiction, Goal Harness should split/add/retire todos and emit the next
+  bounded validation command.
+- [ ] [P2] Triage Agents' Last Exam only after the first Terminal-Bench paired
+  pilot or a documented Terminal-Bench blocker. Build an adapter dossier before
+  any cloud sandbox, GUI, model API, paid compute, or leaderboard path.
 
 ## Non-Goals
 

@@ -97,11 +97,27 @@ the notification even when there are no newly discovered user actions; do not
 summarize the turn as "no new user action". Do not run `agent_command`,
 adapter work, write-control, production actions, or the gated path while asking.
 
+Prefer the guard's `interaction_contract` when present. It is the current
+machine-readable protocol for the user / agent / Goal Harness CLI split:
+`interaction_contract.user_channel` says whether to ask the user,
+`agent_channel` says whether Codex must attempt work or may quiet no-op, and
+`cli_channel` says which CLI transition and spend policy apply. Treat older
+fields such as `execution_obligation`, `heartbeat_recommendation`,
+`work_lane_contract`, and `goal_boundary` as compatibility/drill-down fields
+under that contract, not as competing sources of truth.
+
 If the response has `should_run=false` and not `safe_bypass_allowed=true`, do
-not run implementation or adapter work for that goal in this turn. Quietly
-report or record the public-safe `reason` only when there is no operator gate to
-ask. If the command exits non-zero, fail closed: run `goal-harness doctor` /
-`goal-harness status` and fix status collection before spending compute.
+not run implementation or adapter work for that goal in this turn. When
+`effective_action=monitor_quiet_skip`, append at most one no-spend
+`quota monitor-poll --goal-id <STABLE_GOAL_ID> --source heartbeat --execute`
+event, rerun `quota should-run`, and follow
+`autonomous_replan_required` / `execution_obligation.must_attempt_work=true` if
+the next guard exposes it; otherwise quietly report or record the public-safe
+`reason` only when there is no operator gate to ask. Keep the heartbeat
+automation active: unchanged monitor-only polls are liveness-preserving no-ops,
+not self-stop signals. If the command exits non-zero, fail closed: run
+`goal-harness doctor` / `goal-harness status` and fix status collection before
+spending compute.
 
 If the response has `state=operator_gate` and `safe_bypass_allowed=true`, the
 gate blocks only the gated delivery path. After the gate has already been
@@ -244,8 +260,8 @@ The quota guard returns `execution_obligation` and
 `heartbeat_recommendation`. Read `execution_obligation` before deciding on a
 quiet no-op: `heartbeat_recommendation.notify` is only the user-notification
 policy, not an execution gate. If
-`execution_obligation.must_attempt_work=true`, attempt one bounded segment even
-when `notify=DONT_NOTIFY`; a quiet no-op requires
+`execution_obligation.must_attempt_work=true`, attempt one bounded progress
+batch or segment even when `notify=DONT_NOTIFY`; a quiet no-op requires
 `execution_obligation.must_attempt_work=false` and no
 `notify_user_on_open_todo=true` blocker-push notification. New connected read-only goals
 should follow `recommended_mode=run_first_read_only_map`: run one real
@@ -256,24 +272,31 @@ refresh state if needed. Already mapped goals should follow
 owner evidence, agent todo, stale source, or safe handoff, return a quiet no-op
 without another dry-run, file edit, or quota spend.
 
-The generated task body also carries a no-progress self-stop guard: if 5
-consecutive eligible heartbeat turns only repeat status checks without a
-substantive artifact, adapter or implementation progress, new gate/user
-decision, or new validation signal, the agent should cancel or pause the
-heartbeat automation, explain the no-progress loop with `NOTIFY`, and skip
-quota spend for that self-cancel turn.
+The generated task body also carries a no-progress self-repair guard. More
+importantly, `quota should-run` may expose a hard
+`autonomous_replan_obligation` / `execution_obligation.must_attempt_work=true`
+contract when active state or public run history shows 2 consecutive stalled
+turns. `quota_monitor_poll` events are no-spend stall evidence for this
+detector. Obey that machine contract before another quiet no-op: run one
+bounded self-repair/replan batch through implementation, validation, and
+writeback when that boundary is clear, then spend once. Do not stop at the first
+tiny substep when the repair has an obvious validation boundary. Cancel or
+pause the heartbeat automation only when that repair path is itself stuck for 2
+more eligible turns, explain the no-progress loop with `NOTIFY`, and skip quota
+spend for that self-cancel turn.
 The same generated task body also makes routine public commit, push, and PR
 creation autonomous after validation plus a clean public/private boundary scan.
 Do not reintroduce a user gate for public-safe publication itself.
 It also respects `notify_user_on_open_todo=true`: open user todos in
-focus-wait, waiting, external-evidence, or monitor-only no-transition lanes
-should become a compact
+focus-wait, waiting, or external-evidence lanes should become a compact
 blocker-push `NOTIFY` with at most three items, while skipping delivery work
 and quota spend for that blocker-push turn. If the payload includes
 `open_todo_notification_policy=repeat_until_resolved`, repeat
 that `NOTIFY` on every such poll until the todo is done, deferred, or replaced;
 do not suppress it as a recently surfaced blocker. Other blocker-push cases may
 still be de-duplicated when the same blocker was already surfaced recently.
+Eligible monitor-only no-transition polls keep user todos visible in the
+payload but should stay quiet unless a material transition appears.
 
 Keep the Codex App visible goal text short, for example
 `按 ACTIVE_GOAL_STATE.md，基于 Goal Harness 体系，推进项目`. Do not use that short
