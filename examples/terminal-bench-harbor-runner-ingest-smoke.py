@@ -16,6 +16,7 @@ import sys
 sys.path.insert(0, str(REPO_ROOT))
 
 from goal_harness.benchmark import (  # noqa: E402
+    TERMINAL_BENCH_CODEX_GOAL_MODE_BASELINE_SURFACE,
     _iso_duration_seconds,
     build_terminal_bench_harbor_result_benchmark_run,
 )
@@ -693,6 +694,40 @@ def write_no_packet_runtime_goal_fixture(root: Path) -> Path:
     return job_dir
 
 
+def write_codex_goal_mode_baseline_fixture(root: Path) -> Path:
+    source_dir = write_no_packet_runtime_goal_fixture(root)
+    job_dir = root / "terminal_bench_sample_codex_goal_mode_baseline"
+    source_dir.rename(job_dir)
+
+    def read_json(path: Path) -> dict:
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def rewrite_agent(agent: dict) -> dict:
+        updated = dict(agent)
+        kwargs = dict(updated.get("kwargs") or {})
+        kwargs["goal_harness_mode"] = "codex_goal_mode_baseline"
+        kwargs["goal_harness_ablation_mode"] = "codex_goal_mode_baseline"
+        kwargs["goal_harness_access_packet_mode"] = "none"
+        updated["kwargs"] = kwargs
+        return updated
+
+    lock_path = job_dir / "lock.json"
+    lock = read_json(lock_path)
+    lock["trials"][0]["agent"] = rewrite_agent(lock["trials"][0]["agent"])
+    write_json(lock_path, lock)
+
+    config_path = job_dir / "config.json"
+    config = read_json(config_path)
+    config["job_name"] = job_dir.name
+    write_json(config_path, config)
+
+    trial_path = job_dir / "build-cython-ext__nopacket" / "result.json"
+    trial = read_json(trial_path)
+    trial["config"]["agent"] = rewrite_agent(trial["config"]["agent"])
+    write_json(trial_path, trial)
+    return job_dir
+
+
 def write_partial_harbor_stats_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_partial_harbor_stats"
     agent = {
@@ -1021,6 +1056,52 @@ def main() -> None:
     ), bare_compact
     assert_public_safe(bare_payload)
     assert_public_safe(bare_compact)
+    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-goal-mode-baseline-") as tmp:
+        goal_mode_payload = build_terminal_bench_harbor_result_benchmark_run(
+            write_codex_goal_mode_baseline_fixture(Path(tmp))
+        )
+    assert goal_mode_payload["mode"] == "codex_goal_mode_baseline", goal_mode_payload
+    assert goal_mode_payload["worker_mode"] == "codex_goal_mode_baseline", goal_mode_payload
+    assert goal_mode_payload["codex_goal_mode_baseline"] is True, goal_mode_payload
+    assert goal_mode_payload["goal_harness_inside_case"] is False, goal_mode_payload
+    assert goal_mode_payload["case_semantics_changed_by_harness"] is False, goal_mode_payload
+    assert goal_mode_payload["model_plus_harness_pair"] is False, goal_mode_payload
+    assert goal_mode_payload["control_plane_score_applicable"] is False, goal_mode_payload
+    assert (
+        goal_mode_payload["official_score_comparable_to_goal_harness_treatment"]
+        is True
+    ), goal_mode_payload
+    assert (
+        goal_mode_payload["interaction_counters"]["prompt_policy_injected"] is False
+    ), goal_mode_payload
+    assert (
+        goal_mode_payload["interaction_counters"]["harness_skill_or_packet_injected"]
+        is False
+    ), goal_mode_payload
+    assert (
+        goal_mode_payload["interaction_counters"]["codex_runtime_goal_tool_calls"]["total"]
+        == 2
+    ), goal_mode_payload
+    assert (
+        goal_mode_payload["worker_bridge_outcome"]["bridge_surface"]
+        == TERMINAL_BENCH_CODEX_GOAL_MODE_BASELINE_SURFACE
+    ), goal_mode_payload
+    goal_mode_compact = compact_benchmark_run(goal_mode_payload)
+    assert goal_mode_compact["mode"] == "codex_goal_mode_baseline", goal_mode_compact
+    assert goal_mode_compact["worker_mode"] == "codex_goal_mode_baseline", goal_mode_compact
+    assert goal_mode_compact["goal_harness_inside_case"] is False, goal_mode_compact
+    assert (
+        goal_mode_compact["case_semantics_changed_by_harness"] is False
+    ), goal_mode_compact
+    assert (
+        goal_mode_compact["interaction_counters"]["prompt_policy_injected"] is False
+    ), goal_mode_compact
+    assert (
+        goal_mode_compact["worker_bridge_outcome"]["bridge_surface"]
+        == TERMINAL_BENCH_CODEX_GOAL_MODE_BASELINE_SURFACE
+    ), goal_mode_compact
+    assert_public_safe(goal_mode_payload)
+    assert_public_safe(goal_mode_compact)
     with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-no-packet-runtime-") as tmp:
         no_packet_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_no_packet_runtime_goal_fixture(Path(tmp))

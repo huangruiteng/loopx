@@ -11060,6 +11060,14 @@ def build_terminal_bench_harbor_result_benchmark_run(
         and goal_harness_access_packet_mode
         == TERMINAL_BENCH_GOAL_HARNESS_ACCESS_PACKET_MODE_NONE
     )
+    codex_goal_mode_baseline = (
+        goal_harness_mode == TERMINAL_BENCH_CODEX_GOAL_MODE_BASELINE_MODE
+        and goal_harness_access_packet_mode
+        == TERMINAL_BENCH_GOAL_HARNESS_ACCESS_PACKET_MODE_NONE
+    )
+    baseline_without_goal_harness = (
+        hardened_codex_baseline or codex_goal_mode_baseline or not bool(goal_harness_mode)
+    )
     worker_bridge_required = bool(
         agent_kwargs.get("goal_harness_cli_bridge_enabled") and access_packet_enabled
     )
@@ -11076,6 +11084,8 @@ def build_terminal_bench_harbor_result_benchmark_run(
         event_mode = "codex_goal_harness_no_packet"
     if hardened_codex_baseline:
         event_mode = TERMINAL_BENCH_HARDENED_CODEX_BASELINE_MODE
+    elif codex_goal_mode_baseline:
+        event_mode = TERMINAL_BENCH_CODEX_GOAL_MODE_BASELINE_MODE
     timeout_sources = [config, first_lock_trial]
     required_worker_cli_call_min = (
         TERMINAL_BENCH_GOAL_HARNESS_CLI_BRIDGE_REQUIRED_CALL_MINIMUM
@@ -11190,9 +11200,9 @@ def build_terminal_bench_harbor_result_benchmark_run(
 
     interaction_counters = _counter_trace_interaction_counters(
         trace_rows,
-        prompt_policy_injected=bool(agent_kwargs) and not hardened_codex_baseline,
+        prompt_policy_injected=not baseline_without_goal_harness,
         harness_skill_or_packet_injected=bool(
-            not hardened_codex_baseline
+            not baseline_without_goal_harness
             and (
                 agent_kwargs.get("goal_harness_cli_bridge_enabled")
                 or agent_kwargs.get("goal_harness_mode")
@@ -11342,6 +11352,8 @@ def build_terminal_bench_harbor_result_benchmark_run(
         "mode": event_mode,
         "worker_mode": TERMINAL_BENCH_HARDENED_CODEX_BASELINE_MODE
         if hardened_codex_baseline
+        else TERMINAL_BENCH_CODEX_GOAL_MODE_BASELINE_MODE
+        if codex_goal_mode_baseline
         else "goal_harness_managed_codex"
         if agent_config.get("import_path") == TERMINAL_BENCH_MANAGED_AGENT_IMPORT_PATH
         else agent_config.get("name")
@@ -11349,18 +11361,17 @@ def build_terminal_bench_harbor_result_benchmark_run(
         "trace_publicness": trace_publicness,
         "real_run": True,
         "submit_eligible": False,
-        "case_semantics_changed_by_harness": bool(goal_harness_mode)
-        and not hardened_codex_baseline,
-        "goal_harness_inside_case": bool(goal_harness_mode)
-        and not hardened_codex_baseline,
+        "case_semantics_changed_by_harness": not baseline_without_goal_harness,
+        "goal_harness_inside_case": not baseline_without_goal_harness,
         "official_score_comparable_to_native_codex": (
             not bool(goal_harness_mode) and not hardened_codex_baseline
         ),
-        "official_score_comparable_to_goal_harness_treatment": hardened_codex_baseline,
-        "model_plus_harness_pair": bool(goal_harness_mode)
-        and not hardened_codex_baseline,
-        "control_plane_score_applicable": bool(goal_harness_mode)
-        and not hardened_codex_baseline,
+        "official_score_comparable_to_goal_harness_treatment": (
+            hardened_codex_baseline or codex_goal_mode_baseline
+        ),
+        "model_plus_harness_pair": not baseline_without_goal_harness,
+        "control_plane_score_applicable": not baseline_without_goal_harness,
+        "codex_goal_mode_baseline": codex_goal_mode_baseline,
         "startup_surface_calibration": False,
         "hardened_install_surface": hardened_codex_baseline,
         "hardened_install_baseline": hardened_codex_baseline,
@@ -11419,6 +11430,8 @@ def build_terminal_bench_harbor_result_benchmark_run(
                 if worker_bridge_required
                 else TERMINAL_BENCH_HARDENED_CODEX_BASELINE_SURFACE
                 if hardened_codex_baseline
+                else TERMINAL_BENCH_CODEX_GOAL_MODE_BASELINE_SURFACE
+                if codex_goal_mode_baseline
                 else "runner_only_no_worker_bridge"
                 if goal_harness_mode == "codex_goal_harness"
                 else "not_applicable_native_codex_baseline"
