@@ -182,6 +182,25 @@ def benchmark_comparison_event() -> dict[str, Any]:
         "with_goal_harness_extra_writebacks": 3,
         "with_goal_harness_extra_spends": 3,
         "failure_attribution_labels": ["verifier_platform_probe_failure"],
+        "baseline_failure_gate": {
+            "schema_version": "benchmark_baseline_failure_gate_v0",
+            "baseline_mode": "codex_cli_goal_mode",
+            "baseline_scenario_id": "without_goal_harness",
+            "baseline_terminal_state": "failed",
+            "baseline_failed": True,
+            "failure_phase": "validation",
+            "failure_class": "verifier_platform_probe_failure",
+            "failure_attribution_labels": ["verifier_platform_probe_failure"],
+            "control_plane_addressable": True,
+            "treatment_eligible": True,
+            "same_task_semantics": True,
+            "same_runner_protocol": True,
+            "trace_publicness_verified": True,
+            "baseline_attempt_count": 1,
+            "minimum_next_evidence": "run the Goal Harness treatment arm on the same public task",
+            "evidence_refs": ["benchmark_result_v0:without_goal_harness"],
+            "raw_log_path": "/" + "tmp/private/raw.log",
+        },
         "claim_boundary": {
             "leaderboard_claim_allowed": False,
             "official_score_uplift_claim_allowed": False,
@@ -465,6 +484,24 @@ def main() -> None:
         assert comparison_summary["cost_delta_usd"] == 0.274, comparison_summary
         assert comparison_summary["both_success"] is True, comparison_summary
         assert comparison_summary["failure_attribution_labels"] == ["verifier_platform_probe_failure"], comparison_summary
+        assert comparison_summary["baseline_failure_gate"] == {
+            "schema_version": "benchmark_baseline_failure_gate_v0",
+            "baseline_mode": "codex_cli_goal_mode",
+            "baseline_scenario_id": "without_goal_harness",
+            "baseline_terminal_state": "failed",
+            "failure_phase": "validation",
+            "failure_class": "verifier_platform_probe_failure",
+            "minimum_next_evidence": "run the Goal Harness treatment arm on the same public task",
+            "baseline_failed": True,
+            "control_plane_addressable": True,
+            "treatment_eligible": True,
+            "same_task_semantics": True,
+            "same_runner_protocol": True,
+            "trace_publicness_verified": True,
+            "baseline_attempt_count": 1,
+            "failure_attribution_labels": ["verifier_platform_probe_failure"],
+            "evidence_refs": ["benchmark_result_v0:without_goal_harness"],
+        }, comparison_summary
         assert comparison_summary["claim_boundary"] == {
             "leaderboard_claim_allowed": False,
             "official_score_uplift_claim_allowed": False,
@@ -486,6 +523,15 @@ def main() -> None:
         assert decision_note["official_task_score_delta"] == 0.0, decision_note
         assert decision_note["control_plane_score_delta"] == 0.143, decision_note
         assert decision_note["failure_attribution_labels"] == ["verifier_platform_probe_failure"], decision_note
+        assert decision_note["baseline_failure_gate"] == {
+            "schema_version": "benchmark_baseline_failure_gate_v0",
+            "baseline_mode": "codex_cli_goal_mode",
+            "failure_phase": "validation",
+            "failure_class": "verifier_platform_probe_failure",
+            "baseline_failed": True,
+            "control_plane_addressable": True,
+            "treatment_eligible": True,
+        }, decision_note
         assert decision_note["validation_enhancement_point"] is True, decision_note
         assert decision_note["score_uplift"] is False, decision_note
         assert "control-plane delta improved while official score delta stayed zero" in decision_note["may_claim"], decision_note
@@ -525,6 +571,70 @@ def main() -> None:
         assert failure_note["score_uplift"] is False, failure_note
         assert "official score uplift" in failure_note["must_not_claim"], failure_note
         assert_no_private_surface(failure_note)
+
+        gate_only_comparison = compact_benchmark_comparison(
+            {
+                "schema_version": "benchmark_comparison_v0",
+                "task_id": "terminal-bench-goal-mode-failure",
+                "comparison_id": "terminal_bench_goal_mode_failure_gate",
+                "benchmark_id": "terminal-bench@2.0",
+                "baseline_scenario_id": "codex_goal_mode",
+                "treatment_scenario_id": "codex_goal_harness",
+                "baseline_failure_gate": {
+                    "baseline_mode": "codex_cli_goal_mode",
+                    "baseline_scenario_id": "codex_goal_mode",
+                    "baseline_terminal_state": "failed",
+                    "baseline_failed": True,
+                    "failure_phase": "writeback",
+                    "failure_class": "worker_trace_without_benchmark_run_writeback",
+                    "failure_attribution_labels": ["worker_trace_without_benchmark_run_writeback"],
+                    "control_plane_addressable": True,
+                    "treatment_eligible": True,
+                    "minimum_next_evidence": "run same-task Goal Harness treatment with compact writeback required",
+                },
+            }
+        )
+        gate_only_note = benchmark_comparison_decision_note(gate_only_comparison)
+        assert gate_only_note["evidence_layer"] == "baseline_failure_gate", gate_only_note
+        assert gate_only_note["decision"] == "continue", gate_only_note
+        assert gate_only_note["minimum_next_evidence"] == (
+            "run same-task Goal Harness treatment with compact writeback required"
+        ), gate_only_note
+        assert "baseline failure is control-plane-addressable and treatment-eligible" in gate_only_note["may_claim"], gate_only_note
+        assert "treatment uplift before paired treatment evidence exists" in gate_only_note["must_not_claim"], gate_only_note
+        assert gate_only_note["baseline_failure_gate"]["control_plane_addressable"] is True, gate_only_note
+        assert gate_only_note["baseline_failure_gate"]["treatment_eligible"] is True, gate_only_note
+        assert_no_private_surface(gate_only_note)
+
+        negative_gate_comparison = compact_benchmark_comparison(
+            {
+                "schema_version": "benchmark_comparison_v0",
+                "task_id": "terminal-bench-non-addressable-failure",
+                "comparison_id": "terminal_bench_negative_gate",
+                "benchmark_id": "terminal-bench@2.0",
+                "baseline_failure_gate": {
+                    "baseline_mode": "codex_cli_goal_mode",
+                    "baseline_terminal_state": "failed",
+                    "baseline_failed": True,
+                    "failure_phase": "task_semantics",
+                    "failure_class": "domain_solution_missing",
+                    "control_plane_addressable": False,
+                    "treatment_eligible": False,
+                    "negative_selection_reason": "baseline failure is not addressable by control-plane changes",
+                    "raw_trace": "/" + "Users/private/session.jsonl",
+                },
+            }
+        )
+        negative_gate_note = benchmark_comparison_decision_note(negative_gate_comparison)
+        assert negative_gate_note["evidence_layer"] == "baseline_failure_gate_negative_selection", negative_gate_note
+        assert negative_gate_note["decision"] == "defer", negative_gate_note
+        assert negative_gate_note["minimum_next_evidence"] == (
+            "baseline failure is not addressable by control-plane changes"
+        ), negative_gate_note
+        assert negative_gate_note["baseline_failure_gate"]["control_plane_addressable"] is False, negative_gate_note
+        assert negative_gate_note["baseline_failure_gate"]["treatment_eligible"] is False, negative_gate_note
+        assert "treatment execution on non-addressable or unverified baseline failures" in negative_gate_note["must_not_claim"], negative_gate_note
+        assert_no_private_surface(negative_gate_note)
 
         index_records = [
             json.loads(line)

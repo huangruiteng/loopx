@@ -49,6 +49,7 @@ The reconstructed public-safe handoff should preserve:
 | `control_plane_score.kind` | The compact control-plane score schema. |
 | `control_plane_score.delta` | The compact control-plane delta, if available. |
 | `claim_boundary.must_not_claim` | Claims blocked by the evidence layer. |
+| `baseline_failure_gate` | Baseline treatment eligibility and control-plane-addressable failure attribution, when present. |
 | `readiness` | Report readiness such as `negative_or_control_plane_only`. |
 | `authorization` | Next-run authorization such as `fixture_only`. |
 | `replay_decision` | Replay action such as `continue_fixture_replay`. |
@@ -66,6 +67,8 @@ The fixture fails if:
 - a stale row wins over a newer row for the same schema;
 - official score and control-plane score are merged into one undifferentiated
   result;
+- a baseline-failure gate is present but treatment eligibility or negative
+  selection reason is lost;
 - readiness, authorization, replay decision, next-run mode, claim boundary, or
   stop condition is lost;
 - private traces, raw logs, local artifact paths, credentials, chat history,

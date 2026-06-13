@@ -26,6 +26,10 @@ evidence, and leaderboard eligibility in separate sections.
 Readiness-only and failure-analysis decision notes may feed `negative_results`
 and `next_decision`, but they must not be promoted into official benchmark
 scores, simulator evidence, or leaderboard claims.
+Baseline-failure gate decision notes may feed treatment selection only when the
+gate says the failed baseline is control-plane-addressable and
+treatment-eligible. Negative gate decisions should be reported as useful
+screening evidence, not as benchmark progress.
 
 ## Required Sections
 
@@ -43,6 +47,22 @@ Every report should include these sections in this order:
 | `claim_boundary` | What may be claimed, what must not be claimed, and which evidence layer supports each claim. |
 | `negative_results` | Failures, null results, overhead regressions, and why they matter. |
 | `next_decision` | Continue, repeat, broaden, defer, or stop, plus the minimum next evidence. |
+
+## Treatment Selection Gate
+
+The baseline for Goal Harness benchmark comparisons is Codex CLI goal mode, not
+an unstructured bare prompt. Before spending a treatment run, the report chain
+should contain a compact `benchmark_baseline_failure_gate_v0` projection inside
+`benchmark_comparison_v0` / `benchmark_comparison_decision_note_v0`.
+
+The gate must distinguish:
+
+- baseline failed and the failure is control-plane-addressable, so treatment may
+  run on the same task and runner protocol;
+- baseline failed but is not control-plane-addressable, so the case is a
+  negative selection result;
+- baseline evidence is missing or not public-safe, so no treatment claim or
+  official-score claim is allowed.
 
 ## Claim Boundary
 

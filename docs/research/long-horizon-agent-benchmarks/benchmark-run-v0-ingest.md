@@ -97,6 +97,33 @@ Without `--execute`, the command is a dry-run preview. The command compacts the
 input before writing so status and review-packet surfaces receive a
 public-safe summary rather than raw runner logs or host paths.
 
+## Baseline-Failure Gate
+
+Treatment runs should be selected from an explicit compact baseline-failure
+gate, not from benchmark-specific prompt wording or regexes. A baseline runner
+or supervising agent may attach a public-safe `baseline_failure_gate` object to
+a `benchmark_comparison_v0` row before any Goal Harness treatment attempt:
+
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | `benchmark_baseline_failure_gate_v0`. |
+| `baseline_mode` | The baseline surface, for example `codex_cli_goal_mode`. |
+| `baseline_scenario_id` | Public scenario id for the failed baseline arm. |
+| `baseline_terminal_state` | Compact terminal state such as `failed` or `blocked`. |
+| `baseline_failed` | Whether the baseline actually failed or blocked. |
+| `failure_phase` / `failure_class` | Public-safe failure attribution. |
+| `control_plane_addressable` | Whether the failure plausibly concerns coordination, writeback, restartability, stale state, boundary, evidence, or similar control-plane behavior. |
+| `treatment_eligible` | Whether a Goal Harness treatment run is allowed for this baseline failure. |
+| `minimum_next_evidence` | The next public-safe evidence required before broader claims. |
+| `negative_selection_reason` | Required when the candidate is not treatment-eligible. |
+
+When a comparison row has no paired-result deltas yet, the compact
+`benchmark_comparison_decision_note_v0` uses this gate to route either to a
+treatment attempt (`baseline_failure_gate`) or to negative selection
+(`baseline_failure_gate_negative_selection`). Once paired result deltas exist,
+the gate remains claim-boundary evidence and does not override the result
+interpretation.
+
 ## Stop Conditions
 
 Stop before:

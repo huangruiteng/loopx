@@ -98,6 +98,7 @@ BENCHMARK_RUN_SCHEMA_VERSION = "benchmark_run_v0"
 BENCHMARK_RESULT_SCHEMA_VERSION = "benchmark_result_v0"
 BENCHMARK_COMPARISON_SCHEMA_VERSION = "benchmark_comparison_v0"
 BENCHMARK_COMPARISON_DECISION_SCHEMA_VERSION = "benchmark_comparison_decision_note_v0"
+BENCHMARK_BASELINE_FAILURE_GATE_SCHEMA_VERSION = "benchmark_baseline_failure_gate_v0"
 BENCHMARK_LEARNING_LEDGER_SCHEMA_VERSION = "benchmark_learning_ledger_v0"
 WORKER_BRIDGE_INGEST_HEALTH_SCHEMA_VERSION = "worker_bridge_ingest_health_note_v0"
 BENCHMARK_EXPERIMENT_REPORT_SCHEMA_VERSION = "benchmark_experiment_report_v0"
@@ -1660,6 +1661,49 @@ def _compact_comparison_delta(value: Any) -> int | float | str | None:
     return public_safe_compact_text(value, limit=120)
 
 
+def _compact_benchmark_baseline_failure_gate(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {
+        "schema_version": BENCHMARK_BASELINE_FAILURE_GATE_SCHEMA_VERSION,
+    }
+    for field in (
+        "baseline_mode",
+        "baseline_scenario_id",
+        "baseline_terminal_state",
+        "failure_phase",
+        "failure_class",
+        "negative_selection_reason",
+        "minimum_next_evidence",
+        "next_action",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=180)
+        if text:
+            compact[field] = text
+    for field in (
+        "baseline_failed",
+        "control_plane_addressable",
+        "treatment_eligible",
+        "same_task_semantics",
+        "same_runner_protocol",
+        "trace_publicness_verified",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in ("baseline_attempt_count",):
+        count = value.get(field)
+        if isinstance(count, int) and not isinstance(count, bool):
+            compact[field] = count
+    for field in ("failure_attribution_labels", "evidence_refs"):
+        values = public_safe_compact_list(value.get(field), limit=MAX_BENCHMARK_RUN_LIST_ITEMS)
+        if values:
+            compact[field] = values
+    if set(compact.keys()) == {"schema_version"}:
+        return {}
+    return compact
+
+
 def compact_benchmark_comparison(run: dict[str, Any]) -> dict[str, Any] | None:
     source = _benchmark_comparison_source(run)
     if not source:
@@ -1718,6 +1762,10 @@ def compact_benchmark_comparison(run: dict[str, Any]) -> dict[str, Any] | None:
                 compact_claim_boundary[field] = claim_boundary[field]
         if compact_claim_boundary:
             compact["claim_boundary"] = compact_claim_boundary
+
+    baseline_gate = _compact_benchmark_baseline_failure_gate(source.get("baseline_failure_gate"))
+    if baseline_gate:
+        compact["baseline_failure_gate"] = baseline_gate
 
     decision = source.get("decision")
     if isinstance(decision, dict):
@@ -1897,6 +1945,26 @@ def benchmark_comparison_decision_note(comparison: dict[str, Any] | None) -> dic
         comparison.get("failure_attribution_labels"),
         limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
     )
+    baseline_gate = (
+        comparison.get("baseline_failure_gate")
+        if isinstance(comparison.get("baseline_failure_gate"), dict)
+        else {}
+    )
+    baseline_failed = (
+        baseline_gate.get("baseline_failed")
+        if isinstance(baseline_gate.get("baseline_failed"), bool)
+        else None
+    )
+    control_plane_addressable = (
+        baseline_gate.get("control_plane_addressable")
+        if isinstance(baseline_gate.get("control_plane_addressable"), bool)
+        else None
+    )
+    treatment_eligible = (
+        baseline_gate.get("treatment_eligible")
+        if isinstance(baseline_gate.get("treatment_eligible"), bool)
+        else None
+    )
 
     evidence_layer = "comparison_summary"
     decision = "repeat"
@@ -1910,6 +1978,25 @@ def benchmark_comparison_decision_note(comparison: dict[str, Any] | None) -> dic
         minimum_next_evidence = "record no-submit setup evidence before any real benchmark run"
         may_claim.append("readiness boundary is documented")
         must_not_claim.append("benchmark pass/fail or score uplift")
+    elif official_delta is None and control_delta is None and baseline_gate:
+        if baseline_failed is True and control_plane_addressable is True and treatment_eligible is True:
+            evidence_layer = "baseline_failure_gate"
+            decision = "continue"
+            minimum_next_evidence = (
+                public_safe_compact_text(baseline_gate.get("minimum_next_evidence"), limit=180)
+                or "run the treatment arm only for this control-plane-addressable baseline failure"
+            )
+            may_claim.append("baseline failure is control-plane-addressable and treatment-eligible")
+            must_not_claim.append("treatment uplift before paired treatment evidence exists")
+        else:
+            evidence_layer = "baseline_failure_gate_negative_selection"
+            decision = "defer"
+            minimum_next_evidence = (
+                public_safe_compact_text(baseline_gate.get("negative_selection_reason"), limit=180)
+                or "select a baseline failure with public-safe control-plane-addressable attribution"
+            )
+            may_claim.append("candidate was screened by baseline-failure gate")
+            must_not_claim.append("treatment execution on non-addressable or unverified baseline failures")
     elif official_delta == 0 and control_delta is not None and control_delta > 0:
         evidence_layer = "control_plane_only"
         decision = "continue"
@@ -1964,6 +2051,22 @@ def benchmark_comparison_decision_note(comparison: dict[str, Any] | None) -> dic
         note["control_plane_score_delta"] = public_safe_compact_text(comparison.get("control_plane_score_delta"), limit=120)
     if failure_labels:
         note["failure_attribution_labels"] = failure_labels
+    if baseline_gate:
+        compact_note_gate: dict[str, Any] = {
+            "schema_version": BENCHMARK_BASELINE_FAILURE_GATE_SCHEMA_VERSION,
+        }
+        for field in ("baseline_mode", "failure_phase", "failure_class", "negative_selection_reason"):
+            value = public_safe_compact_text(baseline_gate.get(field), limit=140)
+            if value:
+                compact_note_gate[field] = value
+        for field, value in (
+            ("baseline_failed", baseline_failed),
+            ("control_plane_addressable", control_plane_addressable),
+            ("treatment_eligible", treatment_eligible),
+        ):
+            if isinstance(value, bool):
+                compact_note_gate[field] = value
+        note["baseline_failure_gate"] = compact_note_gate
     if validation_enhancement is not None:
         note["validation_enhancement_point"] = validation_enhancement
     if score_uplift is not None:
