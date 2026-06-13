@@ -39,6 +39,7 @@ from .worker_bridge import (
 TERMINAL_BENCH_MODES = (
     "hardened-codex",
     "passive-observed-codex",
+    "codex-goal-mode",
     "codex-goal-harness",
     "goal-harness-managed-codex",
 )
@@ -12749,6 +12750,26 @@ def _mode_contract(mode: str, *, fake_worker: bool) -> dict[str, Any]:
             "hardened_install_baseline": True,
             "first_blocker": "hardened_codex_baseline_cli_skeleton_only_no_real_case",
         }
+    if mode == "codex-goal-mode":
+        return {
+            "event_mode": "codex_goal_mode_baseline_cli_dry_run",
+            "worker_mode": "codex_goal_mode_baseline",
+            "goal_harness_inside_case": False,
+            "case_semantics_changed_by_harness": False,
+            "official_score_comparable_to_native_codex": False,
+            "official_score_comparable_to_goal_harness_treatment": True,
+            "model_plus_harness_pair": False,
+            "control_plane_score_applicable": False,
+            "trace_publicness": "public_cli_dry_run",
+            "goal_harness_interface_surface": "none",
+            "goal_harness_cli_bridge_available": False,
+            "goal_harness_actual_use_observed": False,
+            "startup_surface_calibration": False,
+            "hardened_install_surface": False,
+            "hardened_install_baseline": False,
+            "codex_goal_mode_baseline": True,
+            "first_blocker": "codex_goal_mode_baseline_cli_skeleton_only_no_real_case",
+        }
     if mode == "passive-observed-codex":
         return {
             "event_mode": "passive_observed_codex_cli_dry_run",
@@ -12817,6 +12838,207 @@ def _mode_contract(mode: str, *, fake_worker: bool) -> dict[str, Any]:
             ),
         }
     raise ValueError(f"unsupported terminal-bench mode: {mode}")
+
+
+def _benchmark_result_failed(result: dict[str, Any]) -> bool:
+    official = (
+        result.get("official_task_score")
+        if isinstance(result.get("official_task_score"), dict)
+        else {}
+    )
+    if isinstance(official.get("passed"), bool):
+        return official.get("passed") is False
+    terminal_state = str(result.get("terminal_state") or "").strip().lower()
+    if terminal_state in {"success", "succeeded", "passed", "resolved"}:
+        return False
+    return bool(terminal_state)
+
+
+def build_benchmark_baseline_failure_gate_comparison(
+    *,
+    baseline_result: dict[str, Any],
+    benchmark_id: str,
+    baseline_mode: str = "codex_cli_goal_mode",
+    treatment_scenario_id: str = "codex_goal_harness",
+    comparison_id: str | None = None,
+    failure_phase: str | None = None,
+    failure_class: str | None = None,
+    failure_attribution_labels: Iterable[str] | None = None,
+    control_plane_addressable: bool = False,
+    same_task_semantics: bool = False,
+    same_runner_protocol: bool = False,
+    trace_publicness_verified: bool = False,
+    baseline_attempt_count: int = 1,
+    minimum_next_evidence: str | None = None,
+    negative_selection_reason: str | None = None,
+    next_action: str | None = None,
+    evidence_refs: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    """Build a public-safe baseline-failure gate comparison from compact result.
+
+    The reducer is benchmark-generic: callers must explicitly mark whether the
+    observed baseline failure is control-plane-addressable. Without that signal
+    the comparison is a negative-selection gate and must not route to treatment.
+    """
+
+    if baseline_result.get("schema_version") != "benchmark_result_v0":
+        raise ValueError("baseline_result must be compact benchmark_result_v0")
+
+    task_id = _public_safe_benchmark_label(baseline_result.get("task_id")) or "unknown_task"
+    baseline_scenario_id = (
+        _public_safe_benchmark_label(baseline_result.get("scenario_id"))
+        or _public_safe_benchmark_label(baseline_mode)
+        or "baseline"
+    )
+    safe_benchmark_id = _public_safe_benchmark_label(benchmark_id) or "benchmark"
+    safe_treatment_id = (
+        _public_safe_benchmark_label(treatment_scenario_id)
+        or "treatment"
+    )
+    safe_baseline_mode = (
+        _public_safe_benchmark_label(baseline_mode)
+        or "codex_cli_goal_mode"
+    )
+    terminal_state = (
+        _public_safe_benchmark_label(baseline_result.get("terminal_state"))
+        or "unknown"
+    )
+    baseline_failed = _benchmark_result_failed(baseline_result)
+    labels = [
+        label
+        for label in (
+            _public_safe_benchmark_label(item)
+            for item in (failure_attribution_labels or [])
+        )
+        if label
+    ]
+    result_labels = baseline_result.get("failure_attribution_labels")
+    if isinstance(result_labels, list):
+        for item in result_labels:
+            label = _public_safe_benchmark_label(item)
+            if label and label not in labels:
+                labels.append(label)
+    safe_failure_phase = (
+        _public_safe_benchmark_label(failure_phase)
+        or ("unknown_failure_phase" if baseline_failed else "not_failed")
+    )
+    safe_failure_class = (
+        _public_safe_benchmark_label(failure_class)
+        or (labels[0] if labels else None)
+        or ("unclassified_baseline_failure" if baseline_failed else "baseline_not_failed")
+    )
+    same_task = bool(same_task_semantics)
+    same_runner = bool(same_runner_protocol)
+    trace_public = bool(trace_publicness_verified)
+    addressable = bool(control_plane_addressable)
+    treatment_eligible = (
+        baseline_failed
+        and addressable
+        and same_task
+        and same_runner
+        and trace_public
+    )
+
+    if treatment_eligible:
+        default_minimum_next = (
+            "run the Goal Harness treatment arm on the same compactly verified task"
+        )
+        default_negative_reason = ""
+    elif not baseline_failed:
+        default_minimum_next = "select a failed goal-mode baseline before treatment"
+        default_negative_reason = "baseline did not fail"
+    elif not addressable:
+        default_minimum_next = (
+            "attribute a control-plane-addressable goal-mode baseline failure"
+        )
+        default_negative_reason = "baseline failure is not marked control-plane-addressable"
+    elif not same_task:
+        default_minimum_next = "verify same task semantics before treatment"
+        default_negative_reason = "same task semantics not verified"
+    elif not same_runner:
+        default_minimum_next = "verify same runner protocol before treatment"
+        default_negative_reason = "same runner protocol not verified"
+    else:
+        default_minimum_next = "verify trace publicness before treatment"
+        default_negative_reason = "trace publicness not verified"
+
+    gate: dict[str, Any] = {
+        "schema_version": "benchmark_baseline_failure_gate_v0",
+        "baseline_mode": safe_baseline_mode,
+        "baseline_scenario_id": baseline_scenario_id,
+        "baseline_terminal_state": terminal_state,
+        "baseline_failed": baseline_failed,
+        "failure_phase": safe_failure_phase,
+        "failure_class": safe_failure_class,
+        "control_plane_addressable": addressable,
+        "treatment_eligible": treatment_eligible,
+        "same_task_semantics": same_task,
+        "same_runner_protocol": same_runner,
+        "trace_publicness_verified": trace_public,
+        "baseline_attempt_count": max(1, int(baseline_attempt_count)),
+        "minimum_next_evidence": (
+            _public_safe_benchmark_label(minimum_next_evidence, limit=180)
+            or default_minimum_next
+        ),
+    }
+    safe_negative_reason = _public_safe_benchmark_label(
+        negative_selection_reason or default_negative_reason,
+        limit=180,
+    )
+    if safe_negative_reason:
+        gate["negative_selection_reason"] = safe_negative_reason
+    if labels:
+        gate["failure_attribution_labels"] = labels[:8]
+    safe_evidence_refs = [
+        ref
+        for ref in (
+            _public_safe_benchmark_label(item, limit=180)
+            for item in (evidence_refs or [])
+        )
+        if ref
+    ]
+    if not safe_evidence_refs:
+        safe_evidence_refs = [f"benchmark_result_v0:{baseline_scenario_id}"]
+    gate["evidence_refs"] = safe_evidence_refs[:8]
+    safe_next_action = _public_safe_benchmark_label(next_action, limit=180)
+    if safe_next_action:
+        gate["next_action"] = safe_next_action
+
+    safe_comparison_id = (
+        _public_safe_benchmark_label(comparison_id)
+        or f"{task_id}_{baseline_scenario_id}_baseline_failure_gate"
+    )[:180]
+    comparison: dict[str, Any] = {
+        "schema_version": "benchmark_comparison_v0",
+        "task_id": task_id,
+        "comparison_id": safe_comparison_id,
+        "benchmark_id": safe_benchmark_id,
+        "mode_pair": [baseline_scenario_id, safe_treatment_id],
+        "baseline_scenario_id": baseline_scenario_id,
+        "treatment_scenario_id": safe_treatment_id,
+        "baseline_failure_gate": gate,
+        "claim_boundary": {
+            "leaderboard_claim_allowed": False,
+            "official_score_uplift_claim_allowed": False,
+            "assisted_collaboration_claim_allowed": False,
+            "raw_trace_excluded": True,
+            "credential_values_recorded": False,
+        },
+        "decision": {
+            "score_uplift": False,
+            "validation_enhancement_point": treatment_eligible,
+            "why": (
+                "Baseline failure is gate-eligible for treatment"
+                if treatment_eligible
+                else "Baseline is negative-selected before treatment"
+            ),
+        },
+    }
+    if safe_next_action:
+        comparison["next_action"] = safe_next_action
+    if labels:
+        comparison["failure_attribution_labels"] = labels[:8]
+    return comparison
 
 
 def build_terminal_bench_managed_harbor_command(
@@ -13064,11 +13286,12 @@ def build_terminal_bench_benchmark_run(
         raise ValueError("--preflight-guard cannot be combined with --fake-worker")
     if preflight_guard and mode not in (
         "hardened-codex",
+        "codex-goal-mode",
         "codex-goal-harness",
         "goal-harness-managed-codex",
     ):
         raise ValueError(
-            "--preflight-guard is only supported for hardened-codex, codex-goal-harness, or goal-harness-managed-codex"
+            "--preflight-guard is only supported for hardened-codex, codex-goal-mode, codex-goal-harness, or goal-harness-managed-codex"
         )
     if require_task_material_ready and not preflight_guard:
         raise ValueError("--require-task-material-ready requires --preflight-guard")
@@ -13155,6 +13378,8 @@ def build_terminal_bench_benchmark_run(
             if mode == "codex-goal-harness"
             else TERMINAL_BENCH_HARDENED_CODEX_BASELINE_PREFLIGHT_MODE
             if mode == "hardened-codex"
+            else "codex_goal_mode_baseline_preflight_guard"
+            if mode == "codex-goal-mode"
             else TERMINAL_BENCH_PREFLIGHT_MODE
         )
         trace_publicness = (
@@ -13168,6 +13393,8 @@ def build_terminal_bench_benchmark_run(
             if mode == "codex-goal-harness"
             else "public_hardened_codex_baseline_preflight_guard"
             if mode == "hardened-codex"
+            else "public_codex_goal_mode_baseline_preflight_guard"
+            if mode == "codex-goal-mode"
             else "public_managed_real_run_preflight_guard"
         )
         contract = {
@@ -13406,6 +13633,13 @@ def build_terminal_bench_benchmark_run(
             case_result_writeback="hardened_codex_baseline_runner_only",
             counter_trust_level="hardened_codex_baseline_no_goal_harness_state",
         )
+    elif mode == "codex-goal-mode":
+        interaction_counters = build_terminal_bench_goal_harness_interaction_counters(
+            prompt_policy_injected=False,
+            harness_skill_or_packet_injected=False,
+            case_result_writeback="codex_goal_mode_baseline_runner_only",
+            counter_trust_level="codex_goal_mode_baseline_no_goal_harness_state",
+        )
     else:
         interaction_counters = build_terminal_bench_goal_harness_interaction_counters(
             prompt_policy_injected=(mode == "goal-harness-managed-codex"),
@@ -13522,26 +13756,35 @@ def build_terminal_bench_benchmark_run(
                 )
                 else None
             ),
-            "kwargs_keys": [
-                "goal_harness_mode",
-                "goal_harness_access_packet_version",
-                "fixture_only",
-                "no_upload",
-                "single_task_planned",
-            ]
-            + (
+            "kwargs_keys": (
                 [
-                    "goal_harness_cli_bridge_enabled",
-                    "goal_harness_command_prefix",
-                    "goal_harness_runtime_preflight_command",
-                    "goal_harness_registry_arg",
-                    "goal_harness_runtime_root_arg",
-                    "goal_harness_benchmark_run_json",
-                    "goal_harness_active_user_feed_jsonl",
-                    "goal_harness_active_user_observe_command",
+                    "codex_goal_mode_invocation_surface",
+                    "fixture_only",
+                    "no_upload",
+                    "single_task_planned",
                 ]
-                if active_cli_bridge_preflight or worker_cli_bridge_fixture
-                else []
+                if mode == "codex-goal-mode"
+                else [
+                    "goal_harness_mode",
+                    "goal_harness_access_packet_version",
+                    "fixture_only",
+                    "no_upload",
+                    "single_task_planned",
+                ]
+                + (
+                    [
+                        "goal_harness_cli_bridge_enabled",
+                        "goal_harness_command_prefix",
+                        "goal_harness_runtime_preflight_command",
+                        "goal_harness_registry_arg",
+                        "goal_harness_runtime_root_arg",
+                        "goal_harness_benchmark_run_json",
+                        "goal_harness_active_user_feed_jsonl",
+                        "goal_harness_active_user_observe_command",
+                    ]
+                    if active_cli_bridge_preflight or worker_cli_bridge_fixture
+                    else []
+                )
             ),
         },
         "progress": {
@@ -13560,9 +13803,25 @@ def build_terminal_bench_benchmark_run(
             "cost_usd": 0,
         },
         "interaction_counters": interaction_counters,
-        "episode_policy": build_terminal_bench_single_agent_episode_policy(
-            active_cli_bridge=active_cli_bridge_preflight or worker_cli_bridge_fixture,
-            runner_side_guaranteed_writeback=True,
+        "episode_policy": (
+            {
+                "schema_version": "terminal_bench_codex_goal_mode_baseline_episode_policy_v0",
+                "mode": "single_codex_goal_mode_baseline",
+                "worker_topology": "single_codex_agent",
+                "goal_harness_role": "parent_runner_only_compact_ingest",
+                "runner_role": "schedule_same_agent_episode_and_archive_final_outcome",
+                "checkpoint_surface": "runner_side_compact_benchmark_result_after_completion",
+                "does_not_spawn_additional_agents": True,
+                "does_not_split_task_prompt": True,
+                "does_not_change_task_solution_actor": True,
+                "does_not_inject_goal_harness_state": True,
+                "raw_trace_recorded": False,
+            }
+            if mode == "codex-goal-mode"
+            else build_terminal_bench_single_agent_episode_policy(
+                active_cli_bridge=active_cli_bridge_preflight or worker_cli_bridge_fixture,
+                runner_side_guaranteed_writeback=True,
+            )
         ),
         "trials": [
             {
@@ -13641,6 +13900,12 @@ def build_terminal_bench_benchmark_run(
             if mode == "hardened-codex"
             else [
                 "doc:terminal-bench-runner-mode-contract-v0.md",
+                "doc:terminal-bench-official-hard-case-selection-v0.md",
+                "smoke:terminal-bench-runner-mode-contract-smoke.py",
+            ]
+            if mode == "codex-goal-mode"
+            else [
+                "doc:terminal-bench-runner-mode-contract-v0.md",
                 "doc:terminal-bench-cli-dry-run-fake-worker-v0.md",
                 "smoke:terminal-bench-cli-dry-run-fake-worker-smoke.py",
             ]
@@ -13656,6 +13921,11 @@ def build_terminal_bench_benchmark_run(
                 "goal-harness benchmark run terminal-bench --mode hardened-codex --execute",
             ]
             if mode == "hardened-codex"
+            else [
+                "goal-harness benchmark run terminal-bench --mode codex-goal-mode",
+                "goal-harness benchmark baseline-failure-gate --baseline-result-json <benchmark-result-v0.json>",
+            ]
+            if mode == "codex-goal-mode"
             else [
                 "goal-harness benchmark run terminal-bench --mode goal-harness-managed-codex --fake-worker",
                 "goal-harness history append-benchmark-run --benchmark-run-json <benchmark-run-v0.json>",
@@ -13949,6 +14219,19 @@ def build_terminal_bench_benchmark_run(
                 "goal-harness benchmark run terminal-bench --mode hardened-codex --preflight-guard",
                 "goal-harness benchmark run terminal-bench --mode hardened-codex --preflight-guard --execute",
             ]
+        elif mode == "codex-goal-mode":
+            benchmark_run["source_runner"] = (
+                "goal_harness_terminal_bench_codex_goal_mode_baseline_preflight_guard"
+            )
+            benchmark_run["evidence_files"] = [
+                "doc:terminal-bench-runner-mode-contract-v0.md",
+                "doc:terminal-bench-official-hard-case-selection-v0.md",
+                "smoke:terminal-bench-runner-mode-contract-smoke.py",
+            ]
+            benchmark_run["resume_or_inspect_commands"] = [
+                "goal-harness benchmark run terminal-bench --mode codex-goal-mode --preflight-guard",
+                "goal-harness benchmark run terminal-bench --mode codex-goal-mode --preflight-guard --execute",
+            ]
         else:
             benchmark_run["source_runner"] = "goal_harness_terminal_bench_managed_real_run_preflight_guard"
             benchmark_run["evidence_files"] = [
@@ -13971,6 +14254,8 @@ def build_terminal_bench_benchmark_run(
                 if mode == "codex-goal-harness"
                 else "terminal_bench_hardened_codex_baseline_preflight_guard_v0"
                 if mode == "hardened-codex"
+                else "terminal_bench_codex_goal_mode_baseline_preflight_guard_v0"
+                if mode == "codex-goal-mode"
                 else "terminal_bench_managed_real_run_preflight_guard_v0"
             ),
             "runner_surface_checked": True,
@@ -14106,7 +14391,9 @@ def terminal_bench_recommended_action(
     active_user_assisted_treatment_preflight: bool = False,
 ) -> str:
     if mode == "hardened-codex":
-        return "run hardened-codex baseline and codex-goal-harness treatment in parallel on the same hard task; do not launch bare-codex"
+        return "use hardened-codex only as startup calibration; primary baseline is codex-goal-mode"
+    if mode == "codex-goal-mode":
+        return "run or ingest the codex-goal-mode baseline, reduce it through baseline-failure-gate, and only run codex-goal-harness if the failure is control-plane-addressable"
     if active_user_assisted_treatment_preflight:
         return "wire the worker prompt to poll active-user-observe, then run a no-upload assisted worker sample that proves after-start simulator observation"
     if active_cli_bridge_preflight:

@@ -25,6 +25,7 @@ The CLI exposes the current runner-mode contract lanes:
 | Mode | Event mode | Current execution |
 | --- | --- | --- |
 | `hardened-codex` | `hardened_codex_baseline_cli_dry_run` | Fixture event only. |
+| `codex-goal-mode` | `codex_goal_mode_baseline_cli_dry_run` | Fixture event only; primary baseline envelope. |
 | `codex-goal-harness` | `codex_goal_harness_cli_dry_run` | Fixture event only. |
 | `passive-observed-codex` | `passive_observed_codex_cli_dry_run` | Fixture event only. |
 | `goal-harness-managed-codex --fake-worker` | `goal_harness_managed_codex_fake_worker_wrapper` | Deterministic fake-worker event only. |

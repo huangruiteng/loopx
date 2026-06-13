@@ -31,7 +31,7 @@ WORKER_MODE = "goal_harness_managed_codex_cli"
 REQUIRED_DOC_SNIPPETS = [
     "Terminal-Bench CLI Dry-Run Fake Worker V0",
     "goal-harness benchmark run terminal-bench",
-    "--mode hardened-codex|codex-goal-harness|goal-harness-managed-codex",
+    "codex_goal_mode_baseline_cli_dry_run",
     "--fake-worker",
     "benchmark_run_v0",
     "fixture-only",

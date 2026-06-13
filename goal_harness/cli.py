@@ -66,6 +66,7 @@ from .benchmark import (
     build_benchmark_claim_review,
     build_benchmark_attempt_learning_gate,
     build_benchmark_adapter_kwarg_absorption_review,
+    build_benchmark_baseline_failure_gate_comparison,
     build_benchmark_learning_ledger,
     build_benchmark_lifecycle_state,
     build_benchmark_runner_invariant_review,
@@ -243,6 +244,40 @@ def render_benchmark_artifact_path_filter_markdown(payload: dict[str, object]) -
     if isinstance(blocked, dict) and blocked:
         reasons = ", ".join(f"`{key}`={value}" for key, value in blocked.items())
         lines.append("- Blocked reasons: " + reasons)
+    return "\n".join(lines) + "\n"
+
+
+def render_benchmark_baseline_failure_gate_markdown(payload: dict[str, object]) -> str:
+    comparison = (
+        payload.get("benchmark_comparison")
+        if isinstance(payload.get("benchmark_comparison"), dict)
+        else {}
+    )
+    gate = (
+        comparison.get("baseline_failure_gate")
+        if isinstance(comparison.get("baseline_failure_gate"), dict)
+        else {}
+    )
+    lines = [
+        "# Benchmark Baseline Failure Gate",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- dry_run: `{payload.get('dry_run')}`",
+        f"- appended: `{payload.get('appended')}`",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- benchmark_id: `{comparison.get('benchmark_id')}`",
+        f"- task_id: `{comparison.get('task_id')}`",
+        f"- baseline_failed: `{gate.get('baseline_failed')}`",
+        f"- control_plane_addressable: `{gate.get('control_plane_addressable')}`",
+        f"- treatment_eligible: `{gate.get('treatment_eligible')}`",
+        f"- failure_class: `{gate.get('failure_class')}`",
+    ]
+    if gate.get("minimum_next_evidence"):
+        lines.append(f"- minimum_next_evidence: {gate.get('minimum_next_evidence')}")
+    if gate.get("negative_selection_reason"):
+        lines.append(f"- negative_selection_reason: {gate.get('negative_selection_reason')}")
+    if payload.get("error"):
+        lines.append(f"- error: {payload.get('error')}")
     return "\n".join(lines) + "\n"
 
 
@@ -2983,6 +3018,100 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
 
+    benchmark_baseline_gate_parser = benchmark_sub.add_parser(
+        "baseline-failure-gate",
+        help=(
+            "Reduce a compact goal-mode baseline benchmark_result_v0 into a "
+            "benchmark_comparison_v0 baseline-failure gate. This reads only "
+            "compact JSON, not raw task text, logs, traces, Harbor job "
+            "directories, Docker, model APIs, uploads, screenshots, or credentials."
+        ),
+    )
+    add_subcommand_format(benchmark_baseline_gate_parser)
+    benchmark_baseline_gate_parser.add_argument(
+        "--goal-id",
+        help="Goal id for optional append context. Required with --execute.",
+    )
+    benchmark_baseline_gate_parser.add_argument(
+        "--benchmark-id",
+        required=True,
+        help="Public-safe benchmark id for the comparison row.",
+    )
+    benchmark_baseline_gate_parser.add_argument(
+        "--baseline-result-json",
+        required=True,
+        help="Path to a compact benchmark_result_v0 JSON object. Use '-' to read stdin.",
+    )
+    benchmark_baseline_gate_parser.add_argument(
+        "--baseline-mode",
+        default="codex_cli_goal_mode",
+        help="Public-safe baseline mode label.",
+    )
+    benchmark_baseline_gate_parser.add_argument(
+        "--treatment-scenario-id",
+        default="codex_goal_harness",
+        help="Public-safe treatment scenario id planned after the gate.",
+    )
+    benchmark_baseline_gate_parser.add_argument("--comparison-id")
+    benchmark_baseline_gate_parser.add_argument("--failure-phase")
+    benchmark_baseline_gate_parser.add_argument("--failure-class")
+    benchmark_baseline_gate_parser.add_argument(
+        "--failure-attribution-label",
+        action="append",
+        default=[],
+        help="Public-safe failure attribution label. Repeat as needed.",
+    )
+    benchmark_baseline_gate_parser.add_argument(
+        "--control-plane-addressable",
+        action="store_true",
+        help="Mark the baseline failure as plausibly fixable by Goal Harness control-plane intervention.",
+    )
+    benchmark_baseline_gate_parser.add_argument(
+        "--same-task-semantics",
+        action="store_true",
+        help="Confirm treatment will use the same benchmark task semantics.",
+    )
+    benchmark_baseline_gate_parser.add_argument(
+        "--same-runner-protocol",
+        action="store_true",
+        help="Confirm treatment will use the same runner protocol.",
+    )
+    benchmark_baseline_gate_parser.add_argument(
+        "--trace-publicness-verified",
+        action="store_true",
+        help="Confirm the compact result excludes private raw trace material.",
+    )
+    benchmark_baseline_gate_parser.add_argument(
+        "--baseline-attempt-count",
+        type=int,
+        default=1,
+        help="Number of baseline attempts represented by this gate.",
+    )
+    benchmark_baseline_gate_parser.add_argument("--minimum-next-evidence")
+    benchmark_baseline_gate_parser.add_argument("--negative-selection-reason")
+    benchmark_baseline_gate_parser.add_argument("--next-action")
+    benchmark_baseline_gate_parser.add_argument(
+        "--evidence-ref",
+        action="append",
+        default=[],
+        help="Public-safe compact evidence reference. Repeat as needed.",
+    )
+    benchmark_baseline_gate_parser.add_argument("--classification")
+    benchmark_baseline_gate_parser.add_argument("--recommended-action")
+    benchmark_baseline_gate_parser.add_argument(
+        "--delivery-batch-scale",
+        choices=DELIVERY_BATCH_SCALE_CHOICES,
+        help="Optional delivery scale label for the run index.",
+    )
+    benchmark_baseline_gate_parser.add_argument(
+        "--delivery-outcome",
+        choices=DELIVERY_OUTCOME_CHOICES,
+        help="Optional delivery outcome label for the run index.",
+    )
+    benchmark_baseline_gate_parser.add_argument("--dry-run", action="store_true", help="Preview without writing. This is the default.")
+    benchmark_baseline_gate_parser.add_argument("--execute", action="store_true", help="Append the compact baseline gate comparison.")
+    benchmark_baseline_gate_parser.add_argument("--no-global-sync", action="store_true", help="Skip global registry sync after append.")
+
     benchmark_claim_review_parser = benchmark_sub.add_parser(
         "review-claim",
         help=(
@@ -5549,6 +5678,133 @@ def main(argv: list[str] | None = None) -> int:
                 render_terminal_bench_post_launch_materialization_markdown,
             )
             return 0 if payload.get("ok") else 1
+        if args.benchmark_command == "baseline-failure-gate":
+            try:
+                if args.dry_run and args.execute:
+                    raise ValueError(
+                        "benchmark baseline-failure-gate accepts either --dry-run or --execute, not both"
+                    )
+                if args.execute and not args.goal_id:
+                    raise ValueError(
+                        "benchmark baseline-failure-gate requires --goal-id with --execute"
+                    )
+                if args.baseline_result_json == "-":
+                    baseline_result_input = json.loads(sys.stdin.read())
+                else:
+                    baseline_result_input = json.loads(
+                        Path(args.baseline_result_json)
+                        .expanduser()
+                        .read_text(encoding="utf-8")
+                    )
+                if not isinstance(baseline_result_input, dict):
+                    raise ValueError("--baseline-result-json must contain a JSON object")
+                baseline_result = compact_benchmark_result(baseline_result_input)
+                if not baseline_result:
+                    raise ValueError(
+                        "--baseline-result-json did not contain a compactable benchmark_result_v0 object"
+                    )
+                comparison_input = build_benchmark_baseline_failure_gate_comparison(
+                    baseline_result=baseline_result,
+                    benchmark_id=args.benchmark_id,
+                    baseline_mode=args.baseline_mode,
+                    treatment_scenario_id=args.treatment_scenario_id,
+                    comparison_id=args.comparison_id,
+                    failure_phase=args.failure_phase,
+                    failure_class=args.failure_class,
+                    failure_attribution_labels=args.failure_attribution_label,
+                    control_plane_addressable=bool(args.control_plane_addressable),
+                    same_task_semantics=bool(args.same_task_semantics),
+                    same_runner_protocol=bool(args.same_runner_protocol),
+                    trace_publicness_verified=bool(args.trace_publicness_verified),
+                    baseline_attempt_count=args.baseline_attempt_count,
+                    minimum_next_evidence=args.minimum_next_evidence,
+                    negative_selection_reason=args.negative_selection_reason,
+                    next_action=args.next_action,
+                    evidence_refs=args.evidence_ref,
+                )
+                comparison = compact_benchmark_comparison(comparison_input)
+                if not comparison:
+                    raise ValueError(
+                        "baseline gate reducer did not produce a compactable benchmark_comparison_v0 object"
+                    )
+                dry_run = not bool(args.execute)
+                if args.execute:
+                    payload = append_benchmark_comparison(
+                        registry_path=registry_path,
+                        runtime_root_override=args.runtime_root,
+                        goal_id=args.goal_id,
+                        benchmark_comparison=comparison,
+                        classification=args.classification
+                        or "benchmark_comparison_v0",
+                        recommended_action=args.recommended_action
+                        or (
+                            comparison.get("next_action")
+                            if isinstance(comparison.get("next_action"), str)
+                            else None
+                        )
+                        or "route the baseline failure gate before any treatment run",
+                        delivery_batch_scale=args.delivery_batch_scale,
+                        delivery_outcome=args.delivery_outcome,
+                        dry_run=False,
+                    )
+                    if args.no_global_sync:
+                        payload["global_sync"] = {
+                            "ok": True,
+                            "dry_run": False,
+                            "skipped": True,
+                            "reason": "disabled by --no-global-sync",
+                        }
+                    else:
+                        payload["global_sync"] = sync_project_registry_to_global(
+                            registry_path=registry_path,
+                            runtime_root_override=args.runtime_root,
+                            goal_id=args.goal_id,
+                            dry_run=False,
+                        )
+                else:
+                    payload = {
+                        "ok": True,
+                        "dry_run": dry_run,
+                        "appended": False,
+                        "goal_id": args.goal_id,
+                        "classification": args.classification
+                        or "benchmark_comparison_v0",
+                        "benchmark_comparison": comparison,
+                    }
+                payload["baseline_gate_cli"] = {
+                    "source": "compact_benchmark_result_v0",
+                    "raw_artifacts_read": False,
+                    "task_text_read": False,
+                    "local_paths_recorded": False,
+                    "docker_invoked": False,
+                    "model_api_invoked": False,
+                    "upload_invoked": False,
+                }
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "dry_run": not bool(getattr(args, "execute", False)),
+                    "appended": False,
+                    "goal_id": getattr(args, "goal_id", None),
+                    "classification": getattr(args, "classification", None)
+                    or "benchmark_comparison_v0",
+                    "error": str(exc),
+                    "baseline_gate_cli": {
+                        "source": "compact_benchmark_result_v0",
+                        "raw_artifacts_read": False,
+                        "task_text_read": False,
+                        "local_paths_recorded": False,
+                        "docker_invoked": False,
+                        "model_api_invoked": False,
+                        "upload_invoked": False,
+                    },
+                }
+            print_payload(
+                payload,
+                output_format(args),
+                render_benchmark_baseline_failure_gate_markdown,
+            )
+            return 0 if payload.get("ok") else 1
         if args.benchmark_command == "run":
             try:
                 if args.dry_run and args.execute:
@@ -5582,6 +5838,8 @@ def main(argv: list[str] | None = None) -> int:
                                 + "_v0"
                             )
                             if args.mode == "hardened-codex"
+                            else "terminal_bench_codex_goal_mode_baseline_preflight_guard_v0"
+                            if args.mode == "codex-goal-mode"
                             else "terminal_bench_managed_real_run_preflight_guard_v0"
                         )
                         if args.preflight_guard
@@ -5595,6 +5853,8 @@ def main(argv: list[str] | None = None) -> int:
                             else (
                                 "terminal_bench_codex_goal_harness_dry_run_v0"
                                 if args.mode == "codex-goal-harness"
+                                else "terminal_bench_codex_goal_mode_baseline_dry_run_v0"
+                                if args.mode == "codex-goal-mode"
                                 else "terminal_bench_cli_dry_run_v0"
                             )
                         )
@@ -5778,8 +6038,13 @@ def main(argv: list[str] | None = None) -> int:
                         else
                         "terminal_bench_codex_goal_harness_cli_bridge_contract_runner_fixture_v0"
                         if getattr(args, "cli_bridge_contract", False)
+                        else "terminal_bench_codex_goal_mode_baseline_preflight_guard_v0"
+                        if getattr(args, "preflight_guard", False)
+                        and getattr(args, "mode", None) == "codex-goal-mode"
                         else "terminal_bench_managed_real_run_preflight_guard_v0"
                         if getattr(args, "preflight_guard", False)
+                        else "terminal_bench_codex_goal_mode_baseline_dry_run_v0"
+                        if getattr(args, "mode", None) == "codex-goal-mode"
                         else "terminal_bench_cli_dry_run_v0"
                     ),
                     "error": str(exc),

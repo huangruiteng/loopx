@@ -582,10 +582,10 @@ work still belongs in the existing code, examples, and contract documents:
   reducer readiness before allowing a local/no-upload validation run.
 - `terminal-bench-cli-dry-run-fake-worker-v0.md`: public CLI skeleton for
   `goal-harness benchmark run terminal-bench`. The command defaults to dry-run,
-  exposes `hardened-codex`, `codex-goal-harness`, passive observation, and
-  `goal-harness-managed-codex`, and can append only compact fixture
-  `benchmark_run_v0` rows when `--execute` is passed. The current fake-worker
-  path is allowed only for managed mode and records
+  exposes `codex-goal-mode`, `codex-goal-harness`, `hardened-codex`, passive
+  observation, and `goal-harness-managed-codex`, and can append only compact
+  fixture `benchmark_run_v0` rows when `--execute` is passed. The current
+  fake-worker path is allowed only for managed mode and records
   `goal_harness_managed_codex_fake_worker_wrapper` without invoking real
   Harbor, Terminal-Bench, Docker, Codex, model APIs, uploads, or leaderboard
   paths.

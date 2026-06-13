@@ -124,6 +124,24 @@ treatment attempt (`baseline_failure_gate`) or to negative selection
 the gate remains claim-boundary evidence and does not override the result
 interpretation.
 
+The structured reducer is:
+
+```bash
+goal-harness benchmark baseline-failure-gate \
+  --benchmark-id terminal-bench@2.0 \
+  --baseline-result-json <benchmark-result-v0.json> \
+  --baseline-mode codex_cli_goal_mode \
+  --failure-phase <public-phase> \
+  --failure-class <public-class>
+```
+
+By default this is a negative-selection dry run. A treatment route is emitted
+only when the caller explicitly supplies `--control-plane-addressable`,
+`--same-task-semantics`, `--same-runner-protocol`, and
+`--trace-publicness-verified`. With `--execute --goal-id <goal-id>`, the CLI
+appends the compact `benchmark_comparison_v0` row through the normal history
+writer.
+
 ## Stop Conditions
 
 Stop before:
