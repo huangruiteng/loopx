@@ -959,7 +959,14 @@ def _compact_benchmark_post_launch_materialization(value: Any) -> dict[str, Any]
         return {}
 
     compact: dict[str, Any] = {}
-    for field in ("schema_version", "first_blocker", "job_name"):
+    for field in (
+        "schema_version",
+        "first_blocker",
+        "job_name",
+        "external_handle_kind",
+        "external_handle_state",
+        "compact_failure_class",
+    ):
         text = public_safe_compact_text(value.get(field), limit=140)
         if text:
             compact[field] = text
@@ -971,10 +978,14 @@ def _compact_benchmark_post_launch_materialization(value: Any) -> dict[str, Any]
         "job_root_present",
         "job_lock_present",
         "job_result_present",
+        "ready_for_compact_failure_marker",
+        "external_handle_observed",
+        "external_handle_terminal",
         "raw_paths_recorded",
         "raw_logs_read",
         "raw_task_text_read",
         "trajectory_read",
+        "raw_external_handle_payload_recorded",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -982,6 +993,37 @@ def _compact_benchmark_post_launch_materialization(value: Any) -> dict[str, Any]
         count = value.get(field)
         if isinstance(count, int) and not isinstance(count, bool):
             compact[field] = count
+    marker = value.get("compact_failure_marker")
+    if isinstance(marker, dict):
+        compact_marker: dict[str, Any] = {}
+        for field in (
+            "schema_version",
+            "failure_class",
+            "evidence_kind",
+            "external_handle_kind",
+            "external_handle_state",
+        ):
+            text = public_safe_compact_text(marker.get(field), limit=140)
+            if text:
+                compact_marker[field] = text
+        for field in (
+            "launch_state_countable",
+            "job_result_present",
+            "raw_paths_recorded",
+            "raw_logs_read",
+            "raw_task_text_read",
+            "trajectory_read",
+            "raw_external_handle_payload_recorded",
+        ):
+            if isinstance(marker.get(field), bool):
+                compact_marker[field] = marker[field]
+        trial_result_count = marker.get("trial_result_present_count")
+        if isinstance(trial_result_count, int) and not isinstance(
+            trial_result_count, bool
+        ):
+            compact_marker["trial_result_present_count"] = trial_result_count
+        if compact_marker:
+            compact["compact_failure_marker"] = compact_marker
     return compact
 
 

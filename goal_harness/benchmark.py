@@ -94,6 +94,10 @@ TERMINAL_BENCH_TASK_MATERIAL_READINESS_SCHEMA = (
 TERMINAL_BENCH_POST_LAUNCH_MATERIALIZATION_SCHEMA = (
     "terminal_bench_post_launch_materialization_v0"
 )
+TERMINAL_BENCH_COMPACT_FAILURE_MARKER_SCHEMA = (
+    "terminal_bench_compact_failure_marker_v0"
+)
+TERMINAL_BENCH_DETACHED_PROCESS_STATES = {"unknown", "running", "ended"}
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_SETTING = "codex_cli_user_simulator"
 TERMINAL_BENCH_ACTIVE_USER_SIMULATOR_INJECTION_FIRST_BLOCKER = (
     "missing_simulator_to_worker_injection_channel"
@@ -11873,6 +11877,7 @@ def summarize_terminal_bench_post_launch_materialization(
     jobs_dir: str | Path,
     *,
     job_name: str | None = None,
+    detached_process_state: str | None = None,
 ) -> dict[str, Any]:
     """Summarize whether Harbor produced a pollable job directory after launch.
 
@@ -11884,11 +11889,19 @@ def summarize_terminal_bench_post_launch_materialization(
     jobs_dir_text = str(jobs_dir)
     public_job_name = Path(str(job_name)).name if job_name else ""
     placeholder = "<" in jobs_dir_text or ">" in jobs_dir_text
+    process_state = str(detached_process_state or "unknown").strip().lower()
+    if process_state not in TERMINAL_BENCH_DETACHED_PROCESS_STATES:
+        raise ValueError(
+            "detached_process_state must be one of: "
+            + ", ".join(sorted(TERMINAL_BENCH_DETACHED_PROCESS_STATES))
+        )
+    external_handle_observed = process_state != "unknown"
     summary: dict[str, Any] = {
         "schema_version": TERMINAL_BENCH_POST_LAUNCH_MATERIALIZATION_SCHEMA,
         "checked": not placeholder,
         "ready_for_launch_state": False,
         "ready_for_compact_result_ingest": False,
+        "ready_for_compact_failure_marker": False,
         "first_blocker": "jobs_dir_placeholder" if placeholder else "",
         "job_name": public_job_name,
         "jobs_dir_present": False,
@@ -11901,6 +11914,11 @@ def summarize_terminal_bench_post_launch_materialization(
         "raw_logs_read": False,
         "raw_task_text_read": False,
         "trajectory_read": False,
+        "external_handle_kind": "detached_worker_process",
+        "external_handle_state": process_state,
+        "external_handle_observed": external_handle_observed,
+        "external_handle_terminal": process_state == "ended",
+        "raw_external_handle_payload_recorded": False,
     }
     if placeholder:
         return summary
@@ -11945,7 +11963,35 @@ def summarize_terminal_bench_post_launch_materialization(
     if not lock_present:
         summary["first_blocker"] = "job_lock_missing"
     elif not result_present or trial_result_count <= 0:
-        summary["first_blocker"] = "ready_for_compact_polling"
+        if process_state == "ended":
+            summary.update(
+                {
+                    "first_blocker": "detached_worker_ended_without_trial_result",
+                    "ready_for_compact_failure_marker": True,
+                    "compact_failure_class": (
+                        "detached_worker_ended_without_trial_result"
+                    ),
+                    "compact_failure_marker": {
+                        "schema_version": TERMINAL_BENCH_COMPACT_FAILURE_MARKER_SCHEMA,
+                        "failure_class": (
+                            "detached_worker_ended_without_trial_result"
+                        ),
+                        "evidence_kind": "detached_worker_process_state",
+                        "external_handle_kind": "detached_worker_process",
+                        "external_handle_state": process_state,
+                        "launch_state_countable": lock_present,
+                        "job_result_present": result_present,
+                        "trial_result_present_count": trial_result_count,
+                        "raw_paths_recorded": False,
+                        "raw_logs_read": False,
+                        "raw_task_text_read": False,
+                        "trajectory_read": False,
+                        "raw_external_handle_payload_recorded": False,
+                    },
+                }
+            )
+        else:
+            summary["first_blocker"] = "ready_for_compact_polling"
     else:
         summary["first_blocker"] = "ready_for_compact_result_ingest"
     return summary

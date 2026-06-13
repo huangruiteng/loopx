@@ -1013,6 +1013,8 @@ def render_terminal_bench_post_launch_materialization_markdown(
         f"- Ready for launch state: `{payload.get('ready_for_launch_state')}`",
         "- Ready for compact result ingest: "
         f"`{payload.get('ready_for_compact_result_ingest')}`",
+        "- Ready for compact failure marker: "
+        f"`{payload.get('ready_for_compact_failure_marker')}`",
         f"- First blocker: `{payload.get('first_blocker')}`",
         f"- Job name: `{payload.get('job_name')}`",
         f"- Jobs dir present: `{payload.get('jobs_dir_present')}`",
@@ -1024,6 +1026,10 @@ def render_terminal_bench_post_launch_materialization_markdown(
         f"- Raw logs read: `{payload.get('raw_logs_read')}`",
         f"- Task text read: `{payload.get('raw_task_text_read')}`",
         f"- Trajectory read: `{payload.get('trajectory_read')}`",
+        f"- External handle kind: `{payload.get('external_handle_kind')}`",
+        f"- External handle state: `{payload.get('external_handle_state')}`",
+        f"- External handle terminal: `{payload.get('external_handle_terminal')}`",
+        f"- Compact failure class: `{payload.get('compact_failure_class')}`",
     ]
     if payload.get("error"):
         lines.append(f"- Error: {payload.get('error')}")
@@ -3015,6 +3021,17 @@ def main(argv: list[str] | None = None) -> int:
     benchmark_post_launch_parser.add_argument(
         "--job-name",
         help="Expected Harbor job directory basename.",
+    )
+    benchmark_post_launch_parser.add_argument(
+        "--detached-process-state",
+        choices=["unknown", "running", "ended"],
+        default="unknown",
+        help=(
+            "Optional public-safe state of the detached worker process observed "
+            "by an external handle. When ended and no compact result exists, the "
+            "summary emits a compact failure marker instead of an open-ended "
+            "polling blocker."
+        ),
     )
     benchmark_post_launch_parser.add_argument(
         "--require-ready-for-launch-state",
@@ -5643,6 +5660,7 @@ def main(argv: list[str] | None = None) -> int:
                 payload = summarize_terminal_bench_post_launch_materialization(
                     args.jobs_dir,
                     job_name=args.job_name,
+                    detached_process_state=args.detached_process_state,
                 )
                 ready = payload.get("ready_for_launch_state") is True
                 payload["ok"] = (

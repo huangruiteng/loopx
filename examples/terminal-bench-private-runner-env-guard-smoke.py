@@ -294,6 +294,93 @@ def main() -> None:
         assert ready_payload["raw_paths_recorded"] is False, ready_payload
         assert str(jobs_dir) not in ready_cli.stdout, ready_cli.stdout
 
+        ended_without_result = summarize_terminal_bench_post_launch_materialization(
+            jobs_dir,
+            job_name="terminal_bench_env_guard_smoke",
+            detached_process_state="ended",
+        )
+        assert ended_without_result["ready_for_launch_state"] is True, ended_without_result
+        assert (
+            ended_without_result["ready_for_compact_result_ingest"] is False
+        ), ended_without_result
+        assert (
+            ended_without_result["ready_for_compact_failure_marker"] is True
+        ), ended_without_result
+        assert (
+            ended_without_result["first_blocker"]
+            == "detached_worker_ended_without_trial_result"
+        ), ended_without_result
+        assert ended_without_result["external_handle_terminal"] is True, ended_without_result
+        assert (
+            ended_without_result["raw_external_handle_payload_recorded"] is False
+        ), ended_without_result
+        marker = ended_without_result["compact_failure_marker"]
+        assert marker["schema_version"] == "terminal_bench_compact_failure_marker_v0", marker
+        assert marker["failure_class"] == "detached_worker_ended_without_trial_result", marker
+        assert marker["job_result_present"] is False, marker
+        assert marker["trial_result_present_count"] == 0, marker
+        assert marker["raw_logs_read"] is False, marker
+        assert marker["trajectory_read"] is False, marker
+
+        terminal_cli = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "goal_harness.cli",
+                "--format",
+                "json",
+                "benchmark",
+                "summarize-post-launch",
+                "terminal-bench",
+                "--jobs-dir",
+                str(jobs_dir),
+                "--job-name",
+                "terminal_bench_env_guard_smoke",
+                "--detached-process-state",
+                "ended",
+                "--require-ready-for-launch-state",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert terminal_cli.returncode == 0, terminal_cli.stdout + terminal_cli.stderr
+        terminal_payload = json.loads(terminal_cli.stdout)
+        assert terminal_payload["ok"] is True, terminal_payload
+        assert (
+            terminal_payload["first_blocker"]
+            == "detached_worker_ended_without_trial_result"
+        ), terminal_payload
+        assert terminal_payload["ready_for_compact_failure_marker"] is True, terminal_payload
+        assert terminal_payload["raw_logs_read"] is False, terminal_payload
+        assert str(jobs_dir) not in terminal_cli.stdout, terminal_cli.stdout
+
+        summary_with_terminal_materialization = summarize_terminal_bench_private_runner_launch(
+            launch,
+            post_launch_materialization=ended_without_result,
+        )
+        compact_terminal = compact_benchmark_run(
+            {
+                "schema_version": "benchmark_run_v0",
+                "private_runner_launch_summary": summary_with_terminal_materialization,
+            }
+        )
+        compact_terminal_nested = compact_terminal["private_runner_launch_summary"][
+            "post_launch_materialization"
+        ]
+        assert (
+            compact_terminal_nested["first_blocker"]
+            == "detached_worker_ended_without_trial_result"
+        ), compact_terminal_nested
+        assert (
+            compact_terminal_nested["ready_for_compact_failure_marker"] is True
+        ), compact_terminal_nested
+        assert compact_terminal_nested["external_handle_terminal"] is True, compact_terminal_nested
+        assert compact_terminal_nested["compact_failure_marker"]["failure_class"] == (
+            "detached_worker_ended_without_trial_result"
+        ), compact_terminal_nested
+
         (job_root / "result.json").write_text("{}\n", encoding="utf-8")
         trial_root = job_root / "good-task__trial"
         trial_root.mkdir()
