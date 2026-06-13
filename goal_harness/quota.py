@@ -61,11 +61,8 @@ HANDOFF_READINESS_COMPACT_FIELDS = (
     "quota_state",
     "handoff_status",
     "post_handoff_run_seen",
-    "handoff_ready_at",
-    "handoff_ready_classification",
     "post_handoff_small_scale_streak",
     "post_handoff_outcome_gap_streak",
-    "next_probe",
     "handoff_interface_budget",
 )
 POST_HANDOFF_RUN_COMPACT_FIELDS = (
@@ -771,8 +768,7 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
 def _todo_write_hint(goal_id: str) -> dict[str, str]:
     return {
         "rule": (
-            "If your analysis discovers a concrete user/owner action, write it to the active-state "
-            "User Todo section instead of hiding it in Next Action, review docs, or chat."
+            "Write concrete user/owner actions to User Todo, not Next Action, docs, or chat."
         ),
         "user_todo_command_template": (
             f"goal-harness todo add --goal-id {goal_id} --role user "
@@ -790,12 +786,6 @@ def _compact_handoff_readiness(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     compact = {field: value[field] for field in HANDOFF_READINESS_COMPACT_FIELDS if field in value}
-    checks = value.get("checks") if isinstance(value.get("checks"), dict) else {}
-    if checks:
-        compact["checks"] = {
-            str(key): bool(check)
-            for key, check in checks.items()
-        }
     latest_run = (
         value.get("post_handoff_latest_run")
         if isinstance(value.get("post_handoff_latest_run"), dict)
@@ -828,13 +818,78 @@ def _compact_handoff_readiness(value: Any) -> dict[str, Any] | None:
     return compact or None
 
 
+def _quota_execution_profile_summary(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    compact: dict[str, Any] = {}
+    for field in ("cadence", "minimum_scale", "spend_rule"):
+        if value.get(field):
+            compact[field] = value[field]
+    must_include = value.get("must_include")
+    if isinstance(must_include, list) and must_include:
+        compact["must_include"] = [str(item) for item in must_include[:3]]
+    policy = (
+        value.get("degradation_policy")
+        if isinstance(value.get("degradation_policy"), dict)
+        else {}
+    )
+    if policy.get("small_scale_streak_threshold") is not None:
+        compact["small_scale_streak_threshold"] = policy.get("small_scale_streak_threshold")
+    floor = execution_profile_outcome_floor(value)
+    if floor:
+        outcome_markers = (
+            floor.get("outcome_markers")
+            if isinstance(floor.get("outcome_markers"), list)
+            else []
+        )
+        surface_hints = (
+            floor.get("surface_only_hints")
+            if isinstance(floor.get("surface_only_hints"), list)
+            else []
+        )
+        compact["outcome_floor"] = {
+            "configured": bool(outcome_markers or surface_hints),
+            "surface_streak_threshold": floor.get("surface_streak_threshold"),
+            "must_advance": [
+                str(item)
+                for item in (
+                    floor.get("must_advance")
+                    if isinstance(floor.get("must_advance"), list)
+                    else []
+                )[:2]
+            ],
+        }
+    return compact or None
+
+
+def _quota_execution_profile_boundary_summary(value: Any) -> dict[str, Any] | None:
+    summary = _quota_execution_profile_summary(value)
+    if not summary:
+        return None
+    compact = {}
+    if summary.get("minimum_scale"):
+        compact["minimum_scale"] = summary["minimum_scale"]
+    return compact or None
+
+
 def _compact_autonomous_candidate_context(value: Any, *, limit: int = 3) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     compact = {field: value[field] for field in AUTONOMOUS_CANDIDATE_CONTEXT_FIELDS if field in value}
     items = compact.get("items")
     if isinstance(items, list):
-        compact["items"] = [item for item in items[:limit] if isinstance(item, dict)]
+        compact_items: list[dict[str, Any]] = []
+        for item in items[:limit]:
+            if not isinstance(item, dict):
+                continue
+            compact_item = {
+                key: item[key]
+                for key in ("goal_id", "task_class", "text")
+                if item.get(key) is not None
+            }
+            if compact_item:
+                compact_items.append(compact_item)
+        compact["items"] = compact_items
     return compact or None
 
 
@@ -1346,11 +1401,13 @@ def _goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> 
             if project_asset.get("stop_condition"):
                 boundary["stop_condition"] = project_asset.get("stop_condition")
             if isinstance(project_asset.get("execution_profile"), dict):
-                boundary["execution_profile"] = project_asset["execution_profile"]
+                boundary["execution_profile"] = _quota_execution_profile_boundary_summary(
+                    project_asset["execution_profile"]
+                )
             if isinstance(project_asset.get("orchestration"), dict):
                 boundary["orchestration"] = compact_orchestration_policy(project_asset["orchestration"])
     if boundary:
-        boundary["rule"] = "Follow this boundary before choosing delivery work; stop if useful work requires an unapproved scope."
+        boundary["rule"] = "stay_in_scope_or_stop"
         return boundary
     return None
 
@@ -2245,8 +2302,7 @@ def _promotion_readiness_warning(status_payload: dict[str, Any]) -> dict[str, An
         "markdown_exists": readiness.get("markdown_exists"),
         "reason": readiness.get("reason"),
         "message": (
-            "promotion readiness evidence is missing, stale, or unknown; run the "
-            "canary promotion-readiness smoke before promoting the local release snapshot"
+            "promotion readiness evidence is missing, stale, or unknown; run canary readiness smoke"
         ),
     }
 
@@ -2426,7 +2482,11 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             "source": item.get("source"),
             "project_asset_source": item.get("project_asset_source"),
             "recommended_action": item.get("recommended_action"),
-            "execution_profile": project_asset.get("execution_profile") if project_asset else None,
+            "execution_profile": _quota_execution_profile_summary(
+                project_asset.get("execution_profile")
+            )
+            if project_asset
+            else None,
             "handoff_readiness": item.get("handoff_readiness"),
             "heartbeat_recommendation": heartbeat_recommendation,
             "execution_obligation": _execution_obligation(
@@ -2458,16 +2518,24 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             repeat_open_todo_notification = (
                 heartbeat_recommendation.get("repeat_notification_required") is True
             )
+            monitor_user_todo_blocks_quiet_skip = (
+                effective_action == "monitor_quiet_skip"
+                and _open_todo_count(user_todo_summary) > 0
+            )
             if _should_notify_user_on_open_todo(
                 state=state,
                 waiting_on=str(item.get("waiting_on") or ""),
                 user_todo_summary=user_todo_summary,
-            ) or repeat_open_todo_notification:
+            ) or repeat_open_todo_notification or monitor_user_todo_blocks_quiet_skip:
                 payload["notify_user_on_open_todo"] = True
                 payload["open_todo_notify_reason"] = _open_todo_notify_reason(
                     state=state,
                     waiting_on=str(item.get("waiting_on") or ""),
                 )
+                if monitor_user_todo_blocks_quiet_skip:
+                    payload["open_todo_notify_reason"] = (
+                        "open user todo should be surfaced before a monitor-only quiet skip"
+                    )
                 if repeat_open_todo_notification:
                     payload["open_todo_notify_reason"] = (
                         heartbeat_recommendation.get("reason")

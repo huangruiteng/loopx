@@ -14,15 +14,15 @@ DOC = TOPIC_DIR / "terminal-bench-runner-mode-contract-v0.md"
 README = TOPIC_DIR / "README.md"
 
 CONTRACT_SCHEMA = "terminal_bench_runner_mode_contract_v0"
-MODES = ("hardened-codex", "codex-goal-harness")
+MODES = ("codex-goal-mode", "codex-goal-harness")
 
 REQUIRED_DOC_SNIPPETS = [
     "Terminal-Bench Runner Mode Contract V0",
     "core Goal Harness research",
     "goal-harness benchmark run terminal-bench",
-    "--mode hardened-codex | codex-goal-harness",
+    "--mode codex-goal-mode | codex-goal-harness",
     "Parent runner control plane",
-    "Hardened Codex baseline",
+    "Codex goal-mode baseline",
     "Goal Harness treatment worker",
     "Why Not Keep Bare Codex",
     "Run both arms in parallel",
@@ -67,8 +67,8 @@ def mode_contract() -> dict[str, Any]:
             "may_upload_or_submit": False,
         },
         "modes": {
-            "hardened-codex": {
-                "worker_mode": "hardened_codex_baseline",
+            "codex-goal-mode": {
+                "worker_mode": "codex_goal_mode_baseline",
                 "goal_harness_around_case": "parent_runner_only",
                 "goal_harness_inside_case": False,
                 "case_semantics_changed_by_harness": False,
@@ -76,10 +76,10 @@ def mode_contract() -> dict[str, Any]:
                 "official_score_comparable_to_goal_harness_treatment": True,
                 "control_plane_score_applicable": False,
                 "injects_review_packet_or_active_state": False,
-                "hardened_install_baseline": True,
+                "codex_goal_mode_baseline": True,
                 "leaderboard_evidence": False,
                 "is_core_goal_harness_experiment": False,
-                "primary_use": "true Codex baseline for Goal Harness experiments with the hardened install surface",
+                "primary_use": "true Codex goal-mode baseline for Goal Harness experiments",
             },
             "codex-goal-harness": {
                 "worker_mode": "codex_goal_harness_cli",
@@ -97,7 +97,8 @@ def mode_contract() -> dict[str, Any]:
         },
         "baseline_policy": {
             "bare_codex_runner_path_enabled": False,
-            "hardened_install_is_codex_baseline": True,
+            "codex_goal_mode_is_primary_baseline": True,
+            "hardened_install_is_optional_calibration": True,
             "run_arms_in_parallel": True,
         },
         "baseline_invariants": {
@@ -113,14 +114,14 @@ def mode_contract() -> dict[str, Any]:
             "claim_boundary_model_plus_harness_pair",
         ],
         "recommended_implementation_order": [
-            "hardened_codex_baseline_no_run_fixture_and_command_envelope",
+            "codex_goal_mode_baseline_no_run_fixture_and_command_envelope",
             "codex_goal_harness_worker_bridge_fixture",
             "private_no_upload_runner_wrapper_with_two_primary_modes",
             "paired_parallel_hard_task_runs",
         ],
         "stop_conditions": [
             "do_not_reintroduce_bare_codex_as_primary_baseline",
-            "do_not_inject_goal_harness_state_into_hardened_baseline_case",
+            "do_not_inject_goal_harness_state_into_goal_mode_baseline_case",
             "do_not_call_codex_goal_harness_native_codex_baseline",
             "do_not_upload_submit_or_claim_leaderboard",
             "do_not_record_credentials_raw_sessions_raw_logs_or_host_paths",
@@ -159,7 +160,7 @@ def assert_mode_contract(payload: dict[str, Any]) -> None:
 
     modes = payload["modes"]
     assert tuple(modes) == MODES, modes
-    baseline = modes["hardened-codex"]
+    baseline = modes["codex-goal-mode"]
     treatment = modes["codex-goal-harness"]
     baseline_policy = payload["baseline_policy"]
 
@@ -168,7 +169,7 @@ def assert_mode_contract(payload: dict[str, Any]) -> None:
     assert baseline["official_score_comparable_to_native_codex"] is False, baseline
     assert baseline["official_score_comparable_to_goal_harness_treatment"] is True, baseline
     assert baseline["injects_review_packet_or_active_state"] is False, baseline
-    assert baseline["hardened_install_baseline"] is True, baseline
+    assert baseline["codex_goal_mode_baseline"] is True, baseline
     assert baseline["leaderboard_evidence"] is False, baseline
     assert baseline["is_core_goal_harness_experiment"] is False, baseline
 
@@ -180,12 +181,13 @@ def assert_mode_contract(payload: dict[str, Any]) -> None:
     assert treatment["is_core_goal_harness_experiment"] is True, treatment
 
     assert baseline_policy["bare_codex_runner_path_enabled"] is False, baseline_policy
-    assert baseline_policy["hardened_install_is_codex_baseline"] is True, baseline_policy
+    assert baseline_policy["codex_goal_mode_is_primary_baseline"] is True, baseline_policy
+    assert baseline_policy["hardened_install_is_optional_calibration"] is True, baseline_policy
     assert baseline_policy["run_arms_in_parallel"] is True, baseline_policy
 
     invariants = payload["baseline_invariants"]
     assert all(value is False for value in invariants.values()), invariants
-    assert "do_not_inject_goal_harness_state_into_hardened_baseline_case" in payload["stop_conditions"], payload
+    assert "do_not_inject_goal_harness_state_into_goal_mode_baseline_case" in payload["stop_conditions"], payload
     assert "codex_goal_harness_worker_bridge_fixture" in payload[
         "recommended_implementation_order"
     ], payload
@@ -199,7 +201,7 @@ def main() -> None:
     print(
         "terminal-bench-runner-mode-contract-smoke ok "
         f"modes={len(payload['modes'])} "
-        f"baseline_inside={payload['modes']['hardened-codex']['goal_harness_inside_case']} "
+        f"baseline_inside={payload['modes']['codex-goal-mode']['goal_harness_inside_case']} "
         f"treatment_inside={payload['modes']['codex-goal-harness']['goal_harness_inside_case']}"
     )
 

@@ -35,7 +35,7 @@ REQUIRED_DOC_SNIPPETS = [
     "fix-code-vulnerability",
     "modernize-scientific-stack",
     "llm-inference-batching-scheduler",
-    "hardened-codex",
+    "codex-goal-mode",
     "codex-goal-harness",
     "case_semantics_changed_by_harness=true",
     "official_score_comparable_to_native_codex=false",
@@ -73,7 +73,7 @@ def selection_payload() -> dict[str, Any]:
             {
                 "rank": index + 1,
                 "task_id": task_id,
-                "run_pair": ["hardened-codex", "codex-goal-harness"],
+                "run_pair": ["codex-goal-mode", "codex-goal-harness"],
             }
             for index, task_id in enumerate(PRIMARY_TASKS)
         ],
@@ -151,7 +151,7 @@ def assert_selection_payload(payload: dict[str, Any]) -> None:
     assert payload["selection_policy"]["run_all_89_first"] is False, payload
     assert payload["selection_policy"]["batch_size"] == 3, payload
     for item in payload["primary_batch"]:
-        assert item["run_pair"] == ["hardened-codex", "codex-goal-harness"], item
+        assert item["run_pair"] == ["codex-goal-mode", "codex-goal-harness"], item
     invariants = payload["paired_run_invariants"]
     assert all(invariants.values()), invariants
     managed = payload["managed_mode_claim_boundary"]

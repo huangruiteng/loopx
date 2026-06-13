@@ -410,10 +410,10 @@ work still belongs in the existing code, examples, and contract documents:
 - `benchmark-run-v0-ingest.md`: first passive `benchmark_run_v0` ingestion
   contract for Harbor job outputs, with deterministic fixture coverage and no
   default Docker, model, cloud, or leaderboard execution.
-- `passive-baseline-protocol-v0.md`: paired bare Codex CLI versus passive Goal
-  Harness wrapper protocol, connecting local `benchmark_result_v0` comparison
-  evidence to compact `benchmark_run_v0` history rows without operator
-  simulation.
+- `passive-baseline-protocol-v0.md`: paired Codex CLI goal-mode baseline
+  versus passive Goal Harness wrapper protocol, connecting local
+  `benchmark_result_v0` comparison evidence to compact `benchmark_run_v0`
+  history rows without operator simulation.
 - `operator-simulator-overlay-v0.md`: assisted operator-simulator overlay
   protocol after the passive baseline, including active user injection,
   comparison modes, simulator matrix, visibility limits, intervention budget,
@@ -526,17 +526,18 @@ work still belongs in the existing code, examples, and contract documents:
 - `terminal-bench-runner-mode-contract-v0.md`: no-run mode contract for the
   future `goal-harness benchmark run terminal-bench ...` wrapper, separating
   parent runner control-plane behavior from per-case worker modes
-  `hardened-codex` and `codex-goal-harness`. The contract treats hardened
-  Codex as the true paired baseline for this experiment and
-  `codex-goal-harness` as the core `model + harness` pair.
+  `codex-goal-mode` and `codex-goal-harness`. The contract treats Codex CLI
+  goal mode as the true paired baseline for this experiment and
+  `codex-goal-harness` as the core `goal-mode model + harness` pair; hardened
+  or bare Codex evidence is calibration only.
 - `terminal-bench-official-hard-case-selection-v0.md`: no-run selection
   contract that moves the next evidence target from `terminal-bench-sample@2.0`
   to official `terminal-bench@2.0`, selects a three-case hard/long-horizon
   primary batch (`fix-code-vulnerability`, `modernize-scientific-stack`, and
   `llm-inference-batching-scheduler`), defines a backup queue, and preserves
-  paired-run invariants for `hardened-codex` versus `codex-goal-harness`,
-  claim boundaries, metrics, and stop conditions before any full 89-task run or
-  leaderboard path.
+  paired-run invariants for `codex-goal-mode` versus `codex-goal-harness`,
+  claim boundaries, metrics, goal-mode invocation preflight, and stop
+  conditions before any full 89-task run or leaderboard path.
 - `agents-last-exam-triage-v0.md`: source-backed triage note adding Agents'
   Last Exam to the benchmark backlog. It records the Xiaohongshu discovery
   signal, verifies the arXiv and public GitHub surfaces, and keeps ALE behind

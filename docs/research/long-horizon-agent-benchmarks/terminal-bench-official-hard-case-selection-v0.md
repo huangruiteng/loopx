@@ -24,8 +24,9 @@ official `terminal-bench@2.0` cases.
 ## Selection Policy
 
 Do not run all 89 tasks first. Select two or three high-value long-horizon
-cases where the hardened Codex baseline is plausibly brittle and where Goal Harness could help
-through state, todo, checkpoint, replan, or compact evidence discipline.
+cases where the Codex goal-mode baseline is plausibly brittle and where Goal
+Harness could help through state, todo, checkpoint, replan, or compact evidence
+discipline.
 
 Selection criteria:
 
@@ -44,7 +45,7 @@ Selection criteria:
 
 | Rank | Task | Why this belongs in the first official batch | First comparison |
 | --- | --- | --- | --- |
-| 1 | `fix-code-vulnerability` | Security debugging is long-horizon: the agent must inspect code, infer exploit/failure mechanics, patch narrowly, and verify. The sample metadata for this same task family marked it hard and long. | Run hardened Codex baseline and Codex+Goal Harness treatment in parallel. |
+| 1 | `fix-code-vulnerability` | Security debugging is long-horizon: the agent must inspect code, infer exploit/failure mechanics, patch narrowly, and verify. The sample metadata for this same task family marked it hard and long. | Run Codex goal-mode baseline and Codex+Goal Harness treatment in parallel. |
 | 2 | `modernize-scientific-stack` | Dependency modernization is close to the `build-cython-ext` readiness lane but broader and more failure-prone: version constraints, scientific packages, compile/runtime errors, and repeated verification. | Run after `fix-code-vulnerability` unless the first pair exposes a runner blocker. |
 | 3 | `llm-inference-batching-scheduler` | ML systems scheduling is likely to require code comprehension, performance/shape reasoning, and careful tests. It is aligned with Goal Harness's intended long-horizon engineering niche. | Run as the third paired case or replace a blocked case. |
 
@@ -63,31 +64,33 @@ Use these if the primary batch is blocked by environment or verifier issues:
 
 For each selected task, run the same official task id under two cells:
 
-1. `hardened-codex`: Harbor launches the hardened custom Codex worker with the
-   original task prompt and no Goal Harness packet, bridge, or state.
-2. `codex-goal-harness`: Harbor launches the same hardened custom Codex worker
-   with the Goal Harness access packet and active worker bridge enabled.
+1. `codex-goal-mode`: Harbor launches Codex with its native goal-mode surface,
+   the original task prompt, and no Goal Harness packet, bridge, or state.
+2. `codex-goal-harness`: Harbor launches the same goal-mode Codex worker with
+   the Goal Harness access packet and active worker bridge enabled.
 
 Keep the two cells aligned on:
 
 - benchmark id: `terminal-bench@2.0`;
 - task id;
-- model;
+- model and Codex goal-mode invocation surface;
 - Harbor runner source;
 - no-upload/private jobs boundary;
 - attempts and concurrency;
 - task prompt, tests, scoring, and resources;
 - timeout tier recorded explicitly.
 
-The treatment cell is a model-plus-harness pair, not a native Codex baseline. Its
-official verifier reward is still useful, but any comparison must carry
+The treatment cell is a model-plus-harness pair, not a native Codex baseline.
+Its official verifier reward is still useful, but any comparison must carry
 `case_semantics_changed_by_harness=true`,
 `goal_harness_inside_case=true`, and
 `official_score_comparable_to_native_codex=false`.
 
-The hardened baseline is also not a native Codex leaderboard baseline. It is the
-paired baseline for this experiment because it keeps the hardened install
-surface constant while withholding Goal Harness state.
+The Codex goal-mode baseline is the paired baseline for this experiment because
+it answers whether Goal Harness adds value beyond Codex's own goal execution
+mode while withholding Goal Harness state. Hardened or bare Codex evidence may
+still be recorded as startup/install calibration, but it is not the primary
+paired baseline.
 
 ## Metrics
 
@@ -121,7 +124,8 @@ Stop before:
 Run a private no-upload official paired pilot on
 `terminal-bench@2.0` / `fix-code-vulnerability`:
 
-1. launch `hardened-codex`;
+1. launch `codex-goal-mode` after verifying the local Codex goal-mode
+   invocation surface;
 2. launch `codex-goal-harness` with the active worker bridge in parallel;
 3. ingest compact Harbor results for both arms;
 4. write one paired comparison event with reward, wall time, usage, worker

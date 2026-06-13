@@ -357,6 +357,7 @@ def base_result(scenario_id: str, *, task_id: str = TASK_ID) -> dict[str, Any]:
         "worker_mode": "deterministic",
         "harness_identity": "goal_harness" if with_harness else "none",
         "worker_surface": "deterministic_shim",
+        "codex_goal_mode_enabled": True,
         "terminal_state": "failure",
         "official_task_score": {"kind": "deterministic_validation", "passed": False, "value": 0.0},
         "control_plane_score": {
@@ -930,6 +931,7 @@ def assert_result_contract(results: list[dict[str, Any]], rows: list[dict[str, A
         assert result["schema_version"] == RESULT_SCHEMA, result
         assert result["task_id"] == TASK_ID, result
         assert result["worker_surface"] == "deterministic_shim", result
+        assert result["codex_goal_mode_enabled"] is True, result
         assert result["terminal_state"] == "success", result
         assert result["official_task_score"]["kind"] == "deterministic_validation", result
         assert result["official_task_score"]["passed"] is True, result

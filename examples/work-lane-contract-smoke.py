@@ -243,6 +243,16 @@ def assert_monitor_only_with_user_todo_stays_quiet_without_transition() -> None:
     assert "open_todo_notification_policy" not in guard, guard
     assert guard["requires_user_action"] is False, guard
     assert guard["execution_obligation"]["must_attempt_work"] is False, guard
+    interaction = guard["interaction_contract"]
+    assert interaction["mode"] == "user_todo_blocker_push", interaction
+    assert interaction["user_channel"]["action_required"] is True, interaction
+    assert interaction["agent_channel"]["must_attempt"] is False, interaction
+    assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
+    packet = guard["protocol_action_packet"]
+    assert "actor=user" in packet["summary"], packet
+    assert "user_action_required=true" in packet["summary"], packet
+    assert "agent_action_required=false" in packet["summary"], packet
+    assert "quiet_noop_allowed=false" in packet["summary"], packet
     markdown = render_quota_should_run_markdown(guard)
     assert "monitor_quiet_until_material_transition" in markdown, markdown
     assert "heartbeat_repeat_notification_required" not in markdown, markdown
