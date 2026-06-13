@@ -196,7 +196,13 @@ advance the selected goal. When the selected goal's current projection is a
 dependency-only observation, the payload includes `work_lane_contract` with
 `lane=continuous_monitor`. If open agent todos remain, schema
 `work_lane_contract_v1` now classifies todo items as
-`task_class=advancement_task` or `task_class=continuous_monitor`. It sets
+`task_class=advancement_task` or `task_class=continuous_monitor`. Agents should
+register executable work with `goal-harness todo add --task-class
+advancement_task --action-kind <token>` instead of depending on project-specific
+phrases in the automation prompt. The guard treats explicit `task_class` as
+authoritative, uses recognized generic `action_kind` tokens as the next best
+signal, and falls back to conservative text classification only for older
+checkboxes. It sets
 `next_lane=advancement_task`,
 `obligation=advance_unless_material_monitor_transition`,
 `must_attempt_work=true`, and reason codes such as `dependency_observation` and

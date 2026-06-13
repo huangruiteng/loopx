@@ -135,6 +135,13 @@ such as `execution_obligation`, `heartbeat_recommendation`,
 | Skill | Procedural operator/agent manual for using the CLI safely. | Runtime routing authority or a second state machine that overrides `quota should-run`. |
 | Automation prompt | Thin bootstrap: wake, preflight, run the CLI guard, use the skill if available, follow `interaction_contract`, and stop for global safety boundaries. | Long project-specific control flow, stale TODO memory, or handwritten exceptions. |
 
+Agent-visible follow-up work belongs in `Agent Todo`, not in prompt branches.
+When the agent knows whether a todo is executable work or watch-only work, it
+should register that fact through `goal-harness todo add --task-class ...`
+and optional `--action-kind ...`. The active-state metadata then feeds status,
+quota, dashboard, and review-packet consumers through the same CLI projection.
+Legacy todo text classification exists only to keep older states readable.
+
 ### Interaction Modes
 
 `interaction_contract.mode` should make these patterns explicit:

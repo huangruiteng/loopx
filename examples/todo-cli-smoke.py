@@ -114,9 +114,34 @@ def main() -> int:
 
         agent_payload = run_cli(registry_path, "todo", "add", "--goal-id", GOAL_ID, "--role", "agent", "--text", AGENT_TODO)
         assert agent_payload["added"] is True, agent_payload
+        metadata_payload = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            AGENT_TODO,
+            "--task-class",
+            "advancement_task",
+            "--action-kind",
+            "run_eval",
+        )
+        assert metadata_payload["added"] is False, metadata_payload
+        assert metadata_payload["already_exists"] is True, metadata_payload
+        assert metadata_payload["metadata_updated"] is True, metadata_payload
+        assert metadata_payload["task_class"] == "advancement_task", metadata_payload
+        assert metadata_payload["action_kind"] == "run_eval", metadata_payload
+        after_metadata = state_file.read_text(encoding="utf-8")
+        assert after_metadata.count(AGENT_TODO) == 1, after_metadata
+        assert "<!-- goal-harness:todo task_class=advancement_task action_kind=run_eval -->" in after_metadata
         fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
         assert fields["user_todos"]["items"][0]["text"] == USER_TODO, fields
         assert fields["agent_todos"]["items"][0]["text"] == AGENT_TODO, fields
+        assert fields["agent_todos"]["items"][0]["task_class"] == "advancement_task", fields
+        assert fields["agent_todos"]["items"][0]["action_kind"] == "run_eval", fields
         assert fields["user_todos"]["source_section"] == "User Todo / Owner Review Reading Queue", fields
         assert fields["agent_todos"]["source_section"] == "Agent Todo", fields
 

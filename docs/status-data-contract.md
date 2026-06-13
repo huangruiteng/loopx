@@ -128,9 +128,12 @@ advancement routing. It distinguishes `lane=continuous_monitor` from
 `lane=advancement_task`, carries the next lane, and exposes one `obligation`
 string such as `advance_unless_material_monitor_transition`. Agent todo items
 may include `task_class=advancement_task` or
-`task_class=continuous_monitor`; legacy todo text is classified conservatively
-by the producer. Hidden open todos are treated as advancement work rather than
-as monitor-only work, so a truncated top-N todo projection cannot accidentally
+`task_class=continuous_monitor`, plus optional `action_kind` such as
+`run_eval`, `validate`, `rebuild`, `writeback`, `monitor`, or `poll`. Explicit
+`task_class` is authoritative; recognized generic `action_kind` can infer the
+lane when `task_class` is absent; legacy todo text is only a compatibility
+fallback. Hidden open todos are treated as advancement work rather than as
+monitor-only work, so a truncated top-N todo projection cannot accidentally
 silence an executable backlog.
 For a dependency-observation projection with open agent todos, the guard sets
 `next_lane=advancement_task`, `must_attempt_work=true`, and
@@ -801,6 +804,8 @@ cannot crowd out implementation, planning, or blocker-writeback candidates.
 `attention_queue.autonomous_monitor_candidates` may separately expose compact
 `continuous_monitor` todos so heartbeat dispatchers still see the current
 watch surfaces without treating them as primary advancement work.
+Both candidate surfaces preserve `action_kind` when the agent registered one
+with the todo CLI.
 
 Both lists are candidate surfaces only: consumers must still obey the selected
 goal's quota, `goal_boundary`, owner/gate, public/private boundary, and

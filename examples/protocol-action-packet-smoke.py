@@ -217,7 +217,7 @@ def assert_advancement_packet_keeps_user_todo_pending() -> None:
     assert f"agent_action={USER_TODO}" not in packet["summary"], packet
 
 
-def assert_user_action_packet_blocks_agent_work() -> None:
+def assert_monitor_only_packet_keeps_user_todo_pending() -> None:
     guard = build_quota_should_run(
         status_payload(
             status="monitor_fixture",
@@ -229,12 +229,13 @@ def assert_user_action_packet_blocks_agent_work() -> None:
         goal_id=GOAL_ID,
     )
     packet = guard["protocol_action_packet"]
-    assert "actor=user" in packet["summary"], packet
-    assert "user_action_required=true" in packet["summary"], packet
+    assert "actor=agent" in packet["summary"], packet
+    assert "user_action_required=false" in packet["summary"], packet
     assert "agent_action_required=false" in packet["summary"], packet
-    assert "quiet_noop_allowed=false" in packet["summary"], packet
+    assert "quiet_noop_allowed=true" in packet["summary"], packet
+    assert "user_action_pending=true" in packet["summary"], packet
     assert USER_TODO in packet["summary"], packet
-    assert guard["notify_user_on_open_todo"] is True, guard
+    assert guard.get("notify_user_on_open_todo") is None, guard
 
 
 def assert_monitor_only_packet_allows_quiet_noop() -> None:
@@ -259,7 +260,7 @@ def assert_monitor_only_packet_allows_quiet_noop() -> None:
 def main() -> None:
     assert_advancement_packet_prefers_backlog_candidate()
     assert_advancement_packet_keeps_user_todo_pending()
-    assert_user_action_packet_blocks_agent_work()
+    assert_monitor_only_packet_keeps_user_todo_pending()
     assert_monitor_only_packet_allows_quiet_noop()
     print("ok: protocol action packet smoke")
 

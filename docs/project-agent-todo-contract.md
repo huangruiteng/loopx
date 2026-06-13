@@ -40,6 +40,37 @@ goal-harness todo add \
   --text "<public-safe agent action>"
 ```
 
+Executable agent work should register its lane instead of relying on text
+classification. Use `advancement_task` for a bounded implementation,
+validation, benchmark, blocker-writeback, or repair segment:
+
+```bash
+goal-harness todo add \
+  --goal-id <goal-id> \
+  --role agent \
+  --text "<public-safe executable agent action>" \
+  --task-class advancement_task \
+  --action-kind run_eval
+```
+
+Use `continuous_monitor` only for watch-only surfaces where an unchanged poll
+must stay quiet:
+
+```bash
+goal-harness todo add \
+  --goal-id <goal-id> \
+  --role agent \
+  --text "<public-safe monitor action>" \
+  --task-class continuous_monitor \
+  --action-kind monitor
+```
+
+`--action-kind` is a public-safe token. Known generic tokens such as
+`run_eval`, `validate`, `rebuild`, `writeback`, `monitor`, and `poll` help the
+CLI project the lane consistently, but explicit `--task-class` is the authority
+when both are present. If an exact todo already exists, `todo add` updates or
+inserts the metadata comment instead of creating a duplicate checkbox.
+
 The command resolves the active state from the project registry, creates the
 canonical section when needed, updates `updated_at`, and avoids duplicate exact
 todo text. If a dashboard or controller needs the new checklist immediately,
@@ -55,11 +86,23 @@ Projects may keep writing ordinary Markdown checkboxes, but readers should use
 the structured projection emitted by status/quota when available. Todo summaries
 carry `schema_version=todo_summary_v0`; individual items carry
 `schema_version=todo_item_v0`, `todo_id`, `role`, `status`, `priority`,
-`title`, `archive_state`, `source_section`, `index`, and `text`. The `todo_id`
+`title`, `archive_state`, `source_section`, `index`, `text`, `task_class`, and
+optional `action_kind`. The `todo_id`
 is parser-derived from the local section/index/text, so it is stable enough for
 local selection and regression checks but not a durable database id across major
 rewrites. Future timestamp, dependency, and evidence-link fields should extend
 this item shape instead of adding another todo format.
+In Markdown, lane metadata is stored as an indented HTML comment directly under
+the checkbox, for example:
+
+```markdown
+- [ ] Run one validated benchmark case and write back result or blocker.
+  <!-- goal-harness:todo task_class=advancement_task action_kind=run_eval -->
+```
+
+Plain checkbox text remains a compatibility fallback. New automation-facing
+work should prefer the CLI metadata path so quota and dashboard consumers do
+not need project-specific word lists.
 
 ## Execution Order
 

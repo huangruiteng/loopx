@@ -18,6 +18,12 @@ from .execution_profile import (
     outcome_floor_threshold,
 )
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
+from .todo_contract import (
+    TODO_TASK_CLASS_ADVANCEMENT,
+    TODO_TASK_CLASS_MONITOR,
+    next_action_requires_advancement_text,
+    normalize_todo_task_class,
+)
 
 
 DEFAULT_COMPUTE_QUOTA = 1.0
@@ -101,64 +107,6 @@ EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION = "external_evidence_observation_ob
 INTERACTION_CONTRACT_SCHEMA_VERSION = "goal_harness_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
-TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
-TODO_TASK_CLASS_MONITOR = "continuous_monitor"
-TODO_TASK_CLASS_VALUES = {TODO_TASK_CLASS_ADVANCEMENT, TODO_TASK_CLASS_MONITOR}
-TODO_ADVANCEMENT_OVERRIDE_PATTERNS = (
-    re.compile(r"(?i)\bbenchmark[- ]candidate readiness scanning\b"),
-    re.compile(r"(?i)\bbenchmark readiness scans?\b"),
-    re.compile(
-        r"(?i)\bsetup-readiness scan\b.*\b(?:proves?|produce|write|document|dossier|candidate|learning run)\b"
-    ),
-    re.compile(r"(?i)\b(?:sparse|no[- ]?task)\b.*\bsource preflight\b"),
-    re.compile(r"(?i)\bsource preflight\b.*\b(?:runner wrapper|harness code|public harness|public docs)\b"),
-    re.compile(r"(?i)\bAgentIssue-Bench\b.*\bPerfBench\b.*\bSWE-Bench Pro\b"),
-    re.compile(r"(?i)\bbehavior regression suite lane\b"),
-    re.compile(r"(?i)\breal Codex CLI interaction regressions\b"),
-    re.compile(r"(?i)\bregression/.*\b(?:maintain|add|focused cases|fixture|regressions?)\b"),
-    re.compile(r"(?i)\bfresh[- ]seed\b.*\bfull\b.*\brepeat\b"),
-    re.compile(r"(?i)\bfull\b.*\b(?:PR3[- ]?r8|treatment)\b.*\brepeat\b"),
-    re.compile(r"(?i)\brebuild\b.*\b(?:labels?|scorer|exposure rows?|query embedding refs?)\b"),
-    re.compile(r"(?i)\b(?:live eval|eval rows?|retrieval trace)\b.*\b(?:run|repeat|rebuild|complete|completes)\b"),
-)
-TODO_BLOCKED_MONITOR_PATTERNS = (
-    re.compile(r"(?i)\bdo not\b.*\b(?:launch|run|execute|start)\b.*\buntil\b"),
-    re.compile(r"(?i)\b(?:blocked|gated|waiting)\b.*\b(?:owner|user|credential|substrate|proof|prerequisite|evidence)\b"),
-    re.compile(r"(?i)\b(?:credential|gcp|gcs|gcp_project|gcp_sa_key|gs://)\b.*\b(?:missing|required|provide|proof|prerequisite|gate|gated)\b"),
-    re.compile(r"(?i)\b(?:readiness|proof)\b.*\bbefore any formal\b.*\brun\b"),
-    re.compile(r"(?i)\bremaining formal\b.*\bpath\b"),
-    re.compile(r"(?i)\b(?:route|input)\b.*\babsent\b"),
-    re.compile(r"(?i)\b0\b.*\b(?:candidate|candidates)\b"),
-)
-TODO_MONITOR_PATTERNS = (
-    re.compile(r"(?i)\bdependency monitor\b"),
-    re.compile(r"(?i)\bobservation lane\b"),
-    re.compile(r"(?i)(?:^|[:：]\s*)observe\b"),
-    re.compile(r"(?i)(?:^|[:：]\s*)poll\b"),
-    re.compile(r"(?i)(?:^|[:：]\s*)watch\b"),
-    re.compile(r"(?i)\bmonitor-only\b"),
-    *TODO_BLOCKED_MONITOR_PATTERNS,
-)
-TODO_ADVANCEMENT_PATTERNS = (
-    re.compile(r"(?i)(?:^|[:：]\s*)(?:implement|add|make|fix|build|wire|define|compare|run|repair|archive|publish|merge|write|attribute)\b"),
-    re.compile(r"(?i)\b(?:implementation slice|validation-backed patch|smoke fixture)\b"),
-)
-NEXT_ACTION_ADVANCEMENT_HINT_PATTERNS = (
-    re.compile(r"(?i)\bplanning/self[- ]?repair\b"),
-    re.compile(r"(?i)\bplanning[- ]?self[- ]?repair\b"),
-    re.compile(r"(?i)\bself[- ]?repair capability\b"),
-    re.compile(r"(?i)\badvance(?:ment)?[- ]class\b"),
-    re.compile(r"(?i)\badvance primary backlog\b"),
-    re.compile(r"(?i)\bnext eligible advancement turn\b"),
-    re.compile(r"(?i)\bpackage\b.*\b(?:adapter|contract|artifact)\b"),
-    re.compile(r"(?i)\bselect\b.*\b(?:task|validation hypothesis|validation step)\b"),
-    re.compile(r"(?i)\b(?:local-material-ready|material-ready)\b.*\b(?:task|run|validation)\b"),
-    re.compile(r"(?i)\b(?:run|test)\b.*\bvalidation hypothesis\b"),
-    re.compile(r"(?i)\brun\b.*\bfresh[- ]seed\b.*\b(?:full\b.*)?repeat\b"),
-    re.compile(r"(?i)\bfresh[- ]seed\b.*\bfull\b.*\brepeat\b"),
-    re.compile(r"(?i)\brebuild\b.*\b(?:labels?|scorer|exposure rows?|query embedding refs?)\b"),
-    re.compile(r"(?i)\b(?:live eval|eval rows?|retrieval trace)\b.*\b(?:run|repeat|rebuild|complete|completes)\b"),
-)
 
 
 def _now_local() -> str:
@@ -725,7 +673,18 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "index": item.get("index"),
         "text": text if text is not None else item.get("text"),
     }
-    for key in ("schema_version", "todo_id", "role", "status", "priority", "title", "archive_state", "source_section", "task_class"):
+    for key in (
+        "schema_version",
+        "todo_id",
+        "role",
+        "status",
+        "priority",
+        "title",
+        "archive_state",
+        "source_section",
+        "task_class",
+        "action_kind",
+    ):
         if item.get(key) is not None:
             compact[key] = item.get(key)
     compact["task_class"] = _todo_task_class(compact)
@@ -1486,22 +1445,11 @@ def _todo_task_class(item: dict[str, Any]) -> str:
         for value in (item.get("title"), item.get("text"))
         if str(value or "").strip()
     )
-    for pattern in TODO_ADVANCEMENT_OVERRIDE_PATTERNS:
-        if pattern.search(text):
-            return TODO_TASK_CLASS_ADVANCEMENT
-    for pattern in TODO_BLOCKED_MONITOR_PATTERNS:
-        if pattern.search(text):
-            return TODO_TASK_CLASS_MONITOR
-    candidate = str(item.get("task_class") or "").strip()
-    if candidate in TODO_TASK_CLASS_VALUES:
-        return candidate
-    for pattern in TODO_MONITOR_PATTERNS:
-        if pattern.search(text):
-            return TODO_TASK_CLASS_MONITOR
-    for pattern in TODO_ADVANCEMENT_PATTERNS:
-        if pattern.search(text):
-            return TODO_TASK_CLASS_ADVANCEMENT
-    return TODO_TASK_CLASS_ADVANCEMENT
+    return normalize_todo_task_class(
+        item.get("task_class"),
+        text=text,
+        action_kind=item.get("action_kind"),
+    )
 
 
 def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
@@ -1534,9 +1482,7 @@ def _next_action_requires_advancement(item: dict[str, Any]) -> bool:
         item.get("recommended_action"),
     )
     text = " ".join(str(value or "") for value in values if str(value or "").strip())
-    if not text:
-        return False
-    return any(pattern.search(text) for pattern in NEXT_ACTION_ADVANCEMENT_HINT_PATTERNS)
+    return next_action_requires_advancement_text(text)
 
 
 def _has_lifecycle_marker(*values: Any, marker: str) -> bool:

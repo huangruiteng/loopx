@@ -48,6 +48,10 @@ Project-specific behavior belongs in the Goal Harness registry, active-state
 sections, adapter output, or narrow boundary rules. If a lifecycle rule is
 generally useful, add it to `goal-harness heartbeat-prompt` and its smoke
 contract so every project inherits it.
+Executable versus watch-only agent follow-up should be registered through the
+todo CLI (`--task-class` and optional `--action-kind`), then projected by
+`quota should-run`; it should not be encoded as benchmark- or project-specific
+prompt text.
 When the generated prompt and the installed skill disagree, the worker should
 trust the current CLI `interaction_contract` first, then use the skill as the
 operation manual and the prompt only as a bootstrap.

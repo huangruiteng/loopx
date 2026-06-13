@@ -3584,6 +3584,21 @@ def main(argv: list[str] | None = None) -> int:
     todo_parser.add_argument("--role", choices=["user", "agent"], help="Todo owner. Defaults to agent for archive-completed.")
     todo_parser.add_argument("--text", help="Todo text. Required for add; keep it short and public-safe enough for local status.")
     todo_parser.add_argument(
+        "--task-class",
+        choices=["advancement_task", "continuous_monitor"],
+        help=(
+            "For todo add, explicitly register the routing lane. "
+            "Use advancement_task for executable delivery work and continuous_monitor for watch-only work."
+        ),
+    )
+    todo_parser.add_argument(
+        "--action-kind",
+        help=(
+            "For todo add, optional public-safe action token such as run_eval, "
+            "rebuild_score, compact_blocker_writeback, or monitor."
+        ),
+    )
+    todo_parser.add_argument(
         "--max-active-done",
         type=int,
         default=12,
@@ -6622,6 +6637,8 @@ def main(argv: list[str] | None = None) -> int:
                     goal_id=args.goal_id,
                     role=args.role,
                     text=args.text,
+                    task_class=args.task_class,
+                    action_kind=args.action_kind,
                     project=Path(args.project).expanduser() if args.project else None,
                     state_file=Path(args.state_file).expanduser() if args.state_file else None,
                     dry_run=bool(args.dry_run),

@@ -8,10 +8,10 @@ from .history import load_registry
 from .state_refresh import now_local, resolve_goal_state
 from .status import (
     MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE,
-    TODO_TASK_PATTERN,
     normalize_todo_text,
     todo_role_for_heading,
 )
+from .todo_contract import TODO_TASK_PATTERN, format_todo_metadata_line, parse_todo_metadata_line
 
 
 TODO_SECTION_HEADINGS = {
@@ -67,7 +67,7 @@ def insert_into_existing_section(lines: list[str], start: int, end: int, todo_li
     insert_at = end
     while insert_at > start + 1 and not lines[insert_at - 1].strip():
         insert_at -= 1
-    new_lines = [todo_line]
+    new_lines = todo_line.splitlines()
     if insert_at == start + 1:
         new_lines.insert(0, "")
     if insert_at == end and end < len(lines) and lines[end].startswith("## "):
@@ -89,7 +89,7 @@ def insertion_anchor(lines: list[str], role: str) -> int:
 def insert_new_section(lines: list[str], role: str, todo_line: str) -> None:
     anchor = insertion_anchor(lines, role)
     heading = TODO_SECTION_HEADINGS[role]
-    section = [f"## {heading}", "", todo_line, ""]
+    section = [f"## {heading}", "", *todo_line.splitlines(), ""]
     if anchor > 0 and lines[anchor - 1].strip():
         section.insert(0, "")
     lines[anchor:anchor] = section
@@ -136,6 +136,10 @@ def todo_blocks(lines: list[str], start: int, end: int) -> list[dict[str, Any]]:
             }
             continue
         if current is not None and lines[index].startswith((" ", "\t")):
+            metadata = parse_todo_metadata_line(lines[index])
+            if metadata:
+                current.update(metadata)
+                continue
             continuation = lines[index].strip()
             if continuation:
                 current["text"] = normalize_todo_text(
@@ -179,12 +183,37 @@ def replace_updated_at(text: str, updated_at: str) -> str:
     return "---" + frontmatter + "---" + body
 
 
+def matching_todo_block(lines: list[str], start: int, end: int, text: str) -> dict[str, Any] | None:
+    expected = normalize_todo_text(text)
+    for block in todo_blocks(lines, start, end):
+        if normalize_todo_text(str(block.get("text") or "")) == expected:
+            return block
+    return None
+
+
+def upsert_todo_metadata(lines: list[str], block: dict[str, Any], metadata_line: str | None) -> bool:
+    if not metadata_line:
+        return False
+    start = int(block["start"])
+    end = int(block["end"])
+    for index in range(start + 1, end):
+        if parse_todo_metadata_line(lines[index]) is not None:
+            if lines[index] == metadata_line:
+                return False
+            lines[index] = metadata_line
+            return True
+    lines.insert(start + 1, metadata_line)
+    return True
+
+
 def add_goal_todo(
     *,
     registry_path: Path,
     goal_id: str,
     role: str,
     text: str,
+    task_class: str | None = None,
+    action_kind: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
     dry_run: bool = False,
@@ -208,21 +237,31 @@ def add_goal_todo(
     lines = original.splitlines()
     bounds = section_bounds(lines, role)
     section = bounds[2] if bounds else TODO_SECTION_HEADINGS[role]
-    todo_line = f"- [ ] {todo_text}"
+    metadata_line = format_todo_metadata_line(task_class=task_class, action_kind=action_kind)
+    metadata = parse_todo_metadata_line(metadata_line) if metadata_line else {}
+    todo_lines = [f"- [ ] {todo_text}"]
+    if metadata_line:
+        todo_lines.append(metadata_line)
+    todo_line = "\n".join(todo_lines)
     already_exists = bool(bounds and section_has_todo(lines, bounds[0], bounds[1], todo_text))
     added = not already_exists
+    metadata_updated = False
 
     if added:
         if bounds:
             insert_into_existing_section(lines, bounds[0], bounds[1], todo_line)
         else:
             insert_new_section(lines, role, todo_line)
+    elif bounds and metadata_line:
+        block = matching_todo_block(lines, bounds[0], bounds[1], todo_text)
+        if block:
+            metadata_updated = upsert_todo_metadata(lines, block, metadata_line)
 
     updated_at = now_local()
     new_text = "\n".join(lines) + ("\n" if original.endswith("\n") else "")
-    if added:
+    if added or metadata_updated:
         new_text = replace_updated_at(new_text, updated_at)
-    if added and not dry_run:
+    if (added or metadata_updated) and not dry_run:
         resolved_state_file.write_text(new_text, encoding="utf-8")
 
     return {
@@ -230,13 +269,16 @@ def add_goal_todo(
         "dry_run": dry_run,
         "added": added,
         "already_exists": already_exists,
+        "metadata_updated": metadata_updated,
         "goal_id": goal_id,
         "role": role,
         "section": section,
         "todo": todo_text,
+        "task_class": metadata.get("task_class") if metadata else None,
+        "action_kind": metadata.get("action_kind") if metadata else None,
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
-        "updated_at": updated_at if added else None,
+        "updated_at": updated_at if added or metadata_updated else None,
     }
 
 

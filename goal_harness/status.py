@@ -30,6 +30,14 @@ from .paths import global_registry_path, resolve_runtime_root
 from .promotion_gate import build_promotion_gate
 from .quota import QUOTA_MONITOR_POLL_CLASSIFICATION, quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
+from .todo_contract import (
+    TODO_TASK_CLASS_ADVANCEMENT,
+    TODO_TASK_CLASS_MONITOR,
+    TODO_TASK_PATTERN,
+    normalize_todo_action_kind,
+    normalize_todo_task_class,
+    parse_todo_metadata_line,
+)
 
 
 CODEX_READY_CLASSIFICATIONS = {
@@ -271,7 +279,6 @@ LIFECYCLE_PRIORITY = (
     "planned",
     "run_recorded",
 )
-TODO_TASK_PATTERN = re.compile(r"^\s*[-*]\s+\[([ xX-])\]\s+(.+?)\s*$")
 SECTION_HEADING_PATTERN = re.compile(r"^##+\s+(.+?)\s*$")
 LOCAL_PATH_SURFACE_PATTERN = re.compile(r"(?<!<)/(?:Users|Volumes|var/folders|tmp|private/tmp)/[^\s`'\"<>]+")
 SECRET_LIKE_SURFACE_PATTERN = re.compile(
@@ -361,48 +368,6 @@ TODO_ARCHIVE_HEADER_MARKERS = (
     "待办归档",
 )
 TODO_ITEM_SCHEMA_VERSION = "todo_item_v0"
-TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
-TODO_TASK_CLASS_MONITOR = "continuous_monitor"
-TODO_TASK_CLASS_VALUES = {TODO_TASK_CLASS_ADVANCEMENT, TODO_TASK_CLASS_MONITOR}
-TODO_ADVANCEMENT_OVERRIDE_PATTERNS = (
-    re.compile(r"(?i)\bbenchmark[- ]candidate readiness scanning\b"),
-    re.compile(r"(?i)\bbenchmark readiness scans?\b"),
-    re.compile(
-        r"(?i)\bsetup-readiness scan\b.*\b(?:proves?|produce|write|document|dossier|candidate|learning run)\b"
-    ),
-    re.compile(r"(?i)\b(?:sparse|no[- ]?task)\b.*\bsource preflight\b"),
-    re.compile(r"(?i)\bsource preflight\b.*\b(?:runner wrapper|harness code|public harness|public docs)\b"),
-    re.compile(r"(?i)\bAgentIssue-Bench\b.*\bPerfBench\b.*\bSWE-Bench Pro\b"),
-    re.compile(r"(?i)\bbehavior regression suite lane\b"),
-    re.compile(r"(?i)\breal Codex CLI interaction regressions\b"),
-    re.compile(r"(?i)\bregression/.*\b(?:maintain|add|focused cases|fixture|regressions?)\b"),
-    re.compile(r"(?i)\bfresh[- ]seed\b.*\bfull\b.*\brepeat\b"),
-    re.compile(r"(?i)\bfull\b.*\b(?:PR3[- ]?r8|treatment)\b.*\brepeat\b"),
-    re.compile(r"(?i)\brebuild\b.*\b(?:labels?|scorer|exposure rows?|query embedding refs?)\b"),
-    re.compile(r"(?i)\b(?:live eval|eval rows?|retrieval trace)\b.*\b(?:run|repeat|rebuild|complete|completes)\b"),
-)
-TODO_BLOCKED_MONITOR_PATTERNS = (
-    re.compile(r"(?i)\bdo not\b.*\b(?:launch|run|execute|start)\b.*\buntil\b"),
-    re.compile(r"(?i)\b(?:blocked|gated|waiting)\b.*\b(?:owner|user|credential|substrate|proof|prerequisite|evidence)\b"),
-    re.compile(r"(?i)\b(?:credential|gcp|gcs|gcp_project|gcp_sa_key|gs://)\b.*\b(?:missing|required|provide|proof|prerequisite|gate|gated)\b"),
-    re.compile(r"(?i)\b(?:readiness|proof)\b.*\bbefore any formal\b.*\brun\b"),
-    re.compile(r"(?i)\bremaining formal\b.*\bpath\b"),
-    re.compile(r"(?i)\b(?:route|input)\b.*\babsent\b"),
-    re.compile(r"(?i)\b0\b.*\b(?:candidate|candidates)\b"),
-)
-TODO_MONITOR_PATTERNS = (
-    re.compile(r"(?i)\bdependency monitor\b"),
-    re.compile(r"(?i)\bobservation lane\b"),
-    re.compile(r"(?i)(?:^|[:：]\s*)observe\b"),
-    re.compile(r"(?i)(?:^|[:：]\s*)poll\b"),
-    re.compile(r"(?i)(?:^|[:：]\s*)watch\b"),
-    re.compile(r"(?i)\bmonitor-only\b"),
-    *TODO_BLOCKED_MONITOR_PATTERNS,
-)
-TODO_ADVANCEMENT_PATTERNS = (
-    re.compile(r"(?i)(?:^|[:：]\s*)(?:implement|add|make|fix|build|wire|define|compare|run|repair|archive|publish|merge|write|attribute)\b"),
-    re.compile(r"(?i)\b(?:implementation slice|validation-backed patch|smoke fixture)\b"),
-)
 
 
 def normalize_todo_text(text: str, *, limit: int = 500) -> str:
@@ -2539,30 +2504,6 @@ def todo_priority_parts(text: str) -> tuple[str | None, str]:
     return match.group(1).strip().upper(), match.group(2).strip()
 
 
-def todo_task_class_for_text(text: str) -> str:
-    compact = normalize_todo_text(text)
-    for pattern in TODO_ADVANCEMENT_OVERRIDE_PATTERNS:
-        if pattern.search(compact):
-            return TODO_TASK_CLASS_ADVANCEMENT
-    for pattern in TODO_BLOCKED_MONITOR_PATTERNS:
-        if pattern.search(compact):
-            return TODO_TASK_CLASS_MONITOR
-    for pattern in TODO_MONITOR_PATTERNS:
-        if pattern.search(compact):
-            return TODO_TASK_CLASS_MONITOR
-    for pattern in TODO_ADVANCEMENT_PATTERNS:
-        if pattern.search(compact):
-            return TODO_TASK_CLASS_ADVANCEMENT
-    return TODO_TASK_CLASS_ADVANCEMENT
-
-
-def normalize_todo_task_class(value: Any, *, text: str) -> str:
-    candidate = str(value or "").strip()
-    if candidate in TODO_TASK_CLASS_VALUES:
-        return candidate
-    return todo_task_class_for_text(text)
-
-
 def structured_todo_item(
     item: dict[str, Any],
     *,
@@ -2585,9 +2526,16 @@ def structured_todo_item(
             "archive_state": archive_state,
             "source_section": source_section,
             "text": text,
-            "task_class": normalize_todo_task_class(item.get("task_class"), text=text),
+            "task_class": normalize_todo_task_class(
+                item.get("task_class"),
+                text=text,
+                action_kind=item.get("action_kind"),
+            ),
         }
     )
+    action_kind = normalize_todo_action_kind(item.get("action_kind"))
+    if action_kind:
+        normalized["action_kind"] = action_kind
     if priority:
         normalized["priority"] = priority
         normalized["title"] = normalize_todo_text(title)
@@ -2600,7 +2548,18 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "done": bool(item.get("done")),
         "text": item.get("text"),
     }
-    for key in ("schema_version", "todo_id", "role", "status", "priority", "title", "archive_state", "source_section", "task_class"):
+    for key in (
+        "schema_version",
+        "todo_id",
+        "role",
+        "status",
+        "priority",
+        "title",
+        "archive_state",
+        "source_section",
+        "task_class",
+        "action_kind",
+    ):
         if item.get(key) is not None:
             compact[key] = item.get(key)
     return compact
@@ -2696,6 +2655,10 @@ def parse_active_state_todos(state_text: str, *, goal: dict[str, Any] | None = N
             current_todo = todo
             continue
         if current_todo is None or not line.startswith((" ", "\t")):
+            continue
+        metadata = parse_todo_metadata_line(line)
+        if metadata:
+            current_todo.update(metadata)
             continue
         continuation = line.strip()
         if continuation:
@@ -3268,7 +3231,11 @@ def autonomous_todo_candidates(
             continue
         todos = item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None
         for todo in open_todo_items(todos):
-            todo_class = normalize_todo_task_class(todo.get("task_class"), text=str(todo.get("text") or ""))
+            todo_class = normalize_todo_task_class(
+                todo.get("task_class"),
+                text=str(todo.get("text") or ""),
+                action_kind=todo.get("action_kind"),
+            )
             if todo_class != task_class:
                 continue
             text = normalize_todo_text(str(todo.get("text") or ""), limit=240)
@@ -3288,6 +3255,9 @@ def autonomous_todo_candidates(
                     "source": "agent_todos",
                 }
             )
+            action_kind = normalize_todo_action_kind(todo.get("action_kind"))
+            if action_kind:
+                candidates[-1]["action_kind"] = action_kind
     if not candidates:
         return None
     candidates.sort(
