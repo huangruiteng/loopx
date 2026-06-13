@@ -116,6 +116,10 @@ TODO_ADVANCEMENT_OVERRIDE_PATTERNS = (
     re.compile(r"(?i)\bbehavior regression suite lane\b"),
     re.compile(r"(?i)\breal Codex CLI interaction regressions\b"),
     re.compile(r"(?i)\bregression/.*\b(?:maintain|add|focused cases|fixture|regressions?)\b"),
+    re.compile(r"(?i)\bfresh[- ]seed\b.*\bfull\b.*\brepeat\b"),
+    re.compile(r"(?i)\bfull\b.*\b(?:PR3[- ]?r8|treatment)\b.*\brepeat\b"),
+    re.compile(r"(?i)\brebuild\b.*\b(?:labels?|scorer|exposure rows?|query embedding refs?)\b"),
+    re.compile(r"(?i)\b(?:live eval|eval rows?|retrieval trace)\b.*\b(?:run|repeat|rebuild|complete|completes)\b"),
 )
 TODO_BLOCKED_MONITOR_PATTERNS = (
     re.compile(r"(?i)\bdo not\b.*\b(?:launch|run|execute|start)\b.*\buntil\b"),
@@ -150,6 +154,10 @@ NEXT_ACTION_ADVANCEMENT_HINT_PATTERNS = (
     re.compile(r"(?i)\bselect\b.*\b(?:task|validation hypothesis|validation step)\b"),
     re.compile(r"(?i)\b(?:local-material-ready|material-ready)\b.*\b(?:task|run|validation)\b"),
     re.compile(r"(?i)\b(?:run|test)\b.*\bvalidation hypothesis\b"),
+    re.compile(r"(?i)\brun\b.*\bfresh[- ]seed\b.*\b(?:full\b.*)?repeat\b"),
+    re.compile(r"(?i)\bfresh[- ]seed\b.*\bfull\b.*\brepeat\b"),
+    re.compile(r"(?i)\brebuild\b.*\b(?:labels?|scorer|exposure rows?|query embedding refs?)\b"),
+    re.compile(r"(?i)\b(?:live eval|eval rows?|retrieval trace)\b.*\b(?:run|repeat|rebuild|complete|completes)\b"),
 )
 
 

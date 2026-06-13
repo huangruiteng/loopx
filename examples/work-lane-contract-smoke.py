@@ -420,6 +420,86 @@ def assert_monitor_only_with_adapter_next_action_materializes_advancement() -> N
     assert guard["execution_obligation"]["contract_obligation"] == lane["obligation"], guard
 
 
+def assert_side_bypass_fresh_seed_repeat_routes_to_advancement() -> None:
+    fresh_seed_todo = (
+        "Run fresh-seed full PR3-r8 OV tip-template airline treatment repeat under "
+        "the validated retrieval-smoke path; seed308 is support-blocked and does "
+        "not unblock the scorer by itself, but if the repeat completes with real "
+        "retrieval/eval rows and a non-empty retrieval trace, rebuild exposure "
+        "rows, medium dynamic-beta labels, query embedding refs, and scorer "
+        "validation; if it fails, write the concrete blocker."
+    )
+    assert normalize_todo_task_class(None, text=fresh_seed_todo) == TODO_TASK_CLASS_ADVANCEMENT
+    guard = build_quota_should_run(
+        status_payload(
+            status="side_bypass_r8_ov_retrieval_smoke_passed",
+            next_action=(
+                "Run a fresh-seed full PR3-r8 OV tip-template treatment repeat, "
+                "then rebuild exposure rows, medium dynamic-beta labels, query "
+                "embedding refs, and vector-aware scorer only if the repeat "
+                "completes with real retrieval/eval rows."
+            ),
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": fresh_seed_todo,
+                    "role": "agent",
+                    "status": "open",
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "run", guard
+    assert guard["should_run"] is True, guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["obligation"] == "advance_one_bounded_segment", lane
+    assert lane["reason_codes"] == ["open_agent_todo"], lane
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+    assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, guard
+    first_items = guard["agent_todo_summary"]["first_open_items"]
+    assert first_items[0]["task_class"] == "advancement_task", guard
+
+
+def assert_side_bypass_monitor_todo_with_fresh_seed_next_action_materializes_advancement() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            status="side_bypass_r8_ov_retrieval_smoke_passed",
+            next_action=(
+                "Run a fresh-seed full PR3-r8 OV tip-template treatment repeat, "
+                "then rebuild exposure rows, medium dynamic-beta labels, query "
+                "embedding refs, and vector-aware scorer only if the repeat "
+                "completes with real retrieval/eval rows."
+            ),
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": (
+                        "Blocked on owner evidence for the scorer-valid next "
+                        "r8-aligned treatment source; seed308 is support-blocked "
+                        "and does not unblock this todo."
+                    ),
+                    "role": "agent",
+                    "status": "open",
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "run", guard
+    assert guard["should_run"] is True, guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["obligation"] == "materialize_advancement_todo_or_blocker", lane
+    assert lane["reason_codes"] == ["monitor_todo_only", "next_action_requires_advancement"], lane
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+    first_items = guard["agent_todo_summary"]["first_open_items"]
+    assert first_items[0]["task_class"] == "continuous_monitor", guard
+
+
 def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -604,6 +684,8 @@ def main() -> int:
     assert_blocked_agent_todo_with_user_gate_notifies_without_execution()
     assert_monitor_only_with_planning_next_action_materializes_advancement()
     assert_monitor_only_with_adapter_next_action_materializes_advancement()
+    assert_side_bypass_fresh_seed_repeat_routes_to_advancement()
+    assert_side_bypass_monitor_todo_with_fresh_seed_next_action_materializes_advancement()
     assert_mixed_monitor_and_advancement_routes_to_advancement()
     assert_benchmark_readiness_scan_routes_to_advancement()
     assert_benchmark_source_preflight_routes_to_advancement()
