@@ -45,16 +45,20 @@ reduce_compact_public_evidence
 
 The script requires the operator to provide a private `context/prompt.md`
 before execution. It rejects the synthetic placeholder prompt, keeps Codex
-auth on the trusted host, extracts only the selected `lagent_239` image source,
-exports the attempt patch from the buggy-source git diff, evaluates the same
-selected image through `apply_patch` plus `test_patched`, writes
+auth on the trusted host, extracts only the selected `lagent_239` image source
+from the real image path `/app/source_code_buggy` by default, exports the
+attempt patch from the buggy-source git diff, evaluates the same selected image
+through the image's `/usr/local/bin/run_test_entrypoint.sh apply_patch` plus
+`test_patched` commands in one container process, writes
 `benchmark_run.compact.json` and `benchmark_result.compact.json`, then calls
 the compact-only `--real-result-root` reducer.
 
 History append is opt-in inside the script through `APPEND_HISTORY=1`; the
 default script run reduces compact evidence without appending run history. The
 script can pull the selected image only when `ALLOW_DOCKER_PULL=1`; otherwise a
-missing local image is a blocker.
+missing local image is a blocker. The source path is still configurable with
+`CONTAINER_BUGGY_SOURCE`, but the generated default is pinned to the observed
+`lagent_239` image layout rather than the generic `/workspace` placeholder.
 
 ## Public Manifest
 

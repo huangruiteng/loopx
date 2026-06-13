@@ -2234,8 +2234,9 @@ def _agentissue_private_runner_script_text(
     docker = shlex.quote(_agentissue_public_label(docker_binary, limit=80))
     quoted_tag = shlex.quote(tag)
     quoted_image = shlex.quote(image)
-    eval_apply = "apply_patch < /patches/attempt.patch"
-    eval_test = "test_patched"
+    container_buggy_source = "/app/source_code_buggy"
+    eval_apply = "/usr/local/bin/run_test_entrypoint.sh apply_patch /patches/attempt.patch"
+    eval_test = "/usr/local/bin/run_test_entrypoint.sh test_patched"
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
@@ -2249,6 +2250,7 @@ ALLOW_DOCKER_PULL="${{ALLOW_DOCKER_PULL:-0}}"
 APPEND_HISTORY="${{APPEND_HISTORY:-0}}"
 PATCH_APPLY_SH="${{PATCH_APPLY_SH:-{eval_apply}}}"
 PATCH_TEST_SH="${{PATCH_TEST_SH:-{eval_test}}}"
+CONTAINER_BUGGY_SOURCE="${{CONTAINER_BUGGY_SOURCE:-{container_buggy_source}}}"
 JOB_ROOT="${{JOB_ROOT:-$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)}}"
 CONTEXT_DIR="$JOB_ROOT/context"
 PROMPT_PATH="${{PROMPT_PATH:-$CONTEXT_DIR/prompt.md}}"
@@ -2301,7 +2303,7 @@ extract_buggy_source_from_selected_container() {{
   fi
   TMP_CONTAINER="agentissue-lagent-239-extract-$$"
   "$DOCKER_BIN" create --name "$TMP_CONTAINER" "$IMAGE" >/dev/null
-  "$DOCKER_BIN" cp "$TMP_CONTAINER:/workspace/." "$BUGGY_SOURCE"
+  "$DOCKER_BIN" cp "$TMP_CONTAINER:$CONTAINER_BUGGY_SOURCE/." "$BUGGY_SOURCE"
   "$DOCKER_BIN" rm "$TMP_CONTAINER" >/dev/null
   TMP_CONTAINER=""
   [ "$(find "$BUGGY_SOURCE" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" != "0" ] || fail "buggy source extraction produced no files"
@@ -2535,11 +2537,13 @@ def materialize_agentissue_codex_cli_runner_private_script(
             "strict_mode": True,
             "selected_tag_guard": True,
             "selected_image_guard": True,
+            "observed_image_source_path_default": True,
             "buggy_source_extraction_phase": True,
             "git_baseline_phase": True,
             "host_codex_phase": True,
             "patch_export_phase": True,
             "selected_container_eval_phase": True,
+            "entrypoint_eval_commands": True,
             "compact_reducer_phase": True,
             "appends_history_only_when_append_history_is_one": True,
         },
@@ -2564,6 +2568,7 @@ def materialize_agentissue_codex_cli_runner_private_script(
             "will_invoke_host_codex_cli": True,
             "will_start_selected_container": True,
             "will_write_compact_files": True,
+            "uses_entrypoint_eval_commands": True,
             "upload": False,
             "submit": False,
             "public_ranking_path": False,
@@ -2603,10 +2608,12 @@ def materialize_agentissue_codex_cli_runner_private_script(
             "script_path_relative_only": True,
             "phase_order_rendered": True,
             "script_renders_source_extraction": True,
+            "script_renders_observed_image_source_path": True,
             "script_renders_git_baseline": True,
             "script_renders_host_codex": True,
             "script_renders_patch_export": True,
             "script_renders_selected_tag_eval": True,
+            "script_renders_entrypoint_eval_commands": True,
             "script_renders_compact_evidence": True,
             "script_renders_real_result_reducer": True,
             "no_generator_codex_execution": True,
