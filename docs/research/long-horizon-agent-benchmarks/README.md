@@ -35,6 +35,11 @@ work still belongs in the existing code, examples, and contract documents:
   records the upstream Mainland-China/GCP issue, and ranks SWE-Marathon,
   AgentIssue-Bench, PerfBench, SWE-Bench Pro, MLE-bench, TheAgentCompany, and
   APEX-Agents by Goal Harness leverage before any fresh quota spend.
+- `wildclawbench-dossier-20260617.md`: public-safe no-run WildClawBench route
+  dossier. It records why harness comparison and side-effect auditing are a
+  stronger next Goal Harness hypothesis source than another same-policy
+  SkillsBench rerun, while blocking any official run until setup-readiness
+  proves a local no-upload slice without unauthorized API/search/judge calls.
 - `benchmark-priority-review-20260614.md`: corrected priority review using
   Codex CLI goal mode as the baseline. It separates direct low Codex baselines,
   selected hard-subset failures, and adjacent-agent-low benchmarks that still
