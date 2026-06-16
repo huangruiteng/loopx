@@ -39,41 +39,83 @@ into a mirror of maintainer scratch state.
 
 ## Current Public Tasks
 
-| ID | Status | Area | Good first? | Scope | Owner / issue | Validation |
-| --- | --- | --- | --- | --- | --- | --- |
-| GH-C01 | Available | docs | Yes | Add a short "first goal" walkthrough that starts with `goal-harness demo`, inspects status/history, completes one todo, and shows the next todo. Keep it public and runnable on a clean checkout. | Unclaimed | `goal-harness check --scan-path README.md --scan-path docs/ --scan-path examples/` |
-| GH-C02 | Available | tests | Yes | Add or extend a focused smoke test around todo archive/completion behavior. Prefer copying the style of `examples/todo-lifecycle-cli-smoke.py`. | Unclaimed | `python3 examples/todo-lifecycle-cli-smoke.py` and `python3 -m py_compile goal_harness/*.py` |
-| GH-C03 | Available | diagnostics | No | Improve duplicate run-history index diagnostics so `goal-harness check` gives the next repair action, not only a warning. Include a small fixture or smoke path if practical. | Unclaimed | `goal-harness check --scan-root .` plus focused smoke if added |
-| GH-C04 | Available | docs | Yes | Improve README troubleshooting for install, PATH setup, canary/default wrappers, and `goal-harness doctor`. | Unclaimed | `goal-harness check --scan-path README.md --scan-path CONTRIBUTING.md` |
-| GH-C05 | Available | regression | No | Create the first `regression/` case for a previously observed control-plane stall, such as external-evidence waits, P0-blocked/P1 fallback, compact blocker writeback, or no-progress self-repair. Keep it deterministic and public-safe. | Unclaimed | Focused regression command plus `python3 -m py_compile goal_harness/*.py` |
-| GH-C06 | Available | cli | No | Start CLI modularization by defining a `goal_harness/cli_commands/` command-module contract and migrating one low-risk command group while preserving old invocations. | Unclaimed | Old command smoke plus `python3 -m py_compile goal_harness/*.py` |
-| GH-C07 | Available | state | No | Add structured-state write serialization for todo/refresh/history writers using a per-goal lock or optimistic revision guard. Include a concurrent todo add/update regression. | Unclaimed | New concurrency regression plus `python3 -m py_compile goal_harness/*.py` |
-| GH-C08 | Available | status | No | Improve agent todo projection so `status` / `quota should-run` can expose a broader priority-sorted backlog without letting monitor items hide executable work. | Unclaimed | `goal-harness --format json status` fixture or focused smoke |
-| GH-C09 | Available | diagnostics | Yes | Inspect duplicate run-history index rows with `history inspect-index-duplicates`, then document the current repair path in public-safe troubleshooting docs. This is docs-first; code fix can be a follow-up. | Unclaimed | `goal-harness check --scan-path docs/ --scan-path README.md` |
-| GH-C10 | Available | docs | Yes | Add a public "what counts as a good smoke" guide using `CONTRIBUTING.md` and recent benchmark-smoke cleanup as source material. Explain when to keep, merge, or delete smokes. | Unclaimed | `goal-harness check --scan-path CONTRIBUTING.md --scan-path CONTRIBUTOR_TASKS.md` |
-| GH-C11 | Available | fresh clone | No | Harden the fresh-clone public user path: install wrapper, PATH, `doctor`, `demo`, `status`, dashboard status export, and project skill install/update. Record only public blockers. | Unclaimed | Fresh checkout notes plus runnable smoke or checklist |
-| GH-C12 | Available | dashboard | No | Add a first-screen status/dashboard acceptance smoke that verifies goal name, waiting owner, recommended action, safety boundary, first user todo, and highest-priority agent todo appear before raw run-history drilldown. | Unclaimed | Dashboard/status smoke or fixture |
-| GH-C13 | Available | docs | Yes | Expand public/private boundary examples with realistic safe and unsafe snippets for benchmark traces, active state, local paths, credentials, and compact artifacts. | Unclaimed | `goal-harness check --scan-path docs/public-private-boundary.md --scan-path examples/` |
-| GH-C14 | Available | protocol | No | Add a focused regression for protocol action packet output so future Codex CLI wrappers cannot accidentally invoke model APIs or runner adapters from the decision-only path. | Unclaimed | `python3 examples/protocol-action-packet-smoke.py` or new focused smoke |
-| GH-C15 | Available | benchmark | No | Implement benchmark ledger drift warning: when compact run history has a benchmark result but `benchmark-run-ledger.json/md` lacks the row, status should warn or closeout should auto-upsert. Keep raw task/log/trajectory material out. | Unclaimed | `python3 examples/benchmark-run-ledger-smoke.py` |
-| GH-C16 | Available | benchmark | No | Add a public-safe trajectory-summary contract for non-SkillsBench adapters so Terminal-Bench/SWE/ALE can expose comparable counters without raw task text, logs, verifier output, or trajectory bodies. | Unclaimed | New unit/fake fixture smoke |
-| GH-C17 | Needs design | benchmark | No | Design per-round artifact snapshot/restore for blind-loop benchmark runs so `best_score` can become an executable final-selection policy, not only an offline metric. | Unclaimed | Design note with stop conditions and public/private boundary |
-| GH-C18 | Maintainer-owned | benchmark | No | Long-horizon benchmark evidence program, including live local no-upload cases, runner contracts, trace retention, score accounting, and good/bad case attribution. Do not duplicate live runs or inspect private artifacts unless maintainers split out a public helper issue. | Maintainers | Maintainer-run benchmark ledger and public/private scan |
-| GH-C19 | Maintainer-owned | benchmark | No | Main-table SkillsBench product-mode comparison: raw Codex autonomous max5 versus Goal Harness state/todo/replan/CLI, no verifier feedback to either arm, stop on reward 1 or declared done. External contributors can help with schema/docs/smokes only. | Maintainers | Maintainer-run compact ledger and case-analysis update |
-| GH-C20 | Needs design | benchmark | No | Define runner-agnostic benchmark lifecycle schema: `launch -> observe -> ingest -> classify -> ledger`, with stages such as process started, job materialized, trial started, worker started, result written, verifier scored. | Unclaimed | Design doc plus one adapter-neutral fixture |
-| GH-C21 | Needs design | benchmark | No | Split benchmark accounting into launcher attempt, case attempt, solver attempt, verifier attempt, and official-score attempt. Launcher/materialization failures must not count as case failures. | Unclaimed | Design doc or focused ledger fixture |
-| GH-C22 | Available | benchmark | No | Add launch artifact observable handles: pid/process state, job basename, compact artifact refs, allowed poll command, and read-boundary flags so heartbeat observation does not depend on chat memory. | Unclaimed | Focused fake launch artifact smoke |
-| GH-C23 | Needs design | policy | No | Replace narrative benchmark authorization with `run_permission_policy_v0`: allowed local no-upload model/Docker/Harbor actions, forbidden upload/leaderboard/public claim/production/cloud actions, timeout budget, and compact-only observation. | Unclaimed | Schema note plus projection smoke |
-| GH-C24 | Needs design | adapters | No | Plan adapter lifecycle rollout from Terminal-Bench to SkillsBench, SWE, and ALE using the same lifecycle/failure schema while keeping benchmark-specific runner details inside adapters. | Unclaimed | Design note accepted by maintainers |
-| GH-C25 | Needs design | server | No | Design a local Goal Harness server/daemon roadmap that preserves CLI contracts while centralizing per-goal locks, leases, idempotency keys, quota decisions, heartbeat scheduling, and compact status projection. | Unclaimed | `docs/` roadmap update |
-| GH-C26 | Needs design | planning | No | Define server-managed dreaming/planning semantics: background planning may propose ranked todos and evidence probes but must not execute protected work or spend delivery quota. | Unclaimed | Design note plus no-execution fixture |
-| GH-C27 | Available | planning | No | Add a contract regression separating autonomous replan from dreaming: autonomous replan is must-attempt bounded delivery/control-plane repair; dreaming is advisory, operator-gated, and must not emit `agent_command`. | Unclaimed | Focused quota/status smoke |
-| GH-C28 | Available | planning | No | Implement local-only dry-run proposal generation for dreaming: read public-safe run history/project state and emit proposal records without mutating project truth. | Unclaimed | Dry-run smoke with fake project state |
-| GH-C29 | Needs design | dashboard | No | Add dashboard/status design for a separate Dreaming lane or badge beside delivery and operator gates, so exploration proposals do not interrupt active project agents. | Unclaimed | Dashboard design note or fixture |
-| GH-C30 | Available | docs | Yes | Add a "project asset contract" explainer showing owner, gate, next action, stop condition, last evidence, next safe command, user todo, agent todo, support mode, and fresh status projection. | Unclaimed | `goal-harness check --scan-path docs/ --scan-path README.md` |
-| GH-C31 | Needs design | project intake | No | Prepare a read-only observer / authority-map intake for a complex open-source project. It should produce only a compact project map and missing-gate list before any write-control or private material access. | Unclaimed | Design note plus dry-run map fixture |
-| GH-C32 | Needs design | learning | No | Design public-safe reward-style learning for replanning: turn explicit reward/corrections into compact ranking hints without storing raw private chat or treating inferred preferences as hard gates. | Unclaimed | Design note with privacy constraints |
-| GH-C33 | Needs design | resource sync | No | After server/daemon design lands, define periodic Resource-to-Todo sync that compares repo docs, roadmap/status contracts, and authority commitments against active todos, then proposes updates through structured lifecycle APIs. | Unclaimed | Design note; implementation blocked on server lane |
+Start with **Starter** tasks if this is your first contribution. Choose
+**Focused** tasks if you are comfortable running local smokes. Pick **Advanced**
+tasks only when you are ready to touch shared state, adapters, or concurrency.
+Use **Design/RFC** tasks to shape direction before implementation.
+
+### Starter / Good First
+
+Low setup, docs-first, or narrow fixture work. These should be good entry
+points for contributors who are still learning the repository.
+
+| ID | Area | Task | Validation |
+| --- | --- | --- | --- |
+| GH-C01 | docs | Add a short "first goal" walkthrough that starts with `goal-harness demo`, inspects status/history, completes one todo, and shows the next todo. | `goal-harness check --scan-path README.md --scan-path docs/ --scan-path examples/` |
+| GH-C02 | tests | Add or extend a focused smoke test around todo archive/completion behavior. Prefer copying the style of `examples/todo-lifecycle-cli-smoke.py`. | `python3 examples/todo-lifecycle-cli-smoke.py` and `python3 -m py_compile goal_harness/*.py` |
+| GH-C04 | docs | Improve README troubleshooting for install, PATH setup, canary/default wrappers, and `goal-harness doctor`. | `goal-harness check --scan-path README.md --scan-path CONTRIBUTING.md` |
+| GH-C09 | diagnostics | Inspect duplicate run-history index rows with `history inspect-index-duplicates`, then document the current repair path. This is docs-first; code fix can be a follow-up. | `goal-harness check --scan-path docs/ --scan-path README.md` |
+| GH-C10 | docs | Add a public "what counts as a good smoke" guide using `CONTRIBUTING.md` and recent benchmark-smoke cleanup as source material. | `goal-harness check --scan-path CONTRIBUTING.md --scan-path CONTRIBUTOR_TASKS.md` |
+| GH-C13 | docs | Expand public/private boundary examples with realistic safe and unsafe snippets for benchmark traces, active state, local paths, credentials, and compact artifacts. | `goal-harness check --scan-path docs/public-private-boundary.md --scan-path examples/` |
+| GH-C30 | docs | Add a "project asset contract" explainer showing owner, gate, next action, stop condition, last evidence, next safe command, user todo, agent todo, support mode, and fresh status projection. | `goal-harness check --scan-path docs/ --scan-path README.md` |
+
+### Focused Implementation
+
+Small-to-medium code changes with a clear validation surface. These are good
+for contributors who can run local CLI smokes and keep changes scoped.
+
+| ID | Area | Task | Validation |
+| --- | --- | --- | --- |
+| GH-C03 | diagnostics | Improve duplicate run-history index diagnostics so `goal-harness check` gives the next repair action, not only a warning. Include a small fixture or smoke path if practical. | `goal-harness check --scan-root .` plus focused smoke if added |
+| GH-C05 | regression | Create the first `regression/` case for a previously observed control-plane stall, such as external-evidence waits, P0-blocked/P1 fallback, compact blocker writeback, or no-progress self-repair. | Focused regression command plus `python3 -m py_compile goal_harness/*.py` |
+| GH-C06 | cli | Start CLI modularization by defining a `goal_harness/cli_commands/` command-module contract and migrating one low-risk command group while preserving old invocations. | Old command smoke plus `python3 -m py_compile goal_harness/*.py` |
+| GH-C08 | status | Improve agent todo projection so `status` / `quota should-run` can expose a broader priority-sorted backlog without letting monitor items hide executable work. | `goal-harness --format json status` fixture or focused smoke |
+| GH-C11 | fresh clone | Harden the fresh-clone public user path: install wrapper, PATH, `doctor`, `demo`, `status`, dashboard status export, and project skill install/update. | Fresh checkout notes plus runnable smoke or checklist |
+| GH-C12 | dashboard | Add a first-screen status/dashboard acceptance smoke that verifies goal name, waiting owner, recommended action, safety boundary, first user todo, and highest-priority agent todo appear before raw run-history drilldown. | Dashboard/status smoke or fixture |
+| GH-C14 | protocol | Add a focused regression for protocol action packet output so future Codex CLI wrappers cannot accidentally invoke model APIs or runner adapters from the decision-only path. | `python3 examples/protocol-action-packet-smoke.py` or new focused smoke |
+| GH-C22 | benchmark | Add launch artifact observable handles: pid/process state, job basename, compact artifact refs, allowed poll command, and read-boundary flags so heartbeat observation does not depend on chat memory. | Focused fake launch artifact smoke |
+| GH-C27 | planning | Add a contract regression separating autonomous replan from dreaming: autonomous replan is must-attempt bounded delivery/control-plane repair; dreaming is advisory, operator-gated, and must not emit `agent_command`. | Focused quota/status smoke |
+| GH-C28 | planning | Implement local-only dry-run proposal generation for dreaming: read public-safe run history/project state and emit proposal records without mutating project truth. | Dry-run smoke with fake project state |
+
+### Advanced Implementation
+
+Shared-state, adapter, or benchmark-control changes. Please open an issue first
+and keep the first PR as a narrow slice.
+
+| ID | Area | Task | Validation |
+| --- | --- | --- | --- |
+| GH-C07 | state | Add structured-state write serialization for todo/refresh/history writers using a per-goal lock or optimistic revision guard. Include a concurrent todo add/update regression. | New concurrency regression plus `python3 -m py_compile goal_harness/*.py` |
+| GH-C15 | benchmark | Implement benchmark ledger drift warning: when compact run history has a benchmark result but `benchmark-run-ledger.json/md` lacks the row, status should warn or closeout should auto-upsert. Keep raw task/log/trajectory material out. | `python3 examples/benchmark-run-ledger-smoke.py` |
+| GH-C16 | benchmark | Add a public-safe trajectory-summary contract for non-SkillsBench adapters so Terminal-Bench/SWE/ALE can expose comparable counters without raw task text, logs, verifier output, or trajectory bodies. | New unit/fake fixture smoke |
+
+### Design / RFC
+
+Direction-setting work. These tasks should usually produce a doc or issue
+before implementation.
+
+| ID | Area | Task | Validation |
+| --- | --- | --- | --- |
+| GH-C17 | benchmark | Design per-round artifact snapshot/restore for blind-loop benchmark runs so `best_score` can become an executable final-selection policy, not only an offline metric. | Design note with stop conditions and public/private boundary |
+| GH-C20 | benchmark | Define runner-agnostic benchmark lifecycle schema: `launch -> observe -> ingest -> classify -> ledger`, with stages such as process started, job materialized, trial started, worker started, result written, verifier scored. | Design doc plus one adapter-neutral fixture |
+| GH-C21 | benchmark | Split benchmark accounting into launcher attempt, case attempt, solver attempt, verifier attempt, and official-score attempt. Launcher/materialization failures must not count as case failures. | Design doc or focused ledger fixture |
+| GH-C23 | policy | Replace narrative benchmark authorization with `run_permission_policy_v0`: allowed local no-upload model/Docker/Harbor actions, forbidden upload/leaderboard/public claim/production/cloud actions, timeout budget, and compact-only observation. | Schema note plus projection smoke |
+| GH-C24 | adapters | Plan adapter lifecycle rollout from Terminal-Bench to SkillsBench, SWE, and ALE using the same lifecycle/failure schema while keeping benchmark-specific runner details inside adapters. | Design note accepted by maintainers |
+| GH-C25 | server | Design a local Goal Harness server/daemon roadmap that preserves CLI contracts while centralizing per-goal locks, leases, idempotency keys, quota decisions, heartbeat scheduling, and compact status projection. | `docs/` roadmap update |
+| GH-C26 | planning | Define server-managed dreaming/planning semantics: background planning may propose ranked todos and evidence probes but must not execute protected work or spend delivery quota. | Design note plus no-execution fixture |
+| GH-C29 | dashboard | Add dashboard/status design for a separate Dreaming lane or badge beside delivery and operator gates, so exploration proposals do not interrupt active project agents. | Dashboard design note or fixture |
+| GH-C31 | project intake | Prepare a read-only observer / authority-map intake for a complex open-source project. It should produce only a compact project map and missing-gate list before any write-control or private material access. | Design note plus dry-run map fixture |
+| GH-C32 | learning | Design public-safe reward-style learning for replanning: turn explicit reward/corrections into compact ranking hints without storing raw private chat or treating inferred preferences as hard gates. | Design note with privacy constraints |
+| GH-C33 | resource sync | After server/daemon design lands, define periodic Resource-to-Todo sync that compares repo docs, roadmap/status contracts, and authority commitments against active todos, then proposes updates through structured lifecycle APIs. | Design note; implementation blocked on server lane |
+
+### Maintainer-Owned / Coordination Required
+
+Visible work that should not be duplicated. Ask for a public helper slice
+instead of launching private runs or broad product changes.
+
+| ID | Area | Task | Validation |
+| --- | --- | --- | --- |
+| GH-C18 | benchmark | Long-horizon benchmark evidence program, including live local no-upload cases, runner contracts, trace retention, score accounting, and good/bad case attribution. Do not duplicate live runs or inspect private artifacts unless maintainers split out a public helper issue. | Maintainer-run benchmark ledger and public/private scan |
+| GH-C19 | benchmark | Main-table SkillsBench product-mode comparison: raw Codex autonomous max5 versus Goal Harness state/todo/replan/CLI, no verifier feedback to either arm, stop on reward 1 or declared done. External contributors can help with schema/docs/smokes only. | Maintainer-run compact ledger and case-analysis update |
 
 ## Projection Sources
 
