@@ -26,6 +26,20 @@ adapters, smoke tests, public docs, or commit/push workflows, use the
    mixed commits directly to `main`, unless the user explicitly asks for a
    direct `main` push.
 
+For small, low-risk PRs, maintainers may self-merge after validation when all
+of the following are true:
+
+- the PR only touches public docs, contributor metadata, or narrow cleanup;
+- the change is single-purpose and easy to review from the diff;
+- required checks or focused smokes have passed;
+- private state, raw benchmark evidence, credentials, local paths, and
+  generated logs are excluded;
+- there is no runtime behavior, benchmark adapter, permission, destructive git,
+  or public evidence-policy change that needs separate review.
+
+After self-merging, sync local `main`, leave unrelated untracked local artifacts
+alone, and continue with the next safe project batch.
+
 ## Smoke Retention Policy
 
 Keep a smoke test only when it validates a durable public behavior:
