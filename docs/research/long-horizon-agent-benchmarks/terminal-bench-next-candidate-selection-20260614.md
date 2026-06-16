@@ -143,5 +143,5 @@ Stop before:
 ## Smoke
 
 ```bash
-python3 examples/terminal-bench-next-candidate-selection-smoke.py
+python3 examples/terminal-bench-candidate-routing-packets-smoke.py
 ```

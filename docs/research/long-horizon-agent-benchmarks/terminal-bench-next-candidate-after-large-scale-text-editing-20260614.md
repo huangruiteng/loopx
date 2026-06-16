@@ -59,9 +59,8 @@ For all six preflight surfaces, strict preflight reported:
 - `worker_bridge_requested=true` for the treatment arm;
 - `worker_bridge_requested=false` for the Codex goal-mode baseline.
 
-The preflights were written under `.local/tmp/goal-harness-meta/heartbeat-0753/`
-as local-private evidence. Public docs record only compact booleans and task
-ids.
+The preflights were written to a local-private temporary evidence directory.
+Public docs record only compact booleans and task ids.
 
 ## Selection
 
@@ -109,5 +108,5 @@ Stop before:
 ## Smoke
 
 ```bash
-python3 examples/terminal-bench-next-candidate-after-large-scale-text-editing-smoke.py
+python3 examples/terminal-bench-candidate-routing-packets-smoke.py
 ```

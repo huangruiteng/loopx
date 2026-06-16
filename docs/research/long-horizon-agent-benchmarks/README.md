@@ -570,6 +570,10 @@ work still belongs in the existing code, examples, and contract documents:
   `compile-compcert` after cross-history compact evidence shows it was already
   completed, and selects `install-windows-3.11` as the next private no-upload
   paired pilot.
+- The `terminal-bench-next-candidate*` routing packets are historical
+  public-safe decision records, not one smoke per document. Shared invariants
+  are validated by
+  `python3 examples/terminal-bench-candidate-routing-packets-smoke.py`.
 - `terminal-bench-next-candidate-after-install-windows-20260614.md`:
   public-safe P0 routing packet after the `install-windows-3.11` paired compact
   result. It records the baseline verifier-attribution caveat, blocks

@@ -19,7 +19,7 @@ from goal_harness.benchmark import build_benchmark_candidate_source_boundary  # 
 PRIVATE_ROOT = "/private/example/project/.local/private-benchmark-jobs/job-a"
 ALLOWED_SOURCES = [
     "docs/research/long-horizon-agent-benchmarks/terminal-bench-next-candidate-selection-20260614.md",
-    "examples/terminal-bench-next-candidate-selection-smoke.py",
+    "examples/terminal-bench-candidate-routing-packets-smoke.py",
     ".local/goals/goal-harness-meta/ACTIVE_GOAL_STATE.md",
     f"{PRIVATE_ROOT}/paired_comparison.compact.json",
     f"{PRIVATE_ROOT}/launch_observation.public.json",

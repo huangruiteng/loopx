@@ -115,5 +115,5 @@ Stop before:
 ## Smoke
 
 ```bash
-python3 examples/terminal-bench-next-candidate-after-build-cython-ext-smoke.py
+python3 examples/terminal-bench-candidate-routing-packets-smoke.py
 ```
