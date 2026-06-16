@@ -989,6 +989,77 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
     }
 
 
+def _same_todo_identity(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    left_id = str(left.get("todo_id") or "").strip()
+    right_id = str(right.get("todo_id") or "").strip()
+    if left_id and right_id:
+        return left_id == right_id
+    return (
+        left.get("index") == right.get("index")
+        and str(left.get("text") or "").strip() == str(right.get("text") or "").strip()
+    )
+
+
+def _blocked_priority_fallback(
+    agent_todo_summary: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    first_open = (
+        agent_todo_summary.get("first_open_items")
+        if isinstance(agent_todo_summary.get("first_open_items"), list)
+        else []
+    )
+    first_executable = (
+        agent_todo_summary.get("first_executable_items")
+        if isinstance(agent_todo_summary.get("first_executable_items"), list)
+        else []
+    )
+    selected = next((item for item in first_executable if isinstance(item, dict)), None)
+    if not selected:
+        return None
+
+    blocked_items: list[dict[str, Any]] = []
+    for item in first_open:
+        if not isinstance(item, dict):
+            continue
+        if _same_todo_identity(item, selected):
+            break
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        if item.get("done") is True:
+            continue
+        status = normalize_todo_status(item.get("status")) or TODO_STATUS_OPEN
+        if status == TODO_STATUS_OPEN:
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        blocked_items.append(_compact_todo_summary_item(item, text=text))
+
+    if not blocked_items:
+        return None
+    selected_text = str(selected.get("text") or "").strip()
+    selected_item = _compact_todo_summary_item(selected, text=selected_text) if selected_text else dict(selected)
+    return {
+        "schema_version": "blocked_priority_fallback_v0",
+        "kind": "blocked_priority_fallback",
+        "severity": "warning",
+        "notify_user": True,
+        "requires_user_action": False,
+        "reason": (
+            "a higher-priority agent todo is blocked or deferred before the "
+            "selected executable fallback"
+        ),
+        "blocked_items": blocked_items[:3],
+        "selected_executable": selected_item,
+        "recommended_action": (
+            "Surface the blocked core todo and why fallback is being selected; "
+            "continue the fallback only if it still matches the latest user priority."
+        ),
+    }
+
+
 def _todo_write_hint(goal_id: str) -> dict[str, str]:
     return {
         "rule": (
@@ -1505,6 +1576,11 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
             "reason": payload.get("open_todo_notify_reason")
             or payload.get("gate_prompt")
             or payload.get("operator_question")
+            or (
+                payload.get("blocked_priority_fallback", {}).get("reason")
+                if isinstance(payload.get("blocked_priority_fallback"), dict)
+                else None
+            )
             or None,
             "max_items": 3 if user_required else 0,
         },
@@ -2787,6 +2863,7 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
         agent_todo_summary = _summarize_project_asset_todos(
             project_asset.get("agent_todos") if project_asset else None
         ) or _summarize_user_todos(item.get("agent_todos"))
+        blocked_priority_fallback = _blocked_priority_fallback(agent_todo_summary)
         stall_self_repair = _stall_self_repair_hint(
             item,
             state=state,
@@ -2832,6 +2909,14 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             work_lane_contract=work_lane_contract,
             stall_self_repair=stall_self_repair,
         )
+        if blocked_priority_fallback and should_run:
+            heartbeat_recommendation = {
+                **heartbeat_recommendation,
+                "notify": "NOTIFY",
+                "reason": blocked_priority_fallback.get("reason")
+                or heartbeat_recommendation.get("reason"),
+                "blocked_priority_fallback": blocked_priority_fallback,
+            }
         external_evidence_observation = _external_evidence_observation_obligation(
             item,
             state=state,
@@ -2980,6 +3065,8 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
         )
         if agent_todo_summary:
             payload["agent_todo_summary"] = agent_todo_summary
+        if blocked_priority_fallback:
+            payload["blocked_priority_fallback"] = blocked_priority_fallback
         attention_queue = status_payload.get("attention_queue") if isinstance(status_payload.get("attention_queue"), dict) else {}
         backlog_context = _compact_autonomous_candidate_context(
             attention_queue.get("autonomous_backlog_candidates"),
@@ -4066,6 +4153,44 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if projection_gap.get("recommended_action"):
             lines.append(f"- state_projection_gap_action: {projection_gap.get('recommended_action')}")
+    blocked_priority_fallback = (
+        payload.get("blocked_priority_fallback")
+        if isinstance(payload.get("blocked_priority_fallback"), dict)
+        else {}
+    )
+    if blocked_priority_fallback:
+        selected = (
+            blocked_priority_fallback.get("selected_executable")
+            if isinstance(blocked_priority_fallback.get("selected_executable"), dict)
+            else {}
+        )
+        blocked_items = (
+            blocked_priority_fallback.get("blocked_items")
+            if isinstance(blocked_priority_fallback.get("blocked_items"), list)
+            else []
+        )
+        lines.append(
+            "- blocked_priority_fallback: "
+            f"notify_user={blocked_priority_fallback.get('notify_user')} "
+            f"blocked_count={len(blocked_items)} "
+            f"selected_index={selected.get('index')} "
+            f"reason={blocked_priority_fallback.get('reason')}"
+        )
+        for blocked in blocked_items[:3]:
+            if not isinstance(blocked, dict):
+                continue
+            text = str(blocked.get("text") or "").strip()
+            if not text:
+                continue
+            index = blocked.get("index")
+            suffix = f"[{index}]" if index is not None else ""
+            lines.append(f"- blocked_priority_item{suffix}: {text}")
+        if selected.get("text"):
+            lines.append(f"- blocked_priority_selected: {selected.get('text')}")
+        if blocked_priority_fallback.get("recommended_action"):
+            lines.append(
+                f"- blocked_priority_action: {blocked_priority_fallback.get('recommended_action')}"
+            )
     completed_todo_archive_warning = (
         payload.get("completed_todo_archive_warning")
         if isinstance(payload.get("completed_todo_archive_warning"), dict)
