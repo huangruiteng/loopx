@@ -889,6 +889,92 @@ def _repair_profile_summary(value: Any) -> str:
     return repair_class
 
 
+def _case_routing_taxonomy(
+    runs: list[dict[str, Any]],
+    decision: dict[str, Any],
+) -> dict[str, Any]:
+    """Summarize case-history routing hints that should survive latest-pair churn."""
+
+    if not runs:
+        return {}
+    repair_counts: dict[str, int] = {}
+    bridge_signal_run_count = 0
+    for run in runs:
+        repair_class = _compact_text(run.get("repair_class"), limit=120)
+        if repair_class:
+            repair_counts[repair_class] = repair_counts.get(repair_class, 0) + 1
+        failure_class = _compact_text(run.get("failure_class"), limit=120)
+        labels = _compact_list(run.get("failure_labels"), limit=20) or _compact_list(
+            run.get("failure_attribution_labels"),
+            limit=20,
+        )
+        if (
+            failure_class == "worker_bridge_connected_official_score_failure"
+            or "worker_bridge_connected_official_score_failure" in labels
+        ):
+            bridge_signal_run_count += 1
+
+    if repair_counts.get("case_exception_research", 0) > 0:
+        return {
+            "class": "case_exception_research",
+            "priority": "P1",
+            "evidence": (
+                f"case_exception_research_count="
+                f"{repair_counts['case_exception_research']}"
+            ),
+            "next_action": (
+                "inspect compact exception attribution and form a case-level "
+                "intervention hypothesis before rerunning this case"
+            ),
+        }
+
+    timeout_count = repair_counts.get("case_timeout_research", 0)
+    if timeout_count >= 2:
+        return {
+            "class": "timeout_tier_policy_candidate",
+            "priority": "P1",
+            "evidence": f"case_timeout_research_count={timeout_count}",
+            "next_action": (
+                "decide the timeout tier and continuation cadence before "
+                "rerunning; separate setup timeout from solver timeout evidence"
+            ),
+        }
+    if timeout_count == 1:
+        return {
+            "class": "case_timeout_research",
+            "priority": "P1",
+            "evidence": "case_timeout_research_count=1",
+            "next_action": (
+                "inspect compact timeout context and decide whether this case "
+                "needs a private long-horizon timeout tier"
+            ),
+        }
+
+    decision_name = _compact_text(decision.get("decision"), limit=120)
+    no_score_uplift = (
+        decision.get("official_score_delta") == 0
+        or decision_name
+        in {
+            "paired_no_score_uplift",
+            "paired_no_score_uplift_case_research_required",
+        }
+    )
+    if bridge_signal_run_count and no_score_uplift:
+        return {
+            "class": "bridge_connected_no_uplift",
+            "priority": "P1",
+            "evidence": (
+                f"worker_bridge_connected_official_score_failure_runs="
+                f"{bridge_signal_run_count}; official_score_delta=0"
+            ),
+            "next_action": (
+                "treat the bridge as connected and analyze case or solution "
+                "quality; do not relaunch this case as a bridge repair"
+            ),
+        }
+    return {}
+
+
 def _run_status(benchmark_run: dict[str, Any], score: float | int | None) -> str:
     if _source_schema(benchmark_run) == "terminal_bench_post_launch_materialization_v0":
         if benchmark_run.get("ready_for_compact_failure_marker") is True:
@@ -1389,6 +1475,12 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
     latest_baseline = baselines[-1] if baselines else None
     latest_treatment = treatments[-1] if treatments else None
 
+    def with_case_routing(result: dict[str, Any]) -> dict[str, Any]:
+        routing = _case_routing_taxonomy(runs, result)
+        if routing:
+            result["case_routing"] = routing
+        return result
+
     def repair_decision(prefix: str, run: dict[str, Any]) -> dict[str, Any]:
         failure_class = _compact_text(run.get("failure_class"), limit=120)
         repair_class = _compact_text(run.get("repair_class"), limit=120)
@@ -1500,7 +1592,7 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
                 }
             )
             del decision_info
-        return result
+        return with_case_routing(result)
     if latest_baseline:
         if latest_baseline.get("official_passed") is True:
             decision = "baseline_passed_not_current_treatment_priority"
@@ -1540,9 +1632,11 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
                 }
             )
             del decision_info
-        return result
+        return with_case_routing(result)
     if runs:
-        return {"decision": "single_arm_recorded", "latest_run_id": runs[-1].get("run_id")}
+        return with_case_routing(
+            {"decision": "single_arm_recorded", "latest_run_id": runs[-1].get("run_id")}
+        )
     return {"decision": "no_runs_recorded"}
 
 
@@ -1594,8 +1688,8 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
         "",
         "## Case Decisions",
         "",
-        "| Benchmark | Case | Decision | Runs |",
-        "| --- | --- | --- | --- |",
+        "| Benchmark | Case | Decision | Case Routing | Runs |",
+        "| --- | --- | --- | --- | --- |",
     ]
     benchmarks = ledger.get("benchmarks") if isinstance(ledger.get("benchmarks"), dict) else {}
     for benchmark_id in sorted(benchmarks):
@@ -1610,9 +1704,18 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
                 if isinstance(case, dict) and isinstance(case.get("latest_decision"), dict)
                 else {}
             )
+            routing = (
+                decision.get("case_routing")
+                if isinstance(decision.get("case_routing"), dict)
+                else {}
+            )
+            routing_class = _compact_text(routing.get("class"), limit=120)
+            routing_cell = f"`{routing_class}`" if routing_class else "-"
             runs = case.get("runs", []) if isinstance(case, dict) else []
             lines.append(
-                f"| `{benchmark_id}` | `{case_id}` | `{decision.get('decision', 'unknown')}` | `{len(runs)}` |"
+                f"| `{benchmark_id}` | `{case_id}` | "
+                f"`{decision.get('decision', 'unknown')}` | "
+                f"{routing_cell} | `{len(runs)}` |"
             )
     repair_rows: list[tuple[str, str, str, str, str, str, str, str]] = []
     priority_order = {"P0": 0, "P1": 1, "P2": 2}

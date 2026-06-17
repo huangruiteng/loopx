@@ -721,6 +721,69 @@ def test_verified_bridge_official_zero_routes_to_no_uplift_not_alignment() -> No
         assert case["latest_decision"]["baseline_failure_scope"] == "case_or_solution", case
         assert case["latest_decision"]["treatment_failure_scope"] == "case_or_solution", case
         assert case["latest_decision"]["decision"] == "paired_no_score_uplift", case
+        assert case["latest_decision"]["case_routing"]["class"] == (
+            "bridge_connected_no_uplift"
+        ), case
+        rendered = render_benchmark_run_ledger_markdown(ledger)
+        assert "`bridge_connected_no_uplift`" in rendered, rendered
+
+
+def test_repeated_case_timeout_routes_to_timeout_tier_candidate() -> None:
+    baseline = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "terminal-bench@2.0",
+        "job_name": "terminal_bench_2_0_make_doom_for_mips_codex_goal_mode_baseline",
+        "mode": "codex_goal_mode_baseline",
+        "official_task_score": {
+            "kind": "harbor_verifier_reward",
+            "value": 0.0,
+            "passed": False,
+        },
+        "failure_attribution_labels": ["agent_timeout_before_solution_completion"],
+        "trials": [
+            {
+                "task_id": "make-doom-for-mips",
+                "exception_type": "none",
+            }
+        ],
+    }
+    treatment = {
+        **baseline,
+        "job_name": "terminal_bench_2_0_make_doom_for_mips_codex_goal_harness_treatment",
+        "mode": "codex_goal_harness",
+        "goal_harness_inside_case": True,
+    }
+
+    with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-timeout-tier-") as tmp:
+        root = Path(tmp)
+        ledger_path = root / "ledger.json"
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=baseline,
+            arm_id="baseline",
+            run_group_id="timeout-tier-ledger-smoke",
+            cwd=root,
+        )
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=treatment,
+            arm_id="treatment",
+            run_group_id="timeout-tier-ledger-smoke",
+            cwd=root,
+        )
+        ledger = load_benchmark_run_ledger(ledger_path)
+        case = ledger["benchmarks"]["terminal-bench@2.0"]["cases"][
+            "make-doom-for-mips"
+        ]
+        assert case["latest_decision"]["decision"] == (
+            "paired_no_score_uplift_timeout_research_required"
+        ), case
+        assert case["latest_decision"]["case_routing"]["class"] == (
+            "timeout_tier_policy_candidate"
+        ), case
+        assert case["latest_decision"]["case_routing"]["evidence"] == (
+            "case_timeout_research_count=2"
+        ), case
 
 
 def test_passed_pair_routes_to_baseline_solved_non_regression() -> None:

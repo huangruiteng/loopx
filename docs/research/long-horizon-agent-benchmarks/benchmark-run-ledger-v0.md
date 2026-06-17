@@ -136,6 +136,21 @@ Each case also has `latest_decision`, derived from the current rows:
 - `paired_result_needs_score_review`
 - `single_arm_recorded`
 
+`latest_decision` may also include `case_routing`, a compact case-history
+taxonomy used to avoid blind relaunches when the newest paired decision hides an
+older durable signal. Current routing classes include:
+
+- `case_exception_research`: a compact exception attribution asset is needed
+  before repeating the case.
+- `case_timeout_research`: one solver-timeout signal exists and needs timeout
+  context review.
+- `timeout_tier_policy_candidate`: repeated solver-timeout signals indicate the
+  case needs an explicit timeout tier or continuation-cadence decision before
+  another run.
+- `bridge_connected_no_uplift`: the Goal Harness bridge reached the worker, but
+  the official score still did not improve; reruns should analyze solution
+  quality or case fit rather than treat the route as a bridge repair.
+
 ## Boundary
 
 The ledger must not contain raw logs, task prompts, trajectories, credentials,
