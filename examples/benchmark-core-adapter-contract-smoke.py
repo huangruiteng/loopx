@@ -12,6 +12,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from goal_harness.benchmark import build_benchmark_lifecycle_state  # noqa: E402
+from goal_harness.benchmark_adapters.agents_last_exam import (  # noqa: E402
+    AGENTS_LAST_EXAM_CASE_STATE_PATH,
+    AGENTS_LAST_EXAM_DEFAULT_DOCKER_IMAGE,
+)
+from goal_harness.benchmark_adapters.terminal_bench import (  # noqa: E402
+    TERMINAL_BENCH_DEFAULT_DATASET,
+    TERMINAL_BENCH_DEFAULT_TASK,
+)
 from goal_harness.benchmark_core import (  # noqa: E402
     AdapterClassification,
     BenchmarkAdapter,
@@ -126,11 +134,35 @@ def test_round_reward_summary_prefers_best_score() -> None:
     assert summary["best_round_is_final"] is False, summary
 
 
+def test_benchmark_adapter_modules_own_public_config() -> None:
+    assert TERMINAL_BENCH_DEFAULT_DATASET == "terminal-bench@2.0"
+    assert TERMINAL_BENCH_DEFAULT_TASK == "build-cython-ext"
+    assert AGENTS_LAST_EXAM_DEFAULT_DOCKER_IMAGE.startswith("agentslastexam/")
+    assert AGENTS_LAST_EXAM_CASE_STATE_PATH.endswith("/ACTIVE_GOAL_STATE.md")
+
+
+def test_benchmark_facade_has_no_shadowed_top_level_definitions() -> None:
+    import ast
+
+    source = (REPO_ROOT / "goal_harness" / "benchmark.py").read_text(encoding="utf-8")
+    module = ast.parse(source)
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for node in module.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name in seen:
+                duplicates.append(node.name)
+            seen.add(node.name)
+    assert duplicates == []
+
+
 def main() -> int:
     assert_adapter(FixtureAdapter())
     test_process_started_is_not_case_entry()
     test_existing_lifecycle_builder_projects_canonical_state()
     test_round_reward_summary_prefers_best_score()
+    test_benchmark_adapter_modules_own_public_config()
+    test_benchmark_facade_has_no_shadowed_top_level_definitions()
     print("benchmark-core-adapter-contract-smoke ok")
     return 0
 

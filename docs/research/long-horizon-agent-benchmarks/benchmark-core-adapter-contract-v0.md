@@ -40,6 +40,8 @@ surfaces into smaller modules:
 | --- | --- | --- |
 | `goal_harness.benchmark_core` | adapter-neutral lifecycle, round summaries, artifact/source boundary policy | benchmark-specific launchers or scoring quirks |
 | `goal_harness.benchmark_adapters.skillsbench` | SkillsBench routes, arm semantics, job names, public-safe setup failure attribution | Terminal-Bench/ALE/AgentIssue behavior |
+| `goal_harness.benchmark_adapters.terminal_bench` | Terminal-Bench public constants, runner modes, CLI-bridge/access-packet labels, timeout and compact validation policy constants | ALE/SkillsBench/AgentIssue behavior or live Harbor execution |
+| `goal_harness.benchmark_adapters.agents_last_exam` | ALE public constants, case-state path, local runner/source readiness schema labels, task-data scan regex | Terminal-Bench/SkillsBench/AgentIssue behavior or raw ALE task material |
 | `goal_harness.benchmark_adapters.agentissue` | AgentIssue-Bench runner packets, synthetic staging, execution gates, compact result reducer | shared artifact boundary or unrelated benchmark policy |
 | `goal_harness.benchmark` | backward-compatible public imports plus legacy functions not yet extracted | new benchmark-specific code when a narrower adapter module exists |
 
@@ -60,12 +62,16 @@ Completed slices:
    and public-safe runner error attribution.
 5. `benchmark_adapters.agentissue` for AgentIssue-Bench runner flow, gates, and
    compact result reducers.
+6. `benchmark_adapters.terminal_bench` and
+   `benchmark_adapters.agents_last_exam` for benchmark-specific public
+   configuration, plus removal of the shadowed duplicate ALE helper block from
+   `benchmark.py`.
 
 Next slices:
 
-1. Move Terminal-Bench private-runner launch/materialization helpers behind a
+1. Move Terminal-Bench private-runner launch/materialization helper functions behind the
    `benchmark_adapters.terminal_bench` module.
-2. Move ALE readiness/launch packet helpers behind a
+2. Move ALE readiness/launch packet helper functions behind the
    `benchmark_adapters.agents_last_exam` module.
 3. Keep `benchmark.py` as the compatibility facade until callers are migrated
    to adapter imports.
