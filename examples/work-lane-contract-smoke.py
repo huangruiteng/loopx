@@ -580,6 +580,7 @@ def assert_structured_monitor_registration_beats_action_text() -> None:
 
 
 def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
+    executable_todo = "[P1] Add the typed task class routing smoke fixture."
     guard = build_quota_should_run(
         status_payload(
             status="typed_task_lane_planning_writeback",
@@ -593,7 +594,7 @@ def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
                 },
                 {
                     "index": 2,
-                    "text": "[P1] Add the typed task class routing smoke fixture.",
+                    "text": executable_todo,
                     "role": "agent",
                     "status": "open",
                     "priority": "P1",
@@ -607,8 +608,62 @@ def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
     assert lane["next_lane"] == "advancement_task", lane
     assert lane["obligation"] == "advance_one_bounded_segment", lane
     assert lane["must_attempt_work"] is True, lane
+    assert guard["recommended_action"] == executable_todo, guard
+    assert guard["interaction_contract"]["agent_channel"]["primary_action"] == executable_todo, guard
+    assert f"agent_action={executable_todo}" in guard["protocol_action_packet"]["summary"], guard
     first_items = guard["agent_todo_summary"]["first_open_items"]
     assert [item["task_class"] for item in first_items] == ["continuous_monitor", "advancement_task"], guard
+
+
+def assert_external_monitor_context_recommends_executable_backlog() -> None:
+    poll_action = (
+        "Agent: continue compact-polling Terminal-Bench train-fasttext until a "
+        "terminal compact result/trial reward appears."
+    )
+    executable_todo = (
+        "[P1] Behavior regression suite lane: maintain `regression/` as the "
+        "home for Goal Harness CLI plus real Codex CLI interaction regressions."
+    )
+    guard = build_quota_should_run(
+        status_payload(
+            status="benchmark_ledger_running_placeholder_guard",
+            next_action=poll_action,
+            agent_todo_items=[
+                {
+                    "index": 67,
+                    "text": (
+                        "[P0] [P0 monitor] Observe no-upload Terminal-Bench "
+                        "train-fasttext using compact process/result markers only."
+                    ),
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "continuous_monitor",
+                    "action_kind": "monitor",
+                },
+                {
+                    "index": 2,
+                    "text": executable_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                    "task_class": "advancement_task",
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["reason_codes"] == ["open_agent_todo", "external_monitor_context"], lane
+    assert guard["recommended_action"] == executable_todo, guard
+    assert poll_action != guard["recommended_action"], guard
+    assert guard["interaction_contract"]["agent_channel"]["primary_action"] == (
+        "[P1] Behavior regression suite lane"
+    ), guard
+    packet = guard["protocol_action_packet"]["summary"]
+    assert "lane=advancement_task" in packet, packet
+    assert "agent_action=[P1] Behavior regression suite lane" in packet, packet
 
 
 def assert_benchmark_readiness_scan_routes_to_advancement() -> None:
@@ -873,6 +928,7 @@ def main() -> int:
     assert_structured_todo_lane_registration_beats_text_fallback()
     assert_structured_monitor_registration_beats_action_text()
     assert_mixed_monitor_and_advancement_routes_to_advancement()
+    assert_external_monitor_context_recommends_executable_backlog()
     assert_benchmark_readiness_scan_routes_to_advancement()
     assert_benchmark_source_preflight_routes_to_advancement()
     assert_behavior_regression_suite_routes_to_advancement()

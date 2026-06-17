@@ -1070,6 +1070,47 @@ def _blocked_priority_fallback(
     }
 
 
+def _first_executable_todo_text(agent_todo_summary: dict[str, Any] | None) -> str | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    items = (
+        agent_todo_summary.get("first_executable_items")
+        if isinstance(agent_todo_summary.get("first_executable_items"), list)
+        else []
+    )
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if not _todo_item_is_actionable_open(item):
+            continue
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        text = _protocol_action_text(item.get("text"), limit=320)
+        if text:
+            return text
+    return None
+
+
+def _selected_recommended_action(
+    item: dict[str, Any],
+    *,
+    agent_todo_summary: dict[str, Any] | None,
+    work_lane_contract: dict[str, Any] | None,
+) -> Any:
+    raw_action = item.get("recommended_action")
+    if (
+        isinstance(work_lane_contract, dict)
+        and work_lane_contract.get("lane") == "advancement_task"
+        and "open_agent_todo" in (
+            work_lane_contract.get("reason_codes")
+            if isinstance(work_lane_contract.get("reason_codes"), list)
+            else []
+        )
+    ):
+        return _first_executable_todo_text(agent_todo_summary) or raw_action
+    return raw_action
+
+
 def _todo_write_hint(goal_id: str) -> dict[str, str]:
     return {
         "rule": (
@@ -3172,7 +3213,11 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             "lifecycle_flags": item.get("lifecycle_flags"),
             "source": item.get("source"),
             "project_asset_source": item.get("project_asset_source"),
-            "recommended_action": item.get("recommended_action"),
+            "recommended_action": _selected_recommended_action(
+                item,
+                agent_todo_summary=agent_todo_summary,
+                work_lane_contract=work_lane_contract,
+            ),
             "execution_profile": _quota_execution_profile_summary(
                 project_asset.get("execution_profile")
             )
