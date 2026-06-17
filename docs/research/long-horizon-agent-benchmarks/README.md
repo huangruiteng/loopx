@@ -721,6 +721,11 @@ work still belongs in the existing code, examples, and contract documents:
   decision to keep `benchmark_restart_actionability_v0` research/docs-only
   until a real restarted-worker consumer, approved no-submit setup evidence, or
   repeated re-derivation justifies a compact hot-path projection.
+- `codex-app-parity-posthoc-check-v0.md`: lightweight posthoc check for compact
+  `benchmark_run_v0` rows. It verifies canonical case active-state evidence,
+  Goal Harness CLI call counters, public-safe Codex trajectory summaries, and
+  reward/verifier/raw-material non-leakage before allowing a full Codex App
+  product-path attribution claim.
 
 ## Relationship To Goal Harness Work
 

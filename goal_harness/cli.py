@@ -103,6 +103,10 @@ from .benchmark_ledger import (
     BENCHMARK_RUN_LEDGER_DEFAULT_PATH,
     update_benchmark_run_ledger,
 )
+from .benchmark_core import (
+    build_codex_app_parity_posthoc_check,
+    render_codex_app_parity_posthoc_check_markdown,
+)
 from .configure_goal import configure_goal, render_configure_goal_markdown
 from .contract import check_contract, render_contract_markdown
 from .demo import (
@@ -2306,6 +2310,21 @@ def main(argv: list[str] | None = None) -> int:
         help="Benchmark runner skeletons. Current public surface is fixture-only and no-run by default.",
     )
     benchmark_sub = benchmark_parser.add_subparsers(dest="benchmark_command", required=True)
+
+    benchmark_parity_check_parser = benchmark_sub.add_parser(
+        "parity-check",
+        help=(
+            "Posthoc-check whether a compact benchmark_run_v0 has enough "
+            "public-safe evidence to support Codex App product-path attribution."
+        ),
+    )
+    add_subcommand_format(benchmark_parity_check_parser)
+    benchmark_parity_check_parser.add_argument(
+        "--benchmark-run-json",
+        required=True,
+        help="Path to a compact benchmark_run_v0 JSON object. Use '-' to read stdin.",
+    )
+
     benchmark_run_parser = benchmark_sub.add_parser(
         "run",
         help="Build or append a compact benchmark_run_v0 fixture or ingest a Harbor job result.",
@@ -7203,6 +7222,44 @@ def main(argv: list[str] | None = None) -> int:
                 payload,
                 output_format(args),
                 render_benchmark_baseline_failure_gate_markdown,
+            )
+            return 0 if payload.get("ok") else 1
+        if args.benchmark_command == "parity-check":
+            try:
+                if args.benchmark_run_json == "-":
+                    run_input = json.loads(sys.stdin.read())
+                else:
+                    run_input = json.loads(
+                        Path(args.benchmark_run_json).expanduser().read_text(
+                            encoding="utf-8"
+                        )
+                    )
+                benchmark_run = compact_benchmark_run(run_input)
+                if not benchmark_run:
+                    raise ValueError(
+                        "--benchmark-run-json did not contain a compactable benchmark_run_v0 object"
+                    )
+                payload = {
+                    "ok": True,
+                    "codex_app_parity_posthoc_check": (
+                        build_codex_app_parity_posthoc_check(benchmark_run)
+                    ),
+                }
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "codex_app_parity_posthoc_check": {
+                        "full_product_claim_allowed": False,
+                        "claim_level": "invalid_or_unreadable_compact_benchmark_run",
+                    },
+                    "error": str(exc),
+                }
+            print_payload(
+                payload,
+                args.format,
+                lambda value: render_codex_app_parity_posthoc_check_markdown(
+                    value["codex_app_parity_posthoc_check"]
+                ),
             )
             return 0 if payload.get("ok") else 1
         if args.benchmark_command == "run-ledger-upsert":
