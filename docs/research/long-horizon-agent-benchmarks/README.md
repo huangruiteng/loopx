@@ -40,6 +40,12 @@ work still belongs in the existing code, examples, and contract documents:
   stronger next Goal Harness hypothesis source than another same-policy
   SkillsBench rerun, while blocking any official run until setup-readiness
   proves a local no-upload slice without unauthorized API/search/judge calls.
+- `benchmark-rotation-product-mode-protocol-20260617.md`: updated
+  Terminal-Bench / SkillsBench / ALE rotation protocol after ALE PR #8 added a
+  Local Docker Linux-subset route. It defines the compact 4-row base/test
+  matrix, shared score metrics, trace-retention contract, and current ALE
+  readiness blocker without running Docker, reading task material, or claiming
+  score evidence.
 - `benchmark-priority-review-20260614.md`: corrected priority review using
   Codex CLI goal mode as the baseline. It separates direct low Codex baselines,
   selected hard-subset failures, and adjacent-agent-low benchmarks that still

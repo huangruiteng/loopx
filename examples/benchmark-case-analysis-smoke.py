@@ -68,6 +68,20 @@ def test_case_analysis_json() -> None:
 
     assert uplift["classification"] == "positive_uplift_asset", uplift
     assert uplift["scores"]["official_score_delta"] == 1.0, uplift
+    current_protocol = uplift["current_protocol_recheck"]
+    assert current_protocol["schema_version"] == (
+        "terminal_bench_current_protocol_recheck_v0"
+    ), current_protocol
+    assert current_protocol["baseline_route"] == "hardened-codex", current_protocol
+    assert current_protocol["goal_harness_route"] == (
+        "goal-harness-managed-codex"
+    ), current_protocol
+    assert current_protocol["baseline_official_score"] == 1, current_protocol
+    assert current_protocol["treatment_official_score"] == 1, current_protocol
+    assert current_protocol["official_score_delta"] == 0, current_protocol
+    assert current_protocol["decision"] == (
+        "paired_baseline_solved_treatment_preserved"
+    ), current_protocol
     assert nginx_route_canary["classification"] == "runner_materialization_asset", (
         nginx_route_canary
     )
