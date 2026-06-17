@@ -28,6 +28,12 @@ from .lifecycle import (
     BenchmarkLifecyclePhase,
     canonical_lifecycle,
 )
+from .io import (
+    load_json_object,
+    load_jsonl_objects,
+    optional_float,
+    optional_positive_int,
+)
 from .rounds import RoundReward, compact_round_rewards, summarize_round_rewards
 
 __all__ = [
@@ -51,5 +57,9 @@ __all__ = [
     "RunHandle",
     "canonical_lifecycle",
     "compact_round_rewards",
+    "load_json_object",
+    "load_jsonl_objects",
+    "optional_float",
+    "optional_positive_int",
     "summarize_round_rewards",
 ]

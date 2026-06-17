@@ -15,6 +15,8 @@ from goal_harness.benchmark import build_benchmark_lifecycle_state  # noqa: E402
 from goal_harness.benchmark_adapters.agents_last_exam import (  # noqa: E402
     AGENTS_LAST_EXAM_CASE_STATE_PATH,
     AGENTS_LAST_EXAM_DEFAULT_DOCKER_IMAGE,
+    build_agents_last_exam_local_launch_packet,
+    build_agents_last_exam_local_preflight,
 )
 from goal_harness.benchmark_adapters.terminal_bench import (  # noqa: E402
     TERMINAL_BENCH_DEFAULT_DATASET,
@@ -31,6 +33,8 @@ from goal_harness.benchmark_core import (  # noqa: E402
     PreflightResult,
     RunHandle,
     canonical_lifecycle,
+    load_json_object,
+    optional_float,
     summarize_round_rewards,
 )
 
@@ -141,6 +145,19 @@ def test_benchmark_adapter_modules_own_public_config() -> None:
     assert AGENTS_LAST_EXAM_CASE_STATE_PATH.endswith("/ACTIVE_GOAL_STATE.md")
 
 
+def test_benchmark_adapter_modules_own_helper_surfaces() -> None:
+    assert (
+        build_agents_last_exam_local_preflight.__module__
+        == "goal_harness.benchmark_adapters.agents_last_exam"
+    )
+    assert (
+        build_agents_last_exam_local_launch_packet.__module__
+        == "goal_harness.benchmark_adapters.agents_last_exam"
+    )
+    assert load_json_object.__module__ == "goal_harness.benchmark_core.io"
+    assert optional_float.__module__ == "goal_harness.benchmark_core.io"
+
+
 def test_benchmark_facade_has_no_shadowed_top_level_definitions() -> None:
     import ast
 
@@ -162,6 +179,7 @@ def main() -> int:
     test_existing_lifecycle_builder_projects_canonical_state()
     test_round_reward_summary_prefers_best_score()
     test_benchmark_adapter_modules_own_public_config()
+    test_benchmark_adapter_modules_own_helper_surfaces()
     test_benchmark_facade_has_no_shadowed_top_level_definitions()
     print("benchmark-core-adapter-contract-smoke ok")
     return 0

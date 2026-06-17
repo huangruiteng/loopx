@@ -38,10 +38,10 @@ surfaces into smaller modules:
 
 | Module | Owns | Must Not Own |
 | --- | --- | --- |
-| `goal_harness.benchmark_core` | adapter-neutral lifecycle, round summaries, artifact/source boundary policy | benchmark-specific launchers or scoring quirks |
+| `goal_harness.benchmark_core` | adapter-neutral lifecycle, round summaries, artifact/source boundary policy, JSON/number IO reducers | benchmark-specific launchers or scoring quirks |
 | `goal_harness.benchmark_adapters.skillsbench` | SkillsBench routes, arm semantics, job names, public-safe setup failure attribution | Terminal-Bench/ALE/AgentIssue behavior |
 | `goal_harness.benchmark_adapters.terminal_bench` | Terminal-Bench public constants, runner modes, CLI-bridge/access-packet labels, timeout and compact validation policy constants | ALE/SkillsBench/AgentIssue behavior or live Harbor execution |
-| `goal_harness.benchmark_adapters.agents_last_exam` | ALE public constants, case-state path, local runner/source readiness schema labels, task-data scan regex | Terminal-Bench/SkillsBench/AgentIssue behavior or raw ALE task material |
+| `goal_harness.benchmark_adapters.agents_last_exam` | ALE public constants, case-state path, local runner/source readiness, launch-packet, validation-gate, CUA/Codex-route, task-material and result-report helpers | Terminal-Bench/SkillsBench/AgentIssue behavior or raw ALE task material |
 | `goal_harness.benchmark_adapters.agentissue` | AgentIssue-Bench runner packets, synthetic staging, execution gates, compact result reducer | shared artifact boundary or unrelated benchmark policy |
 | `goal_harness.benchmark` | backward-compatible public imports plus legacy functions not yet extracted | new benchmark-specific code when a narrower adapter module exists |
 
@@ -66,12 +66,13 @@ Completed slices:
    `benchmark_adapters.agents_last_exam` for benchmark-specific public
    configuration, plus removal of the shadowed duplicate ALE helper block from
    `benchmark.py`.
+7. `benchmark_core.io` for shared JSON/number reducers and
+   `benchmark_adapters.agents_last_exam` for ALE helper surfaces formerly kept
+   in the legacy facade.
 
 Next slices:
 
 1. Move Terminal-Bench private-runner launch/materialization helper functions behind the
    `benchmark_adapters.terminal_bench` module.
-2. Move ALE readiness/launch packet helper functions behind the
-   `benchmark_adapters.agents_last_exam` module.
-3. Keep `benchmark.py` as the compatibility facade until callers are migrated
+2. Keep `benchmark.py` as the compatibility facade until callers are migrated
    to adapter imports.
