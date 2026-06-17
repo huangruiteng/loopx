@@ -37,6 +37,12 @@ of the following are true:
 - there is no runtime behavior, benchmark adapter, permission, destructive git,
   or public evidence-policy change that needs separate review.
 
+Small benchmark seam/refactor PRs may also be self-merged when they are like
+PR #145: they add or clarify a reusable adapter/control-plane contract, include
+focused public smokes, do not launch benchmark jobs, do not change scoring or
+runner behavior for an existing benchmark, and do not include temporary probes,
+raw evidence, private state, credentials, local paths, or generated logs.
+
 After self-merging, sync local `main`, leave unrelated untracked local artifacts
 alone, and continue with the next safe project batch.
 
