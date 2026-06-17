@@ -119,7 +119,7 @@ if [[ "$install_skill" != "0" && -d "$skills_source" ]]; then
     skill_target="$skills_dir/$skill_name"
     rm -rf "$skill_target"
     mkdir -p "$skill_target"
-    cp "$skill_source/SKILL.md" "$skill_target/SKILL.md"
+    cp -R "$skill_source"/. "$skill_target"/
     skill_line="${skill_line}- skill: $skill_target"$'\n'
   done < <(find "$skills_source" -mindepth 1 -maxdepth 1 -type d -print | sort)
   skill_line="${skill_line%$'\n'}"

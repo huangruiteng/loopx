@@ -86,6 +86,7 @@ def main() -> int:
         assert f"- canary executable: {bin_dir / 'goal-harness-canary'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'goal-harness-doc-registry'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'goal-harness-project'}" in install.stdout, install.stdout
+        assert f"- skill: {codex_home / 'skills' / 'goal-harness-self-repair'}" in install.stdout, install.stdout
 
         wrapper = bin_dir / "goal-harness"
         assert wrapper.is_symlink(), wrapper
@@ -138,6 +139,28 @@ def main() -> int:
             "goal-harness --registry .goal-harness/registry.json register-authority-source",
         ):
             assert phrase in doc_registry_text, phrase
+        self_repair_skill = codex_home / "skills" / "goal-harness-self-repair" / "SKILL.md"
+        self_repair_text = " ".join(self_repair_skill.read_text(encoding="utf-8").split())
+        for phrase in (
+            "Build a compact evidence packet",
+            "references/repair-patterns.md",
+            "Repair at the lowest durable layer",
+            "Do not solve contradictory payloads by guessing",
+        ):
+            assert phrase in self_repair_text, phrase
+        self_repair_patterns = (
+            codex_home
+            / "skills"
+            / "goal-harness-self-repair"
+            / "references"
+            / "repair-patterns.md"
+        )
+        self_repair_patterns_text = self_repair_patterns.read_text(encoding="utf-8")
+        assert "`boundary_projection_gap`" in self_repair_patterns_text, self_repair_patterns_text
+        assert "`tiny_turn_under_delivery`" in self_repair_patterns_text, self_repair_patterns_text
+        assert (
+            codex_home / "skills" / "goal-harness-self-repair" / "agents" / "openai.yaml"
+        ).is_file()
 
         cli_env = {**env, "PATH": f"{bin_dir}:{env['PATH']}"}
         runtime_run_dir = home / ".codex" / "goal-harness" / "goals" / "goal-harness-meta" / "runs"
@@ -166,6 +189,8 @@ def main() -> int:
         assert doctor_payload["skills"]["goal-harness-project"]["required_phrases"] is True, doctor_payload
         assert doctor_payload["skills"]["goal-harness-doc-registry"]["exists"] is True, doctor_payload
         assert doctor_payload["skills"]["goal-harness-doc-registry"]["required_phrases"] is True, doctor_payload
+        assert doctor_payload["skills"]["goal-harness-self-repair"]["exists"] is True, doctor_payload
+        assert doctor_payload["skills"]["goal-harness-self-repair"]["required_phrases"] is True, doctor_payload
         provenance = doctor_payload["release_provenance"]
         assert provenance["default_release"]["root"] == str(release_root), provenance
         assert provenance["default_release"]["release_id"] == release_root.name, provenance
@@ -204,7 +229,11 @@ def main() -> int:
             text=True,
         ).stdout
         assert "installed_skill_delivery_hints: `True`" in doctor_markdown, doctor_markdown
-        assert "installed_required_skills: `goal-harness-doc-registry,goal-harness-project`" in doctor_markdown, doctor_markdown
+        assert (
+            "installed_required_skills: "
+            "`goal-harness-doc-registry,goal-harness-project,goal-harness-self-repair`"
+            in doctor_markdown
+        ), doctor_markdown
         assert "canary_realpath:" in doctor_markdown, doctor_markdown
         assert "release_root:" in doctor_markdown, doctor_markdown
         assert "## Release Provenance" in doctor_markdown, doctor_markdown

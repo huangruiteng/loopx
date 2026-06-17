@@ -26,6 +26,11 @@ REQUIRED_INSTALLED_SKILL_PHRASES = {
         "use `.goal-harness/registry.json` as the project-local doc registry",
         "not a substitute for project-local authority registration",
     ),
+    "goal-harness-self-repair": (
+        "Build a compact evidence packet",
+        "references/repair-patterns.md",
+        "Repair at the lowest durable layer",
+    ),
 }
 
 

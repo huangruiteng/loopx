@@ -145,7 +145,7 @@ The installer creates:
 
 - `~/.local/bin/goal-harness`, pointing at a stable local release snapshot;
 - `~/.local/bin/goal-harness-canary`, pointing at the live checkout;
-- the `goal-harness-project` Codex skill under `~/.codex/skills`.
+- the Goal Harness Codex skills under `~/.codex/skills`.
 
 Use the canary wrapper for one or two selected controllers before promoting a
 checkout to the default local release.

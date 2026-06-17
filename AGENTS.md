@@ -71,6 +71,16 @@ Benchmark smokes must never require raw task text, raw trajectories, raw logs,
 verifier output tails, credentials, uploads, leaderboard submissions, or local
 private artifact paths.
 
+## Goal Harness Self-Repair
+
+When Goal Harness behavior is surprising, too small, contradictory, or called
+out by the user as likely wrong, use the project skill
+`skills/goal-harness-self-repair/SKILL.md`. Treat recurring mistakes as product
+or process gaps: update the skill, interaction docs, active-state projection,
+or focused smoke so the lesson is durable. Do not resolve self-repair by
+lowering gates, guessing around contradictory payloads, or committing private
+logs and local state.
+
 ## Benchmark Smoke Classification
 
 Use this classification when cleaning or reviewing benchmark-related changes:

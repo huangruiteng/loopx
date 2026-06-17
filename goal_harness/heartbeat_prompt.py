@@ -518,8 +518,8 @@ def render_thin_heartbeat_task_body(
     )
     return f"""Advance `{goal_id}` from {active_state}.
 
-Use `goal-harness-project` skill when available. Keep prompt thin: Goal Harness
-CLI is source of truth.
+Use skills: `goal-harness-project`; if surprising/tiny/contradictory,
+`goal-harness-self-repair`. Goal Harness CLI is source of truth.
 
 Inspect registry/global quota truth, active state, status/run history, repo
 state. Run `quota should-run`; follow `interaction_contract`. If

@@ -206,7 +206,8 @@ def main() -> int:
     thin_task = normalized(str(thin_payload["task_body"]))
     for phrase in (
         "Advance `public-heartbeat-goal` from /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
-        "Use `goal-harness-project` skill when available",
+        "Use skills: `goal-harness-project`; if surprising/tiny/contradictory",
+        "`goal-harness-self-repair`",
         "Goal Harness CLI is source of truth",
         "registry/global quota truth",
         "active state, status/run history, repo state",
