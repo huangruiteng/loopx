@@ -125,6 +125,7 @@ EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION = "external_evidence_observation_ob
 INTERACTION_CONTRACT_SCHEMA_VERSION = "goal_harness_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
+TODO_BACKLOG_ITEM_LIMIT = 8
 EXTERNAL_EVIDENCE_OBSERVE_PATTERNS = (
     re.compile(
         r"(?i)\b(?:poll(?:ing)?|observ(?:e|ing)|watch(?:ing)?|await(?:ing)?|wait\s+for|monitor(?:ing)?)\b.*\b"
@@ -881,6 +882,34 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
     return compact
 
 
+def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
+    source_keys = (
+        "first_open_items",
+        "backlog_items",
+        "items",
+    )
+    open_items: list[dict[str, Any]] = []
+    for key in source_keys:
+        source_items = value.get(key) if isinstance(value.get(key), list) else []
+        for item in source_items:
+            if not isinstance(item, dict) or item.get("done") is True:
+                continue
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            duplicate = any(
+                existing.get("todo_id") == item.get("todo_id")
+                if item.get("todo_id") and existing.get("todo_id")
+                else existing.get("index") == item.get("index")
+                and str(existing.get("text") or "").strip() == text
+                for existing in open_items
+            )
+            if duplicate:
+                continue
+            open_items.append(_compact_todo_summary_item(item, text=text))
+    return open_items
+
+
 def _is_user_gate_todo_item(item: dict[str, Any]) -> bool:
     if _todo_task_class(item) == TODO_TASK_CLASS_USER_GATE:
         return True
@@ -893,33 +922,7 @@ def _is_user_gate_todo_item(item: dict[str, Any]) -> bool:
 def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
-    items = value.get("items") if isinstance(value.get("items"), list) else []
-    open_items: list[dict[str, Any]] = []
-    first_open_items = (
-        value.get("first_open_items")
-        if isinstance(value.get("first_open_items"), list)
-        else []
-    )
-    for item in first_open_items:
-        if not isinstance(item, dict) or item.get("done") is True:
-            continue
-        text = str(item.get("text") or "").strip()
-        if not text:
-            continue
-        open_items.append(_compact_todo_summary_item(item, text=text))
-    for item in items:
-        if not isinstance(item, dict) or item.get("done") is True:
-            continue
-        text = str(item.get("text") or "").strip()
-        if not text:
-            continue
-        duplicate = any(
-            existing.get("index") == item.get("index") and existing.get("text") == text
-            for existing in open_items
-        )
-        if duplicate:
-            continue
-        open_items.append(_compact_todo_summary_item(item, text=text))
+    open_items = _todo_summary_source_items(value)
     executable_items = [
         item
         for item in open_items
@@ -947,6 +950,8 @@ def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
         "first_executable_items": executable_items[:3],
         "gate_open_items": gate_items[:3],
         "monitor_open_items": monitor_items,
+        "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
+        "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
 
 
@@ -961,15 +966,7 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
     ):
         return _summarize_user_todos(value)
 
-    open_items: list[dict[str, Any]] = []
-    items = value.get("items") if isinstance(value.get("items"), list) else []
-    for item in items:
-        if not isinstance(item, dict) or item.get("done") is True:
-            continue
-        text = str(item.get("text") or "").strip()
-        if not text:
-            continue
-        open_items.append(_compact_todo_summary_item(item, text=text))
+    open_items = _todo_summary_source_items(value)
     if not open_items:
         next_text = str(value.get("next") or "").strip()
         next_index = value.get("next_index", 1)
@@ -996,6 +993,8 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
         "first_open_items": open_items[:3],
         "first_executable_items": executable_items[:3],
         "monitor_open_items": monitor_items,
+        "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
+        "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
 
 
@@ -4625,6 +4624,32 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             index = todo.get("index")
             suffix = f"[{index}]" if index is not None else ""
             lines.append(f"- {label}_next{suffix}: {text}")
+        first_keys = {
+            (
+                str(todo.get("todo_id") or ""),
+                todo.get("index"),
+                str(todo.get("text") or "").strip(),
+            )
+            for todo in first_open
+            if isinstance(todo, dict)
+        }
+        backlog = summary.get("backlog_items") if isinstance(summary.get("backlog_items"), list) else []
+        extra_count = 0
+        for todo in backlog:
+            if not isinstance(todo, dict):
+                continue
+            text = str(todo.get("text") or "").strip()
+            if not text:
+                continue
+            key = (str(todo.get("todo_id") or ""), todo.get("index"), text)
+            if key in first_keys:
+                continue
+            index = todo.get("index")
+            suffix = f"[{index}]" if index is not None else ""
+            lines.append(f"- {label}_backlog{suffix}: {text}")
+            extra_count += 1
+            if extra_count >= 5:
+                break
 
     if quota:
         lines.append(

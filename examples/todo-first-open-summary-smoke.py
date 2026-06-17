@@ -64,6 +64,8 @@ def build_truncated_todo_group() -> dict:
     assert group["first_open_items"][0]["source_section"] == "Agent Todo", group
     assert str(group["first_open_items"][0]["todo_id"]).startswith("todo_"), group
     assert [item["index"] for item in group["first_open_items"]] == [17, 14, 15], group
+    assert [item["index"] for item in group["backlog_items"]] == [17, 14, 15, 16], group
+    assert [item["index"] for item in group["executable_backlog_items"]] == [17, 14, 15, 16], group
     return group
 
 
@@ -91,6 +93,7 @@ def parse_multiline_deep_open_todo() -> dict:
     assert group["first_open_items"][0]["text"] == APPENDED_P0_TODO, group
     assert group["first_open_items"][0]["title"] == "Select the next material-ready benchmark case after compact review.", group
     assert [item["index"] for item in group["first_open_items"]] == [17, 14, 15], group
+    assert [item["index"] for item in group["backlog_items"]] == [17, 14, 15, 16], group
     return group
 
 
@@ -201,6 +204,8 @@ def main() -> int:
     assert asset_summary["next"] == APPENDED_P0_TODO, asset_summary
     assert asset_summary["next_index"] == 17, asset_summary
     assert [item["index"] for item in asset_summary["items"]] == [17, 14, 15, 16], asset_summary
+    assert [item["index"] for item in asset_summary["backlog_items"]] == [17, 14, 15, 16], asset_summary
+    assert [item["index"] for item in asset_summary["executable_backlog_items"]] == [17, 14, 15, 16], asset_summary
     assert asset_summary["items"][0]["priority"] == "P0", asset_summary
     assert asset_summary["items"][0]["status"] == "open", asset_summary
     assert asset_summary["items"][0]["todo_id"] == agent_todos["first_open_items"][0]["todo_id"], asset_summary
@@ -261,10 +266,13 @@ def main() -> int:
     assert agent_summary["first_open_items"][0]["status"] == "open", decision
     assert agent_summary["first_open_items"][0]["todo_id"] == agent_todos["first_open_items"][0]["todo_id"], decision
     assert [item["index"] for item in agent_summary["first_open_items"]] == [17, 14, 15], decision
+    assert [item["index"] for item in agent_summary["backlog_items"]] == [17, 14, 15, 16], decision
+    assert [item["index"] for item in agent_summary["executable_backlog_items"]] == [17, 14, 15, 16], decision
     markdown = render_quota_should_run_markdown(decision)
     assert f"agent_todo_next[17]: {APPENDED_P0_TODO}" in markdown, markdown
     assert f"agent_todo_next[14]: {OPEN_TODO}" in markdown, markdown
     assert f"agent_todo_next[15]: {SECOND_OPEN_TODO}" in markdown, markdown
+    assert f"agent_todo_backlog[16]: {THIRD_OPEN_TODO}" in markdown, markdown
     packet = build_review_packet(status_payload, goal_id=GOAL_ID, action_kind="codex")
     assert packet["agent_todo_items"] == [
         APPENDED_P0_TODO,

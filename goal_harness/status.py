@@ -315,6 +315,7 @@ AGENT_TODO_HEADER_MARKERS = (
 MAX_STATUS_TODOS_PER_ROLE = 12
 MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = MAX_STATUS_TODOS_PER_ROLE
 MAX_PROJECT_ASSET_TODO_ITEMS = 3
+MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS = 8
 MAX_DEPENDENCY_BLOCKERS = 4
 MAX_AUTONOMOUS_BACKLOG_CANDIDATES = 6
 MAX_SUBAGENT_ACTIVITY_ITEMS = 5
@@ -3694,6 +3695,14 @@ def compact_todo_group(
         "monitor_open_items": [
             compact_todo_item(item) for item in monitor_items
         ],
+        "backlog_items": [
+            compact_todo_item(item)
+            for item in projected_open_items[:MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS]
+        ],
+        "executable_backlog_items": [
+            compact_todo_item(item)
+            for item in executable_items[:MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS]
+        ],
         "items": budgeted_items[:MAX_STATUS_TODOS_PER_ROLE],
     }
 
@@ -4216,12 +4225,28 @@ def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] |
         "done": todos.get("done_count", 0),
         "total": todos.get("total_count", 0),
     }
-    open_items = open_todo_items(todos)
+    open_items = open_todo_items(todos, limit=MAX_STATUS_TODOS_PER_ROLE)
     if open_items:
         summary["items"] = open_items
         summary["next"] = open_items[0]["text"]
         if open_items[0].get("index") is not None:
             summary["next_index"] = open_items[0].get("index")
+    backlog_items = open_todo_items(todos, limit=MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS)
+    if backlog_items:
+        summary["backlog_items"] = backlog_items
+        executable_backlog_items = [
+            item
+            for item in backlog_items
+            if todo_item_is_actionable_open(item)
+            if normalize_todo_task_class(
+                item.get("task_class"),
+                text=str(item.get("text") or ""),
+                action_kind=item.get("action_kind"),
+            )
+            == TODO_TASK_CLASS_ADVANCEMENT
+        ]
+        if executable_backlog_items:
+            summary["executable_backlog_items"] = executable_backlog_items
     return summary
 
 
@@ -4275,28 +4300,6 @@ def attach_dependency_blockers(items: list[dict[str, Any]]) -> None:
         blockers = dependency_blocker_summary(items, current_goal_id=goal_id)
         if blockers:
             item["dependency_blockers"] = blockers
-
-
-def open_todo_items(todos: dict[str, Any] | None) -> list[dict[str, Any]]:
-    if not isinstance(todos, dict):
-        return []
-    items: list[dict[str, Any]] = []
-    seen: set[tuple[Any, str]] = set()
-    for source_items in (todos.get("first_open_items"), todos.get("items")):
-        if not isinstance(source_items, list):
-            continue
-        for todo in source_items:
-            if not isinstance(todo, dict) or todo.get("done"):
-                continue
-            text = str(todo.get("text") or "").strip()
-            if not text:
-                continue
-            key = (todo.get("index"), text)
-            if key in seen:
-                continue
-            seen.add(key)
-            items.append(todo)
-    return sorted(items, key=todo_projection_sort_key)
 
 
 def first_open_todo_item(todos: dict[str, Any] | None) -> dict[str, Any] | None:
