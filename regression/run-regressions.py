@@ -20,6 +20,10 @@ class Regression:
 
 CONTRACT_ONLY_REGRESSIONS = (
     Regression(
+        path="regression/blocked-priority-fallback-contract.py",
+        description="blocked P0 work stays visible while safe fallback work proceeds",
+    ),
+    Regression(
         path="regression/quota-executable-backlog-projection.py",
         description="quota selects executable backlog work over unchanged monitor context",
     ),
