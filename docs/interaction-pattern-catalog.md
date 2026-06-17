@@ -21,6 +21,8 @@ Each pattern should answer:
 - **Agent channel**: what Codex must do, may do, or must not do;
 - **State contract**: durable fields that prove the pattern is represented;
 - **Bad smell**: how the system usually fails when the pattern is missing;
+- **Visual model**: one Mermaid diagram, state table, or decision tree that can
+  be used in product explanation;
 - **Validation**: smoke, fixture, or doc check that protects the behavior.
 
 Keep examples public-safe. Do not copy raw benchmark tasks, raw trajectories,
@@ -103,6 +105,17 @@ The agent chooses one bounded segment, performs the work, runs focused
 validation, writes durable state or history, and spends exactly once after the
 validated delivery.
 
+**Visual Model**
+
+```mermaid
+flowchart LR
+  Q["eligible quota"] --> A["choose bounded segment"]
+  A --> D["deliver artifact or blocker"]
+  D --> V["focused validation"]
+  V --> W["durable writeback"]
+  W --> S["spend once"]
+```
+
 **Bad smell**
 
 The agent sends a status update after reading only one file, or spends quota
@@ -138,6 +151,19 @@ Core lane is blocked on <decision/resource>. I will continue <safe fallback>
 now, and the pending user todo remains <concrete ask>.
 ```
 
+**Visual Model**
+
+```mermaid
+sequenceDiagram
+  participant GH as Goal Harness
+  participant Agent as Agent
+  participant User as User
+  GH->>Agent: Higher P0 blocked, fallback executable
+  Agent->>User: Notify concrete blocked P0
+  Agent->>Agent: Execute safe fallback
+  Agent->>GH: Write result and keep P0 visible
+```
+
 **Bad smell**
 
 The agent either freezes completely on a gate even though other safe work is
@@ -170,6 +196,17 @@ specific user todo is not projected; repair Goal Harness state projection
 When `action_required=false` and `user_todo_summary.open_count=0`, the system
 may say there is no user todo and should not imply a projection fault.
 
+**Visual Model**
+
+```mermaid
+flowchart TD
+  U{"user action required or user_open > 0?"}
+  U -->|"yes"| C{"concrete todo/question projected?"}
+  C -->|"yes"| A["ask or notify with concrete item"]
+  C -->|"no"| R["report projection repair needed"]
+  U -->|"no"| N["no user todo / no notification"]
+```
+
 **Bad smell**
 
 The user sees repeated vague gate messages and cannot tell what decision is
@@ -195,6 +232,17 @@ needed.
 The next step should become replan / todo expansion / blocker writeback rather
 than normal delivery. Machine projection must be repaired before the controller
 pretends there is no work.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  E["eligible or must_attempt"] --> O{"open user/agent todos?"}
+  O -->|"yes"| D["normal lane selection"]
+  O -->|"no"| P{"actionable Next Action or handoff prose?"}
+  P -->|"yes"| R["replan / todo expansion / blocker writeback"]
+  P -->|"no"| M["monitor or quiet no-op"]
+```
 
 **Bad smell**
 
@@ -222,6 +270,17 @@ user/controller gate. The agent should not execute the write, and should not
 spend turns on repo-only handoff if the real blocker is missing scope
 projection.
 
+**Visual Model**
+
+```mermaid
+flowchart TD
+  A["selected action"] --> S{"requires write scope?"}
+  S -->|"no"| E["execute if otherwise safe"]
+  S -->|"yes"| B{"scope in goal_boundary.write_scope?"}
+  B -->|"yes"| E
+  B -->|"no"| R["boundary projection repair or user/controller gate"]
+```
+
 **Bad smell**
 
 The control plane remembers that a user once approved a path, but the current
@@ -247,6 +306,18 @@ the checkpointed decision.
 The agent may do only the bounded recovery: produce the missing evidence named
 by `must_advance`, or write the blocker explaining why that evidence cannot be
 produced. Ordinary docs/status propagation should wait.
+
+**Visual Model**
+
+```mermaid
+flowchart LR
+  F["outcome floor crossed"] --> T["read must_advance"]
+  T --> E{"can produce outcome evidence?"}
+  E -->|"yes"| P["produce evidence"]
+  E -->|"no"| B["write concrete blocker"]
+  P --> V["validate and spend once"]
+  B --> V
+```
 
 **Bad smell**
 
@@ -274,6 +345,17 @@ The agent may append at most one no-spend monitor poll, rerun the guard, and
 then stay quiet. The automation remains alive; monitor-only quiet skips are not
 completion or deletion signals.
 
+**Visual Model**
+
+```mermaid
+flowchart TD
+  N["should_run=false"] --> M{"monitor_quiet_skip and no gate?"}
+  M -->|"no"| C["follow concrete contract"]
+  M -->|"yes"| P["append no-spend poll"]
+  P --> R["rerun quota guard"]
+  R --> Q["quiet; keep automation active"]
+```
+
 **Bad smell**
 
 The heartbeat stops itself because nothing changed, or spends quota on a
@@ -298,6 +380,19 @@ no-op status repetition.
 The assistant or user simulator may provide bounded help through an audited
 channel. Results must be labeled as assisted and must not be merged into
 official autonomous score claims.
+
+**Visual Model**
+
+```mermaid
+sequenceDiagram
+  participant Sim as User simulator
+  participant GH as Goal Harness
+  participant Agent as Agent
+  Sim->>GH: Public-safe intervention within budget
+  GH->>Agent: Audited assistance channel
+  Agent->>GH: Assisted result evidence
+  GH->>GH: Label assisted; keep official score separate
+```
 
 **Bad smell**
 
@@ -324,6 +419,18 @@ reward signals, oracle information, or unbounded human hints.
 The controller widens the next eligible turn according to the configured
 cadence preset. For the default `long` preset, a turn should usually include an
 artifact, focused validation, and state writeback.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  R["recent turns"] --> S{"small-step streak >= threshold?"}
+  S -->|"no"| C["keep current cadence"]
+  S -->|"yes"| B{"safe to widen?"}
+  B -->|"no"| G["ask gate or write blocker"]
+  B -->|"yes"| W["widen next segment by preset"]
+  W --> D["artifact + validation + writeback"]
+```
 
 **Bad smell**
 
