@@ -42,6 +42,10 @@ from .benchmark_case_state import (
     benchmark_case_active_state_path,
     benchmark_case_goal_id,
 )
+from .benchmark_core import (
+    BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION,
+    canonical_lifecycle,
+)
 
 
 TERMINAL_BENCH_MODES = (
@@ -82,7 +86,6 @@ BENCHMARK_ATTEMPT_LEARNING_GATE_SCHEMA_VERSION = (
 BENCHMARK_ADAPTER_KWARG_ABSORPTION_REVIEW_SCHEMA_VERSION = (
     "benchmark_adapter_kwarg_absorption_review_v0"
 )
-BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION = "benchmark_lifecycle_state_v0"
 BENCHMARK_VERIFIER_ATTRIBUTION_REVIEW_SCHEMA_VERSION = (
     "benchmark_verifier_attribution_review_v0"
 )
@@ -6999,6 +7002,32 @@ def build_benchmark_lifecycle_state(
         process_launched = True
         materialized = True
         compact_ready = True
+    verifier_scored = False
+    if isinstance(benchmark_run, dict):
+        verifier_scored = any(
+            isinstance(benchmark_run.get(field), (int, float))
+            and not isinstance(benchmark_run.get(field), bool)
+            for field in (
+                "official_score",
+                "official_task_score",
+                "score",
+            )
+        )
+        if not verifier_scored:
+            for trial in benchmark_run.get("trials") or []:
+                if not isinstance(trial, dict):
+                    continue
+                if any(
+                    isinstance(trial.get(field), (int, float))
+                    and not isinstance(trial.get(field), bool)
+                    for field in (
+                        "official_score",
+                        "official_task_score",
+                        "score",
+                    )
+                ):
+                    verifier_scored = True
+                    break
     paired_compared = (
         _benchmark_lifecycle_schema(benchmark_comparison)
         == "benchmark_comparison_v0"
@@ -7102,6 +7131,15 @@ def build_benchmark_lifecycle_state(
     if result_ingested and environment_setup_probe_completed:
         current_phase = "environment_setup_probe_completed"
         next_required_transition = "case_repeat_decision"
+    canonical = canonical_lifecycle(
+        process_started=process_launched,
+        runner_accepted_args=process_launched,
+        job_root_materialized=materialized,
+        trial_started=compact_ready or result_ingested,
+        worker_started=result_ingested,
+        result_written=result_ingested,
+        verifier_scored=verifier_scored,
+    )
 
     routing = (
         learning_ledger.get("routing")
@@ -7139,6 +7177,7 @@ def build_benchmark_lifecycle_state(
     return {
         "schema_version": BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION,
         "current_phase": current_phase,
+        "canonical_lifecycle": canonical,
         "achieved_transitions": achieved,
         "next_required_transition": next_required_transition,
         "first_blocker": first_blocker,
