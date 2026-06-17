@@ -30,7 +30,9 @@ Runs a CLI-level quota projection regression over an isolated registry/runtime
 fixture. It checks that when a P0 external monitor remains open but unchanged
 and a P1 advancement todo is executable, `quota should-run` selects the P1
 backlog item as `recommended_action`, interaction primary action, and protocol
-packet action while keeping the monitor as context.
+packet action while keeping the monitor as context. It also checks that the
+payload exposes a state-action projection warning when the visible
+`Next Action` still points at the stale monitor action.
 
 ```bash
 python3 regression/external-evidence-observation-real-codex.py --real-codex

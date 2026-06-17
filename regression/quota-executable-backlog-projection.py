@@ -145,6 +145,11 @@ def assert_executable_backlog_projection(guard: dict[str, Any]) -> None:
     assert guard["decision"] == "run", guard
     assert guard["recommended_action"] == EXECUTABLE_TODO, guard
     assert guard["recommended_action"] != POLL_ACTION, guard
+    warning = guard["state_action_projection_warning"]
+    assert warning["kind"] == "state_action_projection_mismatch", warning
+    assert warning["requires_state_writeback"] is True, warning
+    assert warning["active_state_next_action"] == POLL_ACTION, warning
+    assert warning["selected_recommended_action"] == EXECUTABLE_TODO, warning
     lane = guard["work_lane_contract"]
     assert lane["lane"] == "advancement_task", lane
     assert lane["reason_codes"] == ["open_agent_todo", "external_monitor_context"], lane
