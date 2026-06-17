@@ -36,6 +36,10 @@ CONTRACT_ONLY_REGRESSIONS = (
         description="quota selects executable backlog work over unchanged monitor context",
     ),
     Regression(
+        path="regression/automation-loop-heartbeat-poll-contract.py",
+        description="automation heartbeat polls stay bounded, compact, and spend only after writeback",
+    ),
+    Regression(
         path="regression/external-evidence-observation-real-codex.py",
         description="external evidence waits require observation; launched advancement work stays bounded delivery",
     ),
