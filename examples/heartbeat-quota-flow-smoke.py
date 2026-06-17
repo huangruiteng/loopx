@@ -588,7 +588,15 @@ def main() -> int:
         assert follow_up["status"] == "state_refreshed", follow_up
         assert follow_up["quota"]["spent_slots"] == 1, follow_up
         assert follow_up["quota"]["allowed_slots"] == 2, follow_up
-        assert LONG_NEXT_ACTION_TAIL in follow_up["recommended_action"], follow_up
+        expected_action = "[P1] Run one bounded heartbeat marker and validate the compact result."
+        assert follow_up["recommended_action"] == expected_action, follow_up
+        interaction = follow_up["interaction_contract"]
+        assert interaction["agent_channel"]["primary_action"] == expected_action, interaction
+        warning = follow_up["state_action_projection_warning"]
+        assert warning["requires_state_writeback"] is True, warning
+        assert warning["selected_recommended_action"] == expected_action, warning
+        assert "executable backlog item" in warning["reason"], warning
+        assert "agent_action=" + expected_action in follow_up["protocol_action_packet"]["summary"], follow_up
         assert registry_path.read_text(encoding="utf-8") == registry_before
 
     with tempfile.TemporaryDirectory(prefix="goal-harness-heartbeat-operator-gate-") as tmp:
