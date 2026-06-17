@@ -1203,6 +1203,14 @@ def build_benchmark_run_ledger_entry(
     return {key: value for key, value in entry.items() if value not in (None, "", [])}
 
 
+def _entry_is_public_ledger_closeout(entry: dict[str, Any]) -> bool:
+    """Return whether a compact run is terminal enough for the public run ledger."""
+
+    if entry.get("status") == "running":
+        return False
+    return True
+
+
 def _empty_ledger() -> dict[str, Any]:
     return {
         "schema_version": BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
@@ -1751,6 +1759,19 @@ def update_benchmark_run_ledger(
         cwd=cwd,
     )
     markdown_path = path.with_suffix(".md")
+    if not _entry_is_public_ledger_closeout(entry):
+        return {
+            "ok": True,
+            "dry_run": dry_run,
+            "updated": False,
+            "skipped": True,
+            "skip_reason": "benchmark_run_not_terminal_for_public_ledger",
+            "schema_version": BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
+            "ledger_path": str(path),
+            "markdown_path": str(markdown_path),
+            "entry": entry,
+            "case_decision": {},
+        }
     if dry_run:
         updated = upsert_benchmark_run_ledger_entry(load_benchmark_run_ledger(path), entry)
     else:

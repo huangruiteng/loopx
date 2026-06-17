@@ -427,6 +427,51 @@ def test_ledger_scopes_worker_materialization_probe_as_startup_surface() -> None
     )
 
 
+def test_ledger_skips_running_result_placeholder() -> None:
+    compact = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "terminal-bench@2.0",
+        "job_name": "terminal_bench_train_fasttext_goal_harness_managed_codex_20260618T035534CST",
+        "mode": "goal_harness_managed_codex",
+        "official_score_status": "missing",
+        "progress": {
+            "n_total_trials": 1,
+            "n_completed_trials": 0,
+            "n_errored_trials": 0,
+            "n_running_trials": 1,
+            "n_pending_trials": 0,
+        },
+    }
+    entry = build_benchmark_run_ledger_entry(
+        compact,
+        result_ref=Path("running-result.json"),
+        run_group_id="terminal-bench-train-fasttext-managed-20260618T035534CST",
+        cwd=REPO_ROOT,
+    )
+    assert entry["status"] == "running", entry
+    assert entry["score_status"] == "missing", entry
+    assert entry["failure_class"] == "score_missing", entry
+
+    with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-running-skip-") as tmp:
+        root = Path(tmp)
+        ledger_path = root / "ledger.json"
+        update = update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=compact,
+            result_ref=root / "result.json",
+            run_group_id="terminal-bench-train-fasttext-managed-20260618T035534CST",
+            cwd=root,
+        )
+        assert update["ok"] is True, update
+        assert update["updated"] is False, update
+        assert update["skipped"] is True, update
+        assert update["skip_reason"] == (
+            "benchmark_run_not_terminal_for_public_ledger"
+        ), update
+        assert not ledger_path.exists(), "running placeholders must not create public ledger"
+        assert not (root / "ledger.md").exists(), "running placeholders must not render markdown"
+
+
 def test_ledger_repair_backlog_uses_latest_run_per_arm() -> None:
     old_job_name = (
         "terminal_bench_2_0_path_tracing_codex_goal_mode_baseline_real_no_upload_20260614T200518CST"
@@ -1085,6 +1130,7 @@ if __name__ == "__main__":
     test_ledger_classifies_setup_timeout_before_generic_timeout()
     test_ledger_routes_environment_setup_before_worker_separately()
     test_ledger_falls_back_to_terminal_bench_case_from_job_name()
+    test_ledger_skips_running_result_placeholder()
     test_ledger_repair_backlog_uses_latest_run_per_arm()
     test_ledger_requires_attribution_for_zero_score_without_failure_signal()
     test_paired_runner_setup_blocker_overrides_zero_delta_no_uplift()
