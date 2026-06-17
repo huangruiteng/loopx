@@ -1111,6 +1111,80 @@ def _selected_recommended_action(
     return raw_action
 
 
+def _normalize_action_for_compare(value: Any) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip().lower()
+    text = re.sub(r"^(?:agent|user|owner|codex)\s*:\s*", "", text)
+    text = re.sub(r"^\[(?:p[0-9]+|[^\]]+)\]\s*", "", text)
+    return text
+
+
+def _action_label_for_compare(value: Any) -> str:
+    text = _normalize_action_for_compare(value)
+    match = re.match(r"([^:]{8,120}):", text)
+    if match:
+        return match.group(1).strip()
+    return text[:120].strip()
+
+
+def _actions_are_projection_aligned(left: Any, right: Any) -> bool:
+    left_text = _normalize_action_for_compare(left)
+    right_text = _normalize_action_for_compare(right)
+    if not left_text or not right_text:
+        return False
+    if left_text == right_text:
+        return True
+    left_label = _action_label_for_compare(left_text)
+    right_label = _action_label_for_compare(right_text)
+    for label, text in ((left_label, right_text), (right_label, left_text)):
+        if label and len(label) >= 8 and label in text:
+            return True
+    shorter, longer = sorted((left_text, right_text), key=len)
+    return len(shorter) >= 32 and shorter in longer
+
+
+def _state_action_projection_warning(
+    item: dict[str, Any],
+    *,
+    selected_action: Any,
+    work_lane_contract: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not (
+        isinstance(work_lane_contract, dict)
+        and work_lane_contract.get("lane") == "advancement_task"
+        and "open_agent_todo"
+        in (
+            work_lane_contract.get("reason_codes")
+            if isinstance(work_lane_contract.get("reason_codes"), list)
+            else []
+        )
+    ):
+        return None
+    project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
+    active_next_action = str(project_asset.get("next_action") or "").strip()
+    selected_text = str(selected_action or "").strip()
+    if not active_next_action or not selected_text:
+        return None
+    if _actions_are_projection_aligned(active_next_action, selected_text):
+        return None
+    return {
+        "schema_version": "state_action_projection_warning_v0",
+        "kind": "state_action_projection_mismatch",
+        "severity": "warning",
+        "requires_state_writeback": True,
+        "active_state_next_action": _protocol_action_text(active_next_action, limit=320),
+        "selected_recommended_action": _protocol_action_text(selected_text, limit=320),
+        "reason": (
+            "quota selected the executable backlog item, but the active state's visible "
+            "Next Action still points at a different action"
+        ),
+        "recommended_action": (
+            "sync the active state Next Action to the selected protocol action, or treat "
+            "protocol_action_packet / interaction_contract as authoritative over stale "
+            "Next Action text"
+        ),
+    }
+
+
 def _todo_write_hint(goal_id: str) -> dict[str, str]:
     return {
         "rule": (
@@ -3170,6 +3244,16 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
                 heartbeat_recommendation.get("reason")
                 or "monitor-only polling has no material transition; skip delivery compute"
             )
+        selected_recommended_action = _selected_recommended_action(
+            item,
+            agent_todo_summary=agent_todo_summary,
+            work_lane_contract=work_lane_contract,
+        )
+        state_action_projection_warning = _state_action_projection_warning(
+            item,
+            selected_action=selected_recommended_action,
+            work_lane_contract=work_lane_contract,
+        )
         payload = {
             "ok": bool(plan.get("ok")) or self_repair_allowed,
             "status_health_ok": bool(plan.get("ok")),
@@ -3213,11 +3297,7 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             "lifecycle_flags": item.get("lifecycle_flags"),
             "source": item.get("source"),
             "project_asset_source": item.get("project_asset_source"),
-            "recommended_action": _selected_recommended_action(
-                item,
-                agent_todo_summary=agent_todo_summary,
-                work_lane_contract=work_lane_contract,
-            ),
+            "recommended_action": selected_recommended_action,
             "execution_profile": _quota_execution_profile_summary(
                 project_asset.get("execution_profile")
             )
@@ -3312,6 +3392,8 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
         )
         if projection_warning:
             payload["stale_latest_run_warning"] = projection_warning
+        if state_action_projection_warning:
+            payload["state_action_projection_warning"] = state_action_projection_warning
         backlog_warning = (
             item.get("backlog_hygiene_warning")
             if isinstance(item.get("backlog_hygiene_warning"), dict)
@@ -4347,6 +4429,31 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if stale_latest_run_warning.get("recommended_action"):
             lines.append(f"- stale_latest_run_action: {stale_latest_run_warning.get('recommended_action')}")
+    state_action_projection_warning = (
+        payload.get("state_action_projection_warning")
+        if isinstance(payload.get("state_action_projection_warning"), dict)
+        else {}
+    )
+    if state_action_projection_warning:
+        lines.append(
+            "- state_action_projection_warning: "
+            f"requires_state_writeback={state_action_projection_warning.get('requires_state_writeback')} "
+            f"reason={state_action_projection_warning.get('reason')}"
+        )
+        if state_action_projection_warning.get("selected_recommended_action"):
+            lines.append(
+                "- state_action_selected: "
+                f"{state_action_projection_warning.get('selected_recommended_action')}"
+            )
+        if state_action_projection_warning.get("active_state_next_action"):
+            lines.append(
+                "- state_action_visible_next: "
+                f"{state_action_projection_warning.get('active_state_next_action')}"
+            )
+        if state_action_projection_warning.get("recommended_action"):
+            lines.append(
+                f"- state_action_projection_action: {state_action_projection_warning.get('recommended_action')}"
+            )
     backlog_hygiene_warning = (
         payload.get("backlog_hygiene_warning")
         if isinstance(payload.get("backlog_hygiene_warning"), dict)
