@@ -1504,7 +1504,7 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
         ]
     if mode == "external_evidence_observation":
         return [
-            "read only the approved controller/thread/job/marker/writeback surfaces",
+            "read approved controller/job/marker/writeback surfaces only",
             f"goal-harness refresh-state --goal-id {goal_id} --classification <compact_blocker_or_transition>",
             f"goal-harness quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
         ]
@@ -1520,8 +1520,29 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
             f"goal-harness quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
         ]
     if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
-        return ["do not append quota spend for the blocker-push or gate-notification turn"]
-    return ["no quota spend unless a validated transition or blocker writeback is produced"]
+        return ["no quota spend for blocker-push/gate-notification"]
+    return ["no quota spend without validated transition/blocker writeback"]
+
+
+def _interaction_spend_policy(
+    execution_obligation: dict[str, Any],
+    heartbeat_recommendation: dict[str, Any],
+    *,
+    mode: str,
+    spend_after_validation: bool,
+) -> str | None:
+    if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
+        return "no spend for gate or blocker push"
+    if mode == "monitor_quiet_skip":
+        return "no spend for unchanged monitor poll"
+    if spend_after_validation:
+        return "spend once after validated writeback"
+    raw_policy = execution_obligation.get("spend_policy") or heartbeat_recommendation.get(
+        "spend_policy"
+    )
+    if isinstance(raw_policy, str) and len(raw_policy) <= 80:
+        return raw_policy
+    return "no spend without validated transition"
 
 
 def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1533,11 +1554,6 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     heartbeat_recommendation = (
         payload.get("heartbeat_recommendation")
         if isinstance(payload.get("heartbeat_recommendation"), dict)
-        else {}
-    )
-    automation_liveness = (
-        payload.get("automation_liveness")
-        if isinstance(payload.get("automation_liveness"), dict)
         else {}
     )
     mode = _interaction_mode(payload)
@@ -1573,86 +1589,56 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         "boundary_projection_repair",
         "external_evidence_observation",
     }
-    return {
+    user_channel: dict[str, Any] = {
+        "action_required": user_required,
+        "notify": "NOTIFY" if user_required else heartbeat_recommendation.get("notify", "DONT_NOTIFY"),
+    }
+    if user_required:
+        user_channel["max_items"] = 3
+    user_reason = (
+        payload.get("open_todo_notify_reason")
+        or payload.get("gate_prompt")
+        or payload.get("operator_question")
+        or (
+            payload.get("blocked_priority_fallback", {}).get("reason")
+            if isinstance(payload.get("blocked_priority_fallback"), dict)
+            else None
+        )
+    )
+    if user_reason:
+        user_channel["reason"] = user_reason
+
+    contract = {
         "schema_version": INTERACTION_CONTRACT_SCHEMA_VERSION,
         "mode": mode,
-        "source": "quota.should-run",
-        "roles": {
-            "user": (
-                "decides gates, private/credential/resource/public-claim boundaries, "
-                "production/destructive actions, and run-bound reward"
-            ),
-            "agent": (
-                "executes one bounded transition from the CLI contract, validates it, "
-                "writes durable state, and asks only for user-owned decisions"
-            ),
-            "goal_harness_cli": (
-                "projects goal truth, quota, waiting owner, interaction mode, spend "
-                "policy, and next machine-readable obligation"
-            ),
-        },
-        "user_channel": {
-            "action_required": user_required,
-            "notify": "NOTIFY" if user_required else heartbeat_recommendation.get("notify", "DONT_NOTIFY"),
-            "reason": payload.get("open_todo_notify_reason")
-            or payload.get("gate_prompt")
-            or payload.get("operator_question")
-            or (
-                payload.get("blocked_priority_fallback", {}).get("reason")
-                if isinstance(payload.get("blocked_priority_fallback"), dict)
-                else None
-            )
-            or None,
-            "max_items": 3 if user_required else 0,
-        },
+        "user_channel": user_channel,
         "agent_channel": {
             "must_attempt": must_attempt,
             "delivery_allowed": delivery_allowed,
             "quiet_noop_allowed": quiet_noop_allowed,
             "primary_action": _interaction_primary_agent_action(payload, mode=mode),
-            "forbidden_until_user_or_boundary": [
-                "private material",
-                "credentials",
-                "destructive git",
-                "production actions",
-                "paid/cloud/resource boundary",
-                "public leaderboard/submission/public claim",
-            ],
         },
         "cli_channel": {
-            "source_of_truth": True,
             "next_cli_actions": _interaction_next_cli_actions(payload, mode=mode),
             "spend_allowed_now": spend_allowed_now,
             "spend_after_validation": spend_after_validation,
-            "spend_policy": execution_obligation.get("spend_policy")
-            or heartbeat_recommendation.get("spend_policy"),
-        },
-        "fallback_policy": {
-            "do_not_cancel_on_block": True,
-            "if_primary_lane_blocked": (
-                "surface or write the blocker, then take a gate-independent P1/P2 lane "
-                "only when safe_bypass/recovery/self_repair/execution_obligation exposes "
-                "bounded work; otherwise keep automation active without spend or let the "
-                "global scheduler select another eligible goal"
-            ),
-            "self_repair_after_stalls": (
-                "after two no-progress monitor/eligible turns, follow autonomous_replan "
-                "or write a compact blocker before another quiet no-op"
+            "spend_policy": _interaction_spend_policy(
+                execution_obligation,
+                heartbeat_recommendation,
+                mode=mode,
+                spend_after_validation=spend_after_validation,
             ),
         },
-        "automation": {
-            "keep_active": automation_liveness.get("keep_active", True),
-            "pause_allowed": automation_liveness.get("pause_allowed", False),
-            "action": automation_liveness.get("automation_action"),
-        },
-        "compatibility_fields": [
-            "execution_obligation",
-            "heartbeat_recommendation",
-            "work_lane_contract",
-            "goal_boundary",
-            "protocol_action_packet",
-        ],
     }
+    if mode in {
+        "user_gate",
+        "user_todo_blocker_push",
+        "user_action_required",
+        "outcome_floor_recovery",
+        "external_evidence_observation",
+    } or payload.get("blocked_priority_fallback"):
+        contract["fallback_policy"] = {"do_not_cancel_on_block": True}
+    return contract
 
 
 def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
@@ -2411,6 +2397,16 @@ def _heartbeat_recommendation(
         }
         return payload
 
+    if item.get("agent_command"):
+        return {
+            **base,
+            "recommended_mode": "run_agent_command",
+            "command": str(item.get("agent_command")),
+            "notify": "DONT_NOTIFY",
+            "spend_policy": "append exactly one heartbeat spend after the command completes and validation/writeback are saved",
+            "reason": "current status exposes an approved project-agent command",
+        }
+
     if (
         work_lane_contract
         and work_lane_contract.get("lane") == "continuous_monitor"
@@ -2564,16 +2560,6 @@ def _heartbeat_recommendation(
         return {
             **base,
             **post_handoff_observation,
-        }
-
-    if item.get("agent_command"):
-        return {
-            **base,
-            "recommended_mode": "run_agent_command",
-            "command": str(item.get("agent_command")),
-            "notify": "DONT_NOTIFY",
-            "spend_policy": "append exactly one heartbeat spend after the command completes and validation/writeback are saved",
-            "reason": "current status exposes an approved project-agent command",
         }
 
     return {
