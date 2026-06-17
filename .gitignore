@@ -20,3 +20,4 @@ dist/
 .codex/goals/
 goals/**/ACTIVE_GOAL_STATE.md
 runtime/
+logs/
