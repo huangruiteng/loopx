@@ -91,6 +91,17 @@ def _compact_round_reward_records(value: Any, *, limit: int = 12) -> list[dict[s
     return sorted(records, key=lambda record: record["agent_round"])
 
 
+def _codex_acp_runtime_preflight_passed(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if value.get("codex_acp_runtime_launch_preflight") is True:
+        return True
+    return (
+        _compact_text(value.get("codex_acp_runtime_launch_preflight_status"), limit=80)
+        == "passed"
+    )
+
+
 def _compact_task_staging(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -148,6 +159,7 @@ def _compact_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "compose_setup_failure",
         "unclassified_compose_failure",
         "docker_daemon_unavailable",
+        "volume_mount_failure",
         "environment_setup_failure",
         "agent_rounds_started",
         "official_score_missing",
@@ -559,6 +571,8 @@ def _repair_route(
     failure_scope: str,
     *,
     agent_model: str = "",
+    round_success_observed: bool = False,
+    runtime_preflight_passed: bool = False,
 ) -> dict[str, Any]:
     if (
         failure_class.startswith("codex_cli_")
@@ -674,6 +688,33 @@ def _repair_route(
                 "blocked_model_route": blocked_model,
                 "recommended_model_route": recommended_model,
                 "required_preflight": ["codex_cli_minimal_model_probe"],
+                "rerun_allowed_after_profile_applied": True,
+                "raw_logs_required": False,
+                "raw_task_text_required": False,
+            },
+        }
+    if (
+        failure_class.startswith("skillsbench_codex_acp_")
+        and round_success_observed
+        and runtime_preflight_passed
+    ):
+        return {
+            "repair_priority": "P0",
+            "repair_class": "skillsbench_codex_acp_post_success_finalization",
+            "next_action": (
+                "separate post-success Codex ACP transport/finalization closeout "
+                "from runtime startup preflight: preserve the blinded round "
+                "reward trace, keep official-score status separate, and rerun "
+                "only after the compact finalization classifier is corrected"
+            ),
+            "repair_profile": {
+                "schema_version": "benchmark_repair_profile_v0",
+                "repair_class": "skillsbench_codex_acp_post_success_finalization",
+                "required_preflight": [
+                    "round_reward_trace.success_observed",
+                    "codex_acp_runtime_launch_preflight",
+                    "skillsbench_compact_failure_class",
+                ],
                 "rerun_allowed_after_profile_applied": True,
                 "raw_logs_required": False,
                 "raw_task_text_required": False,
@@ -836,7 +877,10 @@ def _repair_profile_summary(value: Any) -> str:
             if disallowed_strategy:
                 parts.append(f"disallow={disallowed_strategy}")
         return "; ".join(parts)
-    if repair_class == "skillsbench_codex_acp_runtime_preflight":
+    if repair_class in {
+        "skillsbench_codex_acp_runtime_preflight",
+        "skillsbench_codex_acp_post_success_finalization",
+    }:
         required = _compact_list(value.get("required_preflight"), limit=3)
         return "required_preflight=" + ",".join(required) if required else repair_class
     if repair_class == "runner_result_finalization":
@@ -919,11 +963,6 @@ def build_benchmark_run_ledger_entry(
         or benchmark_run.get("runner_warning_labels"),
         limit=6,
     )
-    repair_route = _repair_route(
-        failure_class,
-        failure_scope,
-        agent_model=agent_model,
-    )
     round_reward_trace = (
         benchmark_run.get("round_reward_trace")
         if isinstance(benchmark_run.get("round_reward_trace"), dict)
@@ -976,6 +1015,27 @@ def build_benchmark_run_ledger_entry(
         best_round_passed = round_reward_stats.get("best_round_passed")
     if not isinstance(best_round_is_final, bool):
         best_round_is_final = round_reward_stats.get("best_round_is_final")
+    runner_prerequisites = (
+        benchmark_run.get("runner_prerequisites")
+        if isinstance(benchmark_run.get("runner_prerequisites"), dict)
+        else {}
+    )
+    runtime_preflight_passed = _codex_acp_runtime_preflight_passed(
+        runner_prerequisites
+    )
+    round_success_observed = (
+        round_reward_trace.get("success_observed")
+        if isinstance(round_reward_trace, dict)
+        and isinstance(round_reward_trace.get("success_observed"), bool)
+        else (first_success_round is not None)
+    )
+    repair_route = _repair_route(
+        failure_class,
+        failure_scope,
+        agent_model=agent_model,
+        round_success_observed=round_success_observed,
+        runtime_preflight_passed=runtime_preflight_passed,
+    )
 
     entry: dict[str, Any] = {
         "run_id": run_id,
@@ -1016,12 +1076,8 @@ def build_benchmark_run_ledger_entry(
         or ("final_workspace_official_result" if round_rewards else ""),
         "round_rewards": round_rewards,
         "round_reward_count": len(round_rewards),
-        "round_success_observed": (
-            round_reward_trace.get("success_observed")
-            if isinstance(round_reward_trace, dict)
-            and isinstance(round_reward_trace.get("success_observed"), bool)
-            else (first_success_round is not None)
-        ),
+        "round_success_observed": round_success_observed,
+        "codex_acp_runtime_preflight_passed": runtime_preflight_passed,
         "max_rounds_budget": max_rounds_budget
         if isinstance(max_rounds_budget, int) and not isinstance(max_rounds_budget, bool)
         else None,
@@ -1205,6 +1261,13 @@ def _normalize_ledger_run(run: dict[str, Any], *, fallback_benchmark_id: str) ->
         _compact_text(normalized.get("failure_class"), limit=120),
         _compact_text(normalized.get("failure_scope"), limit=80),
         agent_model=_compact_text(normalized.get("agent_model"), limit=120),
+        round_success_observed=normalized.get("round_success_observed") is True
+        or normalized.get("first_success_round") is not None
+        or normalized.get("best_round_passed") is True
+        or normalized.get("final_round_passed") is True,
+        runtime_preflight_passed=(
+            normalized.get("codex_acp_runtime_preflight_passed") is True
+        ),
     )
     for key in ("repair_priority", "repair_class", "next_action", "repair_profile"):
         normalized.pop(key, None)
@@ -1333,6 +1396,8 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
             decision = f"{prefix}_result_finalization_repair_required"
         elif repair_class == "skillsbench_codex_acp_runtime_preflight":
             decision = f"{prefix}_codex_acp_runtime_preflight_required"
+        elif repair_class == "skillsbench_codex_acp_post_success_finalization":
+            decision = f"{prefix}_codex_acp_post_success_finalization_required"
         elif repair_class == "skillsbench_setup_preflight_selection":
             decision = f"{prefix}_setup_preflight_selection_required"
         elif repair_class == "worker_verifier_alignment":

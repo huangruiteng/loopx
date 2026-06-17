@@ -7,21 +7,28 @@ It is intentionally separate from `benchmark-run-ledger.md`. The run ledger
 records compact attempts and scores; this file records why a result matters.
 
 - schema_version: `benchmark_case_analysis_v0`
-- updated_at: `2026-06-16T20:30:30+08:00`
+- updated_at: `2026-06-17T20:33:39+08:00`
 - machine_source: `benchmark-case-analysis.json`
 
 ## Summary
 
+The table now prefers the current benchmark protocol when it exists:
+SkillsBench main rows use raw Codex autonomous max5 versus Goal Harness
+product-mode, and Terminal-Bench rows must distinguish legacy
+`codex_goal_harness` evidence from the current Goal Harness managed route.
+Legacy positives stay in the case notes as assets, but should not be counted as
+current main-table uplift until a current-protocol rerun closes.
+
 | Benchmark | Case | Class | Baseline | Treatment | Delta | Decision |
 | --- | --- | --- | --- | --- | --- | --- |
-| `terminal-bench@2.0` | `multi-source-data-merger` | positive uplift asset | `0.0` | `1.0` | `+1.0` | `paired_treatment_improved` |
+| `terminal-bench@2.0` | `multi-source-data-merger` | legacy positive / current-protocol baseline-solved | `1.0` | `1.0` | `0.0` | `paired_baseline_solved_treatment_preserved` |
 | `terminal-bench@2.0` | `nginx-request-logging` | runner materialization asset | `0.0` | `1.0` | `+1.0` | `paired_baseline_runner_or_setup_repair_required` |
 | `terminal-bench@2.0` | `make-doom-for-mips` | timeout attribution asset | `0.0` | `0.0` | `0.0` | `paired_result_requires_attribution` |
 | `terminal-bench@2.0` | `mteb-retrieve` | setup probe asset | `0.0` | `0.0` | `0.0` | `environment_setup_probe_materialized_with_exception_repeat_blocked` |
 | `terminal-bench@2.0` | `pytorch-model-recovery` | exception attribution asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift_exception_research_required` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | reward-feedback positive / blind-loop neutral asset | `0.0` | `0.0` | `0.0` | `reward_feedback_positive_primary_blind_loop_no_uplift` |
-| `skillsbench@1.1` | `dapt-intrusion-detection` | positive uplift asset | `0.0` | `1.0` | `+1.0` | `paired_treatment_improved` |
-| `skillsbench@1.1` | `paratransit-routing` | positive uplift asset | `0.0` | `1.0` | `+1.0` | `paired_treatment_improved` |
+| `skillsbench@1.1` | `dapt-intrusion-detection` | reward-feedback positive / current protocol unresolved | legacy `0.0` | legacy `1.0` | n/a | `reward_feedback_ablation_positive_current_protocol_unresolved` |
+| `skillsbench@1.1` | `paratransit-routing` | product-mode no-uplift asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
 | `skillsbench@1.1` | `debug-trl-grpo` | regression asset | `0.25` | `0.0` | `-0.25` | `paired_treatment_regressed` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | no-uplift asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | no-uplift asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
@@ -355,10 +362,12 @@ Policy gate:
 
 ## Case: Terminal-Bench multi-source-data-merger
 
-This is the current end-to-end positive-control case, with an important
-stability caveat: it is strong evidence that the treatment route can pass a
-real case, but weaker evidence that the treatment solver is intrinsically
-better than baseline on this task.
+This is a legacy end-to-end positive-control case that became a
+current-protocol baseline-solved/non-regression control. The old evidence is
+strong that the historical treatment route could pass a real case, but it is
+weaker evidence that the treatment solver is intrinsically better than baseline
+on this task. Under the current Terminal-Bench protocol, both the hardened Codex
+baseline and Goal Harness managed treatment scored `1.0`.
 
 Compact evidence:
 
@@ -372,18 +381,22 @@ Compact evidence:
 - treatment score: `1.0`
 - treatment failure: `none`
 
-Primary blind-loop recheck:
+Current protocol rerun:
 
-- route pair: `codex-acp-blind-loop-baseline` vs.
-  `goal-harness-blind-loop-treatment`
-- run group: `skillsbench-llm-prefix-cache-replay-blind-pair-protocol-v10`
-- baseline score: `0.0`
-- baseline round rewards: `1:0,2:0`
-- treatment score: `0.0`
-- treatment round rewards: `1:0,2:0`
-- first success round: `none`
-- decision: `paired_no_score_uplift`
-- worker bridge: `verified`
+- route pair: Terminal-Bench `hardened-codex` baseline vs.
+  `goal-harness-managed-codex` treatment
+- run group: `terminal-bench-multi-source-data-merger-current-protocol-20260617T201625CST`
+- baseline job:
+  `terminal_bench_multi_source_data_merger_hardened_codex_current_protocol_20260617T202500CST`
+- baseline run id: `37d3587daf12`
+- baseline score: `1.0`
+- treatment job:
+  `terminal_bench_multi_source_data_merger_goal_harness_managed_codex_current_protocol_20260617T201625CST`
+- treatment run id: `76cbfb57f1ea`
+- treatment score: `1.0`
+- official score delta: `0.0`
+- decision: `paired_baseline_solved_treatment_preserved`
+- boundary: no upload, no leaderboard submit, no raw task/log/trajectory read
 
 Interpretation:
 
@@ -403,17 +416,21 @@ Why it matters:
 
 - It proves the treatment route can reach official `1.0` on a real
   Terminal-Bench case.
+- It anchors the migration from historical `codex_goal_harness` evidence to the
+  newer Goal Harness managed route: the current route preserves success, but
+  the comparable baseline now also passes.
 - It proves the distinction between runner readiness, self-validation, and
   verifier success matters; baseline self-validation and official score
   diverged.
-- It is a good positive-control case for end-to-end harness behavior, but not
-  yet a clean pure-solver uplift proof.
+- It is a good non-regression/control case for end-to-end harness behavior, but
+  not current-protocol uplift evidence.
 
 Follow-up guidance:
 
-- Do not repeat this case immediately unless validating a new treatment
-  mechanism or stabilizing the baseline verifier/runtime confound.
-- Keep mining additional Codex-baseline-failing cases.
+- Do not use the old `0.0 -> 1.0` result as current main-table uplift evidence;
+  the new comparable pair is `1.0 -> 1.0`.
+- Keep this case as a current-protocol success-preservation guard when changing
+  Terminal-Bench managed routing, lifecycle trace, or worker setup policy.
 - Preserve the materialization and compact closeout path that made the case
   interpretable.
 - Fix or time-bound the worker bridge status call; it should not hang after
@@ -522,6 +539,30 @@ Follow-up guidance:
 - First collect compact phase/verifier attribution for the setup8+2h pair.
 - Only rerun after the launcher can prove worker materialization and record the
   chosen timeout tier in the compact closeout.
+
+Latest case-first managed run, 2026-06-17:
+
+- run group: `terminal-bench-make-doom-managed-20260617T193035CST`
+- arm: `goal-harness-managed-codex`
+- compact result: completed, official score `0.0`
+- compact attribution: `official_verifier_solution_failure`
+- control-plane signal: the launcher and post-launch closeout are now usable;
+  job root materialized, the trial completed, and compact ingestion reached a
+  verifier-facing official score without reading raw task text, logs, or
+  trajectories.
+- product-mode gap: this run is not a clean treatment claim. The compact
+  counters show `worker_goal_harness_cli_call_total=0` and no worker bridge
+  trace, so it proves the managed Terminal-Bench route can run and close out,
+  not that the in-case Goal Harness product experience improved the task.
+
+Updated guidance:
+
+- Use this as a completed Terminal-Bench lifecycle/attribution data point.
+- Do not claim uplift or regression from it.
+- Before another `make-doom-for-mips` repeat, either add Terminal-Bench
+  product-mode parity/trace evidence comparable to the SkillsBench route, or
+  choose a different material-ready case where the current product-mode route
+  can expose real state/todo/replan behavior.
 
 ## Case: Terminal-Bench mteb-retrieve
 
@@ -1385,8 +1426,8 @@ Follow-up guidance:
 
 ## Case: SkillsBench azure-bgp-oscillation-route-leak
 
-This is a clean no-uplift control and a setup-repair proof, not treatment
-uplift evidence.
+This is a clean no-uplift control, setup-repair proof, and product-mode depth
+check, not treatment uplift evidence.
 
 Compact evidence:
 
@@ -1408,6 +1449,21 @@ Compact evidence:
 - max5 treatment run id: `c50ebc418b8e`
 - max5 treatment score: `0.0`
 - max5 treatment rounds: `1:missing,2:0,3:0,4:0,5:0`
+- product-mode run group:
+  `skillsbench-azure-bgp-product-mode-20260617T195844CST`
+- product-mode baseline route: `raw-codex-autonomous-max5`
+- product-mode baseline run id: `788c64ee1ddd`
+- product-mode baseline score: `0.0`
+- product-mode baseline rounds: `1:0`
+- product-mode baseline stop: agent declared done in round 1 with no remaining
+  goals
+- product-mode treatment route: `goal-harness-product-mode`
+- product-mode treatment run id: `4002396acce9`
+- product-mode treatment score: `0.0`
+- product-mode treatment rounds: `1:0,2:0,3:0,4:0,5:0`
+- product-mode treatment depth: 5 controller decisions, 5 heartbeat turns, 5
+  case-state reads, and 5 case-state writes
+- product-mode protected-path edit signals: `0`
 - setup patch: staged Codex ACP runtime tools
   (`codex_acp_runtime_tools_patch_applied=true`)
 
@@ -1421,11 +1477,15 @@ SkillsBench scoring.
 
 Both the two-round pair and the later max-5 pair scored `0.0`, with official
 reward/pass/fail/verifier feedback blinded during the agent loop and rewards
-recorded only after each completed round. The result is therefore a real neutral
-pair: useful for runner readiness and protocol validation, not for uplift
-claims. The first round's scalar reward is missing in both max-5 arms because
-only later round and final compact records exposed scalar reward; this does not
-change the final-score or best-score conclusion.
+recorded only after each completed round. The subsequent product-mode pair also
+stayed `0.0 -> 0.0`: the raw Codex autonomous baseline stopped after round 1
+when the agent declared done, while the Goal Harness product-mode treatment kept
+the case alive for all 5 rounds through case-local active-state reads/writes.
+The result is therefore a real neutral pair and a depth-control proof: useful
+for runner readiness, product-mode parity, and stop-policy analysis, not for
+uplift claims. The first round's scalar reward is missing in both earlier max-5
+blind-loop arms because only later round and final compact records exposed
+scalar reward; this does not change the final-score or best-score conclusion.
 
 Why it matters:
 
@@ -1434,6 +1494,9 @@ Why it matters:
 - It preserves a no-uplift guard for BGP/network-analysis style tasks.
 - It demonstrates that local Docker capacity can masquerade as runner or apt
   setup failure unless recorded separately from case outcome.
+- It shows a real product-mode difference: Goal Harness prevented premature
+  "done" collapse and drove five compact-safe rounds, but that extra depth did
+  not solve this case.
 
 Follow-up guidance:
 
@@ -1441,6 +1504,9 @@ Follow-up guidance:
   failure hypothesis changes.
 - Keep it in the no-uplift guard set when evaluating future blind-loop policy
   changes.
+- Use it as a product-mode depth regression guard: future changes should retain
+  case-state init/read/write counters and avoid reward leakage, but should not
+  claim uplift unless score improves.
 - Do not inspect raw trajectory, logs, or task text unless explicitly authorized;
   use compact summaries first.
 
@@ -1542,7 +1608,7 @@ Follow-up guidance:
 | Lesson | Evidence | Implication |
 | --- | --- | --- |
 | Connectivity is not case success. | Terminal-Bench needed materialization and closeout repair before scores were meaningful. | Keep lifecycle stages separate: launch, materialization, trial, solver, result, verifier. |
-| Treatment can help. | `multi-source-data-merger` improved from `0.0` to `1.0`. | Keep the Goal Harness treatment lane alive and mine more baseline-failing cases. |
+| Historical treatment route can help, but current-protocol claims need reruns. | `multi-source-data-merger` improved from `0.0` to `1.0` under the legacy Terminal-Bench route; under the current protocol, baseline and treatment both scored `1.0`. | Keep the treatment lane alive, but make the main table prefer current product-mode evidence over legacy uplift rows. |
 | Score delta is not automatically claimable uplift. | `nginx-request-logging` treatment scored `1.0`, but the hardened baseline `0.0` came from worker Codex materialization failure, and a follow-up probe confirmed `codex_cli_not_on_path`. | Record `claimable_uplift=false` when one arm fails before a comparable solver/verifier path; require worker-path Codex preflight before repeat. |
 | Treatment can preserve baseline success. | `ada-bathroom-plan-repair`, `organize-messy-files`, `citation-check`, `3d-scan-calc`, and `bike-rebalance` scored `1.0` in both blind-loop arms with first_success_round=1. | Keep baseline-solved non-regression guards so treatment prompts do not damage easy wins. |
 | Baseline comparability must be repaired before uplift claims. | `bike-rebalance` first looked like a treatment-only pass because the baseline ended with `skillsbench_runner_error`; after baseline repair, the rerun also passed at `1.0`. | Treat initial runner errors as readiness evidence, not case-score deltas. |

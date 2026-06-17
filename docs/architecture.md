@@ -46,6 +46,22 @@ registry, active state, run history, quota, gates, and lease events remain the
 backstage ledger. See
 [frontstage-channel-lease-roadmap.md](frontstage-channel-lease-roadmap.md).
 
+Goal Harness should also grow a narrow host-integration surface. CLI commands
+remain the compatibility baseline, but long-running agent hosts benefit when
+the same state is available through hook/MCP/server adapters:
+
+- hook activation should only route the host toward the current Goal Harness
+  contract; it must not embed a second scheduler or stale project policy;
+- MCP/server tools should expose lifecycle reads, todo/gate/lease writes, and
+  compact status projections without requiring the host to parse Markdown;
+- host adapters should isolate platform details while preserving the same
+  registry, event-ledger, quota, public/private boundary, and lease semantics;
+- task graphs should be optional projections over Goal Harness state, not a
+  replacement for the event ledger or active goal truth.
+
+This keeps Goal Harness portable across Codex, local CLI loops, dashboards, and
+future agent hosts while avoiding a forked control plane per host.
+
 ## State Interaction Model
 
 Goal Harness has four product actors:

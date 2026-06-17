@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import contextlib
 import io
+import asyncio
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import types
 from pathlib import Path
 from typing import Any
 
@@ -39,8 +41,11 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_APT_RETRY_BEGIN,
     DOCKER_APP_SKILLS_MOUNT_BEGIN,
     DOCKER_HOST_CPU_ENV,
+    PRODUCT_MODE_CASE_STATE_PATH,
+    PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
     _tail,
     _blind_loop_persistent_continuation_clause,
+    _build_product_mode_user,
     _merge_acp_trajectory_summary,
     _merge_final_result_round_reward,
     _round_result_declared_done,
@@ -49,6 +54,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     build_runner_failure_compact,
     main as skillsbench_automation_loop_main,
     parse_args,
+    product_mode_case_state_seed_text,
     reduce_result,
     summarize_acp_trajectory,
     stage_task_for_sandbox,
@@ -95,6 +101,132 @@ def test_product_mode_declared_done_marker_detection() -> None:
         ]
 
     assert _round_result_declared_done(FakeRoundResult()) is True
+
+
+def test_product_mode_case_state_seed_uses_active_goal_shape() -> None:
+    seed = product_mode_case_state_seed_text(
+        task_id="sample-task",
+        route="goal-harness-product-mode",
+        max_rounds=5,
+    )
+    assert f"goal_id: {skillsbench_loop.PRODUCT_MODE_CASE_GOAL_ID}" in seed
+    assert f"schema_version: {PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION}" in seed
+    assert f"case_state_path: `{PRODUCT_MODE_CASE_STATE_PATH}`" in seed
+    assert "## Agent Todo" in seed
+    assert "## Local Evidence" in seed
+    assert "## Replan Log" in seed
+    assert "## Remaining Goals" in seed
+    assert ".goal-harness-case-state.md" not in seed
+
+
+def test_product_mode_declared_done_requires_case_state_depth() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-depth-gate-") as tmp:
+        root = Path(tmp)
+        jobs_dir = root / "jobs"
+        job_name = "skillsbench_depth_gate_fixture"
+        rollout_name = "case__goal_harness_product_mode"
+        trajectory_path = (
+            jobs_dir / job_name / rollout_name / "agent" / "acp_trajectory.jsonl"
+        )
+        trajectory_path.parent.mkdir(parents=True)
+        trajectory_path.write_text(
+            json.dumps(
+                {
+                    "type": "user_message",
+                    "text": f"Maintain {PRODUCT_MODE_CASE_STATE_PATH}.",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        trace = {
+            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "route": "goal-harness-product-mode",
+            "goal_harness_state_reads": 0,
+            "goal_harness_state_writes": 0,
+            "goal_harness_case_state_reads": 0,
+            "goal_harness_case_state_writes": 0,
+            "heartbeat_count": 0,
+            "controller_action_decisions": 0,
+            "initial_prompt_count": 0,
+            "followup_prompt_count": 0,
+            "stop_decision_count": 0,
+            "reward_observation_count": 0,
+            "round_rewards": [],
+        }
+        plan = {
+            "jobs_dir": str(jobs_dir),
+            "job_name": job_name,
+            "rollout_name": rollout_name,
+        }
+        saved_modules = {
+            name: sys.modules.get(name)
+            for name in (
+                "benchflow",
+                "benchflow.sandbox",
+                "benchflow.sandbox.user",
+            )
+        }
+        fake_benchflow = types.ModuleType("benchflow")
+        fake_sandbox = types.ModuleType("benchflow.sandbox")
+        fake_user = types.ModuleType("benchflow.sandbox.user")
+
+        class FakeBaseUser:
+            pass
+
+        class FakeRoundResultBase:
+            pass
+
+        fake_user.BaseUser = FakeBaseUser
+        fake_user.RoundResult = FakeRoundResultBase
+        sys.modules["benchflow"] = fake_benchflow
+        sys.modules["benchflow.sandbox"] = fake_sandbox
+        sys.modules["benchflow.sandbox.user"] = fake_user
+        try:
+            user = _build_product_mode_user(
+                route="goal-harness-product-mode",
+                max_rounds=5,
+                trace=trace,
+                plan=plan,
+            )
+        finally:
+            for name, module in saved_modules.items():
+                if module is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = module
+
+        class FakeRoundResult:
+            rewards = {}
+            trajectory = [
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Done. {DECLARED_DONE_MARKER}",
+                        }
+                    ],
+                }
+            ]
+
+        prompt = asyncio.run(
+            user.run(
+                1,
+                "Fix the fixture.",
+                round_result=FakeRoundResult(),
+            )
+        )
+        assert prompt is not None, trace
+        assert "not evidence that the official verifier passed or failed" in prompt
+        assert PRODUCT_MODE_CASE_STATE_PATH in prompt
+        assert trace["product_mode_depth_gate_gap"] is True, trace
+        assert trace["product_mode_depth_gate_gap_round"] == 1, trace
+        assert trace["last_decision"] == "send_product_mode_depth_gate_continuation"
+        assert trace["followup_prompt_count"] == 1, trace
+        assert trace["stop_decision_count"] == 0, trace
+        assert trace.get("agent_declared_done") is not True, trace
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -507,6 +639,40 @@ def write_official_skillsbench_unclassified_compose_failure(root: Path) -> Path:
     return result_path
 
 
+def write_official_skillsbench_volume_mount_failure(root: Path) -> Path:
+    run_dir = (
+        root
+        / "official"
+        / "2026-06-15__00-00-06"
+        / "suricata-custom-exfil__volume"
+    )
+    result_path = run_dir / "result.json"
+    write_json(
+        result_path,
+        {
+            "task_name": "suricata-custom-exfil",
+            "rollout_name": "suricata-custom-exfil__volume",
+            "rewards": None,
+            "agent": "codex-acp",
+            "agent_name": "",
+            "model": "gpt-5.5",
+            "n_tool_calls": 0,
+            "n_prompts": 0,
+            "error": (
+                "Docker compose command failed for environment "
+                "suricata-custom-exfil under /Users/example/private/job/root. "
+                "Error response from daemon: invalid mount config for type "
+                "bind: bind source path does not exist."
+            ),
+            "verifier_error": None,
+            "partial_trajectory": False,
+            "trajectory_source": None,
+        },
+    )
+    write_json(run_dir / "timing.json", {"total": 10.0})
+    return result_path
+
+
 def write_official_skillsbench_codex_acp_libssl_failure(root: Path) -> Path:
     run_dir = root / "official" / "2026-06-15__00-00-02" / "setup-fuzzing-py__ghi789"
     result_path = run_dir / "result.json"
@@ -885,6 +1051,85 @@ def test_skillsbench_unclassified_compose_failure_fingerprint() -> None:
         assert "/Users/example/private/job/root" not in text, compact
 
 
+def test_skillsbench_volume_mount_failure_attribution() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-volume-mount-") as tmp:
+        result_path = write_official_skillsbench_volume_mount_failure(Path(tmp))
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="goal-harness-product-mode",
+            )
+        )
+        assert compact is not None
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_docker_compose_volume_mount_failure"
+        ), compact
+        assert "skillsbench_docker_compose_setup_failure" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert "skillsbench_docker_compose_unclassified_setup_failure" not in compact[
+            "failure_attribution_labels"
+        ], compact
+        fingerprint = compact["runner_failure_fingerprint"]
+        assert "volume_mount_failure" in fingerprint["matched_patterns"], fingerprint
+        plan = {
+            "route": "goal-harness-product-mode",
+            "task_id": "suricata-custom-exfil",
+            "task_setup_preflight": {
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "status": "ok",
+                "sandbox": "docker",
+                "raw_task_text_read": False,
+                "raw_logs_read": False,
+                "raw_trajectory_read": False,
+                "apt_setup_risk_detected": False,
+                "apt_retry_patch_required": False,
+                "dockerfile_present": True,
+            },
+            "task_staging": {
+                "schema_version": "skillsbench_task_staging_v0",
+                "staged": True,
+                "task_skills_removed": True,
+                "codex_acp_runtime_tools_patch_applied": True,
+                "apt_setup_risk_detected": False,
+                "apt_retry_patch_required": False,
+                "resource_cap_patch": {"applied": False},
+            },
+            "runner_prerequisites": {
+                "schema_version": "skillsbench_runner_prerequisites_v0",
+                "codex_acp_runtime_launch_preflight": False,
+                "codex_acp_runtime_launch_preflight_status": "pending",
+            },
+        }
+        compact["compose_setup_diagnostic"] = build_compose_setup_diagnostic(
+            compact,
+            plan,
+        )
+        reduced = compact_benchmark_run(compact)
+        assert reduced is not None
+        diagnostic = reduced["compose_setup_diagnostic"]
+        assert diagnostic["volume_mount_failure"] is True, diagnostic
+        assert diagnostic["unclassified_compose_failure"] is False, diagnostic
+        assert diagnostic["next_diagnostic_action"] == (
+            "repair_task_volume_mount_setup_before_product_treatment"
+        ), diagnostic
+        ledger_path = Path(tmp) / "ledger.json"
+        update = update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=reduced,
+            run_group_id="skillsbench-volume-mount-repair-test",
+            dry_run=False,
+        )
+        ledger_diagnostic = update["entry"]["compose_setup_diagnostic"]
+        assert ledger_diagnostic["volume_mount_failure"] is True, ledger_diagnostic
+        assert ledger_diagnostic["unclassified_compose_failure"] is False, (
+            ledger_diagnostic
+        )
+        text = json.dumps(compact, sort_keys=True)
+        assert "bind source path" not in text, compact
+        assert "/Users/example/private/job/root" not in text, compact
+
+
 def test_skillsbench_codex_acp_libssl_failure_attribution() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-codex-acp-libssl-") as tmp:
         result_path = write_official_skillsbench_codex_acp_libssl_failure(Path(tmp))
@@ -1004,6 +1249,163 @@ def test_skillsbench_codex_acp_internal_error_attribution() -> None:
         assert update["case_decision"]["decision"] == "single_arm_recorded", update
 
 
+def test_skillsbench_codex_acp_post_success_trace_recovers_score() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-acp-trace-score-") as tmp:
+        result_path = write_official_skillsbench_codex_acp_internal_error(Path(tmp))
+        controller_trace = {
+            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "route": "goal-harness-product-mode",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "heartbeat_count": 3,
+            "controller_action_decisions": 3,
+            "initial_prompt_count": 1,
+            "followup_prompt_count": 1,
+            "stop_decision_count": 1,
+            "reward_observation_count": 2,
+            "official_feedback_blinded_count": 2,
+            "round_rewards": [
+                {
+                    "agent_round": 1,
+                    "reward_present": True,
+                    "reward": 1.0,
+                    "passed": True,
+                    "tool_calls": 38,
+                },
+                {
+                    "agent_round": 2,
+                    "reward_present": True,
+                    "reward": 1.0,
+                    "passed": True,
+                    "tool_calls": 30,
+                },
+                {
+                    "agent_round": 3,
+                    "reward_present": False,
+                    "passed": False,
+                },
+            ],
+            "official_success_observed": True,
+            "official_success_observation_count": 2,
+            "first_success_round": 1,
+            "official_feedback_forwarded": False,
+            "product_mode": True,
+            "max_rounds_budget": 5,
+            "last_decision": (
+                "stop_after_product_mode_official_success_observed_without_feedback"
+            ),
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="goal-harness-product-mode",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        assert compact["official_score_status"] == "completed", compact
+        assert compact["official_score"] == 1.0, compact
+        assert compact["official_task_score"] == {
+            "kind": "skillsbench_verifier_reward_recovered_from_controller_trace",
+            "passed": True,
+            "value": 1.0,
+        }, compact
+        assert compact["official_score_source"] == (
+            "goal_harness_controller_trace_best_round_reward_post_success_acp_closeout"
+        ), compact
+        assert compact["score_failure_attribution"] == "none", compact
+        assert compact["runner_failure"]["failure_class"] == (
+            "skillsbench_codex_acp_jsonrpc_internal_error"
+        ), compact
+        assert "skillsbench_codex_acp_transport_error" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert compact["validation"]["official_case_success"] is True, compact
+        assert compact["validation"]["official_verifier_status"] == "completed", compact
+        assert compact["validation"]["validation_scope"] == (
+            "official_benchflow_result_json_plus_goal_harness_controller_trace"
+        ), compact
+        round_trace = compact["round_reward_trace"]
+        assert round_trace["official_score_recovered_from_controller_trace"] is True
+        assert round_trace["official_score_recovered_round"] == 1
+        assert round_trace["official_score_policy"] == (
+            "best_round_for_post_success_acp_closeout_recovery"
+        )
+        ledger_path = Path(tmp) / "ledger.json"
+        update = update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=compact,
+            run_group_id="skillsbench-acp-post-success-score-recovery",
+            dry_run=False,
+        )
+        assert update["entry"]["score_status"] == "passed", update
+        assert update["entry"]["failure_scope"] == "passed", update
+        assert update["entry"]["failure_class"] == "none", update
+        assert update["entry"]["official_score"] == 1.0, update
+
+
+def test_skillsbench_codex_acp_post_success_finalization_route() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-acp-post-success-") as tmp:
+        result_path = write_official_skillsbench_codex_acp_internal_error(Path(tmp))
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="goal-harness-product-mode",
+            )
+        )
+        assert compact is not None
+        compact["runner_prerequisites"] = {
+            "schema_version": "skillsbench_runner_prerequisites_v0",
+            "codex_acp_runtime_launch_preflight": True,
+            "codex_acp_runtime_launch_preflight_status": "passed",
+        }
+        compact["round_reward_trace"] = {
+            "schema_version": "benchmark_round_reward_trace_v0",
+            "source": "goal_harness_controller_trace",
+            "round_index_origin": "agent_round_1_is_first_completed_agent_attempt",
+            "records": [
+                {
+                    "agent_round": 1,
+                    "reward_present": True,
+                    "reward": 1.0,
+                    "passed": True,
+                }
+            ],
+            "first_success_round": 1,
+            "success_observed": True,
+            "max_rounds_budget": 5,
+            "official_feedback_blinded": True,
+            "reward_feedback_forwarded": False,
+        }
+        ledger_path = Path(tmp) / "ledger.json"
+        update = update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=compact,
+            run_group_id="skillsbench-post-success-acp-finalization-test",
+            dry_run=False,
+        )
+        entry = update["entry"]
+        assert entry["repair_class"] == (
+            "skillsbench_codex_acp_post_success_finalization"
+        ), update
+        assert entry["round_success_observed"] is True, update
+        assert entry["first_success_round"] == 1, update
+        assert entry["codex_acp_runtime_preflight_passed"] is True, update
+        assert entry["score_status"] == "missing", update
+        assert entry["failure_scope"] == "score_missing", update
+        repair = entry["repair_profile"]
+        assert "round_reward_trace.success_observed" in repair["required_preflight"]
+        ledger = load_benchmark_run_ledger(ledger_path)
+        run = ledger["benchmarks"]["skillsbench@1.1"]["cases"][
+            "llm-prefix-cache-replay"
+        ]["runs"][0]
+        assert run["repair_class"] == (
+            "skillsbench_codex_acp_post_success_finalization"
+        ), run
+
+
 def test_skillsbench_docker_task_staging_adds_app_skills_mount() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-docker-stage-") as tmp:
         root = Path(tmp)
@@ -1057,10 +1459,15 @@ def test_skillsbench_no_skill_route_removes_staged_task_skills() -> None:
         assert metadata["staged"] is True, metadata
         assert metadata["include_task_skills"] is False, metadata
         assert metadata["task_skills_removed"] is True, metadata
-        assert metadata["app_skills_mount_patch_applied"] is False, metadata
+        assert metadata["app_skills_mount_patch_applied"] is True, metadata
         assert (task / "environment" / "skills").exists()
         assert not (staged_path / "environment" / "skills").exists()
         assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_APP_SKILLS_MOUNT_BEGIN in staged_text, staged_text
+        assert "RUN mkdir -p /app /app/skills" in staged_text, staged_text
 
 
 def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
@@ -1676,6 +2083,34 @@ def test_skillsbench_controller_trace_counts_are_compacted() -> None:
         assert partial_trace["round_rewards"][1]["reward"] == 1.0, partial_trace
         assert partial_trace["round_rewards"][1]["source"] == "benchflow_final_result", partial_trace
 
+        depth_gate_trace = {
+            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "route": "goal-harness-product-mode",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "product_mode": True,
+            "max_round_observed": 4,
+            "last_decision": "continue_after_declared_done_depth_gate_gap",
+            "round_rewards": [
+                {
+                    "agent_round": index,
+                    "reward_present": True,
+                    "reward": 0.0,
+                    "passed": False,
+                }
+                for index in range(1, 5)
+            ],
+            "reward_observation_count": 4,
+            "official_success_observed": False,
+            "official_success_observation_count": 0,
+            "first_success_round": None,
+        }
+        _merge_final_result_round_reward(depth_gate_trace, final_result_path)
+        assert depth_gate_trace["reward_observation_count"] == 5, depth_gate_trace
+        assert depth_gate_trace["official_success_observed"] is True, depth_gate_trace
+        assert depth_gate_trace["first_success_round"] == 5, depth_gate_trace
+        assert depth_gate_trace["round_rewards"][4]["agent_round"] == 5, depth_gate_trace
+        assert depth_gate_trace["round_rewards"][4]["reward"] == 1.0, depth_gate_trace
+
 
 def test_skillsbench_round_trace_records_best_round_score() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-best-round-score-") as tmp:
@@ -1838,9 +2273,18 @@ def test_skillsbench_product_mode_declared_done_is_compacted() -> None:
             "official_success_observed": False,
             "first_success_round": None,
             "blind_loop": False,
+            "case_goal_state_packet_present": True,
+            "case_goal_state_init_required": True,
+            "case_goal_state_initialized_before_agent": True,
+            "case_goal_state_init_status": "passed",
+            "case_goal_state_path": PRODUCT_MODE_CASE_STATE_PATH,
+            "case_goal_state_schema_version": PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
+            "declared_done_requires_no_remaining_goals": True,
             "max_rounds_budget": 5,
             "goal_harness_state_reads": 1,
             "goal_harness_state_writes": 1,
+            "goal_harness_case_state_reads": 1,
+            "goal_harness_case_state_writes": 1,
             "last_decision": "stop_after_agent_declared_done_without_official_feedback",
             "raw_task_text_recorded": False,
             "raw_verifier_output_recorded": False,
@@ -1859,8 +2303,20 @@ def test_skillsbench_product_mode_declared_done_is_compacted() -> None:
         assert compact["reward_feedback_forwarded"] is False, compact
         counters = compact["interaction_counters"]
         assert counters["product_mode"] is True, compact
+        assert counters["case_goal_state_packet_present"] is True, compact
+        assert counters["case_goal_state_init_required"] is True, compact
+        assert counters["case_goal_state_initialized_before_agent"] is True, compact
+        assert counters["case_goal_state_init_status"] == "passed", compact
+        assert (
+            counters["case_goal_state_schema_version"]
+            == PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION
+        ), compact
+        assert counters["case_goal_state_path"] == PRODUCT_MODE_CASE_STATE_PATH, compact
+        assert counters["declared_done_requires_no_remaining_goals"] is True, compact
         assert counters["agent_declared_done"] is True, compact
         assert counters["declared_done_round"] == 1, compact
+        assert counters["goal_harness_case_state_reads"] == 1, compact
+        assert counters["goal_harness_case_state_writes"] == 1, compact
         round_trace = compact["round_reward_trace"]
         assert round_trace["agent_declared_done"] is True, compact
         assert round_trace["declared_done_round"] == 1, compact
@@ -1885,6 +2341,110 @@ def test_skillsbench_product_mode_declared_done_is_compacted() -> None:
         assert run["final_round_reward"] == 0.25, update
         assert run["best_reward_round"] == 1, update
         assert run["best_round_reward"] == 0.25, update
+
+
+def test_skillsbench_product_mode_case_state_usage_is_compacted() -> None:
+    assert PRODUCT_MODE_CASE_STATE_PATH == (
+        "/app/.codex/goals/skillsbench-case/ACTIVE_GOAL_STATE.md"
+    )
+    with tempfile.TemporaryDirectory(prefix="skillsbench-case-state-") as tmp:
+        root = Path(tmp)
+        jobs_dir = root / "jobs"
+        job_name = "skillsbench_case_state_fixture"
+        rollout_name = "case__goal_harness_product_mode"
+        trajectory_path = (
+            jobs_dir / job_name / rollout_name / "agent" / "acp_trajectory.jsonl"
+        )
+        trajectory_path.parent.mkdir(parents=True)
+        events = [
+            {
+                "type": "user_message",
+                "text": (
+                    "Goal Harness product-mode treatment. Maintain "
+                    f"{PRODUCT_MODE_CASE_STATE_PATH}."
+                ),
+            },
+            {
+                "type": "tool_call",
+                "title": f"cat {PRODUCT_MODE_CASE_STATE_PATH}",
+                "status": "success",
+            },
+            {
+                "type": "tool_call",
+                "title": (
+                    "python - <<'PY'\n"
+                    "from pathlib import Path\n"
+                    f"Path('{PRODUCT_MODE_CASE_STATE_PATH}').write_text('ok')\n"
+                    "PY"
+                ),
+                "status": "success",
+            },
+        ]
+        with trajectory_path.open("w", encoding="utf-8") as stream:
+            for event in events:
+                stream.write(json.dumps(event, sort_keys=True) + "\n")
+
+        summary = summarize_acp_trajectory(trajectory_path)
+        assert summary["goal_harness_case_state_path_count"] == 1, summary
+        assert summary["goal_harness_case_state_paths"] == [
+            PRODUCT_MODE_CASE_STATE_PATH
+        ], summary
+        assert summary["goal_harness_case_state_read_count"] == 1, summary
+        assert summary["goal_harness_case_state_write_count"] == 1, summary
+
+        trace = {
+            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "route": "goal-harness-product-mode",
+            "goal_harness_state_reads": 0,
+            "goal_harness_state_writes": 0,
+            "goal_harness_case_state_reads": 0,
+            "goal_harness_case_state_writes": 0,
+        }
+        _merge_acp_trajectory_summary(
+            {
+                "jobs_dir": str(jobs_dir),
+                "job_name": job_name,
+                "rollout_name": rollout_name,
+            },
+            trace,
+        )
+        assert trace["goal_harness_case_state_reads"] == 1, trace
+        assert trace["goal_harness_case_state_writes"] == 1, trace
+        assert trace["goal_harness_state_reads"] == 1, trace
+        assert trace["goal_harness_state_writes"] == 1, trace
+
+
+def test_skillsbench_product_mode_legacy_case_state_path_is_not_compacted() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-legacy-case-state-") as tmp:
+        root = Path(tmp)
+        trajectory_path = root / "acp_trajectory.jsonl"
+        legacy_path = "/app/.goal-harness-case-state.md"
+        events = [
+            {
+                "type": "tool_call",
+                "title": f"cat {legacy_path}",
+                "status": "success",
+            },
+            {
+                "type": "tool_call",
+                "title": (
+                    "python - <<'PY'\n"
+                    "from pathlib import Path\n"
+                    f"Path('{legacy_path}').write_text('ok')\n"
+                    "PY"
+                ),
+                "status": "success",
+            },
+        ]
+        with trajectory_path.open("w", encoding="utf-8") as stream:
+            for event in events:
+                stream.write(json.dumps(event, sort_keys=True) + "\n")
+
+        summary = summarize_acp_trajectory(trajectory_path)
+        assert summary["goal_harness_case_state_path_count"] == 0, summary
+        assert summary["goal_harness_case_state_paths"] == [], summary
+        assert summary["goal_harness_case_state_read_count"] == 0, summary
+        assert summary["goal_harness_case_state_write_count"] == 0, summary
 
 
 def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
@@ -2693,6 +3253,8 @@ if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_five()
     test_blind_loop_continuation_reprojects_round_one_constraints()
     test_product_mode_declared_done_marker_detection()
+    test_product_mode_case_state_seed_uses_active_goal_shape()
+    test_product_mode_declared_done_requires_case_state_depth()
     test_skillsbench_skeleton_builder()
     test_skillsbench_official_result_builder()
     test_skillsbench_app_mount_failure_attribution()
@@ -2705,11 +3267,14 @@ if __name__ == "__main__":
     test_skillsbench_codex_acp_glibc_failure_attribution()
     test_skillsbench_codex_acp_launch_preflight_attribution()
     test_skillsbench_codex_acp_internal_error_attribution()
+    test_skillsbench_codex_acp_post_success_trace_recovers_score()
+    test_skillsbench_codex_acp_post_success_finalization_route()
     test_skillsbench_docker_task_staging_adds_app_skills_mount()
     test_skillsbench_no_skill_route_removes_staged_task_skills()
     test_skillsbench_docker_task_staging_adds_apt_retry_patch()
     test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults()
     test_skillsbench_docker_task_staging_caps_local_cpu_request()
+    test_skillsbench_volume_mount_failure_attribution()
     test_skillsbench_runner_plan_supports_baseline_route()
     test_skillsbench_runner_plan_supports_product_mode_routes()
     test_skillsbench_codex_acp_model_control_warning()
@@ -2718,6 +3283,8 @@ if __name__ == "__main__":
     test_skillsbench_reduce_only_recovers_prepared_task_staging_metadata()
     test_skillsbench_controller_trace_counts_are_compacted()
     test_skillsbench_product_mode_declared_done_is_compacted()
+    test_skillsbench_product_mode_case_state_usage_is_compacted()
+    test_skillsbench_product_mode_legacy_case_state_path_is_not_compacted()
     test_skillsbench_round_trace_records_best_round_score()
     test_skillsbench_acp_trajectory_summary_is_compacted()
     test_cli_dry_run_skillsbench_skeleton()

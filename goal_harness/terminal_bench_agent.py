@@ -42,6 +42,13 @@ from goal_harness.benchmark import (
     build_terminal_bench_goal_harness_interaction_counters,
     build_terminal_bench_single_agent_episode_policy,
 )
+from goal_harness.benchmark_case_state import (
+    BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+    benchmark_case_active_state_path,
+    benchmark_case_active_state_seed_text,
+    benchmark_case_active_state_write_command,
+    benchmark_case_goal_id,
+)
 from goal_harness.worker_bridge import (
     ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
     DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
@@ -69,6 +76,10 @@ GOAL_HARNESS_MANAGED_CODEX_BEHAVIOR_SPEC_ID = (
 CODEX_SESSION_TOKEN_COUNT_USAGE_SOURCE = "codex_cli_session_token_count_event"
 GOAL_HARNESS_COUNTER_TRACE_SCHEMA_VERSION = (
     "terminal_bench_goal_harness_counter_trace_v0"
+)
+TERMINAL_BENCH_CASE_GOAL_ID = benchmark_case_goal_id("terminal-bench")
+TERMINAL_BENCH_CASE_STATE_PATH = benchmark_case_active_state_path(
+    TERMINAL_BENCH_CASE_GOAL_ID
 )
 DEFAULT_GOAL_HARNESS_WORKER_COMMAND_PREFIX = build_worker_bridge_command_prefix()
 DEFAULT_GOAL_HARNESS_WORKER_RUNTIME_PREFLIGHT_COMMAND = (
@@ -195,6 +206,9 @@ def build_managed_terminal_bench_instruction(
     goal_harness_active_user_observation_json: str = DEFAULT_WORKER_BRIDGE_ACTIVE_USER_OBSERVATION_JSON,
     goal_harness_active_user_observe_command: str = "<active-user-observe-command>",
     goal_harness_active_user_channel_surface: str = ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
+    goal_harness_case_state_path: str = TERMINAL_BENCH_CASE_STATE_PATH,
+    goal_harness_case_state_schema_version: str = BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+    goal_harness_case_state_required: bool = True,
 ) -> str:
     """Wrap a benchmark task with the minimal Goal Harness managed policy."""
 
@@ -257,6 +271,16 @@ def build_managed_terminal_bench_instruction(
         mode=goal_harness_mode,
         classification=goal_harness_classification,
     )
+    case_state_instruction = ""
+    if goal_harness_case_state_required and goal_harness_case_state_path:
+        case_state_instruction = (
+            "Goal Harness benchmark case-state contract:\n"
+            f"- Canonical active state path: `{goal_harness_case_state_path}`.\n"
+            f"- Active state schema: `{goal_harness_case_state_schema_version}`.\n"
+            "- The runner initializes this file before the Codex worker starts.\n"
+            "- Read and maintain this case-local active state as the control surface; "
+            "do not use benchmark-specific surrogate state files.\n\n"
+        )
 
     return (
         "You are running one Terminal-Bench task under Goal Harness managed Codex mode.\n"
@@ -271,6 +295,7 @@ def build_managed_terminal_bench_instruction(
         "- If a Goal Harness CLI bridge packet is present, treat command lines as templates: replace placeholders before execution, quote paths as single argv values, and do not run commands containing unresolved angle-bracket placeholders.\n"
         "- Write the compact Goal Harness case result only after final validation and cleanup, or after a terminal blocker decision; the runner still performs guaranteed final archive writeback.\n"
         "- Treat this as a model plus harness pair; do not present it as a native Codex baseline.\n\n"
+        f"{case_state_instruction}"
         f"{active_user_observe_instruction}"
         f"{access_packet}"
         "Benchmark task instruction follows.\n\n"
@@ -696,6 +721,21 @@ class GoalHarnessManagedCodex(Codex):
             "trajectory_read": False,
             "credential_values_recorded": False,
             "command_output_recorded": False,
+            "case_goal_state_init_required": self._benchmark_case_active_state_required(),
+            "case_goal_state_path": (
+                TERMINAL_BENCH_CASE_STATE_PATH
+                if self._benchmark_case_active_state_required()
+                else None
+            ),
+            "case_goal_state_schema_version": (
+                BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
+                if self._benchmark_case_active_state_required()
+                else None
+            ),
+            "case_goal_state_initialized_before_agent": False,
+            "case_goal_state_init_status": "not_started"
+            if self._benchmark_case_active_state_required()
+            else "not_applicable",
         }
         try:
             target = Path(self.logs_dir) / TERMINAL_BENCH_WORKER_SETUP_DIAGNOSTIC_FILE
@@ -1276,6 +1316,9 @@ class GoalHarnessManagedCodex(Codex):
             == TERMINAL_BENCH_GOAL_HARNESS_ACCESS_PACKET_MODE_NONE
         )
 
+    def _benchmark_case_active_state_required(self) -> bool:
+        return not (self._hardened_codex_baseline() or self._codex_goal_mode_baseline())
+
     def _host_worker_bridge_artifact_path(self, path: str | Path | None) -> Path | None:
         """Map default in-container worker artifact paths to Harbor's host log dir."""
 
@@ -1314,7 +1357,7 @@ class GoalHarnessManagedCodex(Codex):
         )
         hardened_baseline = self._hardened_codex_baseline()
         goal_mode_baseline = self._codex_goal_mode_baseline()
-        return extract_goal_harness_interaction_counters_from_trace(
+        counters = extract_goal_harness_interaction_counters_from_trace(
             trace_rows,
             prompt_policy_injected=not (hardened_baseline or goal_mode_baseline),
             harness_skill_or_packet_injected=bool(
@@ -1345,6 +1388,31 @@ class GoalHarnessManagedCodex(Codex):
                 else "runtime_metadata_no_trace_observed"
             ),
         )
+        if self._benchmark_case_active_state_required():
+            initialized = bool(
+                self._goal_harness_context_metadata.get(
+                    "case_goal_state_initialized_before_agent"
+                )
+            )
+            counters.update(
+                {
+                    "case_goal_state_packet_present": True,
+                    "case_goal_state_init_required": True,
+                    "case_goal_state_initialized_before_agent": initialized,
+                    "case_goal_state_init_status": str(
+                        self._goal_harness_context_metadata.get(
+                            "case_goal_state_init_status"
+                        )
+                        or "not_started"
+                    ),
+                    "case_goal_state_schema_version": BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+                    "case_goal_state_path": TERMINAL_BENCH_CASE_STATE_PATH,
+                    "goal_harness_case_state_reads": 0,
+                    "goal_harness_case_state_writes": 1 if initialized else 0,
+                    "goal_harness_case_state_path_count": 1,
+                }
+            )
+        return counters
 
     def _write_goal_harness_worker_benchmark_run_checkpoint(
         self,
@@ -1469,6 +1537,64 @@ class GoalHarnessManagedCodex(Codex):
         )
         return "passed"
 
+    async def _initialize_benchmark_case_active_state(
+        self,
+        environment: BaseEnvironment,
+        instruction: str,
+    ) -> dict[str, Any]:
+        """Initialize the canonical benchmark case active-state before Codex runs."""
+
+        required = self._benchmark_case_active_state_required()
+        if not required:
+            return {
+                "case_goal_state_init_required": False,
+                "case_goal_state_initialized_before_agent": False,
+                "case_goal_state_init_status": "not_applicable",
+            }
+
+        exec_as_root = getattr(self, "exec_as_root", None)
+        if exec_as_root is None:
+            return {
+                "case_goal_state_init_required": True,
+                "case_goal_state_initialized_before_agent": False,
+                "case_goal_state_init_status": "not_supported_by_agent_base",
+                "case_goal_state_path": TERMINAL_BENCH_CASE_STATE_PATH,
+                "case_goal_state_schema_version": BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+            }
+
+        content = benchmark_case_active_state_seed_text(
+            benchmark_name="Terminal-Bench",
+            goal_id=TERMINAL_BENCH_CASE_GOAL_ID,
+            task_id=f"terminal-bench-task-{_task_hash(instruction)}",
+            route=self.goal_harness_mode,
+            max_rounds=1,
+            case_state_path=TERMINAL_BENCH_CASE_STATE_PATH,
+        )
+        command = benchmark_case_active_state_write_command(
+            case_state_path=TERMINAL_BENCH_CASE_STATE_PATH,
+            content=content,
+        )
+        result = await exec_as_root(environment, command=command, timeout_sec=30)
+        return_code = int(getattr(result, "return_code", 1))
+        if return_code != 0:
+            return {
+                "case_goal_state_init_required": True,
+                "case_goal_state_initialized_before_agent": False,
+                "case_goal_state_init_status": "failed",
+                "case_goal_state_init_rc": return_code,
+                "case_goal_state_path": TERMINAL_BENCH_CASE_STATE_PATH,
+                "case_goal_state_schema_version": BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+            }
+
+        return {
+            "case_goal_state_init_required": True,
+            "case_goal_state_initialized_before_agent": True,
+            "case_goal_state_init_status": "passed",
+            "case_goal_state_init_rc": return_code,
+            "case_goal_state_path": TERMINAL_BENCH_CASE_STATE_PATH,
+            "case_goal_state_schema_version": BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+        }
+
     async def run(
         self,
         instruction: str,
@@ -1478,6 +1604,7 @@ class GoalHarnessManagedCodex(Codex):
         hardened_baseline = self._hardened_codex_baseline()
         goal_mode_baseline = self._codex_goal_mode_baseline()
         baseline_without_goal_harness = hardened_baseline or goal_mode_baseline
+        case_goal_state_required = not baseline_without_goal_harness
         managed_instruction = build_managed_terminal_bench_instruction(
             instruction,
             policy_version=self.goal_harness_policy_version,
@@ -1508,6 +1635,11 @@ class GoalHarnessManagedCodex(Codex):
             goal_harness_active_user_channel_surface=(
                 self.goal_harness_active_user_channel_surface
             ),
+            goal_harness_case_state_path=TERMINAL_BENCH_CASE_STATE_PATH,
+            goal_harness_case_state_schema_version=(
+                BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
+            ),
+            goal_harness_case_state_required=case_goal_state_required,
         )
         access_packet_injected = (
             self.goal_harness_mode == CODEX_GOAL_HARNESS_MODE
@@ -1666,6 +1798,19 @@ class GoalHarnessManagedCodex(Codex):
             "task_instruction_sha256_16": _task_hash(instruction),
             "managed_prompt_chars": len(managed_instruction),
             "context_metadata_deferred_until_post_run": True,
+            "case_goal_state_init_required": case_goal_state_required,
+            "case_goal_state_initialized_before_agent": False,
+            "case_goal_state_init_status": (
+                "not_started" if case_goal_state_required else "not_applicable"
+            ),
+            "case_goal_state_path": (
+                TERMINAL_BENCH_CASE_STATE_PATH if case_goal_state_required else None
+            ),
+            "case_goal_state_schema_version": (
+                BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
+                if case_goal_state_required
+                else None
+            ),
         }
         self._goal_harness_context_metadata[
             "goal_harness_runtime_preflight_status"
@@ -1709,8 +1854,15 @@ class GoalHarnessManagedCodex(Codex):
                     runtime_preflight_status=runtime_preflight_status,
                 )
             )
+            case_state_probe_status: dict[str, Any] = {}
+            if case_goal_state_required:
+                case_state_probe_status = {
+                    "case_goal_state_initialized_before_agent": False,
+                    "case_goal_state_init_status": "not_applicable_probe_only",
+                }
             self._goal_harness_context_metadata.update(
                 {
+                    **case_state_probe_status,
                     "worker_materialization_probe_only": True,
                     "worker_materialization_probe_written": probe_written,
                     "worker_materialization_probe_writeback_status": probe_status,
@@ -1727,6 +1879,7 @@ class GoalHarnessManagedCodex(Codex):
             return
         worker_run_started = False
         run_completed = False
+        pre_worker_startup_blocker = "runtime_preflight_failed"
         try:
             try:
                 runtime_preflight_status = (
@@ -1745,6 +1898,20 @@ class GoalHarnessManagedCodex(Codex):
             self._goal_harness_context_metadata[
                 "goal_harness_runtime_preflight_status"
             ] = runtime_preflight_status
+            case_state_init = await self._initialize_benchmark_case_active_state(
+                environment,
+                instruction,
+            )
+            self._goal_harness_context_metadata.update(case_state_init)
+            if (
+                case_goal_state_required
+                and case_state_init.get("case_goal_state_init_status") != "passed"
+            ):
+                pre_worker_startup_blocker = "case_goal_state_init_failed"
+                self._goal_harness_context_metadata[
+                    "goal_harness_pre_worker_startup_blocker"
+                ] = pre_worker_startup_blocker
+                raise RuntimeError("Goal Harness case active-state init failed")
             worker_run_started = True
             await super().run(managed_instruction, environment, context)
             run_completed = True
@@ -1757,7 +1924,7 @@ class GoalHarnessManagedCodex(Codex):
                 if run_completed
                 else "agent_run_exception_or_nonzero_exit"
                 if worker_run_started
-                else "runtime_preflight_failed"
+                else pre_worker_startup_blocker
             )
             self._goal_harness_context_metadata.update(
                 {

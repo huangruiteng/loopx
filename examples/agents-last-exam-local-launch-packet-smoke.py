@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from goal_harness.benchmark import build_agents_last_exam_local_launch_packet  # noqa: E402
+from goal_harness.benchmark import (  # noqa: E402
+    AGENTS_LAST_EXAM_CASE_GOAL_ID,
+    AGENTS_LAST_EXAM_CASE_STATE_PATH,
+)
+from goal_harness.benchmark_case_state import (  # noqa: E402
+    BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+)
 
 OFFICIAL_REPO = "https://github.com/rdi-berkeley/agents-last-exam.git"
 
@@ -22,6 +30,12 @@ def make_source_root(root: Path) -> Path:
     (source_root / "ale_run" / "__init__.py").write_text("", encoding="utf-8")
     (source_root / "example_exp.yaml").write_text("name: fixture\n", encoding="utf-8")
     subprocess.run(["git", "init"], cwd=source_root, check=True, capture_output=True)
+    subprocess.run(["git", "config", "gc.auto", "0"], cwd=source_root, check=True)
+    subprocess.run(
+        ["git", "config", "gc.autoDetach", "false"],
+        cwd=source_root,
+        check=True,
+    )
     subprocess.run(
         ["git", "config", "user.email", "goal-harness@example.invalid"],
         cwd=source_root,
@@ -165,10 +179,35 @@ def assert_no_execution(payload: dict[str, object]) -> None:
     assert isinstance(spec, dict)
     assert spec["content_read"] is False
     assert spec["source_root_path_recorded"] is False
+    case_state = payload["case_state_init_contract"]
+    assert isinstance(case_state, dict)
+    assert (
+        case_state["schema_version"] == BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
+    ), case_state
+    assert case_state["benchmark_case_goal_id"] == AGENTS_LAST_EXAM_CASE_GOAL_ID
+    assert case_state["case_state_path"] == AGENTS_LAST_EXAM_CASE_STATE_PATH
+    assert case_state["case_state_path"].startswith("/app/.codex/goals/")
+    assert case_state["case_state_path"].endswith("/ACTIVE_GOAL_STATE.md")
+    assert case_state["init_required_before_worker"] is True
+    assert case_state["initialized_by_launch_packet"] is False
+    assert case_state["init_stage"] == "before_codex_worker_start"
+    assert case_state["surrogate_state_files_allowed"] is False
+    assert case_state["raw_task_text_required_for_init"] is False
+    assert case_state["local_paths_recorded"] is False
+    assert ".goal-harness-case-state.md" not in json.dumps(case_state, sort_keys=True)
+    for field in (
+        "case_goal_state_init_required",
+        "case_goal_state_initialized_before_agent",
+        "case_goal_state_init_status",
+        "case_goal_state_schema_version",
+        "case_goal_state_path",
+    ):
+        assert field in case_state["proof_fields"], case_state
 
 
 def run_fixture_smoke() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
+    tmp = tempfile.mkdtemp()
+    try:
         source_root = make_source_root(Path(tmp))
         payload = build_agents_last_exam_local_launch_packet(
             source_root=str(source_root),
@@ -240,10 +279,13 @@ def run_fixture_smoke() -> None:
         assert missing_spec["ready"] is False
         assert missing_spec["first_blocker"] == "experiment_spec_file_missing"
         assert_no_execution(missing_spec)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def run_cli_smoke() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
+    tmp = tempfile.mkdtemp()
+    try:
         source_root = make_source_root(Path(tmp))
         base_cmd = [
             sys.executable,
@@ -319,6 +361,8 @@ def run_cli_smoke() -> None:
         assert required_payload["ok"] is False
         assert required_payload["error"] == "docker_probe_disabled"
         assert_no_execution(required_payload)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

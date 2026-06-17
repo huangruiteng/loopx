@@ -9,6 +9,21 @@ run history, quota, feedback, and project boundaries across many turns.
 > Long-running agent work should be recoverable, reviewable, handoffable, and
 > safe by default.
 
+The product promise is not "more todo lists." It is a better human-in-the-loop
+control surface:
+
+- when a high-priority item is blocked on a human decision, the exact user todo
+  stays visible instead of disappearing into chat;
+- when safe fallback work exists, the agent can keep using the turn on lower
+  priority validated work instead of idly waiting;
+- the fallback is audited as fallback, with the blocker, boundary, evidence,
+  and quota decision preserved for the next run.
+
+For example, a benchmark rotation can mark a large local image acquisition as a
+human decision, skip that gated lane, and continue safe no-upload work on other
+benchmark families. The operator sees both facts: what needs a decision, and
+why the agent is still allowed to make progress elsewhere.
+
 ## Why This Exists
 
 Short agent tasks usually fail because the model makes a bad local choice.
@@ -440,6 +455,8 @@ Start here:
 - [Quota allocation](docs/quota-allocation.md)
 - [Heartbeat automation prompt](docs/heartbeat-automation-prompt.md)
 - [Public/private boundary](docs/public-private-boundary.md)
+- [Public launch narrative draft](docs/public-launch-narrative-draft.md)
+- [Xiaohongshu launch draft](docs/xiaohongshu-launch-draft.md)
 - [Dashboard status contract](docs/status-data-contract.md)
 - [Codex subagent orchestration](docs/codex-subagent-orchestration.md)
 - [Benchmark long-run design](docs/codex-cli-long-run-benchmark-design.md)

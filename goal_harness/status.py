@@ -456,7 +456,12 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "curated_skills_visible",
         "product_mode",
         "blind_loop",
+        "case_goal_state_packet_present",
+        "case_goal_state_init_required",
+        "case_goal_state_initialized_before_agent",
+        "declared_done_requires_no_remaining_goals",
         "agent_declared_done",
+        "agent_declared_no_remaining_goals",
         "official_feedback_blinded",
         "reward_feedback_forwarded",
         "controller_official_feedback_forwarded",
@@ -469,6 +474,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
     for field in (
         "goal_harness_state_reads",
         "goal_harness_state_writes",
+        "goal_harness_case_state_reads",
+        "goal_harness_case_state_writes",
         "heartbeat_count",
         "controller_action_decisions",
         "controller_initial_prompt_count",
@@ -488,6 +495,9 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "goal_harness_cli_call_count",
         "goal_harness_cli_state_read_count",
         "goal_harness_cli_state_write_count",
+        "goal_harness_case_state_path_count",
+        "goal_harness_case_state_read_count",
+        "goal_harness_case_state_write_count",
         "protected_path_mention_count",
         "protected_path_edit_signal_count",
         "codex_acp_text_bytes",
@@ -515,6 +525,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "counter_trust_level",
         "controller_trace_schema_version",
         "controller_trace_publicness",
+        "case_goal_state_init_status",
+        "case_goal_state_schema_version",
         "last_decision",
         "worker_submit_eligible_mismatch_reason",
         "worker_bridge_writeback_loss_reason",
@@ -522,6 +534,17 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         text = public_safe_compact_text(value.get(field), limit=100)
         if text:
             compact[field] = text
+    case_state_path = public_safe_compact_text(
+        value.get("case_goal_state_path"),
+        limit=180,
+    )
+    if (
+        case_state_path
+        and "/.codex/goals/" in case_state_path
+        and case_state_path.endswith("/ACTIVE_GOAL_STATE.md")
+        and not re.search(r"^/(Users|private|var/folders)/", case_state_path)
+    ):
+        compact["case_goal_state_path"] = case_state_path
 
     for field in (
         "codex_runtime_goal_tool_calls",
@@ -597,6 +620,7 @@ def _compact_benchmark_round_reward_trace(value: Any) -> dict[str, Any]:
         "official_feedback_blinded",
         "reward_feedback_forwarded",
         "agent_declared_done",
+        "official_score_recovered_from_controller_trace",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -606,6 +630,7 @@ def _compact_benchmark_round_reward_trace(value: Any) -> dict[str, Any]:
         "max_rounds_budget",
         "final_round",
         "best_reward_round",
+        "official_score_recovered_round",
     ):
         raw = value.get(field)
         if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
@@ -845,6 +870,7 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "compose_setup_failure",
         "unclassified_compose_failure",
         "docker_daemon_unavailable",
+        "volume_mount_failure",
         "environment_setup_failure",
         "agent_rounds_started",
         "official_score_missing",

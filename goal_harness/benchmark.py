@@ -35,6 +35,13 @@ from .worker_bridge import (
     build_active_user_intervention,
     build_worker_bridge_install_contract,
 )
+from .benchmark_case_state import (
+    BENCHMARK_CASE_ACTIVE_STATE_PROOF_FIELDS,
+    BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+    benchmark_case_active_state_init_contract,
+    benchmark_case_active_state_path,
+    benchmark_case_goal_id,
+)
 
 
 TERMINAL_BENCH_MODES = (
@@ -51,6 +58,10 @@ TERMINAL_BENCH_DEFAULT_MODEL = "gpt-5.5"
 SKILLSBENCH_DEFAULT_DATASET = "skillsbench@1.1"
 SKILLSBENCH_DEFAULT_TASK = "citation-check"
 SKILLSBENCH_DEFAULT_MODEL = "gpt-5.5"
+SKILLSBENCH_PRODUCT_MODE_CASE_GOAL_ID = "skillsbench-case"
+SKILLSBENCH_PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
+    SKILLSBENCH_PRODUCT_MODE_CASE_GOAL_ID
+)
 SKILLSBENCH_ROUTES = (
     "codex-acp-blind-loop-baseline",
     "goal-harness-blind-loop-treatment",
@@ -375,6 +386,10 @@ AGENTS_LAST_EXAM_VALIDATION_RUN_GATE_SCHEMA_VERSION = (
 )
 AGENTS_LAST_EXAM_TRACE_PUBLICNESS = (
     "compact_public_safe_no_task_body_no_trajectory_no_output"
+)
+AGENTS_LAST_EXAM_CASE_GOAL_ID = benchmark_case_goal_id(AGENTS_LAST_EXAM_BENCHMARK_ID)
+AGENTS_LAST_EXAM_CASE_STATE_PATH = benchmark_case_active_state_path(
+    AGENTS_LAST_EXAM_CASE_GOAL_ID
 )
 AGENTS_LAST_EXAM_DEFAULT_DOCKER_IMAGE = "agentslastexam/ale-kasm:latest"
 AGENTS_LAST_EXAM_DEFAULT_ALT_DOCKER_IMAGE = "ale-ubuntu22-docker:latest"
@@ -6387,10 +6402,15 @@ def launch_terminal_bench_case_run(
 ) -> dict[str, Any]:
     """Launch one no-upload Terminal-Bench case run with compact reporting."""
 
-    if mode not in ("codex-goal-mode", "hardened-codex", "codex-goal-harness"):
+    if mode not in (
+        "codex-goal-mode",
+        "hardened-codex",
+        "codex-goal-harness",
+        "goal-harness-managed-codex",
+    ):
         raise ValueError(
             "case run launcher supports codex-goal-mode, hardened-codex, "
-            "or codex-goal-harness"
+            "codex-goal-harness, or goal-harness-managed-codex"
         )
     run_root_path = Path(run_root).expanduser()
     jobs_dir_path = Path(jobs_dir).expanduser()
@@ -12153,6 +12173,39 @@ def _agents_last_exam_source_freshness_input(
     return True, None
 
 
+def _agents_last_exam_case_state_init_contract_input(
+    launch_packet: dict[str, Any] | None,
+) -> tuple[bool, str | None]:
+    if not isinstance(launch_packet, dict):
+        return False, "launch_packet_missing_for_case_state_init_contract"
+    contract = launch_packet.get("case_state_init_contract")
+    if not isinstance(contract, dict):
+        return False, "case_state_init_contract_missing"
+    if contract.get("schema_version") != BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION:
+        return False, "case_state_init_contract_schema_mismatch"
+    if contract.get("benchmark_case_goal_id") != AGENTS_LAST_EXAM_CASE_GOAL_ID:
+        return False, "case_state_init_contract_goal_id_mismatch"
+    if contract.get("case_state_path") != AGENTS_LAST_EXAM_CASE_STATE_PATH:
+        return False, "case_state_init_contract_path_mismatch"
+    if contract.get("init_required_before_worker") is not True:
+        return False, "case_state_init_not_required_before_worker"
+    if contract.get("initialized_by_launch_packet") is not False:
+        return False, "case_state_initialized_by_no_execution_packet"
+    if contract.get("surrogate_state_files_allowed") is not False:
+        return False, "case_state_surrogate_files_allowed"
+    if contract.get("raw_task_text_required_for_init") is not False:
+        return False, "case_state_init_requires_raw_task_text"
+    if contract.get("local_paths_recorded") is not False:
+        return False, "case_state_init_contract_local_paths_recorded"
+    proof_fields = contract.get("proof_fields")
+    required_fields = set(BENCHMARK_CASE_ACTIVE_STATE_PROOF_FIELDS)
+    if not isinstance(proof_fields, list) or not required_fields.issubset(
+        {str(field) for field in proof_fields}
+    ):
+        return False, "case_state_init_contract_proof_fields_incomplete"
+    return True, None
+
+
 def build_agents_last_exam_validation_run_gate(
     *,
     selected_task_id: str | None,
@@ -12217,6 +12270,11 @@ def build_agents_last_exam_validation_run_gate(
     )
     if fresh_source_blocker:
         blockers.append(fresh_source_blocker)
+    case_state_contract_ready, case_state_contract_blocker = (
+        _agents_last_exam_case_state_init_contract_input(launch_packet)
+    )
+    if case_state_contract_blocker:
+        blockers.append(case_state_contract_blocker)
 
     if not hypothesis_label:
         blockers.append("validation_hypothesis_missing")
@@ -12282,6 +12340,7 @@ def build_agents_last_exam_validation_run_gate(
             "launch_packet_ready": launch_packet_ready,
             "fresh_source_required": fresh_source_required,
             "fresh_source_ready": fresh_source_ready,
+            "case_state_init_contract_ready": case_state_contract_ready,
             "compact_result_reducer_ready": result_reducer_ready is True,
         },
         "model_policy": {
@@ -12295,6 +12354,10 @@ def build_agents_last_exam_validation_run_gate(
             "submit_eligible": False,
             "leaderboard_evidence": False,
             "operator_authorization_required_before_task_run": True,
+            "case_state_init_required_before_worker": True,
+            "case_state_initialized_by_this_gate": False,
+            "case_state_path": AGENTS_LAST_EXAM_CASE_STATE_PATH,
+            "case_state_schema_version": BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
             "task_run_started_by_this_gate": False,
             "container_started_by_this_gate": False,
             "model_api_invoked_by_this_gate": False,
@@ -13864,6 +13927,12 @@ def build_agents_last_exam_local_launch_packet(
             "will_record_credentials": False,
             "will_record_local_paths": False,
         },
+        "case_state_init_contract": benchmark_case_active_state_init_contract(
+            benchmark_id=AGENTS_LAST_EXAM_BENCHMARK_ID,
+            goal_id=AGENTS_LAST_EXAM_CASE_GOAL_ID,
+            case_state_path=AGENTS_LAST_EXAM_CASE_STATE_PATH,
+            initialized_by_launch_packet=False,
+        ),
         "boundary": {
             "local_only": True,
             "no_upload": True,
@@ -17023,6 +17092,9 @@ def summarize_terminal_bench_private_runner_launch(
         "agent_name": agent_name,
         "agent_import_path_present": bool(agent_import_path),
         "goal_harness_agent_kwargs_present": goal_harness_agent_kwargs_present,
+        "goal_harness_managed_codex_requested": (
+            "goal_harness_mode=goal_harness_managed_codex" in argv
+        ),
         "codex_goal_mode_baseline_requested": (
             "goal_harness_mode=" + TERMINAL_BENCH_CODEX_GOAL_MODE_BASELINE_MODE
         )
@@ -18904,6 +18976,17 @@ def _skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, li
                 "skillsbench_environment_setup_error",
             ]
         if (
+            "mount" in text
+            or "volume" in text
+            or "bind source path" in text
+        ):
+            label = "skillsbench_docker_compose_volume_mount_failure"
+            return label, label, [
+                label,
+                "skillsbench_docker_compose_setup_failure",
+                "skillsbench_environment_setup_error",
+            ]
+        if (
             "failed to solve" in text
             or "failed to build" in text
             or "dockerfile" in text
@@ -19117,7 +19200,29 @@ def build_skillsbench_benchmark_run(
             "reward_feedback_forwarded": contract["reward_feedback_forwarded"],
             "goal_harness_state_reads": 0,
             "goal_harness_state_writes": 0,
+            "goal_harness_case_state_reads": 0,
+            "goal_harness_case_state_writes": 0,
             "heartbeat_count": 0,
+            "case_goal_state_packet_present": route == "goal-harness-product-mode",
+            "case_goal_state_init_required": route == "goal-harness-product-mode",
+            "case_goal_state_initialized_before_agent": False,
+            "case_goal_state_init_status": (
+                "not_run_adapter_skeleton"
+                if route == "goal-harness-product-mode"
+                else ""
+            ),
+            "case_goal_state_schema_version": (
+                BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
+                if route == "goal-harness-product-mode"
+                else ""
+            ),
+            "case_goal_state_path": (
+                SKILLSBENCH_PRODUCT_MODE_CASE_STATE_PATH
+                if route == "goal-harness-product-mode"
+                else ""
+            ),
+            "declared_done_requires_no_remaining_goals": route
+            == "goal-harness-product-mode",
             "case_result_writeback": "not_run_adapter_skeleton",
             "counter_trust_level": "adapter_contract_fixture",
         },
@@ -19372,10 +19477,32 @@ def _skillsbench_controller_trace_counters(
         is True,
         "blind_loop": controller_trace.get("blind_loop") is True,
         "product_mode": controller_trace.get("product_mode") is True,
+        "case_goal_state_packet_present": controller_trace.get(
+            "case_goal_state_packet_present"
+        )
+        is True,
+        "case_goal_state_init_required": controller_trace.get(
+            "case_goal_state_init_required"
+        )
+        is True,
+        "case_goal_state_initialized_before_agent": controller_trace.get(
+            "case_goal_state_initialized_before_agent"
+        )
+        is True,
+        "declared_done_requires_no_remaining_goals": controller_trace.get(
+            "declared_done_requires_no_remaining_goals"
+        )
+        is True,
         "agent_declared_done": controller_trace.get("agent_declared_done") is True,
+        "agent_declared_no_remaining_goals": controller_trace.get(
+            "agent_declared_no_remaining_goals"
+        )
+        is True,
         "max_rounds_budget": count("max_rounds_budget"),
         "goal_harness_state_reads": count("goal_harness_state_reads"),
         "goal_harness_state_writes": count("goal_harness_state_writes"),
+        "goal_harness_case_state_reads": count("goal_harness_case_state_reads"),
+        "goal_harness_case_state_writes": count("goal_harness_case_state_writes"),
         "heartbeat_count": count("heartbeat_count"),
         "raw_task_text_recorded": controller_trace.get("raw_task_text_recorded")
         is True,
@@ -19393,6 +19520,23 @@ def _skillsbench_controller_trace_counters(
     )
     if last_decision:
         counters["last_decision"] = last_decision
+    init_status = _public_safe_benchmark_label(
+        controller_trace.get("case_goal_state_init_status") or ""
+    )
+    if init_status:
+        counters["case_goal_state_init_status"] = init_status
+    case_state_schema = _public_safe_benchmark_label(
+        controller_trace.get("case_goal_state_schema_version") or ""
+    )
+    if case_state_schema:
+        counters["case_goal_state_schema_version"] = case_state_schema
+    case_state_path = str(controller_trace.get("case_goal_state_path") or "")
+    if (
+        "/.codex/goals/" in case_state_path
+        and case_state_path.endswith("/ACTIVE_GOAL_STATE.md")
+        and not re.search(r"^/(Users|private|var/folders)/", case_state_path)
+    ):
+        counters["case_goal_state_path"] = case_state_path
     declared_done_round = positive_int("declared_done_round")
     if declared_done_round is not None:
         counters["declared_done_round"] = declared_done_round
@@ -19428,6 +19572,9 @@ def _skillsbench_controller_trace_counters(
                 "goal_harness_cli_state_usage_counts",
                 "goal_harness_cli_state_read_count",
                 "goal_harness_cli_state_write_count",
+                "goal_harness_case_state_path_count",
+                "goal_harness_case_state_read_count",
+                "goal_harness_case_state_write_count",
                 "protected_path_mention_count",
                 "protected_path_edit_signal_count",
                 "codex_acp_text_present",
@@ -19475,6 +19622,27 @@ def _round_reward_trace_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
         "best_round_is_final": final["reward"] == best["reward"],
         "loop_score_policy": "best_round_for_offline_controller_analysis",
         "official_score_policy": "final_workspace_official_result",
+    }
+
+
+def _post_success_controller_trace_score(
+    round_reward_trace: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not isinstance(round_reward_trace, dict):
+        return {}
+    if round_reward_trace.get("success_observed") is not True:
+        return {}
+    reward = round_reward_trace.get("best_round_reward")
+    if not isinstance(reward, (int, float)) or isinstance(reward, bool):
+        return {}
+    round_index = round_reward_trace.get("best_reward_round")
+    return {
+        "value": float(reward),
+        "passed": reward >= 1.0,
+        "round": round_index
+        if isinstance(round_index, int) and not isinstance(round_index, bool)
+        else None,
+        "policy": "best_round_for_post_success_acp_closeout_recovery",
     }
 
 
@@ -19565,10 +19733,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
     failure_labels: list[str] = []
     exception_type = "none"
     score_failure_attribution = "none"
+    runner_score_failure_attribution = "none"
     if error_text:
         exception_type, score_failure_attribution, failure_labels = (
             _skillsbench_runner_error_attribution(error_text)
         )
+        runner_score_failure_attribution = score_failure_attribution
     if verifier_error_text:
         exception_type = "skillsbench_verifier_error"
         failure_labels.append("verifier_infrastructure_failure")
@@ -19614,7 +19784,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
         runner_failure = {
             "schema_version": "skillsbench_runner_failure_v0",
             "exception_type": exception_type,
-            "failure_class": score_failure_attribution,
+            "failure_class": runner_score_failure_attribution,
             "raw_error_recorded": False,
             "raw_logs_read": False,
             "raw_task_text_read": False,
@@ -19655,6 +19825,14 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "reward_feedback_forwarded": contract["reward_feedback_forwarded"],
             "agent_declared_done": controller_counters.get("agent_declared_done")
             is True,
+            "declared_done_requires_no_remaining_goals": controller_counters.get(
+                "declared_done_requires_no_remaining_goals"
+            )
+            is True,
+            "agent_declared_no_remaining_goals": controller_counters.get(
+                "agent_declared_no_remaining_goals"
+            )
+            is True,
         }
         declared_done_round = controller_counters.get("declared_done_round")
         if (
@@ -19670,6 +19848,43 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ):
             round_reward_trace["declared_done_score"] = float(declared_done_score)
         round_reward_trace.update(round_stats)
+
+    post_success_score = {}
+    if (
+        reward_value is None
+        and score_failure_attribution == "skillsbench_codex_acp_jsonrpc_internal_error"
+        and controller_trace_present
+    ):
+        post_success_score = _post_success_controller_trace_score(round_reward_trace)
+        if post_success_score:
+            reward_value = post_success_score["value"]
+            official_passed = post_success_score["passed"]
+            score_failure_attribution = "none"
+            counter_trust_level = (
+                "goal_harness_controller_trace_post_success_official_reward_recovery"
+            )
+            if round_reward_trace is not None:
+                round_reward_trace["official_score_policy"] = post_success_score["policy"]
+                round_reward_trace["official_score_recovered_from_controller_trace"] = True
+                if post_success_score.get("round") is not None:
+                    round_reward_trace["official_score_recovered_round"] = post_success_score[
+                        "round"
+                    ]
+
+    official_score_kind = "skillsbench_verifier_reward"
+    official_score_source = "official_skillsbench_benchflow_result_json"
+    official_score_status = "completed" if reward_value is not None else "missing"
+    validation_scope = "official_benchflow_result_json_only"
+    if post_success_score:
+        official_score_kind = (
+            "skillsbench_verifier_reward_recovered_from_controller_trace"
+        )
+        official_score_source = (
+            "goal_harness_controller_trace_best_round_reward_post_success_acp_closeout"
+        )
+        validation_scope = (
+            "official_benchflow_result_json_plus_goal_harness_controller_trace"
+        )
 
     benchmark_run: dict[str, Any] = {
         "schema_version": "benchmark_run_v0",
@@ -19733,6 +19948,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "goal_harness_state_writes": controller_counters.get(
                 "goal_harness_state_writes", 0
             ),
+            "goal_harness_case_state_reads": controller_counters.get(
+                "goal_harness_case_state_reads", 0
+            ),
+            "goal_harness_case_state_writes": controller_counters.get(
+                "goal_harness_case_state_writes", 0
+            ),
             "heartbeat_count": controller_counters.get("heartbeat_count", 0),
             "controller_trace_present": controller_trace_present,
             "controller_action_decisions": controller_counters.get(
@@ -19771,8 +19992,32 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "controller_blind_loop": controller_counters.get("blind_loop", False),
             "product_mode": controller_counters.get("product_mode", False),
+            "case_goal_state_packet_present": controller_counters.get(
+                "case_goal_state_packet_present", False
+            ),
+            "case_goal_state_init_required": controller_counters.get(
+                "case_goal_state_init_required", False
+            ),
+            "case_goal_state_initialized_before_agent": controller_counters.get(
+                "case_goal_state_initialized_before_agent", False
+            ),
+            "case_goal_state_init_status": controller_counters.get(
+                "case_goal_state_init_status", ""
+            ),
+            "case_goal_state_schema_version": controller_counters.get(
+                "case_goal_state_schema_version", ""
+            ),
+            "case_goal_state_path": controller_counters.get(
+                "case_goal_state_path", ""
+            ),
+            "declared_done_requires_no_remaining_goals": controller_counters.get(
+                "declared_done_requires_no_remaining_goals", False
+            ),
             "agent_declared_done": controller_counters.get(
                 "agent_declared_done", False
+            ),
+            "agent_declared_no_remaining_goals": controller_counters.get(
+                "agent_declared_no_remaining_goals", False
             ),
             "declared_done_round": controller_counters.get("declared_done_round", 0),
             "controller_max_rounds_budget": controller_counters.get(
@@ -19808,6 +20053,15 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "goal_harness_cli_state_write_count": trajectory_summary.get(
                 "goal_harness_cli_state_write_count", 0
             ),
+            "goal_harness_case_state_path_count": trajectory_summary.get(
+                "goal_harness_case_state_path_count", 0
+            ),
+            "goal_harness_case_state_read_count": trajectory_summary.get(
+                "goal_harness_case_state_read_count", 0
+            ),
+            "goal_harness_case_state_write_count": trajectory_summary.get(
+                "goal_harness_case_state_write_count", 0
+            ),
             "protected_path_mention_count": trajectory_summary.get(
                 "protected_path_mention_count", 0
             ),
@@ -19816,7 +20070,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "codex_acp_text_bytes": trajectory_summary.get("codex_acp_text_bytes", 0),
             "last_decision": controller_counters.get("last_decision", ""),
-            "case_result_writeback": "official_benchflow_result_json",
+            "case_result_writeback": official_score_source,
             "counter_trust_level": counter_trust_level,
         },
         "episode_policy": {
@@ -19885,10 +20139,8 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "no_submit": True,
             "no_raw_logs_public": True,
             "no_credential_values_recorded": True,
-            "validation_scope": "official_benchflow_result_json_only",
-            "official_verifier_status": "completed"
-            if reward_value is not None
-            else "missing",
+            "validation_scope": validation_scope,
+            "official_verifier_status": official_score_status,
             "goal_harness_controller_trace_present": controller_trace_present,
             "goal_harness_controller_trace_public_safe": not controller_raw_material_recorded,
         },
@@ -19946,13 +20198,13 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "real_run": True,
         "submit_eligible": False,
         "official_task_score": {
-            "kind": "skillsbench_verifier_reward",
+            "kind": official_score_kind,
             "value": reward_value,
             "passed": official_passed,
         },
         "official_score": reward_value,
-        "official_score_status": "completed" if reward_value is not None else "missing",
-        "official_score_source": "official_skillsbench_benchflow_result_json",
+        "official_score_status": official_score_status,
+        "official_score_source": official_score_source,
         "score_failure_attribution": score_failure_attribution,
         "case_semantics_changed_by_harness": contract[
             "case_semantics_changed_by_harness"

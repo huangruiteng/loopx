@@ -593,6 +593,38 @@ def main() -> None:
         "first_blocker"
     ] == "ready_for_runtime_codex_materialization_probe", case_run_payload
 
+    managed_case_run_payload = launch_terminal_bench_case_run(
+        jobs_dir="<private-jobs-dir>",
+        run_root="terminal-bench-managed-case-run-launch-smoke",
+        job_name="terminal_bench_managed_case_run_launch_smoke",
+        mode="goal-harness-managed-codex",
+        task_id="multi-source-data-merger",
+        setup_timeout_repair_profile=True,
+        worker_codex_materialization_strategy=(
+            TERMINAL_BENCH_WORKER_CODEX_MATERIALIZATION_STRATEGY_RUNTIME_EXTENDED
+        ),
+        wait_seconds=0,
+        execute=False,
+    )
+    assert managed_case_run_payload["ok"] is True, managed_case_run_payload
+    assert managed_case_run_payload["dry_run"] is True, managed_case_run_payload
+    assert managed_case_run_payload["process_started"] is False, managed_case_run_payload
+    assert managed_case_run_payload["command_shape"][
+        "agent_import_path_present"
+    ] is True, managed_case_run_payload
+    assert managed_case_run_payload["boundary"]["no_upload"] is True, (
+        managed_case_run_payload
+    )
+    assert managed_case_run_payload["boundary"]["task_solver_invoked"] is False, (
+        managed_case_run_payload
+    )
+    assert managed_case_run_payload["launch_summary"][
+        "goal_harness_agent_kwargs_present"
+    ] is True, managed_case_run_payload
+    assert managed_case_run_payload["launch_summary"][
+        "goal_harness_managed_codex_requested"
+    ] is True, managed_case_run_payload
+
     with tempfile.TemporaryDirectory(prefix="goal-harness-prelaunch-block-") as tmp:
         prelaunch_root = Path(tmp) / "case-run"
         prelaunch_jobs = prelaunch_root / "jobs"
@@ -1203,6 +1235,54 @@ time.sleep(3)
     assert cli_case_payload["boundary"]["model_api_expected"] is False, cli_case_payload
     assert cli_case_payload["boundary"]["raw_logs_read"] is False, cli_case_payload
     assert cli_case_payload["boundary"]["command_argv_recorded"] is False, cli_case_payload
+
+    cli_managed_case_run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "goal_harness.cli",
+            "--format",
+            "json",
+            "benchmark",
+            "launch-terminal-bench-run",
+            "terminal-bench",
+            "--mode",
+            "goal-harness-managed-codex",
+            "--include-task-name",
+            "multi-source-data-merger",
+            "--jobs-dir",
+            "<private-jobs-dir>",
+            "--run-root",
+            "terminal-bench-managed-case-run-launch-cli-smoke",
+            "--job-name",
+            "terminal_bench_managed_case_run_launch_cli_smoke",
+            "--setup-timeout-repair-profile",
+            "--worker-codex-materialization-strategy",
+            TERMINAL_BENCH_WORKER_CODEX_MATERIALIZATION_STRATEGY_RUNTIME_EXTENDED,
+            "--wait-seconds",
+            "0",
+            "--materialization-wait-seconds",
+            "7",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    cli_managed_payload = json.loads(cli_managed_case_run.stdout)
+    assert cli_managed_payload["ok"] is True, cli_managed_payload
+    assert cli_managed_payload["dry_run"] is True, cli_managed_payload
+    assert cli_managed_payload["process_started"] is False, cli_managed_payload
+    assert cli_managed_payload["command_shape"][
+        "agent_import_path_present"
+    ] is True, cli_managed_payload
+    assert cli_managed_payload["boundary"]["no_upload"] is True, cli_managed_payload
+    assert cli_managed_payload["boundary"]["task_solver_invoked"] is False, (
+        cli_managed_payload
+    )
+    assert cli_managed_payload["launch_summary"][
+        "goal_harness_managed_codex_requested"
+    ] is True, cli_managed_payload
 
     with tempfile.TemporaryDirectory(prefix="goal-harness-prelaunch-cli-block-") as tmp:
         cli_block_root = Path(tmp) / "case-run"

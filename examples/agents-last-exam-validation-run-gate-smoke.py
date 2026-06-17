@@ -14,8 +14,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from goal_harness.benchmark import (  # noqa: E402
+    AGENTS_LAST_EXAM_CASE_GOAL_ID,
+    AGENTS_LAST_EXAM_CASE_STATE_PATH,
     build_agents_last_exam_task_material_readiness,
     build_agents_last_exam_validation_run_gate,
+)
+from goal_harness.benchmark_case_state import (  # noqa: E402
+    BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+    benchmark_case_active_state_init_contract,
 )
 
 TASK_ID = "computing_math/os_log_permission_guard_v1"
@@ -96,6 +102,7 @@ def make_launch_packet_payload(
     *,
     fresh_source: bool = False,
     source_lock_overrides: dict[str, object] | None = None,
+    include_case_state_contract: bool = True,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "schema_version": "agents_last_exam_local_launch_packet_v0",
@@ -103,6 +110,14 @@ def make_launch_packet_payload(
         "first_blocker": "ready_for_operator_triggered_no_upload_ale_dry_run",
         "boundary": false_boundary(),
     }
+    if include_case_state_contract:
+        payload["case_state_init_contract"] = (
+            benchmark_case_active_state_init_contract(
+                benchmark_id="agents-last-exam",
+                goal_id=AGENTS_LAST_EXAM_CASE_GOAL_ID,
+                case_state_path=AGENTS_LAST_EXAM_CASE_STATE_PATH,
+            )
+        )
     if fresh_source:
         payload["source_lock"] = {
             "expected_repo": "github.com/rdi-berkeley/agents-last-exam",
@@ -143,6 +158,13 @@ def assert_public_safe(payload: dict[str, object], temp_root: Path) -> None:
     assert not leaked, leaked
     run_boundary = payload["run_boundary"]
     assert isinstance(run_boundary, dict)
+    assert run_boundary["case_state_init_required_before_worker"] is True
+    assert run_boundary["case_state_initialized_by_this_gate"] is False
+    assert run_boundary["case_state_path"] == AGENTS_LAST_EXAM_CASE_STATE_PATH
+    assert (
+        run_boundary["case_state_schema_version"]
+        == BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
+    )
     assert run_boundary["task_run_started_by_this_gate"] is False
     assert run_boundary["container_started_by_this_gate"] is False
     assert run_boundary["model_api_invoked_by_this_gate"] is False
@@ -184,7 +206,32 @@ def run_function_smoke() -> None:
             "operator_authorized_local_no_upload_ale_validation_run"
         ), payload
         assert payload["readiness_inputs"]["compact_result_reducer_ready"] is True, payload
+        assert payload["readiness_inputs"]["case_state_init_contract_ready"] is True, payload
         assert_public_safe(payload, temp_root)
+
+        missing_case_state_contract = build_agents_last_exam_validation_run_gate(
+            selected_task_id=TASK_ID,
+            validation_hypothesis=HYPOTHESIS,
+            task_material_readiness=task_material,
+            host_codex_no_task_e2e=host_no_task,
+            exact_dry_run_result=exact,
+            launch_packet=make_launch_packet_payload(
+                include_case_state_contract=False
+            ),
+            result_reducer_ready=True,
+        )
+        assert missing_case_state_contract["ready"] is False, missing_case_state_contract
+        assert (
+            "case_state_init_contract_missing"
+            in missing_case_state_contract["blockers"]
+        ), missing_case_state_contract
+        assert (
+            missing_case_state_contract["readiness_inputs"][
+                "case_state_init_contract_ready"
+            ]
+            is False
+        ), missing_case_state_contract
+        assert_public_safe(missing_case_state_contract, temp_root)
 
         no_reducer = build_agents_last_exam_validation_run_gate(
             selected_task_id=TASK_ID,
@@ -192,6 +239,7 @@ def run_function_smoke() -> None:
             task_material_readiness=task_material,
             host_codex_no_task_e2e=host_no_task,
             exact_dry_run_result=exact,
+            launch_packet=launch_packet,
             result_reducer_ready=False,
         )
         assert no_reducer["ready"] is False, no_reducer
@@ -206,6 +254,7 @@ def run_function_smoke() -> None:
             exact_dry_run_result=make_exact_dry_run_payload(
                 "computing_math__other_task"
             ),
+            launch_packet=launch_packet,
             result_reducer_ready=True,
         )
         assert mismatch["ready"] is False, mismatch
@@ -315,6 +364,7 @@ def run_cli_smoke() -> None:
         assert payload["ok"] is True, payload
         assert payload["ready"] is True, payload
         assert payload["readiness_inputs"]["fresh_source_ready"] is True, payload
+        assert payload["readiness_inputs"]["case_state_init_contract_ready"] is True, payload
         assert_public_safe(payload, temp_root)
 
         stale_launch = make_launch_packet_payload(

@@ -257,6 +257,45 @@ This gives Goal Harness a durable-execution boundary:
 - Side-bypass and main-control workers should coordinate through the same
   ledger so they cannot double-spend, hide blockers, or race on stale state.
 
+## Derived Task Graph Projection
+
+Some complex goals need a graph-shaped view: independent deliverables, ordered
+dependencies, acceptance gates, repair loops, and handoff points are easier to
+reason about as nodes and edges than as a flat todo list. Goal Harness should
+support that view as a derived projection over durable goal truth, not as a
+second source of truth.
+
+The durable owner remains the event ledger, active goal state, todos, gates,
+leases, quota policy, and run history. A task graph may be rendered from those
+stores when it helps an agent or operator answer:
+
+- which deliverables can proceed independently;
+- which gate blocks downstream work;
+- which failure invalidates later pending work;
+- which repair or verification node should run before close-out;
+- which user decision or lease owns the next transition.
+
+The projection should also preserve a useful distinction between durable
+control state and transient work state:
+
+- **Control state** belongs to Goal Harness: objective, constraints, task
+  dependencies, gates, leases, run summaries, accepted evidence, and current
+  dispatch state.
+- **Work state** belongs to an executor turn or child worker: code snippets,
+  raw tool output, temporary hypotheses, local implementation details, and
+  verbose logs.
+
+This lets Goal Harness borrow graph-native recovery where it matters without
+forcing every goal into a multi-agent DAG. Small or linear goals can stay as
+ordinary todos. Multi-stage goals can project a graph for dispatch, review, and
+repair, while the append-only ledger still decides what happened and which
+worker may resume.
+
+The first implementation should be read-mostly: expose an optional compact
+`task_graph_projection_v0` from status or review packets, backed by existing
+todo ids, gate ids, run ids, and lease ids. Writes should continue through the
+existing lifecycle commands until a server-backed lease/graph API exists.
+
 Old user decisions need freshness checks. A reward, steering note, or approval
 from seven days ago can remain valuable, but a worker should apply it only after
 replaying or rechecking the newer event window that could make it stale. The

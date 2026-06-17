@@ -671,6 +671,11 @@ def render_agents_last_exam_local_launch_packet_markdown(
         if isinstance(payload.get("launch_packet"), dict)
         else {}
     )
+    case_state = (
+        payload.get("case_state_init_contract")
+        if isinstance(payload.get("case_state_init_contract"), dict)
+        else {}
+    )
     decision = (
         payload.get("decision") if isinstance(payload.get("decision"), dict) else {}
     )
@@ -691,6 +696,8 @@ def render_agents_last_exam_local_launch_packet_markdown(
         f"- Mode: `{launch_packet.get('mode')}`",
         f"- Will execute/start container: `{launch_packet.get('will_execute')}`/`{launch_packet.get('will_start_container')}`",
         f"- Will upload/submit: `{launch_packet.get('will_upload')}`/`{launch_packet.get('will_submit')}`",
+        f"- Case state init required/path: `{case_state.get('init_required_before_worker')}`/`{case_state.get('case_state_path')}`",
+        f"- Case state schema: `{case_state.get('schema_version')}`",
         f"- Next action: {decision.get('next_allowed_action')}",
     ]
     return "\n".join(lines) + "\n"
@@ -4132,7 +4139,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     benchmark_case_run_launch_parser.add_argument(
         "--mode",
-        choices=["codex-goal-mode", "hardened-codex", "codex-goal-harness"],
+        choices=[
+            "codex-goal-mode",
+            "hardened-codex",
+            "codex-goal-harness",
+            "goal-harness-managed-codex",
+        ],
         default="codex-goal-mode",
         help="Terminal-Bench worker surface to run.",
     )

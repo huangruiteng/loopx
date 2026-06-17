@@ -106,6 +106,9 @@ before implementation.
 | GH-C31 | project intake | Prepare a read-only observer / authority-map intake for a complex open-source project. It should produce only a compact project map and missing-gate list before any write-control or private material access. | Design note plus dry-run map fixture |
 | GH-C32 | learning | Design public-safe reward-style learning for replanning: turn explicit reward/corrections into compact ranking hints without storing raw private chat or treating inferred preferences as hard gates. | Design note with privacy constraints |
 | GH-C33 | resource sync | After server/daemon design lands, define periodic Resource-to-Todo sync that compares repo docs, roadmap/status contracts, and authority commitments against active todos, then proposes updates through structured lifecycle APIs. | Design note; implementation blocked on server lane |
+| GH-C34 | orchestration | Design `task_graph_projection_v0` as an optional derived view over todos, gates, leases, run ids, and event-ledger state. It must help multi-stage repair/verification without making graph files a second truth source. | Design note plus one status/review-packet fixture |
+| GH-C35 | integration | Design a host integration surface for Goal Harness hook/MCP/server adapters: hook activation, lifecycle reads, todo/gate/lease writes, and compact status projection, while keeping CLI compatibility and public/private boundaries. | Design note with adapter-neutral smoke plan |
+| GH-C36 | narrative | Prepare a public-safe blocked-priority fallback demo: a fake benchmark rotation where one lane is user-gated and the harness continues a safe fallback while preserving the blocked gate, quota decision, and evidence boundary. Do not use private raw benchmark artifacts. | Demo fixture or doc plus `goal-harness check --scan-path README.md --scan-path docs/xiaohongshu-launch-draft.md` |
 
 ### Maintainer-Owned / Coordination Required
 

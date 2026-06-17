@@ -55,10 +55,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+from goal_harness.benchmark_case_state import (  # noqa: E402
+    BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+    benchmark_case_active_state_path,
+    benchmark_case_active_state_seed_text,
+    benchmark_case_active_state_write_command,
+)
 from goal_harness.benchmark_trajectory import summarize_public_acp_trajectory
 
 DEFAULT_SKILLSBENCH_ROOT = REPO_ROOT / ".local/benchmark/externals/skillsbench"
@@ -81,6 +86,11 @@ SUPPORTED_ROUTES = (
 DEFAULT_ROUTE = "goal-harness-blind-loop-treatment"
 CODEX_ACP_SET_MODEL_UNSUPPORTED_LABEL = "codex_acp_set_model_unsupported"
 ACP_TRAJECTORY_SUMMARY_SCHEMA_VERSION = "skillsbench_acp_trajectory_summary_v0"
+PRODUCT_MODE_CASE_GOAL_ID = "skillsbench-case"
+PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
+    PRODUCT_MODE_CASE_GOAL_ID
+)
+PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION = BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
 DOCKER_APP_SKILLS_MOUNT_BEGIN = "# BEGIN GOAL_HARNESS_SKILLSBENCH_APP_SKILLS_MOUNT"
 DOCKER_APP_SKILLS_MOUNT_END = "# END GOAL_HARNESS_SKILLSBENCH_APP_SKILLS_MOUNT"
 DOCKER_APT_RETRY_BEGIN = "# BEGIN GOAL_HARNESS_SKILLSBENCH_APT_RETRY"
@@ -501,13 +511,23 @@ def build_compose_setup_diagnostic(
             if isinstance(item, str)
         }
     )
+    volume_mount_failure = (
+        score_failure == "skillsbench_docker_compose_volume_mount_failure"
+        or "skillsbench_docker_compose_volume_mount_failure" in labels
+        or "volume_mount_failure" in {
+            str(item)
+            for item in fingerprint.get("matched_patterns", [])
+            if isinstance(item, str)
+        }
+    )
     if compose_setup_failure and not agent_rounds_started:
         status = "compose_setup_blocked_before_agent_rounds"
-        next_action = (
-            "classify_sanitized_compose_setup_category_before_product_treatment"
-            if unclassified
-            else "repair_runner_setup_before_product_treatment"
-        )
+        if volume_mount_failure:
+            next_action = "repair_task_volume_mount_setup_before_product_treatment"
+        elif unclassified:
+            next_action = "classify_sanitized_compose_setup_category_before_product_treatment"
+        else:
+            next_action = "repair_runner_setup_before_product_treatment"
     elif compose_setup_failure:
         status = "compose_setup_failed_after_agent_rounds_started"
         next_action = "separate_runner_setup_failure_from_agent_solution_quality"
@@ -527,6 +547,7 @@ def build_compose_setup_diagnostic(
         "compose_setup_failure": compose_setup_failure,
         "unclassified_compose_failure": unclassified,
         "docker_daemon_unavailable": docker_daemon_unavailable,
+        "volume_mount_failure": volume_mount_failure,
         "environment_setup_failure": environment_setup_failure,
         "agent_rounds_started": agent_rounds_started,
         "heartbeat_count": heartbeat_count,
@@ -604,6 +625,24 @@ def _write_text_atomic(path: Path, content: str) -> None:
     tmp = path.with_name(f"{path.name}.goal-harness-tmp")
     tmp.write_text(content, encoding="utf-8")
     os.replace(tmp, path)
+
+
+def product_mode_case_state_seed_text(
+    *,
+    task_id: str,
+    route: str,
+    max_rounds: int,
+) -> str:
+    """Return a public-safe Goal Harness active-state skeleton for a case."""
+
+    return benchmark_case_active_state_seed_text(
+        benchmark_name="SkillsBench",
+        goal_id=PRODUCT_MODE_CASE_GOAL_ID,
+        task_id=task_id,
+        route=route,
+        max_rounds=max_rounds,
+        case_state_path=PRODUCT_MODE_CASE_STATE_PATH,
+    )
 
 
 def _parse_cpu_value(raw: str) -> float | None:
@@ -968,11 +1007,9 @@ def stage_task_for_sandbox(
     if not include_task_skills and staged_skills_dir.exists():
         shutil.rmtree(staged_skills_dir)
         task_skills_removed = True
-    patched = False
-    if include_task_skills:
-        patched = patch_dockerfile_app_skills_mount(
-            staged_path / "environment" / "Dockerfile"
-        )
+    patched = patch_dockerfile_app_skills_mount(
+        staged_path / "environment" / "Dockerfile"
+    )
     apt_retry_patched = patch_dockerfile_apt_retry(
         staged_path / "environment" / "Dockerfile"
     )
@@ -1386,6 +1423,12 @@ def _final_result_reward_value(result_json: dict[str, Any]) -> float | None:
     return None
 
 
+def _last_decision_sent_agent_prompt(last_decision: str) -> bool:
+    return last_decision.startswith("send_") or last_decision in {
+        "continue_after_declared_done_depth_gate_gap",
+    }
+
+
 def _merge_final_result_round_reward(
     trace: dict[str, Any] | None,
     result_path: Path,
@@ -1393,7 +1436,7 @@ def _merge_final_result_round_reward(
     if not trace:
         return
     last_decision = str(trace.get("last_decision") or "")
-    if not last_decision.startswith("send_"):
+    if not _last_decision_sent_agent_prompt(last_decision):
         return
     max_round_observed = trace.get("max_round_observed")
     if not isinstance(max_round_observed, int) or isinstance(max_round_observed, bool):
@@ -1460,12 +1503,31 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
             "raw-codex-autonomous-max5",
             "goal-harness-product-mode",
         },
+        "case_goal_state_packet_present": False,
+        "case_goal_state_init_required": route == "goal-harness-product-mode",
+        "case_goal_state_initialized_before_agent": False,
+        "case_goal_state_init_status": "not_applicable",
+        "case_goal_state_path": (
+            PRODUCT_MODE_CASE_STATE_PATH
+            if route == "goal-harness-product-mode"
+            else ""
+        ),
+        "case_goal_state_schema_version": (
+            PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION
+            if route == "goal-harness-product-mode"
+            else ""
+        ),
+        "declared_done_requires_no_remaining_goals": route
+        == "goal-harness-product-mode",
         "agent_declared_done": False,
+        "agent_declared_no_remaining_goals": False,
         "declared_done_round": None,
         "declared_done_score": None,
         "max_rounds_budget": max_rounds,
         "goal_harness_state_reads": 0,
         "goal_harness_state_writes": 0,
+        "goal_harness_case_state_reads": 0,
+        "goal_harness_case_state_writes": 0,
         "max_round_observed": -1,
         "last_decision": "not_started",
         "raw_task_text_recorded": False,
@@ -1652,9 +1714,36 @@ def _record_declared_done(
     reward: float | None,
 ) -> None:
     trace["agent_declared_done"] = True
+    trace["agent_declared_no_remaining_goals"] = True
     trace["declared_done_round"] = agent_round
     if reward is not None:
         trace["declared_done_score"] = reward
+
+
+def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
+    reads = trace.get("goal_harness_case_state_reads")
+    writes = trace.get("goal_harness_case_state_writes")
+    return (
+        isinstance(reads, int)
+        and not isinstance(reads, bool)
+        and reads > 0
+        and isinstance(writes, int)
+        and not isinstance(writes, bool)
+        and writes > 0
+    )
+
+
+def _record_product_mode_depth_gate_gap(
+    trace: dict[str, Any],
+    *,
+    agent_round: int,
+) -> None:
+    trace["product_mode_depth_gate_gap"] = True
+    trace["product_mode_depth_gate_gap_round"] = agent_round
+    current = trace.get("product_mode_depth_gate_gap_count")
+    if not isinstance(current, int) or isinstance(current, bool):
+        current = 0
+    trace["product_mode_depth_gate_gap_count"] = current + 1
 
 
 def _trajectory_candidate_paths(plan: dict[str, Any]) -> list[Path]:
@@ -1704,6 +1793,30 @@ def _merge_acp_trajectory_summary(
                 codex_acp_size = 0
             summary["codex_acp_text_present"] = codex_acp_size > 0
             summary["codex_acp_text_bytes"] = codex_acp_size
+        cli_state_reads = summary.get("goal_harness_cli_state_read_count", 0)
+        cli_state_writes = summary.get("goal_harness_cli_state_write_count", 0)
+        case_state_reads = summary.get("goal_harness_case_state_read_count", 0)
+        case_state_writes = summary.get("goal_harness_case_state_write_count", 0)
+        if isinstance(case_state_reads, int) and not isinstance(case_state_reads, bool):
+            trace["goal_harness_case_state_reads"] = max(
+                int(trace.get("goal_harness_case_state_reads", 0)),
+                case_state_reads,
+            )
+        if isinstance(case_state_writes, int) and not isinstance(case_state_writes, bool):
+            trace["goal_harness_case_state_writes"] = max(
+                int(trace.get("goal_harness_case_state_writes", 0)),
+                case_state_writes,
+            )
+        if isinstance(cli_state_reads, int) and isinstance(case_state_reads, int):
+            trace["goal_harness_state_reads"] = max(
+                int(trace.get("goal_harness_state_reads", 0)),
+                cli_state_reads + case_state_reads,
+            )
+        if isinstance(cli_state_writes, int) and isinstance(case_state_writes, int):
+            trace["goal_harness_state_writes"] = max(
+                int(trace.get("goal_harness_state_writes", 0)),
+                cli_state_writes + case_state_writes,
+            )
         trace["private_agent_trajectory_present"] = True
         trace["private_agent_trajectory_summary_recorded"] = True
         trace["raw_agent_trajectory_recorded"] = False
@@ -1929,10 +2042,28 @@ def _build_product_mode_user(
     route: str,
     max_rounds: int,
     trace: dict[str, Any],
+    plan: dict[str, Any] | None = None,
 ):
     from benchflow.sandbox.user import BaseUser, RoundResult
 
     treatment = route == "goal-harness-product-mode"
+
+    def treatment_state_contract() -> str:
+        return (
+            "Goal Harness case-state contract: a canonical active-state "
+            f"skeleton is already initialized at `{PRODUCT_MODE_CASE_STATE_PATH}` "
+            "before the agent starts. This path intentionally mirrors the "
+            "normal Goal Harness active-state shape inside the benchmark "
+            "sandbox. Before substantive edits, read the file and keep its "
+            f"`schema_version: {PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION}`, "
+            "`## Agent Todo`, `## Done Todo`, `## Local Evidence`, "
+            "`## Replan Log`, and `## Remaining Goals` sections. Re-read it "
+            "before each continuation, update it after local evidence changes, "
+            "and before declaring done rewrite it so there are no open agent "
+            "todos and `## Remaining Goals` says none. If the real "
+            "Goal Harness CLI is available you may also use it, but this file "
+            "is the required per-case state surface. "
+        )
 
     class ProductModeUser(BaseUser):
         """Main-table autonomous product-mode controller."""
@@ -1957,6 +2088,40 @@ def _build_product_mode_user(
             if round_result is not None:
                 _inc_counter(trace, "official_feedback_blinded_count")
                 if _round_result_declared_done(round_result):
+                    if treatment:
+                        _merge_acp_trajectory_summary(plan or {}, trace)
+                        if not _product_mode_depth_gate_satisfied(trace):
+                            _record_product_mode_depth_gate_gap(
+                                trace,
+                                agent_round=round,
+                            )
+                            _inc_counter(trace, "controller_action_decisions")
+                            if round >= max_rounds:
+                                _inc_counter(trace, "stop_decision_count")
+                                trace["last_decision"] = (
+                                    "stop_after_budget_with_declared_done_depth_gate_gap"
+                                )
+                                return None
+                            _inc_counter(trace, "followup_prompt_count")
+                            trace["last_decision"] = (
+                                "send_product_mode_depth_gate_continuation"
+                            )
+                            return (
+                                f"Scheduled product-mode continuation round "
+                                f"{round + 1} of {max_rounds}. This is part of "
+                                "the fixed autonomous budget and is not "
+                                "evidence that the official verifier passed "
+                                "or failed. You are not being shown official "
+                                "reward, pass/fail status, verifier error, or "
+                                "verifier output. You declared done, but the "
+                                "required Goal Harness case-state interaction "
+                                f"was not observed. Re-read "
+                                f"`{PRODUCT_MODE_CASE_STATE_PATH}`, update it "
+                                "with current todos/evidence/replan state, "
+                                "validate locally, and only end with "
+                                f"{DECLARED_DONE_MARKER} after it records no "
+                                "open agent todos and no remaining goals."
+                            )
                     _inc_counter(trace, "controller_action_decisions")
                     _inc_counter(trace, "stop_decision_count")
                     _record_declared_done(trace, agent_round=round, reward=reward)
@@ -1986,18 +2151,21 @@ def _build_product_mode_user(
                     trace["persistent_constraint_protected_paths"] = protected_paths
                 if treatment:
                     prefix = "Goal Harness product-mode treatment round 1. "
+                    trace["case_goal_state_packet_present"] = True
                     control_clause = (
                         "Use Goal Harness as your product control plane: create "
                         "a compact goal state, maintain todos, replan when local "
                         "evidence changes, and use Goal Harness CLI/status/ledger "
                         "surfaces when available. "
+                        + treatment_state_contract()
                     )
                 else:
                     prefix = "Raw Codex autonomous max5 baseline round 1. "
                     control_clause = (
                         "Use ordinary Codex autonomous behavior. You may keep a "
                         "brief local plan or todo list, but do not use Goal "
-                        "Harness state, todo, replan, ledger, or CLI surfaces. "
+                        "Harness state, todo, replan, ledger, CLI surfaces, or "
+                        f"`{PRODUCT_MODE_CASE_STATE_PATH}`. "
                     )
                 return (
                     prefix
@@ -2017,8 +2185,9 @@ def _build_product_mode_user(
             trace["last_decision"] = "send_product_mode_scheduled_continuation"
             if treatment:
                 mode_clause = (
-                    "Continue from your Goal Harness goal state and todo/replan "
-                    "ledger; update them if local evidence changed."
+                    "Continue from your Goal Harness case state at "
+                    f"`{PRODUCT_MODE_CASE_STATE_PATH}` and todo/replan ledger; "
+                    "re-read and update them if local evidence changed."
                 )
             else:
                 mode_clause = (
@@ -2109,6 +2278,36 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         prerequisites["codex_acp_runtime_launch_preflight"] = True
         prerequisites["codex_acp_runtime_launch_preflight_status"] = "passed"
 
+    async def seed_product_mode_case_state(env: Any) -> None:
+        if args.route != "goal-harness-product-mode":
+            return
+        trace = controller_trace if isinstance(controller_trace, dict) else {}
+        trace["case_goal_state_init_required"] = True
+        trace["case_goal_state_path"] = PRODUCT_MODE_CASE_STATE_PATH
+        trace["case_goal_state_schema_version"] = PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION
+        trace["case_goal_state_initialized_before_agent"] = False
+        content = product_mode_case_state_seed_text(
+            task_id=args.task_id,
+            route=args.route,
+            max_rounds=args.max_rounds,
+        )
+        cmd = benchmark_case_active_state_write_command(
+            case_state_path=PRODUCT_MODE_CASE_STATE_PATH,
+            content=content,
+        )
+        result = await env.exec(cmd, timeout_sec=30)
+        trace["case_goal_state_init_rc"] = int(result.return_code)
+        if result.return_code != 0:
+            stderr = (getattr(result, "stderr", "") or "").strip()
+            stdout = (getattr(result, "stdout", "") or "").strip()
+            detail = stderr or stdout or "no output"
+            trace["case_goal_state_init_status"] = "failed"
+            raise RuntimeError(
+                "Goal Harness case active-state init failed: " + detail[:1000]
+            )
+        trace["case_goal_state_initialized_before_agent"] = True
+        trace["case_goal_state_init_status"] = "passed"
+
     original_install_agent = Rollout.install_agent
 
     async def install_agent_with_launch_preflight(self: Any) -> Any:
@@ -2153,9 +2352,14 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             route=args.route,
             max_rounds=args.max_rounds,
             trace=controller_trace,
+            plan=plan,
         )
     elif args.route == "codex-goal-mode-baseline":
         controller_user = _build_codex_goal_mode_baseline_user()
+
+    pre_agent_hooks = [ensure_codex_acp_runtime_deps]
+    if args.route == "goal-harness-product-mode":
+        pre_agent_hooks.append(seed_product_mode_case_state)
 
     config = RolloutConfig(
         task_path=effective_task_path,
@@ -2171,7 +2375,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         model=args.model,
         agent_idle_timeout=args.agent_idle_timeout,
         include_task_skills=bool(args.include_task_skills),
-        pre_agent_hooks=[ensure_codex_acp_runtime_deps],
+        pre_agent_hooks=pre_agent_hooks,
     )
     result_path: Path | None = None
     Rollout.install_agent = install_agent_with_launch_preflight

@@ -13,13 +13,18 @@ SANDBOX_PATH_RE = re.compile(r"/(?:app|root|workspace|tmp)/[A-Za-z0-9_./-]+")
 GOAL_HARNESS_CLI_RE = re.compile(r"(?:^|\s)goal-harness(?:\s|$)")
 SHELL_EDIT_RE = re.compile(
     r"(?i)(?:apply_patch|perl\b.*\s-[0-9a-z]*p|sed\b.*\s-i|"
-    r"python\b.*(?:write_text|open\(.+['\"]w|Path\(.+\)\.write)|"
+    r"python\b[\s\S]*(?:write_text|open\(.+['\"]w|Path\(.+\)\.write)|"
     r"(?:^|\s)(?:tee|cat)\s*>|(?:^|\s)(?:mv|cp)\s+)"
+)
+SHELL_READ_RE = re.compile(
+    r"(?i)(?:^|\s)(?:cat|sed|grep|rg|head|tail|less)\b|"
+    r"python\b[\s\S]*(?:read_text|open\(.+['\"]r)"
 )
 PROTECTED_DIRECTIVE_RE = re.compile(
     r"(?i)(?:do\s+not|don't|must\s+not|never|禁止|不要|不得|别).{0,120}"
     r"(?:modify|edit|change|write|touch|修改|编辑|改动|写)"
 )
+GOAL_HARNESS_ACTIVE_STATE_BASENAME = "ACTIVE_GOAL_STATE.md"
 
 GOAL_HARNESS_READ_COMMANDS = {
     "check",
@@ -188,6 +193,15 @@ def sandbox_paths(text: str) -> list[str]:
     return sorted(paths)
 
 
+def goal_harness_case_state_paths(paths: list[str]) -> list[str]:
+    case_state_paths: list[str] = []
+    for path in paths:
+        basename = path.rsplit("/", 1)[-1]
+        if basename == GOAL_HARNESS_ACTIVE_STATE_BASENAME and "/.codex/goals/" in path:
+            case_state_paths.append(path)
+    return sorted(set(case_state_paths))
+
+
 def protected_paths_from_instruction(text: str) -> list[str]:
     protected: set[str] = set()
     for chunk in re.split(r"(?<=[A-Za-z0-9_)\]])\.\s+|[\n。!?；;]+", text or ""):
@@ -224,6 +238,9 @@ def summarize_public_acp_trajectory(
     goal_harness_cli_calls: list[dict[str, Any]] = []
     goal_harness_cli_call_count = 0
     goal_harness_state_usage_counts: dict[str, int] = {}
+    goal_harness_case_state_read_count = 0
+    goal_harness_case_state_write_count = 0
+    goal_harness_case_state_paths_seen: set[str] = set()
     user_message_count = 0
     agent_message_count = 0
     tool_call_count = 0
@@ -285,8 +302,16 @@ def summarize_public_acp_trajectory(
                         goal_harness_cli_calls.append(call)
 
             paths = sandbox_paths(searchable)
+            case_state_paths = goal_harness_case_state_paths(paths)
+            goal_harness_case_state_paths_seen.update(case_state_paths)
             for sandbox_path in paths:
                 path_mentions[sandbox_path] = path_mentions.get(sandbox_path, 0) + 1
+
+            if event_type == "tool_call" and case_state_paths:
+                if SHELL_READ_RE.search(title):
+                    goal_harness_case_state_read_count += len(case_state_paths)
+                if SHELL_EDIT_RE.search(title):
+                    goal_harness_case_state_write_count += len(case_state_paths)
 
             if event_type == "tool_call" and SHELL_EDIT_RE.search(title):
                 current_round = max(1, round_index)
@@ -341,6 +366,10 @@ def summarize_public_acp_trajectory(
             "state_write",
             0,
         ),
+        "goal_harness_case_state_path_count": len(goal_harness_case_state_paths_seen),
+        "goal_harness_case_state_paths": sorted(goal_harness_case_state_paths_seen)[:4],
+        "goal_harness_case_state_read_count": goal_harness_case_state_read_count,
+        "goal_harness_case_state_write_count": goal_harness_case_state_write_count,
         "sandbox_path_mention_counts": _top_counts(path_mentions, limit=12),
         "sandbox_path_edit_signal_counts": _top_counts(path_edit_signals, limit=12),
         "sandbox_path_first_edit_round": {

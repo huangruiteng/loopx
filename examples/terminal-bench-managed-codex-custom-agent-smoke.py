@@ -225,6 +225,8 @@ def assert_adapter_contract() -> None:
     managed = module.build_managed_terminal_bench_instruction(task)
     assert "Goal Harness managed Codex mode" in managed, managed
     assert "----- TERMINAL-BENCH TASK -----" in managed, managed
+    assert module.TERMINAL_BENCH_CASE_STATE_PATH in managed, managed
+    assert module.BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION in managed, managed
     assert task in managed, managed
 
     agent = module.GoalHarnessManagedCodex(logs_dir=Path("logs"), model_name="gpt-5.5")
@@ -233,7 +235,14 @@ def assert_adapter_contract() -> None:
     asyncio.run(agent.run(task, object(), context))
     assert agent.received_instruction is not None
     assert "Goal Harness managed Codex mode" in agent.received_instruction
+    assert module.TERMINAL_BENCH_CASE_STATE_PATH in agent.received_instruction
     assert task in agent.received_instruction
+    root_calls = [call for call in agent.exec_calls if call["user"] == "root"]
+    assert len(root_calls) == 1, root_calls
+    init_command = root_calls[0]["command"]
+    assert "/app/.codex/goals/terminal-bench-case/ACTIVE_GOAL_STATE.md" in init_command
+    assert ".goal-harness-case-state.md" not in init_command
+    assert module.BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION in init_command
     assert context.is_empty(), context.metadata
     agent.populate_context_post_run(context)
     assert context.n_input_tokens == 123, context.n_input_tokens
@@ -248,6 +257,22 @@ def assert_adapter_contract() -> None:
     assert goal_harness["model_plus_harness_pair"] is True, goal_harness
     assert goal_harness["raw_task_instruction_recorded"] is False, goal_harness
     assert goal_harness["raw_managed_prompt_recorded"] is False, goal_harness
+    assert goal_harness["case_goal_state_init_required"] is True, goal_harness
+    assert goal_harness["case_goal_state_initialized_before_agent"] is True, goal_harness
+    assert goal_harness["case_goal_state_init_status"] == "passed", goal_harness
+    assert (
+        goal_harness["case_goal_state_schema_version"]
+        == module.BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
+    ), goal_harness
+    assert (
+        goal_harness["case_goal_state_path"]
+        == module.TERMINAL_BENCH_CASE_STATE_PATH
+    ), goal_harness
+    counters = goal_harness["goal_harness_interaction_counters"]
+    assert counters["case_goal_state_init_required"] is True, counters
+    assert counters["case_goal_state_initialized_before_agent"] is True, counters
+    assert counters["goal_harness_case_state_writes"] == 1, counters
+    assert counters["case_goal_state_path"] == module.TERMINAL_BENCH_CASE_STATE_PATH
     assert goal_harness["leaderboard_evidence"] is False, goal_harness
     assert goal_harness["context_metadata_deferred_until_post_run"] is True, goal_harness
     assert goal_harness["context_post_run_ingested"] is True, goal_harness
