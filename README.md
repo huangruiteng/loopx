@@ -475,6 +475,7 @@ goal-harness upgrade-plan --format json
 
 Start here:
 
+- [Documentation index](docs/README.md)
 - [State interaction model](docs/state-interaction-model.md)
 - [Interaction pattern catalog](docs/interaction-pattern-catalog.md)
 - [Integration guide](docs/integration.md)
@@ -484,11 +485,11 @@ Start here:
 - [Heartbeat automation prompt](docs/heartbeat-automation-prompt.md)
 - [Long-task cadence policy](docs/long-task-cadence-policy.md)
 - [Public/private boundary](docs/public-private-boundary.md)
-- [Public launch narrative draft](docs/public-launch-narrative-draft.md)
-- [Xiaohongshu launch draft](docs/xiaohongshu-launch-draft.md)
+- [Public launch narrative draft](docs/outreach/public-launch-narrative-draft.md)
+- [Xiaohongshu launch draft](docs/outreach/xiaohongshu-launch-draft.md)
 - [Dashboard status contract](docs/status-data-contract.md)
 - [Codex subagent orchestration](docs/codex-subagent-orchestration.md)
-- [Benchmark long-run design](docs/codex-cli-long-run-benchmark-design.md)
+- [Benchmark long-run design](docs/research/long-horizon-agent-benchmarks/codex-cli-long-run-benchmark-design.md)
 
 ## Command Reference
 

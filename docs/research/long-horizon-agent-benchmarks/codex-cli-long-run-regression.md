@@ -166,6 +166,6 @@ durable state/event ledger as the empty-state path.
 
 The runner's current fixture proves the control-plane contract but is too easy
 to measure Codex task capability. Use
-`docs/codex-cli-long-run-benchmark-design.md` for the next benchmark task:
+`codex-cli-long-run-benchmark-design.md` for the next benchmark task:
 `mini_control_plane_repair_v0`, a `3-5` step isolated control-plane repair with
 matching with/without Goal Harness scenarios and `benchmark_result_v0` metrics.

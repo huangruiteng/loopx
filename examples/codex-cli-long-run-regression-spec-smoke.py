@@ -7,7 +7,13 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SPEC = REPO_ROOT / "docs" / "codex-cli-long-run-regression.md"
+SPEC = (
+    REPO_ROOT
+    / "docs"
+    / "research"
+    / "long-horizon-agent-benchmarks"
+    / "codex-cli-long-run-regression.md"
+)
 
 REQUIRED_PHRASES = (
     "empty isolated `HOME`, runtime root, global registry, project registry, and active state fixture",

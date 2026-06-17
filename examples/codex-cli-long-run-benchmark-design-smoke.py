@@ -7,7 +7,13 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DESIGN = REPO_ROOT / "docs" / "codex-cli-long-run-benchmark-design.md"
+DESIGN = (
+    REPO_ROOT
+    / "docs"
+    / "research"
+    / "long-horizon-agent-benchmarks"
+    / "codex-cli-long-run-benchmark-design.md"
+)
 
 REQUIRED_PHRASES = (
     "mini_control_plane_repair_v0",

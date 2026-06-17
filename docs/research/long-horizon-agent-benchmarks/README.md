@@ -24,6 +24,12 @@ work still belongs in the existing code, examples, and contract documents:
 
 ## Current Artifacts
 
+- `codex-cli-long-run-benchmark-design.md`: public-safe design contract for the
+  deterministic Codex CLI long-run benchmark fixture, result schema, scoring
+  split, and Goal Harness comparison protocol.
+- `codex-cli-long-run-regression.md`: regression spec for the deterministic
+  long-run worker shim, Goal Tick output protocol, and opt-in real Codex CLI
+  worker contract.
 - `benchmark-program-current-state-handoff-v0.md`: compact current-state
   runbook for fresh workers, summarizing the active benchmark evidence layer,
   docs-only projection decisions, allowed next transitions, and stop

@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DECISION_DOC = REPO_ROOT / "docs" / "protocol-action-packet-decision-v0.md"
+DECISION_DOC = REPO_ROOT / "docs" / "reference" / "protocols" / "protocol-action-packet-decision-v0.md"
 WRAPPER_SMOKE = REPO_ROOT / "examples" / "protocol-action-packet-codex-cli-wrapper-smoke.py"
 
 
