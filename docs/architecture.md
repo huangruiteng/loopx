@@ -62,6 +62,52 @@ the same state is available through hook/MCP/server adapters:
 This keeps Goal Harness portable across Codex, local CLI loops, dashboards, and
 future agent hosts while avoiding a forked control plane per host.
 
+## Local Server / Daemon Roadmap
+
+The CLI remains the compatibility baseline. A future local server should be an
+optional control-plane coordinator over the same registry, active state, run
+history, quota, todo, and boundary contracts, not a replacement state machine.
+
+The server path should land in layers:
+
+1. **Writer correctness before a server**: make existing CLI writers safe under
+   concurrency with per-goal locks, idempotency keys, and optimistic revision
+   checks. `todo`, `refresh-state`, reward writeback, quota spend, and history
+   append paths should fail closed on stale revision or overlapping write scope.
+2. **Lease projection**: add `task_lease_v0` records for claimed todos,
+   including owner, TTL, write scope, idempotency key, and conflict policy.
+   Status and quota should expose active leases so Codex/App/CLI loops can
+   avoid duplicate work without reading chat history.
+3. **Loopback coordinator**: extend the existing local status server into a
+   loopback-only coordinator that can centralize per-goal locks, leases, quota
+   decisions, compact status projection, and heartbeat scheduling. It must bind
+   locally, keep raw/private evidence out of compact responses, and preserve
+   CLI fallbacks for every write.
+4. **Heartbeat scheduler**: move recurring heartbeat bookkeeping behind the
+   coordinator only after quota/spend idempotency is proven. Scheduler output
+   should be the same `quota should-run` / `interaction_contract` /
+   `protocol_action_packet` shape that current automation prompts already use.
+5. **Planning and dreaming queues**: let background planning produce ranked
+   todo proposals, evidence probes, and refactor warnings as advisory records.
+   These queues must not execute protected work, read private material, or
+   spend delivery quota without a later normal `quota should-run` decision and
+   goal-boundary approval.
+6. **Host adapters**: expose the same contracts through MCP, hooks, or a small
+   local HTTP API for Codex-like hosts. Host adapters should route agents to
+   current state and valid writes; they should not embed stale project policy or
+   create a second scheduler.
+
+Acceptance criteria for the first server-backed milestone:
+
+- the same action can be completed through CLI-only mode after the daemon is
+  stopped;
+- a duplicate heartbeat, duplicate quota spend, or stale todo update becomes an
+  explicit no-op or conflict, not a second delivery event;
+- status shows the active lease and current owner without making the lease the
+  source of project truth;
+- all compact server responses pass the public/private boundary scan;
+- tests cover one concurrent writer conflict and one daemon-down fallback.
+
 ## State Interaction Model
 
 Goal Harness has four product actors:
