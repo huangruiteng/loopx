@@ -15,6 +15,12 @@ from .adapter import (
     PreflightResult,
     RunHandle,
 )
+from .artifacts import (
+    build_benchmark_candidate_source_boundary,
+    classify_benchmark_artifact_path,
+    classify_benchmark_candidate_source_path,
+    filter_public_benchmark_artifact_paths,
+)
 from .lifecycle import (
     BENCHMARK_CANONICAL_LIFECYCLE_SCHEMA_VERSION,
     BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION,
@@ -31,8 +37,12 @@ __all__ = [
     "BenchmarkAdapter",
     "BenchmarkLifecyclePhase",
     "BenchmarkRequest",
+    "build_benchmark_candidate_source_boundary",
     "CANONICAL_LIFECYCLE_PHASES",
+    "classify_benchmark_artifact_path",
+    "classify_benchmark_candidate_source_path",
     "IngestResult",
+    "filter_public_benchmark_artifact_paths",
     "LaunchResult",
     "LedgerUpdate",
     "Observation",

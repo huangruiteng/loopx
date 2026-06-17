@@ -59,6 +59,7 @@ Stage only the AgentIssue hunks from these mixed tracked files:
 
 ```text
 goal_harness/benchmark.py
+goal_harness/benchmark_adapters/agentissue.py
 goal_harness/cli.py
 goal_harness/status.py
 docs/research/long-horizon-agent-benchmarks/README.md
@@ -156,6 +157,7 @@ Then compile and scan only the publication surfaces:
 ```bash
 python3 -m py_compile \
   goal_harness/benchmark.py \
+  goal_harness/benchmark_adapters/agentissue.py \
   goal_harness/cli.py \
   goal_harness/status.py \
   examples/agentissue-bench-codex-cli-runner-contract-smoke.py \
@@ -172,6 +174,7 @@ python3 -m py_compile \
 
 goal-harness check \
   --scan-path goal_harness/benchmark.py \
+  --scan-path goal_harness/benchmark_adapters/agentissue.py \
   --scan-path goal_harness/cli.py \
   --scan-path goal_harness/status.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md \

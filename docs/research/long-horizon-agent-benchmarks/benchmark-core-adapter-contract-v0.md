@@ -31,12 +31,41 @@ The shared ledger should consume only adapter-neutral lifecycle, score, route,
 failure, and trace summaries. Raw task text, trajectories, verifier output,
 private paths, credentials, and benchmark logs remain outside public artifacts.
 
-## First Extraction Slice
+## Module Layout
 
-The first refactor should keep runtime behavior stable:
+Keep `goal_harness/benchmark.py` as a legacy public facade while moving durable
+surfaces into smaller modules:
 
-1. Add the shared `benchmark_core` package.
-2. Project existing lifecycle state into canonical lifecycle fields.
-3. Add a focused smoke that proves `process_started` is not case entry.
-4. Move one mature adapter slice next, starting with SkillsBench reducer/route
-   contracts before adding more benchmark features.
+| Module | Owns | Must Not Own |
+| --- | --- | --- |
+| `goal_harness.benchmark_core` | adapter-neutral lifecycle, round summaries, artifact/source boundary policy | benchmark-specific launchers or scoring quirks |
+| `goal_harness.benchmark_adapters.skillsbench` | SkillsBench routes, arm semantics, job names, public-safe setup failure attribution | Terminal-Bench/ALE/AgentIssue behavior |
+| `goal_harness.benchmark_adapters.agentissue` | AgentIssue-Bench runner packets, synthetic staging, execution gates, compact result reducer | shared artifact boundary or unrelated benchmark policy |
+| `goal_harness.benchmark` | backward-compatible public imports plus legacy functions not yet extracted | new benchmark-specific code when a narrower adapter module exists |
+
+New benchmark code should choose one of these homes before adding functions. If
+a helper is useful across benchmarks, put it in `benchmark_core`. If it names a
+benchmark, route, Docker image, task family, or verifier convention, put it in a
+benchmark adapter.
+
+## Extraction Progress
+
+Completed slices:
+
+1. Shared `benchmark_core` package and canonical lifecycle projection.
+2. Focused smoke proving `process_started` is not case entry.
+3. `benchmark_core.artifacts` for compact/public artifact and candidate-source
+   boundaries.
+4. `benchmark_adapters.skillsbench` for SkillsBench route contracts, job names,
+   and public-safe runner error attribution.
+5. `benchmark_adapters.agentissue` for AgentIssue-Bench runner flow, gates, and
+   compact result reducers.
+
+Next slices:
+
+1. Move Terminal-Bench private-runner launch/materialization helpers behind a
+   `benchmark_adapters.terminal_bench` module.
+2. Move ALE readiness/launch packet helpers behind a
+   `benchmark_adapters.agents_last_exam` module.
+3. Keep `benchmark.py` as the compatibility facade until callers are migrated
+   to adapter imports.

@@ -2474,14 +2474,14 @@ def build_runner_failure_compact(
 
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
-    from goal_harness.benchmark import (
-        _skillsbench_runner_error_fingerprint,
-        _skillsbench_runner_error_attribution,
-        build_skillsbench_benchmark_run,
+    from goal_harness.benchmark import build_skillsbench_benchmark_run
+    from goal_harness.benchmark_adapters.skillsbench import (
+        skillsbench_runner_error_attribution,
+        skillsbench_runner_error_fingerprint,
     )
     from goal_harness.status import compact_benchmark_run
 
-    exception_type, attribution, labels = _skillsbench_runner_error_attribution(
+    exception_type, attribution, labels = skillsbench_runner_error_attribution(
         str(exc)
     )
     compact = build_skillsbench_benchmark_run(
@@ -2545,7 +2545,7 @@ def build_runner_failure_compact(
     task_staging = _effective_public_task_staging(plan)
     if task_staging:
         compact["task_staging"] = task_staging
-    fingerprint = _skillsbench_runner_error_fingerprint(str(exc))
+    fingerprint = skillsbench_runner_error_fingerprint(str(exc))
     if fingerprint:
         compact["runner_failure_fingerprint"] = fingerprint
     diagnostic = build_compose_setup_diagnostic(compact, plan)

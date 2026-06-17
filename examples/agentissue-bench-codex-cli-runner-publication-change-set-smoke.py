@@ -13,6 +13,7 @@ README = TOPIC_DIR / "README.md"
 PACKET = TOPIC_DIR / "agentissue-bench-codex-cli-runner-publication-change-set-v0.md"
 BENCHMARK = REPO_ROOT / "goal_harness" / "benchmark.py"
 CLI = REPO_ROOT / "goal_harness" / "cli.py"
+AGENTISSUE_ADAPTER = REPO_ROOT / "goal_harness" / "benchmark_adapters" / "agentissue.py"
 
 DOCS = [
     "agentissue-bench-codex-cli-runner-contract-v0.md",
@@ -44,6 +45,7 @@ SMOKES = [
 
 MIXED_TRACKED_FILES = [
     "goal_harness/benchmark.py",
+    "goal_harness/benchmark_adapters/agentissue.py",
     "goal_harness/cli.py",
     "goal_harness/status.py",
     "docs/research/long-horizon-agent-benchmarks/README.md",
@@ -132,7 +134,7 @@ def assert_include_lists() -> None:
 
 
 def assert_source_and_readme_contract() -> None:
-    source = read(BENCHMARK) + "\n" + read(CLI)
+    source = read(BENCHMARK) + "\n" + read(CLI) + "\n" + read(AGENTISSUE_ADAPTER)
     missing = [snippet for snippet in REQUIRED_SOURCE_SNIPPETS if snippet not in source]
     assert not missing, missing
     readme = read(README)
@@ -149,9 +151,10 @@ def assert_mixed_files_are_detected() -> None:
         return
     unexpected = [name for name in changed if name not in MIXED_TRACKED_FILES]
     assert not unexpected, unexpected
-    assert "goal_harness/benchmark.py" in changed, changed
-    assert "goal_harness/cli.py" in changed, changed
-    assert "docs/research/long-horizon-agent-benchmarks/README.md" in changed, changed
+    assert (
+        "goal_harness/benchmark.py" in changed
+        or "goal_harness/benchmark_adapters/agentissue.py" in changed
+    ), changed
 
 
 def assert_public_boundary() -> None:
