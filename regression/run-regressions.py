@@ -24,6 +24,10 @@ CONTRACT_ONLY_REGRESSIONS = (
         description="blocked P0 work stays visible while safe fallback work proceeds",
     ),
     Regression(
+        path="regression/no-progress-self-repair-contract.py",
+        description="two no-progress signals force autonomous self-repair before quiet waiting",
+    ),
+    Regression(
         path="regression/quota-executable-backlog-projection.py",
         description="quota selects executable backlog work over unchanged monitor context",
     ),

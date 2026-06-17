@@ -30,6 +30,15 @@ It checks that `quota should-run` keeps the blocked item user-visible with
 fallback as the agent action in the interaction contract and protocol packet.
 
 ```bash
+python3 regression/no-progress-self-repair-contract.py
+```
+
+Runs the autonomous no-progress self-repair contract. This wrapper deliberately
+reuses `examples/autonomous-replan-obligation-smoke.py` instead of copying the
+fixture: repeated no-progress signals should force an autonomous replan/self-
+repair obligation before another quiet wait.
+
+```bash
 python3 regression/external-evidence-observation-real-codex.py
 ```
 
