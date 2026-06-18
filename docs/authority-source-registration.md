@@ -11,6 +11,36 @@ The command writes the selected source registry, usually the ignored
 global registry. Public repository files should keep examples and contracts
 only.
 
+## Registry Boundary Classes
+
+Goal Harness exposes a registry boundary classifier:
+
+```bash
+goal-harness registry-boundary --path .goal-harness/registry.json --require-gitignored
+```
+
+Use it before committing registry-related work. It separates four surfaces:
+
+| Boundary | Storage | GitHub policy |
+| --- | --- | --- |
+| project-local private registry | `.goal-harness/registry.json` in one repo | must be ignored; do not push |
+| shared global-local registry | `<runtime-root>/registry.global.json` | local control plane only; do not push |
+| public-safe projection | generated compact counts/roles with no raw refs | ignored by default; do not push runtime registry files to GitHub |
+| public example fixture | hand-written examples under `examples/` | may be tracked only when it is a fixture/contract, not live state |
+
+The classifier reports `classification`, `should_be_gitignored`,
+`github_push_allowed`, `private_marker_count`, git tracked/ignored state, and
+any boundary risks. `goal-harness check` also reports the active registry
+boundary so publish-time scans can catch a local registry that accidentally
+became tracked.
+
+This distinction is intentional: Goal Harness provides registry capability, and
+Goal Harness should use that capability to manage its own source authority, but
+runtime registry files are still state, not public repository artifacts. Public
+docs may describe schemas, examples, and compact counts; raw local registries,
+global-local registries, and generated public-safe projections stay ignored
+unless they are explicitly authored as example fixtures.
+
 ## Minimal Command
 
 ```bash

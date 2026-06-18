@@ -495,6 +495,20 @@ Health findings are compact and local-only. They may include local filesystem
 paths in a developer machine export, so do not publish a raw local status JSON
 outside the machine.
 
+Registry boundary should be checked with:
+
+```bash
+goal-harness registry-boundary --path <registry.json> --require-gitignored
+```
+
+The shared `registry.global.json` is classified as `shared_local_registry` and
+must not be pushed. Project `.goal-harness/registry.json` files are
+`project_local_private_registry`. Generated public-safe registry projections are
+still runtime artifacts by default: they can be useful for review or handoff,
+but `github_push_allowed=false` unless the file is an explicitly authored
+example fixture under `examples/`. Dashboard/status JSON should therefore treat
+registry data as a local control-plane view, not as a repository artifact.
+
 Finding shape:
 
 ```json

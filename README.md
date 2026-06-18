@@ -503,6 +503,7 @@ new-project-prompt      generate a Codex prompt for project connection
 demo                    create a disposable local demo goal
 doctor                  diagnose installation and import health
 registry                inspect registered goals
+registry-boundary       classify registry local/public boundary and push policy
 status                  show first-screen operator status
 history                 read run history
 refresh-state           append a state-only run
