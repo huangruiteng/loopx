@@ -70,6 +70,12 @@ HANDOFF_READY_CLASSIFICATIONS = {
     "operator_gate_approved",
     "controller_opted_in_waiting_for_run",
 }
+DREAMING_ADVISORY_CLASSIFICATIONS = {
+    "dreaming_exploration_proposal",
+    "dreaming_memory_consolidation",
+    "dreaming_refactor_warning",
+    "dreaming_archive_suggestion",
+}
 USER_OR_CONTROLLER_CLASSIFICATIONS = {
     "needs_human_reward",
     "needs_controller_opt_in",
@@ -78,7 +84,7 @@ USER_OR_CONTROLLER_CLASSIFICATIONS = {
     "ready_for_user_relay",
     "operator_gate_deferred",
     "operator_gate_rejected",
-}
+} | DREAMING_ADVISORY_CLASSIFICATIONS
 REGISTRY_WAITING_ON_OVERRIDES = {
     "user_or_controller",
     "controller",
@@ -5136,6 +5142,7 @@ def attention_item(
     user_todos: dict[str, Any] | None = None,
     agent_todos: dict[str, Any] | None = None,
     todo_state_file: str | None = None,
+    dreaming_proposal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     project_asset = build_project_asset(
         status=status,
@@ -5175,6 +5182,9 @@ def attention_item(
         item["agent_todos"] = agent_todos
     if todo_state_file:
         item["todo_state_file"] = todo_state_file
+    if dreaming_proposal:
+        item["dreaming_proposal"] = dreaming_proposal
+        item["project_asset"]["dreaming_proposal"] = dreaming_proposal
     return item
 
 
@@ -5537,6 +5547,51 @@ def operator_gate_attention_fields(run: dict[str, Any] | None) -> dict[str, Any]
     return fields
 
 
+def compact_dreaming_proposal(run: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(run, dict):
+        return None
+    classification = str(run.get("classification") or "")
+    if classification not in DREAMING_ADVISORY_CLASSIFICATIONS:
+        return None
+    raw = run.get("dreaming") if isinstance(run.get("dreaming"), dict) else {}
+    proposal: dict[str, Any] = {
+        "schema_version": "dreaming_proposal_v0",
+        "classification": classification,
+        "advisory": True,
+        "promoted_to_delivery": False,
+        "execution_allowed": False,
+        "delivery_spend_allowed": False,
+    }
+    for key in ("lane", "evidence_window", "proposal_type", "confidence"):
+        value = public_safe_compact_text(raw.get(key), limit=80)
+        if value:
+            proposal[key] = value
+    if raw.get("requires_project_controller") is not None:
+        proposal["requires_project_controller"] = bool(raw.get("requires_project_controller"))
+    question = public_safe_compact_text(
+        run.get("operator_question") or raw.get("operator_question"),
+        limit=220,
+    )
+    if question:
+        proposal["operator_question"] = question
+    return proposal
+
+
+def dreaming_attention_fields(run: dict[str, Any] | None) -> dict[str, Any]:
+    proposal = compact_dreaming_proposal(run)
+    if not proposal:
+        return {}
+    fields: dict[str, Any] = {"dreaming_proposal": proposal}
+    question = proposal.get("operator_question")
+    if question:
+        fields["operator_question"] = normalize_operator_question(
+            str(question),
+            goal_id=str((run or {}).get("goal_id") or ""),
+            gate="dreaming_proposal_review",
+        )
+    return fields
+
+
 def legacy_runtime_goal_attention(
     goal: dict[str, Any],
     current_run: dict[str, Any] | None,
@@ -5599,7 +5654,8 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
     current_run = latest_run(goal)
     readiness_fields = readiness_attention_fields(current_run)
     operator_gate_fields = operator_gate_attention_fields(current_run)
-    attention_fields = {**readiness_fields, **operator_gate_fields}
+    dreaming_fields = dreaming_attention_fields(current_run)
+    attention_fields = {**readiness_fields, **operator_gate_fields, **dreaming_fields}
     lifecycle_fields = goal_lifecycle_fields(goal, current_run)
 
     if goal.get("legacy_runtime_goal"):

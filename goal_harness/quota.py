@@ -3420,6 +3420,15 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
         )
         if replan_obligation:
             payload["autonomous_replan_obligation"] = replan_obligation
+        dreaming_proposal = (
+            item.get("dreaming_proposal")
+            if isinstance(item.get("dreaming_proposal"), dict)
+            else project_asset.get("dreaming_proposal")
+            if isinstance(project_asset.get("dreaming_proposal"), dict)
+            else None
+        )
+        if dreaming_proposal:
+            payload["dreaming_proposal"] = dreaming_proposal
         interface_budget_cadence = (
             project_asset.get("interface_budget_cadence")
             if isinstance(project_asset.get("interface_budget_cadence"), dict)
