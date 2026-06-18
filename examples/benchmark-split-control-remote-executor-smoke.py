@@ -24,7 +24,10 @@ from goal_harness.benchmark_core import (  # noqa: E402
 )
 from goal_harness.benchmark_adapters.terminal_bench import (  # noqa: E402
     TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
+    TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS,
+    TERMINAL_BENCH_REMOTE_EXECUTOR_MATERIALIZER_SCHEMA,
     build_terminal_bench_remote_executor_command_adapter,
+    build_terminal_bench_remote_executor_materializer,
 )
 
 
@@ -383,6 +386,31 @@ def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
     assert terminal_adapter["surface_contract"]["remote_executor_owns_docker_runner_data"] is True
     assert_public_safe(adapter_payload)
 
+    incomplete_materializer = build_terminal_bench_remote_executor_materializer(
+        present_handle_fields=("runner_handle",),
+    )
+    assert (
+        incomplete_materializer["schema_version"]
+        == TERMINAL_BENCH_REMOTE_EXECUTOR_MATERIALIZER_SCHEMA
+    ), incomplete_materializer
+    assert incomplete_materializer["ready"] is False, incomplete_materializer
+    assert incomplete_materializer["first_blocker"] == (
+        "terminal_bench_remote_executor_handle_manifest_incomplete"
+    )
+    assert "runner_handle" in incomplete_materializer["materializer"][
+        "present_handle_fields"
+    ]
+    assert "jobs_dir_handle" in incomplete_materializer["materializer"][
+        "missing_handle_fields"
+    ]
+    assert incomplete_materializer["materializer"][
+        "public_handle_values_recorded"
+    ] is False
+    assert incomplete_materializer["boundary"][
+        "codex_credentials_synced_to_remote"
+    ] is False
+    assert_public_safe(incomplete_materializer)
+
     readiness = build_split_control_remote_executor_readiness(
         benchmark_ids=("terminal-bench@2.0", "skillsbench@1.1"),
         local_agent={
@@ -445,9 +473,10 @@ def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
     )
     assert_public_safe(partial_seam)
 
-    materialized_adapter_payload = build_terminal_bench_remote_executor_command_adapter(
-        remote_materializer_ready=True,
+    materialized_adapter_payload = build_terminal_bench_remote_executor_materializer(
+        present_handle_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS,
     )
+    assert materialized_adapter_payload["ready"] is True, materialized_adapter_payload
     materialized_seam = build_split_control_remote_executor_execution_seam(
         batch,
         command_adapters=materialized_adapter_payload["command_adapters"],

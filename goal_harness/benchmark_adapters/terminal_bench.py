@@ -9,7 +9,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from ..benchmark_core.io import (
     load_json_object as _load_json_object,
@@ -111,6 +111,9 @@ TERMINAL_BENCH_ENVIRONMENT_SETUP_READINESS_SCHEMA = (
 )
 TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA = (
     "terminal_bench_remote_executor_command_adapter_v1"
+)
+TERMINAL_BENCH_REMOTE_EXECUTOR_MATERIALIZER_SCHEMA = (
+    "terminal_bench_remote_executor_materializer_v0"
 )
 TERMINAL_BENCH_ENVIRONMENT_SETUP_PROBE_GATE_SCHEMA = (
     "terminal_bench_environment_setup_probe_gate_v0"
@@ -3231,6 +3234,18 @@ def _public_safe_benchmark_label(value: Any, *, limit: int = 120) -> str | None:
         return None
     return text[:limit]
 
+TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS = (
+    "benchmark_id",
+    "runner_handle",
+    "readiness_rechecked",
+    "run_root_handle",
+    "jobs_dir_handle",
+    "job_name",
+    "poll_label",
+    "cleanup_label",
+    "compact_artifact_ref",
+)
+
 def build_terminal_bench_remote_executor_command_adapter(
     *,
     benchmark_id: str = TERMINAL_BENCH_DEFAULT_DATASET,
@@ -3296,17 +3311,7 @@ def build_terminal_bench_remote_executor_command_adapter(
         "poll_label": "terminal_bench_compact_materialization_poll_surface",
         "cleanup_label": "terminal_bench_private_runner_cleanup_surface",
         "result_reducer_label": "terminal_bench_compact_harbor_result_reducer",
-        "handle_fields": [
-            "benchmark_id",
-            "runner_handle",
-            "readiness_rechecked",
-            "run_root_handle",
-            "jobs_dir_handle",
-            "job_name",
-            "poll_label",
-            "cleanup_label",
-            "compact_artifact_ref",
-        ],
+        "handle_fields": list(TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS),
         "known_blockers": blockers,
         "surface_contract": {
             "launch_surface_ready": launch_surface_ready is True,
@@ -3349,6 +3354,133 @@ def build_terminal_bench_remote_executor_command_adapter(
         ),
         "read_boundary": {
             "compact_only": True,
+            "shell_commands_read": False,
+            "argv_read": False,
+            "raw_task_text_read": False,
+            "raw_logs_read": False,
+            "trajectory_read": False,
+            "local_paths_recorded": False,
+            "remote_paths_recorded": False,
+            "docker_invoked": False,
+            "model_api_invoked": False,
+            "upload_invoked": False,
+            "submit_invoked": False,
+        },
+    }
+
+def build_terminal_bench_remote_executor_materializer(
+    *,
+    benchmark_id: str = TERMINAL_BENCH_DEFAULT_DATASET,
+    handle_manifest: Mapping[str, Any] | None = None,
+    present_handle_fields: Sequence[str] = (),
+    no_upload: bool = True,
+    submit_enabled: bool = False,
+    local_codex_credential_sync: bool = False,
+    remote_model_invocation: bool = False,
+    raw_material_allowed: bool = False,
+) -> dict[str, Any]:
+    """Materialize public-safe Terminal-Bench remote-executor handle shape.
+
+    The private manifest may contain real handles, paths, or process ids, but
+    this reducer records only which required fields are present. It does not
+    launch Harbor, Docker, Codex, or a model API.
+    """
+
+    safe_benchmark_id = _public_safe_benchmark_label(benchmark_id, limit=80)
+    blockers: list[str] = []
+    if not safe_benchmark_id:
+        safe_benchmark_id = TERMINAL_BENCH_DEFAULT_DATASET
+        blockers.append("terminal_bench_benchmark_id_not_public_safe")
+    if safe_benchmark_id != TERMINAL_BENCH_DEFAULT_DATASET:
+        blockers.append("terminal_bench_benchmark_id_unsupported")
+
+    manifest = dict(handle_manifest or {})
+    present = {
+        str(field)
+        for field in present_handle_fields
+        if str(field) in TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS
+    }
+    present.update(
+        key
+        for key, value in manifest.items()
+        if key in TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS
+        and value not in (None, "", [], {})
+    )
+    present.add("benchmark_id")
+    missing_fields = [
+        field
+        for field in TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS
+        if field not in present
+    ]
+    if missing_fields:
+        blockers.append("terminal_bench_remote_executor_handle_manifest_incomplete")
+    if not no_upload:
+        blockers.append("terminal_bench_no_upload_boundary_not_enabled")
+    if submit_enabled:
+        blockers.append("terminal_bench_submit_must_remain_disabled")
+    if local_codex_credential_sync:
+        blockers.append("terminal_bench_codex_credential_sync_forbidden")
+    if remote_model_invocation:
+        blockers.append("terminal_bench_remote_model_invocation_forbidden")
+    if raw_material_allowed:
+        blockers.append("terminal_bench_raw_material_boundary_not_enabled")
+
+    ready = not blockers
+    adapter_payload = build_terminal_bench_remote_executor_command_adapter(
+        benchmark_id=safe_benchmark_id,
+        remote_materializer_ready=ready,
+        no_upload=no_upload,
+        submit_enabled=submit_enabled,
+    )
+    return {
+        "schema_version": TERMINAL_BENCH_REMOTE_EXECUTOR_MATERIALIZER_SCHEMA,
+        "benchmark_id": safe_benchmark_id,
+        "ready": ready,
+        "first_blocker": blockers[0]
+        if blockers
+        else "ready_for_terminal_bench_remote_executor_dry_run",
+        "blockers": blockers,
+        "materializer": {
+            "entrypoint_label": "terminal_bench_no_upload_case_run_surface",
+            "ready": ready,
+            "handle_manifest_read": bool(handle_manifest),
+            "required_handle_fields": list(
+                TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS
+            ),
+            "present_handle_fields": [
+                field
+                for field in TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS
+                if field in present
+            ],
+            "missing_handle_fields": missing_fields,
+            "private_handle_values_required": True,
+            "public_handle_values_recorded": False,
+        },
+        "boundary": {
+            "compact_only": True,
+            "shell_command_embedded": False,
+            "argv_embedded": False,
+            "host_path_embedded": False,
+            "remote_path_embedded": False,
+            "raw_task_text_public": False,
+            "raw_logs_public": False,
+            "raw_trajectory_public": False,
+            "credential_values_recorded": False,
+            "codex_credentials_synced_to_remote": False,
+            "remote_model_api_invocation_allowed": False,
+            "upload_allowed": False,
+            "submit_allowed": False,
+        },
+        "command_adapters": adapter_payload["command_adapters"],
+        "command_adapter": adapter_payload["command_adapter"],
+        "next_action": (
+            "feed_materialized_terminal_bench_adapter_to_execution_seam"
+            if ready
+            else "provide_private_remote_executor_handle_manifest_before_launch"
+        ),
+        "read_boundary": {
+            "compact_only": True,
+            "handle_manifest_values_recorded": False,
             "shell_commands_read": False,
             "argv_read": False,
             "raw_task_text_read": False,
