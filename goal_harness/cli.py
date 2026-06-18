@@ -90,11 +90,13 @@ from .benchmark_adapters.terminal_bench import (
     TERMINAL_BENCH_MANAGED_CODEX_GOAL_HARNESS_KWARGS,
     TERMINAL_BENCH_MODES,
     TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
+    TERMINAL_BENCH_REMOTE_EXECUTOR_MATERIALIZER_SCHEMA,
     agent_kwargs_from_invocation,
     build_terminal_bench_benchmark_run,
     build_terminal_bench_environment_setup_probe_gate,
     build_terminal_bench_harbor_result_benchmark_run,
     build_terminal_bench_remote_executor_command_adapter,
+    build_terminal_bench_remote_executor_materializer,
     build_terminal_bench_result_finalization_gate,
     collect_terminal_bench_goal_harness_cli_bridge_trace,
     launch_terminal_bench_environment_setup_probe,
@@ -416,6 +418,56 @@ def render_terminal_bench_remote_executor_command_adapter_markdown(
         f"- host path embedded: `{boundary.get('host_path_embedded')}`",
         f"- raw task text public: `{boundary.get('raw_task_text_public')}`",
         f"- raw logs public: `{boundary.get('raw_logs_public')}`",
+        f"- upload allowed: `{boundary.get('upload_allowed')}`",
+        f"- submit allowed: `{boundary.get('submit_allowed')}`",
+    ]
+    blockers = payload.get("blockers")
+    if isinstance(blockers, list) and blockers:
+        lines.append("- Blockers: " + ", ".join(f"`{item}`" for item in blockers))
+    return "\n".join(lines) + "\n"
+
+
+def render_terminal_bench_remote_executor_materializer_markdown(
+    payload: dict[str, object],
+) -> str:
+    materializer = (
+        payload.get("materializer")
+        if isinstance(payload.get("materializer"), dict)
+        else {}
+    )
+    boundary = (
+        payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    )
+    lines = [
+        "# Terminal-Bench Remote Executor Materializer",
+        "",
+        f"- Schema: `{payload.get('schema_version')}`",
+        f"- Benchmark: `{payload.get('benchmark_id')}`",
+        f"- Ready: `{payload.get('ready')}`",
+        f"- First blocker: `{payload.get('first_blocker')}`",
+        f"- Entrypoint label: `{materializer.get('entrypoint_label')}`",
+        f"- Manifest read: `{materializer.get('handle_manifest_read')}`",
+        "- Public handle values recorded: "
+        f"`{materializer.get('public_handle_values_recorded')}`",
+        "- Present handle fields: "
+        + ", ".join(f"`{item}`" for item in materializer.get("present_handle_fields", [])),
+        "- Missing handle fields: "
+        + ", ".join(f"`{item}`" for item in materializer.get("missing_handle_fields", [])),
+        f"- Next action: {payload.get('next_action')}",
+        "",
+        "## Boundary",
+        "",
+        f"- Compact only: `{boundary.get('compact_only')}`",
+        f"- Shell command embedded: `{boundary.get('shell_command_embedded')}`",
+        f"- argv embedded: `{boundary.get('argv_embedded')}`",
+        f"- host path embedded: `{boundary.get('host_path_embedded')}`",
+        f"- remote path embedded: `{boundary.get('remote_path_embedded')}`",
+        f"- raw task text public: `{boundary.get('raw_task_text_public')}`",
+        f"- raw logs public: `{boundary.get('raw_logs_public')}`",
+        "- Codex credentials synced to remote: "
+        f"`{boundary.get('codex_credentials_synced_to_remote')}`",
+        "- Remote model API invocation allowed: "
+        f"`{boundary.get('remote_model_api_invocation_allowed')}`",
         f"- upload allowed: `{boundary.get('upload_allowed')}`",
         f"- submit allowed: `{boundary.get('submit_allowed')}`",
     ]
@@ -3118,6 +3170,71 @@ def main(argv: list[str] | None = None) -> int:
         "--require-ready",
         action="store_true",
         help="Return non-zero unless the adapter facts are ready.",
+    )
+
+    terminal_bench_remote_materializer_parser = benchmark_sub.add_parser(
+        "terminal-bench-remote-materializer",
+        help=(
+            "Reduce private Terminal-Bench remote-executor handles to a "
+            "public-safe materializer payload. This does not execute benchmarks."
+        ),
+    )
+    add_subcommand_format(terminal_bench_remote_materializer_parser)
+    terminal_bench_remote_materializer_parser.add_argument(
+        "benchmark_name",
+        choices=["terminal-bench"],
+        help="Benchmark family. Only terminal-bench is supported.",
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--benchmark-id",
+        default=TERMINAL_BENCH_DEFAULT_DATASET,
+        help="Public-safe split-control benchmark id.",
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--handle-manifest-json",
+        help=(
+            "Path to a private JSON object with remote-executor handle fields. "
+            "Only field presence is emitted; values are never printed."
+        ),
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--handle-field",
+        action="append",
+        default=[],
+        help=(
+            "Public-safe fixture field name to mark present without reading a "
+            "private manifest. Repeat as needed."
+        ),
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--no-upload-disabled",
+        action="store_true",
+        help="Fixture flag proving upload-enabled runs are blocked.",
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--submit-enabled",
+        action="store_true",
+        help="Fixture flag proving submit-enabled runs are blocked.",
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--local-codex-credential-sync",
+        action="store_true",
+        help="Fixture flag proving Codex credential sync to remote is blocked.",
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--remote-model-invocation",
+        action="store_true",
+        help="Fixture flag proving remote model invocation is blocked.",
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--raw-material-allowed",
+        action="store_true",
+        help="Fixture flag proving raw task/log/trajectory exposure is blocked.",
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--require-ready",
+        action="store_true",
+        help="Return non-zero unless the materializer payload is ready.",
     )
 
     ale_local_preflight_parser = benchmark_sub.add_parser(
@@ -6009,6 +6126,74 @@ def main(argv: list[str] | None = None) -> int:
                 payload,
                 output_format(args),
                 render_terminal_bench_remote_executor_command_adapter_markdown,
+            )
+            return 0 if payload.get("ok") else 1
+        if args.benchmark_command == "terminal-bench-remote-materializer":
+            try:
+                if args.benchmark_name != "terminal-bench":
+                    raise ValueError("only terminal-bench is supported")
+                handle_manifest = None
+                if args.handle_manifest_json:
+                    try:
+                        loaded_manifest = json.loads(
+                            Path(args.handle_manifest_json).read_text(
+                                encoding="utf-8"
+                            )
+                        )
+                    except (OSError, json.JSONDecodeError) as exc:
+                        raise ValueError(
+                            "private handle manifest could not be read as a JSON object"
+                        ) from exc
+                    if not isinstance(loaded_manifest, dict):
+                        raise ValueError("private handle manifest must be a JSON object")
+                    handle_manifest = loaded_manifest
+                payload = build_terminal_bench_remote_executor_materializer(
+                    benchmark_id=args.benchmark_id,
+                    handle_manifest=handle_manifest,
+                    present_handle_fields=args.handle_field,
+                    no_upload=not bool(args.no_upload_disabled),
+                    submit_enabled=bool(args.submit_enabled),
+                    local_codex_credential_sync=bool(
+                        args.local_codex_credential_sync
+                    ),
+                    remote_model_invocation=bool(args.remote_model_invocation),
+                    raw_material_allowed=bool(args.raw_material_allowed),
+                )
+                payload["ok"] = True
+                payload["dry_run"] = True
+                if args.require_ready and payload.get("ready") is not True:
+                    payload["ok"] = False
+                    payload["error"] = (
+                        payload.get("first_blocker")
+                        or "terminal_bench_remote_materializer_not_ready"
+                    )
+                payload["require_ready"] = bool(args.require_ready)
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "dry_run": True,
+                    "schema_version": TERMINAL_BENCH_REMOTE_EXECUTOR_MATERIALIZER_SCHEMA,
+                    "error": str(exc),
+                    "read_boundary": {
+                        "compact_only": True,
+                        "handle_manifest_values_recorded": False,
+                        "shell_commands_read": False,
+                        "argv_read": False,
+                        "raw_task_text_read": False,
+                        "raw_logs_read": False,
+                        "trajectory_read": False,
+                        "local_paths_recorded": False,
+                        "remote_paths_recorded": False,
+                        "docker_invoked": False,
+                        "model_api_invoked": False,
+                        "upload_invoked": False,
+                        "submit_invoked": False,
+                    },
+                }
+            print_payload(
+                payload,
+                output_format(args),
+                render_terminal_bench_remote_executor_materializer_markdown,
             )
             return 0 if payload.get("ok") else 1
         if args.benchmark_command == "ale-local-preflight":
