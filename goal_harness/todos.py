@@ -362,6 +362,27 @@ def set_todo_marker(lines: list[str], block: dict[str, Any], status: str) -> boo
     return True
 
 
+def set_todo_text(lines: list[str], block: dict[str, Any], text: str, *, status: str) -> bool:
+    normalized = normalize_new_todo(text)
+    if normalize_todo_text(str(block.get("text") or "")) == normalized:
+        return False
+
+    start = int(block["start"])
+    end = int(block["end"])
+    marker = todo_marker_for_status(status)
+    replacement = f"- [{marker}] {normalized}"
+    remove_until = start + 1
+    while remove_until < end and lines[remove_until].startswith((" ", "\t")):
+        if parse_todo_metadata_line(lines[remove_until]) is not None:
+            break
+        remove_until += 1
+    removed = remove_until - start
+    lines[start:remove_until] = [replacement]
+    block["text"] = normalized
+    block["end"] = end - (removed - 1)
+    return True
+
+
 def find_todo_block(
     lines: list[str],
     *,
@@ -549,6 +570,7 @@ def apply_todo_update_to_lines(
     lines: list[str],
     *,
     todo_id: str,
+    text: str | None = None,
     status: str | None = None,
     role: str | None = None,
     note: str | None = None,
@@ -575,6 +597,9 @@ def apply_todo_update_to_lines(
     status_changed = False
     if normalized_status:
         status_changed = set_todo_marker(lines, block, normalized_status)
+    text_changed = False
+    if text is not None:
+        text_changed = set_todo_text(lines, block, text, status=target_status)
 
     updates: dict[str, Any] = {
         "todo_id": normalized_todo_id,
@@ -598,7 +623,7 @@ def apply_todo_update_to_lines(
         updates["required_write_scopes"] = required_write_scopes
     metadata_line = metadata_line_for_block(block, updates)
     semantic_metadata_changed = todo_metadata_would_change(lines, block, metadata_line)
-    if status_changed or semantic_metadata_changed:
+    if status_changed or text_changed or semantic_metadata_changed:
         updates["updated_at"] = updated_at
         metadata_line = metadata_line_for_block(block, updates)
     metadata_updated = upsert_todo_metadata(lines, block, metadata_line)
@@ -609,8 +634,9 @@ def apply_todo_update_to_lines(
         "todo_id": normalized_todo_id,
         "status": target_status,
         "status_changed": status_changed,
+        "text_changed": text_changed,
         "metadata_updated": metadata_updated,
-        "changed": status_changed or metadata_updated,
+        "changed": status_changed or text_changed or metadata_updated,
     }
 
 
@@ -619,6 +645,7 @@ def update_goal_todo(
     registry_path: Path,
     goal_id: str,
     todo_id: str,
+    text: str | None = None,
     status: str | None = None,
     role: str | None = None,
     note: str | None = None,
@@ -644,6 +671,7 @@ def update_goal_todo(
         update_result = apply_todo_update_to_lines(
             lines,
             todo_id=todo_id,
+            text=text,
             status=status,
             role=role,
             note=note,
@@ -973,5 +1001,6 @@ def render_todo_markdown(payload: dict[str, Any]) -> str:
     if payload.get("error"):
         lines.append(f"- error: {payload.get('error')}")
     elif "todo" in payload:
-        lines.extend(["", "## Todo", "", f"- [ ] {payload.get('todo')}"])
+        marker = todo_marker_for_status(payload.get("status") or TODO_STATUS_OPEN)
+        lines.extend(["", "## Todo", "", f"- [{marker}] {payload.get('todo')}"])
     return "\n".join(lines)

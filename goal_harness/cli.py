@@ -8604,6 +8604,7 @@ def main(argv: list[str] | None = None) -> int:
                 if not args.todo_id:
                     raise ValueError("todo update requires --todo-id")
                 if not any([
+                    args.text,
                     args.status,
                     args.note,
                     args.evidence,
@@ -8612,11 +8613,12 @@ def main(argv: list[str] | None = None) -> int:
                     args.action_kind,
                     args.required_write_scopes,
                 ]):
-                    raise ValueError("todo update requires at least one of --status, --note, --evidence, --reason, --task-class, --action-kind, or --required-write-scope")
+                    raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, or --required-write-scope")
                 payload = update_goal_todo(
                     registry_path=registry_path,
                     goal_id=args.goal_id,
                     todo_id=args.todo_id,
+                    text=args.text,
                     status=args.status,
                     role=args.role,
                     note=args.note,

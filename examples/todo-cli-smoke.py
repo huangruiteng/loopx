@@ -20,6 +20,7 @@ from goal_harness.status import parse_active_state_todos  # noqa: E402
 GOAL_ID = "todo-cli-goal"
 USER_TODO = "Review the owner decision checklist before approving delivery."
 AGENT_TODO = "Summarize the read-only evidence after the user checklist is done."
+UPDATED_AGENT_TODO = "Publish the compact evidence summary after validation passes."
 
 
 def write_fixture(root: Path) -> tuple[Path, Path]:
@@ -154,6 +155,36 @@ def main() -> int:
         assert fields["agent_todos"]["items"][0]["action_kind"] == "run_eval", fields
         assert fields["user_todos"]["source_section"] == "User Todo / Owner Review Reading Queue", fields
         assert fields["agent_todos"]["source_section"] == "Agent Todo", fields
+
+        update_payload = run_cli(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            metadata_payload["todo_id"],
+            "--text",
+            UPDATED_AGENT_TODO,
+            "--status",
+            "done",
+            "--evidence",
+            "Validated compact evidence summary.",
+        )
+        assert update_payload["changed"] is True, update_payload
+        assert update_payload["text_changed"] is True, update_payload
+        assert update_payload["status_changed"] is True, update_payload
+        assert update_payload["todo"] == UPDATED_AGENT_TODO, update_payload
+        after_update = state_file.read_text(encoding="utf-8")
+        assert f"- [x] {UPDATED_AGENT_TODO}" in after_update, after_update
+        assert "Summarize the read-only evidence after the user" not in after_update, after_update
+        assert "status=done" in after_update, after_update
+        assert "Validated%20compact%20evidence%20summary." in after_update, after_update
+        updated_fields = parse_active_state_todos(after_update)
+        updated_agent_item = updated_fields["agent_todos"]["items"][0]
+        assert updated_agent_item["text"] == UPDATED_AGENT_TODO, updated_agent_item
+        assert updated_agent_item["status"] == "done", updated_agent_item
+        assert updated_agent_item["done"] is True, updated_agent_item
 
     print("todo-cli-smoke ok")
     return 0
