@@ -597,6 +597,9 @@ source contract in that project's authority surface. If the project has a
 tracked `docs/meta/DOC_REGISTRY.yaml`, update that authority map first. If it
 does not, use the project-local `.goal-harness/registry.json` through
 `authority_registry.topic_authority` and `authority_registry.project_materials`.
+This distinction is a storage/publication boundary, not two competing authority
+systems: tracked `DOC_REGISTRY` files are project assets for review, while the
+ignored `authority_registry` fallback is Goal Harness control-plane state.
 
 The stored material should answer what it is, how fresh it is, which topic it
 governs, whether owner review or read access is needed, and how conflicts are
@@ -612,9 +615,9 @@ flowchart TD
   P -->|"yes"| R{"public-safe source contract possible?"}
   R -->|"no"| B
   R -->|"yes"| D{"tracked DOC_REGISTRY exists?"}
-  D -->|"yes"| Y["update project doc registry topic/source"]
-  D -->|"no"| L["use local authority_registry"]
-  Y --> C["register redacted authority source"]
+  D -->|"yes"| Y["update tracked project DOC_REGISTRY topic/source"]
+  D -->|"no"| L["write ignored project-local authority_registry fallback"]
+  Y --> C["register redacted authority source for harness/status sync"]
   L --> C
   C --> S["sync compact summary / refresh status"]
 ```
