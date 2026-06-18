@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -167,6 +169,136 @@ def inspect_registry(path: Path) -> dict[str, Any]:
         "problems": problems,
         "goals": inspected_goals,
     }
+
+def _registry_boundary_kind(path: Path) -> dict[str, Any]:
+    parts = path.expanduser().parts
+    name = path.name
+    if ".goal-harness" in parts:
+        return {
+            "kind": "project_local_private_registry",
+            "github_push_allowed": False,
+            "should_be_gitignored": True,
+        }
+    if name == "registry.global.json" or (
+        ".codex" in parts and "goal-harness" in parts
+    ):
+        return {
+            "kind": "global_local_private_registry",
+            "github_push_allowed": False,
+            "should_be_gitignored": True,
+        }
+    if "examples" in parts or name.endswith(".example.json"):
+        return {
+            "kind": "public_fixture_registry_projection",
+            "github_push_allowed": True,
+            "should_be_gitignored": False,
+        }
+    return {
+        "kind": "unknown_registry_boundary",
+        "github_push_allowed": False,
+        "should_be_gitignored": True,
+    }
+
+
+def _registry_git_probe(path: Path) -> dict[str, Any]:
+    probe_dir = path if path.is_dir() else path.parent
+
+    def run_git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            cwd=probe_dir,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+    root = run_git("rev-parse", "--show-toplevel")
+    inside = root.returncode == 0
+    tracked = False
+    ignored = False
+    if inside:
+        root_path = Path(root.stdout.strip())
+        try:
+            rel_path = os.path.relpath(path.resolve(), root_path)
+        except (OSError, ValueError):
+            rel_path = path.name
+        tracked = (
+            subprocess.run(
+                ["git", "ls-files", "--error-unmatch", rel_path],
+                cwd=root_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            ).returncode
+            == 0
+        )
+        ignored = (
+            subprocess.run(
+                ["git", "check-ignore", "-q", rel_path],
+                cwd=root_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            ).returncode
+            == 0
+        )
+    return {
+        "inside_worktree": inside,
+        "tracked": tracked,
+        "ignored": ignored,
+        "worktree_root_recorded": False,
+    }
+
+
+def inspect_registry_boundary(path: Path) -> dict[str, Any]:
+    expanded = path.expanduser()
+    classification = _registry_boundary_kind(expanded)
+    git = _registry_git_probe(expanded)
+    risks: list[str] = []
+    if git.get("tracked") and not classification["github_push_allowed"]:
+        risks.append("registry_tracked_but_not_push_allowed")
+    if (
+        classification["should_be_gitignored"]
+        and git.get("inside_worktree")
+        and not git.get("ignored")
+        and not git.get("tracked")
+    ):
+        risks.append("registry_should_be_gitignored")
+    return {
+        "ok": not risks,
+        "schema_version": "goal_harness_registry_boundary_v0",
+        "path_label": expanded.name,
+        "path_recorded": False,
+        "boundary_kind": classification["kind"],
+        "github_push_allowed": classification["github_push_allowed"],
+        "should_be_gitignored": classification["should_be_gitignored"],
+        "git": git,
+        "risks": risks,
+    }
+
+
+def render_registry_boundary_markdown(payload: dict[str, Any]) -> str:
+    git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
+    lines = [
+        "# Goal Harness Registry Boundary",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- schema_version: `{payload.get('schema_version')}`",
+        f"- path_label: `{payload.get('path_label')}`",
+        f"- boundary_kind: `{payload.get('boundary_kind')}`",
+        f"- github_push_allowed: `{payload.get('github_push_allowed')}`",
+        f"- should_be_gitignored: `{payload.get('should_be_gitignored')}`",
+        f"- git tracked/ignored: `{git.get('tracked')}`/`{git.get('ignored')}`",
+        f"- path_recorded: `{payload.get('path_recorded')}`",
+    ]
+    risks = payload.get("risks") if isinstance(payload.get("risks"), list) else []
+    if risks:
+        lines.extend(["", "## Risks"])
+        lines.extend(f"- `{risk}`" for risk in risks)
+    return "\n".join(lines) + "\n"
 
 
 def render_registry_markdown(payload: dict[str, Any]) -> str:
