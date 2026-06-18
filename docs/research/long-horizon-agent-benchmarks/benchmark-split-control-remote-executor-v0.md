@@ -84,6 +84,28 @@ This keeps the benchmark runner interface close to the real split-control
 route while avoiding a second benchmark harness that hides stale readiness,
 raw logs, task text, uploads, or submit attempts.
 
+## Execution Seam V1
+
+`build_split_control_remote_executor_execution_seam(...)` adds the missing
+product layer between a runner batch and real execution. A runner batch can say
+that a benchmark family is ready in principle; the execution seam says whether
+that family has a command adapter and compact result reducer that can actually
+materialize a bounded no-upload run.
+
+The seam records only labels and handle contracts:
+
+- command adapter readiness and blocker labels;
+- result reducer readiness and accepted compact fields;
+- required public handle shape such as runner handle, poll label, cleanup
+  label, readiness re-check, and compact artifact ref;
+- explicit proof that shell commands, argv, local paths, remote paths, raw task
+  text, logs, trajectories, uploads, and submit paths are not embedded.
+
+This prevents the controller from treating a control-plane launch packet as a
+real runnable benchmark route. Missing command adapters or reducers remain
+first-class blockers until a benchmark family exposes a public-safe execution
+surface.
+
 ## Current Use
 
 The same route applies to the three active benchmark families:

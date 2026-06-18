@@ -44,10 +44,13 @@ For a real benchmark slice, use this sequence:
 1. Run a source and boundary preflight for the target benchmark.
 2. Build or inspect the split-control readiness payload.
 3. Produce a launch plan or runner batch only after a fresh readiness re-check.
-4. Run the smallest no-upload dry-run or mini-pair that can answer the current
+4. Build the execution seam from command-adapter facts, and treat missing
+   command adapters or compact reducers as blockers instead of launching a
+   private script.
+5. Run the smallest no-upload dry-run or mini-pair that can answer the current
    product question.
-5. Ingest a compact result or precise blocker.
-6. Update Goal Harness todo/state so the next developer sees the current route.
+6. Ingest a compact result or precise blocker.
+7. Update Goal Harness todo/state so the next developer sees the current route.
 
 Do not start from a raw shell command hidden in a local note. If a benchmark
 cannot be launched through a documented route, the next product task is to

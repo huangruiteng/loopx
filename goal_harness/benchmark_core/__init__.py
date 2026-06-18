@@ -43,10 +43,12 @@ from .parity import (
 )
 from .rounds import RoundReward, compact_round_rewards, summarize_round_rewards
 from .split_control import (
+    BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION,
     BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_LAUNCH_PLAN_SCHEMA_VERSION,
     BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_RUNNER_BATCH_SCHEMA_VERSION,
     BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_SCHEMA_VERSION,
     DEFAULT_SPLIT_CONTROL_BENCHMARK_IDS,
+    build_split_control_remote_executor_execution_seam,
     build_split_control_remote_executor_launch_plan,
     build_split_control_remote_executor_readiness,
     build_split_control_remote_executor_runner_batch,
@@ -56,6 +58,7 @@ __all__ = [
     "AdapterClassification",
     "BENCHMARK_CANONICAL_LIFECYCLE_SCHEMA_VERSION",
     "BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION",
+    "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_LAUNCH_PLAN_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_RUNNER_BATCH_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_SCHEMA_VERSION",
@@ -64,6 +67,7 @@ __all__ = [
     "BenchmarkRequest",
     "build_benchmark_candidate_source_boundary",
     "build_codex_app_parity_posthoc_check",
+    "build_split_control_remote_executor_execution_seam",
     "build_split_control_remote_executor_launch_plan",
     "build_split_control_remote_executor_readiness",
     "build_split_control_remote_executor_runner_batch",
