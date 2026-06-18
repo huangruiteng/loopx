@@ -590,6 +590,7 @@ Start here:
 - [Heartbeat automation prompt](docs/heartbeat-automation-prompt.md)
 - [Long-task cadence policy](docs/long-task-cadence-policy.md)
 - [Public/private boundary](docs/public-private-boundary.md)
+- [Benchmark developer workflow](docs/benchmark-developer-workflow.md)
 - [Public launch narrative draft](docs/outreach/public-launch-narrative-draft.md)
 - [Xiaohongshu launch draft](docs/outreach/xiaohongshu-launch-draft.md)
 - [Dashboard status contract](docs/status-data-contract.md)

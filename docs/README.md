@@ -11,6 +11,8 @@ incident report, or launch draft.
 - [Architecture](architecture.md): core concepts and control-plane shape.
 - [Integration guide](integration.md): how to connect a project to Goal
   Harness.
+- [Benchmark developer workflow](benchmark-developer-workflow.md): how to run,
+  observe, and ingest benchmark slices as a developer-facing product workflow.
 - [State interaction model](state-interaction-model.md): user, agent, and state
   channel flow.
 - [Heartbeat automation prompt](heartbeat-automation-prompt.md): current
@@ -36,6 +38,7 @@ incident report, or launch draft.
 ### Operator Workflows
 
 - [Integration guide](integration.md)
+- [Benchmark developer workflow](benchmark-developer-workflow.md)
 - [Attention queue](attention-queue.md)
 - [Project agent todo contract](project-agent-todo-contract.md)
 - [Authority source registration](authority-source-registration.md)
