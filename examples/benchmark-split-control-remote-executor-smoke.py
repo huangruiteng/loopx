@@ -45,6 +45,69 @@ FORBIDDEN_TEXT = (
 )
 
 
+def ready_local_driver_contract(label: str = "local_codex_driver") -> dict[str, object]:
+    return {
+        "ready": True,
+        "driver_label": label,
+        "owns": [
+            "codex_cli",
+            "codex_auth",
+            "goal_harness_state",
+            "model_invocation",
+            "planning_and_patch_generation",
+        ],
+        "remote_request_fields": [
+            "benchmark_id",
+            "case_handle",
+            "execution_mode",
+            "no_upload",
+            "compact_artifact_ref",
+        ],
+        "keeps_local": [
+            "codex_auth",
+            "model_invocation",
+            "goal_harness_state",
+            "raw_reasoning_trace",
+        ],
+    }
+
+
+def ready_remote_sandbox_contract(label: str = "remote_executor_sandbox") -> dict[str, object]:
+    return {
+        "ready": True,
+        "sandbox_label": label,
+        "owns": [
+            "docker",
+            "runner_dependencies",
+            "task_data_staging",
+            "bounded_command_execution",
+            "compact_result_reduction",
+        ],
+        "allowed_actions": [
+            "runner_dependency_check",
+            "bounded_command_execution",
+            "compact_result_reduction",
+        ],
+        "disallowed_actions": [
+            "codex_auth_sync",
+            "credential_sync",
+            "remote_agent_runtime",
+            "remote_codex_runtime",
+            "remote_model_api_invocation",
+            "raw_task_text_publication",
+            "raw_log_publication",
+            "upload",
+            "submit",
+        ],
+        "returns": [
+            "readiness_state",
+            "job_handle",
+            "compact_result_or_blocker",
+            "cleanup_state",
+        ],
+    }
+
+
 def assert_public_safe(payload: dict[str, object]) -> None:
     text = json.dumps(payload, sort_keys=True)
     leaked = [item for item in FORBIDDEN_TEXT if item in text]
@@ -342,6 +405,12 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
                 "command_adapter_status": "ready",
                 "entrypoint_label": "terminal-bench remote-executor no-upload adapter",
                 "result_reducer_label": "terminal-bench compact result reducer",
+                "local_driver_contract": ready_local_driver_contract(
+                    "terminal_bench_local_codex_driver"
+                ),
+                "remote_sandbox_contract": ready_remote_sandbox_contract(
+                    "terminal_bench_remote_sandbox"
+                ),
             },
             "skillsbench@1.1": {
                 "command_adapter_ready": True,
@@ -349,6 +418,12 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
                 "command_adapter_status": "ready",
                 "entrypoint_label": "skillsbench remote-executor no-upload adapter",
                 "result_reducer_label": "skillsbench compact result reducer",
+                "local_driver_contract": ready_local_driver_contract(
+                    "skillsbench_local_codex_driver"
+                ),
+                "remote_sandbox_contract": ready_remote_sandbox_contract(
+                    "skillsbench_remote_sandbox"
+                ),
             },
         },
     )
@@ -358,6 +433,10 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
     assert all(
         case["command_materialization"]["shell_command_embedded"] is False
         and case["result_reducer"]["raw_values_copied"] is False
+        and case["local_driver_contract"]["ready"] is True
+        and case["remote_sandbox_contract"]["ready"] is True
+        and case["local_driver_contract"]["credential_sync_allowed"] is False
+        and case["remote_sandbox_contract"]["remote_codex_runtime_allowed"] is False
         and case["ready_to_execute_remote_command"] is True
         for case in ready_seam["execution_cases"]
     ), ready_seam
@@ -379,12 +458,23 @@ def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
     assert terminal_adapter["command_adapter_ready"] is True, terminal_adapter
     assert terminal_adapter["result_reducer_ready"] is True, terminal_adapter
     assert terminal_adapter["surface_contract"]["remote_materializer_ready"] is False
+    assert terminal_adapter["local_driver_contract"]["ready"] is False
+    assert terminal_adapter["remote_sandbox_contract"]["ready"] is False
     assert terminal_adapter["boundary"]["shell_command_embedded"] is False
     assert terminal_adapter["boundary"]["argv_embedded"] is False
     assert terminal_adapter["boundary"]["host_path_embedded"] is False
     assert terminal_adapter["surface_contract"]["local_codex_owns_auth_model_state"] is True
     assert terminal_adapter["surface_contract"]["remote_executor_owns_docker_runner_data"] is True
     assert_public_safe(adapter_payload)
+
+    materializer_without_driver = build_terminal_bench_remote_executor_command_adapter(
+        remote_materializer_ready=True,
+    )
+    assert materializer_without_driver["ready"] is False, materializer_without_driver
+    assert materializer_without_driver["first_blocker"] == (
+        "terminal_bench_local_codex_driver_missing"
+    )
+    assert_public_safe(materializer_without_driver)
 
     incomplete_materializer = build_terminal_bench_remote_executor_materializer(
         present_handle_fields=("runner_handle",),
@@ -515,6 +605,14 @@ def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
     )
     assert materialized_terminal_case["ready_to_execute_remote_command"] is True
     assert materialized_terminal_case["command_materialization"]["ready"] is True
+    assert materialized_terminal_case["local_driver_contract"]["ready"] is True
+    assert materialized_terminal_case["remote_sandbox_contract"]["ready"] is True
+    assert materialized_terminal_case["local_driver_contract"][
+        "raw_task_text_sent_to_remote"
+    ] is False
+    assert materialized_terminal_case["remote_sandbox_contract"][
+        "remote_agent_runtime_allowed"
+    ] is False
     assert materialized_seam["missing_command_adapter_ids"] == ["skillsbench@1.1"]
     assert_public_safe(materialized_seam)
 

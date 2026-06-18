@@ -53,9 +53,11 @@ For a real benchmark slice, use this sequence:
    Terminal-Bench, handle presence is still not enough: the payload must also
    prove that a local Codex driver owns agent/model/auth and that the remote
    executor does not require agent or Codex runtime. Then build the execution
-   seam from those facts. Treat missing command adapters, missing local-driver
-   materializers, remote-agent-runtime requirements, or compact reducers as
-   blockers instead of launching a private script.
+   seam from those facts. The seam should expose both a `local_driver_contract`
+   and a `remote_sandbox_contract`; treat missing command adapters, missing
+   local-driver materializers, missing sandbox contracts, remote-agent-runtime
+   requirements, or compact reducers as blockers instead of launching a
+   private script.
 5. Run the smallest no-upload dry-run or mini-pair that can answer the current
    product question.
 6. Ingest a compact result or precise blocker.
@@ -108,7 +110,7 @@ for the current machine contract.
 
 | Family | Product-path target | Current maturity |
 | --- | --- | --- |
-| Terminal-Bench | Local Codex/Goal Harness controls the attempt; remote executor provides Docker or runner substrate and compact result ingestion. | Has public adapter facts, compact reducers, and a remote-executor materializer contract; current blocker is a local-Codex driver / remote-sandbox seam. A direct Harbor/remote-Docker path that requires agent or Codex runtime inside the remote worker is not product-path evidence. |
+| Terminal-Bench | Local Codex/Goal Harness controls the attempt; remote executor provides Docker or runner substrate and compact result ingestion. | Has public adapter facts, compact reducers, a remote-executor materializer contract, and an explicit local-driver / remote-sandbox seam contract. Current blocker is wiring that seam to one real no-upload dry-run or exact compact blocker. A direct Harbor/remote-Docker path that requires agent or Codex runtime inside the remote worker is not product-path evidence. |
 | SkillsBench | Local Codex/Goal Harness controls state, prompt, and writeback; remote executor stages task files and runs Docker-bound worker surfaces. | Needs remote task staging plus remote Docker execution instead of local-only BenchFlow assumptions. |
 | Agents' Last Exam | Local Codex/Goal Harness controls the agent; remote Docker/CUA provides the sandbox; compact result or blocker is ingested locally. | A demo/tool-smoke style split-control surface is product-path proven; formal task runs still need task-data and public-claim gates. |
 

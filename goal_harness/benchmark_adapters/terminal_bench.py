@@ -3255,6 +3255,8 @@ def build_terminal_bench_remote_executor_command_adapter(
     compact_ingest_ready: bool = True,
     result_reducer_ready: bool = True,
     remote_materializer_ready: bool = False,
+    local_codex_driver_ready: bool = False,
+    remote_sandbox_ready: bool = False,
     no_upload: bool = True,
     submit_enabled: bool = False,
     known_blockers: Sequence[str] = (),
@@ -3290,6 +3292,10 @@ def build_terminal_bench_remote_executor_command_adapter(
     blockers.extend(surface_blockers)
     if not remote_materializer_ready:
         blockers.append("terminal_bench_remote_executor_materializer_missing")
+    elif not local_codex_driver_ready:
+        blockers.append("terminal_bench_local_codex_driver_missing")
+    elif not remote_sandbox_ready:
+        blockers.append("terminal_bench_remote_sandbox_contract_missing")
 
     reducer_ready = (
         result_reducer_ready is True
@@ -3324,6 +3330,64 @@ def build_terminal_bench_remote_executor_command_adapter(
             "local_codex_owns_auth_model_state": True,
             "remote_executor_owns_docker_runner_data": True,
         },
+        "local_driver_contract": {
+            "ready": remote_materializer_ready is True
+            and local_codex_driver_ready is True,
+            "driver_label": "terminal_bench_local_codex_driver",
+            "owns": [
+                "codex_cli",
+                "codex_auth",
+                "goal_harness_state",
+                "model_invocation",
+                "planning_and_patch_generation",
+            ],
+            "remote_request_fields": [
+                "benchmark_id",
+                "case_handle",
+                "execution_mode",
+                "no_upload",
+                "compact_artifact_ref",
+            ],
+            "keeps_local": [
+                "codex_auth",
+                "model_invocation",
+                "goal_harness_state",
+                "raw_reasoning_trace",
+            ],
+        },
+        "remote_sandbox_contract": {
+            "ready": remote_materializer_ready is True and remote_sandbox_ready is True,
+            "sandbox_label": "terminal_bench_remote_sandbox",
+            "owns": [
+                "docker",
+                "runner_dependencies",
+                "task_data_staging",
+                "bounded_command_execution",
+                "compact_result_reduction",
+            ],
+            "allowed_actions": [
+                "runner_dependency_check",
+                "bounded_command_execution",
+                "compact_result_reduction",
+            ],
+            "disallowed_actions": [
+                "codex_auth_sync",
+                "credential_sync",
+                "remote_agent_runtime",
+                "remote_codex_runtime",
+                "remote_model_api_invocation",
+                "raw_task_text_publication",
+                "raw_log_publication",
+                "upload",
+                "submit",
+            ],
+            "returns": [
+                "readiness_state",
+                "job_handle",
+                "compact_result_or_blocker",
+                "cleanup_state",
+            ],
+        },
         "boundary": {
             "shell_command_embedded": False,
             "argv_embedded": False,
@@ -3340,7 +3404,11 @@ def build_terminal_bench_remote_executor_command_adapter(
     return {
         "schema_version": TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
         "benchmark_id": safe_benchmark_id,
-        "ready": adapter_ready and reducer_ready and remote_materializer_ready,
+        "ready": adapter_ready
+        and reducer_ready
+        and remote_materializer_ready
+        and local_codex_driver_ready
+        and remote_sandbox_ready,
         "first_blocker": blockers[0]
         if blockers
         else "ready_for_split_control_execution_seam",
@@ -3438,6 +3506,8 @@ def build_terminal_bench_remote_executor_materializer(
     adapter_payload = build_terminal_bench_remote_executor_command_adapter(
         benchmark_id=safe_benchmark_id,
         remote_materializer_ready=ready,
+        local_codex_driver_ready=local_codex_driver_ready,
+        remote_sandbox_ready=ready,
         no_upload=no_upload,
         submit_enabled=submit_enabled,
     )

@@ -368,12 +368,24 @@ def render_split_control_execution_seam_markdown(payload: dict[str, object]) -> 
                 if isinstance(case.get("command_materialization"), dict)
                 else {}
             )
+            local_driver = (
+                case.get("local_driver_contract")
+                if isinstance(case.get("local_driver_contract"), dict)
+                else {}
+            )
+            remote_sandbox = (
+                case.get("remote_sandbox_contract")
+                if isinstance(case.get("remote_sandbox_contract"), dict)
+                else {}
+            )
             reducer = case.get("result_reducer") if isinstance(case.get("result_reducer"), dict) else {}
             lines.append(
                 "- "
                 + f"`{case.get('benchmark_id')}`: command_ready="
                 + f"`{materialization.get('ready')}`, reducer_ready="
-                + f"`{reducer.get('ready')}`, blockers="
+                + f"`{reducer.get('ready')}`, local_driver="
+                + f"`{local_driver.get('ready')}`, remote_sandbox="
+                + f"`{remote_sandbox.get('ready')}`, blockers="
                 + "`"
                 + ",".join(str(item) for item in case.get("blockers", []))
                 + "`"
@@ -396,6 +408,16 @@ def render_terminal_bench_remote_executor_command_adapter_markdown(
         if isinstance(adapter.get("surface_contract"), dict)
         else {}
     )
+    local_driver_contract = (
+        adapter.get("local_driver_contract")
+        if isinstance(adapter.get("local_driver_contract"), dict)
+        else {}
+    )
+    remote_sandbox_contract = (
+        adapter.get("remote_sandbox_contract")
+        if isinstance(adapter.get("remote_sandbox_contract"), dict)
+        else {}
+    )
     lines = [
         "# Terminal-Bench Remote Executor Command Adapter",
         "",
@@ -410,6 +432,13 @@ def render_terminal_bench_remote_executor_command_adapter_markdown(
         f"- Entrypoint label: `{adapter.get('entrypoint_label')}`",
         f"- Result reducer label: `{adapter.get('result_reducer_label')}`",
         f"- Next action: {payload.get('next_action')}",
+        "",
+        "## Local Driver And Remote Sandbox",
+        "",
+        f"- Local driver ready: `{local_driver_contract.get('ready')}`",
+        f"- Local driver label: `{local_driver_contract.get('driver_label')}`",
+        f"- Remote sandbox ready: `{remote_sandbox_contract.get('ready')}`",
+        f"- Remote sandbox label: `{remote_sandbox_contract.get('sandbox_label')}`",
         "",
         "## Boundary",
         "",
@@ -3162,6 +3191,22 @@ def main(argv: list[str] | None = None) -> int:
             "Declare that a real remote-executor materializer exists for the "
             "adapter labels. Omit until the runner can actually stage and poll "
             "remote Docker/runner/data handles."
+        ),
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--local-codex-driver-ready",
+        action="store_true",
+        help=(
+            "Declare that the local Codex driver owns agent/model/auth/state "
+            "for the Terminal-Bench case."
+        ),
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--remote-sandbox-ready",
+        action="store_true",
+        help=(
+            "Declare that the remote executor is only a sandbox for "
+            "Docker/runner/data execution and compact artifact return."
         ),
     )
     terminal_bench_command_adapter_parser.add_argument(
@@ -6115,6 +6160,8 @@ def main(argv: list[str] | None = None) -> int:
                     compact_ingest_ready=not bool(args.compact_ingest_not_ready),
                     result_reducer_ready=not bool(args.result_reducer_not_ready),
                     remote_materializer_ready=bool(args.remote_materializer_ready),
+                    local_codex_driver_ready=bool(args.local_codex_driver_ready),
+                    remote_sandbox_ready=bool(args.remote_sandbox_ready),
                     no_upload=not bool(args.submit_enabled),
                     submit_enabled=bool(args.submit_enabled),
                     known_blockers=args.surface_blocker,

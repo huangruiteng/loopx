@@ -638,16 +638,40 @@ def _execution_seam_case_from_runner_case(
         remote_materializer_ready = _truthy(adapter.get("remote_materializer_ready"))
     else:
         remote_materializer_ready = True
+    local_driver = _as_dict(adapter.get("local_driver_contract"))
+    remote_sandbox = _as_dict(adapter.get("remote_sandbox_contract"))
     adapter_blockers = _string_list(adapter.get("known_blockers"))
     blockers: list[str] = []
     if not adapter_ready:
         blockers.append("command_adapter_missing")
     if adapter_ready and not remote_materializer_ready:
         blockers.append("remote_executor_materializer_missing")
+    if adapter_ready and remote_materializer_ready and not _truthy(
+        local_driver.get("ready")
+    ):
+        blockers.append("local_driver_contract_missing")
+    if adapter_ready and remote_materializer_ready and not _truthy(
+        remote_sandbox.get("ready")
+    ):
+        blockers.append("remote_sandbox_contract_missing")
     if not reducer_ready:
         blockers.append("compact_result_reducer_missing")
     blockers.extend(adapter_blockers)
     materialization_ready = adapter_ready and remote_materializer_ready
+    local_agent_owns = _string_list(runner_case.get("local_agent_owns")) or [
+        "codex_cli",
+        "codex_auth",
+        "goal_harness_state",
+        "model_invocation",
+        "planning_and_patch_generation",
+    ]
+    remote_executor_owns = _string_list(runner_case.get("remote_executor_owns")) or [
+        "docker",
+        "runner_dependencies",
+        "task_data_staging",
+        "bounded_command_execution",
+        "compact_result_reduction",
+    ]
     return {
         "benchmark_id": benchmark_id,
         "route": "local_agent_remote_executor",
@@ -671,6 +695,60 @@ def _execution_seam_case_from_runner_case(
             "shell_command_embedded": False,
             "argv_embedded": False,
             "host_path_embedded": False,
+        },
+        "local_driver_contract": {
+            "ready": _truthy(local_driver.get("ready")),
+            "driver_label": _compact_label(
+                str(local_driver.get("driver_label") or "local_codex_driver")
+            ),
+            "owns": _string_list(local_driver.get("owns")) or local_agent_owns,
+            "remote_request_fields": _string_list(
+                local_driver.get("remote_request_fields")
+            )
+            or [
+                "benchmark_id",
+                "case_handle",
+                "execution_mode",
+                "no_upload",
+                "compact_artifact_ref",
+            ],
+            "keeps_local": _string_list(local_driver.get("keeps_local"))
+            or [
+                "codex_auth",
+                "model_invocation",
+                "goal_harness_state",
+                "raw_reasoning_trace",
+            ],
+            "credential_sync_allowed": False,
+            "remote_model_invocation_allowed": False,
+            "raw_task_text_sent_to_remote": False,
+            "shell_command_embedded": False,
+            "argv_embedded": False,
+        },
+        "remote_sandbox_contract": {
+            "ready": _truthy(remote_sandbox.get("ready")),
+            "sandbox_label": _compact_label(
+                str(remote_sandbox.get("sandbox_label") or "remote_executor_sandbox")
+            ),
+            "owns": _string_list(remote_sandbox.get("owns")) or remote_executor_owns,
+            "allowed_actions": _string_list(remote_sandbox.get("allowed_actions"))
+            or _string_list(runner_case.get("remote_executor_allowed_actions")),
+            "disallowed_actions": _string_list(
+                remote_sandbox.get("disallowed_actions")
+            )
+            or _string_list(runner_case.get("remote_executor_disallowed_actions")),
+            "returns": _string_list(remote_sandbox.get("returns"))
+            or [
+                "readiness_state",
+                "job_handle",
+                "compact_result_or_blocker",
+                "cleanup_state",
+            ],
+            "remote_agent_runtime_allowed": False,
+            "remote_codex_runtime_allowed": False,
+            "remote_model_api_invocation_allowed": False,
+            "raw_logs_public": False,
+            "raw_trajectory_public": False,
         },
         "execution_handle_contract": {
             "required_fields": _string_list(adapter.get("handle_fields"))
