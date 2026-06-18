@@ -27,6 +27,7 @@ def status_payload(
     agent_todo_items: list[dict] | None = None,
     user_todo_items: list[dict] | None = None,
     next_action: str = "Observe dependency state and then advance backlog if unchanged.",
+    post_handoff_latest_run: dict | None = None,
 ) -> dict:
     if agent_todo_items is None:
         agent_todo_items = [
@@ -69,6 +70,12 @@ def status_payload(
             "agent_todos": agent_todos,
         },
     }
+    if post_handoff_latest_run:
+        item["handoff_readiness"] = {
+            "post_handoff_run_seen": True,
+            "handoff_status": "post_handoff_run_seen",
+            "post_handoff_latest_run": post_handoff_latest_run,
+        }
     if user_todo_items:
         item["user_todos"] = {
             "schema_version": "todo_summary_v0",
@@ -145,6 +152,50 @@ def assert_primary_status_stays_advancement_lane() -> None:
     assert lane["obligation"] == "advance_one_bounded_segment", lane
     assert lane["must_attempt_work"] is True, lane
     assert lane["reason_codes"] == ["open_agent_todo"], lane
+
+
+def assert_structured_surface_only_run_requires_outcome_followthrough() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            status="runner_contract_delivered",
+            next_action="Execute the compact runner batch or write the exact blocker.",
+            post_handoff_latest_run={
+                "classification": "runner_contract_v0_delivered",
+                "delivery_batch_scale": "implementation",
+                "delivery_outcome": "surface_only",
+            },
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["should_run"] is True, guard
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["obligation"] == "advance_primary_outcome_or_write_blocker", lane
+    assert lane["reason_codes"] == [
+        "open_agent_todo",
+        "outcome_followthrough_required",
+    ], lane
+    assert lane["outcome_followthrough"]["latest_delivery_outcome"] == "surface_only", lane
+    assert "contract-only" in lane["action"], lane
+
+
+def assert_contract_word_alone_does_not_trigger_outcome_followthrough() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            status="runner_contract_delivered",
+            post_handoff_latest_run={
+                "classification": "runner_contract_v0_delivered",
+                "delivery_batch_scale": "implementation",
+                "delivery_outcome": "outcome_progress",
+            },
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["obligation"] == "advance_one_bounded_segment", lane
+    assert lane["reason_codes"] == ["open_agent_todo"], lane
+    assert "outcome_followthrough" not in lane, lane
 
 
 def assert_monitor_only_todo_waits_quietly() -> None:
@@ -918,6 +969,8 @@ def assert_launch_then_poll_todo_without_handle_routes_to_advancement() -> None:
 def main() -> int:
     assert_dependency_monitor_requires_advancement()
     assert_primary_status_stays_advancement_lane()
+    assert_structured_surface_only_run_requires_outcome_followthrough()
+    assert_contract_word_alone_does_not_trigger_outcome_followthrough()
     assert_monitor_only_todo_waits_quietly()
     assert_monitor_only_with_user_todo_stays_quiet_without_transition()
     assert_blocked_agent_todo_with_user_gate_notifies_without_execution()

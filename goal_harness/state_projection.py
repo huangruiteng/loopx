@@ -34,10 +34,20 @@ NEXT_ACTION_EXECUTABLE_PATTERN = re.compile(
     r"拆分|补全|规划|待办)"
 )
 NEXT_ACTION_USER_WAIT_PATTERN = re.compile(
-    r"(?i)\b(?:wait(?:ing)? for|blocked by|gated by|owner|user|operator|"
-    r"controller|approval|approve|decision)\b|"
-    r"\b(?:owner|user|operator|controller)\s+(?:gate|todo|action|decision|approval)\b|"
-    r"(?:等待|用户|人工|决策|审批|批准|确认|owner)"
+    r"(?i)\b(?:wait(?:ing)? for|await(?:ing)?|blocked by|gated by|"
+    r"need(?:s|ed)?|requires?|request(?:s|ed)?|ask(?:ing)? for|pending)"
+    r"\b.{0,120}\b(?:owner|user|operator|controller|human|approval|approve|"
+    r"decision|gate|permission|choice)\b|"
+    r"\b(?:owner|user|operator|controller|human)\s+"
+    r"(?:gate|todo|action|decision|approval|permission|choice)\b|"
+    r"\b(?:approval|permission)\s+(?:required|needed|pending)\b|"
+    r"(?:等待|需要|受阻于|被.{0,20}阻塞).{0,80}"
+    r"(?:用户|人工|决策|审批|批准|确认|owner)|"
+    r"需(?:用户|人工|owner).{0,40}(?:决策|审批|批准|确认)|"
+    r"需(?:决策|审批|批准|确认)|"
+    r"请(?:用户|人工|owner).{0,40}(?:决策|审批|批准|确认)|"
+    r"请(?:确认|审批|批准)|"
+    r"待(?:用户|人工|owner)?(?:决策|审批|批准|确认)"
 )
 
 
@@ -46,6 +56,10 @@ def _compact_text(value: Any, *, limit: int = 220) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "…"
+
+
+def is_user_wait_text(value: Any) -> bool:
+    return bool(NEXT_ACTION_USER_WAIT_PATTERN.search(str(value or "")))
 
 
 def _role_for_heading(heading: str) -> str | None:
@@ -150,7 +164,7 @@ def state_projection_gap_warning(
     evidence: list[dict[str, Any]] = []
     for entry in next_action_entries[:3]:
         executable = bool(NEXT_ACTION_EXECUTABLE_PATTERN.search(entry))
-        waits_for_user = bool(NEXT_ACTION_USER_WAIT_PATTERN.search(entry))
+        waits_for_user = is_user_wait_text(entry)
         if agent_open == 0 and executable:
             evidence.append(
                 {

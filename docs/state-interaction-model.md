@@ -146,6 +146,13 @@ The guard's `interaction_contract` is the first-class protocol. Older fields
 such as `execution_obligation`, `heartbeat_recommendation`,
 `work_lane_contract`, `external_evidence_observation`, `goal_boundary`, and
 `protocol_action_packet` remain compatibility and drill-down fields.
+Legacy Markdown parsing is even lower authority: it is a deterministic lint for
+unprojected prose in `Next Action`, not a source of gate truth. The hot path
+should not call an LLM to decide whether the user is gated, because that adds
+latency, cost, nondeterminism, prompt-injection surface, and private-text
+handling risk to `quota should-run`. If an LLM is useful, keep it in a cold
+proposal lane that suggests structured `User Todo`, `decision_scope`, or
+`Agent Todo` edits for a later deterministic promotion step.
 
 ### Actor Boundaries
 
@@ -180,6 +187,12 @@ Goal Harness owns the shared control state; the operator supplies decisions,
 reward, and priority; the agent worker turns observation packets into bounded
 work; external systems supply evidence; and the guard decides whether the next
 transition is delivery, decision, evidence waiting, or boundary repair.
+
+The product taste behind this loop is simple: do not let the agent idle when
+safe work exists, do not let it spin when no verified transition is available,
+and do not make the human rediscover the important gate from chat history.
+Human-in-the-loop means the human controls boundaries, reward, and route
+decisions; it does not mean every bounded agent step waits for manual approval.
 
 ```mermaid
 flowchart TB

@@ -83,6 +83,18 @@ def test_projection_gap_warning() -> dict:
     assert user_gap is not None, user_gap
     assert user_gap["target_roles"] == ["user"], user_gap
 
+    zh_user_gap = state_projection_gap_warning(
+        "## Next Action\n\n- 等待用户确认后再继续外部发布。\n"
+    )
+    assert zh_user_gap is not None, zh_user_gap
+    assert zh_user_gap["target_roles"] == ["user"], zh_user_gap
+
+    zh_approval_gap = state_projection_gap_warning(
+        "## Next Action\n\n- 待审批后执行公开发布。\n"
+    )
+    assert zh_approval_gap is not None, zh_approval_gap
+    assert zh_approval_gap["target_roles"] == ["user"], zh_approval_gap
+
     no_gap = state_projection_gap_warning(
         "## Agent Todo\n\n"
         "- [ ] Run the trace reducer backfill.\n\n"
@@ -101,6 +113,55 @@ def test_projection_gap_warning() -> dict:
         "paths.\n"
     )
     assert technical_gate_no_gap is None, technical_gate_no_gap
+
+    decision_result_input_no_gap = state_projection_gap_warning(
+        "## Agent Todo\n\n"
+        "- [ ] Build a read-only projection adapter from compact session facts.\n\n"
+        "## Next Action\n\n"
+        "- Acceptance: input compact session, event, outcome, decision-result, "
+        "and artifact summaries.\n"
+    )
+    assert decision_result_input_no_gap is None, decision_result_input_no_gap
+
+    chinese_substring_no_gap = state_projection_gap_warning(
+        "## Agent Todo\n\n"
+        "- [ ] 整理需求文档并确认用户体验字段。\n\n"
+        "## Next Action\n\n"
+        "- 整理需求文档并确认用户体验字段。\n"
+    )
+    assert chinese_substring_no_gap is None, chinese_substring_no_gap
+
+    chinese_todo_projection_no_gap = state_projection_gap_warning(
+        "## Agent Todo\n\n"
+        "- [ ] 同步待办投影并确认 user channel action_required=false。\n\n"
+        "## Next Action\n\n"
+        "- 同步待办投影并确认 user channel action_required=false。\n"
+    )
+    assert chinese_todo_projection_no_gap is None, chinese_todo_projection_no_gap
+
+    chinese_agent_instruction_no_gap = state_projection_gap_warning(
+        "## Agent Todo\n\n"
+        "- [ ] 请检查用户态字段是否被误投影。\n\n"
+        "## Next Action\n\n"
+        "- 请检查用户态字段是否被误投影。\n"
+    )
+    assert chinese_agent_instruction_no_gap is None, chinese_agent_instruction_no_gap
+
+    for artifact_text in (
+        "Keep/suppress decision packet rows in the runner sidecar.",
+        "Validate the policy decision row emitted by the dry-run adapter.",
+        "Record the runner decision sidecar as compact technical evidence.",
+    ):
+        technical_decision_artifact_no_gap = state_projection_gap_warning(
+            "## Agent Todo\n\n"
+            f"- [ ] {artifact_text}\n\n"
+            "## Next Action\n\n"
+            f"- {artifact_text}\n"
+        )
+        assert technical_decision_artifact_no_gap is None, (
+            artifact_text,
+            technical_decision_artifact_no_gap,
+        )
     return gap
 
 
@@ -205,10 +266,109 @@ def test_quota_routes_gap_to_projection_repair(gap: dict) -> None:
     assert "effective_action: `state_projection_gap_repair`" in markdown, markdown
 
 
+def test_quota_revalidates_stale_user_wait_gap_with_current_parser() -> None:
+    stale_technical_gap = {
+        "schema_version": "state_projection_gap_v0",
+        "kind": "state_projection_gap",
+        "severity": "warning",
+        "requires_todo_expansion": True,
+        "agent_open_count": 1,
+        "user_open_count": 0,
+        "target_roles": ["user"],
+        "evidence_count": 1,
+        "first_evidence": [
+            {
+                "kind": "next_action_waits_without_user_todo",
+                "target_role": "user",
+                "section": "Next Action",
+                "text": "Keep/suppress decision packet rows in the runner sidecar.",
+            }
+        ],
+        "recommended_action": "fixture should be suppressed when agent work is open",
+    }
+    open_agent_todos = {
+        "schema_version": "todo_summary_v0",
+        "open_count": 1,
+        "items": [
+            {
+                "index": 1,
+                "text": "Keep/suppress decision packet rows in the runner sidecar.",
+                "status": "open",
+                "priority": "P0",
+                "task_class": "advancement_task",
+            }
+        ],
+    }
+    status_payload = {
+        "ok": True,
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": "active",
+                    "adapter_kind": "harness_self_improvement",
+                    "adapter_status": "connected",
+                    "quota": {"compute": 1.0, "window_hours": 24},
+                }
+            ]
+        },
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "status": "state_refreshed",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "source": "latest_run",
+                    "recommended_action": (
+                        "Keep/suppress decision packet rows in the runner sidecar."
+                    ),
+                    "quota": {
+                        "compute": 1.0,
+                        "slot_minutes": 1,
+                        "allowed_slots": 1440,
+                        "spent_slots": 0,
+                        "state": "eligible",
+                        "reason": "eligible fixture",
+                    },
+                    "project_asset": {
+                        "owner": "codex",
+                        "next_action": (
+                            "Keep/suppress decision packet rows in the runner sidecar."
+                        ),
+                        "stop_condition": "stop on fixture boundary",
+                        "state_projection_gap": stale_technical_gap,
+                        "user_todos": {"open_count": 0, "items": []},
+                        "agent_todos": open_agent_todos,
+                        "quota": {
+                            "compute": 1.0,
+                            "slot_minutes": 1,
+                            "allowed_slots": 1440,
+                            "spent_slots": 0,
+                            "state": "eligible",
+                            "reason": "eligible fixture",
+                        },
+                    },
+                    "state_projection_gap": stale_technical_gap,
+                }
+            ]
+        },
+    }
+    decision = build_quota_should_run(status_payload, goal_id=GOAL_ID)
+    assert decision["should_run"] is True, decision
+    assert decision["normal_delivery_allowed"] is True, decision
+    assert decision["self_repair_allowed"] is False, decision
+    assert "state_projection_gap" not in decision, decision
+    assert decision["interaction_contract"]["user_channel"]["action_required"] is False
+    assert decision["interaction_contract"]["agent_channel"]["must_attempt"] is True
+
+
 def main() -> int:
     gap = test_projection_gap_warning()
     test_refresh_state_warns()
     test_quota_routes_gap_to_projection_repair(gap)
+    test_quota_revalidates_stale_user_wait_gap_with_current_parser()
     print("state-projection-gap-smoke ok")
     return 0
 

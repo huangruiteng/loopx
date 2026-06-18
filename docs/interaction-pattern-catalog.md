@@ -72,6 +72,17 @@ transition layer. If explicit scope is missing and inference is not confident,
 the correct behavior is projection repair or a user/controller gate, not a
 silent fallback.
 
+Markdown text inference is a lint, not the gate truth. In the hot path,
+`quota should-run` should prefer structured fields such as `task_class`,
+`decision_scope`, `required_decision_scopes`, `safety_class`,
+`user_todo_summary`, and `interaction_contract`. Free-text parsing of
+`Next Action` exists only to catch legacy states where a human-readable wait or
+executable action was never projected into a todo. It must not override a
+current `interaction_contract.user_channel.action_required=false` plus an open
+agent todo. LLM-assisted interpretation belongs in a cold-path proposal or
+authoring helper; it may suggest converting prose into a structured todo, but
+must not decide delivery gates, spend policy, or write permission directly.
+
 ## Catalog
 
 | ID | Name | Primary Owner | User Channel | Agent Channel |
@@ -343,12 +354,22 @@ needed.
 - `agent_todo_summary.open_count=0` and `user_todo_summary.open_count=0`;
 - `Next Action`, handoff prose, or recent run history still contains
   actionable work.
+- compatibility lint sees explicit user-wait prose in `Next Action`, but no
+  structured `User Todo` or `interaction_contract.user_channel` gate exists.
 
 **Expected behavior**
 
 The next step should become replan / todo expansion / blocker writeback rather
 than normal delivery. Machine projection must be repaired before the controller
 pretends there is no work.
+
+When structured fields are present, they are authoritative over Markdown lint.
+If `interaction_contract.user_channel.action_required=false`,
+`user_todo_summary.open_count=0`, and an executable agent todo exists, the
+controller should continue bounded agent work instead of asking the agent to
+report "具体 user todo 未投影". Conversely, if a real owner/user gate exists, it
+must be represented as a concrete user todo or scoped decision rather than only
+as prose in `Next Action`.
 
 **Visual Model**
 

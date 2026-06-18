@@ -20,6 +20,7 @@ from .execution_profile import (
     outcome_floor_threshold,
 )
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
+from .state_projection import is_user_wait_text
 from .todo_contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -152,7 +153,6 @@ EXTERNAL_EVIDENCE_HANDLE_ABSENT_PATTERNS = (
         r"(?:absent|missing|not\s+available|does\s+not\s+exist|exists\s+yet)\b"
     ),
 )
-
 
 def _now_local() -> str:
     return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
@@ -395,6 +395,45 @@ def _external_evidence_poll_signal(
     }
 
 
+def _post_handoff_latest_run(item: dict[str, Any]) -> dict[str, Any]:
+    handoff_readiness = (
+        item.get("handoff_readiness")
+        if isinstance(item.get("handoff_readiness"), dict)
+        else {}
+    )
+    latest_run = (
+        handoff_readiness.get("post_handoff_latest_run")
+        if isinstance(handoff_readiness.get("post_handoff_latest_run"), dict)
+        else {}
+    )
+    return latest_run
+
+
+def _outcome_followthrough_hint(item: dict[str, Any]) -> dict[str, Any] | None:
+    latest_run = _post_handoff_latest_run(item)
+    if not latest_run:
+        return None
+    explicit_required = latest_run.get("outcome_followthrough_required") is True
+    delivery_outcome = str(latest_run.get("delivery_outcome") or "").strip()
+    if delivery_outcome == "primary_goal_outcome":
+        return None
+    classification = str(latest_run.get("classification") or "").strip()
+    if not explicit_required and delivery_outcome not in {"surface_only", "outcome_gap"}:
+        return None
+    return {
+        "source": "post_handoff_latest_run",
+        "required": True,
+        "latest_classification": classification,
+        "latest_delivery_outcome": delivery_outcome or None,
+        "obligation": "advance_primary_outcome_or_write_blocker",
+        "spend_policy": (
+            "do not spend for another contract/preparation-only slice; spend only "
+            "after validated product-path evidence, benchmark/case evidence, or a "
+            "precise blocker writeback"
+        ),
+    }
+
+
 def _work_lane_contract(
     item: dict[str, Any],
     *,
@@ -409,22 +448,40 @@ def _work_lane_contract(
     monitor_only_todos = has_agent_todos and has_monitor_todos and not has_advancement_todos
     if progress_scope != "dependency_observation":
         if has_advancement_todos:
+            outcome_followthrough = _outcome_followthrough_hint(item)
             reason_codes = ["open_agent_todo"]
             if external_poll_signal:
                 reason_codes.append("external_monitor_context")
-            return {
+            if outcome_followthrough:
+                reason_codes.append("outcome_followthrough_required")
+            obligation = (
+                "advance_primary_outcome_or_write_blocker"
+                if outcome_followthrough
+                else "advance_one_bounded_segment"
+            )
+            action = (
+                "advance the first executable agent todo to product-path evidence, "
+                "benchmark/case evidence, or a precise blocker; do not spend for "
+                "another contract-only preparation layer"
+                if outcome_followthrough
+                else (
+                    "advance the first executable agent todo or write a concrete blocker; "
+                    "treat monitor todos as auxiliary observation context"
+                )
+            )
+            contract = {
                 "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
                 "lane": "advancement_task",
                 "next_lane": "advancement_task",
-                "obligation": "advance_one_bounded_segment",
+                "obligation": obligation,
                 "must_attempt_work": True,
                 "reason_codes": reason_codes,
                 "monitor_policy": "material_transition_only",
-                "action": (
-                    "advance the first executable agent todo or write a concrete blocker; "
-                    "treat monitor todos as auxiliary observation context"
-                ),
+                "action": action,
             }
+            if outcome_followthrough:
+                contract["outcome_followthrough"] = outcome_followthrough
+            return contract
         if external_poll_signal:
             return {
                 "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
@@ -2378,7 +2435,51 @@ def _state_projection_gap(item: dict[str, Any], project_asset: dict[str, Any]) -
         return None
     if gap.get("requires_todo_expansion") is not True:
         return None
-    return gap
+    return _revalidate_state_projection_gap(gap)
+
+
+def _revalidate_state_projection_gap(gap: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(gap, dict):
+        return None
+    evidence_items = gap.get("first_evidence")
+    if not isinstance(evidence_items, list) or not evidence_items:
+        return gap
+
+    retained: list[dict[str, Any]] = []
+    removed_user_wait = False
+    for item in evidence_items:
+        if not isinstance(item, dict):
+            continue
+        is_user_wait_evidence = (
+            item.get("target_role") == "user"
+            and item.get("kind") == "next_action_waits_without_user_todo"
+        )
+        if is_user_wait_evidence and not is_user_wait_text(item.get("text")):
+            removed_user_wait = True
+            continue
+        retained.append(item)
+
+    if not removed_user_wait:
+        return gap
+    if not retained:
+        target_roles = {
+            str(role).strip()
+            for role in gap.get("target_roles", [])
+            if str(role or "").strip()
+        }
+        return None if target_roles <= {"user"} else gap
+
+    revised = dict(gap)
+    revised["first_evidence"] = retained
+    revised["evidence_count"] = len(retained)
+    revised["target_roles"] = sorted(
+        {
+            str(item.get("target_role") or "").strip()
+            for item in retained
+            if str(item.get("target_role") or "").strip()
+        }
+    )
+    return revised
 
 
 def _state_projection_gap_repair_hint(
