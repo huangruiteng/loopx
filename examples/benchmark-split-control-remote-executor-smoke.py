@@ -367,10 +367,15 @@ def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
         adapter_payload["schema_version"]
         == TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA
     ), adapter_payload
-    assert adapter_payload["ready"] is True, adapter_payload
+    assert adapter_payload["ready"] is False, adapter_payload
+    assert (
+        adapter_payload["first_blocker"]
+        == "terminal_bench_remote_executor_materializer_missing"
+    ), adapter_payload
     terminal_adapter = adapter_payload["command_adapters"]["terminal-bench@2.0"]
     assert terminal_adapter["command_adapter_ready"] is True, terminal_adapter
     assert terminal_adapter["result_reducer_ready"] is True, terminal_adapter
+    assert terminal_adapter["surface_contract"]["remote_materializer_ready"] is False
     assert terminal_adapter["boundary"]["shell_command_embedded"] is False
     assert terminal_adapter["boundary"]["argv_embedded"] is False
     assert terminal_adapter["boundary"]["host_path_embedded"] is False
@@ -417,17 +422,45 @@ def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
     )
     assert partial_seam["ready_to_execute"] is False, partial_seam
     assert partial_seam["missing_command_adapter_ids"] == ["skillsbench@1.1"], partial_seam
+    assert partial_seam["missing_remote_materializer_ids"] == [
+        "terminal-bench@2.0"
+    ], partial_seam
     assert partial_seam["missing_result_reducer_ids"] == ["skillsbench@1.1"], partial_seam
     terminal_case = next(
         case
         for case in partial_seam["execution_cases"]
         if case["benchmark_id"] == "terminal-bench@2.0"
     )
-    assert terminal_case["ready_to_execute_remote_command"] is True, partial_seam
+    assert terminal_case["ready_to_execute_remote_command"] is False, partial_seam
+    assert "remote_executor_materializer_missing" in terminal_case["blockers"]
+    assert (
+        "terminal_bench_remote_executor_materializer_missing"
+        in terminal_case["blockers"]
+    )
+    assert (
+        terminal_case["command_materialization"]["remote_materializer_ready"] is False
+    )
     assert terminal_case["command_materialization"]["entrypoint_label"] == (
         "terminal_bench_no_upload_case_run_surface"
     )
     assert_public_safe(partial_seam)
+
+    materialized_adapter_payload = build_terminal_bench_remote_executor_command_adapter(
+        remote_materializer_ready=True,
+    )
+    materialized_seam = build_split_control_remote_executor_execution_seam(
+        batch,
+        command_adapters=materialized_adapter_payload["command_adapters"],
+    )
+    materialized_terminal_case = next(
+        case
+        for case in materialized_seam["execution_cases"]
+        if case["benchmark_id"] == "terminal-bench@2.0"
+    )
+    assert materialized_terminal_case["ready_to_execute_remote_command"] is True
+    assert materialized_terminal_case["command_materialization"]["ready"] is True
+    assert materialized_seam["missing_command_adapter_ids"] == ["skillsbench@1.1"]
+    assert_public_safe(materialized_seam)
 
 
 def test_runner_batch_requires_fresh_readiness_recheck() -> None:
