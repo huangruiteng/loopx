@@ -685,31 +685,39 @@ from a meta/controller poll that was only authorized to observe.
 **Trigger**
 
 - no-progress streaks, repeated action loops, phase transitions, or periodic
-  review thresholds project `autonomous_replan_obligation_v0`; or
-- a background planning lane produces `dreaming_proposal_v0` /
-  `server_managed_planning_contract_v0`.
+  review thresholds make a blocking `autonomous_replan_obligation_v0` visible
+  in active state, status, quota, or run history; or
+- a background planning lane surfaces `dreaming_proposal_v0` /
+  `server_managed_planning_contract_v0` as advisory context.
 
 **Expected behavior**
 
 An autonomous replan obligation is executable repair work: split, add, retire,
 or re-rank todos so the next delivery segment can advance. A dreaming proposal
 is advisory until promoted by an operator/controller decision and a normal
-quota/boundary check. The two lanes must not collapse into each other.
+quota/boundary check. Dreaming proposals may be displayed alongside a blocking
+replan obligation, but they stay a side lane: they can inform review or repair,
+not enter promotion/execution until the blocking replan obligation is absent or
+resolved. The two lanes must not collapse into each other.
 
 **Visual Model**
 
 ```mermaid
 flowchart TD
-  S["status / run history"] --> R{"replan obligation projected?"}
+  S["status / run history"] --> R{"blocking replan obligation visible?"}
+  S --> D{"dreaming proposal present?"}
+  D -->|"yes"| V["display advisory dreaming side lane"]
+  D -->|"no"| Z["no dreaming side lane"]
   R -->|"yes"| A["execute bounded replan repair"]
   A --> T["update todos / guidance"]
   T --> Q["rerun quota guard"]
-  R -->|"no"| D{"dreaming proposal present?"}
-  D -->|"yes"| U["ask/promote through user or controller gate"]
+  V -. "may inform repair; no delivery spend while blocked" .-> A
+  R -->|"no"| G{"dreaming proposal eligible for promotion?"}
+  G -->|"yes"| U["ask/promote through user or controller gate"]
   U --> P{"promoted and boundary approved?"}
   P -->|"yes"| Q
   P -->|"no"| X["proposal remains non-executable"]
-  D -->|"no"| N["normal selected interaction mode"]
+  G -->|"no"| N["normal selected interaction mode"]
 ```
 
 **Bad smell**
