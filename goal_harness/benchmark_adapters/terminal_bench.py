@@ -115,6 +115,9 @@ TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA = (
 TERMINAL_BENCH_REMOTE_EXECUTOR_MATERIALIZER_SCHEMA = (
     "terminal_bench_remote_executor_materializer_v0"
 )
+TERMINAL_BENCH_REMOTE_EXECUTOR_LAUNCH_ADAPTER_SCHEMA = (
+    "terminal_bench_remote_executor_launch_adapter_v0"
+)
 TERMINAL_BENCH_ENVIRONMENT_SETUP_PROBE_GATE_SCHEMA = (
     "terminal_bench_environment_setup_probe_gate_v0"
 )
@@ -3245,6 +3248,28 @@ TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS = (
     "cleanup_label",
     "compact_artifact_ref",
 )
+TERMINAL_BENCH_REMOTE_EXECUTOR_REQUEST_FIELDS = (
+    "benchmark_id",
+    "case_handle",
+    "execution_mode",
+    "no_upload",
+    "compact_artifact_ref",
+)
+
+def _present_fields_from_sources(
+    *,
+    manifest: Mapping[str, Any] | None,
+    present_fields: Sequence[str],
+    allowed_fields: Sequence[str],
+) -> set[str]:
+    allowed = set(allowed_fields)
+    present = {str(field) for field in present_fields if str(field) in allowed}
+    present.update(
+        key
+        for key, value in dict(manifest or {}).items()
+        if key in allowed and value not in (None, "", [], {})
+    )
+    return present
 
 def build_terminal_bench_remote_executor_command_adapter(
     *,
@@ -3572,6 +3597,212 @@ def build_terminal_bench_remote_executor_materializer(
         "read_boundary": {
             "compact_only": True,
             "handle_manifest_values_recorded": False,
+            "shell_commands_read": False,
+            "argv_read": False,
+            "raw_task_text_read": False,
+            "raw_logs_read": False,
+            "trajectory_read": False,
+            "local_paths_recorded": False,
+            "remote_paths_recorded": False,
+            "docker_invoked": False,
+            "model_api_invoked": False,
+            "upload_invoked": False,
+            "submit_invoked": False,
+        },
+    }
+
+def build_terminal_bench_remote_executor_launch_adapter(
+    *,
+    benchmark_id: str = TERMINAL_BENCH_DEFAULT_DATASET,
+    request_manifest: Mapping[str, Any] | None = None,
+    present_request_fields: Sequence[str] = (),
+    launch_result_manifest: Mapping[str, Any] | None = None,
+    present_launch_result_fields: Sequence[str] = (),
+    local_codex_driver_ready: bool = False,
+    remote_sandbox_ready: bool = False,
+    no_upload: bool = True,
+    submit_enabled: bool = False,
+    local_codex_credential_sync: bool = False,
+    remote_agent_runtime_required: bool = False,
+    remote_codex_runtime_required: bool = False,
+    remote_model_invocation: bool = False,
+    raw_material_allowed: bool = False,
+) -> dict[str, Any]:
+    """Bridge a local-driver request to private remote-sandbox launch handles.
+
+    This is the public-safe launch adapter surface. It never executes SSH,
+    Docker, Codex, or model calls, and it never records private handle values.
+    A private runner may feed field presence from its local-driver request and
+    remote launch result manifest so Goal Harness can decide whether the
+    command adapter can be materialized for the split-control execution seam.
+    """
+
+    safe_benchmark_id = _public_safe_benchmark_label(benchmark_id, limit=80)
+    blockers: list[str] = []
+    if not safe_benchmark_id:
+        safe_benchmark_id = TERMINAL_BENCH_DEFAULT_DATASET
+        blockers.append("terminal_bench_benchmark_id_not_public_safe")
+    if safe_benchmark_id != TERMINAL_BENCH_DEFAULT_DATASET:
+        blockers.append("terminal_bench_benchmark_id_unsupported")
+
+    request_present = _present_fields_from_sources(
+        manifest=request_manifest,
+        present_fields=present_request_fields,
+        allowed_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_REQUEST_FIELDS,
+    )
+    request_present.add("benchmark_id")
+    request_missing = [
+        field
+        for field in TERMINAL_BENCH_REMOTE_EXECUTOR_REQUEST_FIELDS
+        if field not in request_present
+    ]
+
+    launch_result_present = _present_fields_from_sources(
+        manifest=launch_result_manifest,
+        present_fields=present_launch_result_fields,
+        allowed_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS,
+    )
+    launch_result_present.add("benchmark_id")
+    launch_result_missing = [
+        field
+        for field in TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS
+        if field not in launch_result_present
+    ]
+
+    if not local_codex_driver_ready:
+        blockers.append("terminal_bench_local_codex_driver_missing")
+    if request_missing:
+        blockers.append("terminal_bench_local_driver_request_incomplete")
+    if not remote_sandbox_ready:
+        blockers.append("terminal_bench_remote_sandbox_contract_missing")
+    if not no_upload:
+        blockers.append("terminal_bench_no_upload_boundary_not_enabled")
+    if submit_enabled:
+        blockers.append("terminal_bench_submit_must_remain_disabled")
+    if local_codex_credential_sync:
+        blockers.append("terminal_bench_codex_credential_sync_forbidden")
+    if remote_agent_runtime_required:
+        blockers.append("terminal_bench_remote_agent_runtime_forbidden")
+    if remote_codex_runtime_required:
+        blockers.append("terminal_bench_remote_codex_runtime_forbidden")
+    if remote_model_invocation:
+        blockers.append("terminal_bench_remote_model_invocation_forbidden")
+    if raw_material_allowed:
+        blockers.append("terminal_bench_raw_material_boundary_not_enabled")
+    if not launch_result_manifest and not present_launch_result_fields:
+        blockers.append("terminal_bench_remote_launch_result_missing")
+    elif launch_result_missing:
+        blockers.append("terminal_bench_remote_launch_result_incomplete")
+
+    launch_request_ready = (
+        local_codex_driver_ready is True
+        and not request_missing
+        and remote_sandbox_ready is True
+        and no_upload is True
+        and submit_enabled is False
+        and local_codex_credential_sync is False
+        and remote_agent_runtime_required is False
+        and remote_codex_runtime_required is False
+        and remote_model_invocation is False
+        and raw_material_allowed is False
+    )
+    materializer_payload = build_terminal_bench_remote_executor_materializer(
+        benchmark_id=safe_benchmark_id,
+        handle_manifest=launch_result_manifest,
+        present_handle_fields=tuple(launch_result_present),
+        no_upload=no_upload,
+        submit_enabled=submit_enabled,
+        local_codex_driver_ready=local_codex_driver_ready,
+        remote_agent_runtime_required=remote_agent_runtime_required,
+        remote_codex_runtime_required=remote_codex_runtime_required,
+        local_codex_credential_sync=local_codex_credential_sync,
+        remote_model_invocation=remote_model_invocation,
+        raw_material_allowed=raw_material_allowed,
+    )
+    ready = launch_request_ready and materializer_payload.get("ready") is True
+    materializer_blockers = [
+        str(item)
+        for item in materializer_payload.get("blockers", [])
+        if str(item) and str(item) not in blockers
+    ]
+    all_blockers = blockers + materializer_blockers
+    if not local_codex_driver_ready:
+        next_action = "implement_terminal_bench_local_driver_before_remote_launch"
+    elif request_missing:
+        next_action = "complete_terminal_bench_local_driver_request_before_remote_launch"
+    elif not remote_sandbox_ready:
+        next_action = "implement_terminal_bench_remote_sandbox_launch_adapter"
+    elif "terminal_bench_remote_launch_result_missing" in blockers:
+        next_action = "execute_private_remote_sandbox_and_feed_compact_launch_result_manifest"
+    elif launch_result_missing or materializer_blockers:
+        next_action = "repair_terminal_bench_remote_launch_result_before_materialization"
+    else:
+        next_action = "feed_launch_adapter_materialized_handles_to_execution_seam"
+
+    return {
+        "schema_version": TERMINAL_BENCH_REMOTE_EXECUTOR_LAUNCH_ADAPTER_SCHEMA,
+        "benchmark_id": safe_benchmark_id,
+        "ready": ready,
+        "first_blocker": all_blockers[0]
+        if all_blockers
+        else "ready_for_terminal_bench_execution_seam",
+        "blockers": all_blockers,
+        "launch_adapter": {
+            "request_label": "terminal_bench_local_driver_remote_sandbox_request",
+            "ready_to_request_remote_sandbox": launch_request_ready,
+            "remote_launch_result_read": bool(
+                launch_result_manifest or present_launch_result_fields
+            ),
+            "required_request_fields": list(
+                TERMINAL_BENCH_REMOTE_EXECUTOR_REQUEST_FIELDS
+            ),
+            "present_request_fields": [
+                field
+                for field in TERMINAL_BENCH_REMOTE_EXECUTOR_REQUEST_FIELDS
+                if field in request_present
+            ],
+            "missing_request_fields": request_missing,
+            "required_launch_result_fields": list(
+                TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS
+            ),
+            "present_launch_result_fields": [
+                field
+                for field in TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS
+                if field in launch_result_present
+            ],
+            "missing_launch_result_fields": launch_result_missing,
+            "local_codex_driver_ready": local_codex_driver_ready is True,
+            "remote_sandbox_ready": remote_sandbox_ready is True,
+            "private_request_values_recorded": False,
+            "private_launch_result_values_recorded": False,
+        },
+        "materializer": materializer_payload.get("materializer"),
+        "command_adapters": materializer_payload.get("command_adapters"),
+        "command_adapter": materializer_payload.get("command_adapter"),
+        "boundary": {
+            "compact_only": True,
+            "local_codex_driver_required": True,
+            "remote_sandbox_required": True,
+            "remote_agent_runtime_allowed": False,
+            "remote_codex_runtime_allowed": False,
+            "shell_command_embedded": False,
+            "argv_embedded": False,
+            "host_path_embedded": False,
+            "remote_path_embedded": False,
+            "raw_task_text_public": False,
+            "raw_logs_public": False,
+            "raw_trajectory_public": False,
+            "credential_values_recorded": False,
+            "codex_credentials_synced_to_remote": False,
+            "remote_model_api_invocation_allowed": False,
+            "upload_allowed": False,
+            "submit_allowed": False,
+        },
+        "next_action": next_action,
+        "read_boundary": {
+            "compact_only": True,
+            "request_manifest_values_recorded": False,
+            "launch_result_values_recorded": False,
             "shell_commands_read": False,
             "argv_read": False,
             "raw_task_text_read": False,

@@ -25,8 +25,11 @@ from goal_harness.benchmark_core import (  # noqa: E402
 from goal_harness.benchmark_adapters.terminal_bench import (  # noqa: E402
     TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
     TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS,
+    TERMINAL_BENCH_REMOTE_EXECUTOR_LAUNCH_ADAPTER_SCHEMA,
     TERMINAL_BENCH_REMOTE_EXECUTOR_MATERIALIZER_SCHEMA,
+    TERMINAL_BENCH_REMOTE_EXECUTOR_REQUEST_FIELDS,
     build_terminal_bench_remote_executor_command_adapter,
+    build_terminal_bench_remote_executor_launch_adapter,
     build_terminal_bench_remote_executor_materializer,
 )
 
@@ -617,6 +620,83 @@ def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
     assert_public_safe(materialized_seam)
 
 
+def test_terminal_bench_remote_launch_adapter_reduces_private_launch_result() -> None:
+    missing_request = build_terminal_bench_remote_executor_launch_adapter(
+        local_codex_driver_ready=True,
+        remote_sandbox_ready=True,
+    )
+    assert (
+        missing_request["schema_version"]
+        == TERMINAL_BENCH_REMOTE_EXECUTOR_LAUNCH_ADAPTER_SCHEMA
+    ), missing_request
+    assert missing_request["ready"] is False, missing_request
+    assert missing_request["first_blocker"] == (
+        "terminal_bench_local_driver_request_incomplete"
+    )
+    assert missing_request["launch_adapter"]["private_request_values_recorded"] is False
+    assert_public_safe(missing_request)
+
+    sandbox_missing = build_terminal_bench_remote_executor_launch_adapter(
+        present_request_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_REQUEST_FIELDS,
+        local_codex_driver_ready=True,
+        remote_sandbox_ready=False,
+    )
+    assert sandbox_missing["ready"] is False, sandbox_missing
+    assert sandbox_missing["first_blocker"] == (
+        "terminal_bench_remote_sandbox_contract_missing"
+    )
+    assert sandbox_missing["launch_adapter"][
+        "ready_to_request_remote_sandbox"
+    ] is False
+    assert_public_safe(sandbox_missing)
+
+    result_missing = build_terminal_bench_remote_executor_launch_adapter(
+        present_request_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_REQUEST_FIELDS,
+        local_codex_driver_ready=True,
+        remote_sandbox_ready=True,
+    )
+    assert result_missing["ready"] is False, result_missing
+    assert result_missing["first_blocker"] == (
+        "terminal_bench_remote_launch_result_missing"
+    )
+    assert result_missing["launch_adapter"][
+        "ready_to_request_remote_sandbox"
+    ] is True
+    assert result_missing["next_action"] == (
+        "execute_private_remote_sandbox_and_feed_compact_launch_result_manifest"
+    )
+    assert_public_safe(result_missing)
+
+    ready = build_terminal_bench_remote_executor_launch_adapter(
+        present_request_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_REQUEST_FIELDS,
+        present_launch_result_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS,
+        local_codex_driver_ready=True,
+        remote_sandbox_ready=True,
+    )
+    assert ready["ready"] is True, ready
+    assert ready["first_blocker"] == "ready_for_terminal_bench_execution_seam"
+    assert ready["launch_adapter"]["private_launch_result_values_recorded"] is False
+    assert ready["materializer"]["public_handle_values_recorded"] is False
+    assert ready["command_adapter"]["command_adapter_ready"] is True
+    assert ready["command_adapter"]["local_driver_contract"]["ready"] is True
+    assert ready["command_adapter"]["remote_sandbox_contract"]["ready"] is True
+    assert_public_safe(ready)
+
+    forbidden = build_terminal_bench_remote_executor_launch_adapter(
+        present_request_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_REQUEST_FIELDS,
+        present_launch_result_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS,
+        local_codex_driver_ready=True,
+        remote_sandbox_ready=True,
+        local_codex_credential_sync=True,
+    )
+    assert forbidden["ready"] is False, forbidden
+    assert forbidden["first_blocker"] == (
+        "terminal_bench_codex_credential_sync_forbidden"
+    )
+    assert forbidden["boundary"]["codex_credentials_synced_to_remote"] is False
+    assert_public_safe(forbidden)
+
+
 def test_runner_batch_requires_fresh_readiness_recheck() -> None:
     payload = build_split_control_remote_executor_readiness(
         benchmark_ids=("terminal-bench@2.0",),
@@ -775,6 +855,7 @@ def main() -> int:
     test_ready_parallel_batch_size_is_capped()
     test_partial_ready_subset_can_launch_without_remote_codex()
     test_terminal_bench_command_adapter_facts_feed_execution_seam()
+    test_terminal_bench_remote_launch_adapter_reduces_private_launch_result()
     test_runner_batch_requires_fresh_readiness_recheck()
     test_runner_batch_sanitizes_post_launch_evidence()
     test_launch_plan_blocks_when_no_subset_is_ready()

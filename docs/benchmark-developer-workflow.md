@@ -46,18 +46,23 @@ For a real benchmark slice, use this sequence:
 3. Produce a launch plan or runner batch only after a fresh readiness re-check.
 4. Build benchmark-specific command-adapter facts, such as
    `goal-harness benchmark terminal-bench-command-adapter terminal-bench`.
-   When a benchmark uses private remote-executor handles, reduce them through a
-   materializer such as
+   When Terminal-Bench uses a remote executor, first reduce the local-driver
+   request plus private remote launch result through the launch adapter:
+   `goal-harness benchmark terminal-bench-remote-launch-adapter terminal-bench --request-json <private-json> --launch-result-json <private-json>`.
+   The launch adapter emits only field presence and compact blocker state; it
+   never executes SSH, Docker, Codex, model calls, uploads, or submits. If a
+   lower-level private runner already produced remote-executor handles, reduce
+   them through a materializer such as
    `goal-harness benchmark terminal-bench-remote-materializer terminal-bench --handle-manifest-json <private-json>`.
    The materializer emits only handle field presence, never handle values. For
-   Terminal-Bench, handle presence is still not enough: the payload must also
-   prove that a local Codex driver owns agent/model/auth and that the remote
-   executor does not require agent or Codex runtime. Then build the execution
-   seam from those facts. The seam should expose both a `local_driver_contract`
-   and a `remote_sandbox_contract`; treat missing command adapters, missing
-   local-driver materializers, missing sandbox contracts, remote-agent-runtime
-   requirements, or compact reducers as blockers instead of launching a
-   private script.
+   Terminal-Bench, handle presence is still not enough: the payload must prove
+   that a local Codex driver owns agent/model/auth and that the remote executor
+   does not require agent or Codex runtime. Then build the execution seam from
+   those facts. The seam should expose both a `local_driver_contract` and a
+   `remote_sandbox_contract`; treat missing command adapters, missing
+   launch-adapter results, missing local-driver materializers, missing sandbox
+   contracts, remote-agent-runtime requirements, or compact reducers as
+   blockers instead of launching a private script.
 5. Run the smallest no-upload dry-run or mini-pair that can answer the current
    product question.
 6. Ingest a compact result or precise blocker.
