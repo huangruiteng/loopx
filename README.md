@@ -178,10 +178,19 @@ Then:
    name); otherwise ask me for a one-sentence objective.
 4. Run `goal-harness connect` or `goal-harness bootstrap` for this repo with
    that goal id, objective, domain, and goal doc.
-5. Ensure `.goal-harness/` and `.codex/goals/` are ignored in this project.
-6. Run `goal-harness registry`, `goal-harness status`, and
+5. Read the `Onboarding Scan`, `Proposed Onboarding Candidates`,
+   `Accept Candidate Commands`, and `Autonomy Choice` from the connect output.
+   Briefly explain the candidate agent todos to me and ask:
+   - which candidates I accept, edit, or reject;
+   - whether `autonomous=yes`, meaning you may start the first accepted agent
+     todo after the quota guard passes.
+   Do not make me run the acceptance commands manually; run the accepted
+   `goal-harness todo add ...` commands yourself. If I choose
+   `autonomous=no`, stop after `goal-harness refresh-state`.
+6. Ensure `.goal-harness/` and `.codex/goals/` are ignored in this project.
+7. Run `goal-harness registry`, `goal-harness status`, and
    `goal-harness check --scan-root .`.
-7. Report the goal id, created files, current user todo, current agent todo,
+8. Report the goal id, created files, current user todo, current agent todo,
    and next safe action.
 
 Do not commit `.goal-harness/`, `.codex/goals/`, live ACTIVE_GOAL_STATE files,

@@ -202,6 +202,10 @@ def render_prompt_text(
 {goal_doc}
 
 请你按下面步骤推进，不要停在方案讨论；如果信息缺失，先从目标文档和项目结构中做保守抽取，并在最后说明假设。
+重要：`goal-harness connect` 默认会做一次快速 onboarding scan，基于 git status、最近 commit、顶层项目信号生成候选 agent todo。
+接入后不要直接开始 delivery；先把候选 todo 展示给我，并问我两件事：
+1. 接受、编辑或拒绝哪些候选 agent todo；
+2. 是否允许你从接受的 todo 开始自主推进。
 
 0. 先确认当前 shell 能调用 Goal Harness CLI；如果提示 `goal-harness` 不在 PATH，运行本机安装脚本再继续：
 
@@ -236,6 +240,15 @@ def render_prompt_text(
 ```
 
 4. 确认 `.goal-harness/registry.json` 和 `.codex/goals/{goal_id}/ACTIVE_GOAL_STATE.md` 已创建或更新。
+   阅读输出里的 `Onboarding Scan`、`Proposed Onboarding Candidates`、`Accept Candidate Commands`
+   和 `Autonomy Choice`。不要让用户手动执行这些命令；你应当用中文简要解释候选 todo，
+   然后询问用户：
+   - 接受哪些编号，是否需要改写；
+   - 是否 `autonomous=yes`，允许你在 quota guard 通过后开始执行第一个接受的 agent todo。
+   如果用户接受候选 todo，用输出里的 `goal-harness todo add ...` 命令写入 agent todo；
+   如果用户允许自主推进，先运行 quota guard，再执行第一个已接受 agent todo。
+   如果用户不允许自主推进，只写入接受的 todo 并运行 `goal-harness refresh-state --goal-id {goal_id}`，
+   然后停下来汇报。
    如果目标状态包含私有证据，把 `.goal-harness/` 和 `.codex/goals/` 加入该项目 `.gitignore`。
    `goal-harness connect` 默认会同步到共享全局 registry；不要手动编辑其他项目的 registry。
    接入后检查 registry 里的 `execution_profile`：它是本项目后续 heartbeat / adapter 的执行画像。
