@@ -120,10 +120,12 @@ from .cli_commands import (
     handle_check_command,
     handle_demo_command,
     handle_doctor_command,
+    handle_dreaming_command,
     handle_new_project_prompt_command,
     handle_review_packet_command,
     handle_status_command,
     register_doctor_command,
+    register_dreaming_commands,
     register_starter_commands,
     register_status_commands,
 )
@@ -4655,6 +4657,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     register_status_commands(sub, add_subcommand_format)
+    register_dreaming_commands(sub, add_subcommand_format)
 
     todo_parser = sub.add_parser(
         "todo",
@@ -8429,6 +8432,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "review-packet":
         return handle_review_packet_command(
+            args,
+            registry_path=registry_path,
+            runtime_root_arg=args.runtime_root,
+            output_format=output_format,
+            print_payload=print_payload,
+        )
+
+    if args.command == "dreaming":
+        return handle_dreaming_command(
             args,
             registry_path=registry_path,
             runtime_root_arg=args.runtime_root,
