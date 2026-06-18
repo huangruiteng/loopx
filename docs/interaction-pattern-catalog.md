@@ -86,6 +86,12 @@ silent fallback.
 | IP-008 | Monitor Quiet Skip | CLI/controller | no notification | append at most one no-spend poll, then stay quiet |
 | IP-009 | Active User Assistance | User simulator / operator | bounded intervention | inject audited user help without leaking reward/oracle signals |
 | IP-010 | Cadence Widening | Agent/controller | no interruption by default | widen next work segment when turns become too small |
+| IP-011 | Authority Material Intake | Agent plus registry | notify only on gate/conflict | register redacted source contract before relying on material |
+| IP-012 | External Evidence Observation | Agent/controller | no interruption unless handle missing needs owner input | observe compact handles/results; do not launch benchmark/model work |
+| IP-013 | Autonomous Replan Vs Advisory Dreaming | Agent/controller plus user when promoted | ask only for promotion/decision | repair stalled delivery; keep dreaming proposal non-executable |
+| IP-014 | Decision Write Preview And Append | User/operator | explicit preview/apply decision | append only exact run-bound reward or gate decision event |
+| IP-015 | Benchmark Lifecycle Countability | Benchmark adapter/controller | no interruption by default | advance only through compact countable lifecycle gates |
+| IP-016 | Task Lease Claim | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
 
 ## Visual Model
 
@@ -571,6 +577,300 @@ asking it to do tiny heartbeat-shaped steps.
 
 - `docs/long-task-cadence-policy.md`
 - future status/quota preset projection smoke.
+
+## IP-011 Authority Material Intake
+
+**Trigger**
+
+- a worker discovers or receives a durable design doc, research memo, owner
+  packet, migration report, benchmark paper, external registry, or other source
+  that future agents may need;
+- the target project and `goal_id` are known;
+- the material can be represented as public-safe metadata without storing raw
+  URLs, document ids, local paths, source bodies, comments, credentials, or
+  private logs.
+
+**Expected behavior**
+
+The agent should first identify the owning project, then register a compact
+source contract in that project's authority surface. If the project has a
+tracked `docs/meta/DOC_REGISTRY.yaml`, update that authority map first. If it
+does not, use the project-local `.goal-harness/registry.json` through
+`authority_registry.topic_authority` and `authority_registry.project_materials`.
+
+The stored material should answer what it is, how fresh it is, which topic it
+governs, whether owner review or read access is needed, and how conflicts are
+resolved. It should not read or summarize the material body as part of the
+registration step.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  M["durable material discovered"] --> P{"target project and goal known?"}
+  P -->|"no"| B["write blocker or ask owner"]
+  P -->|"yes"| R{"public-safe source contract possible?"}
+  R -->|"no"| B
+  R -->|"yes"| D{"tracked DOC_REGISTRY exists?"}
+  D -->|"yes"| Y["update project doc registry topic/source"]
+  D -->|"no"| L["use local authority_registry"]
+  Y --> C["register redacted authority source"]
+  L --> C
+  C --> S["sync compact summary / refresh status"]
+```
+
+**Bad smell**
+
+An agent remembers an important article or design only in chat, or registers it
+into the meta controller because that is the current repo, even though the
+material belongs to another connected project.
+
+**Validation**
+
+- `docs/authority-source-registration.md`
+- `examples/register-authority-source-smoke.py`
+- `examples/import-doc-registry-authority-smoke.py`
+- `examples/platform-migration-material-registry-smoke.py`
+
+## IP-012 External Evidence Observation
+
+**Trigger**
+
+- `waiting_on=external_evidence`, a launched external worker is being polled, or
+  `interaction_contract.mode=external_evidence_observation`;
+- the selected action is evidence observation, compact result ingest, or compact
+  blocker writeback;
+- benchmark/model/Docker/cloud execution is not explicitly authorized by the
+  current guard.
+
+**Expected behavior**
+
+The agent must distinguish observing an external handle from launching new
+external work. If a compact handle exists, it may poll or ingest compact
+public-safe result files. If the required handle is missing, the correct action
+is a compact blocker or projection repair, not a quiet no-op. Benchmark
+execution, model calls, Docker, cloud jobs, uploads, and leaderboard paths stay
+blocked unless the guard explicitly selects that work.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  E["external evidence mode"] --> H{"observable handle present?"}
+  H -->|"no"| B["write compact blocker / repair projection"]
+  H -->|"yes"| P{"compact result or failure marker present?"}
+  P -->|"no"| O["bounded poll; no spend if unchanged"]
+  P -->|"yes"| I["ingest compact result or blocker"]
+  I --> V["validate boundary and write event"]
+  V --> N["next guard decision"]
+```
+
+**Bad smell**
+
+The heartbeat treats external-evidence waiting as a harmless quiet skip even
+though the guard requires an observable handle, or it launches a benchmark run
+from a meta/controller poll that was only authorized to observe.
+
+**Validation**
+
+- `regression/external-evidence-observation-real-codex.py`
+- `examples/benchmark-lifecycle-state-smoke.py`
+- `docs/state-interaction-model.md`
+
+## IP-013 Autonomous Replan Vs Advisory Dreaming
+
+**Trigger**
+
+- no-progress streaks, repeated action loops, phase transitions, or periodic
+  review thresholds project `autonomous_replan_obligation_v0`; or
+- a background planning lane produces `dreaming_proposal_v0` /
+  `server_managed_planning_contract_v0`.
+
+**Expected behavior**
+
+An autonomous replan obligation is executable repair work: split, add, retire,
+or re-rank todos so the next delivery segment can advance. A dreaming proposal
+is advisory until promoted by an operator/controller decision and a normal
+quota/boundary check. The two lanes must not collapse into each other.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  S["status / run history"] --> R{"replan obligation projected?"}
+  R -->|"yes"| A["execute bounded replan repair"]
+  A --> T["update todos / guidance"]
+  T --> Q["rerun quota guard"]
+  R -->|"no"| D{"dreaming proposal present?"}
+  D -->|"yes"| U["ask/promote through user or controller gate"]
+  U --> P{"promoted and boundary approved?"}
+  P -->|"yes"| Q
+  P -->|"no"| X["proposal remains non-executable"]
+  D -->|"no"| N["normal selected interaction mode"]
+```
+
+**Bad smell**
+
+A proposal from the dreaming/planning lane carries an `agent_command` or spends
+delivery quota before promotion. The opposite failure is also costly: repeated
+no-progress evidence is treated as optional brainstorming instead of a required
+state repair.
+
+**Validation**
+
+- `examples/autonomous-replan-obligation-smoke.py`
+- `regression/autonomous-replan-vs-dreaming-contract.py`
+
+## IP-014 Decision Write Preview And Append
+
+**Trigger**
+
+- the operator is recording a run-bound `human_reward`; or
+- the operator/controller is recording an `operator_gate` decision;
+- a dashboard or loopback server wants to write a decision event rather than
+  only render status.
+
+**Expected behavior**
+
+Decision writes must be exact-target, compact, previewed when browser-originated,
+and append-only. `human_reward` attaches to one selected run row. `operator_gate`
+records a decision run and, for approvals, a resume contract that forces the
+receiving agent to re-read current registry, active state, quota, repo status,
+policy, and run state before executing.
+
+Browser reward append requires an explicit local capability, loopback origin,
+matching `preview_id`, unchanged selected run, unchanged payload, unchanged raw
+index count, public-safe text, and exactly one overlay append. Dashboard gate
+append remains disabled until a separate equivalent handshake exists.
+
+**Visual Model**
+
+```mermaid
+sequenceDiagram
+  participant User as Operator
+  participant UI as Dashboard/CLI
+  participant GH as Goal Harness
+  User->>UI: Select exact run or gate
+  UI->>GH: Preview compact decision
+  GH->>UI: public-safe preview_id / dry-run result
+  User->>UI: Confirm append
+  UI->>GH: Apply exact preview
+  GH->>GH: Reject stale/private/mismatched writes
+  GH->>GH: Append one decision event
+  GH->>UI: Refresh compact status
+```
+
+**Bad smell**
+
+The dashboard makes local reward/gate writes feel like ordinary form submission,
+or an approved gate is treated as durable write authority without a fresh
+decision-point re-read.
+
+**Validation**
+
+- `docs/reward-gate-direct-write-contract.md`
+- `docs/dashboard-reward-write-boundary.md`
+- `examples/reward-gate-direct-write-contract-smoke.py`
+- `examples/reward-append-api-smoke.py`
+- `examples/dashboard-reward-append-browser-smoke.mjs`
+- `examples/operator-gate-resume-contract-smoke.py`
+
+## IP-015 Benchmark Lifecycle Countability
+
+**Trigger**
+
+- a benchmark adapter, runner wrapper, or reducer observes preflight, launch,
+  materialization, compact result, comparison, claim review, or learning-ledger
+  evidence;
+- a controller is deciding whether a process launch, case attempt, score,
+  budget spend, rerun, or public claim is countable.
+
+**Expected behavior**
+
+Benchmark work should advance through compact lifecycle gates instead of raw
+runner narratives. `process_started` alone is not case entry. Case entry starts
+at `job_root_materialized` or later. Budget/counting and candidate selection
+require compact result ingestion, claim boundary review, and learning-ledger
+state where applicable. Terminal failure markers can close out a launched
+attempt without making it a case attempt or benchmark-budget event.
+
+**Visual Model**
+
+```mermaid
+flowchart LR
+  P["preflight ready"] --> L["process started"]
+  L --> M{"job root / trial materialized?"}
+  M -->|"no"| B["not countable; materialization blocker"]
+  M -->|"failure marker"| F["terminal compact failure closeout"]
+  M -->|"yes"| R["compact result ingest"]
+  R --> C["claim / attribution review"]
+  C --> G{"learning ledger ready?"}
+  G -->|"no"| W["block budget count / candidate switch"]
+  G -->|"yes"| K["budget count allowed"]
+```
+
+**Bad smell**
+
+A runner PID, detached process, stale active job, or raw log tail is treated as
+evidence of a benchmark case attempt or score claim before the compact lifecycle
+state says it is countable.
+
+**Validation**
+
+- `docs/research/long-horizon-agent-benchmarks/benchmark-core-adapter-contract-v0.md`
+- `docs/research/long-horizon-agent-benchmarks/terminal-bench-runner-mode-contract-v0.md`
+- `examples/benchmark-lifecycle-state-smoke.py`
+- `examples/benchmark-core-adapter-contract-smoke.py`
+- `examples/terminal-bench-runner-mode-contract-smoke.py`
+
+## IP-016 Task Lease Claim
+
+**Trigger**
+
+- multiple agents, heartbeats, child workers, or frontstage channel views may
+  act on the same todo;
+- the selected work has a bounded `task_id`, owner, TTL, write scope, and
+  idempotency key;
+- the system needs to prevent duplicate work, duplicate spend, or overlapping
+  writes without moving truth into chat.
+
+**Expected behavior**
+
+A task claim should become `task_lease_v0`: an explicit, expiring claim over
+one bounded work item. Status and future channel projections may render the
+claim, but the lease remains a projection over the Goal Harness ledger and
+does not override `goal_boundary`, user gates, quota, or write-scope checks.
+
+When a lease is active and the selected action is inside its scope, the owner
+may proceed. When a competing worker sees an active overlapping lease, it must
+choose a non-overlapping fallback, wait, or surface a conflict. Expired leases
+need cleanup or renewal before they authorize continued work.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  T["selected todo"] --> A{"active lease for task?"}
+  A -->|"no"| C["create lease with TTL, owner, scope, idempotency key"]
+  A -->|"yes same owner/scope"| R["renew or continue bounded work"]
+  A -->|"yes different owner or overlapping scope"| K["conflict: fallback, wait, or ask controller"]
+  C --> W{"write scope still allowed?"}
+  R --> W
+  W -->|"yes"| D["deliver, validate, append event"]
+  W -->|"no"| G["boundary repair or user/controller gate"]
+  D --> X["release/expire lease through ledger"]
+```
+
+**Bad smell**
+
+Two workers repeat the same task, double-spend quota, or write overlapping
+files because the only ownership signal was a chat message or dashboard label.
+
+**Validation**
+
+- `docs/frontstage-channel-lease-roadmap.md`
+- `docs/architecture.md` local server / daemon roadmap
+- future `task_lease_v0` status and conflict smoke.
 
 ## Maintenance Rules
 
