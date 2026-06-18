@@ -12,6 +12,9 @@ BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_LAUNCH_PLAN_SCHEMA_VERSION = (
 BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_RUNNER_BATCH_SCHEMA_VERSION = (
     "benchmark_split_control_remote_executor_runner_batch_v0"
 )
+BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION = (
+    "benchmark_split_control_remote_executor_execution_seam_v1"
+)
 
 DEFAULT_SPLIT_CONTROL_BENCHMARK_IDS = (
     "terminal-bench@2.0",
@@ -468,6 +471,104 @@ def build_split_control_remote_executor_runner_batch(
     }
 
 
+def build_split_control_remote_executor_execution_seam(
+    runner_batch: Mapping[str, Any],
+    *,
+    command_adapters: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build the machine-checkable execution seam for remote runner adapters.
+
+    The runner batch says which benchmark families are eligible to run after a
+    fresh readiness re-check. The execution seam adds the next missing layer:
+    whether each family has a real command adapter and compact result reducer.
+    It deliberately records labels and handle contracts only, never shell
+    argv, host paths, raw logs, task text, trajectories, uploads, or submit
+    paths.
+    """
+
+    batch = _as_dict(runner_batch)
+    adapters = dict(command_adapters or {})
+    runner_cases = _as_sequence_of_mappings(batch.get("runner_cases"))
+    batch_blockers = _string_list(batch.get("blockers"))
+    seam_cases = [
+        _execution_seam_case_from_runner_case(
+            case,
+            adapter=_as_dict(adapters.get(str(case.get("benchmark_id")))),
+        )
+        for case in runner_cases
+    ]
+    missing_adapter_ids = [
+        case["benchmark_id"]
+        for case in seam_cases
+        if not case["command_materialization"]["ready"]
+    ]
+    missing_reducer_ids = [
+        case["benchmark_id"]
+        for case in seam_cases
+        if not case["result_reducer"]["ready"]
+    ]
+    case_blockers = [
+        blocker
+        for case in seam_cases
+        for blocker in _string_list(case.get("blockers"))
+    ]
+    seam_blockers: list[str] = list(batch_blockers)
+    if not runner_cases and not batch_blockers:
+        seam_blockers.append("runner_batch_has_no_cases")
+    if missing_adapter_ids:
+        seam_blockers.append("command_adapter_missing")
+    if missing_reducer_ids:
+        seam_blockers.append("compact_result_reducer_missing")
+    seam_blockers.extend(
+        blocker for blocker in case_blockers if blocker not in seam_blockers
+    )
+
+    ready_to_execute = (
+        _truthy(batch.get("ready_to_execute"))
+        and bool(seam_cases)
+        and not seam_blockers
+    )
+    if batch_blockers or not _truthy(batch.get("ready_to_execute")):
+        next_action = "repair runner_batch readiness before command materialization"
+    elif missing_adapter_ids:
+        next_action = "implement missing remote-executor command adapter(s)"
+    elif missing_reducer_ids:
+        next_action = "implement missing compact result reducer(s)"
+    elif seam_blockers:
+        next_action = "repair execution seam blockers before launch"
+    else:
+        next_action = "launch execution seam cases and ingest compact evidence"
+
+    return {
+        "schema_version": BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION,
+        "source_schema_version": batch.get("schema_version"),
+        "ready_to_execute": ready_to_execute,
+        "ready_to_spend": ready_to_execute and _truthy(batch.get("ready_to_spend")),
+        "blockers": seam_blockers,
+        "missing_command_adapter_ids": missing_adapter_ids,
+        "missing_result_reducer_ids": missing_reducer_ids,
+        "planned_benchmark_ids": _string_list(batch.get("planned_benchmark_ids")),
+        "execution_cases": seam_cases,
+        "post_launch_evidence": batch.get("post_launch_evidence") or [],
+        "post_launch_evidence_boundary": _as_dict(
+            batch.get("post_launch_evidence_boundary")
+        ),
+        "boundary": {
+            **_as_dict(batch.get("boundary")),
+            "shell_commands_embedded": False,
+            "argv_embedded": False,
+            "local_paths_embedded": False,
+            "remote_paths_embedded": False,
+            "raw_task_text_public": False,
+            "raw_logs_public": False,
+            "raw_trajectory_public": False,
+            "upload_allowed": False,
+            "submit_allowed": False,
+        },
+        "next_action": next_action,
+    }
+
+
 def _runner_case_from_launch_case(
     launch_case: Mapping[str, Any],
     *,
@@ -505,6 +606,76 @@ def _runner_case_from_launch_case(
             "upload_attempted",
             "submit_attempted",
         ],
+        "raw_material_allowed": False,
+        "upload_allowed": False,
+        "submit_allowed": False,
+    }
+
+
+def _execution_seam_case_from_runner_case(
+    runner_case: Mapping[str, Any],
+    *,
+    adapter: Mapping[str, Any],
+) -> dict[str, Any]:
+    benchmark_id = str(runner_case.get("benchmark_id"))
+    adapter_ready = _truthy(adapter.get("command_adapter_ready"))
+    reducer_ready = _truthy(adapter.get("result_reducer_ready"))
+    adapter_blockers = _string_list(adapter.get("known_blockers"))
+    blockers: list[str] = []
+    if not adapter_ready:
+        blockers.append("command_adapter_missing")
+    if not reducer_ready:
+        blockers.append("compact_result_reducer_missing")
+    blockers.extend(adapter_blockers)
+    return {
+        "benchmark_id": benchmark_id,
+        "route": "local_agent_remote_executor",
+        "execution_mode": _compact_label(str(runner_case.get("execution_mode") or "")),
+        "command_label": _compact_label(str(runner_case.get("command_label") or "")),
+        "ready_to_execute_remote_command": not blockers,
+        "blockers": blockers,
+        "command_materialization": {
+            "ready": adapter_ready,
+            "status": _compact_label(
+                str(
+                    adapter.get("command_adapter_status")
+                    or ("ready" if adapter_ready else "missing")
+                )
+            ),
+            "entrypoint_label": _compact_label(
+                str(adapter.get("entrypoint_label") or "not_materialized")
+            ),
+            "shell_command_embedded": False,
+            "argv_embedded": False,
+            "host_path_embedded": False,
+        },
+        "execution_handle_contract": {
+            "required_fields": _string_list(adapter.get("handle_fields"))
+            or [
+                "benchmark_id",
+                "runner_handle",
+                "readiness_rechecked",
+                "poll_label",
+                "cleanup_label",
+                "compact_artifact_ref",
+            ],
+            "handle_values_may_be_private": True,
+            "public_handle_shape_only": True,
+        },
+        "result_reducer": {
+            "ready": reducer_ready,
+            "label": _compact_label(
+                str(adapter.get("result_reducer_label") or "not_materialized")
+            ),
+            "accepted_public_fields": list(PUBLIC_RUNNER_RESULT_FIELDS),
+            "raw_values_copied": False,
+        },
+        "remote_executor_allowed_actions": _string_list(
+            runner_case.get("remote_executor_allowed_actions")
+        ),
+        "remote_executor_disallowed_actions": _string_list(
+            runner_case.get("remote_executor_disallowed_actions")
+        ),
         "raw_material_allowed": False,
         "upload_allowed": False,
         "submit_allowed": False,

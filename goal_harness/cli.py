@@ -115,6 +115,10 @@ from .benchmark_core import (
     build_benchmark_candidate_source_boundary,
     build_codex_app_parity_posthoc_check,
     filter_public_benchmark_artifact_paths,
+    build_split_control_remote_executor_execution_seam,
+    build_split_control_remote_executor_launch_plan,
+    build_split_control_remote_executor_readiness,
+    build_split_control_remote_executor_runner_batch,
     render_codex_app_parity_posthoc_check_markdown,
 )
 from .configure_goal import configure_goal, render_configure_goal_markdown
@@ -306,6 +310,70 @@ def render_benchmark_candidate_source_boundary_markdown(payload: dict[str, objec
         lines.append("- Blocked reasons: " + reasons)
     if payload.get("next_action"):
         lines.append(f"- Next action: {payload.get('next_action')}")
+    return "\n".join(lines) + "\n"
+
+
+def render_split_control_execution_seam_markdown(payload: dict[str, object]) -> str:
+    cases = payload.get("execution_cases") if isinstance(payload.get("execution_cases"), list) else []
+    lines = [
+        "# Benchmark Split-Control Execution Seam",
+        "",
+        f"- Schema: `{payload.get('schema_version')}`",
+        f"- Ready to execute: `{payload.get('ready_to_execute')}`",
+        f"- Ready to spend: `{payload.get('ready_to_spend')}`",
+        f"- Cases: `{len(cases)}`",
+    ]
+    blockers = payload.get("blockers")
+    if isinstance(blockers, list) and blockers:
+        lines.append("- Blockers: " + ", ".join(f"`{item}`" for item in blockers))
+    missing_adapters = payload.get("missing_command_adapter_ids")
+    if isinstance(missing_adapters, list) and missing_adapters:
+        lines.append(
+            "- Missing command adapters: "
+            + ", ".join(f"`{item}`" for item in missing_adapters)
+        )
+    missing_reducers = payload.get("missing_result_reducer_ids")
+    if isinstance(missing_reducers, list) and missing_reducers:
+        lines.append(
+            "- Missing result reducers: "
+            + ", ".join(f"`{item}`" for item in missing_reducers)
+        )
+    if payload.get("next_action"):
+        lines.append(f"- Next action: {payload.get('next_action')}")
+    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    lines.extend(
+        [
+            "",
+            "## Boundary",
+            "",
+            f"- Shell commands embedded: `{boundary.get('shell_commands_embedded')}`",
+            f"- argv embedded: `{boundary.get('argv_embedded')}`",
+            f"- raw task text public: `{boundary.get('raw_task_text_public')}`",
+            f"- raw logs public: `{boundary.get('raw_logs_public')}`",
+            f"- upload allowed: `{boundary.get('upload_allowed')}`",
+            f"- submit allowed: `{boundary.get('submit_allowed')}`",
+        ]
+    )
+    if cases:
+        lines.extend(["", "## Cases", ""])
+        for case in cases:
+            if not isinstance(case, dict):
+                continue
+            materialization = (
+                case.get("command_materialization")
+                if isinstance(case.get("command_materialization"), dict)
+                else {}
+            )
+            reducer = case.get("result_reducer") if isinstance(case.get("result_reducer"), dict) else {}
+            lines.append(
+                "- "
+                + f"`{case.get('benchmark_id')}`: command_ready="
+                + f"`{materialization.get('ready')}`, reducer_ready="
+                + f"`{reducer.get('ready')}`, blockers="
+                + "`"
+                + ",".join(str(item) for item in case.get("blockers", []))
+                + "`"
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -2903,6 +2971,36 @@ def main(argv: list[str] | None = None) -> int:
         "--require-clean",
         action="store_true",
         help="Return non-zero if any source is blocked.",
+    )
+
+    split_control_execution_parser = benchmark_sub.add_parser(
+        "split-control-execution-seam",
+        help=(
+            "Build the public-safe execution seam from split-control readiness "
+            "and command-adapter facts. This does not execute benchmarks."
+        ),
+    )
+    add_subcommand_format(split_control_execution_parser)
+    split_control_execution_parser.add_argument(
+        "--readiness-json",
+        required=True,
+        help=(
+            "Path to a benchmark_split_control_remote_executor_readiness_v0 "
+            "object. Use '-' to read stdin."
+        ),
+    )
+    split_control_execution_parser.add_argument(
+        "--command-adapter-json",
+        help=(
+            "Optional JSON object keyed by benchmark id with "
+            "command_adapter_ready/result_reducer_ready facts. If omitted, "
+            "all launch cases are treated as missing command adapters."
+        ),
+    )
+    split_control_execution_parser.add_argument(
+        "--execution-mode",
+        default="compact_no_upload_dry_run",
+        help="Public-safe execution mode label for runner cases.",
     )
 
     ale_local_preflight_parser = benchmark_sub.add_parser(
@@ -5664,6 +5762,73 @@ def main(argv: list[str] | None = None) -> int:
             if args.require_clean and not payload.get("clean"):
                 return 1
             return 0
+        if args.benchmark_command == "split-control-execution-seam":
+            def read_json_arg(path_text: str | None, label: str) -> dict[str, object]:
+                if not path_text:
+                    return {}
+                raw = sys.stdin.read() if path_text == "-" else Path(path_text).expanduser().read_text(encoding="utf-8")
+                loaded = json.loads(raw)
+                if not isinstance(loaded, dict):
+                    raise ValueError(f"{label} must contain a JSON object")
+                return loaded
+
+            try:
+                readiness = read_json_arg(args.readiness_json, "--readiness-json")
+                command_adapters = read_json_arg(
+                    args.command_adapter_json,
+                    "--command-adapter-json",
+                )
+                launch_plan = build_split_control_remote_executor_launch_plan(
+                    readiness
+                )
+                runner_batch = build_split_control_remote_executor_runner_batch(
+                    launch_plan,
+                    fresh_readiness=readiness,
+                    execution_mode=args.execution_mode,
+                )
+                payload = build_split_control_remote_executor_execution_seam(
+                    runner_batch,
+                    command_adapters=command_adapters,
+                )
+                payload["ok"] = True
+                payload["dry_run"] = True
+                payload["read_boundary"] = {
+                    "compact_only": True,
+                    "readiness_json_read": True,
+                    "command_adapter_json_read": bool(args.command_adapter_json),
+                    "raw_task_text_read": False,
+                    "raw_logs_read": False,
+                    "trajectory_read": False,
+                    "shell_commands_read": False,
+                    "docker_invoked": False,
+                    "model_api_invoked": False,
+                    "upload_invoked": False,
+                    "submit_invoked": False,
+                }
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "dry_run": True,
+                    "schema_version": "benchmark_split_control_remote_executor_execution_seam_v1",
+                    "error": str(exc),
+                    "read_boundary": {
+                        "compact_only": True,
+                        "raw_task_text_read": False,
+                        "raw_logs_read": False,
+                        "trajectory_read": False,
+                        "shell_commands_read": False,
+                        "docker_invoked": False,
+                        "model_api_invoked": False,
+                        "upload_invoked": False,
+                        "submit_invoked": False,
+                    },
+                }
+            print_payload(
+                payload,
+                output_format(args),
+                render_split_control_execution_seam_markdown,
+            )
+            return 0 if payload.get("ok") else 1
         if args.benchmark_command == "ale-local-preflight":
             try:
                 image_metadata = None

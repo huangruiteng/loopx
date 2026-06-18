@@ -13,9 +13,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from goal_harness.benchmark_core import (  # noqa: E402
+    BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION,
     BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_LAUNCH_PLAN_SCHEMA_VERSION,
     BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_RUNNER_BATCH_SCHEMA_VERSION,
     BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_SCHEMA_VERSION,
+    build_split_control_remote_executor_execution_seam,
     build_split_control_remote_executor_launch_plan,
     build_split_control_remote_executor_readiness,
     build_split_control_remote_executor_runner_batch,
@@ -300,6 +302,59 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
     assert completed["post_launch_evidence_boundary"]["violations"] == [], completed
     assert completed["next_action"] == "write compact evidence and score summary", completed
     assert_public_safe(completed)
+
+    missing_seam = build_split_control_remote_executor_execution_seam(batch)
+    assert (
+        missing_seam["schema_version"]
+        == BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION
+    ), missing_seam
+    assert missing_seam["ready_to_execute"] is False, missing_seam
+    assert missing_seam["blockers"] == [
+        "command_adapter_missing",
+        "compact_result_reducer_missing",
+    ], missing_seam
+    assert missing_seam["missing_command_adapter_ids"] == [
+        "terminal-bench@2.0",
+        "skillsbench@1.1",
+    ], missing_seam
+    assert missing_seam["missing_result_reducer_ids"] == [
+        "terminal-bench@2.0",
+        "skillsbench@1.1",
+    ], missing_seam
+    assert missing_seam["boundary"]["shell_commands_embedded"] is False, missing_seam
+    assert missing_seam["boundary"]["argv_embedded"] is False, missing_seam
+    assert missing_seam["next_action"] == "implement missing remote-executor command adapter(s)", missing_seam
+    assert_public_safe(missing_seam)
+
+    ready_seam = build_split_control_remote_executor_execution_seam(
+        batch,
+        command_adapters={
+            "terminal-bench@2.0": {
+                "command_adapter_ready": True,
+                "result_reducer_ready": True,
+                "command_adapter_status": "ready",
+                "entrypoint_label": "terminal-bench remote-executor no-upload adapter",
+                "result_reducer_label": "terminal-bench compact result reducer",
+            },
+            "skillsbench@1.1": {
+                "command_adapter_ready": True,
+                "result_reducer_ready": True,
+                "command_adapter_status": "ready",
+                "entrypoint_label": "skillsbench remote-executor no-upload adapter",
+                "result_reducer_label": "skillsbench compact result reducer",
+            },
+        },
+    )
+    assert ready_seam["ready_to_execute"] is True, ready_seam
+    assert ready_seam["blockers"] == [], ready_seam
+    assert ready_seam["next_action"] == "launch execution seam cases and ingest compact evidence", ready_seam
+    assert all(
+        case["command_materialization"]["shell_command_embedded"] is False
+        and case["result_reducer"]["raw_values_copied"] is False
+        and case["ready_to_execute_remote_command"] is True
+        for case in ready_seam["execution_cases"]
+    ), ready_seam
+    assert_public_safe(ready_seam)
 
 
 def test_runner_batch_requires_fresh_readiness_recheck() -> None:
