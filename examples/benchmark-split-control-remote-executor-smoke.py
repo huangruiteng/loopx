@@ -22,6 +22,10 @@ from goal_harness.benchmark_core import (  # noqa: E402
     build_split_control_remote_executor_readiness,
     build_split_control_remote_executor_runner_batch,
 )
+from goal_harness.benchmark_adapters.terminal_bench import (  # noqa: E402
+    TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
+    build_terminal_bench_remote_executor_command_adapter,
+)
 
 
 FORBIDDEN_TEXT = (
@@ -357,6 +361,75 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
     assert_public_safe(ready_seam)
 
 
+def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
+    adapter_payload = build_terminal_bench_remote_executor_command_adapter()
+    assert (
+        adapter_payload["schema_version"]
+        == TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA
+    ), adapter_payload
+    assert adapter_payload["ready"] is True, adapter_payload
+    terminal_adapter = adapter_payload["command_adapters"]["terminal-bench@2.0"]
+    assert terminal_adapter["command_adapter_ready"] is True, terminal_adapter
+    assert terminal_adapter["result_reducer_ready"] is True, terminal_adapter
+    assert terminal_adapter["boundary"]["shell_command_embedded"] is False
+    assert terminal_adapter["boundary"]["argv_embedded"] is False
+    assert terminal_adapter["boundary"]["host_path_embedded"] is False
+    assert terminal_adapter["surface_contract"]["local_codex_owns_auth_model_state"] is True
+    assert terminal_adapter["surface_contract"]["remote_executor_owns_docker_runner_data"] is True
+    assert_public_safe(adapter_payload)
+
+    readiness = build_split_control_remote_executor_readiness(
+        benchmark_ids=("terminal-bench@2.0", "skillsbench@1.1"),
+        local_agent={
+            "codex_cli_available": True,
+            "goal_harness_available": True,
+            "codex_auth_ready": True,
+            "codex_auth_local_only": True,
+            "model_invocation_local": True,
+        },
+        remote_executor={
+            "docker_available": True,
+            "python_available": True,
+            "git_available": True,
+            "rsync_available": True,
+        },
+        adapter_readiness={
+            "terminal-bench@2.0": {
+                "split_control_adapter_ready": True,
+                "runner_tooling_ready": True,
+                "task_data_ready": True,
+            },
+            "skillsbench@1.1": {
+                "split_control_adapter_ready": True,
+                "runner_tooling_ready": True,
+                "task_data_ready": True,
+            },
+        },
+    )
+    plan = build_split_control_remote_executor_launch_plan(readiness)
+    batch = build_split_control_remote_executor_runner_batch(
+        plan,
+        fresh_readiness=readiness,
+    )
+    partial_seam = build_split_control_remote_executor_execution_seam(
+        batch,
+        command_adapters=adapter_payload["command_adapters"],
+    )
+    assert partial_seam["ready_to_execute"] is False, partial_seam
+    assert partial_seam["missing_command_adapter_ids"] == ["skillsbench@1.1"], partial_seam
+    assert partial_seam["missing_result_reducer_ids"] == ["skillsbench@1.1"], partial_seam
+    terminal_case = next(
+        case
+        for case in partial_seam["execution_cases"]
+        if case["benchmark_id"] == "terminal-bench@2.0"
+    )
+    assert terminal_case["ready_to_execute_remote_command"] is True, partial_seam
+    assert terminal_case["command_materialization"]["entrypoint_label"] == (
+        "terminal_bench_no_upload_case_run_surface"
+    )
+    assert_public_safe(partial_seam)
+
+
 def test_runner_batch_requires_fresh_readiness_recheck() -> None:
     payload = build_split_control_remote_executor_readiness(
         benchmark_ids=("terminal-bench@2.0",),
@@ -514,6 +587,7 @@ def main() -> int:
     test_remote_codex_is_not_required_for_split_control()
     test_ready_parallel_batch_size_is_capped()
     test_partial_ready_subset_can_launch_without_remote_codex()
+    test_terminal_bench_command_adapter_facts_feed_execution_seam()
     test_runner_batch_requires_fresh_readiness_recheck()
     test_runner_batch_sanitizes_post_launch_evidence()
     test_launch_plan_blocks_when_no_subset_is_ready()

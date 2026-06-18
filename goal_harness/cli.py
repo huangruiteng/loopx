@@ -89,10 +89,12 @@ from .benchmark_adapters.terminal_bench import (
     TERMINAL_BENCH_HARDENED_CODEX_BASELINE_PREFLIGHT_MODE,
     TERMINAL_BENCH_MANAGED_CODEX_GOAL_HARNESS_KWARGS,
     TERMINAL_BENCH_MODES,
+    TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
     agent_kwargs_from_invocation,
     build_terminal_bench_benchmark_run,
     build_terminal_bench_environment_setup_probe_gate,
     build_terminal_bench_harbor_result_benchmark_run,
+    build_terminal_bench_remote_executor_command_adapter,
     build_terminal_bench_result_finalization_gate,
     collect_terminal_bench_goal_harness_cli_bridge_trace,
     launch_terminal_bench_environment_setup_probe,
@@ -374,6 +376,45 @@ def render_split_control_execution_seam_markdown(payload: dict[str, object]) -> 
                 + ",".join(str(item) for item in case.get("blockers", []))
                 + "`"
             )
+    return "\n".join(lines) + "\n"
+
+def render_terminal_bench_remote_executor_command_adapter_markdown(
+    payload: dict[str, object],
+) -> str:
+    adapter = (
+        payload.get("command_adapter")
+        if isinstance(payload.get("command_adapter"), dict)
+        else {}
+    )
+    boundary = (
+        adapter.get("boundary") if isinstance(adapter.get("boundary"), dict) else {}
+    )
+    lines = [
+        "# Terminal-Bench Remote Executor Command Adapter",
+        "",
+        f"- Schema: `{payload.get('schema_version')}`",
+        f"- Benchmark: `{payload.get('benchmark_id')}`",
+        f"- Ready: `{payload.get('ready')}`",
+        f"- First blocker: `{payload.get('first_blocker')}`",
+        f"- Command adapter ready: `{adapter.get('command_adapter_ready')}`",
+        f"- Result reducer ready: `{adapter.get('result_reducer_ready')}`",
+        f"- Entrypoint label: `{adapter.get('entrypoint_label')}`",
+        f"- Result reducer label: `{adapter.get('result_reducer_label')}`",
+        f"- Next action: {payload.get('next_action')}",
+        "",
+        "## Boundary",
+        "",
+        f"- Shell command embedded: `{boundary.get('shell_command_embedded')}`",
+        f"- argv embedded: `{boundary.get('argv_embedded')}`",
+        f"- host path embedded: `{boundary.get('host_path_embedded')}`",
+        f"- raw task text public: `{boundary.get('raw_task_text_public')}`",
+        f"- raw logs public: `{boundary.get('raw_logs_public')}`",
+        f"- upload allowed: `{boundary.get('upload_allowed')}`",
+        f"- submit allowed: `{boundary.get('submit_allowed')}`",
+    ]
+    blockers = payload.get("blockers")
+    if isinstance(blockers, list) and blockers:
+        lines.append("- Blockers: " + ", ".join(f"`{item}`" for item in blockers))
     return "\n".join(lines) + "\n"
 
 
@@ -3001,6 +3042,66 @@ def main(argv: list[str] | None = None) -> int:
         "--execution-mode",
         default="compact_no_upload_dry_run",
         help="Public-safe execution mode label for runner cases.",
+    )
+
+    terminal_bench_command_adapter_parser = benchmark_sub.add_parser(
+        "terminal-bench-command-adapter",
+        help=(
+            "Emit Terminal-Bench command-adapter facts for the split-control "
+            "execution seam. This does not execute benchmarks."
+        ),
+    )
+    add_subcommand_format(terminal_bench_command_adapter_parser)
+    terminal_bench_command_adapter_parser.add_argument(
+        "benchmark_name",
+        choices=["terminal-bench"],
+        help="Benchmark family. Only terminal-bench is supported.",
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--benchmark-id",
+        default=TERMINAL_BENCH_DEFAULT_DATASET,
+        help="Public-safe split-control benchmark id.",
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--launch-surface-not-ready",
+        action="store_true",
+        help="Fixture flag for a missing launch surface.",
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--poll-surface-not-ready",
+        action="store_true",
+        help="Fixture flag for a missing compact poll surface.",
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--resume-surface-not-ready",
+        action="store_true",
+        help="Fixture flag for a missing no-upload resume surface.",
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--compact-ingest-not-ready",
+        action="store_true",
+        help="Fixture flag for a missing compact Harbor result ingest surface.",
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--result-reducer-not-ready",
+        action="store_true",
+        help="Fixture flag for a missing compact result reducer.",
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--submit-enabled",
+        action="store_true",
+        help="Fixture flag proving submit-enabled runs are blocked.",
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--surface-blocker",
+        action="append",
+        default=[],
+        help="Public-safe adapter blocker label. Repeat as needed.",
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--require-ready",
+        action="store_true",
+        help="Return non-zero unless the adapter facts are ready.",
     )
 
     ale_local_preflight_parser = benchmark_sub.add_parser(
@@ -5774,9 +5875,16 @@ def main(argv: list[str] | None = None) -> int:
 
             try:
                 readiness = read_json_arg(args.readiness_json, "--readiness-json")
-                command_adapters = read_json_arg(
+                command_adapter_payload = read_json_arg(
                     args.command_adapter_json,
                     "--command-adapter-json",
+                )
+                command_adapters = (
+                    command_adapter_payload.get("command_adapters")
+                    if isinstance(
+                        command_adapter_payload.get("command_adapters"), dict
+                    )
+                    else command_adapter_payload
                 )
                 launch_plan = build_split_control_remote_executor_launch_plan(
                     readiness
@@ -5796,6 +5904,12 @@ def main(argv: list[str] | None = None) -> int:
                     "compact_only": True,
                     "readiness_json_read": True,
                     "command_adapter_json_read": bool(args.command_adapter_json),
+                    "command_adapter_wrapper_unwrapped": bool(
+                        args.command_adapter_json
+                        and isinstance(
+                            command_adapter_payload.get("command_adapters"), dict
+                        )
+                    ),
                     "raw_task_text_read": False,
                     "raw_logs_read": False,
                     "trajectory_read": False,
@@ -5827,6 +5941,57 @@ def main(argv: list[str] | None = None) -> int:
                 payload,
                 output_format(args),
                 render_split_control_execution_seam_markdown,
+            )
+            return 0 if payload.get("ok") else 1
+        if args.benchmark_command == "terminal-bench-command-adapter":
+            try:
+                if args.benchmark_name != "terminal-bench":
+                    raise ValueError("only terminal-bench is supported")
+                payload = build_terminal_bench_remote_executor_command_adapter(
+                    benchmark_id=args.benchmark_id,
+                    launch_surface_ready=not bool(args.launch_surface_not_ready),
+                    poll_surface_ready=not bool(args.poll_surface_not_ready),
+                    resume_surface_ready=not bool(args.resume_surface_not_ready),
+                    compact_ingest_ready=not bool(args.compact_ingest_not_ready),
+                    result_reducer_ready=not bool(args.result_reducer_not_ready),
+                    no_upload=not bool(args.submit_enabled),
+                    submit_enabled=bool(args.submit_enabled),
+                    known_blockers=args.surface_blocker,
+                )
+                payload["ok"] = True
+                payload["dry_run"] = True
+                if args.require_ready and payload.get("ready") is not True:
+                    payload["ok"] = False
+                    payload["error"] = (
+                        payload.get("first_blocker")
+                        or "terminal_bench_command_adapter_not_ready"
+                    )
+                payload["require_ready"] = bool(args.require_ready)
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "dry_run": True,
+                    "schema_version": TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
+                    "error": str(exc),
+                    "read_boundary": {
+                        "compact_only": True,
+                        "shell_commands_read": False,
+                        "argv_read": False,
+                        "raw_task_text_read": False,
+                        "raw_logs_read": False,
+                        "trajectory_read": False,
+                        "local_paths_recorded": False,
+                        "remote_paths_recorded": False,
+                        "docker_invoked": False,
+                        "model_api_invoked": False,
+                        "upload_invoked": False,
+                        "submit_invoked": False,
+                    },
+                }
+            print_payload(
+                payload,
+                output_format(args),
+                render_terminal_bench_remote_executor_command_adapter_markdown,
             )
             return 0 if payload.get("ok") else 1
         if args.benchmark_command == "ale-local-preflight":

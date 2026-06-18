@@ -9,7 +9,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from ..benchmark_core.io import (
     load_json_object as _load_json_object,
@@ -108,6 +108,9 @@ TERMINAL_BENCH_RUN_LEDGER_CLOSEOUT_SCHEMA = (
 )
 TERMINAL_BENCH_ENVIRONMENT_SETUP_READINESS_SCHEMA = (
     "terminal_bench_environment_setup_readiness_preflight_v0"
+)
+TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA = (
+    "terminal_bench_remote_executor_command_adapter_v1"
 )
 TERMINAL_BENCH_ENVIRONMENT_SETUP_PROBE_GATE_SCHEMA = (
     "terminal_bench_environment_setup_probe_gate_v0"
@@ -3227,6 +3230,132 @@ def _public_safe_benchmark_label(value: Any, *, limit: int = 120) -> str | None:
     if not text or "/" in text or "\\" in text:
         return None
     return text[:limit]
+
+def build_terminal_bench_remote_executor_command_adapter(
+    *,
+    benchmark_id: str = TERMINAL_BENCH_DEFAULT_DATASET,
+    launch_surface_ready: bool = True,
+    poll_surface_ready: bool = True,
+    resume_surface_ready: bool = True,
+    compact_ingest_ready: bool = True,
+    result_reducer_ready: bool = True,
+    no_upload: bool = True,
+    submit_enabled: bool = False,
+    known_blockers: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Return Terminal-Bench adapter facts for the split-control seam.
+
+    This is not a launcher and it deliberately avoids shell commands, argv,
+    host paths, task text, logs, trajectories, uploads, and submit surfaces.
+    Private runners may use the labels to find their own local implementation,
+    but public Goal Harness state stores only the adapter contract.
+    """
+
+    safe_benchmark_id = _public_safe_benchmark_label(benchmark_id, limit=80)
+    blockers = [str(item) for item in known_blockers if str(item)]
+    if not safe_benchmark_id:
+        safe_benchmark_id = TERMINAL_BENCH_DEFAULT_DATASET
+        blockers.append("terminal_bench_benchmark_id_not_public_safe")
+    if safe_benchmark_id != TERMINAL_BENCH_DEFAULT_DATASET:
+        blockers.append("terminal_bench_benchmark_id_unsupported")
+    if not launch_surface_ready:
+        blockers.append("terminal_bench_launch_surface_not_ready")
+    if not poll_surface_ready:
+        blockers.append("terminal_bench_poll_surface_not_ready")
+    if not resume_surface_ready:
+        blockers.append("terminal_bench_resume_surface_not_ready")
+    if not compact_ingest_ready:
+        blockers.append("terminal_bench_compact_ingest_surface_not_ready")
+    if not no_upload:
+        blockers.append("terminal_bench_no_upload_boundary_not_enabled")
+    if submit_enabled:
+        blockers.append("terminal_bench_submit_must_remain_disabled")
+
+    reducer_ready = (
+        result_reducer_ready is True
+        and compact_ingest_ready is True
+        and no_upload is True
+        and submit_enabled is False
+    )
+    if not reducer_ready:
+        blockers.append("terminal_bench_compact_result_reducer_not_ready")
+
+    adapter_ready = not blockers
+    adapter = {
+        "schema_version": TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
+        "benchmark_id": safe_benchmark_id,
+        "command_adapter_ready": adapter_ready,
+        "result_reducer_ready": reducer_ready,
+        "command_adapter_status": "ready" if adapter_ready else "blocked",
+        "entrypoint_label": "terminal_bench_no_upload_case_run_surface",
+        "poll_label": "terminal_bench_compact_materialization_poll_surface",
+        "cleanup_label": "terminal_bench_private_runner_cleanup_surface",
+        "result_reducer_label": "terminal_bench_compact_harbor_result_reducer",
+        "handle_fields": [
+            "benchmark_id",
+            "runner_handle",
+            "readiness_rechecked",
+            "run_root_handle",
+            "jobs_dir_handle",
+            "job_name",
+            "poll_label",
+            "cleanup_label",
+            "compact_artifact_ref",
+        ],
+        "known_blockers": blockers,
+        "surface_contract": {
+            "launch_surface_ready": launch_surface_ready is True,
+            "poll_surface_ready": poll_surface_ready is True,
+            "resume_surface_ready": resume_surface_ready is True,
+            "compact_ingest_ready": compact_ingest_ready is True,
+            "private_handle_values_required": True,
+            "public_handle_shape_only": True,
+            "local_codex_owns_auth_model_state": True,
+            "remote_executor_owns_docker_runner_data": True,
+        },
+        "boundary": {
+            "shell_command_embedded": False,
+            "argv_embedded": False,
+            "host_path_embedded": False,
+            "remote_path_embedded": False,
+            "raw_task_text_public": False,
+            "raw_logs_public": False,
+            "raw_trajectory_public": False,
+            "credential_values_recorded": False,
+            "upload_allowed": False,
+            "submit_allowed": False,
+        },
+    }
+    return {
+        "schema_version": TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
+        "benchmark_id": safe_benchmark_id,
+        "ready": adapter_ready and reducer_ready,
+        "first_blocker": blockers[0]
+        if blockers
+        else "ready_for_split_control_execution_seam",
+        "blockers": blockers,
+        "command_adapters": {safe_benchmark_id: adapter},
+        "command_adapter": adapter,
+        "next_action": (
+            "feed_terminal_bench_adapter_facts_to_split_control_execution_seam"
+            if adapter_ready and reducer_ready
+            else "repair_terminal_bench_adapter_surface_before_execution_seam"
+        ),
+        "read_boundary": {
+            "compact_only": True,
+            "shell_commands_read": False,
+            "argv_read": False,
+            "raw_task_text_read": False,
+            "raw_logs_read": False,
+            "trajectory_read": False,
+            "local_paths_recorded": False,
+            "remote_paths_recorded": False,
+            "docker_invoked": False,
+            "model_api_invoked": False,
+            "upload_invoked": False,
+            "submit_invoked": False,
+        },
+    }
 
 def build_terminal_bench_single_agent_episode_policy(
     *,

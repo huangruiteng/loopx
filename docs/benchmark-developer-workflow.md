@@ -44,9 +44,10 @@ For a real benchmark slice, use this sequence:
 1. Run a source and boundary preflight for the target benchmark.
 2. Build or inspect the split-control readiness payload.
 3. Produce a launch plan or runner batch only after a fresh readiness re-check.
-4. Build the execution seam from command-adapter facts, and treat missing
-   command adapters or compact reducers as blockers instead of launching a
-   private script.
+4. Build benchmark-specific command-adapter facts, such as
+   `goal-harness benchmark terminal-bench-command-adapter terminal-bench`, then
+   build the execution seam from those facts. Treat missing command adapters or
+   compact reducers as blockers instead of launching a private script.
 5. Run the smallest no-upload dry-run or mini-pair that can answer the current
    product question.
 6. Ingest a compact result or precise blocker.
