@@ -53,6 +53,25 @@ Do not start from a raw shell command hidden in a local note. If a benchmark
 cannot be launched through a documented route, the next product task is to
 build that route, not to keep a one-off script alive.
 
+## Capture The Process While Running
+
+Do not wait for a benchmark family to be fully solved before documenting how it
+runs. Each real run should improve the developer workflow in the same batch as
+the result or blocker:
+
+1. Before launch, write down the intended route, boundary, command shape,
+   expected compact artifacts, and stop conditions.
+2. During launch, preserve only observable handles that another developer can
+   use: pid or job basename, readiness state, poll command, cleanup state, and
+   compact artifact refs.
+3. After launch, update the workflow or adapter notes with what changed:
+   product-path pass, precise blocker, cleanup rule, or stale assumption.
+4. If the run required a private local script, turn the reusable part into a
+   public command, fixture, or adapter contract before relying on it again.
+
+The goal is a living runner guide. Repeated benchmark attempts should make the
+next attempt easier to launch and debug, not only add more private evidence.
+
 ## Split-Control Route
 
 Docker-heavy benchmarks should use the split-control route unless a narrower
