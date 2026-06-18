@@ -12,6 +12,7 @@ from .status import (
 
 DREAMING_DRY_RUN_SCHEMA_VERSION = "dreaming_dry_run_proposal_v0"
 DREAMING_PROPOSAL_SCHEMA_VERSION = "dreaming_proposal_v0"
+SERVER_PLANNING_CONTRACT_SCHEMA_VERSION = "server_managed_planning_contract_v0"
 MAX_DREAMING_EVIDENCE_ITEMS = 5
 
 
@@ -128,6 +129,44 @@ def _proposal_summary(runs: list[dict[str, Any]], proposal_type: str) -> str:
     return f"Recent run history suggests an exploration option for operator review: {top}."
 
 
+def build_server_managed_planning_contract() -> dict[str, Any]:
+    """Return the default contract for server-managed planning proposals."""
+
+    return {
+        "schema_version": SERVER_PLANNING_CONTRACT_SCHEMA_VERSION,
+        "lane": "dreaming_planning",
+        "authority": "proposal_only_until_promoted",
+        "may_rank_candidate_todos": True,
+        "may_suggest_evidence_probes": True,
+        "may_emit_refactor_warnings": True,
+        "may_execute_protected_actions": False,
+        "may_read_private_material": False,
+        "may_mutate_active_state": False,
+        "may_append_delivery_history": False,
+        "may_spend_delivery_quota": False,
+        "promotion_required": True,
+        "promotion_requirements": [
+            "operator_or_controller_approval",
+            "normal_quota_should_run_decision",
+            "goal_boundary_write_scope_approval",
+            "public_private_boundary_scan_for_public_artifacts",
+        ],
+        "allowed_outputs": [
+            "ranked_candidate_todos",
+            "evidence_probe_suggestions",
+            "refactor_warnings",
+            "memory_consolidation_proposals",
+        ],
+        "forbidden_outputs": [
+            "agent_command",
+            "protected_action_execution",
+            "private_material_read",
+            "delivery_quota_spend",
+            "active_state_mutation_without_promotion",
+        ],
+    }
+
+
 def build_dreaming_dry_run_proposal(
     history_payload: dict[str, Any],
     *,
@@ -162,6 +201,7 @@ def build_dreaming_dry_run_proposal(
     classification = _classification_for_proposal_type(proposal_type)
     evidence_window = f"last_{len(runs)}_non_neutral_runs" if runs else "no_recent_non_neutral_runs"
     question = _operator_question(goal_id, proposal_type)
+    server_planning_contract = build_server_managed_planning_contract()
     dreaming = {
         "schema_version": DREAMING_PROPOSAL_SCHEMA_VERSION,
         "lane": "exploration",
@@ -173,6 +213,7 @@ def build_dreaming_dry_run_proposal(
         "promoted_to_delivery": False,
         "execution_allowed": False,
         "delivery_spend_allowed": False,
+        "server_planning_contract": server_planning_contract,
     }
     preview = {
         "goal_id": goal_id,
@@ -196,6 +237,7 @@ def build_dreaming_dry_run_proposal(
         "operator_question": question,
         "recommended_action": preview["recommended_action"],
         "run_record_preview": preview,
+        "server_planning_contract": server_planning_contract,
         "recent_evidence": [_compact_run(run) for run in runs[:MAX_DREAMING_EVIDENCE_ITEMS]],
         "side_effects": {
             "project_files_mutated": False,
@@ -226,6 +268,11 @@ def render_dreaming_dry_run_markdown(payload: dict[str, Any]) -> str:
         return "\n".join(lines) + "\n"
 
     side_effects = payload.get("side_effects") if isinstance(payload.get("side_effects"), dict) else {}
+    contract = (
+        payload.get("server_planning_contract")
+        if isinstance(payload.get("server_planning_contract"), dict)
+        else {}
+    )
     lines.extend(
         [
             f"- Classification: `{payload.get('classification')}`",
@@ -235,11 +282,19 @@ def render_dreaming_dry_run_markdown(payload: dict[str, Any]) -> str:
             f"- Runtime history appended: `{side_effects.get('runtime_history_appended')}`",
             f"- Active state mutated: `{side_effects.get('active_state_mutated')}`",
             f"- Quota spent: `{side_effects.get('quota_spent')}`",
-            "",
-            "## Recent Evidence",
-            "",
         ]
     )
+    if contract:
+        lines.extend(
+            [
+                f"- Planning authority: `{contract.get('authority')}`",
+                f"- May rank todos: `{contract.get('may_rank_candidate_todos')}`",
+                f"- May execute protected actions: `{contract.get('may_execute_protected_actions')}`",
+                f"- May read private material: `{contract.get('may_read_private_material')}`",
+                f"- May spend delivery quota: `{contract.get('may_spend_delivery_quota')}`",
+            ]
+        )
+    lines.extend(["", "## Recent Evidence", ""])
     evidence = payload.get("recent_evidence") if isinstance(payload.get("recent_evidence"), list) else []
     if not evidence:
         lines.append("- No recent non-neutral run evidence.")

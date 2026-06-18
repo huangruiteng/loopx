@@ -56,7 +56,11 @@ Runs the contract-only separation check for autonomous replan versus dreaming.
 It creates a compact `dreaming_exploration_proposal` fixture and verifies that
 status/quota surface it as an advisory user/controller gate with no
 `agent_command`, no autonomous replan obligation, no delivery permission, and
-no quota spend path.
+no quota spend path. It also verifies the compact
+`server_managed_planning_contract_v0` projection: planning may rank candidate
+todos and suggest evidence probes, but may not execute protected actions, read
+private material, mutate active state, append delivery history, or spend
+delivery quota before promotion.
 
 ```bash
 python3 regression/external-evidence-observation-real-codex.py

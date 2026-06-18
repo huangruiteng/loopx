@@ -108,6 +108,24 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
             "proposal_type": "refactor_warning",
             "confidence": "medium",
             "requires_project_controller": True,
+            "server_planning_contract": {
+                "schema_version": "server_managed_planning_contract_v0",
+                "lane": "dreaming_planning",
+                "authority": "proposal_only_until_promoted",
+                "may_rank_candidate_todos": True,
+                "may_suggest_evidence_probes": True,
+                "may_execute_protected_actions": False,
+                "may_read_private_material": False,
+                "may_mutate_active_state": False,
+                "may_append_delivery_history": False,
+                "may_spend_delivery_quota": False,
+                "promotion_required": True,
+                "promotion_requirements": [
+                    "operator_or_controller_approval",
+                    "normal_quota_should_run_decision",
+                    "goal_boundary_write_scope_approval",
+                ],
+            },
         },
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
@@ -137,6 +155,17 @@ def main() -> int:
         assert proposal["execution_allowed"] is False, proposal
         assert proposal["delivery_spend_allowed"] is False, proposal
         assert proposal["proposal_type"] == "refactor_warning", proposal
+        planning_contract = proposal["server_planning_contract"]
+        assert planning_contract["schema_version"] == "server_managed_planning_contract_v0", proposal
+        assert planning_contract["authority"] == "proposal_only_until_promoted", proposal
+        assert planning_contract["may_rank_candidate_todos"] is True, proposal
+        assert planning_contract["may_suggest_evidence_probes"] is True, proposal
+        assert planning_contract["may_execute_protected_actions"] is False, proposal
+        assert planning_contract["may_read_private_material"] is False, proposal
+        assert planning_contract["may_mutate_active_state"] is False, proposal
+        assert planning_contract["may_append_delivery_history"] is False, proposal
+        assert planning_contract["may_spend_delivery_quota"] is False, proposal
+        assert planning_contract["promotion_required"] is True, proposal
 
         guard = run_cli("quota", "should-run", "--goal-id", GOAL_ID, registry_path=registry_path, runtime=runtime)
         assert guard["should_run"] is False, guard

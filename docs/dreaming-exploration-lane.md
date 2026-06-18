@@ -164,6 +164,39 @@ history, mutate active state, grant an `agent_command`, or spend quota. The
 preview is meant for operator/controller review before any proposal is promoted
 into ordinary delivery work.
 
+## Server-Managed Planning Semantics
+
+A future Goal Harness server may schedule dreaming/planning work, but the
+server-owned lane keeps the same authority boundary as the CLI dry run:
+
+```json
+{
+  "schema_version": "server_managed_planning_contract_v0",
+  "lane": "dreaming_planning",
+  "authority": "proposal_only_until_promoted",
+  "may_rank_candidate_todos": true,
+  "may_suggest_evidence_probes": true,
+  "may_execute_protected_actions": false,
+  "may_read_private_material": false,
+  "may_mutate_active_state": false,
+  "may_spend_delivery_quota": false,
+  "promotion_required": true,
+  "promotion_requirements": [
+    "operator_or_controller_approval",
+    "normal_quota_should_run_decision",
+    "goal_boundary_write_scope_approval",
+    "public_private_boundary_scan_for_public_artifacts"
+  ]
+}
+```
+
+The server may rank candidate todos, propose evidence probes, and emit refactor
+or memory-consolidation warnings. It may not execute a protected action, read
+private material, mutate active state, append delivery history, or spend
+delivery quota until the proposal is promoted through the normal operator,
+quota, and goal-boundary path. This keeps dreaming useful for long-horizon
+product taste while preventing it from becoming a second hidden project agent.
+
 Acceptance criterion: a project can receive a dreaming proposal without the
 project agent being interrupted, and the user can approve, reject, or defer it
 from Goal Harness.

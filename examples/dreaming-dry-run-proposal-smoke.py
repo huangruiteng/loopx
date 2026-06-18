@@ -162,6 +162,23 @@ def main() -> int:
         assert preview["dreaming"]["advisory"] is True, preview
         assert preview["dreaming"]["execution_allowed"] is False, preview
         assert preview["dreaming"]["delivery_spend_allowed"] is False, preview
+        contract = payload["server_planning_contract"]
+        assert contract["schema_version"] == "server_managed_planning_contract_v0", contract
+        assert contract["authority"] == "proposal_only_until_promoted", contract
+        assert contract["may_rank_candidate_todos"] is True, contract
+        assert contract["may_suggest_evidence_probes"] is True, contract
+        assert contract["may_execute_protected_actions"] is False, contract
+        assert contract["may_read_private_material"] is False, contract
+        assert contract["may_mutate_active_state"] is False, contract
+        assert contract["may_spend_delivery_quota"] is False, contract
+        assert contract["promotion_required"] is True, contract
+        assert contract["promotion_requirements"] == [
+            "operator_or_controller_approval",
+            "normal_quota_should_run_decision",
+            "goal_boundary_write_scope_approval",
+            "public_private_boundary_scan_for_public_artifacts",
+        ], contract
+        assert preview["dreaming"]["server_planning_contract"] == contract, preview
         side_effects = payload["side_effects"]
         assert side_effects["runtime_history_appended"] is False, side_effects
         assert side_effects["active_state_mutated"] is False, side_effects

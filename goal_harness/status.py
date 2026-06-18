@@ -5547,6 +5547,34 @@ def operator_gate_attention_fields(run: dict[str, Any] | None) -> dict[str, Any]
     return fields
 
 
+def compact_server_planning_contract(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    for field in ("schema_version", "lane", "authority"):
+        text = public_safe_compact_text(value.get(field), limit=120)
+        if text:
+            compact[field] = text
+    for field in (
+        "may_rank_candidate_todos",
+        "may_suggest_evidence_probes",
+        "may_emit_refactor_warnings",
+        "may_execute_protected_actions",
+        "may_read_private_material",
+        "may_mutate_active_state",
+        "may_append_delivery_history",
+        "may_spend_delivery_quota",
+        "promotion_required",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in ("promotion_requirements", "allowed_outputs", "forbidden_outputs"):
+        items = public_safe_compact_list(value.get(field), limit=8)
+        if items:
+            compact[field] = items
+    return compact
+
+
 def compact_dreaming_proposal(run: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(run, dict):
         return None
@@ -5566,6 +5594,9 @@ def compact_dreaming_proposal(run: dict[str, Any] | None) -> dict[str, Any] | No
         value = public_safe_compact_text(raw.get(key), limit=80)
         if value:
             proposal[key] = value
+    server_planning_contract = compact_server_planning_contract(raw.get("server_planning_contract"))
+    if server_planning_contract:
+        proposal["server_planning_contract"] = server_planning_contract
     if raw.get("requires_project_controller") is not None:
         proposal["requires_project_controller"] = bool(raw.get("requires_project_controller"))
     question = public_safe_compact_text(

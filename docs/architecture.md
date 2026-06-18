@@ -91,7 +91,9 @@ The server path should land in layers:
    todo proposals, evidence probes, and refactor warnings as advisory records.
    These queues must not execute protected work, read private material, or
    spend delivery quota without a later normal `quota should-run` decision and
-   goal-boundary approval.
+   goal-boundary approval. The compact contract is
+   `server_managed_planning_contract_v0`; see
+   [dreaming-exploration-lane.md](dreaming-exploration-lane.md).
 6. **Host adapters**: expose the same contracts through MCP, hooks, or a small
    local HTTP API for Codex-like hosts. Host adapters should route agents to
    current state and valid writes; they should not embed stale project policy or
