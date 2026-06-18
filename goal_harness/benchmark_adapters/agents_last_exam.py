@@ -1902,17 +1902,24 @@ def _agents_last_exam_source_git_metadata(
         git_output("remote", "get-url", "origin")
     )
     head = _agents_last_exam_public_id(git_output("rev-parse", "HEAD"), limit=80)
-    upstream_ref = _agents_last_exam_public_id(
-        git_output("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"),
-        limit=120,
+    raw_upstream_ref = git_output(
+        "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"
     )
-    upstream_head = _agents_last_exam_public_id(
-        git_output("rev-parse", "@{upstream}"),
-        limit=80,
-    )
+    raw_upstream_head = git_output("rev-parse", "@{upstream}")
+    upstream_fallback_ref = False
+    if not raw_upstream_head:
+        fallback_ref = "origin/main"
+        fallback_head = git_output("rev-parse", fallback_ref)
+        if fallback_head:
+            raw_upstream_ref = fallback_ref
+            raw_upstream_head = fallback_head
+            upstream_fallback_ref = True
+    upstream_ref = _agents_last_exam_public_id(raw_upstream_ref, limit=120)
+    upstream_head = _agents_last_exam_public_id(raw_upstream_head, limit=80)
     upstream_ahead_count: int | None = None
     upstream_behind_count: int | None = None
-    rev_counts = git_output("rev-list", "--left-right", "--count", "HEAD...@{upstream}")
+    rev_target = raw_upstream_ref or "@{upstream}"
+    rev_counts = git_output("rev-list", "--left-right", "--count", f"HEAD...{rev_target}")
     if rev_counts:
         parts = rev_counts.split()
         if len(parts) >= 2:
@@ -1930,6 +1937,7 @@ def _agents_last_exam_source_git_metadata(
         "upstream_ref": upstream_ref,
         "upstream_head": upstream_head,
         "upstream_declared": bool(upstream_ref),
+        "upstream_fallback_ref": upstream_fallback_ref,
         "head_matches_upstream": bool(head and upstream_head and head == upstream_head),
         "upstream_ahead_count": upstream_ahead_count,
         "upstream_behind_count": upstream_behind_count,
@@ -2007,6 +2015,7 @@ def build_agents_last_exam_local_source_readiness(
             "upstream_ref": git_metadata.get("upstream_ref"),
             "upstream_head": git_metadata.get("upstream_head"),
             "upstream_declared": git_metadata.get("upstream_declared") is True,
+            "upstream_fallback_ref": git_metadata.get("upstream_fallback_ref") is True,
             "head_matches_upstream": git_metadata.get("head_matches_upstream")
             is True,
             "upstream_ahead_count": git_metadata.get("upstream_ahead_count"),
@@ -2518,6 +2527,7 @@ def build_agents_last_exam_baked_task_input_scan(
 
 def _agents_last_exam_task_data_source_readiness(
     *,
+    source_root: str | None,
     requires_task_data: bool | str | None,
     task_data_source: str | None,
     baked_task_input_present: bool | None,
@@ -2530,6 +2540,37 @@ def _agents_last_exam_task_data_source_readiness(
     raw_source = task_data_source.strip() if isinstance(task_data_source, str) else ""
     source = _agents_last_exam_public_id(raw_source, limit=120)
     official_gcs_source = raw_source.startswith("gs://ale-data-public")
+    local_source_declared = raw_source.startswith("local:")
+    local_source_safe = False
+    local_source_present = False
+    if local_source_declared:
+        local_relative = raw_source[len("local:") :].strip().replace("\\", "/")
+        parts = [part for part in local_relative.split("/") if part]
+        local_source_safe = bool(
+            local_relative
+            and not local_relative.startswith("/")
+            and not local_relative.startswith("~")
+            and all(part not in {".", ".."} for part in parts)
+        )
+        try:
+            source_root_path = Path(source_root).expanduser() if source_root else None
+        except (OSError, RuntimeError):
+            source_root_path = None
+        if (
+            local_source_safe
+            and source_root_path is not None
+            and source_root_path.is_dir()
+        ):
+            candidate = source_root_path.joinpath(*parts)
+            try:
+                resolved_root = source_root_path.resolve()
+                resolved_candidate = candidate.resolve()
+                inside_root = resolved_candidate == resolved_root or (
+                    resolved_root in resolved_candidate.parents
+                )
+            except OSError:
+                inside_root = False
+            local_source_present = bool(inside_root and candidate.is_dir())
     gcs_key_declared = bool(gcs_sa_key)
     gcs_key_file_present = False
     if gcs_sa_key:
@@ -2576,6 +2617,11 @@ def _agents_last_exam_task_data_source_readiness(
         elif official_gcs_source:
             if effective_gcs_key_present is not True:
                 blockers.append("gcs_sa_key_presence_not_verified")
+        elif local_source_declared:
+            if not local_source_safe:
+                blockers.append("local_task_data_source_not_public_safe")
+            elif local_source_present is not True:
+                blockers.append("local_task_data_directory_not_verified")
         elif raw_source in {"none", "local"}:
             blockers.append("task_data_source_not_sufficient_for_required_task")
         else:
@@ -2593,6 +2639,11 @@ def _agents_last_exam_task_data_source_readiness(
         "task_data_source": source,
         "task_data_source_declared": bool(source),
         "official_gcs_source": official_gcs_source,
+        "local_task_data_source": local_source_declared,
+        "local_task_data_source_safe": local_source_safe,
+        "local_task_data_present": local_source_present,
+        "local_task_data_path_recorded": False,
+        "local_task_data_content_read": False,
         "baked_input_present": effective_baked_input_present is True,
         "baked_input_presence_declared": baked_task_input_present is not None
         or baked_probe_declared,
@@ -2690,6 +2741,7 @@ def build_agents_last_exam_task_material_readiness(
     elif int(membership.get("present_count") or 0) < 1:
         blockers.append("selected_task_not_in_public_task_lists")
     task_data = _agents_last_exam_task_data_source_readiness(
+        source_root=source_root,
         requires_task_data=requires_task_data,
         task_data_source=task_data_source,
         baked_task_input_present=baked_task_input_present,

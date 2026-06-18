@@ -159,6 +159,35 @@ def run_fixture_smoke() -> None:
         assert current["source"]["require_upstream_current"] is True
         assert_redacted(current)
 
+        current_branch = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=source_root,
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "checkout", "--detach", "HEAD"],
+            cwd=source_root,
+            check=True,
+            capture_output=True,
+        )
+        detached = build_agents_last_exam_local_source_readiness(
+            source_root=str(source_root),
+            require_upstream_current=True,
+        )
+        assert detached["ready"] is True
+        assert detached["source"]["upstream_ref"] == "origin__main", detached
+        assert detached["source"]["upstream_fallback_ref"] is True, detached
+        assert detached["source"]["head_matches_upstream"] is True, detached
+        assert_redacted(detached)
+        subprocess.run(
+            ["git", "checkout", current_branch],
+            cwd=source_root,
+            check=True,
+            capture_output=True,
+        )
+
         advance_origin_main_without_advancing_head(source_root)
         behind = build_agents_last_exam_local_source_readiness(
             source_root=str(source_root),

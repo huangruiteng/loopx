@@ -307,6 +307,37 @@ def run_function_smoke() -> None:
         assert ready_baked_probe["task_data"]["baked_input_probe_ready"] is True, ready_baked_probe
         assert_public_safe(ready_baked_probe, temp_root)
 
+        missing_local = build_agents_last_exam_task_material_readiness(
+            source_root=str(source),
+            selected_task_id=TASK_ID,
+            selected_task_lists=["linux_only.txt"],
+            requires_task_data=True,
+            task_data_source="local:task-data",
+            enforce_task_data_source=True,
+        )
+        assert missing_local["ready"] is False, missing_local
+        assert (
+            missing_local["first_blocker"] == "local_task_data_directory_not_verified"
+        ), missing_local
+        assert missing_local["task_data"]["local_task_data_source"] is True, missing_local
+        assert missing_local["task_data"]["local_task_data_path_recorded"] is False, missing_local
+        assert missing_local["task_data"]["local_task_data_content_read"] is False, missing_local
+        assert_public_safe(missing_local, temp_root)
+
+        (source / "task-data").mkdir()
+        ready_local = build_agents_last_exam_task_material_readiness(
+            source_root=str(source),
+            selected_task_id=TASK_ID,
+            selected_task_lists=["linux_only.txt"],
+            requires_task_data=True,
+            task_data_source="local:task-data",
+            enforce_task_data_source=True,
+        )
+        assert ready_local["ready"] is True, ready_local
+        assert ready_local["task_data"]["local_task_data_source_safe"] is True, ready_local
+        assert ready_local["task_data"]["local_task_data_present"] is True, ready_local
+        assert_public_safe(ready_local, temp_root)
+
         official_gcs = build_agents_last_exam_task_material_readiness(
             source_root=str(source),
             selected_task_id=TASK_ID,
@@ -321,7 +352,13 @@ def run_function_smoke() -> None:
         assert official_gcs["task_data"]["gcs_sa_key_present"] is True, official_gcs
         assert_public_safe(official_gcs, temp_root)
 
-        missing_card = source / "tasks" / "computing_math" / "os_log_permission_guard_v1" / "task_card.json"
+        missing_card = (
+            source
+            / "tasks"
+            / "computing_math"
+            / "os_log_permission_guard_v1"
+            / "task_card.json"
+        )
         missing_card.unlink()
         blocked = build_agents_last_exam_task_material_readiness(
             source_root=str(source),
