@@ -133,7 +133,8 @@ The Python package has no runtime dependencies outside the standard library.
 
 ## Install
 
-Install one shared local checkout:
+Install one shared local checkout manually, or let the Quick Start prompt ask
+your agent to run these steps:
 
 ```bash
 git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
@@ -156,7 +157,58 @@ checkout to the default local release.
 
 ## Quick Start
 
-Create a disposable demo goal:
+If you already use Codex, Claude Code, Cursor, or another terminal agent, the
+fastest path is to ask that agent to install and connect Goal Harness for the
+current project. Paste this into the agent from your project repo:
+
+```text
+Install and connect Goal Harness for this project end to end. Do not stop at a
+plan.
+
+If `goal-harness` is not on PATH:
+- clone https://github.com/huangruiteng/goal-harness to ~/goal-harness if it is
+  not already present;
+- run ~/goal-harness/scripts/install-local.sh;
+- export PATH="$HOME/.local/bin:$PATH".
+
+Then:
+1. Run `goal-harness doctor`.
+2. Choose a stable goal id from this repo name unless I gave one explicitly.
+3. Read the project goal doc if present (`GOAL.md`, `README.md`, or the doc I
+   name); otherwise ask me for a one-sentence objective.
+4. Run `goal-harness connect` or `goal-harness bootstrap` for this repo with
+   that goal id, objective, domain, and goal doc.
+5. Ensure `.goal-harness/` and `.codex/goals/` are ignored in this project.
+6. Run `goal-harness registry`, `goal-harness status`, and
+   `goal-harness check --scan-root .`.
+7. Report the goal id, created files, current user todo, current agent todo,
+   and next safe action.
+
+Do not commit `.goal-harness/`, `.codex/goals/`, live ACTIVE_GOAL_STATE files,
+runtime registries, raw logs, credentials, or private local paths.
+```
+
+For a longer generated handoff prompt, install once and run:
+
+```bash
+goal-harness new-project-prompt \
+  --project /path/to/your-project \
+  --goal-doc /path/to/your-project/GOAL.md
+```
+
+The command output is meant to be pasted into Codex or Claude Code. It contains
+the full guard, quota, todo, and heartbeat protocol for a new project.
+
+Success looks like this:
+
+- `goal-harness doctor` passes;
+- the project has `.goal-harness/registry.json`;
+- the project has `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`;
+- `goal-harness status` shows the goal and who should act next;
+- local runtime state is ignored, not committed.
+
+If you want to try Goal Harness before connecting a real repo, create a
+disposable demo goal:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -193,7 +245,9 @@ do not commit `.goal-harness/`, `.codex/goals/`, live
 
 ## Connect A Project
 
-From a project repository:
+Most users should let Codex or Claude Code run this through the Quick Start
+prompt. If you prefer to connect a repo manually, run this from the project
+repository:
 
 ```bash
 cd /path/to/your-project
