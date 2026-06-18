@@ -500,7 +500,13 @@ def build_split_control_remote_executor_execution_seam(
     missing_adapter_ids = [
         case["benchmark_id"]
         for case in seam_cases
-        if not case["command_materialization"]["ready"]
+        if not case["command_materialization"]["adapter_facts_ready"]
+    ]
+    missing_materializer_ids = [
+        case["benchmark_id"]
+        for case in seam_cases
+        if case["command_materialization"]["adapter_facts_ready"]
+        and not case["command_materialization"]["ready"]
     ]
     missing_reducer_ids = [
         case["benchmark_id"]
@@ -517,6 +523,8 @@ def build_split_control_remote_executor_execution_seam(
         seam_blockers.append("runner_batch_has_no_cases")
     if missing_adapter_ids:
         seam_blockers.append("command_adapter_missing")
+    if missing_materializer_ids:
+        seam_blockers.append("remote_executor_materializer_missing")
     if missing_reducer_ids:
         seam_blockers.append("compact_result_reducer_missing")
     seam_blockers.extend(
@@ -546,6 +554,7 @@ def build_split_control_remote_executor_execution_seam(
         "ready_to_spend": ready_to_execute and _truthy(batch.get("ready_to_spend")),
         "blockers": seam_blockers,
         "missing_command_adapter_ids": missing_adapter_ids,
+        "missing_remote_materializer_ids": missing_materializer_ids,
         "missing_result_reducer_ids": missing_reducer_ids,
         "planned_benchmark_ids": _string_list(batch.get("planned_benchmark_ids")),
         "execution_cases": seam_cases,
@@ -620,13 +629,25 @@ def _execution_seam_case_from_runner_case(
     benchmark_id = str(runner_case.get("benchmark_id"))
     adapter_ready = _truthy(adapter.get("command_adapter_ready"))
     reducer_ready = _truthy(adapter.get("result_reducer_ready"))
+    surface_contract = _as_dict(adapter.get("surface_contract"))
+    if "remote_materializer_ready" in surface_contract:
+        remote_materializer_ready = _truthy(
+            surface_contract.get("remote_materializer_ready")
+        )
+    elif "remote_materializer_ready" in adapter:
+        remote_materializer_ready = _truthy(adapter.get("remote_materializer_ready"))
+    else:
+        remote_materializer_ready = True
     adapter_blockers = _string_list(adapter.get("known_blockers"))
     blockers: list[str] = []
     if not adapter_ready:
         blockers.append("command_adapter_missing")
+    if adapter_ready and not remote_materializer_ready:
+        blockers.append("remote_executor_materializer_missing")
     if not reducer_ready:
         blockers.append("compact_result_reducer_missing")
     blockers.extend(adapter_blockers)
+    materialization_ready = adapter_ready and remote_materializer_ready
     return {
         "benchmark_id": benchmark_id,
         "route": "local_agent_remote_executor",
@@ -635,16 +656,18 @@ def _execution_seam_case_from_runner_case(
         "ready_to_execute_remote_command": not blockers,
         "blockers": blockers,
         "command_materialization": {
-            "ready": adapter_ready,
+            "ready": materialization_ready,
+            "adapter_facts_ready": adapter_ready,
             "status": _compact_label(
                 str(
                     adapter.get("command_adapter_status")
-                    or ("ready" if adapter_ready else "missing")
+                    or ("ready" if materialization_ready else "missing")
                 )
             ),
             "entrypoint_label": _compact_label(
                 str(adapter.get("entrypoint_label") or "not_materialized")
             ),
+            "remote_materializer_ready": remote_materializer_ready,
             "shell_command_embedded": False,
             "argv_embedded": False,
             "host_path_embedded": False,

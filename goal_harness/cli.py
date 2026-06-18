@@ -389,6 +389,11 @@ def render_terminal_bench_remote_executor_command_adapter_markdown(
     boundary = (
         adapter.get("boundary") if isinstance(adapter.get("boundary"), dict) else {}
     )
+    surface_contract = (
+        adapter.get("surface_contract")
+        if isinstance(adapter.get("surface_contract"), dict)
+        else {}
+    )
     lines = [
         "# Terminal-Bench Remote Executor Command Adapter",
         "",
@@ -398,6 +403,8 @@ def render_terminal_bench_remote_executor_command_adapter_markdown(
         f"- First blocker: `{payload.get('first_blocker')}`",
         f"- Command adapter ready: `{adapter.get('command_adapter_ready')}`",
         f"- Result reducer ready: `{adapter.get('result_reducer_ready')}`",
+        "- Remote materializer ready: "
+        f"`{surface_contract.get('remote_materializer_ready')}`",
         f"- Entrypoint label: `{adapter.get('entrypoint_label')}`",
         f"- Result reducer label: `{adapter.get('result_reducer_label')}`",
         f"- Next action: {payload.get('next_action')}",
@@ -3086,6 +3093,15 @@ def main(argv: list[str] | None = None) -> int:
         "--result-reducer-not-ready",
         action="store_true",
         help="Fixture flag for a missing compact result reducer.",
+    )
+    terminal_bench_command_adapter_parser.add_argument(
+        "--remote-materializer-ready",
+        action="store_true",
+        help=(
+            "Declare that a real remote-executor materializer exists for the "
+            "adapter labels. Omit until the runner can actually stage and poll "
+            "remote Docker/runner/data handles."
+        ),
     )
     terminal_bench_command_adapter_parser.add_argument(
         "--submit-enabled",
@@ -5954,6 +5970,7 @@ def main(argv: list[str] | None = None) -> int:
                     resume_surface_ready=not bool(args.resume_surface_not_ready),
                     compact_ingest_ready=not bool(args.compact_ingest_not_ready),
                     result_reducer_ready=not bool(args.result_reducer_not_ready),
+                    remote_materializer_ready=bool(args.remote_materializer_ready),
                     no_upload=not bool(args.submit_enabled),
                     submit_enabled=bool(args.submit_enabled),
                     known_blockers=args.surface_blocker,

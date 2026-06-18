@@ -3239,6 +3239,7 @@ def build_terminal_bench_remote_executor_command_adapter(
     resume_surface_ready: bool = True,
     compact_ingest_ready: bool = True,
     result_reducer_ready: bool = True,
+    remote_materializer_ready: bool = False,
     no_upload: bool = True,
     submit_enabled: bool = False,
     known_blockers: Sequence[str] = (),
@@ -3252,24 +3253,28 @@ def build_terminal_bench_remote_executor_command_adapter(
     """
 
     safe_benchmark_id = _public_safe_benchmark_label(benchmark_id, limit=80)
-    blockers = [str(item) for item in known_blockers if str(item)]
+    surface_blockers = [str(item) for item in known_blockers if str(item)]
+    blockers: list[str] = []
     if not safe_benchmark_id:
         safe_benchmark_id = TERMINAL_BENCH_DEFAULT_DATASET
-        blockers.append("terminal_bench_benchmark_id_not_public_safe")
+        surface_blockers.append("terminal_bench_benchmark_id_not_public_safe")
     if safe_benchmark_id != TERMINAL_BENCH_DEFAULT_DATASET:
-        blockers.append("terminal_bench_benchmark_id_unsupported")
+        surface_blockers.append("terminal_bench_benchmark_id_unsupported")
     if not launch_surface_ready:
-        blockers.append("terminal_bench_launch_surface_not_ready")
+        surface_blockers.append("terminal_bench_launch_surface_not_ready")
     if not poll_surface_ready:
-        blockers.append("terminal_bench_poll_surface_not_ready")
+        surface_blockers.append("terminal_bench_poll_surface_not_ready")
     if not resume_surface_ready:
-        blockers.append("terminal_bench_resume_surface_not_ready")
+        surface_blockers.append("terminal_bench_resume_surface_not_ready")
     if not compact_ingest_ready:
-        blockers.append("terminal_bench_compact_ingest_surface_not_ready")
+        surface_blockers.append("terminal_bench_compact_ingest_surface_not_ready")
     if not no_upload:
-        blockers.append("terminal_bench_no_upload_boundary_not_enabled")
+        surface_blockers.append("terminal_bench_no_upload_boundary_not_enabled")
     if submit_enabled:
-        blockers.append("terminal_bench_submit_must_remain_disabled")
+        surface_blockers.append("terminal_bench_submit_must_remain_disabled")
+    blockers.extend(surface_blockers)
+    if not remote_materializer_ready:
+        blockers.append("terminal_bench_remote_executor_materializer_missing")
 
     reducer_ready = (
         result_reducer_ready is True
@@ -3280,7 +3285,7 @@ def build_terminal_bench_remote_executor_command_adapter(
     if not reducer_ready:
         blockers.append("terminal_bench_compact_result_reducer_not_ready")
 
-    adapter_ready = not blockers
+    adapter_ready = not surface_blockers
     adapter = {
         "schema_version": TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
         "benchmark_id": safe_benchmark_id,
@@ -3308,6 +3313,7 @@ def build_terminal_bench_remote_executor_command_adapter(
             "poll_surface_ready": poll_surface_ready is True,
             "resume_surface_ready": resume_surface_ready is True,
             "compact_ingest_ready": compact_ingest_ready is True,
+            "remote_materializer_ready": remote_materializer_ready is True,
             "private_handle_values_required": True,
             "public_handle_shape_only": True,
             "local_codex_owns_auth_model_state": True,
@@ -3329,7 +3335,7 @@ def build_terminal_bench_remote_executor_command_adapter(
     return {
         "schema_version": TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
         "benchmark_id": safe_benchmark_id,
-        "ready": adapter_ready and reducer_ready,
+        "ready": adapter_ready and reducer_ready and remote_materializer_ready,
         "first_blocker": blockers[0]
         if blockers
         else "ready_for_split_control_execution_seam",
@@ -3338,7 +3344,7 @@ def build_terminal_bench_remote_executor_command_adapter(
         "command_adapter": adapter,
         "next_action": (
             "feed_terminal_bench_adapter_facts_to_split_control_execution_seam"
-            if adapter_ready and reducer_ready
+            if adapter_ready and reducer_ready and remote_materializer_ready
             else "repair_terminal_bench_adapter_surface_before_execution_seam"
         ),
         "read_boundary": {
