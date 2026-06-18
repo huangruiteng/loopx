@@ -34,9 +34,10 @@ NEXT_ACTION_EXECUTABLE_PATTERN = re.compile(
     r"拆分|补全|规划|待办)"
 )
 NEXT_ACTION_USER_WAIT_PATTERN = re.compile(
-    r"(?i)\b(?:wait(?:ing)? for|owner|user|operator|controller|approval|"
-    r"approve|decision|gate|private|credential|production|leaderboard|submit)\b|"
-    r"(?:等待|用户|人工|决策|审批|批准|确认|私有|凭证|生产|榜单|提交|owner)"
+    r"(?i)\b(?:wait(?:ing)? for|blocked by|gated by|owner|user|operator|"
+    r"controller|approval|approve|decision)\b|"
+    r"\b(?:owner|user|operator|controller)\s+(?:gate|todo|action|decision|approval)\b|"
+    r"(?:等待|用户|人工|决策|审批|批准|确认|owner)"
 )
 
 

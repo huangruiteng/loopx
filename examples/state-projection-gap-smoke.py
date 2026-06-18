@@ -90,6 +90,17 @@ def test_projection_gap_warning() -> dict:
         "- Run the trace reducer backfill.\n"
     )
     assert no_gap is None, no_gap
+
+    technical_gate_no_gap = state_projection_gap_warning(
+        "## Agent Todo\n\n"
+        "- [ ] Advance ALE split-control provider/task-data readiness.\n\n"
+        "## Next Action\n\n"
+        "- Agent: choose exactly one compact no-upload next gate among "
+        "baked-task-input scan, task-material readiness, or remote Docker "
+        "capacity proof. Keep credentials local; avoid submit and leaderboard "
+        "paths.\n"
+    )
+    assert technical_gate_no_gap is None, technical_gate_no_gap
     return gap
 
 
