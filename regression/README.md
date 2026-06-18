@@ -49,6 +49,16 @@ fixture: repeated no-progress signals should force an autonomous replan/self-
 repair obligation before another quiet wait.
 
 ```bash
+python3 regression/autonomous-replan-vs-dreaming-contract.py
+```
+
+Runs the contract-only separation check for autonomous replan versus dreaming.
+It creates a compact `dreaming_exploration_proposal` fixture and verifies that
+status/quota surface it as an advisory user/controller gate with no
+`agent_command`, no autonomous replan obligation, no delivery permission, and
+no quota spend path.
+
+```bash
 python3 regression/external-evidence-observation-real-codex.py
 ```
 

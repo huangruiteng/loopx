@@ -32,6 +32,10 @@ CONTRACT_ONLY_REGRESSIONS = (
         description="two no-progress signals force autonomous self-repair before quiet waiting",
     ),
     Regression(
+        path="regression/autonomous-replan-vs-dreaming-contract.py",
+        description="dreaming proposals stay advisory gates while autonomous replan remains executable",
+    ),
+    Regression(
         path="regression/quota-executable-backlog-projection.py",
         description="quota selects executable backlog work over unchanged monitor context",
     ),
