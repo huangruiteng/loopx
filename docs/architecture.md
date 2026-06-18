@@ -62,6 +62,16 @@ the same state is available through hook/MCP/server adapters:
 This keeps Goal Harness portable across Codex, local CLI loops, dashboards, and
 future agent hosts while avoiding a forked control plane per host.
 
+For session-runtime platforms that already own agent definitions, session
+events, tool execution, permissions, billing, and product frontstage, Goal
+Harness should integrate as the goal-level control projection rather than as a
+second runtime. The read-only adapter path is: ingest compact session, event,
+approval, outcome, and artifact summaries; produce `goal_state`,
+`run_projection`, `operator_gate`, `human_reward`, `work_lane_contract`,
+`quota_decision`, `handoff_packet`, and `dreaming_proposal` projections; then
+let the product surface display those projections. See
+[session-runtime-control-plane-adapter.md](session-runtime-control-plane-adapter.md).
+
 ## Local Server / Daemon Roadmap
 
 The CLI remains the compatibility baseline. A future local server should be an
