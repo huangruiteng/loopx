@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ..contract import check_contract, render_contract_markdown
+from ..diagnose import collect_diagnosis, render_diagnosis_markdown
 from ..handoff_budget import build_handoff_interface_budget
 from ..review_packet import build_review_packet, render_review_packet_markdown
 from ..status import collect_status, render_status_markdown
@@ -54,6 +55,25 @@ def register_status_commands(
         help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
     )
     status_parser.add_argument("--limit", type=int, default=5)
+
+    diagnose_parser = subparsers.add_parser(
+        "diagnose",
+        help="Build a Goal Harness diagnostic evidence packet for the user's agent to reason over.",
+    )
+    add_subcommand_format(diagnose_parser)
+    diagnose_parser.add_argument("--goal-id", help="Goal id to diagnose. Defaults to the first attention item.")
+    diagnose_parser.add_argument(
+        "--scan-root",
+        default=default_public_scan_root(),
+        help="Public files to scan for obvious private material. Defaults to the Goal Harness install root.",
+    )
+    diagnose_parser.add_argument(
+        "--scan-path",
+        action="append",
+        default=[],
+        help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
+    )
+    diagnose_parser.add_argument("--limit", type=int, default=5)
 
     review_packet_parser = subparsers.add_parser(
         "review-packet",
@@ -206,6 +226,49 @@ def handle_status_command(
             },
         }
     print_payload(payload, output_format(args), render_status_markdown)
+    return 0 if payload.get("ok") else 1
+
+
+def handle_diagnose_command(
+    args: argparse.Namespace,
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    output_format: FormatSelector,
+    print_payload: PrintPayload,
+) -> int:
+    try:
+        payload = collect_diagnosis(
+            registry_path=registry_path,
+            runtime_root_override=runtime_root_arg,
+            scan_roots=_scan_roots(args),
+            limit=max(1, args.limit),
+            goal_id=args.goal_id,
+        )
+    except Exception as exc:
+        payload = {
+            "ok": False,
+            "schema_version": "goal_harness_agent_diagnosis_packet_v0",
+            "packet_kind": "agent_reasoning_evidence_packet",
+            "agent_must_reason": True,
+            "registry": str(registry_path),
+            "runtime_root": runtime_root_arg,
+            "error": str(exc),
+            "selected": {
+                "machine_signal": "diagnosis_collection_failed",
+                "machine_signals_are_not_final_verdict": True,
+                "recommended_action": (
+                    "The agent should repair Goal Harness installation, registry path, or status collection "
+                    "before making a delivery decision."
+                ),
+                "agent_reasoning_checklist": [
+                    "Run or repair `goal-harness doctor`.",
+                    "Verify the project registry path or connect the project.",
+                    "Do not claim autonomous readiness until status and quota can be read.",
+                ],
+            },
+        }
+    print_payload(payload, output_format(args), render_diagnosis_markdown)
     return 0 if payload.get("ok") else 1
 
 

@@ -77,6 +77,42 @@ goal-harness doctor
 If this still fails, report the exact missing piece and do not fake a successful
 connection.
 
+## Diagnose For The User
+
+When the user asks whether Goal Harness is working, whether a project can
+self-drive, why it is stuck, or says "diagnose Goal Harness", do not hand the
+user shell commands. Run the diagnostic surfaces yourself and then reason from
+the evidence.
+
+Prefer the agent-facing packet:
+
+```bash
+goal-harness diagnose
+```
+
+If the target goal is known:
+
+```bash
+goal-harness diagnose --goal-id <STABLE_GOAL_ID>
+```
+
+The `diagnose` command is not the final judge. It returns compact
+`status`, `quota should-run`, todo, interaction-contract, and boundary signals
+plus a reasoning checklist. Use those signals as evidence, then answer in your
+own words:
+
+- whether the project can currently self-drive;
+- what evidence supports that conclusion;
+- what blocks autonomous delivery or self-repair;
+- the exact user/controller question, if one is projected;
+- what the agent will do next.
+
+Only claim autonomous readiness when your reasoning confirms that the user gate
+does not block the selected path, quota permits a turn, `goal_boundary` allows
+the work, and there is a concrete agent todo or recommended action. If
+`diagnose` cannot read status/quota, repair installation, PATH, registry path,
+or project connection first; do not infer readiness from chat memory.
+
 ## Before Spending Automatic Compute
 
 Before a heartbeat, scheduled tick, long-running adapter, or autonomous project

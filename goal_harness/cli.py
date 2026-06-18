@@ -120,6 +120,7 @@ from .benchmark_core import (
 from .configure_goal import configure_goal, render_configure_goal_markdown
 from .cli_commands import (
     handle_check_command,
+    handle_diagnose_command,
     handle_demo_command,
     handle_doctor_command,
     handle_dreaming_command,
@@ -8656,6 +8657,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "status":
         return handle_status_command(
+            args,
+            registry_path=registry_path,
+            runtime_root_arg=args.runtime_root,
+            output_format=output_format,
+            print_payload=print_payload,
+        )
+
+    if args.command == "diagnose":
+        return handle_diagnose_command(
             args,
             registry_path=registry_path,
             runtime_root_arg=args.runtime_root,

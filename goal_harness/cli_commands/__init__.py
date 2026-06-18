@@ -17,6 +17,7 @@ from .starter import (
 )
 from .status import (
     handle_check_command,
+    handle_diagnose_command,
     handle_review_packet_command,
     handle_status_command,
     register_status_commands,
@@ -24,6 +25,7 @@ from .status import (
 
 __all__ = [
     "handle_check_command",
+    "handle_diagnose_command",
     "handle_demo_command",
     "handle_doctor_command",
     "handle_dreaming_command",

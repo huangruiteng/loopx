@@ -216,6 +216,33 @@ Success looks like this:
 - `goal-harness status` shows the goal and who should act next;
 - local runtime state is ignored, not committed.
 
+## Diagnose From Your Agent
+
+Users should not need to run diagnostic commands by hand. Ask your Codex,
+Claude Code, Cursor, or terminal agent:
+
+```text
+Diagnose Goal Harness for this project end to end. Do not ask me to run shell
+commands.
+
+If `goal-harness` is missing, install or repair it first. Then run
+`goal-harness diagnose` yourself, read the diagnostic packet, and use your own
+reasoning to tell me:
+- whether this project can currently self-drive;
+- what evidence supports that answer;
+- what is blocking it, if anything;
+- the exact question I need to answer, if a user/controller gate exists;
+- what you will do next.
+
+Do not treat Goal Harness machine signals as the final verdict. They are
+evidence for your diagnosis.
+```
+
+`goal-harness diagnose` is intentionally an agent-facing evidence packet. It
+collects compact `status`, `quota should-run`, todo, interaction-contract, and
+boundary signals, then gives the agent a reasoning checklist. The agent makes
+the diagnosis in natural language.
+
 If you want to try Goal Harness before connecting a real repo, create a
 disposable demo goal:
 
@@ -568,6 +595,7 @@ doctor                  diagnose installation and import health
 registry                inspect registered goals
 registry-boundary       classify registry local/public boundary and push policy
 status                  show first-screen operator status
+diagnose                build an agent-facing diagnostic evidence packet
 history                 read run history
 refresh-state           append a state-only run
 read-only-map           map a project without mutating files
