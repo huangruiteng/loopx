@@ -449,6 +449,12 @@ def render_terminal_bench_remote_executor_materializer_markdown(
         f"- Manifest read: `{materializer.get('handle_manifest_read')}`",
         "- Public handle values recorded: "
         f"`{materializer.get('public_handle_values_recorded')}`",
+        "- Local Codex driver ready: "
+        f"`{materializer.get('local_codex_driver_ready')}`",
+        "- Remote agent runtime required: "
+        f"`{materializer.get('remote_agent_runtime_required')}`",
+        "- Remote Codex runtime required: "
+        f"`{materializer.get('remote_codex_runtime_required')}`",
         "- Present handle fields: "
         + ", ".join(f"`{item}`" for item in materializer.get("present_handle_fields", [])),
         "- Missing handle fields: "
@@ -458,6 +464,9 @@ def render_terminal_bench_remote_executor_materializer_markdown(
         "## Boundary",
         "",
         f"- Compact only: `{boundary.get('compact_only')}`",
+        f"- Local Codex driver required: `{boundary.get('local_codex_driver_required')}`",
+        f"- Remote agent runtime allowed: `{boundary.get('remote_agent_runtime_allowed')}`",
+        f"- Remote Codex runtime allowed: `{boundary.get('remote_codex_runtime_allowed')}`",
         f"- Shell command embedded: `{boundary.get('shell_command_embedded')}`",
         f"- argv embedded: `{boundary.get('argv_embedded')}`",
         f"- host path embedded: `{boundary.get('host_path_embedded')}`",
@@ -3215,6 +3224,24 @@ def main(argv: list[str] | None = None) -> int:
         "--submit-enabled",
         action="store_true",
         help="Fixture flag proving submit-enabled runs are blocked.",
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--local-codex-driver-ready",
+        action="store_true",
+        help=(
+            "Declare that a local Codex driver can control the case while the "
+            "remote executor owns only Docker/runner/data work."
+        ),
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--remote-agent-runtime-required",
+        action="store_true",
+        help="Fixture flag proving remote agent-runtime execution is blocked.",
+    )
+    terminal_bench_remote_materializer_parser.add_argument(
+        "--remote-codex-runtime-required",
+        action="store_true",
+        help="Fixture flag proving remote Codex-runtime execution is blocked.",
     )
     terminal_bench_remote_materializer_parser.add_argument(
         "--local-codex-credential-sync",
@@ -6153,6 +6180,13 @@ def main(argv: list[str] | None = None) -> int:
                     present_handle_fields=args.handle_field,
                     no_upload=not bool(args.no_upload_disabled),
                     submit_enabled=bool(args.submit_enabled),
+                    local_codex_driver_ready=bool(args.local_codex_driver_ready),
+                    remote_agent_runtime_required=bool(
+                        args.remote_agent_runtime_required
+                    ),
+                    remote_codex_runtime_required=bool(
+                        args.remote_codex_runtime_required
+                    ),
                     local_codex_credential_sync=bool(
                         args.local_codex_credential_sync
                     ),

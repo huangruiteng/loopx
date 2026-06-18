@@ -411,6 +411,32 @@ def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
     ] is False
     assert_public_safe(incomplete_materializer)
 
+    handle_only_materializer = build_terminal_bench_remote_executor_materializer(
+        present_handle_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS,
+    )
+    assert handle_only_materializer["ready"] is False, handle_only_materializer
+    assert handle_only_materializer["first_blocker"] == (
+        "terminal_bench_local_codex_driver_missing"
+    )
+    assert handle_only_materializer["materializer"][
+        "local_codex_driver_ready"
+    ] is False
+    assert handle_only_materializer["boundary"][
+        "remote_agent_runtime_allowed"
+    ] is False
+    assert_public_safe(handle_only_materializer)
+
+    remote_agent_runtime_materializer = build_terminal_bench_remote_executor_materializer(
+        present_handle_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS,
+        local_codex_driver_ready=True,
+        remote_agent_runtime_required=True,
+    )
+    assert remote_agent_runtime_materializer["ready"] is False
+    assert remote_agent_runtime_materializer["first_blocker"] == (
+        "terminal_bench_remote_agent_runtime_forbidden"
+    )
+    assert_public_safe(remote_agent_runtime_materializer)
+
     readiness = build_split_control_remote_executor_readiness(
         benchmark_ids=("terminal-bench@2.0", "skillsbench@1.1"),
         local_agent={
@@ -475,6 +501,7 @@ def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
 
     materialized_adapter_payload = build_terminal_bench_remote_executor_materializer(
         present_handle_fields=TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS,
+        local_codex_driver_ready=True,
     )
     assert materialized_adapter_payload["ready"] is True, materialized_adapter_payload
     materialized_seam = build_split_control_remote_executor_execution_seam(

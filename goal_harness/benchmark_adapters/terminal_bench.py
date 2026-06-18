@@ -3375,6 +3375,9 @@ def build_terminal_bench_remote_executor_materializer(
     present_handle_fields: Sequence[str] = (),
     no_upload: bool = True,
     submit_enabled: bool = False,
+    local_codex_driver_ready: bool = False,
+    remote_agent_runtime_required: bool = False,
+    remote_codex_runtime_required: bool = False,
     local_codex_credential_sync: bool = False,
     remote_model_invocation: bool = False,
     raw_material_allowed: bool = False,
@@ -3414,6 +3417,12 @@ def build_terminal_bench_remote_executor_materializer(
     ]
     if missing_fields:
         blockers.append("terminal_bench_remote_executor_handle_manifest_incomplete")
+    if not local_codex_driver_ready:
+        blockers.append("terminal_bench_local_codex_driver_missing")
+    if remote_agent_runtime_required:
+        blockers.append("terminal_bench_remote_agent_runtime_forbidden")
+    if remote_codex_runtime_required:
+        blockers.append("terminal_bench_remote_codex_runtime_forbidden")
     if not no_upload:
         blockers.append("terminal_bench_no_upload_boundary_not_enabled")
     if submit_enabled:
@@ -3453,11 +3462,17 @@ def build_terminal_bench_remote_executor_materializer(
                 if field in present
             ],
             "missing_handle_fields": missing_fields,
+            "local_codex_driver_ready": local_codex_driver_ready is True,
+            "remote_agent_runtime_required": remote_agent_runtime_required is True,
+            "remote_codex_runtime_required": remote_codex_runtime_required is True,
             "private_handle_values_required": True,
             "public_handle_values_recorded": False,
         },
         "boundary": {
             "compact_only": True,
+            "local_codex_driver_required": True,
+            "remote_agent_runtime_allowed": False,
+            "remote_codex_runtime_allowed": False,
             "shell_command_embedded": False,
             "argv_embedded": False,
             "host_path_embedded": False,
@@ -3477,6 +3492,12 @@ def build_terminal_bench_remote_executor_materializer(
             "feed_materialized_terminal_bench_adapter_to_execution_seam"
             if ready
             else "provide_private_remote_executor_handle_manifest_before_launch"
+            if missing_fields
+            else "implement_terminal_bench_local_codex_driver_before_launch"
+            if not local_codex_driver_ready
+            else "remove_remote_agent_runtime_from_terminal_bench_execution_path"
+            if remote_agent_runtime_required or remote_codex_runtime_required
+            else "repair_terminal_bench_materializer_boundary_before_launch"
         ),
         "read_boundary": {
             "compact_only": True,
