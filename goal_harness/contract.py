@@ -7,7 +7,7 @@ from typing import Any
 
 from .history import collect_history, load_registry
 from .paths import DEFAULT_RUNTIME_ROOT, rel_or_abs, resolve_runtime_root
-from .registry import inspect_registry
+from .registry import inspect_registry, inspect_registry_boundary
 
 
 LEAK_PATTERNS = {
@@ -171,6 +171,24 @@ def check_contract(
             else:
                 errors.append(error)
         errors.extend(str(item) for item in registry_payload.get("problems") or [])
+
+    boundary_payload = inspect_registry_boundary(registry_path)
+    if boundary_payload.get("ok"):
+        git = boundary_payload.get("git") if isinstance(boundary_payload.get("git"), dict) else {}
+        checks.append(
+            "registry boundary: "
+            f"{boundary_payload.get('classification')} "
+            f"push_allowed={boundary_payload.get('github_push_allowed')} "
+            f"tracked={git.get('tracked')} ignored={git.get('ignored')}"
+        )
+        if boundary_payload.get("should_be_gitignored") and git.get("inside_worktree"):
+            if not git.get("ignored") and not git.get("tracked"):
+                warnings.append(f"registry should be gitignored: {registry_path}")
+    else:
+        if boundary_payload.get("error"):
+            warnings.append(f"registry boundary unavailable: {boundary_payload.get('error')}")
+        for risk in boundary_payload.get("risks") or []:
+            errors.append(f"registry boundary risk: {risk}")
 
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
