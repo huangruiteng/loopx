@@ -40,6 +40,16 @@ It checks that `quota should-run` keeps the blocked item user-visible with
 fallback as the agent action in the interaction contract and protocol packet.
 
 ```bash
+python3 regression/scoped-user-gate-fallback-contract.py
+```
+
+Runs a contract-only projection regression for a scoped user gate: one user
+decision blocks the matching agent todo, but a non-dependent executable fallback
+remains available. It checks that `quota should-run` keeps the user gate
+`NOTIFY` path visible while still requiring the agent to execute the selected
+fallback and spend only after validated writeback.
+
+```bash
 python3 regression/no-progress-self-repair-contract.py
 ```
 

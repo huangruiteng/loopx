@@ -1069,6 +1069,152 @@ def _blocked_priority_fallback(
     }
 
 
+_ACTION_SCOPE_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "approve",
+    "approved",
+    "approval",
+    "before",
+    "blocked",
+    "continue",
+    "decide",
+    "decision",
+    "for",
+    "from",
+    "gate",
+    "gated",
+    "goal",
+    "harness",
+    "internal",
+    "material",
+    "next",
+    "open",
+    "owner",
+    "p0",
+    "p1",
+    "p2",
+    "p3",
+    "provide",
+    "read",
+    "registered",
+    "safe",
+    "should",
+    "sync",
+    "the",
+    "todo",
+    "until",
+    "user",
+    "whether",
+    "with",
+}
+
+
+def _action_scope_tokens_from_text(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(
+            r"[a-z0-9]+",
+            text.lower().replace("_", " ").replace("-", " "),
+        )
+        if len(token) > 1 and token not in _ACTION_SCOPE_STOPWORDS
+    }
+
+
+def _todo_action_kind_tokens(item: dict[str, Any]) -> set[str]:
+    return _action_scope_tokens_from_text(str(item.get("action_kind") or ""))
+
+
+def _todo_action_scope_tokens(item: dict[str, Any]) -> set[str]:
+    text = " ".join(
+        str(value or "")
+        for value in (item.get("action_kind"), item.get("title"), item.get("text"))
+        if str(value or "").strip()
+    )
+    return _action_scope_tokens_from_text(text)
+
+
+def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any]) -> bool:
+    gate_action_tokens = _todo_action_kind_tokens(gate)
+    agent_action_tokens = _todo_action_kind_tokens(agent_item)
+    gate_tokens = _todo_action_scope_tokens(gate)
+    agent_tokens = _todo_action_scope_tokens(agent_item)
+    if not gate_tokens or not agent_tokens:
+        return False
+    if gate_action_tokens:
+        return bool(
+            gate_action_tokens & agent_action_tokens
+            or len(gate_action_tokens & agent_tokens) >= 2
+        )
+    overlap = gate_tokens & agent_tokens
+    if len(overlap) >= 2:
+        return True
+
+    if agent_action_tokens and overlap:
+        return True
+    return False
+
+
+def _scoped_user_gate_fallback(
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    gates = _open_user_gate_todo_items(user_todo_summary)
+    if not gates or not isinstance(agent_todo_summary, dict):
+        return None
+
+    executable_items = (
+        agent_todo_summary.get("executable_backlog_items")
+        if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
+        else agent_todo_summary.get("first_executable_items")
+        if isinstance(agent_todo_summary.get("first_executable_items"), list)
+        else []
+    )
+    executable_items = [item for item in executable_items if isinstance(item, dict)]
+    if len(executable_items) < 2:
+        return None
+
+    blocked_items: list[dict[str, Any]] = []
+    selected: dict[str, Any] | None = None
+    blocking_gate: dict[str, Any] | None = None
+    for item in executable_items:
+        matching_gate = next(
+            (gate for gate in gates if _user_gate_blocks_agent_item(gate, item)),
+            None,
+        )
+        if matching_gate:
+            blocking_gate = blocking_gate or matching_gate
+            text = str(item.get("text") or "").strip()
+            blocked_items.append(_compact_todo_summary_item(item, text=text))
+            continue
+        if selected is None:
+            selected = item
+
+    if not blocking_gate or selected is None:
+        return None
+
+    selected_text = str(selected.get("text") or "").strip()
+    gate_text = str(blocking_gate.get("text") or "").strip()
+    return {
+        "schema_version": "scoped_user_gate_fallback_v0",
+        "kind": "scoped_user_gate_fallback",
+        "notify_user": True,
+        "requires_user_action": True,
+        "reason": (
+            "an open user_gate blocks a scoped agent todo, but a non-dependent "
+            "executable fallback remains available"
+        ),
+        "blocked_user_gate": _compact_todo_summary_item(blocking_gate, text=gate_text),
+        "blocked_agent_items": blocked_items[:3],
+        "selected_executable": _compact_todo_summary_item(selected, text=selected_text),
+        "recommended_action": (
+            "Notify the user about the scoped gate; then execute the selected "
+            "non-gated fallback and spend only after validated writeback."
+        ),
+    }
+
+
 def _first_executable_todo_text(agent_todo_summary: dict[str, Any] | None) -> str | None:
     if not isinstance(agent_todo_summary, dict):
         return None
@@ -1366,6 +1512,20 @@ def _protocol_todo_actions(summary: Any, *, limit: int = 3) -> list[str]:
 
 def _protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
     goal_id = str(payload.get("goal_id") or "")
+    scoped_fallback = (
+        payload.get("scoped_user_gate_fallback")
+        if isinstance(payload.get("scoped_user_gate_fallback"), dict)
+        else {}
+    )
+    selected = (
+        scoped_fallback.get("selected_executable")
+        if isinstance(scoped_fallback.get("selected_executable"), dict)
+        else {}
+    )
+    text = _protocol_action_label(selected.get("text"))
+    if text:
+        return text
+
     agent_todos = (
         payload.get("agent_todo_summary")
         if isinstance(payload.get("agent_todo_summary"), dict)
@@ -1469,7 +1629,12 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
     )
     requires_user_action = bool(payload.get("requires_user_action"))
     must_attempt_work = bool(execution_obligation.get("must_attempt_work"))
-    quiet_noop_allowed = not requires_user_action and not must_attempt_work
+    scoped_user_gate_fallback = isinstance(payload.get("scoped_user_gate_fallback"), dict)
+    quiet_noop_allowed = (
+        not requires_user_action
+        and not must_attempt_work
+        and not scoped_user_gate_fallback
+    )
 
     user_actions = _protocol_todo_actions(payload.get("user_todo_summary"))
     if requires_user_action and not user_actions:
@@ -1479,7 +1644,13 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
                 user_actions = [text]
                 break
 
-    if requires_user_action:
+    if requires_user_action and scoped_user_gate_fallback:
+        primary_actor = "agent_with_user_gate"
+        agent_action_required = True
+        agent_action = _protocol_first_candidate_action(payload) or (
+            "surface the scoped user gate, then advance one non-gated fallback"
+        )
+    elif requires_user_action:
         primary_actor = "user"
         agent_action_required = False
         agent_action = "wait for user/owner action after surfacing the blocker or gate"
@@ -1492,8 +1663,20 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
         agent_action_required = False
         agent_action = _protocol_monitor_action(payload) or "quiet no-op; no material transition"
 
-    action_key = "user_action" if requires_user_action else "agent_action"
-    action_value = user_actions[0] if requires_user_action and user_actions else agent_action
+    action_key = (
+        "agent_action"
+        if agent_action_required
+        else "user_action"
+        if requires_user_action
+        else "agent_action"
+    )
+    action_value = (
+        agent_action
+        if agent_action_required
+        else user_actions[0]
+        if requires_user_action and user_actions
+        else agent_action
+    )
     summary_parts = [
         f"actor={primary_actor}",
         f"user_action_required={str(requires_user_action).lower()}",
@@ -1507,7 +1690,7 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
     if automation_liveness.get("pause_allowed") is False:
         summary_parts.append("pause_allowed=false")
     summary_parts.append("llm=no_api")
-    if user_actions and not requires_user_action:
+    if user_actions and (not requires_user_action or action_key != "user_action"):
         summary_parts.append("user_action_pending=true")
         text = _protocol_action_text(user_actions[0], limit=80)
         if text:
@@ -1535,6 +1718,8 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
     kind = str(execution_obligation.get("kind") or "")
     effective_action = str(payload.get("effective_action") or "")
     state = str(payload.get("state") or "")
+    if payload.get("scoped_user_gate_fallback"):
+        return "scoped_user_gate_fallback"
     if payload.get("requires_user_action"):
         if payload.get("notify_user_on_gate") or state == "operator_gate":
             return "user_gate"
@@ -1592,6 +1777,10 @@ def _interaction_primary_agent_action(payload: dict[str, Any], *, mode: str) -> 
         return "run one bounded self-repair or replan segment before another quiet no-op"
     if mode == "monitor_quiet_skip":
         return "record at most one no-spend monitor-poll event, rerun the guard, then stay quiet if unchanged"
+    if mode == "scoped_user_gate_fallback":
+        return _protocol_first_candidate_action(payload) or (
+            "surface the scoped user gate, then advance one non-gated fallback"
+        )
     if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
         return "wait for user/owner action after surfacing the blocker or gate"
     if mode == "outcome_floor_recovery":
@@ -1628,6 +1817,7 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
         "autonomous_replan",
         "control_plane_self_repair",
         "boundary_projection_repair",
+        "scoped_user_gate_fallback",
     }:
         return [
             f"goal-harness refresh-state --goal-id {goal_id} --classification <validated_progress>",
@@ -1672,8 +1862,11 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     )
     mode = _interaction_mode(payload)
     user_required = bool(payload.get("requires_user_action"))
-    must_attempt = False if user_required else bool(execution_obligation.get("must_attempt_work"))
-    delivery_allowed = (not user_required) and bool(
+    scoped_user_gate_fallback = mode == "scoped_user_gate_fallback"
+    must_attempt = bool(execution_obligation.get("must_attempt_work")) if (
+        not user_required or scoped_user_gate_fallback
+    ) else False
+    delivery_allowed = (not user_required or scoped_user_gate_fallback) and bool(
         execution_obligation.get(
             "delivery_allowed",
             payload.get("normal_delivery_allowed")
@@ -1702,6 +1895,7 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         "control_plane_self_repair",
         "boundary_projection_repair",
         "external_evidence_observation",
+        "scoped_user_gate_fallback",
     }
     user_channel: dict[str, Any] = {
         "action_required": user_required,
@@ -1716,6 +1910,11 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         or (
             payload.get("blocked_priority_fallback", {}).get("reason")
             if isinstance(payload.get("blocked_priority_fallback"), dict)
+            else None
+        )
+        or (
+            payload.get("scoped_user_gate_fallback", {}).get("reason")
+            if isinstance(payload.get("scoped_user_gate_fallback"), dict)
             else None
         )
     )
@@ -1750,6 +1949,7 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         "user_action_required",
         "outcome_floor_recovery",
         "external_evidence_observation",
+        "scoped_user_gate_fallback",
     } or payload.get("blocked_priority_fallback"):
         contract["fallback_policy"] = {"do_not_cancel_on_block": True}
     return contract
@@ -3360,6 +3560,45 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
                         or "no-work polling should ask the current open user todo"
                     )
                     payload["open_todo_notification_policy"] = "repeat_until_resolved"
+        scoped_user_gate_fallback = _scoped_user_gate_fallback(
+            user_todo_summary,
+            agent_todo_summary,
+        )
+        if scoped_user_gate_fallback:
+            payload["scoped_user_gate_fallback"] = scoped_user_gate_fallback
+            payload["should_run"] = True
+            if payload.get("decision") == "skip":
+                payload["decision"] = "safe_bypass_user_gate_fallback"
+            if payload.get("effective_action") in {"skip", "monitor_quiet_skip", None}:
+                payload["effective_action"] = "scoped_user_gate_fallback"
+            execution_obligation_payload = (
+                dict(payload.get("execution_obligation"))
+                if isinstance(payload.get("execution_obligation"), dict)
+                else {}
+            )
+            execution_obligation_payload.update(
+                {
+                    "must_attempt_work": True,
+                    "kind": "scoped_user_gate_fallback",
+                    "minimum": "one_non_gated_fallback_segment_after_user_gate_notice",
+                    "delivery_allowed": True,
+                    "notify_is_execution_gate": False,
+                    "contract": "scoped_user_gate_fallback",
+                    "contract_obligation": scoped_user_gate_fallback.get(
+                        "recommended_action"
+                    ),
+                    "reason": scoped_user_gate_fallback.get("reason"),
+                }
+            )
+            payload["execution_obligation"] = execution_obligation_payload
+            payload["safe_bypass_allowed"] = True
+            payload["safe_bypass_kind"] = "scoped_user_gate_fallback"
+            payload["safe_bypass_policy"] = (
+                "The user gate blocks only the matched agent action scope. Surface "
+                "that gate, then advance the selected non-gated fallback; spend only "
+                "after validated writeback."
+            )
+            payload["actionable_by_codex"] = True
         payload["requires_user_action"] = bool(
             state == "operator_gate"
             or payload.get("notify_user_on_gate") is True
@@ -4537,6 +4776,51 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         if blocked_priority_fallback.get("recommended_action"):
             lines.append(
                 f"- blocked_priority_action: {blocked_priority_fallback.get('recommended_action')}"
+            )
+    scoped_user_gate_fallback = (
+        payload.get("scoped_user_gate_fallback")
+        if isinstance(payload.get("scoped_user_gate_fallback"), dict)
+        else {}
+    )
+    if scoped_user_gate_fallback:
+        selected = (
+            scoped_user_gate_fallback.get("selected_executable")
+            if isinstance(scoped_user_gate_fallback.get("selected_executable"), dict)
+            else {}
+        )
+        blocked_gate = (
+            scoped_user_gate_fallback.get("blocked_user_gate")
+            if isinstance(scoped_user_gate_fallback.get("blocked_user_gate"), dict)
+            else {}
+        )
+        blocked_items = (
+            scoped_user_gate_fallback.get("blocked_agent_items")
+            if isinstance(scoped_user_gate_fallback.get("blocked_agent_items"), list)
+            else []
+        )
+        lines.append(
+            "- scoped_user_gate_fallback: "
+            f"notify_user={scoped_user_gate_fallback.get('notify_user')} "
+            f"blocked_count={len(blocked_items)} "
+            f"selected_index={selected.get('index')} "
+            f"reason={scoped_user_gate_fallback.get('reason')}"
+        )
+        if blocked_gate.get("text"):
+            lines.append(f"- scoped_user_gate: {blocked_gate.get('text')}")
+        for blocked in blocked_items[:3]:
+            if not isinstance(blocked, dict):
+                continue
+            text = str(blocked.get("text") or "").strip()
+            if not text:
+                continue
+            index = blocked.get("index")
+            suffix = f"[{index}]" if index is not None else ""
+            lines.append(f"- scoped_user_gate_blocked_item{suffix}: {text}")
+        if selected.get("text"):
+            lines.append(f"- scoped_user_gate_selected: {selected.get('text')}")
+        if scoped_user_gate_fallback.get("recommended_action"):
+            lines.append(
+                f"- scoped_user_gate_action: {scoped_user_gate_fallback.get('recommended_action')}"
             )
     completed_todo_archive_warning = (
         payload.get("completed_todo_archive_warning")

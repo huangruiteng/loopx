@@ -28,6 +28,10 @@ CONTRACT_ONLY_REGRESSIONS = (
         description="blocked P0 work stays visible while safe fallback work proceeds",
     ),
     Regression(
+        path="regression/scoped-user-gate-fallback-contract.py",
+        description="scoped user gates notify the user while non-dependent fallback work proceeds",
+    ),
+    Regression(
         path="regression/no-progress-self-repair-contract.py",
         description="two no-progress signals force autonomous self-repair before quiet waiting",
     ),
