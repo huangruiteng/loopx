@@ -3178,15 +3178,20 @@ def build_agents_last_exam_candidate_task_data_scan(
 def _agents_last_exam_relative_file_probe(
     source_root: str | None,
     relative_path: str | None,
+    *,
+    file_root: str | None = None,
 ) -> dict[str, Any]:
     label = _agents_last_exam_public_id(relative_path, limit=160)
+    root_kind = "external_spec_root" if file_root else "source_root"
     if not relative_path:
         return {
             "relative_path": None,
             "declared": False,
             "exists": False,
             "first_blocker": "experiment_spec_missing",
+            "root_kind": root_kind,
             "source_root_path_recorded": False,
+            "external_root_path_recorded": False,
         }
     text = relative_path.replace("\\", "/").strip()
     parts = [part for part in text.split("/") if part]
@@ -3198,18 +3203,23 @@ def _agents_last_exam_relative_file_probe(
             "declared": True,
             "exists": False,
             "first_blocker": "experiment_spec_relative_path_not_public_safe",
+            "root_kind": root_kind,
             "source_root_path_recorded": False,
+            "external_root_path_recorded": False,
         }
-    if not source_root:
+    probe_root = file_root or source_root
+    if not probe_root:
         return {
             "relative_path": label,
             "declared": True,
             "exists": False,
-            "first_blocker": "source_root_missing",
+            "first_blocker": f"{root_kind}_missing",
+            "root_kind": root_kind,
             "source_root_path_recorded": False,
+            "external_root_path_recorded": False,
         }
     try:
-        source_path = Path(source_root).expanduser()
+        source_path = Path(probe_root).expanduser()
     except (OSError, RuntimeError):
         source_path = None
     if source_path is None or not source_path.is_dir():
@@ -3217,8 +3227,10 @@ def _agents_last_exam_relative_file_probe(
             "relative_path": label,
             "declared": True,
             "exists": False,
-            "first_blocker": "source_root_not_available",
+            "first_blocker": f"{root_kind}_not_available",
+            "root_kind": root_kind,
             "source_root_path_recorded": False,
+            "external_root_path_recorded": False,
         }
     candidate = source_path.joinpath(*parts)
     try:
@@ -3235,13 +3247,16 @@ def _agents_last_exam_relative_file_probe(
         "declared": True,
         "exists": exists,
         "first_blocker": None if exists else "experiment_spec_file_missing",
+        "root_kind": root_kind,
         "source_root_path_recorded": False,
+        "external_root_path_recorded": False,
     }
 
 def build_agents_last_exam_local_launch_packet(
     *,
     source_root: str | None,
     experiment_spec_relative_path: str | None,
+    experiment_spec_root: str | None = None,
     selected_task_id: str | None = None,
     expected_repo_url: str = AGENTS_LAST_EXAM_DEFAULT_REPO_URL,
     snapshot: str = AGENTS_LAST_EXAM_DEFAULT_SNAPSHOT,
@@ -3287,6 +3302,7 @@ def build_agents_last_exam_local_launch_packet(
     spec_probe = _agents_last_exam_relative_file_probe(
         source_root,
         experiment_spec_relative_path,
+        file_root=experiment_spec_root,
     )
     blockers: list[str] = []
     if source_readiness.get("ready") is not True:
@@ -3358,7 +3374,10 @@ def build_agents_last_exam_local_launch_packet(
             "declared": spec_probe.get("declared") is True,
             "exists": spec_probe.get("exists") is True,
             "content_read": False,
+            "root_kind": spec_probe.get("root_kind"),
+            "external_root_declared": bool(experiment_spec_root),
             "source_root_path_recorded": False,
+            "external_root_path_recorded": False,
         },
         "launch_packet": {
             "mode": "no_execution_launch_packet",

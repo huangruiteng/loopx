@@ -179,6 +179,7 @@ def assert_no_execution(payload: dict[str, object]) -> None:
     assert isinstance(spec, dict)
     assert spec["content_read"] is False
     assert spec["source_root_path_recorded"] is False
+    assert spec["external_root_path_recorded"] is False
     case_state = payload["case_state_init_contract"]
     assert isinstance(case_state, dict)
     assert (
@@ -229,6 +230,31 @@ def run_fixture_smoke() -> None:
         assert payload["runner"]["python_module_available"] is True
         assert payload["experiment_spec"]["exists"] is True
         assert_no_execution(payload)
+
+        external_spec_root = Path(tmp) / "goal-harness-ale-wrapper"
+        external_spec_root.mkdir()
+        (external_spec_root / "host_codex_spec.yaml").write_text(
+            "name: host_codex_fixture\n",
+            encoding="utf-8",
+        )
+        external_spec = build_agents_last_exam_local_launch_packet(
+            source_root=str(source_root),
+            experiment_spec_root=str(external_spec_root),
+            experiment_spec_relative_path="host_codex_spec.yaml",
+            selected_task_id="computing_math/os_log_permission_guard_v1",
+            runner_binary="python3",
+            runner_python_module="ale_run",
+            runner_command_label="python-m-ale-run",
+            operator_authorized=True,
+            allow_public_task_material=True,
+            image_metadata=ready_image_metadata(),
+            alternate_image_metadata=blocked_image_metadata(),
+        )
+        assert external_spec["ready"] is True
+        assert external_spec["experiment_spec"]["exists"] is True
+        assert external_spec["experiment_spec"]["root_kind"] == "external_spec_root"
+        assert external_spec["experiment_spec"]["external_root_declared"] is True
+        assert_no_execution(external_spec)
 
         fresh_required = build_agents_last_exam_local_launch_packet(
             source_root=str(source_root),
@@ -287,6 +313,12 @@ def run_cli_smoke() -> None:
     tmp = tempfile.mkdtemp()
     try:
         source_root = make_source_root(Path(tmp))
+        external_spec_root = Path(tmp) / "goal-harness-ale-wrapper"
+        external_spec_root.mkdir()
+        (external_spec_root / "host_codex_spec.yaml").write_text(
+            "name: host_codex_fixture\n",
+            encoding="utf-8",
+        )
         base_cmd = [
             sys.executable,
             "-m",
@@ -322,6 +354,28 @@ def run_cli_smoke() -> None:
         assert payload["first_blocker"] == "docker_probe_disabled"
         assert payload["experiment_spec"]["exists"] is True
         assert_no_execution(payload)
+
+        external_cmd = [
+            *base_cmd[: base_cmd.index("--experiment-spec") + 2],
+            "--experiment-spec-root",
+            str(external_spec_root),
+            *base_cmd[base_cmd.index("--experiment-spec") + 2 :],
+        ]
+        spec_index = external_cmd.index("--experiment-spec") + 1
+        external_cmd[spec_index] = "host_codex_spec.yaml"
+        external_result = subprocess.run(
+            external_cmd,
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        external_payload = json.loads(external_result.stdout)
+        assert external_payload["ok"] is True
+        assert external_payload["experiment_spec"]["root_kind"] == "external_spec_root"
+        assert external_payload["experiment_spec"]["external_root_declared"] is True
+        assert external_payload["experiment_spec"]["exists"] is True
+        assert_no_execution(external_payload)
 
         fresh_required = subprocess.run(
             [*base_cmd, "--require-upstream-current"],

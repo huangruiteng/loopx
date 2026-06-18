@@ -3298,7 +3298,17 @@ def main(argv: list[str] | None = None) -> int:
     ale_local_launch_packet_parser.add_argument(
         "--experiment-spec",
         required=True,
-        help="Public relative path to the ALE experiment spec under source root.",
+        help=(
+            "Public relative path to the ALE experiment spec under source root "
+            "or --experiment-spec-root."
+        ),
+    )
+    ale_local_launch_packet_parser.add_argument(
+        "--experiment-spec-root",
+        help=(
+            "Optional external spec root for Goal Harness wrapper specs. The "
+            "path is probed for existence only and never recorded."
+        ),
     )
     ale_local_launch_packet_parser.add_argument(
         "--selected-task-id",
@@ -5991,6 +6001,7 @@ def main(argv: list[str] | None = None) -> int:
                 payload = build_agents_last_exam_local_launch_packet(
                     source_root=args.source_root,
                     experiment_spec_relative_path=args.experiment_spec,
+                    experiment_spec_root=args.experiment_spec_root,
                     selected_task_id=args.selected_task_id,
                     expected_repo_url=args.expected_repo_url,
                     snapshot=args.snapshot,
