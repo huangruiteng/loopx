@@ -152,6 +152,18 @@ agent:
 4. Only after real proposals prove useful, add scheduled heartbeats or
    automation.
 
+The local-only entry point is:
+
+```bash
+goal-harness dreaming dry-run --goal-id <goal-id> --limit 20
+```
+
+This command reads compact run history through the selected registry/runtime
+root and returns an advisory `run_record_preview`. It does not append runtime
+history, mutate active state, grant an `agent_command`, or spend quota. The
+preview is meant for operator/controller review before any proposal is promoted
+into ordinary delivery work.
+
 Acceptance criterion: a project can receive a dreaming proposal without the
 project agent being interrupted, and the user can approve, reject, or defer it
 from Goal Harness.
