@@ -142,9 +142,76 @@ def test_ready_parallel_batch_size_is_capped() -> None:
     assert_public_safe(payload)
 
 
+def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
+    payload = build_split_control_remote_executor_readiness(
+        max_parallel_cases=4,
+        local_agent={
+            "codex_cli_available": True,
+            "goal_harness_available": True,
+            "codex_auth_ready": True,
+            "codex_auth_local_only": True,
+            "model_invocation_local": True,
+        },
+        remote_executor={
+            "docker_available": True,
+            "python_available": True,
+            "git_available": True,
+            "rsync_available": True,
+            "codex_available": False,
+            "codex_acp_available": False,
+        },
+        adapter_readiness={
+            "terminal-bench@2.0": {
+                "split_control_adapter_ready": True,
+                "runner_tooling_ready": True,
+                "task_data_ready": True,
+            },
+            "skillsbench@1.1": {
+                "split_control_adapter_ready": True,
+                "runner_tooling_ready": True,
+                "task_data_ready": True,
+            },
+            "agents-last-exam@local-docker": {
+                "split_control_adapter_ready": True,
+                "runner_tooling_ready": True,
+                "task_data_ready": False,
+                "known_blockers": ["ale_task_data_staging_venue_missing"],
+            },
+        },
+    )
+    assert payload["ready"] is False, payload
+    assert payload["first_blocker"] == "remote_task_data_or_image_missing", payload
+    assert payload["next_action"] == "launch bounded parallel remote-executor batch", payload
+    matrix = payload["readiness_matrix"]
+    assert matrix["has_launchable_subset"] is True, payload
+    assert matrix["ready_benchmark_ids"] == [
+        "terminal-bench@2.0",
+        "skillsbench@1.1",
+    ], payload
+    assert matrix["blocked_benchmark_ids"] == [
+        "agents-last-exam@local-docker"
+    ], payload
+    assert matrix["next_ready_batch_benchmark_ids"] == [
+        "terminal-bench@2.0",
+        "skillsbench@1.1",
+    ], payload
+    assert matrix["next_repair_target"] == {
+        "benchmark_id": "agents-last-exam@local-docker",
+        "first_blocker": "remote_task_data_or_image_missing",
+        "blockers": [
+            "remote_task_data_or_image_missing",
+            "ale_task_data_staging_venue_missing",
+        ],
+    }, payload
+    assert payload["parallel_policy"]["suggested_next_batch_size"] == 2, payload
+    assert payload["remote_executor"]["remote_agent_components_blocking"] is False, payload
+    assert_public_safe(payload)
+
+
 def main() -> int:
     test_remote_codex_is_not_required_for_split_control()
     test_ready_parallel_batch_size_is_capped()
+    test_partial_ready_subset_can_launch_without_remote_codex()
     print("benchmark-split-control-remote-executor-smoke: ok")
     return 0
 

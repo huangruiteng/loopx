@@ -138,6 +138,28 @@ def build_split_control_remote_executor_readiness(
         )
         for benchmark_id in benchmark_ids
     ]
+    ready_benchmark_ids = [
+        item["benchmark_id"]
+        for item in statuses
+        if item["ready_for_split_control_execution"]
+    ]
+    blocked_benchmark_ids = [
+        item["benchmark_id"]
+        for item in statuses
+        if not item["ready_for_split_control_execution"]
+    ]
+    next_repair = next(
+        (
+            {
+                "benchmark_id": item["benchmark_id"],
+                "first_blocker": item["first_blocker"],
+                "blockers": item["blockers"],
+            }
+            for item in statuses
+            if not item["ready_for_split_control_execution"]
+        ),
+        None,
+    )
 
     if not local_agent_ready:
         first_blocker = "local_agent_not_ready"
@@ -154,7 +176,8 @@ def build_split_control_remote_executor_readiness(
     else:
         first_blocker = "ready_for_parallel_remote_executor_rotation"
 
-    ready_count = sum(1 for item in statuses if item["ready_for_split_control_execution"])
+    ready_count = len(ready_benchmark_ids)
+    max_parallel = max(1, int(max_parallel_cases))
     remote_agent_missing = {
         key: not _truthy(remote.get(key)) for key in REMOTE_AGENT_COMPONENT_FACTS
     }
@@ -195,9 +218,17 @@ def build_split_control_remote_executor_readiness(
             "remote_agent_components_blocking": False,
         },
         "benchmark_statuses": statuses,
+        "readiness_matrix": {
+            "ready_benchmark_ids": ready_benchmark_ids,
+            "blocked_benchmark_ids": blocked_benchmark_ids,
+            "next_ready_batch_benchmark_ids": ready_benchmark_ids[:max_parallel],
+            "next_repair_target": next_repair,
+            "has_launchable_subset": bool(ready_benchmark_ids),
+            "all_requested_benchmarks_ready": ready_count == len(statuses),
+        },
         "parallel_policy": {
-            "max_parallel_cases": max(1, int(max_parallel_cases)),
-            "suggested_next_batch_size": min(max(1, int(max_parallel_cases)), ready_count),
+            "max_parallel_cases": max_parallel,
+            "suggested_next_batch_size": min(max_parallel, ready_count),
             "parallelize_only_ready_benchmarks": True,
         },
         "boundary": {

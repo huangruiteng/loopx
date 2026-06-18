@@ -38,6 +38,14 @@ split-control gates:
 - remote node runtime missing only when a specific runner declares that it
   requires remote Node/npm.
 
+The gate is a matrix, not a single all-or-nothing flag. When at least one
+benchmark family is ready, `readiness_matrix.next_ready_batch_benchmark_ids`
+selects the bounded launch subset while `readiness_matrix.next_repair_target`
+names the first blocked family to repair. This lets the controller run a small
+parallel batch such as Terminal-Bench plus SkillsBench while ALE remains
+task-data-gated, without pretending the whole three-benchmark rotation is
+ready.
+
 ## Current Use
 
 The same route applies to the three active benchmark families:
@@ -60,4 +68,6 @@ python3 examples/benchmark-split-control-remote-executor-smoke.py
 ```
 
 The smoke asserts that missing remote Codex/Codex-ACP is non-blocking, while
-adapter, runner-tooling, and task-data blockers remain explicit.
+adapter, runner-tooling, and task-data blockers remain explicit. It also checks
+that a partial-ready route can produce a launchable subset plus a concrete
+repair target.
