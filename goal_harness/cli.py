@@ -180,7 +180,14 @@ from .quota import (
     spend_quota_slot,
     void_quota_slot,
 )
-from .registry import inspect_registry, registry_goals, render_registry_markdown, resolve_state_file
+from .registry import (
+    inspect_registry,
+    inspect_registry_boundary,
+    registry_goals,
+    render_registry_boundary_markdown,
+    render_registry_markdown,
+    resolve_state_file,
+)
 from .runtime import archive_runtime_goal, render_archive_runtime_markdown
 from .state_refresh import (
     DEFAULT_REFRESH_ACTION,
@@ -588,6 +595,12 @@ def render_agents_last_exam_task_material_readiness_markdown(
     decision = (
         payload.get("decision") if isinstance(payload.get("decision"), dict) else {}
     )
+    task_data = payload.get("task_data") if isinstance(payload.get("task_data"), dict) else {}
+    local_staging = (
+        task_data.get("local_task_data_staging")
+        if isinstance(task_data.get("local_task_data_staging"), dict)
+        else {}
+    )
     lines = [
         "# Agents Last Exam Task Material Readiness",
         "",
@@ -597,7 +610,8 @@ def render_agents_last_exam_task_material_readiness_markdown(
         f"- Task: `{task.get('task_id')}`",
         f"- Task dir/card/scripts: `{task.get('task_dir_available')}`/`{task.get('task_card_json_present')}`/`{task.get('scripts_dir_present')}`",
         f"- Scorer script count: `{task.get('scorer_script_count')}`",
-        f"- Task data checked/ready/source: `{(payload.get('task_data') if isinstance(payload.get('task_data'), dict) else {}).get('checked')}`/`{(payload.get('task_data') if isinstance(payload.get('task_data'), dict) else {}).get('ready')}`/`{(payload.get('task_data') if isinstance(payload.get('task_data'), dict) else {}).get('task_data_source')}`",
+        f"- Task data checked/ready/source: `{task_data.get('checked')}`/`{task_data.get('ready')}`/`{task_data.get('task_data_source')}`",
+        f"- Local task-data staging route/tool/auth checked: `{local_staging.get('route')}`/`{local_staging.get('fetch_tool_present')}`/`{local_staging.get('auth_status_checked')}`",
         f"- Public list membership checked/present: `{public_lists.get('checked')}`/`{public_lists.get('present_count')}`",
         f"- Task body/card/script content read: `{boundary.get('task_body_read')}`/`{boundary.get('task_card_content_read')}`/`{boundary.get('script_content_read')}`",
         f"- Local paths/raw output recorded: `{boundary.get('local_paths_recorded')}`/`{boundary.get('raw_output_recorded')}`",
@@ -2139,6 +2153,24 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     sub.add_parser("registry", help="Inspect registry goals and adapter declarations.")
+    registry_boundary_parser = sub.add_parser(
+        "registry-boundary",
+        help="Classify a registry file as local-only, global-local, public projection, or public fixture.",
+    )
+    registry_boundary_parser.add_argument(
+        "--path",
+        help="Registry path to classify. Defaults to the active --registry path.",
+    )
+    registry_boundary_parser.add_argument(
+        "--require-not-tracked",
+        action="store_true",
+        help="Return non-zero if the registry is tracked while publication policy disallows pushing it.",
+    )
+    registry_boundary_parser.add_argument(
+        "--require-gitignored",
+        action="store_true",
+        help="Return non-zero if the registry should be ignored but is neither ignored nor tracked.",
+    )
 
     configure_goal_parser = sub.add_parser(
         "configure-goal",
@@ -5236,6 +5268,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "registry":
         payload = inspect_registry(registry_path)
         print_payload(payload, args.format, render_registry_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "registry-boundary":
+        boundary_path = Path(args.path).expanduser() if args.path else registry_path
+        payload = inspect_registry_boundary(boundary_path)
+        git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
+        if args.require_not_tracked and payload.get("ok") and git.get("tracked") and not payload.get(
+            "github_push_allowed"
+        ):
+            payload = dict(payload)
+            payload["ok"] = False
+            payload.setdefault("risks", []).append("registry_tracked_but_not_push_allowed")
+        if args.require_gitignored and payload.get("ok") and payload.get("should_be_gitignored"):
+            if git.get("inside_worktree") and not git.get("ignored") and not git.get("tracked"):
+                payload = dict(payload)
+                payload["ok"] = False
+                payload.setdefault("risks", []).append("registry_should_be_gitignored")
+        print_payload(payload, args.format, render_registry_boundary_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "configure-goal":

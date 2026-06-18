@@ -414,6 +414,29 @@ def _agents_last_exam_disk_headroom() -> dict[str, Any]:
         "path_recorded": False,
     }
 
+def _agents_last_exam_disk_headroom_for_path(path: Path | None) -> dict[str, Any]:
+    try:
+        probe_path = path if path is not None and path.exists() else Path.cwd()
+        usage = shutil.disk_usage(probe_path)
+    except (OSError, RuntimeError):
+        return {
+            "checked": False,
+            "free_gib": None,
+            "total_gib": None,
+            "used_percent": None,
+            "path_recorded": False,
+        }
+    free_gib = usage.free / (1024**3)
+    total_gib = usage.total / (1024**3)
+    used_pct = (usage.used / usage.total * 100.0) if usage.total else 0.0
+    return {
+        "checked": True,
+        "free_gib": round(free_gib, 2),
+        "total_gib": round(total_gib, 2),
+        "used_percent": round(used_pct, 2),
+        "path_recorded": False,
+    }
+
 def build_agents_last_exam_local_preflight(
     *,
     selected_task_id: str | None = None,
@@ -2171,6 +2194,63 @@ def _agents_last_exam_bool_requirement(value: bool | str | None) -> bool | None:
         return False
     return None
 
+def _agents_last_exam_local_task_data_staging_probe(
+    *,
+    source_root_path: Path | None,
+    local_source_declared: bool,
+    local_source_safe: bool,
+    local_source_present: bool,
+) -> dict[str, Any]:
+    checked = bool(local_source_declared)
+    fetch_script_present = False
+    if source_root_path is not None and source_root_path.is_dir():
+        fetch_script_present = (
+            source_root_path / "scripts" / "fetch_task_data.sh"
+        ).is_file()
+    fetch_tool_present = shutil.which("huggingface-cli") is not None
+    disk_headroom = _agents_last_exam_disk_headroom_for_path(source_root_path)
+    documented_image_compressed_gib = 42
+    free_gib = disk_headroom.get("free_gib")
+    disk_headroom_below_documented_image = (
+        isinstance(free_gib, (int, float))
+        and free_gib < documented_image_compressed_gib
+    )
+    blockers: list[str] = []
+    if checked and local_source_safe and local_source_present is not True:
+        if not fetch_script_present:
+            blockers.append("local_task_data_fetch_script_missing")
+        if not fetch_tool_present:
+            blockers.append("local_task_data_fetch_tool_missing")
+        blockers.append("local_task_data_gated_huggingface_access_not_verified")
+        if disk_headroom_below_documented_image:
+            blockers.append(
+                "local_task_data_disk_headroom_below_documented_image_pull"
+            )
+    return {
+        "checked": checked,
+        "ready": checked and not blockers if checked else None,
+        "first_blocker": blockers[0] if blockers else None,
+        "blockers": blockers,
+        "route": "gated_huggingface_archive" if checked else None,
+        "dataset_label": "agents-last-exam-data-archive" if checked else None,
+        "archive_label": "ale-tasks-data.tar.gz" if checked else None,
+        "fetch_script_present": fetch_script_present,
+        "fetch_tool": "huggingface-cli" if checked else None,
+        "fetch_tool_present": fetch_tool_present,
+        "auth_status_checked": False,
+        "requires_approved_huggingface_access": checked,
+        "disk_headroom": disk_headroom,
+        "documented_docker_image_compressed_gib": documented_image_compressed_gib,
+        "disk_headroom_below_documented_image_pull": (
+            disk_headroom_below_documented_image
+        ),
+        "local_paths_recorded": False,
+        "credential_values_read": False,
+        "credential_values_recorded": False,
+        "task_data_content_read": False,
+        "archive_content_read": False,
+    }
+
 def build_agents_last_exam_baked_task_input_readiness(
     *,
     selected_task_id: str | None,
@@ -2543,6 +2623,7 @@ def _agents_last_exam_task_data_source_readiness(
     local_source_declared = raw_source.startswith("local:")
     local_source_safe = False
     local_source_present = False
+    source_root_path = None
     if local_source_declared:
         local_relative = raw_source[len("local:") :].strip().replace("\\", "/")
         parts = [part for part in local_relative.split("/") if part]
@@ -2571,6 +2652,12 @@ def _agents_last_exam_task_data_source_readiness(
             except OSError:
                 inside_root = False
             local_source_present = bool(inside_root and candidate.is_dir())
+    local_staging = _agents_last_exam_local_task_data_staging_probe(
+        source_root_path=source_root_path,
+        local_source_declared=local_source_declared,
+        local_source_safe=local_source_safe,
+        local_source_present=local_source_present,
+    )
     gcs_key_declared = bool(gcs_sa_key)
     gcs_key_file_present = False
     if gcs_sa_key:
@@ -2622,6 +2709,11 @@ def _agents_last_exam_task_data_source_readiness(
                 blockers.append("local_task_data_source_not_public_safe")
             elif local_source_present is not True:
                 blockers.append("local_task_data_directory_not_verified")
+                blockers.extend(
+                    blocker
+                    for blocker in local_staging.get("blockers", [])
+                    if isinstance(blocker, str)
+                )
         elif raw_source in {"none", "local"}:
             blockers.append("task_data_source_not_sufficient_for_required_task")
         else:
@@ -2642,6 +2734,7 @@ def _agents_last_exam_task_data_source_readiness(
         "local_task_data_source": local_source_declared,
         "local_task_data_source_safe": local_source_safe,
         "local_task_data_present": local_source_present,
+        "local_task_data_staging": local_staging,
         "local_task_data_path_recorded": False,
         "local_task_data_content_read": False,
         "baked_input_present": effective_baked_input_present is True,

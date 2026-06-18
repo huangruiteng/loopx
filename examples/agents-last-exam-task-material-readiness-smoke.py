@@ -77,6 +77,13 @@ def assert_public_safe(payload: dict[str, object], temp_root: Path) -> None:
         assert task_data["credential_values_recorded"] is False
         assert task_data["local_paths_recorded"] is False
         assert task_data["gcs_sa_key_path_recorded"] is False
+        local_staging = task_data.get("local_task_data_staging")
+        if isinstance(local_staging, dict):
+            assert local_staging["credential_values_read"] is False
+            assert local_staging["credential_values_recorded"] is False
+            assert local_staging["local_paths_recorded"] is False
+            assert local_staging["task_data_content_read"] is False
+            assert local_staging["archive_content_read"] is False
 
 
 def assert_baked_probe_public_safe(payload: dict[str, object]) -> None:
@@ -320,6 +327,26 @@ def run_function_smoke() -> None:
             missing_local["first_blocker"] == "local_task_data_directory_not_verified"
         ), missing_local
         assert missing_local["task_data"]["local_task_data_source"] is True, missing_local
+        assert (
+            missing_local["task_data"]["local_task_data_staging"]["route"]
+            == "gated_huggingface_archive"
+        ), missing_local
+        assert (
+            missing_local["task_data"]["local_task_data_staging"][
+                "dataset_label"
+            ]
+            == "agents-last-exam-data-archive"
+        ), missing_local
+        assert (
+            missing_local["task_data"]["local_task_data_staging"][
+                "auth_status_checked"
+            ]
+            is False
+        ), missing_local
+        assert (
+            "local_task_data_gated_huggingface_access_not_verified"
+            in missing_local["task_data"]["local_task_data_staging"]["blockers"]
+        ), missing_local
         assert missing_local["task_data"]["local_task_data_path_recorded"] is False, missing_local
         assert missing_local["task_data"]["local_task_data_content_read"] is False, missing_local
         assert_public_safe(missing_local, temp_root)
@@ -336,6 +363,9 @@ def run_function_smoke() -> None:
         assert ready_local["ready"] is True, ready_local
         assert ready_local["task_data"]["local_task_data_source_safe"] is True, ready_local
         assert ready_local["task_data"]["local_task_data_present"] is True, ready_local
+        assert (
+            ready_local["task_data"]["local_task_data_staging"]["ready"] is True
+        ), ready_local
         assert_public_safe(ready_local, temp_root)
 
         official_gcs = build_agents_last_exam_task_material_readiness(

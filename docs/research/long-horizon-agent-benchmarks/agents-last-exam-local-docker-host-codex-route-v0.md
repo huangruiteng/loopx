@@ -56,21 +56,29 @@ The local route is allowed only when the task-data substrate is explicit:
 
 - For no-task-data canaries such as `demo/tool_smoke`, pass
   `--requires-task-data false` and keep the route no-upload/no-submit.
-- For real tasks with `requires_task_data=True`, `task_data_source` must be one
-  of:
-  - verified `baked_in_sandbox`, with baked task input presence proven by the
-    sandbox/image preflight; or
-  - `gs://ale-data-public`, with credential presence checked without recording
-    credential values or local paths.
-- `task_data_source=none`, missing task-data source, or unverified
-  `baked_in_sandbox` must block local launch.
+- For upstream-current local Docker tasks with `requires_task_data=True`,
+  prefer the upstream `configs/environments/docker.yaml` contract:
+  `task_data_source: local:task-data`. The host-side `task-data/` directory is
+  staged once from the gated Hugging Face archive
+  `agents-last-exam-data-archive` by `scripts/fetch_task_data.sh`, then copied
+  into each container with `docker cp`.
+- Public readiness artifacts may record the sanitized staging route, whether
+  `scripts/fetch_task_data.sh` exists, whether `huggingface-cli` is available,
+  whether auth was checked, and coarse disk headroom. They must not run the
+  fetch, read task-data content, inspect Hugging Face credentials, record local
+  paths, or persist archive contents.
+- Older `baked_in_sandbox` or `gs://ale-data-public` routes remain valid only
+  when the corresponding substrate is explicitly selected and proven. Do not
+  silently substitute them for upstream local Docker.
+- `task_data_source=none`, missing task-data source, missing local staging, or
+  unverified gated-data access must block local launch.
 
 Example public-safe gate:
 
 ```bash
 goal-harness benchmark ale-task-material-readiness \
-  --task-root <ale-task-root> \
-  --task-id demo/tool_smoke \
+  --source-root <ale-source-root> \
+  --selected-task-id demo/tool_smoke \
   --requires-task-data false \
   --task-data-source none \
   --enforce-task-data-source
@@ -80,16 +88,16 @@ For a formal task:
 
 ```bash
 goal-harness benchmark ale-task-material-readiness \
-  --task-root <ale-task-root> \
-  --task-id computing_math/os_log_permission_guard_v1 \
+  --source-root <ale-source-root> \
+  --selected-task-id computing_math/os_log_permission_guard_v1 \
   --requires-task-data true \
-  --task-data-source gs://ale-data-public \
-  --gcs-sa-key <credential-presence-only> \
+  --task-data-source local:task-data \
   --enforce-task-data-source
 ```
 
-The second command may check whether the credential file exists, but public
-artifacts must record only booleans and sanitized labels.
+This command may check the local staging route and tool presence, but public
+artifacts must record only booleans, sanitized labels, and coarse disk
+headroom.
 
 For a `baked_in_sandbox` candidate, prove the sandbox input directory before
 feeding the result into task-material readiness:
@@ -100,8 +108,8 @@ goal-harness benchmark ale-baked-task-input-readiness \
   --image agentslastexam/ale-kasm:latest
 
 goal-harness benchmark ale-task-material-readiness \
-  --task-root <ale-task-root> \
-  --task-id computing_math/os_log_permission_guard_v1 \
+  --source-root <ale-source-root> \
+  --selected-task-id computing_math/os_log_permission_guard_v1 \
   --requires-task-data true \
   --task-data-source baked_in_sandbox \
   --baked-task-input-readiness-json <compact-baked-input-readiness-json> \
