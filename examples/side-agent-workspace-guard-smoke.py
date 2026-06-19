@@ -25,6 +25,9 @@ from goal_harness.quota import (  # noqa: E402
 
 
 GOAL_ID = "side-agent-workspace-goal"
+PRIMARY_TODO = "Run the primary benchmark rotation."
+UNCLAIMED_TODO = "Triage an unclaimed coordination task."
+SIDE_TODO = "Continue the side-agent productization docs lane."
 
 
 @contextmanager
@@ -96,6 +99,51 @@ def status_payload(repo: Path, registry: Path) -> dict:
         "source": "fixture",
         "recommended_action": "Advance one public-safe side-agent slice.",
         "quota": quota,
+        "project_asset": {
+            "agent_todos": {
+                "schema_version": "todo_summary_v0",
+                "total_count": 3,
+                "open_count": 3,
+                "done_count": 0,
+                "items": [
+                    {
+                        "index": 1,
+                        "text": PRIMARY_TODO,
+                        "schema_version": "todo_item_v0",
+                        "todo_id": "todo_primary",
+                        "role": "agent",
+                        "status": "open",
+                        "priority": "P0",
+                        "task_class": "advancement_task",
+                        "action_kind": "benchmark_rotation",
+                        "claimed_by": "codex-main-control",
+                    },
+                    {
+                        "index": 2,
+                        "text": UNCLAIMED_TODO,
+                        "schema_version": "todo_item_v0",
+                        "todo_id": "todo_unclaimed",
+                        "role": "agent",
+                        "status": "open",
+                        "priority": "P1",
+                        "task_class": "advancement_task",
+                        "action_kind": "coordination_task",
+                    },
+                    {
+                        "index": 3,
+                        "text": SIDE_TODO,
+                        "schema_version": "todo_item_v0",
+                        "todo_id": "todo_side",
+                        "role": "agent",
+                        "status": "open",
+                        "priority": "P2",
+                        "task_class": "advancement_task",
+                        "action_kind": "productization_docs",
+                        "claimed_by": "codex-side-bypass",
+                    },
+                ],
+            },
+        },
     }
     return {
         "ok": True,
@@ -165,6 +213,7 @@ def main() -> int:
         assert "independent worktree" in preview["reason"], preview
         assert primary_agent["normal_delivery_allowed"] is True, primary_agent
         assert "workspace_guard" not in primary_agent, primary_agent
+        assert primary_agent["recommended_action"] == PRIMARY_TODO, primary_agent
 
         with pushd(side):
             side_ok = build_quota_should_run(
@@ -174,6 +223,11 @@ def main() -> int:
             )
         assert side_ok["normal_delivery_allowed"] is True, side_ok
         assert "workspace_guard" not in side_ok, side_ok
+        assert side_ok["recommended_action"] == SIDE_TODO, side_ok
+        side_summary = side_ok["agent_todo_summary"]
+        assert side_summary["first_executable_items"][0]["todo_id"] == "todo_side", side_summary
+        assert side_summary["claim_scope"]["current_agent_claimed_open_count"] == 1, side_summary
+        assert side_summary["claim_scope"]["blocked_claimed_items"][0]["todo_id"] == "todo_primary", side_summary
 
         with pushd(foreign):
             foreign_guarded = build_quota_should_run(

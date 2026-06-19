@@ -124,6 +124,12 @@ Only after that rerun returns normal delivery should the side agent claim an
 in-scope todo and edit repository files. A primary-owned todo remains
 primary-owned even when the side-agent workspace guard passes; the side agent
 must pick a todo inside its scope or create a primary review successor.
+For agent-specific `quota should-run --agent-id <side-agent-id>` payloads, the
+todo summary is claim-aware: current-agent claimed todos are preferred, unclaimed
+todos remain selectable, and primary/other-agent claimed todos are projected as
+blocked-claim context rather than as the side agent's next action. This reduces
+accidental collisions without writing scope into todo metadata or turning
+`claimed_by` into a lease.
 
 ```bash
 goal-harness configure-goal \

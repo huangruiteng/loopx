@@ -803,6 +803,14 @@ Item fields:
   lifecycle command materializes that id back into metadata. Optional future
   fields such as `created_at`, lease TTLs, dependencies, or evidence links
   should extend this item shape rather than inventing another todo surface.
+- Agent-scoped quota payloads may include
+  `agent_todo_summary.claim_scope` with
+  `schema_version=side_agent_claim_scope_v0`. For a side agent, the quota guard
+  should select current-agent claimed todos before unclaimed todos and keep
+  primary/other-agent claimed todos as `blocked_claimed_items` context. This is
+  claim-aware routing, not a hard lease: the primary agent still sees the whole
+  backlog, and a side agent still uses its automation/handoff scope to decide
+  whether an unclaimed todo is appropriate.
 - `dependency_blockers`: optional compact summary of unfinished user todos from
   other current attention-queue goals. This lets dashboards and heartbeat
   dispatchers show sibling/project dependency gates separately from the current

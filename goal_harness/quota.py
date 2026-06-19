@@ -137,6 +137,7 @@ PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
 CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
 SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "side_agent_workspace_guard_v0"
+SIDE_AGENT_CLAIM_SCOPE_SCHEMA_VERSION = "side_agent_claim_scope_v0"
 DEFAULT_AVAILABLE_CAPABILITIES = (
     "shell",
     "filesystem_read",
@@ -1131,6 +1132,49 @@ def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
     return (_todo_priority_rank(item), _todo_index_rank(item))
 
 
+def _side_agent_claim_scoped_open_items(
+    open_items: list[dict[str, Any]],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    if not isinstance(agent_identity, dict) or agent_identity.get("role") != "side-agent":
+        return open_items, None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return open_items, None
+
+    def claim_bucket(item: dict[str, Any]) -> int:
+        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        if claimed_by == agent_id:
+            return 0
+        if not claimed_by:
+            return 1
+        return 2
+
+    current_agent_items = [item for item in open_items if claim_bucket(item) == 0]
+    unclaimed_items = [item for item in open_items if claim_bucket(item) == 1]
+    blocked_claimed_items = [item for item in open_items if claim_bucket(item) == 2]
+    selectable_items = sorted(
+        [*current_agent_items, *unclaimed_items],
+        key=lambda item: (claim_bucket(item), *_todo_projection_sort_key(item)),
+    )
+    claim_scope = {
+        "schema_version": SIDE_AGENT_CLAIM_SCOPE_SCHEMA_VERSION,
+        "agent_id": agent_id,
+        "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+        "selection_order": "current_agent_claimed_then_unclaimed",
+        "selectable_open_count": len(selectable_items),
+        "current_agent_claimed_open_count": len(current_agent_items),
+        "unclaimed_open_count": len(unclaimed_items),
+        "blocked_claimed_open_count": len(blocked_claimed_items),
+        "blocked_claimed_items": [
+            _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+            for item in blocked_claimed_items[:3]
+        ],
+    }
+    return selectable_items, claim_scope
+
+
 def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
     source_keys = (
         "first_open_items",
@@ -1168,12 +1212,20 @@ def _is_user_gate_todo_item(item: dict[str, Any]) -> bool:
     return any(hint in action_kind for hint in USER_GATE_ACTION_KIND_HINTS)
 
 
-def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
+def _summarize_user_todos(
+    value: Any,
+    *,
+    agent_identity: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
-    open_items = sorted(
+    all_open_items = sorted(
         _todo_summary_source_items(value),
         key=_todo_projection_sort_key,
+    )
+    open_items, claim_scope = _side_agent_claim_scoped_open_items(
+        all_open_items,
+        agent_identity=agent_identity,
     )
     executable_items = [
         item
@@ -1187,7 +1239,7 @@ def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
         if _todo_item_is_actionable_open(item)
         if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
-    claimed_open_items = [item for item in open_items if item.get("claimed_by")]
+    claimed_open_items = [item for item in all_open_items if item.get("claimed_by")]
     gate_items = [
         item
         for item in open_items
@@ -1197,7 +1249,7 @@ def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
         "schema_version": value.get("schema_version"),
         "source_section": value.get("source_section"),
         "total_count": value.get("total_count"),
-        "open_count": value.get("open_count", len(open_items)),
+        "open_count": value.get("open_count", len(all_open_items)),
         "done_count": value.get("done_count"),
         "first_open_items": open_items[:3],
         "first_executable_items": executable_items[:3],
@@ -1210,12 +1262,18 @@ def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
         summary["claimed_open_count"] = value.get("claimed_open_count", len(claimed_open_items))
         summary["unclaimed_open_count"] = value.get(
             "unclaimed_open_count",
-            max(0, int(value.get("open_count", len(open_items)) or 0) - len(claimed_open_items)),
+            max(0, int(value.get("open_count", len(all_open_items)) or 0) - len(claimed_open_items)),
         )
+    if claim_scope:
+        summary["claim_scope"] = claim_scope
     return summary
 
 
-def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
+def _summarize_project_asset_todos(
+    value: Any,
+    *,
+    agent_identity: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     if (
@@ -1224,19 +1282,23 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
     ) and (
         "total_count" in value or "open_count" in value or "done_count" in value
     ):
-        return _summarize_user_todos(value)
+        return _summarize_user_todos(value, agent_identity=agent_identity)
 
-    open_items = sorted(
+    all_open_items = sorted(
         _todo_summary_source_items(value),
         key=_todo_projection_sort_key,
     )
-    if not open_items:
+    if not all_open_items:
         next_text = str(value.get("next") or "").strip()
         next_index = value.get("next_index", 1)
-        open_items = [{"index": next_index, "text": next_text}] if next_text else []
+        all_open_items = [{"index": next_index, "text": next_text}] if next_text else []
         next_claimed_by = str(value.get("next_claimed_by") or "").strip()
-        if open_items and next_claimed_by:
-            open_items[0]["claimed_by"] = next_claimed_by
+        if all_open_items and next_claimed_by:
+            all_open_items[0]["claimed_by"] = next_claimed_by
+    open_items, claim_scope = _side_agent_claim_scoped_open_items(
+        all_open_items,
+        agent_identity=agent_identity,
+    )
     executable_items = [
         item
         for item in open_items
@@ -1249,8 +1311,8 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
         if _todo_item_is_actionable_open(item)
         if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
-    claimed_open_items = [item for item in open_items if item.get("claimed_by")]
-    open_count = value.get("open", value.get("open_count", len(open_items)))
+    claimed_open_items = [item for item in all_open_items if item.get("claimed_by")]
+    open_count = value.get("open", value.get("open_count", len(all_open_items)))
     summary = {
         "schema_version": value.get("schema_version"),
         "source_section": value.get("source_section") or "project_asset",
@@ -1269,6 +1331,8 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
             "unclaimed_open_count",
             max(0, int(open_count or 0) - len(claimed_open_items)),
         )
+    if claim_scope:
+        summary["claim_scope"] = claim_scope
     return summary
 
 
@@ -4087,12 +4151,14 @@ def build_quota_should_run(
         if not plan.get("ok"):
             reason = "status or contract health is not ok; skip automatic compute"
         project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
+        agent_identity = _quota_agent_identity(item, agent_id=agent_id)
         user_todo_summary = _summarize_project_asset_todos(
             project_asset.get("user_todos") if project_asset else None
         ) or _summarize_user_todos(item.get("user_todos"))
         agent_todo_summary = _summarize_project_asset_todos(
-            project_asset.get("agent_todos") if project_asset else None
-        ) or _summarize_user_todos(item.get("agent_todos"))
+            project_asset.get("agent_todos") if project_asset else None,
+            agent_identity=agent_identity,
+        ) or _summarize_user_todos(item.get("agent_todos"), agent_identity=agent_identity)
         outcome_floor_blocker_projected = (
             recovery_allowed
             and _outcome_floor_blocker_already_projected(agent_todo_summary)
@@ -4112,7 +4178,6 @@ def build_quota_should_run(
             recovery_allowed = False
             reason = str(quota["reason"])
         goal_boundary = _goal_boundary(item)
-        agent_identity = _quota_agent_identity(item, agent_id=agent_id)
         workspace_guard = _side_agent_workspace_guard(item, agent_identity)
         automation_prompt_upgrade = _automation_prompt_upgrade(
             item,
