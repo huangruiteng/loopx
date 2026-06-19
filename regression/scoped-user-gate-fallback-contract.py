@@ -156,7 +156,7 @@ def build_nonblocking_user_gate_status_payload() -> dict:
                 "text": INDEPENDENT_AGENT_TODO,
                 "status": "open",
                 "task_class": "advancement_task",
-                "action_kind": "skillsbench_local_acp_stdio_relay",
+                "action_kind": "skillsbench_no_upload_mini_pair",
             },
             {
                 "index": 2,

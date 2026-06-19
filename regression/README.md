@@ -47,7 +47,9 @@ Runs a contract-only projection regression for a scoped user gate: one user
 decision blocks the matching agent todo, but a non-dependent executable fallback
 remains available. It checks that `quota should-run` keeps the user gate
 `NOTIFY` path visible while still requiring the agent to execute the selected
-fallback and spend only after validated writeback.
+fallback and spend only after validated writeback. It also checks that a
+prose-only user gate does not block an explicitly scoped, unrelated agent
+action just because the two texts share generic benchmark terms.
 
 ```bash
 python3 regression/no-progress-self-repair-contract.py
