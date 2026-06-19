@@ -25,6 +25,13 @@ handoff condition.
 A goal is not a chat thread. A thread can execute a goal, but the goal must
 survive thread reloads, network interruptions, and multiple project agents.
 
+For high-level product language, this is the **lifetime goal** object: a
+durable intention that may outlive any specific todo, plan, run, or executor.
+The lifetime goal owns continuity, not unlimited autonomy. It should keep the
+current authority, boundary, evidence trail, and human corrections visible so
+future agents can reinterpret the next bounded step instead of relying on
+private model memory.
+
 Goal-owned state:
 
 - project-local registry entry,

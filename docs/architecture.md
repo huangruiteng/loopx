@@ -62,6 +62,35 @@ the same state is available through hook/MCP/server adapters:
 This keeps Goal Harness portable across Codex, local CLI loops, dashboards, and
 future agent hosts while avoiding a forked control plane per host.
 
+## Lifetime Goal Invariant
+
+Goal Harness should optimize for **lifetime goals**: durable intentions that
+may outlive a single thread, executor, project phase, or plan. This is a
+product invariant, not an eighth storage layer.
+
+A lifetime goal must be stable enough that a future human or agent can recover
+what the goal is, what currently defines it, who may change it, and what the
+next safe transition is. It must also stay narrow enough that automation can
+make one bounded, verifiable move instead of claiming open-ended authority.
+
+The architecture maps that invariant onto the existing layers:
+
+- the registry gives the lifetime goal a stable identity, repo boundary,
+  adapter status, guards, and authority-source list;
+- active goal state records the current belief, priority stack, non-goals, and
+  next action without becoming a complete diary;
+- authority sources replace implicit model memory with reviewable context and
+  conflict rules;
+- run history preserves the compact evidence trail across sessions and agents;
+- todos turn the lifetime goal into bounded user and agent obligations;
+- gates, reward, and quota keep human judgment, course correction, and compute
+  spend attached to concrete transitions.
+
+The result should preserve continuity without claiming open-ended autonomy: a
+goal can live for years, but every agent turn still has to pass through current
+authority, boundary, quota, validation, and writeback before it can count as
+progress.
+
 For session-runtime platforms that already own agent definitions, session
 events, tool execution, permissions, billing, and product frontstage, Goal
 Harness should integrate as the goal-level control projection rather than as a

@@ -50,6 +50,17 @@ become:
 Goal Harness makes those questions machine-readable enough for agents and
 legible enough for operators.
 
+## Lifetime Goals
+
+Goal Harness uses **lifetime goal** for a durable human or project intention
+that can outlive any single chat thread, agent run, concrete todo, or
+implementation plan. It does not grant open-ended autonomy: only the next
+bounded transition is executable. The lifetime goal is the continuity layer
+that keeps authority, human decisions, safety boundaries, evidence, and course
+corrections legible for future humans and agents. See
+[Architecture](docs/architecture.md#lifetime-goal-invariant) for the design
+invariant.
+
 ## Core Control Loop
 
 Goal Harness sits between the operator, the agent loop, and external evidence.
