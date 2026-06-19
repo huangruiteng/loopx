@@ -164,6 +164,17 @@ matter when credentials cannot move, and it produced adapter/reducer seams that
 can be reused for compact evidence. Do not continue adding split-control bridge
 layers when a cloud-host route can answer the benchmark question directly.
 
+Treat split-control assets as a retained research branch, not a live default:
+
+- keep durable contracts, reducers, and boundary smokes that still protect
+  public behavior;
+- do not add new bridge layers unless a cloud-host run is blocked by a concrete
+  auth, policy, or host gate;
+- move future local-Codex / remote-executor experiments to an explicitly named
+  experimental branch or research issue;
+- remove or defer mainline split-control code once the cloud-host route has
+  equivalent compact evidence for the same benchmark family.
+
 See
 [`benchmark-split-control-remote-executor-v0.md`](research/long-horizon-agent-benchmarks/benchmark-split-control-remote-executor-v0.md)
 for the current machine contract.

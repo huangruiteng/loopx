@@ -56,8 +56,10 @@ work still belongs in the existing code, examples, and contract documents:
   running Docker-heavy benchmarks with Codex/Goal Harness/auth/model invocation
   kept local while the remote development host only provides Docker, runner
   dependencies, task-data staging, bounded execution, and compact result
-  reduction. It makes missing remote Codex/Codex-ACP non-blocking and routes
-  real blockers to adapter, runner-tooling, or task-data gates.
+  reduction. It is now retained as fallback/research evidence rather than the
+  default benchmark route; future split-control experiments should move to an
+  explicitly labeled experimental branch or research issue unless the cloud
+  Codex route is blocked.
 - `cloud-codex-benchmark-route-20260619.md`: route-decision note that makes an
   exclusive cloud benchmark host the default path for Terminal-Bench,
   SkillsBench, and ALE. It preserves the split-control work as fallback

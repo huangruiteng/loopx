@@ -42,7 +42,15 @@ attribution.
 
 Split-control remains useful as a fallback or research route when credentials
 cannot live on the execution host, but it should not consume the next benchmark
-turn unless the cloud route is blocked.
+turn unless the cloud route is blocked by a concrete auth, policy, or host
+gate. New split-control bridge work should not land on the main benchmark
+route by default.
+
+Near-term attention should therefore go to the cloud-host smoke batch. Existing
+split-control code, docs, and smokes are technical assets: keep the durable
+contracts and compact reducers, but move any further local-Codex /
+remote-executor experiments to an explicitly labeled experimental branch or
+separate research issue before adding more mainline code.
 
 ## Clean Benchmark Source Policy
 
@@ -59,7 +67,8 @@ Keep internal and external benchmark branches close to upstream:
 
 If a fork is needed, it should preserve a small reusable patch set and stay
 easy to rebase. Temporary local-Codex split-control hacks should be documented
-as route research, not carried forward into benchmark forks.
+as route research, not carried forward into benchmark forks or the default
+Goal Harness benchmark path.
 
 ## Readiness Checklist
 
