@@ -1200,19 +1200,20 @@ def _todo_action_scope_tokens(item: dict[str, Any]) -> set[str]:
 def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any]) -> bool:
     gate_action_tokens = _todo_action_kind_tokens(gate)
     agent_action_tokens = _todo_action_kind_tokens(agent_item)
+    if gate_action_tokens and agent_action_tokens:
+        return bool(gate_action_tokens & agent_action_tokens)
+    if agent_action_tokens:
+        # A prose-only user gate may still be user-visible, but it is not
+        # precise enough to block an explicitly scoped agent action.
+        return False
+
     gate_tokens = _todo_action_scope_tokens(gate)
     agent_tokens = _todo_action_scope_tokens(agent_item)
     if not gate_tokens or not agent_tokens:
         return False
     if gate_action_tokens:
-        return bool(
-            gate_action_tokens & agent_action_tokens
-            or len(gate_action_tokens & agent_tokens) >= 2
-        )
-    overlap = gate_tokens & agent_tokens
-    if agent_action_tokens:
-        return len(gate_tokens & agent_action_tokens) >= 2
-    return len(overlap) >= 3
+        return len(gate_action_tokens & agent_tokens) >= 2
+    return len(gate_tokens & agent_tokens) >= 3
 
 
 def _scoped_user_gate_fallback(
