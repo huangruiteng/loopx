@@ -61,7 +61,7 @@ work still belongs in the existing code, examples, and contract documents:
   explicitly labeled experimental branch or research issue unless the cloud
   Codex route is blocked.
 - `cloud-codex-benchmark-route-20260619.md`: route-decision note that makes an
-  exclusive cloud benchmark host the default path for Terminal-Bench,
+  exclusive cloud ECS benchmark host the default path for Terminal-Bench,
   SkillsBench, and ALE. It preserves the split-control work as fallback
   research, but moves near-term execution back to clean upstream-close
   benchmark checkouts with Codex CLI and containers on the same host.

@@ -1,4 +1,4 @@
-# Cloud Codex Benchmark Route 2026-06-19
+# Cloud ECS Benchmark Host Route 2026-06-19
 
 Status: default route selected; remote Codex CLI auth and tiny execution smoke
 are ready through a local-private network route. Benchmark execution still
@@ -6,7 +6,7 @@ requires per-family no-upload readiness and task/data gates.
 
 ## Decision
 
-Use an exclusive cloud benchmark host as the default route for the next
+Use an exclusive cloud ECS benchmark host as the default route for the next
 Terminal-Bench, SkillsBench, and Agents' Last Exam runs.
 
 The route is:
@@ -36,10 +36,10 @@ large amount of route plumbing:
 - bridge probes that could prove transport without proving a real benchmark
   run.
 
-With a dedicated benchmark host, that complexity is no longer the default
-product path. The benchmark bottleneck should move back to runner setup, task
-selection, no-upload execution, compact result reduction, and failure
-attribution.
+With a dedicated ECS benchmark host, that complexity is no longer the default
+product path. The benchmark bottleneck should move back to cloud host
+operations, runner setup, task selection, no-upload execution, compact result
+reduction, and failure attribution.
 
 Split-control remains useful as a fallback or research route when credentials
 cannot live on the execution host, but it should not consume the next benchmark
@@ -73,7 +73,8 @@ Goal Harness benchmark path.
 
 ## Readiness Checklist
 
-The cloud host should satisfy this compact checklist before a benchmark run:
+The cloud ECS host should satisfy this compact checklist before a benchmark
+run:
 
 - SSH alias works from the operator machine.
 - Codex CLI is installed on the cloud host.

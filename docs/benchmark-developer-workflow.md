@@ -98,25 +98,28 @@ the result or blocker:
 The goal is a living runner guide. Repeated benchmark attempts should make the
 next attempt easier to launch and debug, not only add more private evidence.
 
-## Cloud Codex Route
+## Cloud ECS Benchmark Host Route
 
-Use the cloud Codex route as the default for Terminal-Bench, SkillsBench, ALE,
-and other Docker-heavy benchmark families when a dedicated benchmark host is
-available.
+Use the cloud ECS benchmark host route as the default for Terminal-Bench,
+SkillsBench, ALE, and other Docker-heavy benchmark families when a dedicated
+ECS-style cloud VM is available. This is a developer operations pattern: put
+Codex CLI, benchmark source, container runtime, task data, raw artifacts, and
+compact reducers on one isolated cloud host, then publish only public-safe
+control-plane evidence back to Goal Harness.
 
 | Owner | Responsibility |
 | --- | --- |
-| Cloud benchmark host | Codex CLI, benchmark source checkout, runner dependencies, container runtime, task-data staging, no-upload run execution, compact result reduction, and private raw artifacts. |
+| Cloud ECS benchmark host | Codex CLI, benchmark source checkout, runner dependencies, container runtime, task-data staging, no-upload run execution, compact result reduction, and private raw artifacts. |
 | Goal Harness repo | Public-safe route contracts, reducer schemas, benchmark ledger ingestion, todo/state writeback, public docs, and focused smokes. |
 | Operator | Codex login on the cloud host, benchmark data gates, upload/leaderboard decisions, and any private-material or credential approval. |
 
-The route is intentionally simpler than split-control: SSH reaches the host,
-then Codex CLI runs there like a normal developer would. Goal Harness should not
-need to understand SSH internals, jump hosts, or remote file bridges in the hot
-path. It should only record compact route readiness, result handles, blockers,
-and no-upload boundaries.
+The route is intentionally simpler than split-control: SSH reaches the ECS
+host, then Codex CLI runs there like a normal developer would. Goal Harness
+should not need to understand SSH internals, jump hosts, or remote file bridges
+in the hot path. It should only record compact route readiness, result handles,
+blockers, and no-upload boundaries.
 
-Default cloud-host readiness:
+Default cloud ECS host readiness:
 
 - SSH access works through the operator's approved access path.
 - Codex CLI is installed on the host; auth is completed by the operator on that
