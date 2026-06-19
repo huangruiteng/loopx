@@ -116,7 +116,7 @@ for the current machine contract.
 | Family | Product-path target | Current maturity |
 | --- | --- | --- |
 | Terminal-Bench | Local Codex/Goal Harness controls the attempt; remote executor provides Docker or runner substrate and compact result ingestion. | Has public adapter facts, compact reducers, a remote-executor materializer contract, and an explicit local-driver / remote-sandbox seam contract. Current blocker is wiring that seam to one real no-upload dry-run or exact compact blocker. A direct Harbor/remote-Docker path that requires agent or Codex runtime inside the remote worker is not product-path evidence. |
-| SkillsBench | Local Codex/Goal Harness controls state, prompt, and writeback; remote executor stages task files and runs Docker-bound worker surfaces. | Has a local ACP stdio relay handshake preflight that proves BenchFlow can speak to a local Codex-owned participant without copying auth or invoking a remote model runtime. Next product-path blocker is launching a no-upload mini-pair through the split-control route. |
+| SkillsBench | Local Codex/Goal Harness controls state, prompt, and writeback; remote executor stages task files and runs Docker-bound worker surfaces. | Has a local ACP stdio relay handshake preflight that proves BenchFlow can speak to a local Codex-owned participant without copying auth or invoking a remote model runtime. Current launch blocker: BenchFlow's real rollout path still starts the agent through sandbox `ContainerTransport`, so the local relay must be wired into a host-local transport plus remote sandbox tool/file bridge before a no-upload mini-pair counts as product-path evidence. |
 | Agents' Last Exam | Local Codex/Goal Harness controls the agent; remote Docker/CUA provides the sandbox; compact result or blocker is ingested locally. | A demo/tool-smoke style split-control surface is product-path proven; formal task runs still need task-data and public-claim gates. |
 
 This table is intentionally about runner maturity, not leaderboard score.
@@ -141,8 +141,13 @@ materialized, and the local ACP relay completes `initialize`, `session/new`,
 `session/set_model`, and `session/prompt`. The default relay probe is dry-run:
 it does not invoke Codex, read task text, copy credentials, record raw logs, or
 launch a benchmark task. Once the payload reports
-`ready_for_skillsbench_local_driver_worker_handshake`, the next slice should be
-a no-upload mini-pair or a precise split-control launch blocker.
+`ready_for_skillsbench_local_driver_worker_handshake`, the next slice should
+not simply run the existing `codex-acp` route. That route still installs and
+launches the agent inside the task sandbox. Product-path evidence requires a
+host-local ACP relay that owns Codex auth/model/state while exposing only a
+bounded remote sandbox command/file bridge to the local agent. Until that seam
+exists, the correct output is a compact split-control blocker, not a score
+claim from the container-local agent route.
 
 ## Evidence Contract
 
