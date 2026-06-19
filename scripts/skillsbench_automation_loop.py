@@ -618,6 +618,35 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
     return compact
 
 
+def _runner_prerequisite_failure_attribution(
+    value: Any,
+) -> tuple[str, str, list[str]] | None:
+    """Classify runner failures from structured prereq state, not raw stderr."""
+
+    if not isinstance(value, dict):
+        return None
+
+    if (
+        value.get("codex_acp_runtime_launch_preflight") is False
+        and value.get("codex_acp_runtime_launch_preflight_status") == "failed"
+    ):
+        label = "skillsbench_codex_acp_launch_preflight_failed"
+        return label, label, [label, "skillsbench_runner_setup_error"]
+
+    if (
+        value.get("codex_acp_runtime_dependency_preflight") is False
+        and value.get("codex_acp_runtime_launch_preflight_status") == "failed"
+    ):
+        label = "skillsbench_codex_acp_runtime_dependency_preflight_failed"
+        return label, label, [label, "skillsbench_runner_setup_error"]
+
+    if value.get("host_local_acp_launch_status") == "failed":
+        label = "skillsbench_host_local_acp_launch_failed"
+        return label, label, [label, "skillsbench_runner_setup_error"]
+
+    return None
+
+
 def _public_task_staging(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -2923,6 +2952,14 @@ def build_runner_failure_compact(
     exception_type, attribution, labels = skillsbench_runner_error_attribution(
         str(exc)
     )
+    runner_prerequisites = _public_runner_prerequisites(
+        plan.get("runner_prerequisites")
+    )
+    prerequisite_attribution = _runner_prerequisite_failure_attribution(
+        runner_prerequisites
+    )
+    if prerequisite_attribution and exception_type == "skillsbench_runner_error":
+        exception_type, attribution, labels = prerequisite_attribution
     compact = build_skillsbench_benchmark_run(
         route=args.route,
         dataset=args.dataset,
@@ -2981,9 +3018,6 @@ def build_runner_failure_compact(
                 "do_not_record_secrets_or_raw_sessions",
             ],
         }
-    )
-    runner_prerequisites = _public_runner_prerequisites(
-        plan.get("runner_prerequisites")
     )
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
