@@ -2974,6 +2974,12 @@ def build_runner_failure_compact(
                 "raw_solutions_recorded": False,
                 "raw_logs_recorded": False,
             },
+            "stop_conditions": [
+                "classify_compact_runner_failure_before_rerun",
+                "do_not_read_raw_task_prompt_solution_log_or_trajectory",
+                "do_not_upload_or_submit_leaderboard",
+                "do_not_record_secrets_or_raw_sessions",
+            ],
         }
     )
     runner_prerequisites = _public_runner_prerequisites(

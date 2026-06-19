@@ -2256,6 +2256,7 @@ def test_skillsbench_runner_plan_supports_baseline_route() -> None:
         assert plan["sandbox_setup_timeout_sec"] == 7200, plan
         assert plan["runner_prerequisites"] == {
             "schema_version": "skillsbench_runner_prerequisites_v0",
+            "agent_execution_mode": "container_codex_acp",
             "codex_acp_runtime_container_bootstrap": True,
             "codex_acp_runtime_dependency_preflight": True,
             "codex_acp_runtime_launch_preflight": False,
@@ -2264,6 +2265,10 @@ def test_skillsbench_runner_plan_supports_baseline_route() -> None:
             ),
             "codex_acp_runtime_launch_preflight_status": "pending",
             "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+            "container_codex_acp_install_skipped": False,
+            "host_local_acp_launch": False,
+            "host_local_acp_launch_status": "not_requested",
+            "remote_command_file_bridge_materialized": False,
         }, plan
         assert "curl" in CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD
         assert "curl-minimal" in CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD
@@ -3461,6 +3466,16 @@ def test_skillsbench_runner_failure_compact_closeout() -> None:
             "codex_acp_runtime_launch_preflight_status": "pending",
             "codex_acp_runtime_launch_preflight_raw_logs_read": False,
         }, compact
+        assert "do_not_run_benchflow_from_skeleton" not in compact[
+            "stop_conditions"
+        ], compact
+        assert "classify_compact_runner_failure_before_rerun" in compact[
+            "stop_conditions"
+        ], compact
+        assert (
+            "do_not_read_raw_task_prompt_solution_log_or_trajectory"
+            in compact["stop_conditions"]
+        ), compact
         assert "BenchFlow result.json not found" not in json.dumps(compact), compact
 
 
@@ -3476,6 +3491,7 @@ def test_skillsbench_reduce_only_missing_result_records_closeout_exit_zero() -> 
                     "pddl-airport-planning",
                     "--route",
                     "codex-goal-mode-baseline",
+                    "--allow-unverified-goal-prefix-baseline",
                     "--jobs-dir",
                     str(jobs_dir),
                     "--job-name",
@@ -3537,6 +3553,7 @@ def test_skillsbench_reduce_only_discovers_nested_official_result() -> None:
                     "pddl-airport-planning",
                     "--route",
                     "codex-goal-mode-baseline",
+                    "--allow-unverified-goal-prefix-baseline",
                     "--jobs-dir",
                     str(jobs_dir),
                     "--job-name",
