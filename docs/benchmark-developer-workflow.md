@@ -107,6 +107,15 @@ things like missing split-control adapter, missing runner tooling, missing task
 data or images, missing remote node runtime when a specific runner requires it,
 or a failed cleanup/readiness check.
 
+An all-remote runner may be useful as an experimental fallback when an
+exclusive machine is available and the split-control seam is repeatedly the
+only thing blocking benchmark insight. Label those results as
+`all_remote_experimental`, keep credentials off shared machines, and do not use
+them as product-path evidence for the local-agent / remote-executor control
+plane. The product-path target remains: local Codex owns auth, model calls,
+state, and writeback; the remote side owns Docker, runner tooling, task
+staging, bounded command/file execution, and compact reduction.
+
 See
 [`benchmark-split-control-remote-executor-v0.md`](research/long-horizon-agent-benchmarks/benchmark-split-control-remote-executor-v0.md)
 for the current machine contract.
@@ -116,7 +125,7 @@ for the current machine contract.
 | Family | Product-path target | Current maturity |
 | --- | --- | --- |
 | Terminal-Bench | Local Codex/Goal Harness controls the attempt; remote executor provides Docker or runner substrate and compact result ingestion. | Has public adapter facts, compact reducers, a remote-executor materializer contract, and an explicit local-driver / remote-sandbox seam contract. Current blocker is wiring that seam to one real no-upload dry-run or exact compact blocker. A direct Harbor/remote-Docker path that requires agent or Codex runtime inside the remote worker is not product-path evidence. |
-| SkillsBench | Local Codex/Goal Harness controls state, prompt, and writeback; remote executor stages task files and runs Docker-bound worker surfaces. | Has a local ACP stdio relay handshake preflight that proves BenchFlow can speak to a local Codex-owned participant without copying auth or invoking a remote model runtime. Current launch blocker: BenchFlow's real rollout path still starts the agent through sandbox `ContainerTransport`, so the local relay must be wired into a host-local transport plus remote sandbox tool/file bridge before a no-upload mini-pair counts as product-path evidence. |
+| SkillsBench | Local Codex/Goal Harness controls state, prompt, and writeback; remote executor stages task files and runs Docker-bound worker surfaces. | Has a local ACP stdio relay probe plus a BenchFlow `ACPClient` host-local transport probe, both dry-run and public-safe. Current launch blocker is the bounded remote command/file bridge; until it exists, a successful relay/transport probe is not mini-pair readiness. |
 | Agents' Last Exam | Local Codex/Goal Harness controls the agent; remote Docker/CUA provides the sandbox; compact result or blocker is ingested locally. | A demo/tool-smoke style split-control surface is product-path proven; formal task runs still need task-data and public-claim gates. |
 
 This table is intentionally about runner maturity, not leaderboard score.
@@ -132,22 +141,25 @@ goal state must stay local. Before launching a mini-pair, run:
 python3 scripts/skillsbench_automation_loop.py \
   --local-driver-worker-handshake-preflight \
   --local-codex-cli-participant-ready \
-  --local-acp-relay-probe
+  --local-acp-relay-probe \
+  --host-local-acp-transport-probe
 ```
 
 The preflight is successful only when BenchFlow is importable, the default
 Codex agent is registered as ACP, the local Codex CLI participant was already
-materialized, and the local ACP relay completes `initialize`, `session/new`,
-`session/set_model`, and `session/prompt`. The default relay probe is dry-run:
-it does not invoke Codex, read task text, copy credentials, record raw logs, or
-launch a benchmark task. Once the payload reports
-`ready_for_skillsbench_local_driver_worker_handshake`, the next slice should
-not simply run the existing `codex-acp` route. That route still installs and
-launches the agent inside the task sandbox. Product-path evidence requires a
-host-local ACP relay that owns Codex auth/model/state while exposing only a
-bounded remote sandbox command/file bridge to the local agent. Until that seam
-exists, the correct output is a compact split-control blocker, not a score
-claim from the container-local agent route.
+materialized, the local ACP relay completes `initialize`, `session/new`,
+`session/set_model`, and `session/prompt`, BenchFlow's own `ACPClient` can
+drive that relay over host-local stdio, and a bounded remote command/file
+bridge exists for the sandbox side. The default relay and transport probes are
+dry-run: they do not invoke Codex, read task text, copy credentials, record raw
+logs, or launch a benchmark task.
+
+Do not treat a successful relay probe as mini-pair readiness. It only proves
+the local ACP server shape. The host-local transport probe proves BenchFlow can
+talk to that local server without `ContainerTransport`. A no-upload mini-pair
+is product-path evidence only after the remote bridge is also materialized, so
+the preflight may legitimately return `skillsbench_remote_command_file_bridge_missing`
+after both local probes pass.
 
 ## Evidence Contract
 
