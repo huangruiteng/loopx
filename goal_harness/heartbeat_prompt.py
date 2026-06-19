@@ -264,6 +264,7 @@ If the result says `should_run=true`:
    goal is currently bottlenecked by user experience, agent capability,
    evidence quality, adapter readiness, or priority-rule gaps, and promote one
    concrete bottleneck candidate when it should outrank the nearest local TODO.
+   Plan/top todo/route changes need todo/Next Action writeback or no-writeback rationale.
 3. Run the no-progress self-repair check before choosing delivery work. Obey
    any machine-readable `autonomous_replan_obligation` or
    `execution_obligation.must_attempt_work=true` from `quota should-run`; that
@@ -477,8 +478,8 @@ If `should_run=true`:
    explicit review rules.
 8. Validate; write files/validation/critic/next action to active state;
    use `goal-harness todo add --goal-id {goal_id} --role user|agent` for
-   blockers/follow-ups, not prose. Nontrivial done -> successor todo or
-   no-follow-up rationale.
+   blockers/plans, not prose. Nontrivial done ->
+   successor todo or no-follow-up rationale.
 9. After completed delivery or safe-bypass work, spend once before state
    refresh:
 
@@ -531,7 +532,7 @@ action_required=true/open_count>0, list concrete payload todo(s)/questions;
 never only "owner gate"; missing -> "具体 user todo 未投影，需修复 Goal Harness 状态投影".
 If false/0: 无用户待办/无需通知 or quiet.
 Do bounded validated batch or quiet no-op; spend after writeback.
-Nontrivial done -> successor/no-follow-up.
+Plans/done -> GH todo or rationale.
 After 2 no-progress, self-repair.
 
 If P0 is blocked but CLI contract permits safe work, continue verifiable

@@ -218,6 +218,15 @@ priority-rule gaps, and promote one concrete bottleneck candidate when it should
 outrank the nearest local TODO. Then choose exactly one bounded, verifiable step
 from that audit.
 
+When you tell the user a connected Goal Harness plan, top-todo list, priority
+stack, or route change, treat that as a writeback trigger, not chat memory. If
+the plan contains concrete future P0/P1/P2 work, user actions, route decisions,
+or deprecations, update active-state todos / Next Action / `refresh-state`
+before the final response, or explicitly say why the plan is only speculative
+and was not written. Use `goal-harness todo add` / `todo update` for durable
+work items; do not leave them only in prose, a review doc, or a Lark/chat
+reply.
+
 For connected delivery goals, also read `goal_boundary` from the
 `quota should-run` payload before choosing a step. It carries the registry's
 adapter status, allowed write scope, parent-approval scopes, guards, and stop

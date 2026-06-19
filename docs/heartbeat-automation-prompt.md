@@ -301,6 +301,8 @@ If the result says should_run=true:
    goal is currently bottlenecked by user experience, agent capability,
    evidence quality, adapter readiness, or priority-rule gaps, and promote one
    concrete bottleneck candidate when it should outrank the nearest local TODO.
+   Plan/top todo/route changes need todo/Next Action writeback or
+   no-writeback rationale.
 3. Run the no-progress self-repair check before choosing delivery work. First
    obey any machine-readable `autonomous_replan_obligation` or
    `execution_obligation.must_attempt_work=true` returned by
@@ -492,18 +494,20 @@ For every automatic heartbeat turn, the agent-facing checklist is:
    repeated no-progress status loops. Cancel or pause instead of spending only
    if that repair path is itself stuck for 2 more eligible turns.
 12. Nontrivial done -> successor todo or no-follow-up rationale.
-13. Treat routine public commit, push, and PR creation as autonomous after clean
+13. Plans/top todos/route changes need Goal Harness todo / Next Action
+   writeback or a no-writeback rationale.
+14. Treat routine public commit, push, and PR creation as autonomous after clean
    validation and a public/private boundary scan; stop for private/company
    material, credentials, destructive git, production actions, or repo rules
    that explicitly require review.
-13. Work bounded when `should_run=true`; a coherent implementation/test/doc/state
+15. Work bounded when `should_run=true`; a coherent implementation/test/doc/state
     batch is preferred over a tiny substep when scope and validation are clear.
-14. Validate before reporting.
-15. Spend exactly once after validation/writeback and before a state-only refresh.
-16. Refresh state when needed after spend; for validated progress artifacts,
+16. Validate before reporting.
+17. Spend exactly once after validation/writeback and before a state-only refresh.
+18. Refresh state when needed after spend; for validated progress artifacts,
     include explicit delivery scale/outcome hints instead of relying on
     classification-name inference.
-17. Report compactly.
+19. Report compactly.
 
 This prompt is intentionally a template rather than a scheduler. It should work
 with per-project heartbeats, a shared controller loop, or future Codex goal-mode
