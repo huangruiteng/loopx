@@ -25,6 +25,8 @@ from goal_harness.benchmark import (  # noqa: E402
     build_benchmark_verifier_attribution_review,
     build_skillsbench_benchmark_run,
     build_skillsbench_benchflow_result_benchmark_run,
+    build_skillsbench_local_driver_a2a_contract,
+    SKILLSBENCH_LOCAL_DRIVER_A2A_CONTRACT_SCHEMA_VERSION,
 )
 from goal_harness.benchmark_ledger import (  # noqa: E402
     load_benchmark_run_ledger,
@@ -70,6 +72,72 @@ def test_skillsbench_default_blind_loop_budget_is_five() -> None:
     assert args.max_rounds == DEFAULT_MAX_ROUNDS == 5, args
     assert "blind-loop" in args.route, args
     assert args.route != "codex-goal-mode-baseline", args
+
+
+def test_skillsbench_local_driver_a2a_contract_keeps_codex_local() -> None:
+    payload = build_skillsbench_local_driver_a2a_contract(
+        task_id="ada-bathroom-plan-repair",
+        local_codex_driver_ready=True,
+        local_a2a_participant_ready=False,
+        remote_executor_ready=True,
+        remote_task_data_ready=True,
+    )
+    assert (
+        payload["schema_version"]
+        == SKILLSBENCH_LOCAL_DRIVER_A2A_CONTRACT_SCHEMA_VERSION
+    ), payload
+    assert payload["ready"] is False, payload
+    assert (
+        payload["first_blocker"]
+        == "skillsbench_local_codex_a2a_participant_not_materialized"
+    ), payload
+    assert payload["local_driver_contract"]["ready"] is False, payload
+    assert payload["local_driver_contract"]["credential_sync_allowed"] is False, payload
+    assert payload["remote_executor_contract"]["ready"] is True, payload
+    assert (
+        payload["remote_executor_contract"]["remote_codex_runtime_allowed"] is False
+    ), payload
+    assert (
+        payload["remote_executor_contract"]["remote_model_api_invocation_allowed"]
+        is False
+    ), payload
+    assert payload["boundary"]["upload_allowed"] is False, payload
+    assert payload["boundary"]["submit_allowed"] is False, payload
+    assert payload["mini_pair"]["routes"] == [
+        "raw-codex-autonomous-max5",
+        "goal-harness-product-mode",
+    ], payload
+    text = json.dumps(payload, sort_keys=True)
+    for forbidden in (
+        "/Users/",
+        "~/.codex",
+        "OPENAI_API_KEY",
+        "HF_TOKEN",
+        "raw_task_text_publication_allowed",
+    ):
+        assert forbidden not in text, forbidden
+
+
+def test_skillsbench_local_driver_a2a_contract_ready_only_after_both_sides() -> None:
+    payload = build_skillsbench_local_driver_a2a_contract(
+        task_id="ada-bathroom-plan-repair",
+        local_codex_driver_ready=True,
+        local_a2a_participant_ready=True,
+        remote_executor_ready=True,
+        remote_task_data_ready=True,
+    )
+    assert payload["ready"] is True, payload
+    assert (
+        payload["first_blocker"]
+        == "ready_for_skillsbench_local_driver_a2a_mini_pair"
+    ), payload
+    assert (
+        payload["next_action"] == "launch_no_upload_skillsbench_local_driver_a2a_mini_pair"
+    ), payload
+    assert payload["local_driver_contract"]["ready"] is True, payload
+    assert payload["remote_executor_contract"]["ready"] is True, payload
+    assert payload["boundary"]["raw_logs_public"] is False, payload
+    assert payload["read_boundary"]["compact_only"] is True, payload
 
 
 def test_blind_loop_continuation_reprojects_round_one_constraints() -> None:
@@ -3373,6 +3441,8 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
 
 if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_five()
+    test_skillsbench_local_driver_a2a_contract_keeps_codex_local()
+    test_skillsbench_local_driver_a2a_contract_ready_only_after_both_sides()
     test_blind_loop_continuation_reprojects_round_one_constraints()
     test_product_mode_declared_done_marker_detection()
     test_product_mode_case_state_seed_uses_active_goal_shape()

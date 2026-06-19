@@ -114,7 +114,12 @@ The same route applies to the three active benchmark families:
   supplies Docker, Harbor or a runner wrapper, and compact result ingestion.
 - SkillsBench: local Codex/Goal Harness drives the attempt; the runner must no
   longer assume Codex ACP starts inside the remote worker before a
-  split-control adapter exists.
+  split-control adapter exists. The current public adapter surface is a
+  local-driver/A2A contract: Codex auth, model invocation, Goal Harness state,
+  and raw reasoning stay local; the remote executor owns Docker, BenchFlow task
+  data, bounded command execution, cleanup, and compact result reduction. A
+  no-upload mini-pair is not launch-ready until the local Codex A2A participant
+  is materialized.
 - Agents' Last Exam: local Codex/Goal Harness and local auth remain trusted;
   the remote side handles Docker, source/task-data staging, CUA/provider
   capacity where applicable, and compact result reduction.

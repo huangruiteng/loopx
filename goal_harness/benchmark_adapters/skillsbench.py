@@ -33,6 +33,13 @@ SKILLSBENCH_DEFAULT_ROUTE = "goal-harness-blind-loop-treatment"
 
 BENCHMARK_MODEL_CONTROL_SCHEMA_VERSION = "benchmark_model_control_v0"
 CODEX_ACP_SET_MODEL_UNSUPPORTED_LABEL = "codex_acp_set_model_unsupported"
+SKILLSBENCH_LOCAL_DRIVER_A2A_CONTRACT_SCHEMA_VERSION = (
+    "skillsbench_local_driver_a2a_contract_v0"
+)
+SKILLSBENCH_LOCAL_DRIVER_A2A_PAIR_ROUTES = (
+    "raw-codex-autonomous-max5",
+    "goal-harness-product-mode",
+)
 
 
 def _skillsbench_public_safe_label(value: Any, *, limit: int = 120) -> str | None:
@@ -266,6 +273,215 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
 def skillsbench_job_name(dataset: str, task_id: str, route: str) -> str:
     raw = f"{dataset}_{task_id}_{route}"
     return re.sub(r"[^A-Za-z0-9]+", "_", raw).strip("_").lower()
+
+
+def build_skillsbench_local_driver_a2a_contract(
+    *,
+    dataset: str = SKILLSBENCH_DEFAULT_DATASET,
+    task_id: str = SKILLSBENCH_DEFAULT_TASK,
+    pair_routes: Iterable[str] = SKILLSBENCH_LOCAL_DRIVER_A2A_PAIR_ROUTES,
+    local_codex_driver_ready: bool = False,
+    local_a2a_participant_ready: bool = False,
+    remote_executor_ready: bool = False,
+    remote_task_data_ready: bool = False,
+    compact_artifact_reducer_ready: bool = True,
+    no_upload: bool = True,
+    submit_enabled: bool = False,
+    known_blockers: Iterable[str] = (),
+) -> dict[str, Any]:
+    """Build the public SkillsBench local-driver/remote-executor contract.
+
+    The contract is intentionally a manifest, not a launcher. It lets private
+    automation prove that Codex auth/model/state stay local while the remote
+    side owns Docker, runner data, and compact artifact reduction. It never
+    embeds task text, shell commands, argv, host paths, logs, trajectories, or
+    credentials.
+    """
+
+    safe_dataset = _skillsbench_public_safe_label(dataset, limit=80)
+    safe_task_id = _skillsbench_public_safe_label(task_id, limit=120)
+    blockers = [str(item) for item in known_blockers if str(item)]
+    if not safe_dataset:
+        safe_dataset = SKILLSBENCH_DEFAULT_DATASET
+        blockers.append("skillsbench_dataset_not_public_safe")
+    if not safe_task_id:
+        safe_task_id = SKILLSBENCH_DEFAULT_TASK
+        blockers.append("skillsbench_task_id_not_public_safe")
+
+    routes: list[str] = []
+    for route in pair_routes:
+        route_text = str(route)
+        if route_text in SKILLSBENCH_ROUTES and route_text not in routes:
+            routes.append(route_text)
+        else:
+            blockers.append("skillsbench_pair_route_unsupported")
+    if not routes:
+        routes = list(SKILLSBENCH_LOCAL_DRIVER_A2A_PAIR_ROUTES)
+    missing_pair_routes = [
+        route
+        for route in SKILLSBENCH_LOCAL_DRIVER_A2A_PAIR_ROUTES
+        if route not in routes
+    ]
+    if missing_pair_routes:
+        blockers.append("skillsbench_mini_pair_routes_incomplete")
+    if not no_upload:
+        blockers.append("skillsbench_no_upload_boundary_not_enabled")
+    if submit_enabled:
+        blockers.append("skillsbench_submit_must_remain_disabled")
+    if not compact_artifact_reducer_ready:
+        blockers.append("skillsbench_compact_artifact_reducer_not_ready")
+    if not remote_task_data_ready:
+        blockers.append("skillsbench_remote_task_data_not_ready")
+    if not remote_executor_ready:
+        blockers.append("skillsbench_remote_executor_contract_missing")
+    if not local_codex_driver_ready:
+        blockers.append("skillsbench_local_codex_driver_not_ready")
+    if local_codex_driver_ready and not local_a2a_participant_ready:
+        blockers.append("skillsbench_local_codex_a2a_participant_not_materialized")
+
+    local_ready = local_codex_driver_ready is True and local_a2a_participant_ready is True
+    remote_ready = (
+        remote_executor_ready is True
+        and remote_task_data_ready is True
+        and compact_artifact_reducer_ready is True
+        and no_upload is True
+        and submit_enabled is False
+    )
+    route_contracts = {
+        route: {
+            "route": route,
+            "arm_id": skillsbench_route_contract(route)["arm_id"],
+            "job_name": skillsbench_job_name(safe_dataset, safe_task_id, route),
+            "official_feedback_blinded": skillsbench_route_contract(route)[
+                "official_feedback_blinded"
+            ],
+            "reward_feedback_forwarded": skillsbench_route_contract(route)[
+                "reward_feedback_forwarded"
+            ],
+        }
+        for route in routes
+    }
+    ready = (
+        not blockers
+        and local_ready is True
+        and remote_ready is True
+        and missing_pair_routes == []
+    )
+    if ready:
+        first_blocker = "ready_for_skillsbench_local_driver_a2a_mini_pair"
+        next_action = "launch_no_upload_skillsbench_local_driver_a2a_mini_pair"
+    elif "skillsbench_local_codex_a2a_participant_not_materialized" in blockers:
+        first_blocker = "skillsbench_local_codex_a2a_participant_not_materialized"
+        next_action = "materialize_local_codex_a2a_participant_before_mini_pair"
+    elif "skillsbench_remote_executor_contract_missing" in blockers:
+        first_blocker = "skillsbench_remote_executor_contract_missing"
+        next_action = "materialize_remote_executor_contract_before_mini_pair"
+    else:
+        first_blocker = blockers[0] if blockers else "skillsbench_contract_incomplete"
+        next_action = "repair_skillsbench_local_driver_contract_before_mini_pair"
+
+    return {
+        "schema_version": SKILLSBENCH_LOCAL_DRIVER_A2A_CONTRACT_SCHEMA_VERSION,
+        "benchmark_id": safe_dataset,
+        "task_id": safe_task_id,
+        "ready": ready,
+        "first_blocker": first_blocker,
+        "blockers": blockers,
+        "next_action": next_action,
+        "mini_pair": {
+            "required": True,
+            "routes": routes,
+            "missing_routes": missing_pair_routes,
+            "comparison_policy": "same_task_same_budget_no_upload",
+            "route_contracts": route_contracts,
+        },
+        "local_driver_contract": {
+            "ready": local_ready,
+            "driver_label": "skillsbench_local_codex_a2a_driver",
+            "transport": "a2a",
+            "owns": [
+                "codex_cli",
+                "codex_auth",
+                "model_invocation",
+                "goal_harness_state",
+                "planning_and_patch_generation",
+            ],
+            "keeps_local": [
+                "codex_auth",
+                "model_invocation",
+                "goal_harness_state",
+                "raw_reasoning_trace",
+                "private_agent_trajectory",
+            ],
+            "remote_request_fields": [
+                "benchmark_id",
+                "task_handle",
+                "route",
+                "execution_mode",
+                "no_upload",
+                "compact_artifact_ref",
+            ],
+            "participant_materialized": local_a2a_participant_ready is True,
+            "credential_sync_allowed": False,
+        },
+        "remote_executor_contract": {
+            "ready": remote_ready,
+            "sandbox_label": "skillsbench_remote_executor_sandbox",
+            "owns": [
+                "docker",
+                "benchflow_runner",
+                "task_data_staging",
+                "bounded_command_execution",
+                "compact_result_reduction",
+            ],
+            "allowed_actions": [
+                "runner_dependency_check",
+                "task_data_staging_check",
+                "bounded_command_execution",
+                "compact_result_reduction",
+                "cleanup",
+            ],
+            "disallowed_actions": [
+                "codex_auth_sync",
+                "credential_sync",
+                "remote_codex_runtime",
+                "remote_model_api_invocation",
+                "raw_task_text_publication",
+                "raw_log_publication",
+                "raw_trajectory_publication",
+                "upload",
+                "submit",
+            ],
+            "returns": [
+                "readiness_state",
+                "job_handle",
+                "compact_result_or_blocker",
+                "cleanup_state",
+            ],
+            "remote_codex_runtime_allowed": False,
+            "remote_model_api_invocation_allowed": False,
+        },
+        "boundary": {
+            "shell_command_embedded": False,
+            "argv_embedded": False,
+            "host_path_embedded": False,
+            "remote_path_embedded": False,
+            "raw_task_text_public": False,
+            "raw_logs_public": False,
+            "raw_trajectory_public": False,
+            "credential_values_recorded": False,
+            "upload_allowed": False,
+            "submit_allowed": False,
+        },
+        "read_boundary": {
+            "compact_only": True,
+            "raw_task_text_read": False,
+            "raw_logs_read": False,
+            "trajectory_read": False,
+            "local_paths_recorded": False,
+            "private_handle_values_recorded": False,
+        },
+    }
 
 
 def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, list[str]]:
