@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import json
 import subprocess
@@ -948,6 +949,105 @@ def assert_outcome_floor_recovery_should_run() -> None:
     assert "outcome-floor recovery safe-bypass" in spend_event["quota_event"]["reason_summary"], spend_event
 
 
+def assert_outcome_floor_projected_blocker_quiet_noop() -> None:
+    goal_id = "outcome-floor-blocker-projected"
+    recovery_goal = goal(goal_id, compute=1.0)
+    recovery_item = attention(goal_id, compute=1.0)
+    recovery_item["project_asset"] = {
+        "owner": "codex",
+        "next_action": (
+            "Blocked until a fresh public-safe non-replay ranker/cross-domain route appears."
+        ),
+        "stop_condition": "stop if recovery needs owner approval",
+        "quota": recovery_item["quota"],
+        "execution_profile": {
+            "cadence": "macro_evidence_segment",
+            "minimum_scale": "implementation",
+            "must_include": ["experiment_or_evidence_artifact", "targeted_validation", "state_writeback"],
+            "outcome_floor": {
+                "surface_streak_threshold": 1,
+                "must_advance": ["ranker_or_cross_domain_evidence"],
+                "avoid": ["surface_only_summary", "synthetic_only_test_chain"],
+            },
+        },
+        "agent_todos": {
+            "source_section": "Agent Todo",
+            "total_count": 1,
+            "open_count": 1,
+            "done_count": 0,
+            "items": [
+                {
+                    "index": 1,
+                    "done": False,
+                    "text": (
+                        "Blocked until a fresh public-safe non-replay ranker/cross-domain "
+                        "route appears."
+                    ),
+                    "task_class": "blocker",
+                    "action_kind": "outcome_floor_no_nonduplicate_successor_blocker",
+                }
+            ],
+        },
+    }
+    recovery_item["handoff_readiness"] = {
+        "ready": False,
+        "codex_ready": False,
+        "source": "project_asset",
+        "quota_state": "eligible",
+        "post_handoff_run_seen": True,
+        "post_handoff_outcome_gap_streak": 2,
+        "post_handoff_latest_run": {
+            "classification": "outcome_floor_blocker_recorded",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "delivery_batch_scale": "single_surface",
+            "delivery_outcome": "outcome_gap",
+        },
+    }
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "attention_queue": {"items": [recovery_item]},
+        "run_history": {"goals": [recovery_goal]},
+    }
+    decision = build_quota_should_run(payload, goal_id=goal_id)
+    markdown = render_quota_should_run_markdown(decision)
+    contract = decision["interaction_contract"]
+
+    assert decision["ok"] is True, decision
+    assert decision["decision"] == "skip", decision
+    assert decision["should_run"] is False, decision
+    assert decision["normal_delivery_allowed"] is False, decision
+    assert decision["recovery_delivery_allowed"] is False, decision
+    assert decision["actionable_by_codex"] is False, decision
+    assert decision["effective_action"] == "blocked_wait", decision
+    assert decision["state"] == "focus_wait", decision
+    assert decision["quota"]["outcome_floor_blocker_projected"] is True, decision
+    assert decision["safe_bypass_allowed"] is False, decision
+    assert decision["safe_bypass_kind"] is None, decision
+    assert decision["agent_todo_summary"]["first_executable_items"] == [], decision
+    assert decision["heartbeat_recommendation"]["recommended_mode"] == (
+        "outcome_floor_blocker_projected_noop"
+    ), decision
+    assert decision["heartbeat_recommendation"]["notify"] == "DONT_NOTIFY", decision
+    assert contract["mode"] == "blocked_wait", contract
+    assert contract["agent_channel"]["must_attempt"] is False, contract
+    assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
+    assert contract["cli_channel"]["spend_after_validation"] is False, contract
+    assert "outcome_floor_blocker_projected_noop" in markdown, markdown
+
+    monitor_payload = deepcopy(payload)
+    monitor_item = monitor_payload["attention_queue"]["items"][0]
+    monitor_item["project_asset"]["agent_todos"]["items"][0]["task_class"] = "continuous_monitor"
+    monitor_item["project_asset"]["agent_todos"]["items"][0]["action_kind"] = "monitor"
+    monitor_decision = build_quota_should_run(monitor_payload, goal_id=goal_id)
+    assert "outcome_floor_blocker_projected" not in monitor_decision["quota"], monitor_decision
+    assert monitor_decision["effective_action"] == "outcome_floor_recovery", monitor_decision
+    assert monitor_decision["should_run"] is True, monitor_decision
+
+
 def assert_control_plane_health_self_repair_should_run() -> None:
     goal_id = "goal-harness-meta"
     meta_goal = goal(goal_id, compute=1.0)
@@ -1794,6 +1894,7 @@ def main() -> int:
     assert_operator_gate_should_run(status_payload)
     assert_focus_wait_should_run()
     assert_outcome_floor_recovery_should_run()
+    assert_outcome_floor_projected_blocker_quiet_noop()
     assert_control_plane_health_self_repair_should_run()
     assert_control_plane_self_repair_default_off()
     assert_control_plane_waiting_projection_self_repair_should_run()

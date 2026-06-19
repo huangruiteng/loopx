@@ -30,6 +30,7 @@ from .state_projection import is_user_wait_text
 from .todo_contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
+    TODO_TASK_CLASS_BLOCKER,
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
     next_action_requires_advancement_text,
@@ -2534,6 +2535,44 @@ def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
     }
 
 
+def _outcome_floor_blocker_already_projected(
+    agent_todo_summary: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(agent_todo_summary, dict):
+        return False
+    if _open_todo_count(agent_todo_summary) <= 0:
+        return False
+
+    executable_items = (
+        agent_todo_summary.get("first_executable_items")
+        if isinstance(agent_todo_summary.get("first_executable_items"), list)
+        else []
+    )
+    if any(
+        isinstance(item, dict) and _todo_item_is_actionable_open(item)
+        for item in executable_items
+    ):
+        return False
+
+    first_open = (
+        agent_todo_summary.get("first_open_items")
+        if isinstance(agent_todo_summary.get("first_open_items"), list)
+        else []
+    )
+    visible_open = [
+        item
+        for item in first_open
+        if isinstance(item, dict) and _todo_item_is_actionable_open(item)
+    ]
+    if not visible_open:
+        return False
+    visible_classes = [_todo_task_class(item) for item in visible_open]
+    return (
+        TODO_TASK_CLASS_BLOCKER in visible_classes
+        and all(task_class != TODO_TASK_CLASS_ADVANCEMENT for task_class in visible_classes)
+    )
+
+
 def _next_action_requires_advancement(item: dict[str, Any]) -> bool:
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     values = (
@@ -2967,6 +3006,20 @@ def _heartbeat_recommendation(
             "reason": _open_todo_notify_reason(state=state, waiting_on=waiting_on),
         }
     if state == "focus_wait" and quota.get("handoff_outcome_floor_block"):
+        if quota.get("outcome_floor_blocker_projected"):
+            return {
+                **base,
+                "recommended_mode": "outcome_floor_blocker_projected_noop",
+                "notify": "DONT_NOTIFY",
+                "spend_policy": (
+                    "do not append quota spend while the same concrete outcome-floor "
+                    "blocker is already projected and no executable agent todo exists"
+                ),
+                "reason": str(
+                    quota.get("reason")
+                    or "outcome-floor blocker is already projected; wait for fresh outcome evidence"
+                ),
+            }
         if quota.get("safe_bypass_allowed"):
             return {
                 **base,
@@ -3640,6 +3693,24 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agen
         agent_todo_summary = _summarize_project_asset_todos(
             project_asset.get("agent_todos") if project_asset else None
         ) or _summarize_user_todos(item.get("agent_todos"))
+        outcome_floor_blocker_projected = (
+            recovery_allowed
+            and _outcome_floor_blocker_already_projected(agent_todo_summary)
+        )
+        if outcome_floor_blocker_projected:
+            quota = {
+                **quota,
+                "safe_bypass_allowed": False,
+                "safe_bypass_kind": None,
+                "outcome_floor_blocker_projected": True,
+                "reason": (
+                    "handoff outcome floor blocker already projected: no executable "
+                    "agent todo exists; wait for fresh ranker/cross-domain evidence "
+                    "or a new manifest before spending recovery compute"
+                ),
+            }
+            recovery_allowed = False
+            reason = str(quota["reason"])
         goal_boundary = _goal_boundary(item)
         agent_identity = _quota_agent_identity(item, agent_id=agent_id)
         automation_prompt_upgrade = _automation_prompt_upgrade(
@@ -3696,8 +3767,9 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agen
             state=state,
             quota=quota,
         )
+        recommendation_item = {**item, "quota": quota}
         heartbeat_recommendation = _heartbeat_recommendation(
-            item,
+            recommendation_item,
             goal_id=safe_goal_id,
             state=state,
             should_run=should_run,
