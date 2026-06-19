@@ -32,7 +32,10 @@ def main() -> int:
         catalog,
         [
             "IP-017 | User Reward Lesson Promotion",
+            "IP-018 | Plan To Todo Writeback",
             "promote correction into durable lesson",
+            "User-facing plans are not durable control-plane state by themselves",
+            "writeback target",
             "remote development\nmachine, but Codex stays local",
             "future `user_reward_lesson_projection_gap`",
         ],
@@ -51,7 +54,9 @@ def main() -> int:
         repair_patterns,
         [
             "user_reward_lesson_projection_gap",
+            "plan_todo_writeback_gap",
             "The correction stayed in chat/model belief",
+            "Agent used chat as memory after understanding the plan",
             "refresh state so `quota should-run` selects the corrected rule",
         ],
         source=SELF_REPAIR_PATTERNS,
