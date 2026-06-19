@@ -61,6 +61,7 @@ Common focused checks:
 ```bash
 python3 -m py_compile goal_harness/*.py
 python3 examples/demo-cli-smoke.py
+python3 examples/fresh-clone-quickstart-smoke.py
 python3 examples/todo-cli-smoke.py
 python3 examples/todo-lifecycle-cli-smoke.py
 python3 examples/quota-contract-smoke.py
