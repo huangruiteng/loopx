@@ -29,6 +29,15 @@ FALLBACK_TODO = (
     "[P2] Fold dreaming and periodic replan into the public Goal Harness server "
     "roadmap without reading internal material."
 )
+INDEPENDENT_USER_GATE = (
+    "[P0] Decide or provision the ALE task-data gate: remote executor needs "
+    "approved gated dataset access plus enough disk budget for archive download "
+    "and extraction before formal no-upload ALE task execution."
+)
+INDEPENDENT_AGENT_TODO = (
+    "[P0] Implement the SkillsBench-local ACP stdio relay/shim so BenchFlow can "
+    "drive no-upload mini-pairs while Codex auth/model/state stay local."
+)
 
 
 def build_status_payload() -> dict:
@@ -125,6 +134,99 @@ def build_status_payload() -> dict:
     }
 
 
+def build_nonblocking_user_gate_status_payload() -> dict:
+    user_todos = compact_todo_group(
+        [
+            {
+                "index": 1,
+                "done": False,
+                "text": INDEPENDENT_USER_GATE,
+                "status": "open",
+                "task_class": "user_gate",
+            }
+        ],
+        source_section="User Todo",
+        role="user",
+    )
+    agent_todos = compact_todo_group(
+        [
+            {
+                "index": 1,
+                "done": False,
+                "text": INDEPENDENT_AGENT_TODO,
+                "status": "open",
+                "task_class": "advancement_task",
+                "action_kind": "skillsbench_local_acp_stdio_relay",
+            },
+            {
+                "index": 2,
+                "done": False,
+                "text": FALLBACK_TODO,
+                "status": "open",
+                "task_class": "advancement_task",
+                "action_kind": "server_scheduled_planning_queue",
+            },
+        ],
+        source_section="Agent Todo",
+        role="agent",
+    )
+    assert user_todos is not None, user_todos
+    assert agent_todos is not None, agent_todos
+    user_asset_summary = project_asset_todo_summary(user_todos)
+    agent_asset_summary = project_asset_todo_summary(agent_todos)
+    assert user_asset_summary is not None, user_todos
+    assert agent_asset_summary is not None, agent_todos
+
+    attention_item = {
+        "goal_id": GOAL_ID,
+        "status": "eligible_with_nonblocking_user_gate",
+        "waiting_on": "codex",
+        "severity": "action",
+        "source": "latest_run",
+        "recommended_action": INDEPENDENT_AGENT_TODO,
+        "quota": {
+            "compute": 1.0,
+            "slot_minutes": 1,
+            "allowed_slots": 1440,
+            "spent_slots": 0,
+            "state": "eligible",
+            "reason": "eligible fixture",
+        },
+        "project_asset": {
+            "owner": "codex",
+            "next_action": INDEPENDENT_AGENT_TODO,
+            "stop_condition": "stop on fixture boundary",
+            "user_todos": user_asset_summary,
+            "agent_todos": agent_asset_summary,
+            "quota": {
+                "compute": 1.0,
+                "slot_minutes": 1,
+                "allowed_slots": 1440,
+                "spent_slots": 0,
+                "state": "eligible",
+                "reason": "eligible fixture",
+            },
+        },
+        "user_todos": user_todos,
+        "agent_todos": agent_todos,
+    }
+    return {
+        "ok": True,
+        "attention_queue": {"items": [attention_item]},
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": "active",
+                    "quota": {"compute": 1.0, "window_hours": 24},
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+
+
 def main() -> int:
     guard = build_quota_should_run(build_status_payload(), goal_id=GOAL_ID)
     assert guard["should_run"] is True, guard
@@ -168,6 +270,27 @@ def main() -> int:
     assert f"scoped_user_gate: {USER_GATE}" in markdown, markdown
     assert f"scoped_user_gate_blocked_item[1]: {GATED_AGENT_TODO}" in markdown, markdown
     assert f"scoped_user_gate_selected: {FALLBACK_TODO}" in markdown, markdown
+    nonblocking = build_quota_should_run(
+        build_nonblocking_user_gate_status_payload(),
+        goal_id=GOAL_ID,
+    )
+    assert nonblocking["should_run"] is True, nonblocking
+    assert nonblocking["normal_delivery_allowed"] is True, nonblocking
+    assert "scoped_user_gate_fallback" not in nonblocking, nonblocking
+    interaction = nonblocking["interaction_contract"]
+    assert interaction["mode"] == "bounded_delivery_with_user_notice", interaction
+    assert interaction["user_channel"]["action_required"] is True, interaction
+    assert interaction["agent_channel"]["must_attempt"] is True, interaction
+    assert interaction["agent_channel"]["delivery_allowed"] is True, interaction
+    assert interaction["agent_channel"]["primary_action"].startswith(
+        "[P0] Implement the SkillsBench-local ACP stdio relay"
+    ), interaction
+    packet_summary = nonblocking["protocol_action_packet"]["summary"]
+    assert "actor=agent_with_user_gate" in packet_summary, packet_summary
+    assert "user_action_required=true" in packet_summary, packet_summary
+    assert "agent_action_required=true" in packet_summary, packet_summary
+    assert "agent_action=[P0] Implement the SkillsBench-local ACP stdio relay" in packet_summary, packet_summary
+    assert "Fold dreaming and periodic replan" not in packet_summary, packet_summary
     print("scoped-user-gate-fallback-contract-regression ok")
     return 0
 

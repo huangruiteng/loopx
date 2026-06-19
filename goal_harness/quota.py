@@ -1210,12 +1210,9 @@ def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any
             or len(gate_action_tokens & agent_tokens) >= 2
         )
     overlap = gate_tokens & agent_tokens
-    if len(overlap) >= 2:
-        return True
-
-    if agent_action_tokens and overlap:
-        return True
-    return False
+    if agent_action_tokens:
+        return len(gate_tokens & agent_action_tokens) >= 2
+    return len(overlap) >= 3
 
 
 def _scoped_user_gate_fallback(
@@ -1692,6 +1689,20 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
     requires_user_action = bool(payload.get("requires_user_action"))
     must_attempt_work = bool(execution_obligation.get("must_attempt_work"))
     scoped_user_gate_fallback = isinstance(payload.get("scoped_user_gate_fallback"), dict)
+    bounded_delivery_with_user_notice = (
+        requires_user_action
+        and not scoped_user_gate_fallback
+        and must_attempt_work
+        and bool(
+            execution_obligation.get(
+                "delivery_allowed",
+                payload.get("normal_delivery_allowed")
+                or payload.get("recovery_delivery_allowed")
+                or payload.get("self_repair_allowed")
+                or payload.get("should_run"),
+            )
+        )
+    )
     quiet_noop_allowed = (
         not requires_user_action
         and not must_attempt_work
@@ -1712,6 +1723,10 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
         agent_action = _protocol_first_candidate_action(payload) or (
             "surface the scoped user gate, then advance one non-gated fallback"
         )
+    elif bounded_delivery_with_user_notice:
+        primary_actor = "agent_with_user_gate"
+        agent_action_required = True
+        agent_action = _protocol_first_candidate_action(payload) or "advance one bounded segment"
     elif requires_user_action:
         primary_actor = "user"
         agent_action_required = False
@@ -1783,6 +1798,19 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
     if payload.get("scoped_user_gate_fallback"):
         return "scoped_user_gate_fallback"
     if payload.get("requires_user_action"):
+        if (
+            bool(execution_obligation.get("must_attempt_work"))
+            and bool(
+                execution_obligation.get(
+                    "delivery_allowed",
+                    payload.get("normal_delivery_allowed")
+                    or payload.get("recovery_delivery_allowed")
+                    or payload.get("self_repair_allowed")
+                    or payload.get("should_run"),
+                )
+            )
+        ):
+            return "bounded_delivery_with_user_notice"
         if payload.get("notify_user_on_gate") or state == "operator_gate":
             return "user_gate"
         if payload.get("notify_user_on_open_todo"):
@@ -1843,6 +1871,8 @@ def _interaction_primary_agent_action(payload: dict[str, Any], *, mode: str) -> 
         return _protocol_first_candidate_action(payload) or (
             "surface the scoped user gate, then advance one non-gated fallback"
         )
+    if mode == "bounded_delivery_with_user_notice":
+        return _protocol_first_candidate_action(payload) or "advance one bounded validated segment"
     if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
         return "wait for user/owner action after surfacing the blocker or gate"
     if mode == "outcome_floor_recovery":
@@ -1880,6 +1910,7 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
         "control_plane_self_repair",
         "boundary_projection_repair",
         "scoped_user_gate_fallback",
+        "bounded_delivery_with_user_notice",
     }:
         return [
             f"goal-harness refresh-state --goal-id {goal_id} --classification <validated_progress>",
@@ -1925,10 +1956,15 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     mode = _interaction_mode(payload)
     user_required = bool(payload.get("requires_user_action"))
     scoped_user_gate_fallback = mode == "scoped_user_gate_fallback"
+    bounded_delivery_with_user_notice = mode == "bounded_delivery_with_user_notice"
     must_attempt = bool(execution_obligation.get("must_attempt_work")) if (
-        not user_required or scoped_user_gate_fallback
+        not user_required or scoped_user_gate_fallback or bounded_delivery_with_user_notice
     ) else False
-    delivery_allowed = (not user_required or scoped_user_gate_fallback) and bool(
+    delivery_allowed = (
+        not user_required
+        or scoped_user_gate_fallback
+        or bounded_delivery_with_user_notice
+    ) and bool(
         execution_obligation.get(
             "delivery_allowed",
             payload.get("normal_delivery_allowed")
@@ -1958,6 +1994,7 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         "boundary_projection_repair",
         "external_evidence_observation",
         "scoped_user_gate_fallback",
+        "bounded_delivery_with_user_notice",
     }
     user_channel: dict[str, Any] = {
         "action_required": user_required,
