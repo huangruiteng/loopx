@@ -26,7 +26,9 @@ from goal_harness.benchmark import (  # noqa: E402
     build_skillsbench_benchmark_run,
     build_skillsbench_benchflow_result_benchmark_run,
     build_skillsbench_local_driver_a2a_contract,
+    build_skillsbench_worker_handshake_preflight,
     SKILLSBENCH_LOCAL_DRIVER_A2A_CONTRACT_SCHEMA_VERSION,
+    SKILLSBENCH_WORKER_HANDSHAKE_PREFLIGHT_SCHEMA_VERSION,
 )
 from goal_harness.benchmark_ledger import (  # noqa: E402
     load_benchmark_run_ledger,
@@ -57,6 +59,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     build_runner_failure_compact,
     main as skillsbench_automation_loop_main,
     materialize_local_codex_participant,
+    inspect_skillsbench_worker_handshake,
     parse_args,
     product_mode_case_state_seed_text,
     reduce_result,
@@ -162,11 +165,11 @@ def test_skillsbench_local_driver_a2a_contract_distinguishes_cli_from_handshake(
     assert payload["ready"] is False, payload
     assert (
         payload["first_blocker"]
-        == "skillsbench_local_a2a_worker_handshake_not_materialized"
+        == "skillsbench_local_acp_relay_missing"
     ), payload
     assert (
         payload["next_action"]
-        == "wire_local_codex_participant_to_a2a_worker_before_mini_pair"
+        == "wire_local_acp_relay_before_mini_pair"
     ), payload
     assert (
         payload["local_driver_contract"]["codex_cli_participant_materialized"]
@@ -176,6 +179,55 @@ def test_skillsbench_local_driver_a2a_contract_distinguishes_cli_from_handshake(
         payload["local_driver_contract"]["a2a_worker_handshake_materialized"]
         is False
     ), payload
+    assert payload["local_driver_contract"]["worker_protocol"] == "acp_stdio", payload
+
+
+def test_skillsbench_worker_handshake_preflight_exposes_acp_relay_gap() -> None:
+    payload = build_skillsbench_worker_handshake_preflight(
+        task_id="ada-bathroom-plan-repair",
+        benchflow_available=True,
+        benchflow_agent_registry_available=True,
+        benchflow_acp_runtime_available=True,
+        default_codex_agent="codex-acp",
+        codex_agent_protocol="acp",
+        codex_agent_launch_registered=True,
+        local_codex_cli_participant_ready=True,
+        local_acp_relay_ready=False,
+        remote_executor_ready=True,
+        remote_task_data_ready=True,
+    )
+    assert (
+        payload["schema_version"]
+        == SKILLSBENCH_WORKER_HANDSHAKE_PREFLIGHT_SCHEMA_VERSION
+    ), payload
+    assert payload["ready"] is False, payload
+    assert payload["first_blocker"] == "skillsbench_local_acp_relay_missing", payload
+    assert payload["next_action"] == "implement_local_acp_stdio_relay_before_mini_pair", payload
+    assert payload["benchflow_contract"]["worker_protocol"] == "acp_stdio", payload
+    assert payload["benchflow_contract"]["stdio_transport_required"] is True, payload
+    assert payload["local_driver_contract"]["remote_codex_runtime_allowed"] is False, payload
+    assert payload["boundary"]["raw_task_text_read"] is False, payload
+    assert payload["boundary"]["credential_values_recorded"] is False, payload
+    text = json.dumps(payload, sort_keys=True)
+    for forbidden in ("/Users/", "~/.codex", "OPENAI_API_KEY", "HF_TOKEN"):
+        assert forbidden not in text, forbidden
+
+
+def test_skillsbench_worker_handshake_preflight_missing_runtime_is_compact() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-worker-preflight-") as tmp:
+        payload = inspect_skillsbench_worker_handshake(
+            skillsbench_root=Path(tmp) / "missing-skillsbench",
+            dataset="skillsbench@1.1",
+            task_id="ada-bathroom-plan-repair",
+            local_codex_cli_participant_ready=True,
+        )
+    assert (
+        payload["schema_version"]
+        == SKILLSBENCH_WORKER_HANDSHAKE_PREFLIGHT_SCHEMA_VERSION
+    ), payload
+    assert payload["ready"] is False, payload
+    assert "skillsbench_local_acp_relay_missing" in payload["blockers"], payload
+    assert payload["boundary"]["host_paths_recorded"] is False, payload
 
 
 def test_local_codex_participant_ping_missing_binary_is_compact() -> None:

@@ -36,6 +36,9 @@ CODEX_ACP_SET_MODEL_UNSUPPORTED_LABEL = "codex_acp_set_model_unsupported"
 SKILLSBENCH_LOCAL_DRIVER_A2A_CONTRACT_SCHEMA_VERSION = (
     "skillsbench_local_driver_a2a_contract_v0"
 )
+SKILLSBENCH_WORKER_HANDSHAKE_PREFLIGHT_SCHEMA_VERSION = (
+    "skillsbench_worker_handshake_preflight_v0"
+)
 SKILLSBENCH_LOCAL_DRIVER_A2A_PAIR_ROUTES = (
     "raw-codex-autonomous-max5",
     "goal-harness-product-mode",
@@ -355,7 +358,7 @@ def build_skillsbench_local_driver_a2a_contract(
         and codex_cli_participant_ready
         and not a2a_worker_handshake_ready
     ):
-        blockers.append("skillsbench_local_a2a_worker_handshake_not_materialized")
+        blockers.append("skillsbench_local_acp_relay_missing")
 
     local_ready = (
         local_codex_driver_ready is True
@@ -395,9 +398,9 @@ def build_skillsbench_local_driver_a2a_contract(
     elif "skillsbench_local_codex_cli_participant_not_materialized" in blockers:
         first_blocker = "skillsbench_local_codex_cli_participant_not_materialized"
         next_action = "materialize_local_codex_cli_participant_before_mini_pair"
-    elif "skillsbench_local_a2a_worker_handshake_not_materialized" in blockers:
-        first_blocker = "skillsbench_local_a2a_worker_handshake_not_materialized"
-        next_action = "wire_local_codex_participant_to_a2a_worker_before_mini_pair"
+    elif "skillsbench_local_acp_relay_missing" in blockers:
+        first_blocker = "skillsbench_local_acp_relay_missing"
+        next_action = "wire_local_acp_relay_before_mini_pair"
     elif "skillsbench_remote_executor_contract_missing" in blockers:
         first_blocker = "skillsbench_remote_executor_contract_missing"
         next_action = "materialize_remote_executor_contract_before_mini_pair"
@@ -423,7 +426,8 @@ def build_skillsbench_local_driver_a2a_contract(
         "local_driver_contract": {
             "ready": local_ready,
             "driver_label": "skillsbench_local_codex_a2a_driver",
-            "transport": "a2a",
+            "transport": "local_acp_relay",
+            "worker_protocol": "acp_stdio",
             "owns": [
                 "codex_cli",
                 "codex_auth",
@@ -448,6 +452,7 @@ def build_skillsbench_local_driver_a2a_contract(
             ],
             "participant_materialized": local_ready,
             "codex_cli_participant_materialized": codex_cli_participant_ready is True,
+            "acp_relay_materialized": a2a_worker_handshake_ready is True,
             "a2a_worker_handshake_materialized": a2a_worker_handshake_ready is True,
             "credential_sync_allowed": False,
         },
@@ -507,6 +512,141 @@ def build_skillsbench_local_driver_a2a_contract(
             "trajectory_read": False,
             "local_paths_recorded": False,
             "private_handle_values_recorded": False,
+        },
+    }
+
+
+def build_skillsbench_worker_handshake_preflight(
+    *,
+    dataset: str = SKILLSBENCH_DEFAULT_DATASET,
+    task_id: str = SKILLSBENCH_DEFAULT_TASK,
+    benchflow_available: bool = False,
+    benchflow_agent_registry_available: bool = False,
+    benchflow_acp_runtime_available: bool = False,
+    default_codex_agent: str = "codex-acp",
+    codex_agent_protocol: str | None = None,
+    codex_agent_launch_registered: bool = False,
+    local_codex_cli_participant_ready: bool = False,
+    local_acp_relay_ready: bool = False,
+    remote_executor_ready: bool = True,
+    remote_task_data_ready: bool = True,
+    compact_artifact_reducer_ready: bool = True,
+    no_upload: bool = True,
+    submit_enabled: bool = False,
+    known_blockers: Iterable[str] = (),
+) -> dict[str, Any]:
+    """Build a public-safe SkillsBench local-driver worker handshake preflight.
+
+    This preflight is intentionally narrower than a full benchmark run: it
+    records the worker protocol that BenchFlow expects and checks whether the
+    local Codex participant has a relay that can speak that protocol. It does
+    not launch task sandboxes, copy credentials, read task text, or record raw
+    logs/trajectories.
+    """
+
+    safe_dataset = _skillsbench_public_safe_label(dataset, limit=80)
+    safe_task_id = _skillsbench_public_safe_label(task_id, limit=120)
+    blockers = [str(item) for item in known_blockers if str(item)]
+    if not safe_dataset:
+        safe_dataset = SKILLSBENCH_DEFAULT_DATASET
+        blockers.append("skillsbench_dataset_not_public_safe")
+    if not safe_task_id:
+        safe_task_id = SKILLSBENCH_DEFAULT_TASK
+        blockers.append("skillsbench_task_id_not_public_safe")
+
+    protocol = str(codex_agent_protocol or "").strip().lower()
+    worker_protocol = "acp_stdio" if protocol == "acp" else protocol or "unknown"
+    if not benchflow_available:
+        blockers.append("skillsbench_benchflow_runtime_missing")
+    if not benchflow_agent_registry_available:
+        blockers.append("skillsbench_benchflow_agent_registry_missing")
+    if not benchflow_acp_runtime_available:
+        blockers.append("skillsbench_benchflow_acp_runtime_missing")
+    if protocol != "acp":
+        blockers.append("skillsbench_codex_agent_protocol_not_acp")
+    if not codex_agent_launch_registered:
+        blockers.append("skillsbench_codex_agent_launch_not_registered")
+    if not local_codex_cli_participant_ready:
+        blockers.append("skillsbench_local_codex_cli_participant_not_materialized")
+    if local_codex_cli_participant_ready and not local_acp_relay_ready:
+        blockers.append("skillsbench_local_acp_relay_missing")
+    if not remote_executor_ready:
+        blockers.append("skillsbench_remote_executor_contract_missing")
+    if not remote_task_data_ready:
+        blockers.append("skillsbench_remote_task_data_not_ready")
+    if not compact_artifact_reducer_ready:
+        blockers.append("skillsbench_compact_artifact_reducer_not_ready")
+    if not no_upload:
+        blockers.append("skillsbench_no_upload_boundary_not_enabled")
+    if submit_enabled:
+        blockers.append("skillsbench_submit_must_remain_disabled")
+
+    ready = not blockers
+    if ready:
+        first_blocker = "ready_for_skillsbench_local_driver_worker_handshake"
+        next_action = "launch_no_upload_skillsbench_local_driver_mini_pair"
+    elif "skillsbench_benchflow_runtime_missing" in blockers:
+        first_blocker = "skillsbench_benchflow_runtime_missing"
+        next_action = "install_or_select_skillsbench_benchflow_runtime"
+    elif "skillsbench_local_codex_cli_participant_not_materialized" in blockers:
+        first_blocker = "skillsbench_local_codex_cli_participant_not_materialized"
+        next_action = "materialize_local_codex_cli_participant_before_worker_handshake"
+    elif "skillsbench_local_acp_relay_missing" in blockers:
+        first_blocker = "skillsbench_local_acp_relay_missing"
+        next_action = "implement_local_acp_stdio_relay_before_mini_pair"
+    else:
+        first_blocker = blockers[0] if blockers else "skillsbench_worker_handshake_incomplete"
+        next_action = "repair_skillsbench_worker_handshake_before_mini_pair"
+
+    return {
+        "schema_version": SKILLSBENCH_WORKER_HANDSHAKE_PREFLIGHT_SCHEMA_VERSION,
+        "benchmark_id": safe_dataset,
+        "task_id": safe_task_id,
+        "ready": ready,
+        "first_blocker": first_blocker,
+        "blockers": blockers,
+        "next_action": next_action,
+        "benchflow_contract": {
+            "available": benchflow_available,
+            "agent_registry_available": benchflow_agent_registry_available,
+            "acp_runtime_available": benchflow_acp_runtime_available,
+            "default_codex_agent": _skillsbench_public_safe_label(
+                default_codex_agent, limit=80
+            ),
+            "codex_agent_protocol": protocol or None,
+            "worker_protocol": worker_protocol,
+            "codex_agent_launch_registered": codex_agent_launch_registered,
+            "stdio_transport_required": protocol == "acp",
+        },
+        "local_driver_contract": {
+            "codex_cli_participant_materialized": local_codex_cli_participant_ready,
+            "acp_relay_materialized": local_acp_relay_ready,
+            "credential_sync_allowed": False,
+            "remote_codex_runtime_allowed": False,
+            "remote_model_api_invocation_allowed": False,
+        },
+        "remote_executor_contract": {
+            "ready": remote_executor_ready,
+            "task_data_ready": remote_task_data_ready,
+            "compact_artifact_reducer_ready": compact_artifact_reducer_ready,
+            "owns": [
+                "docker",
+                "benchflow_runner",
+                "task_data_staging",
+                "bounded_command_execution",
+                "compact_result_reduction",
+            ],
+        },
+        "boundary": {
+            "local_codex_auth_model_state": True,
+            "remote_docker_and_runner_only": True,
+            "raw_task_text_read": False,
+            "raw_logs_recorded": False,
+            "raw_trajectory_recorded": False,
+            "credential_values_recorded": False,
+            "host_paths_recorded": False,
+            "upload_allowed": False,
+            "submit_allowed": False,
         },
     }
 
