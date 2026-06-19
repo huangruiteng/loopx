@@ -1,13 +1,22 @@
 # Goal Harness
 
-Goal Harness is a local control plane for long-running AI agent work.
+**Long-running agent work, without losing the plot.**
+
+Goal Harness is a local control plane for AI agent projects: keep goals, gates,
+todos, run history, quota, side-agent ownership, and human decisions visible
+across many turns.
+
+[Quick Start](#quick-start) · [Showcases](docs/showcases/README.md) ·
+[Architecture](docs/architecture.md) · [Dashboard](#dashboard)
+
+> Long-running agent work should be recoverable, reviewable, handoffable, and
+> safe by default.
+
+## What Is Goal Harness?
 
 It does not replace Codex, Claude Code, Cursor, or another agent runtime. It
 sits above them and gives humans and agents a shared way to track goals, gates,
 run history, quota, feedback, and project boundaries across many turns.
-
-> Long-running agent work should be recoverable, reviewable, handoffable, and
-> safe by default.
 
 The product promise is not "more todo lists." It is a better human-in-the-loop
 control surface:
@@ -29,7 +38,33 @@ human decision, skip that gated lane, and continue safe no-upload work on other
 benchmark families. The operator sees both facts: what needs a decision, and
 why the agent is still allowed to make progress elsewhere.
 
-## Why This Exists
+First-screen mental model:
+
+```mermaid
+flowchart LR
+  U["Human decision"] --> GH["Shared goal state"]
+  P["Primary agent"] --> GH
+  S["Side agent"] --> GH
+  GH --> T["Claimed todos"]
+  GH --> H["Run history and evidence"]
+  GH --> Q["Quota guard"]
+  T --> A["Next bounded action"]
+  Q --> A
+```
+
+## See It In Action
+
+| Case | What It Shows | Public Surface |
+| --- | --- | --- |
+| [Blocked P0 with safe P1/P2 rotation](docs/showcases/cases/0617-blocked-p0-safe-rotation.md) | A user-gated high-priority lane stays visible while safe fallback work continues. | Reproducible synthetic demo |
+| [Goal Harness self-iteration loop](docs/showcases/cases/0619-goal-harness-self-iteration.md) | A side agent improved Goal Harness itself while the primary agent stayed focused on benchmark work. | Commit-backed public evidence case |
+| [Dynamic workflow for hardware-agent development](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md) | A fuzzy multi-agent engineering workflow can converge through one shared control plane. | Redacted public-safe stub |
+
+The full [showcase catalog](docs/showcases/README.md) keeps each case
+public-safe, reproducible where possible, and ready for a future frontend
+surface.
+
+## Why It Matters
 
 Short agent tasks usually fail because the model makes a bad local choice.
 Long-running agent work fails differently: state drifts.
@@ -137,14 +172,6 @@ boundaries:
 Do not use Goal Harness as an autonomous production controller. It is a local
 coordination substrate; project ownership and dangerous permissions stay with
 the human/operator.
-
-## Showcases
-
-The [showcase catalog](docs/showcases/README.md) collects public-safe cases
-that make these control-plane patterns concrete. Current entries include a
-reproducible synthetic demo for a blocked P0 benchmark lane that safely
-continues P1/P2 work, and a redacted stub for a dynamic multi-agent hardware
-development workflow awaiting contributor detail.
 
 ## Requirements
 

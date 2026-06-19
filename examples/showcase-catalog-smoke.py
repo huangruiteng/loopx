@@ -98,6 +98,14 @@ def main() -> int:
     repo_readme = read(REPO_ROOT / "README.md")
     assert "showcases/README.md" in docs_index, "docs index must link showcases"
     assert "docs/showcases/README.md" in repo_readme, "README must link showcases"
+    for phrase in (
+        "Long-running agent work, without losing the plot.",
+        "## See It In Action",
+        "docs/showcases/cases/0617-blocked-p0-safe-rotation.md",
+        "docs/showcases/cases/0619-goal-harness-self-iteration.md",
+        "docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md",
+    ):
+        assert phrase in repo_readme, phrase
 
     print("showcase-catalog-smoke ok")
     return 0
