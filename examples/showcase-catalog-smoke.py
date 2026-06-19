@@ -75,6 +75,13 @@ def main() -> int:
             page_text = read(page)
             assert "public-safe stub" in page_text, case_id
             assert "No reproducible public demo is included yet" in page_text, case_id
+        if case.get("status") == "public_safe_case_spec":
+            assert demo_command is None, case
+            storyboard = case.get("storyboard_path")
+            assert isinstance(storyboard, str) and storyboard.startswith("docs/showcases/"), case
+            storyboard_path = REPO_ROOT / storyboard
+            assert storyboard_path.is_file(), case
+            assert_public_safe(storyboard_path)
         if case_id == "2026-06-19-goal-harness-self-iteration":
             assert case.get("status") == "public_evidence_case", case
             assert demo_command is None, case

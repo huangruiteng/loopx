@@ -17,6 +17,7 @@ DEFAULT_CATALOG = REPO_ROOT / "docs" / "showcases" / "showcase-catalog.json"
 STATUS_LABELS = {
     "reproducible_synthetic_demo": "Reproducible demo",
     "public_evidence_case": "Public evidence",
+    "public_safe_case_spec": "Case spec",
     "redacted_stub_pending_contributor_details": "Redacted stub",
 }
 
@@ -45,11 +46,22 @@ def render_case(case: dict[str, Any], *, output: Path | None) -> str:
     behavior = case.get("goal_harness_behavior") if isinstance(case.get("goal_harness_behavior"), list) else []
     demo_command = case.get("demo_command")
     case_href = repo_link(str(case.get("case_page") or ""), output=output)
+    storyboard_path = case.get("storyboard_path")
+    storyboard_href = (
+        repo_link(str(storyboard_path), output=output)
+        if isinstance(storyboard_path, str) and storyboard_path
+        else None
+    )
     status = str(case.get("status") or "")
     status_label = STATUS_LABELS.get(status, status.replace("_", " "))
     demo = (
         f'<div class="demo-command"><span>Demo</span><code>{esc(demo_command)}</code></div>'
         if isinstance(demo_command, str) and demo_command
+        else ""
+    )
+    storyboard = (
+        f'<a class="case-link" href="{esc(storyboard_href)}">Open storyboard</a>'
+        if storyboard_href
         else ""
     )
     story = "".join(f"<li>{esc(beat)}</li>" for beat in story_beats)
@@ -80,6 +92,7 @@ def render_case(case: dict[str, Any], *, output: Path | None) -> str:
           </div>
         </div>
         {demo}
+        {storyboard}
         <a class="case-link" href="{esc(case_href)}">Open case page</a>
       </article>
     """

@@ -184,7 +184,8 @@ keep no-autopublish gates visible.
 
 ## Demo Status
 
-No executable demo is included yet. The next public-safe step is a fake-data
-storyboard or static frontend mock that renders trend candidates, preference
-map, insight board, draft queue, material library, human feedback, and
-controlled replan from a small catalog fixture.
+The first public-safe storyboard is available in
+[creator-ops-fake-data-storyboard.md](../creator-ops-fake-data-storyboard.md).
+It defines a synthetic fixture and frontend panel sequence for trend
+candidates, preference map, insight board, draft queue, material library,
+human feedback, and controlled replan. No executable demo is included yet.

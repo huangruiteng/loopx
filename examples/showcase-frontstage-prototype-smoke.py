@@ -63,6 +63,9 @@ def main() -> int:
         for field in ("title", "headline", "user_value", "evidence_boundary"):
             assert str(case[field]) in html, (case_id, field)
         assert str(case["case_page"]).replace("docs/showcases/", "") in html or str(case["case_page"]) in html
+        storyboard_path = case.get("storyboard_path")
+        if isinstance(storyboard_path, str) and storyboard_path:
+            assert storyboard_path.replace("docs/showcases/", "") in html or storyboard_path in html
         for tag in case.get("pattern_tags", []):
             assert str(tag) in html, (case_id, tag)
         frontend = case["frontend_card"]

@@ -26,6 +26,7 @@ Use these catalog fields directly:
 | `status` | Badge and rendering state. |
 | `case_page` | Link to the narrative source. |
 | `demo_command` | "Try the demo" command when available. |
+| `storyboard_path` | Link to a frontend-ready storyboard when a runnable demo is not available. |
 | `domain`, `audience`, `pattern_tags` | Filters and grouping. |
 | `headline` | Main card copy. |
 | `problem` | Situation before Goal Harness helped. |
@@ -100,6 +101,7 @@ plainly. Do not fill the gap with speculative claims.
 | `reproducible_synthetic_demo` | Reproducible | Show demo command and link to synthetic fixture. |
 | `public_evidence_case` | Public evidence | Show Git/doc/smoke-backed evidence summary. |
 | `redacted_stub_pending_contributor_details` | Redacted stub | Show the pattern and missing public evidence. |
+| `public_safe_case_spec` | Case spec | Show narrative and storyboard link when present. |
 
 New statuses should be added to the catalog smoke before they appear in the
 website.
