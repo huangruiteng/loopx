@@ -43,6 +43,40 @@ surface refactor warnings, or propose evidence probes, but they do not execute
 protected work, read private material, or spend delivery quota until promoted
 through the normal gate, quota, and boundary path.
 
+### Delivery And Planning Queues
+
+The server roadmap should separate two queue families while keeping them in the
+same durable state system:
+
+- **Delivery queue**: promoted user or agent todos that an executor may work on
+  after `quota should-run`, claim or lease checks, workspace policy, capability
+  checks, and goal-boundary checks.
+- **Planning queue**: dreaming, periodic replan, memory consolidation, and
+  refactor-warning proposals that may inspect compact run history and rank
+  candidate work, but remain advisory until promoted.
+
+Both queues should share the boring control-plane substrate: per-goal locks,
+per-todo or per-proposal identity, idempotency keys, append-only events,
+public/private boundary summaries, and compact status projections. They should
+not share delivery permission. A planning proposal can say "this todo should
+move up", "this stale lane needs a split", or "this blocker should be asked";
+it cannot silently mutate active truth, claim delivery work, read gated
+material, or spend delivery quota.
+
+Promotion is the critical transition:
+
+```text
+planning proposal
+  -> operator/controller decision or policy-approved controller action
+  -> normal user/agent todo or gate
+  -> quota / lease / boundary checked delivery turn
+```
+
+This keeps server-side dreaming and periodic replanning useful without turning
+the server into a hidden autonomous agent. The server owns durable scheduling
+facts and proposal records; the client and executor still perform the visible
+human-in-the-loop transition and bounded delivery work.
+
 ## Multica Reference Point
 
 Multica is a useful reference implementation for this product split, but Goal
@@ -176,7 +210,9 @@ The first product slices should remain small and compatible with CLI-only mode.
    idempotency key, write scope, renewal, transfer, and conflict behavior.
 4. **`planning_queue_v0`**: advisory planning, dreaming, and replanning
    proposals that remain non-executable until promoted by controller or user
-   decision plus normal quota and boundary checks.
+   decision plus normal quota and boundary checks. The minimal record should
+   include proposal id, source run window, due/retry policy, candidate todo
+   refs, confidence, promotion target, and idempotency key.
 5. **`feedback_signal_v0`**: user feedback captured as one of four control
    effects: gate decision, preference hint, todo mutation, or product
    improvement note. Raw private chat should not become public evidence.
