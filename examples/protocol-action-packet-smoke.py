@@ -236,7 +236,7 @@ def assert_advancement_packet_keeps_user_todo_pending() -> None:
     assert f"agent_action={USER_TODO}" not in packet["summary"], packet
 
 
-def assert_explicit_user_gate_preempts_agent_action() -> None:
+def assert_explicit_user_gate_still_allows_independent_agent_action() -> None:
     gate_todo = (
         "[P0] Approve one no-upload Terminal-Bench rerun before crossing the "
         "resource boundary."
@@ -264,17 +264,17 @@ def assert_explicit_user_gate_preempts_agent_action() -> None:
     assert guard["notify_user_on_gate"] is True, guard
     assert guard["open_todo_notification_policy"] == "repeat_until_resolved", guard
     assert user_summary["gate_open_items"][0]["text"] == gate_todo, user_summary
-    assert "actor=user" in packet["summary"], packet
+    assert "actor=agent_with_user_gate" in packet["summary"], packet
     assert "user_action_required=true" in packet["summary"], packet
-    assert "agent_action_required=false" in packet["summary"], packet
+    assert "agent_action_required=true" in packet["summary"], packet
     assert "user_action=[P0] Approve one no-upload Terminal-Bench rerun" in packet["summary"], packet
-    assert "agent_action=[P1] LLM-assisted protocol simplification" not in packet["summary"], packet
-    assert contract["mode"] == "user_gate", contract
+    assert "agent_action=[P1] LLM-assisted protocol simplification" in packet["summary"], packet
+    assert contract["mode"] == "bounded_delivery_with_user_notice", contract
     assert contract["user_channel"]["action_required"] is True, contract
     assert contract["user_channel"]["notify"] == "NOTIFY", contract
-    assert contract["agent_channel"]["must_attempt"] is False, contract
+    assert contract["agent_channel"]["must_attempt"] is True, contract
     assert contract["agent_channel"]["primary_action"] == (
-        "wait for user/owner action after surfacing the blocker or gate"
+        "[P1] LLM-assisted protocol simplification research spike"
     ), contract
 
 
@@ -389,7 +389,7 @@ def assert_goal_scoped_primary_action_ignores_foreign_backlog() -> None:
 def main() -> None:
     assert_advancement_packet_prefers_backlog_candidate()
     assert_advancement_packet_keeps_user_todo_pending()
-    assert_explicit_user_gate_preempts_agent_action()
+    assert_explicit_user_gate_still_allows_independent_agent_action()
     assert_monitor_only_packet_keeps_user_todo_pending()
     assert_monitor_only_packet_allows_quiet_noop()
     assert_executable_recommended_action_overrides_monitor_todo()

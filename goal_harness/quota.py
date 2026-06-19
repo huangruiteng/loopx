@@ -132,6 +132,8 @@ INTERACTION_CONTRACT_SCHEMA_VERSION = "goal_harness_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
 TODO_BACKLOG_ITEM_LIMIT = 8
+TODO_MISSING_PRIORITY_RANK = 50
+TODO_MISSING_INDEX = 999999
 EXTERNAL_EVIDENCE_OBSERVE_PATTERNS = (
     re.compile(
         r"(?i)\b(?:poll(?:ing)?|observ(?:e|ing)|watch(?:ing)?|await(?:ing)?|wait\s+for|monitor(?:ing)?)\b.*\b"
@@ -944,6 +946,42 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
     return compact
 
 
+def _todo_priority_label(item: dict[str, Any]) -> str | None:
+    priority = item.get("priority")
+    if isinstance(priority, str) and priority.strip():
+        return priority.strip().upper()
+    text = " ".join(
+        str(value or "")
+        for value in (item.get("title"), item.get("text"))
+        if str(value or "").strip()
+    )
+    match = re.search(r"\bP([0-4])\b", text.upper())
+    if not match:
+        return None
+    return f"P{match.group(1)}"
+
+
+def _todo_priority_rank(item: dict[str, Any]) -> int:
+    priority = _todo_priority_label(item)
+    if not priority:
+        return TODO_MISSING_PRIORITY_RANK
+    match = re.match(r"P([0-4])", priority)
+    if not match:
+        return TODO_MISSING_PRIORITY_RANK
+    return int(match.group(1))
+
+
+def _todo_index_rank(item: dict[str, Any]) -> int:
+    try:
+        return int(item.get("index"))
+    except (TypeError, ValueError):
+        return TODO_MISSING_INDEX
+
+
+def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
+    return (_todo_priority_rank(item), _todo_index_rank(item))
+
+
 def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
     source_keys = (
         "first_open_items",
@@ -984,7 +1022,10 @@ def _is_user_gate_todo_item(item: dict[str, Any]) -> bool:
 def _summarize_user_todos(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
-    open_items = _todo_summary_source_items(value)
+    open_items = sorted(
+        _todo_summary_source_items(value),
+        key=_todo_projection_sort_key,
+    )
     executable_items = [
         item
         for item in open_items
@@ -1028,7 +1069,10 @@ def _summarize_project_asset_todos(value: Any) -> dict[str, Any] | None:
     ):
         return _summarize_user_todos(value)
 
-    open_items = _todo_summary_source_items(value)
+    open_items = sorted(
+        _todo_summary_source_items(value),
+        key=_todo_projection_sort_key,
+    )
     if not open_items:
         next_text = str(value.get("next") or "").strip()
         next_index = value.get("next_index", 1)
