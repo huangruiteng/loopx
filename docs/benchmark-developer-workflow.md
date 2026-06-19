@@ -124,6 +124,90 @@ should not need to understand SSH internals, jump hosts, or remote file bridges
 in the hot path. It should only record compact route readiness, result handles,
 blockers, and no-upload boundaries.
 
+### ECS Host Bootstrap SOP
+
+Treat remote benchmark host fixes as product assets only after they become one
+of three reusable surfaces:
+
+- a documented SOP step that another developer can repeat;
+- a script or CLI entrypoint that emits compact JSON;
+- a reducer that turns private runner state into a public-safe blocker or
+  ingest action.
+
+Runtime-only tweaks such as Docker registry mirrors, loopback proxy sessions,
+cached base images, source tarballs, dependency prewarm, and run directories
+are useful operator substrate. Do not let them become hidden Goal Harness
+truth. Record only the compact fact: ready, blocked, or needs operator setup.
+The concrete mirror URL, proxy port, shell history, raw logs, and local host
+paths stay outside public evidence.
+
+Recommended cloud host layout:
+
+```text
+goal-harness-bench/
+  sources/
+  runs/
+  cache/
+  artifacts/public/
+  artifacts/private/
+```
+
+Run the bootstrap probe on the cloud host before a benchmark slice:
+
+```bash
+python3 scripts/benchmark_ecs_bootstrap.py \
+  --workspace ~/goal-harness-bench \
+  --min-free-gib 80 \
+  --create-dirs \
+  --pretty
+```
+
+The probe checks command presence, Docker server reachability, disk budget, and
+the standard workspace shape. It intentionally emits only command names,
+version first lines, booleans, counts, and the workspace basename.
+
+Benchmark source materialization should stay close to upstream:
+
+- prefer a real git checkout or fork when the benchmark source must be patched
+  or rebased;
+- if a source tree is only a materialized copy, add a `.goal-harness-upstream`
+  marker with upstream repo and commit, and do not treat it as a fork branch;
+- keep wrapper scripts, reducer sidecars, and runbooks in this repository
+  unless the change is clearly upstreamable;
+- never mix temporary runner probes, raw evidence, local auth setup, or private
+  benchmark artifacts into upstream benchmark source trees.
+
+For Terminal-Bench, the first product-path launcher should be no-upload and
+probe-only:
+
+```bash
+python3 scripts/terminal_bench_no_upload_smoke.py \
+  --task-id hello-world \
+  --jobs-dir ~/goal-harness-bench/runs/terminal-bench/jobs \
+  --run-root ~/goal-harness-bench/runs/terminal-bench/no-upload-smoke \
+  --pretty
+```
+
+That command is a dry-run by default. Add `--execute` only after Codex auth,
+network, Docker, source, and task-data readiness are known. It emits command
+shape and boundary facts, not argv values or raw runner output.
+
+When a Terminal-Bench launch produces only startup or materialization state,
+reduce it before writing Goal Harness evidence:
+
+```bash
+python3 scripts/terminal_bench_compose_startup_reducer.py \
+  --post-launch-json ~/goal-harness-bench/runs/terminal-bench/no-upload-smoke/post_launch_summary.public.json \
+  --pretty
+```
+
+The reducer classifies compact startup blockers such as missing jobs directory,
+missing job root, missing job lock, ended worker without trial result, or stale
+active job without trial result. It does not read raw logs, task text,
+trajectories, credentials, or command argv. If a blocker repeats, improve the
+SOP or script in the same batch instead of preserving a private one-off shell
+fragment.
+
 ### SSH Session Hygiene
 
 When the benchmark host is reached through a jump host, GSSAPI, or another
