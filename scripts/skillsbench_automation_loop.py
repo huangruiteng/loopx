@@ -644,6 +644,17 @@ def _runner_prerequisite_failure_attribution(
         label = "skillsbench_host_local_acp_launch_failed"
         return label, label, [label, "skillsbench_runner_setup_error"]
 
+    if (
+        value.get("codex_acp_runtime_container_bootstrap") is True
+        and value.get("codex_acp_runtime_dependency_preflight") is True
+        and value.get("codex_acp_runtime_launch_preflight") is False
+        and value.get("codex_acp_runtime_launch_preflight_stage")
+        == "after_agent_install_before_acp_connect"
+        and value.get("codex_acp_runtime_launch_preflight_status") == "pending"
+    ):
+        label = "skillsbench_runner_failed_before_agent_install"
+        return label, label, [label, "skillsbench_runner_setup_error"]
+
     return None
 
 

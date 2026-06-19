@@ -3530,6 +3530,55 @@ def test_skillsbench_runner_failure_prefers_structured_preflight_blocker() -> No
         ), compact
 
 
+def test_skillsbench_runner_failure_marks_pre_agent_install_stage() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-runner-pre-agent-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "hello-world",
+                "--route",
+                "raw-codex-autonomous-max5",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-hello-world-pre-agent-fixture",
+            ]
+        )
+        plan = build_plan(args)
+        compact = build_runner_failure_compact(
+            args,
+            plan,
+            RuntimeError("BenchFlow runner exited before official result"),
+        )
+        assert compact["first_blocker"] == (
+            "skillsbench_runner_failed_before_agent_install"
+        ), compact
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_runner_failed_before_agent_install"
+        ), compact
+        assert "skillsbench_runner_setup_error" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert compact["runner_failure"]["failure_class"] == (
+            "skillsbench_runner_failed_before_agent_install"
+        ), compact
+        assert compact["runner_prerequisites"][
+            "codex_acp_runtime_container_bootstrap"
+        ] is True, compact
+        assert compact["runner_prerequisites"][
+            "codex_acp_runtime_dependency_preflight"
+        ] is True, compact
+        assert compact["runner_prerequisites"][
+            "codex_acp_runtime_launch_preflight_status"
+        ] == "pending", compact
+        assert compact["runner_prerequisites"][
+            "codex_acp_runtime_launch_preflight_stage"
+        ] == "after_agent_install_before_acp_connect", compact
+        assert "BenchFlow runner exited before official result" not in json.dumps(
+            compact
+        ), compact
+
+
 def test_skillsbench_reduce_only_missing_result_records_closeout_exit_zero() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-missing-result-main-") as tmp:
         jobs_dir = Path(tmp) / "jobs"
@@ -3942,6 +3991,7 @@ if __name__ == "__main__":
     test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs()
     test_skillsbench_runner_failure_compact_closeout()
     test_skillsbench_runner_failure_prefers_structured_preflight_blocker()
+    test_skillsbench_runner_failure_marks_pre_agent_install_stage()
     test_skillsbench_reduce_only_missing_result_records_closeout_exit_zero()
     test_skillsbench_main_failure_closeout_preserves_mutated_prerequisites()
     test_skillsbench_main_redirects_runner_output_to_private_log()
