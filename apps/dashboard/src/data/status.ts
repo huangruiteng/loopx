@@ -168,6 +168,14 @@ export const projectAssetHandoffReadinessSchema = z.object({
   next_probe: z.string().optional().nullable(),
 });
 
+export const projectAssetTodoProjectionGapSchema = z.object({
+  schema_version: z.string().optional().nullable(),
+  kind: z.string().optional().nullable(),
+  missing_roles: z.array(z.string()).optional().default([]),
+  source: z.string().optional().nullable(),
+  recommended_action: z.string().optional().nullable(),
+});
+
 export const projectAssetSchema = z.object({
   owner: z.string(),
   gate: z.string(),
@@ -180,6 +188,7 @@ export const projectAssetSchema = z.object({
   orchestration: orchestrationPolicySchema.optional().nullable(),
   latest_validation: projectAssetLatestValidationSchema.optional().nullable(),
   stale_latest_run_warning: staleLatestRunWarningSchema.optional().nullable(),
+  todo_projection_gap: projectAssetTodoProjectionGapSchema.optional().nullable(),
 });
 
 export const queueItemSchema = z.object({

@@ -148,6 +148,7 @@ MAX_BENCHMARK_RUN_LIST_ITEMS = 5
 STATUS_CONTRACT_SCHEMA_VERSION = 2
 MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION = 2
 STATUS_CONTRACT_RELOAD_HINT = "scripts/macos-dashboard-launchagent.sh restart"
+PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION = "project_asset_todo_projection_gap_v0"
 DECISION_FRESHNESS_WINDOW_DAYS = 7
 DECISION_FRESHNESS_ITEM_LIMIT = 12
 DECISION_FRESHNESS_PROXY_NOTE = (
@@ -4337,6 +4338,30 @@ def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] |
     return summary
 
 
+def project_asset_todo_projection_gap(
+    *,
+    user_todos: dict[str, Any] | None,
+    agent_todos: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    missing_roles: list[str] = []
+    if not isinstance(user_todos, dict):
+        missing_roles.append("user")
+    if not isinstance(agent_todos, dict):
+        missing_roles.append("agent")
+    if not missing_roles:
+        return None
+    return {
+        "schema_version": PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION,
+        "kind": "project_asset_todo_projection_gap",
+        "missing_roles": missing_roles,
+        "source": "active_state_todo_projection",
+        "recommended_action": (
+            "add parseable User Todo / Agent Todo sections or repair the active state_file "
+            "before treating this project_asset as first-screen complete"
+        ),
+    }
+
+
 def dependency_blocker_summary(
     items: list[dict[str, Any]],
     *,
@@ -5043,6 +5068,16 @@ def enrich_project_asset(
     agent_summary = project_asset_todo_summary(agent_todos)
     if agent_summary:
         project_asset["agent_todos"] = agent_summary
+    todo_projection_gap = project_asset_todo_projection_gap(
+        user_todos=user_todos,
+        agent_todos=agent_todos,
+    )
+    if todo_projection_gap:
+        project_asset["todo_projection_gap"] = todo_projection_gap
+        item["todo_projection_gap"] = todo_projection_gap
+    else:
+        project_asset.pop("todo_projection_gap", None)
+        item.pop("todo_projection_gap", None)
     quota_summary = project_asset_quota_summary(quota)
     if quota_summary:
         project_asset["quota"] = quota_summary
@@ -7361,6 +7396,17 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"user_open={projection_gap.get('user_open_count')} "
                     f"agent_open={projection_gap.get('agent_open_count')} "
                     f"target_roles={_markdown_scalar(','.join(projection_gap.get('target_roles') or []))}"
+                )
+            todo_projection_gap = (
+                project_asset.get("todo_projection_gap")
+                if isinstance(project_asset.get("todo_projection_gap"), dict)
+                else {}
+            )
+            if todo_projection_gap:
+                lines.append(
+                    "    - todo_projection_gap: "
+                    f"missing_roles={_markdown_scalar(','.join(todo_projection_gap.get('missing_roles') or []))} "
+                    f"source={_markdown_scalar(todo_projection_gap.get('source') or '')}"
                 )
             archive_warning = (
                 project_asset.get("completed_todo_archive_warning")

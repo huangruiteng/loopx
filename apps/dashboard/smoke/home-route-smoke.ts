@@ -37,6 +37,7 @@ includes(dashboardSource, "推荐动作", "first-screen recommended action label
 includes(dashboardSource, "安全边界", "first-screen safety boundary label");
 includes(dashboardSource, "首个用户 Todo", "first-screen first user todo label");
 includes(dashboardSource, "最高优 Agent Todo", "first-screen top agent todo label");
+includes(dashboardSource, "Todo 投影缺口", "first-screen todo projection gap label");
 includes(dashboardSource, "Top-4 Todo", "share top-four todo label");
 includes(dashboardSource, "已完成", "share todo done status");
 includes(dashboardSource, "决策需 rebase", "share decision freshness warning");

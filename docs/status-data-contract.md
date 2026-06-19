@@ -779,6 +779,12 @@ Item fields:
   primary action surface, while monitor items are supplemental context that
   should not consume the selected goal's advancement slot unless they record a
   material transition or blocker.
+- `project_asset.todo_projection_gap`: optional explicit gap object emitted
+  when status cannot project `user_todos` and/or `agent_todos` for a connected
+  project. This means "the first-screen todo state is unknown", not "there are
+  zero todos". Consumers should surface the missing roles and ask for a
+  parseable active-state todo section or state-file repair before treating the
+  project asset as first-screen complete.
 - Todo summaries use `schema_version=todo_summary_v0`; parsed todo items use
   `schema_version=todo_item_v0`. The source active state can remain ordinary
   Markdown checkboxes, but status/quota/dashboard consumers should prefer the

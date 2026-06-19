@@ -2827,14 +2827,20 @@ function ShareDecisionFrame({
     ?? "未显式授权写入或生产动作；只按当前 quota / handoff 边界推进。";
   const firstUserTodo = firstOpenTodo(view.userTodos);
   const firstAgentTodo = firstOpenTodo(view.agentTodos);
+  const missingTodoRoles = projectAsset?.todo_projection_gap?.missing_roles?.length
+    ? projectAsset.todo_projection_gap.missing_roles.join(", ")
+    : null;
 
-  const rows = [
+  const rows: Array<readonly [string, string]> = [
     ["等待方", waitingOwner],
     ["推荐动作", compactShareText(recommendedAction, 108)],
     ["安全边界", compactShareText(safetyBoundary, 108)],
     ["首个用户 Todo", compactShareText(firstUserTodo?.text, 108)],
     ["最高优 Agent Todo", compactShareText(firstAgentTodo?.text, 108)],
-  ] as const;
+  ];
+  if (missingTodoRoles) {
+    rows.push(["Todo 投影缺口", `missing roles: ${missingTodoRoles}`]);
+  }
 
   return (
     <div
