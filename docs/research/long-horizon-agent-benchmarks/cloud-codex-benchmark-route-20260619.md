@@ -30,6 +30,16 @@ bridge, or command relay in the hot path. Once the host is reachable and Codex
 is authenticated there by the operator, benchmark execution should look like a
 normal single-host developer workflow.
 
+If the operator access path uses a jump host, GSSAPI, or another expensive SSH
+handshake, establish one short-lived SSH ControlMaster/ControlPath connection
+for the benchmark slice and reuse it for bounded probes, source staging, and
+runner launch commands. Keep those commands mostly serial when authentication
+is sensitive to concurrency, and close the master in cleanup. This reduces
+connection flakiness without teaching Goal Harness private SSH topology.
+Public evidence should record only that the SSH alias was reachable and the
+slice used a short-lived multiplexed SSH session; private host names, keys,
+jump-host details, control paths, and shell history stay out of commits.
+
 ## Why This Replaces The Default Split-Control Route
 
 The earlier split-control route was the right safety choice for shared hosts:

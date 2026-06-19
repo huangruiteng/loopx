@@ -124,6 +124,38 @@ should not need to understand SSH internals, jump hosts, or remote file bridges
 in the hot path. It should only record compact route readiness, result handles,
 blockers, and no-upload boundaries.
 
+### SSH Session Hygiene
+
+When the benchmark host is reached through a jump host, GSSAPI, or another
+access path with expensive handshakes, use one SSH multiplexed master for the
+benchmark slice and run remote commands through that connection. This is an
+operator workflow convention, not a Goal Harness protocol requirement.
+
+```bash
+BENCHMARK_HOST_ALIAS=<your-ssh-config-alias>
+CONTROL_PATH=/tmp/goal-harness-ssh-cm/benchmark-host
+mkdir -p "$(dirname "$CONTROL_PATH")"
+
+ssh -M -S "$CONTROL_PATH" \
+  -o ControlPersist=600 \
+  -fN \
+  -o BatchMode=yes \
+  -o ConnectTimeout=20 \
+  "$BENCHMARK_HOST_ALIAS"
+
+ssh -S "$CONTROL_PATH" -o BatchMode=yes "$BENCHMARK_HOST_ALIAS" \
+  'hostname && docker --version && codex --version'
+
+ssh -S "$CONTROL_PATH" -O exit "$BENCHMARK_HOST_ALIAS" || true
+```
+
+Keep commands through the master connection mostly serial when the access path
+is sensitive to concurrent authentication. Do not commit SSH aliases, host
+names, private keys, jump-host details, raw shell history, or local control-path
+values into public benchmark evidence. Public docs should preserve the shape:
+create one short-lived master, reuse it for bounded probes or run launch, then
+close it during cleanup.
+
 ### Codex Goal Baseline Gate
 
 The primary comparison target is **Codex Goal mode** running on the benchmark
