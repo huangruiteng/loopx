@@ -5522,6 +5522,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Use status for all groups, plan for next-turn groups, should-run for one goal, monitor-poll for no-spend quiet poll evidence, spend-slot for accounting, or void-slot for a non-destructive accounting correction.",
     )
     quota_parser.add_argument("--goal-id", help="Goal id to check. Required for `quota should-run`, `quota monitor-poll`, `quota spend-slot`, and `quota void-slot`.")
+    quota_parser.add_argument(
+        "--agent-id",
+        help="Registered agent id for `quota should-run`; suppresses identity-upgrade warnings for current prompts.",
+    )
     quota_parser.add_argument("--slots", type=int, default=1, help="Slots to account for `quota spend-slot`.")
     quota_parser.add_argument("--source", choices=["heartbeat", "controller", "adapter"], default="heartbeat", help="Source label for `quota spend-slot`.")
     quota_parser.add_argument("--void-generated-at", help="generated_at timestamp of the quota_slot_spent run to void.")
@@ -9838,7 +9842,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.quota_command == "should-run":
                 if not args.goal_id:
                     raise ValueError("`goal-harness quota should-run` requires --goal-id")
-                payload = build_quota_should_run(status_payload, goal_id=args.goal_id)
+                payload = build_quota_should_run(status_payload, goal_id=args.goal_id, agent_id=args.agent_id)
             elif args.quota_command == "monitor-poll":
                 if not args.goal_id:
                     raise ValueError("`goal-harness quota monitor-poll` requires --goal-id")

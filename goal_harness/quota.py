@@ -33,6 +33,7 @@ from .todo_contract import (
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
     next_action_requires_advancement_text,
+    normalize_todo_claimed_by,
     normalize_required_write_scopes,
     normalize_todo_status,
     normalize_todo_task_class,
@@ -2247,6 +2248,102 @@ def _goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> 
     return None
 
 
+def _quota_registered_agents(goal: dict[str, Any]) -> list[str]:
+    coordination = goal.get("coordination") if isinstance(goal.get("coordination"), dict) else {}
+    raw_values = coordination.get("registered_agents")
+    if raw_values is None:
+        raw_values = goal.get("registered_agents")
+    if isinstance(raw_values, str):
+        raw_values = [raw_values]
+    if not isinstance(raw_values, list):
+        return []
+    agents: list[str] = []
+    for value in raw_values:
+        candidate = value
+        if isinstance(candidate, dict):
+            candidate = candidate.get("id") or candidate.get("agent_id") or candidate.get("name")
+        normalized = normalize_todo_claimed_by(candidate)
+        if normalized and normalized not in agents:
+            agents.append(normalized)
+    return agents
+
+
+def _quota_primary_agent(goal: dict[str, Any]) -> str | None:
+    coordination = goal.get("coordination") if isinstance(goal.get("coordination"), dict) else {}
+    for candidate in (coordination.get("primary_agent"), goal.get("primary_agent")):
+        normalized = normalize_todo_claimed_by(candidate)
+        if normalized:
+            return normalized
+    return None
+
+
+def _quota_agent_identity(goal: dict[str, Any], *, agent_id: str | None) -> dict[str, Any] | None:
+    normalized_agent_id = normalize_todo_claimed_by(agent_id) if agent_id else None
+    if agent_id and not normalized_agent_id:
+        raise ValueError("agent_id must be a public-safe registered agent id")
+    registered_agents = _quota_registered_agents(goal)
+    if not normalized_agent_id:
+        return None
+    if not registered_agents:
+        raise ValueError(
+            "quota should-run --agent-id requires coordination.registered_agents; "
+            "register this agent identity first"
+        )
+    if normalized_agent_id not in registered_agents:
+        raise ValueError(
+            f"agent_id={normalized_agent_id!r} is not registered; "
+            f"registered_agents={', '.join(registered_agents)}"
+        )
+    primary_agent = _quota_primary_agent(goal)
+    return {
+        "agent_id": normalized_agent_id,
+        "registered": True,
+        "role": "primary-agent" if primary_agent and normalized_agent_id == primary_agent else "side-agent",
+        "primary_agent": primary_agent,
+        "registered_agents": registered_agents,
+    }
+
+
+def _automation_prompt_upgrade(
+    goal: dict[str, Any],
+    *,
+    goal_id: str,
+    agent_identity: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    registered_agents = _quota_registered_agents(goal)
+    if not registered_agents or agent_identity:
+        return None
+    primary_agent = _quota_primary_agent(goal)
+    primary_hint = primary_agent if primary_agent in registered_agents else registered_agents[0]
+    side_hint = next((agent for agent in registered_agents if agent != primary_hint), primary_hint)
+    return {
+        "contract": "identity_aware_heartbeat_prompt_v1",
+        "required": True,
+        "blocks_should_run": False,
+        "reason": (
+            "coordination.registered_agents is configured, but quota should-run "
+            "was called without --agent-id; the installed automation prompt is "
+            "likely stale or unscoped"
+        ),
+        "registered_agents": registered_agents,
+        "primary_agent": primary_agent,
+        "recommended_action": (
+            "Regenerate the Codex App heartbeat prompt with a registered "
+            "--agent-id and at least one --agent-scope."
+        ),
+        "primary_example_command": (
+            f"goal-harness heartbeat-prompt --thin --goal-id {goal_id} "
+            f"--agent-id {primary_hint} --agent-scope "
+            "'primary review, verification, merge, and coordination'"
+        ),
+        "side_agent_example_command": (
+            f"goal-harness heartbeat-prompt --thin --goal-id {goal_id} "
+            f"--agent-id {side_hint} --agent-scope "
+            "'bounded side-agent work in an independent worktree'"
+        ),
+    }
+
+
 def _build_gate_prompt(item: dict[str, Any]) -> str | None:
     question = str(item.get("operator_question") or "").strip()
     recommended_action = str(item.get("recommended_action") or "").strip()
@@ -3514,7 +3611,7 @@ def _effective_action(
     return "quota_skip"
 
 
-def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> dict[str, Any]:
+def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agent_id: str | None = None) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     plan = build_quota_plan(status_payload, mode="should-run")
     item = next((candidate for candidate in _quota_plan_items(plan) if candidate.get("goal_id") == safe_goal_id), None)
@@ -3544,6 +3641,12 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             project_asset.get("agent_todos") if project_asset else None
         ) or _summarize_user_todos(item.get("agent_todos"))
         goal_boundary = _goal_boundary(item)
+        agent_identity = _quota_agent_identity(item, agent_id=agent_id)
+        automation_prompt_upgrade = _automation_prompt_upgrade(
+            item,
+            goal_id=safe_goal_id,
+            agent_identity=agent_identity,
+        )
         blocked_priority_fallback = _blocked_priority_fallback(agent_todo_summary)
         stall_self_repair = _stall_self_repair_hint(
             item,
@@ -3723,6 +3826,10 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str) -> d
             "plan_summary": plan.get("summary"),
             "todo_write_hint": _todo_write_hint(safe_goal_id),
         }
+        if agent_identity:
+            payload["agent_identity"] = agent_identity
+        if automation_prompt_upgrade:
+            payload["automation_prompt_upgrade"] = automation_prompt_upgrade
         if work_lane_contract:
             payload["work_lane_contract"] = work_lane_contract
         if external_evidence_observation:
@@ -4878,6 +4985,36 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
     ]
     if payload.get("project_asset_source"):
         lines.append(f"- project_asset_source: {payload.get('project_asset_source')}")
+    agent_identity = (
+        payload.get("agent_identity")
+        if isinstance(payload.get("agent_identity"), dict)
+        else {}
+    )
+    if agent_identity:
+        lines.append(
+            "- agent_identity: "
+            f"agent_id={agent_identity.get('agent_id')} "
+            f"role={agent_identity.get('role')} "
+            f"primary_agent={agent_identity.get('primary_agent')}"
+        )
+    automation_prompt_upgrade = (
+        payload.get("automation_prompt_upgrade")
+        if isinstance(payload.get("automation_prompt_upgrade"), dict)
+        else {}
+    )
+    if automation_prompt_upgrade:
+        lines.append(
+            "- automation_prompt_upgrade: "
+            f"required={automation_prompt_upgrade.get('required')} "
+            f"blocks_should_run={automation_prompt_upgrade.get('blocks_should_run')} "
+            f"contract={automation_prompt_upgrade.get('contract')}"
+        )
+        if automation_prompt_upgrade.get("recommended_action"):
+            lines.append(f"- automation_prompt_upgrade_action: {automation_prompt_upgrade.get('recommended_action')}")
+        if automation_prompt_upgrade.get("primary_example_command"):
+            lines.append(f"- automation_prompt_upgrade_primary: {automation_prompt_upgrade.get('primary_example_command')}")
+        if automation_prompt_upgrade.get("side_agent_example_command"):
+            lines.append(f"- automation_prompt_upgrade_side: {automation_prompt_upgrade.get('side_agent_example_command')}")
     stale_latest_run_warning = (
         payload.get("stale_latest_run_warning")
         if isinstance(payload.get("stale_latest_run_warning"), dict)

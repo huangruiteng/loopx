@@ -35,11 +35,12 @@ fi
 {cli_bin_arg} doctor >/dev/null"""
 
 
-def render_quota_guard_command(goal_id: str, *, cli_bin: str = "goal-harness") -> str:
+def render_quota_guard_command(goal_id: str, *, cli_bin: str = "goal-harness", agent_id: str | None = None) -> str:
+    agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
     return (
         f"{shell_arg(cli_bin)} --format json "
         f"--registry {SHARED_GLOBAL_REGISTRY} "
-        f"quota should-run --goal-id {shell_arg(goal_id)}"
+        f"quota should-run --goal-id {shell_arg(goal_id)}{agent_arg}"
     )
 
 

@@ -66,6 +66,41 @@ def agent_prompt_command_args(*, agent_id: str | None, agent_scopes: list[str]) 
     return "".join(f" {shlex.quote(part)}" for part in parts)
 
 
+def build_identity_required_error(
+    *,
+    goal_id: str,
+    cli_bin: str,
+    active_state_arg: str,
+    compact: bool,
+    brief: bool,
+    thin: bool,
+    registered_agents: list[str],
+    primary_agent: str | None,
+) -> str:
+    mode_arg = " --thin" if thin else " --brief" if brief else " --compact" if compact else ""
+    primary_hint = primary_agent if primary_agent in registered_agents else registered_agents[0]
+    side_hint = next((agent for agent in registered_agents if agent != primary_hint), registered_agents[0])
+    base = f"{cli_bin} heartbeat-prompt{mode_arg} --goal-id {shlex.quote(goal_id)}{active_state_arg}"
+    primary_command = (
+        f"{base} --agent-id {shlex.quote(primary_hint)} "
+        "--agent-scope 'primary review, verification, merge, and coordination'"
+    )
+    side_command = (
+        f"{base} --agent-id {shlex.quote(side_hint)} "
+        "--agent-scope 'bounded side-agent work in an independent worktree'"
+    )
+    primary_text = primary_agent or "missing coordination.primary_agent"
+    return (
+        "identity-aware heartbeat prompt required: coordination.registered_agents "
+        f"is configured for goal_id={goal_id!r}, so old automation prompts without "
+        "--agent-id are no longer accepted. Regenerate the installed automation "
+        f"with a registered --agent-id and at least one --agent-scope. "
+        f"registered_agents={', '.join(registered_agents)}; primary_agent={primary_text}. "
+        f"Primary example: `{primary_command}`. "
+        f"Side-agent example: `{side_command}`."
+    )
+
+
 def render_agent_scope_instruction(
     *,
     goal_id: str,
@@ -100,16 +135,16 @@ def render_agent_scope_instruction(
             )
         else:
             role_rule = (
-                "You are a side-agent. Edit only in an independent git worktree/branch. Do not merge "
-                "or publish. Finish with primary review todo: "
+                "You are a side-agent. Use an independent git worktree/branch. Do not merge/publish. "
+                "Finish with primary review todo: "
                 f"`{completion_command}`."
             )
         return (
             f"Agent identity and scope: agent_id `{identity}`; role: {agent_role}; "
             f"primary_agent `{primary_agent}`; scope: {scope_text}. {role_rule} "
-            f"Before delivery, claim an unclaimed in-scope todo with "
+            f"Before delivery, claim an in-scope todo with "
             f"`{claim_command}`; if claimed/outside scope, choose another or "
-            "report none. Do not write agent scope into todo metadata."
+            "report none. Do not write scope into todo metadata."
         )
     if agent_role == "primary-agent":
         role_rule = (
@@ -203,6 +238,22 @@ def build_heartbeat_prompt(
     if normalized_agent_scopes and not normalized_agent_id:
         raise ValueError("--agent-scope requires --agent-id so claimed_by uses a registered agent")
     normalized_registered_agents = normalize_registered_agents(registered_agents)
+    normalized_primary_agent = normalize_todo_claimed_by(primary_agent) if primary_agent else None
+    if primary_agent and not normalized_primary_agent:
+        raise ValueError("primary_agent must be a public-safe registered agent id")
+    if normalized_registered_agents and not normalized_agent_id:
+        raise ValueError(
+            build_identity_required_error(
+                goal_id=goal_id,
+                cli_bin=cli_bin,
+                active_state_arg=active_state_arg,
+                compact=compact,
+                brief=brief,
+                thin=thin,
+                registered_agents=normalized_registered_agents,
+                primary_agent=normalized_primary_agent,
+            )
+        )
     if normalized_agent_id:
         if registered_agents is not None and not normalized_registered_agents:
             raise ValueError("agent_id cannot be used until registered_agents are configured")
@@ -211,9 +262,6 @@ def build_heartbeat_prompt(
                 f"agent_id={normalized_agent_id!r} is not registered; "
                 f"registered_agents={', '.join(normalized_registered_agents)}"
             )
-    normalized_primary_agent = normalize_todo_claimed_by(primary_agent) if primary_agent else None
-    if primary_agent and not normalized_primary_agent:
-        raise ValueError("primary_agent must be a public-safe registered agent id")
     if normalized_agent_id and normalized_registered_agents:
         if not normalized_primary_agent:
             raise ValueError("primary_agent must be configured when registered_agents are configured")
@@ -247,7 +295,7 @@ def build_heartbeat_prompt(
         compact=compact or brief,
         thin=thin,
     )
-    quota_guard_command = render_quota_guard_command(goal_id, cli_bin=cli_bin)
+    quota_guard_command = render_quota_guard_command(goal_id, cli_bin=cli_bin, agent_id=normalized_agent_id)
     quota_spend_command = render_quota_spend_command(goal_id, source="heartbeat", cli_bin=cli_bin)
     cli_preflight = render_cli_preflight(cli_bin=cli_bin)
     expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}"
