@@ -3479,6 +3479,57 @@ def test_skillsbench_runner_failure_compact_closeout() -> None:
         assert "BenchFlow result.json not found" not in json.dumps(compact), compact
 
 
+def test_skillsbench_runner_failure_prefers_structured_preflight_blocker() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-runner-preflight-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "debug-trl-grpo",
+                "--route",
+                "raw-codex-autonomous-max5",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-debug-trl-grpo-preflight-fixture",
+            ]
+        )
+        plan = build_plan(args)
+        plan["runner_prerequisites"].update(
+            {
+                "codex_acp_runtime_launch_preflight": False,
+                "codex_acp_runtime_launch_preflight_status": "failed",
+                "codex_acp_runtime_launch_preflight_rc": 127,
+                "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+            }
+        )
+        compact = build_runner_failure_compact(
+            args,
+            plan,
+            RuntimeError("BenchFlow runner exited before official result"),
+        )
+        assert compact["first_blocker"] == (
+            "skillsbench_codex_acp_launch_preflight_failed"
+        ), compact
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_codex_acp_launch_preflight_failed"
+        ), compact
+        assert "skillsbench_runner_setup_error" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert compact["runner_failure"]["failure_class"] == (
+            "skillsbench_codex_acp_launch_preflight_failed"
+        ), compact
+        assert compact["runner_prerequisites"][
+            "codex_acp_runtime_launch_preflight_status"
+        ] == "failed", compact
+        assert compact["runner_prerequisites"][
+            "codex_acp_runtime_launch_preflight_raw_logs_read"
+        ] is False, compact
+        assert "BenchFlow runner exited before official result" not in json.dumps(
+            compact
+        ), compact
+
+
 def test_skillsbench_reduce_only_missing_result_records_closeout_exit_zero() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-missing-result-main-") as tmp:
         jobs_dir = Path(tmp) / "jobs"
@@ -3890,6 +3941,7 @@ if __name__ == "__main__":
     test_skillsbench_compact_runs_update_ledger_pair()
     test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs()
     test_skillsbench_runner_failure_compact_closeout()
+    test_skillsbench_runner_failure_prefers_structured_preflight_blocker()
     test_skillsbench_reduce_only_missing_result_records_closeout_exit_zero()
     test_skillsbench_main_failure_closeout_preserves_mutated_prerequisites()
     test_skillsbench_main_redirects_runner_output_to_private_log()
