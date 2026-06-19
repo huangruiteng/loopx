@@ -132,12 +132,21 @@ evidence for all of the following:
 
 - the installed Codex build exposes `features.goals=true` or an equivalent
   enabled Goal feature;
-- the runner starts Goal mode through a supported Codex surface, such as the
-  interactive CLI slash command documented as `/goal`;
+- the runner starts Goal mode through a supported Codex surface. Prefer the
+  Codex app-server goal API for automation: initialize with
+  `capabilities.experimentalApi=true`, `thread/start` the benchmark workspace,
+  then call `thread/goal/set` with `objective`, `status: active`, and an
+  optional `tokenBudget`. The interactive CLI slash command `/goal` remains the
+  manual fallback, not the preferred benchmark automation seam;
 - the run evidence shows a persistent goal attached to the active thread, not
   only a prompt string whose first token is `/goal`;
 - the route does not add Goal Harness state, access packets, reward feedback,
   or polling semantics to the baseline arm.
+
+`codex exec` is still useful as a tiny connectivity smoke on the cloud host,
+but a successful `codex exec` run is not by itself a Codex Goal baseline. Do not
+rename a polling loop, resume loop, or prompt-prefixed `/goal` experiment into a
+Goal baseline without `thread/goal/get` or equivalent persistent-goal evidence.
 
 If these facts are not available, classify the result as a runner/readiness
 probe or unverified slash-goal prompt experiment, not as a Codex Goal baseline.

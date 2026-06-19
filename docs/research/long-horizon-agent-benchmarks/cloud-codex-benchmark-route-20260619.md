@@ -103,9 +103,9 @@ run:
 
 | Family | Next route | Remaining gate |
 | --- | --- | --- |
-| Terminal-Bench | Run Codex CLI and the runner directly on the cloud host; use real Codex Goal only after goal-state evidence exists. | Pick a bounded no-upload case, verify Docker-compatible runtime, and prove or park the Goal baseline trigger. |
-| SkillsBench | Run BenchFlow and Codex CLI on the cloud host; compare only after the Codex Goal baseline trigger is proven. | Prove native Goal-state entry for the baseline, or classify the route as readiness/unverified slash-goal instead of treatment evidence. |
-| Agents' Last Exam | Run upstream-close ALE local-Docker route on the cloud host; use Codex Goal baseline only after the trigger proof exists. | Resolve task-data access, disk budget, and Goal baseline trigger before formal paired claims. |
+| Terminal-Bench | Run Codex CLI and the runner directly on the cloud host; use the Codex app-server `thread/goal/set` path for real Goal-mode baseline automation once the host reproduces the local proof. | Pick a bounded no-upload case, verify Docker-compatible runtime and registry egress, then capture compact `thread/goal/get` evidence for the baseline arm before any paired claim. |
+| SkillsBench | Run BenchFlow and Codex CLI on the cloud host; compare only after the app-server Goal baseline seam is wired into the runner or a manual `/goal` fallback is explicitly labeled. | Reproduce persistent Goal-state entry on the cloud host and keep slash-prefixed prompts classified as readiness/unverified experiments. |
+| Agents' Last Exam | Run upstream-close ALE local-Docker route on the cloud host; use Codex Goal baseline only after task-data/image gates and the app-server Goal seam are ready. | Resolve task-data access, Docker/registry egress, disk budget, and cloud-host Goal-state evidence before formal paired claims. |
 
 ## Claim Boundary
 
