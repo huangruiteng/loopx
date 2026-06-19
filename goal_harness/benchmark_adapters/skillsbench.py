@@ -1077,11 +1077,20 @@ def build_skillsbench_benchflow_result_benchmark_run(
 
     contract = skillsbench_route_contract(route)
     observed_agent = str(result.get("agent") or result.get("agent_name") or agent)
-    if observed_agent not in {"codex", "codex-acp"}:
+    if observed_agent not in {"codex", "codex-acp", "oracle"}:
         raise ValueError(
-            "SkillsBench BenchFlow ingest currently supports codex/codex-acp only"
+            "SkillsBench BenchFlow ingest currently supports codex/codex-acp/oracle only"
         )
-    requested_model = str(model or result.get("model") or SKILLSBENCH_DEFAULT_MODEL)
+    is_oracle_runner = observed_agent == "oracle"
+    requested_model = str(
+        model
+        or result.get("model")
+        or (
+            "not_applicable_oracle_runner"
+            if is_oracle_runner
+            else SKILLSBENCH_DEFAULT_MODEL
+        )
+    )
     observed_model = str(result.get("model") or requested_model)
     warning_labels = [
         label
@@ -1094,11 +1103,109 @@ def build_skillsbench_benchflow_result_benchmark_run(
     model_control_status = "reported_model_from_result_metadata"
     actual_model_verified = False
     actual_model_source = "official_skillsbench_result_model_field"
+    if is_oracle_runner:
+        model_control_status = "not_applicable_oracle_runner"
+        actual_model_verified = True
+        actual_model_source = "official_skillsbench_oracle_runner_no_model"
     if CODEX_ACP_SET_MODEL_UNSUPPORTED_LABEL in warning_labels:
         model_control_status = "requested_model_not_enforced_by_acp"
         actual_model_verified = False
         actual_model_source = "codex_acp_default_or_launch_config"
     rollout_name = str(result.get("rollout_name") or f"{task_id}_{route}")
+    contract_goal_harness_automation_loop = (
+        False if is_oracle_runner else contract["goal_harness_automation_loop"]
+    )
+    contract_goal_harness_inside_case = (
+        False if is_oracle_runner else contract["goal_harness_inside_case"]
+    )
+    contract_inner_codex_goal_mode = (
+        False if is_oracle_runner else contract["inner_codex_goal_mode"]
+    )
+    contract_native_goal_mode_requested = (
+        False if is_oracle_runner else contract["native_goal_mode_requested"]
+    )
+    contract_native_goal_mode_invoked = (
+        False if is_oracle_runner else contract["native_goal_mode_invoked"]
+    )
+    contract_native_goal_mode_confirmation_status = (
+        "not_applicable_oracle_runner"
+        if is_oracle_runner
+        else contract["native_goal_mode_confirmation_status"]
+    )
+    contract_codex_acp_protocol_used = (
+        False if is_oracle_runner else contract["codex_acp_protocol_used"]
+    )
+    contract_curated_skills_visible = (
+        False if is_oracle_runner else contract["curated_skills_visible"]
+    )
+    contract_blind_loop = False if is_oracle_runner else contract["blind_loop"]
+    contract_official_feedback_blinded = (
+        True if is_oracle_runner else contract["official_feedback_blinded"]
+    )
+    contract_reward_feedback_forwarded = (
+        False if is_oracle_runner else contract["reward_feedback_forwarded"]
+    )
+    contract_case_semantics_changed_by_harness = (
+        False if is_oracle_runner else contract["case_semantics_changed_by_harness"]
+    )
+    contract_skillsbench_route_semantics = (
+        "skillsbench_oracle_solution_validation_no_model"
+        if is_oracle_runner
+        else contract["skillsbench_route_semantics"]
+    )
+    contract_official_score_comparable_to_native_codex = False
+    if not is_oracle_runner:
+        contract_official_score_comparable_to_native_codex = contract[
+            "official_score_comparable_to_native_codex"
+        ]
+    contract_official_score_comparable_to_goal_harness_treatment = (
+        False
+        if is_oracle_runner
+        else contract["official_score_comparable_to_goal_harness_treatment"]
+    )
+    agent_kwargs_keys = [
+        "benchflow_agent=oracle",
+        "sandbox=docker",
+        "no_upload",
+        "single_task",
+        "no_model_api",
+    ] if is_oracle_runner else [
+        "benchflow_agent=codex-acp",
+        "sandbox=docker",
+        "no_upload",
+        "single_task",
+    ]
+    outer_controller = (
+        "official_skillsbench_oracle_validation"
+        if is_oracle_runner
+        else "goal_harness_blind_automation_loop"
+        if route == "goal-harness-blind-loop-treatment"
+        else "goal_harness_product_mode"
+        if route == "goal-harness-product-mode"
+        else "reward_feedback_automation_loop_ablation"
+        if route == "automation-loop-treatment"
+        else "raw_codex_autonomous_max5"
+        if route == "raw-codex-autonomous-max5"
+        else "fixed_blind_loop_runner"
+        if route == "codex-acp-blind-loop-baseline"
+        else "runner_only"
+    )
+    inner_case_actor = (
+        "skillsbench_oracle_solution_runner"
+        if is_oracle_runner
+        else "ordinary_codex_acp_agent"
+        if route
+        in {
+            "automation-loop-treatment",
+            "goal-harness-blind-loop-treatment",
+            "codex-acp-blind-loop-baseline",
+            "raw-codex-autonomous-max5",
+            "goal-harness-product-mode",
+        }
+        else "codex_acp_goal_prompt_request_unconfirmed_native_goal_mode"
+        if route == "codex-goal-mode-baseline"
+        else "codex_acp_with_curated_skills"
+    )
 
     rewards = result.get("rewards") if isinstance(result.get("rewards"), dict) else {}
     reward_value = rewards.get("reward")
@@ -1232,11 +1339,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
                 False,
             ),
             "max_rounds_budget": controller_counters.get("max_rounds_budget", 0),
-            "official_feedback_returned_to_agent": contract[
-                "reward_feedback_forwarded"
-            ],
-            "official_feedback_blinded": contract["official_feedback_blinded"],
-            "reward_feedback_forwarded": contract["reward_feedback_forwarded"],
+            "official_feedback_returned_to_agent": contract_reward_feedback_forwarded,
+            "official_feedback_blinded": contract_official_feedback_blinded,
+            "reward_feedback_forwarded": contract_reward_feedback_forwarded,
             "agent_declared_done": controller_counters.get("agent_declared_done")
             is True,
             "declared_done_requires_no_remaining_goals": controller_counters.get(
@@ -1314,14 +1419,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "mode": contract["mode"],
         "route": route,
         "agent": {
-            "name": "codex",
+            "name": observed_agent,
             "model": observed_model,
-            "kwargs_keys": [
-                "benchflow_agent=codex-acp",
-                "sandbox=docker",
-                "no_upload",
-                "single_task",
-            ],
+            "kwargs_keys": agent_kwargs_keys,
         },
         "model_control": {
             "schema_version": BENCHMARK_MODEL_CONTROL_SCHEMA_VERSION,
@@ -1350,18 +1450,16 @@ def build_skillsbench_benchflow_result_benchmark_run(
         },
         "interaction_counters": {
             "schema_version": "skillsbench_interaction_counters_v0",
-            "goal_harness_automation_loop": contract["goal_harness_automation_loop"],
-            "inner_codex_goal_mode": contract["inner_codex_goal_mode"],
-            "native_goal_mode_requested": contract["native_goal_mode_requested"],
-            "native_goal_mode_invoked": contract["native_goal_mode_invoked"],
-            "native_goal_mode_confirmation_status": contract[
-                "native_goal_mode_confirmation_status"
-            ],
-            "codex_acp_protocol_used": contract["codex_acp_protocol_used"],
-            "curated_skills_visible": contract["curated_skills_visible"],
-            "blind_loop": contract["blind_loop"],
-            "official_feedback_blinded": contract["official_feedback_blinded"],
-            "reward_feedback_forwarded": contract["reward_feedback_forwarded"],
+            "goal_harness_automation_loop": contract_goal_harness_automation_loop,
+            "inner_codex_goal_mode": contract_inner_codex_goal_mode,
+            "native_goal_mode_requested": contract_native_goal_mode_requested,
+            "native_goal_mode_invoked": contract_native_goal_mode_invoked,
+            "native_goal_mode_confirmation_status": contract_native_goal_mode_confirmation_status,
+            "codex_acp_protocol_used": contract_codex_acp_protocol_used,
+            "curated_skills_visible": contract_curated_skills_visible,
+            "blind_loop": contract_blind_loop,
+            "official_feedback_blinded": contract_official_feedback_blinded,
+            "reward_feedback_forwarded": contract_reward_feedback_forwarded,
             "goal_harness_state_reads": controller_counters.get(
                 "goal_harness_state_reads", 0
             ),
@@ -1496,37 +1594,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "episode_policy": {
             "schema_version": "skillsbench_episode_policy_v0",
             "route": route,
-            "outer_controller": (
-                "goal_harness_blind_automation_loop"
-                if route == "goal-harness-blind-loop-treatment"
-                else "goal_harness_product_mode"
-                if route == "goal-harness-product-mode"
-                else "reward_feedback_automation_loop_ablation"
-                if route == "automation-loop-treatment"
-                else "raw_codex_autonomous_max5"
-                if route == "raw-codex-autonomous-max5"
-                else "fixed_blind_loop_runner"
-                if route == "codex-acp-blind-loop-baseline"
-                else "runner_only"
-            ),
-            "inner_case_actor": (
-                "ordinary_codex_acp_agent"
-                if route
-                in {
-                    "automation-loop-treatment",
-                    "goal-harness-blind-loop-treatment",
-                    "codex-acp-blind-loop-baseline",
-                    "raw-codex-autonomous-max5",
-                    "goal-harness-product-mode",
-                }
-                else "codex_acp_goal_prompt_request_unconfirmed_native_goal_mode"
-                if route == "codex-goal-mode-baseline"
-                else "codex_acp_with_curated_skills"
-            ),
-            "product_mode": contract.get("product_mode") is True,
-            "blind_loop": contract["blind_loop"],
-            "official_feedback_blinded": contract["official_feedback_blinded"],
-            "reward_feedback_forwarded": contract["reward_feedback_forwarded"],
+            "outer_controller": outer_controller,
+            "inner_case_actor": inner_case_actor,
+            "product_mode": False if is_oracle_runner else contract.get("product_mode") is True,
+            "blind_loop": contract_blind_loop,
+            "official_feedback_blinded": contract_official_feedback_blinded,
+            "reward_feedback_forwarded": contract_reward_feedback_forwarded,
             "verifier_output_tail_forwarded_by_default": False,
             "raw_trace_recorded": False,
             "raw_task_text_recorded": False,
@@ -1578,30 +1651,22 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "mode_contract": {
             "requested_route": route,
             "arm_id": contract["arm_id"],
-            "case_semantics_changed_by_harness": contract[
-                "case_semantics_changed_by_harness"
-            ],
-            "goal_harness_inside_case": contract["goal_harness_inside_case"],
-            "goal_harness_automation_loop": contract["goal_harness_automation_loop"],
-            "inner_codex_goal_mode": contract["inner_codex_goal_mode"],
-            "native_goal_mode_requested": contract["native_goal_mode_requested"],
-            "native_goal_mode_invoked": contract["native_goal_mode_invoked"],
-            "native_goal_mode_confirmation_status": contract[
-                "native_goal_mode_confirmation_status"
-            ],
-            "codex_acp_protocol_used": contract["codex_acp_protocol_used"],
-            "skillsbench_route_semantics": contract["skillsbench_route_semantics"],
-            "curated_skills_visible": contract["curated_skills_visible"],
-            "product_mode": contract.get("product_mode") is True,
-            "blind_loop": contract["blind_loop"],
-            "official_feedback_blinded": contract["official_feedback_blinded"],
-            "reward_feedback_forwarded": contract["reward_feedback_forwarded"],
-            "official_score_comparable_to_native_codex": contract[
-                "official_score_comparable_to_native_codex"
-            ],
-            "official_score_comparable_to_goal_harness_treatment": contract[
-                "official_score_comparable_to_goal_harness_treatment"
-            ],
+            "case_semantics_changed_by_harness": contract_case_semantics_changed_by_harness,
+            "goal_harness_inside_case": contract_goal_harness_inside_case,
+            "goal_harness_automation_loop": contract_goal_harness_automation_loop,
+            "inner_codex_goal_mode": contract_inner_codex_goal_mode,
+            "native_goal_mode_requested": contract_native_goal_mode_requested,
+            "native_goal_mode_invoked": contract_native_goal_mode_invoked,
+            "native_goal_mode_confirmation_status": contract_native_goal_mode_confirmation_status,
+            "codex_acp_protocol_used": contract_codex_acp_protocol_used,
+            "skillsbench_route_semantics": contract_skillsbench_route_semantics,
+            "curated_skills_visible": contract_curated_skills_visible,
+            "product_mode": False if is_oracle_runner else contract.get("product_mode") is True,
+            "blind_loop": contract_blind_loop,
+            "official_feedback_blinded": contract_official_feedback_blinded,
+            "reward_feedback_forwarded": contract_reward_feedback_forwarded,
+            "official_score_comparable_to_native_codex": contract_official_score_comparable_to_native_codex,
+            "official_score_comparable_to_goal_harness_treatment": contract_official_score_comparable_to_goal_harness_treatment,
             "leaderboard_evidence": False,
         },
         "evidence_files": evidence_files,
@@ -1626,30 +1691,22 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "official_score_status": official_score_status,
         "official_score_source": official_score_source,
         "score_failure_attribution": score_failure_attribution,
-        "case_semantics_changed_by_harness": contract[
-            "case_semantics_changed_by_harness"
-        ],
-        "goal_harness_inside_case": contract["goal_harness_inside_case"],
-        "goal_harness_automation_loop": contract["goal_harness_automation_loop"],
-        "product_mode": contract.get("product_mode") is True,
-        "inner_codex_goal_mode": contract["inner_codex_goal_mode"],
-        "native_goal_mode_requested": contract["native_goal_mode_requested"],
-        "native_goal_mode_invoked": contract["native_goal_mode_invoked"],
-        "native_goal_mode_confirmation_status": contract[
-            "native_goal_mode_confirmation_status"
-        ],
-        "codex_acp_protocol_used": contract["codex_acp_protocol_used"],
-        "skillsbench_route_semantics": contract["skillsbench_route_semantics"],
-        "curated_skills_visible": contract["curated_skills_visible"],
-        "blind_loop": contract["blind_loop"],
-        "official_feedback_blinded": contract["official_feedback_blinded"],
-        "reward_feedback_forwarded": contract["reward_feedback_forwarded"],
-        "official_score_comparable_to_native_codex": contract[
-            "official_score_comparable_to_native_codex"
-        ],
-        "official_score_comparable_to_goal_harness_treatment": contract[
-            "official_score_comparable_to_goal_harness_treatment"
-        ],
+        "case_semantics_changed_by_harness": contract_case_semantics_changed_by_harness,
+        "goal_harness_inside_case": contract_goal_harness_inside_case,
+        "goal_harness_automation_loop": contract_goal_harness_automation_loop,
+        "product_mode": False if is_oracle_runner else contract.get("product_mode") is True,
+        "inner_codex_goal_mode": contract_inner_codex_goal_mode,
+        "native_goal_mode_requested": contract_native_goal_mode_requested,
+        "native_goal_mode_invoked": contract_native_goal_mode_invoked,
+        "native_goal_mode_confirmation_status": contract_native_goal_mode_confirmation_status,
+        "codex_acp_protocol_used": contract_codex_acp_protocol_used,
+        "skillsbench_route_semantics": contract_skillsbench_route_semantics,
+        "curated_skills_visible": contract_curated_skills_visible,
+        "blind_loop": contract_blind_loop,
+        "official_feedback_blinded": contract_official_feedback_blinded,
+        "reward_feedback_forwarded": contract_reward_feedback_forwarded,
+        "official_score_comparable_to_native_codex": contract_official_score_comparable_to_native_codex,
+        "official_score_comparable_to_goal_harness_treatment": contract_official_score_comparable_to_goal_harness_treatment,
         "leaderboard_evidence": False,
         "trace_publicness": "public_skillsbench_official_compact_result_only",
         "failure_attribution_labels": failure_labels,

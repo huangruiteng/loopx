@@ -489,6 +489,33 @@ def write_official_skillsbench_reward_artifact_recovery_result(root: Path) -> Pa
     return result_path
 
 
+def write_official_skillsbench_oracle_reward_artifact_recovery_result(
+    root: Path,
+) -> Path:
+    run_dir = root / "official" / "2026-06-19__09-28-56" / "sample-task__oracle"
+    result_path = run_dir / "result.json"
+    write_json(
+        result_path,
+        {
+            "task_name": "sample-task",
+            "rollout_name": "sample-task__oracle",
+            "agent": "oracle",
+            "agent_name": "oracle",
+            "model": None,
+            "n_tool_calls": 0,
+            "n_prompts": 0,
+            "error": None,
+            "verifier_error": "verifier crashed: No reward file found",
+            "partial_trajectory": False,
+            "trajectory_source": None,
+        },
+    )
+    reward_path = run_dir / "verifier" / "reward.txt"
+    reward_path.parent.mkdir(parents=True, exist_ok=True)
+    reward_path.write_text("1\n", encoding="utf-8")
+    return result_path
+
+
 def write_official_skillsbench_app_mount_failure(root: Path) -> Path:
     run_dir = root / "official" / "2026-06-15__00-00-00" / "citation-check__abc123"
     result_path = run_dir / "result.json"
@@ -868,6 +895,44 @@ def test_skillsbench_result_reward_artifact_recovery() -> None:
         ), compact
         assert compact["progress"]["n_completed_trials"] == 1, compact
         assert compact["progress"]["n_errored_trials"] == 0, compact
+
+
+def test_skillsbench_oracle_result_reward_artifact_recovery() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-oracle-reward-") as tmp:
+        result_path = (
+            write_official_skillsbench_oracle_reward_artifact_recovery_result(
+                Path(tmp)
+            )
+        )
+        full_run = build_skillsbench_benchflow_result_benchmark_run(
+            result_path,
+            route="goal-harness-product-mode",
+        )
+        compact = compact_benchmark_run(full_run)
+        assert compact is not None
+        assert compact["agent"]["name"] == "oracle", compact
+        assert compact["agent"]["model"] == "not_applicable_oracle_runner", compact
+        assert compact["official_task_score"]["value"] == 1.0, compact
+        assert compact["official_task_score"]["passed"] is True, compact
+        assert compact["progress"]["n_completed_trials"] == 1, compact
+        assert compact["progress"]["n_errored_trials"] == 0, compact
+        assert compact["model_control"]["control_status"] == (
+            "not_applicable_oracle_runner"
+        ), compact
+        assert compact["model_control"]["actual_model_verified"] is True, compact
+        assert full_run["interaction_counters"]["codex_acp_protocol_used"] is False
+        assert full_run["episode_policy"]["inner_case_actor"] == (
+            "skillsbench_oracle_solution_runner"
+        ), full_run
+        assert full_run["mode_contract"]["codex_acp_protocol_used"] is False, full_run
+        assert full_run["mode_contract"]["goal_harness_inside_case"] is False, full_run
+        assert full_run["mode_contract"]["official_score_comparable_to_native_codex"] is False
+        assert full_run["mode_contract"][
+            "official_score_comparable_to_goal_harness_treatment"
+        ] is False
+        assert "verifier_infrastructure_failure" not in compact.get(
+            "failure_attribution_labels", []
+        ), compact
 
 
 def test_skillsbench_app_mount_failure_attribution() -> None:
@@ -3315,6 +3380,7 @@ if __name__ == "__main__":
     test_skillsbench_skeleton_builder()
     test_skillsbench_official_result_builder()
     test_skillsbench_result_reward_artifact_recovery()
+    test_skillsbench_oracle_result_reward_artifact_recovery()
     test_skillsbench_app_mount_failure_attribution()
     test_skillsbench_app_skills_failure_attribution()
     test_skillsbench_docker_port_conflict_attribution()
