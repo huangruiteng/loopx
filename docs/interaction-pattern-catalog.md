@@ -143,6 +143,7 @@ Projection, authority, write scope, and lease integrity.
 | P1 | IP-011 | Authority Material Intake | Agent plus registry | notify only on gate/conflict | register redacted source contract before relying on material |
 | P1 | IP-016 | Task Lease Claim | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
 | P1 | IP-019 | Side-Agent Scoped Continuation | Primary plus side agent | no interruption unless scope/review is ambiguous | side agent claims scoped todo, uses independent worktree, then self-merges small validated work or hands review to primary |
+| P1 | IP-020 | Todo Claim / Supersede / Successor Lifecycle | Agent plus controller | no interruption unless successor is a user todo or conflict needs decision | claim before delivery; supersede stale work; complete slices with successor or no-follow-up rationale |
 
 ### Evidence Lifecycle
 
@@ -936,6 +937,103 @@ itself without the explicit self-merge path.
 - `examples/todo-cli-smoke.py`
 - `examples/todo-concurrent-write-lock-smoke.py`
 - `examples/heartbeat-prompt-smoke.py`
+
+#### IP-020 Todo Claim / Supersede / Successor Lifecycle
+
+**Trigger**
+
+- a selected agent todo has a stable `todo_id` and the current agent is about
+  to spend a delivery turn on it;
+- a todo has become stale because the user changed the route, new evidence made
+  the old wording wrong, or a narrower replacement should become the first
+  executable item;
+- a non-trivial slice is complete but the feature still needs rollout,
+  product-path proof, docs, benchmark evidence, telemetry, or review;
+- multiple registered agents can see the same checklist and need ownership to
+  be visible without moving scope into todo metadata.
+
+**Expected behavior**
+
+The agent claims concrete work before delivery:
+
+```bash
+goal-harness todo claim \
+  --goal-id <goal-id> \
+  --todo-id <todo_id> \
+  --claimed-by <agent-id>
+```
+
+`claimed_by` is a soft owner, not permission. It must be checked against
+registered agent ids and must not bypass quota, user gates, write boundaries,
+repository policy, validation, or public/private scans.
+
+When an open todo is wrong rather than merely incomplete, the agent should
+supersede it instead of editing its text in place or marking it done:
+
+```bash
+goal-harness todo supersede \
+  --goal-id <goal-id> \
+  --todo-id <todo_id> \
+  --reason "<public-safe reason>" \
+  --next-agent-todo "<replacement executable action>"
+```
+
+Supersede preserves the old work item as history, records `superseded_by`, and
+makes the replacement the durable current route. Use it for route changes,
+stale benchmark lanes, narrowed blockers, or user-corrected priorities.
+
+When a non-trivial slice is completed, the completion must either create a
+successor todo or record why no successor is needed:
+
+```bash
+goal-harness todo complete \
+  --goal-id <goal-id> \
+  --todo-id <todo_id> \
+  --evidence "<public-safe validation or artifact>" \
+  --next-agent-todo "<next rollout/proof/docs/review step>"
+```
+
+Successor todos are the lightweight lifecycle model. Goal Harness should not
+grow many feature states such as slice_done, rolled_out, or proven_in_product
+unless a UI/runtime need appears. A done todo means the current slice is done;
+the successor expresses the next slice. If there is truly no follow-up, the
+completion note must include a compact no-follow-up rationale.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  S["selected open todo"] --> C{"claimed by this agent?"}
+  C -->|"no"| L["claim with claimed_by"]
+  C -->|"yes"| W["deliver bounded slice"]
+  L --> W
+  W --> V{"validated?"}
+  V -->|"no"| B["write blocker or keep todo open"]
+  V -->|"yes"| R{"old todo still describes the route?"}
+  R -->|"no"| U["supersede with replacement todo"]
+  R -->|"yes"| F{"follow-up needed?"}
+  F -->|"yes"| N["complete with successor todo"]
+  F -->|"no"| X["complete with no-follow-up rationale"]
+  U --> Q["refresh-state / quota projects successor"]
+  N --> Q
+  X --> Q
+```
+
+**Bad smell**
+
+The agent starts work without claiming the todo, rewrites an open todo after a
+route correction so history is lost, marks a broad feature done after one PR
+without a successor, creates a successor only in chat, or treats `claimed_by` as
+permission to ignore gates and boundaries.
+
+**Validation**
+
+- `docs/project-agent-todo-contract.md`
+- `examples/todo-lifecycle-cli-smoke.py`
+- `examples/todo-cli-smoke.py`
+- `examples/todo-concurrent-write-lock-smoke.py`
+- future status/quota smoke that verifies first executable successor projection
+  after `todo supersede` and `todo complete --next-agent-todo`.
 
 ### Evidence Lifecycle
 
