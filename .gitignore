@@ -11,6 +11,7 @@ dist/
 .pytest_cache/
 .ruff_cache/
 .playwright-cli/
+output/playwright/
 
 # Project-local private state. Keep real project paths, task ids, tokens,
 # internal logs, and active goal state outside the public repository.

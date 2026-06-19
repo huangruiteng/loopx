@@ -4,7 +4,7 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
-import { rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dashboardDir = resolve(repoRoot, "apps/dashboard");
 const fixtureName = "status.home.browser-smoke.json";
 const fixturePath = resolve(dashboardDir, "public", fixtureName);
+const visualOutputDir = resolve(repoRoot, "output/playwright/dashboard-home-visual-acceptance");
 const port = Number(process.env.GOAL_HARNESS_DASHBOARD_HOME_SMOKE_PORT ?? "5194");
 
 const quotaEligible = {
@@ -479,9 +480,103 @@ function startDashboardServer() {
   });
 }
 
+function formatOverflowOffender(offender) {
+  const id = offender.testid ? `[data-testid="${offender.testid}"]` : offender.tag;
+  return `${id} left=${offender.left} right=${offender.right} width=${offender.width} "${offender.text}"`;
+}
+
+async function assertNoHorizontalOverflow(page, label) {
+  const report = await page.evaluate(() => {
+    const viewportWidth = window.innerWidth;
+    const root = document.documentElement;
+    const body = document.body;
+    const scrollWidth = Math.max(root.scrollWidth, body?.scrollWidth ?? 0);
+    const offenders = [];
+    for (const element of Array.from(document.body.querySelectorAll("*"))) {
+      const style = window.getComputedStyle(element);
+      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+        continue;
+      }
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) {
+        continue;
+      }
+      if (rect.left < -2 || rect.right > viewportWidth + 2) {
+        offenders.push({
+          tag: element.tagName.toLowerCase(),
+          testid: element.getAttribute("data-testid"),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+          text: (element.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 90),
+        });
+      }
+      if (offenders.length >= 8) {
+        break;
+      }
+    }
+    return {
+      viewportWidth,
+      scrollWidth,
+      overflowPx: Math.max(0, scrollWidth - viewportWidth),
+      offenders,
+    };
+  });
+  if (report.overflowPx > 2) {
+    const offenders = report.offenders.map(formatOverflowOffender).join(" | ");
+    throw new Error(`${label} horizontal overflow: viewport=${report.viewportWidth} scroll=${report.scrollWidth} offenders=${offenders || "none"}`);
+  }
+}
+
+async function assertDecisionFrameVisible(page, label) {
+  const decisionFrame = page.locator('[data-testid^="share-decision-frame-"]').first();
+  await decisionFrame.scrollIntoViewIfNeeded();
+  const metrics = await decisionFrame.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      left: Math.round(rect.left),
+      right: Math.round(rect.right),
+      top: Math.round(rect.top),
+      bottom: Math.round(rect.bottom),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      text: (element.textContent ?? "").replace(/\s+/g, " ").trim(),
+    };
+  });
+  if (metrics.left < 0 || metrics.right > metrics.viewportWidth || metrics.top < 0 || metrics.bottom > metrics.viewportHeight) {
+    throw new Error(`${label} decision frame is not fully visible: ${JSON.stringify(metrics)}`);
+  }
+  const requiredFrameText = ["等待方", "推荐动作", "安全边界", "首个用户 Todo", "最高优 Agent Todo"];
+  const missing = requiredFrameText.filter((text) => !metrics.text.includes(text));
+  if (missing.length) {
+    throw new Error(`${label} decision frame missing labels: ${missing.join(", ")}`);
+  }
+}
+
+async function captureHomeVisualAcceptance(page, url, label) {
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.waitForSelector('[data-testid="share-overview"]', { timeout: 10_000 });
+  await assertNoHorizontalOverflow(page, `${label} top`);
+  await page.screenshot({
+    path: resolve(visualOutputDir, `${label}-home-top.png`),
+    fullPage: false,
+    animations: "disabled",
+  });
+  await assertDecisionFrameVisible(page, label);
+  await assertNoHorizontalOverflow(page, `${label} decision frame`);
+  await page.screenshot({
+    path: resolve(visualOutputDir, `${label}-decision-frame.png`),
+    fullPage: false,
+    animations: "disabled",
+  });
+}
+
 async function main() {
   const { chromium } = loadPlaywright();
   await writeFile(fixturePath, JSON.stringify(statusFixture, null, 2) + "\n", "utf-8");
+  await mkdir(visualOutputDir, { recursive: true });
 
   const server = startDashboardServer();
   let browser;
@@ -551,6 +646,18 @@ async function main() {
     const url = new URL(page.url());
     if (url.searchParams.get("view")) {
       throw new Error(`Canonical home should not keep a view search param: ${page.url()}`);
+    }
+
+    await captureHomeVisualAcceptance(page, `${baseUrl}/?statusUrl=/${fixtureName}`, "desktop");
+    const mobilePage = await browser.newPage({
+      isMobile: true,
+      viewport: { width: 390, height: 900 },
+    });
+    mobilePage.on("pageerror", (error) => pageErrors.push(`mobile: ${error.message}`));
+    try {
+      await captureHomeVisualAcceptance(mobilePage, `${baseUrl}/?statusUrl=/${fixtureName}`, "mobile");
+    } finally {
+      await mobilePage.close();
     }
 
     await page.goto(`${baseUrl}/?view=ops&goalId=goal-harness-meta&statusUrl=/${fixtureName}`, { waitUntil: "networkidle" });

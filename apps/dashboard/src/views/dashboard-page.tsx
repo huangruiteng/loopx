@@ -3363,7 +3363,7 @@ function ShareEvidenceView({
       <main className="min-h-screen bg-[#f7f7f4] text-slate-950">
         <div className="mx-auto max-w-[1500px] space-y-5 px-5 py-5">
           <section
-            className="rounded-2xl border border-slate-200 bg-white px-6 py-6 shadow-sm"
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm sm:px-6 sm:py-6"
             data-testid="share-overview"
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -3373,7 +3373,7 @@ function ShareEvidenceView({
                   <Badge variant="neutral">四项目实证</Badge>
                   <Badge variant={payload.ok ? "success" : "danger"}>{payload.ok ? "状态健康" : "健康阻塞"}</Badge>
                 </div>
-                <h1 className="mt-3 text-4xl font-semibold tracking-normal text-slate-950">
+                <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-normal text-slate-950 sm:text-4xl sm:leading-tight">
                   把多项目 Agent 工作变成可管理的 Todo、证据和配额
                 </h1>
                 <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">

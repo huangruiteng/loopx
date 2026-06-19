@@ -232,10 +232,13 @@ public-safe four-project fixture, opens the root route without `view=share`,
 checks the Chinese operator copy for user todos, agent priorities, p4/p3
 concurrency, quota guard state, per-project top-4 todo status, and state
 writeback, and rejects raw machine tokens such as `single_surface`,
-`focus_wait`, or `active p4 <= 2` on the first screen. It uses an installed
-Playwright package or the Codex bundled runtime when available, and starts Vite
-through the local `vite` package rather than depending on `npm` / `npx` being
-on `PATH`.
+`focus_wait`, or `active p4 <= 2` on the first screen. It also captures desktop
+and mobile first-screen / decision-frame screenshots under
+`output/playwright/dashboard-home-visual-acceptance/` and fails on horizontal
+overflow so density regressions are visible before calling the frontend broadly
+usable. It uses an installed Playwright package or the Codex bundled runtime
+when available, and starts Vite through the local `vite` package rather than
+depending on `npm` / `npx` being on `PATH`.
 
 The ops decision-freshness smoke protects the detailed `?view=ops` panel with
 two public fixtures: a live-like zero-item summary and a stale/rebase-required
