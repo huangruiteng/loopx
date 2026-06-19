@@ -30,6 +30,13 @@ includes(dashboardSource, 'if (search.view !== "ops") {', "non-ops renders contr
 includes(dashboardSource, 'void loadFromUrl(defaultGlobalStatusUrl);', "home loads global status source");
 includes(dashboardSource, 'data-testid="share-overview"', "control-plane home test id");
 includes(dashboardSource, 'data-testid={`share-top-todos-${view.spec.id}`}', "share top todo list test id");
+includes(dashboardSource, 'data-testid={`share-decision-frame-${view.spec.id}`}', "first-screen decision frame test id");
+includes(dashboardSource, "第一屏决策帧", "first-screen decision frame label");
+includes(dashboardSource, "等待方", "first-screen waiting owner label");
+includes(dashboardSource, "推荐动作", "first-screen recommended action label");
+includes(dashboardSource, "安全边界", "first-screen safety boundary label");
+includes(dashboardSource, "首个用户 Todo", "first-screen first user todo label");
+includes(dashboardSource, "最高优 Agent Todo", "first-screen top agent todo label");
 includes(dashboardSource, "Top-4 Todo", "share top-four todo label");
 includes(dashboardSource, "已完成", "share todo done status");
 includes(dashboardSource, "决策需 rebase", "share decision freshness warning");

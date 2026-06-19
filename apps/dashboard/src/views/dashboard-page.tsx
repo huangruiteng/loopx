@@ -2811,6 +2811,52 @@ function shareStatusForGoal(view: ShareGoalView): { label: string; summary: stri
   };
 }
 
+function ShareDecisionFrame({
+  status,
+  view,
+}: {
+  status: ReturnType<typeof shareStatusForGoal>;
+  view: ShareGoalView;
+}) {
+  const projectAsset = view.row?.queueItem?.project_asset;
+  const waitingOwnerRaw = projectAsset?.owner ?? view.row?.waitingOn ?? "clear";
+  const waitingOwner = shareWaitingLabel[waitingOwnerRaw] ?? (shareMachineLabel(waitingOwnerRaw) || waitingOwnerRaw);
+  const recommendedAction = projectAsset?.next_action ?? view.row?.queueItem?.recommended_action ?? status.summary;
+  const safetyBoundary = projectAsset?.stop_condition
+    ?? view.row?.queueItem?.next_handoff_condition
+    ?? "未显式授权写入或生产动作；只按当前 quota / handoff 边界推进。";
+  const firstUserTodo = firstOpenTodo(view.userTodos);
+  const firstAgentTodo = firstOpenTodo(view.agentTodos);
+
+  const rows = [
+    ["等待方", waitingOwner],
+    ["推荐动作", compactShareText(recommendedAction, 108)],
+    ["安全边界", compactShareText(safetyBoundary, 108)],
+    ["首个用户 Todo", compactShareText(firstUserTodo?.text, 108)],
+    ["最高优 Agent Todo", compactShareText(firstAgentTodo?.text, 108)],
+  ] as const;
+
+  return (
+    <div
+      className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
+      data-testid={`share-decision-frame-${view.spec.id}`}
+    >
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Badge variant="neutral">第一屏决策帧</Badge>
+        <span className="text-[11px] font-medium text-slate-500">先看等谁、能否推进、边界和下一步。</span>
+      </div>
+      <div className="grid gap-2 text-xs leading-5">
+        {rows.map(([label, value]) => (
+          <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-2" key={label}>
+            <div className="font-semibold text-slate-500">{label}</div>
+            <div className="line-clamp-2 break-words font-medium text-slate-800">{value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function shareStatusText(row?: GoalDirectoryRow) {
   if (!row) {
     return "未接入";
@@ -2869,7 +2915,7 @@ function ShareProjectCard({ view }: { view: ShareGoalView }) {
   return (
     <article
       className={cn(
-        "grid min-h-[410px] content-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm",
+        "grid min-h-[520px] content-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm",
         "border-t-4",
         view.spec.accent,
       )}
@@ -2887,6 +2933,7 @@ function ShareProjectCard({ view }: { view: ShareGoalView }) {
           <Badge variant={status.variant}>{status.label}</Badge>
         </div>
         <p className="mt-3 text-sm leading-6 text-slate-700">{view.spec.emphasis}</p>
+        <ShareDecisionFrame status={status} view={view} />
 
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
           <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2">
