@@ -43,6 +43,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_APT_RETRY_BEGIN,
     DOCKER_APP_SKILLS_MOUNT_BEGIN,
     DOCKER_HOST_CPU_ENV,
+    LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
     PRODUCT_MODE_CASE_STATE_PATH,
     PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
     _tail,
@@ -55,6 +56,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     build_plan,
     build_runner_failure_compact,
     main as skillsbench_automation_loop_main,
+    materialize_local_codex_participant,
     parse_args,
     product_mode_case_state_seed_text,
     reduce_result,
@@ -89,9 +91,17 @@ def test_skillsbench_local_driver_a2a_contract_keeps_codex_local() -> None:
     assert payload["ready"] is False, payload
     assert (
         payload["first_blocker"]
-        == "skillsbench_local_codex_a2a_participant_not_materialized"
+        == "skillsbench_local_codex_cli_participant_not_materialized"
     ), payload
     assert payload["local_driver_contract"]["ready"] is False, payload
+    assert (
+        payload["local_driver_contract"]["codex_cli_participant_materialized"]
+        is False
+    ), payload
+    assert (
+        payload["local_driver_contract"]["a2a_worker_handshake_materialized"]
+        is False
+    ), payload
     assert payload["local_driver_contract"]["credential_sync_allowed"] is False, payload
     assert payload["remote_executor_contract"]["ready"] is True, payload
     assert (
@@ -138,6 +148,52 @@ def test_skillsbench_local_driver_a2a_contract_ready_only_after_both_sides() -> 
     assert payload["remote_executor_contract"]["ready"] is True, payload
     assert payload["boundary"]["raw_logs_public"] is False, payload
     assert payload["read_boundary"]["compact_only"] is True, payload
+
+
+def test_skillsbench_local_driver_a2a_contract_distinguishes_cli_from_handshake() -> None:
+    payload = build_skillsbench_local_driver_a2a_contract(
+        task_id="ada-bathroom-plan-repair",
+        local_codex_driver_ready=True,
+        local_codex_cli_participant_ready=True,
+        local_a2a_worker_handshake_ready=False,
+        remote_executor_ready=True,
+        remote_task_data_ready=True,
+    )
+    assert payload["ready"] is False, payload
+    assert (
+        payload["first_blocker"]
+        == "skillsbench_local_a2a_worker_handshake_not_materialized"
+    ), payload
+    assert (
+        payload["next_action"]
+        == "wire_local_codex_participant_to_a2a_worker_before_mini_pair"
+    ), payload
+    assert (
+        payload["local_driver_contract"]["codex_cli_participant_materialized"]
+        is True
+    ), payload
+    assert (
+        payload["local_driver_contract"]["a2a_worker_handshake_materialized"]
+        is False
+    ), payload
+
+
+def test_local_codex_participant_ping_missing_binary_is_compact() -> None:
+    payload = materialize_local_codex_participant(
+        codex_bin="/definitely/missing/goal-harness-codex",
+        timeout_sec=1,
+    )
+    assert (
+        payload["schema_version"]
+        == LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION
+    ), payload
+    assert payload["ready"] is False, payload
+    assert payload["first_blocker"] == "local_codex_cli_not_on_path", payload
+    assert payload["codex_cli_invoked"] is False, payload
+    assert payload["raw_output_recorded"] is False, payload
+    assert payload["raw_event_jsonl_recorded"] is False, payload
+    assert payload["credential_values_recorded"] is False, payload
+    assert payload["host_paths_recorded"] is False, payload
 
 
 def test_blind_loop_continuation_reprojects_round_one_constraints() -> None:
@@ -3443,6 +3499,8 @@ if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_five()
     test_skillsbench_local_driver_a2a_contract_keeps_codex_local()
     test_skillsbench_local_driver_a2a_contract_ready_only_after_both_sides()
+    test_skillsbench_local_driver_a2a_contract_distinguishes_cli_from_handshake()
+    test_local_codex_participant_ping_missing_binary_is_compact()
     test_blind_loop_continuation_reprojects_round_one_constraints()
     test_product_mode_declared_done_marker_detection()
     test_product_mode_case_state_seed_uses_active_goal_shape()
