@@ -248,6 +248,36 @@ trajectories, credentials, or command argv. If a blocker repeats, improve the
 SOP or script in the same batch instead of preserving a private one-off shell
 fragment.
 
+For SkillsBench, prove the verifier dependency substrate before claiming a
+no-upload task result. A timeout-looking failure can actually be a missing
+verifier launcher surface: the verifier may need minimal Python, pip, curl,
+certificates, `uv`, and `uvx` before it can run the official oracle sanity path.
+Do not repair that first by globally extending timeouts.
+
+Preview the public-safe prewarm plan:
+
+```bash
+python3 scripts/skillsbench_verifier_prewarm_plan.py \
+  --task-id hello-world \
+  --pretty
+```
+
+The plan is deliberately not an upstream patch. Apply it only to a temporary
+task copy, wrapper layer, or derived sandbox image, then run a one-attempt
+oracle no-upload sanity task. Claim SkillsBench case readiness only after the
+oracle run reaches reward `1.0` with verifier errors cleared. If the sanity run
+still times out after the dependency substrate is present, classify it as a
+real verifier timeout and consider a bounded timeout increase for that tier.
+
+Keep these boundaries:
+
+- do not modify official task truth, scorer, prompt, or leaderboard behavior;
+- do not publish raw verifier output, task text, trajectories, local paths, or
+  remote run directories;
+- record only compact fields such as dependency-prewarm ready/blocked, oracle
+  sanity pass/fail, and the next blocker label
+  `skillsbench_verifier_dependency_prewarm_required`.
+
 ### SSH Session Hygiene
 
 When the benchmark host is reached through a jump host, GSSAPI, or another

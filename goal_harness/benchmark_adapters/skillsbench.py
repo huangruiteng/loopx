@@ -39,6 +39,27 @@ SKILLSBENCH_LOCAL_DRIVER_A2A_CONTRACT_SCHEMA_VERSION = (
 SKILLSBENCH_WORKER_HANDSHAKE_PREFLIGHT_SCHEMA_VERSION = (
     "skillsbench_worker_handshake_preflight_v0"
 )
+SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_SCHEMA_VERSION = (
+    "skillsbench_verifier_dependency_prewarm_plan_v0"
+)
+SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_BLOCKER = (
+    "skillsbench_verifier_dependency_prewarm_required"
+)
+SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_APT_PACKAGES = (
+    "python3",
+    "python3-pip",
+    "ca-certificates",
+    "curl",
+)
+SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_REQUIRED_TOOLS = (
+    "uv",
+    "uvx",
+)
+SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_SCOPES = (
+    "temporary_task_copy",
+    "wrapper_layer",
+    "derived_sandbox_image",
+)
 SKILLSBENCH_LOCAL_DRIVER_A2A_PAIR_ROUTES = (
     "raw-codex-autonomous-max5",
     "goal-harness-product-mode",
@@ -276,6 +297,120 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
 def skillsbench_job_name(dataset: str, task_id: str, route: str) -> str:
     raw = f"{dataset}_{task_id}_{route}"
     return re.sub(r"[^A-Za-z0-9]+", "_", raw).strip("_").lower()
+
+
+def build_skillsbench_verifier_dependency_prewarm_plan(
+    *,
+    dataset: str = SKILLSBENCH_DEFAULT_DATASET,
+    task_id: str = "hello-world",
+    patch_scope: str = "temporary_task_copy",
+    no_upload: bool = True,
+    submit_enabled: bool = False,
+    oracle_sanity_required: bool = True,
+    known_blockers: Iterable[str] = (),
+) -> dict[str, Any]:
+    """Build a public-safe SkillsBench verifier dependency prewarm plan.
+
+    The plan captures the reusable cloud-host lesson from oracle sanity probes:
+    when the verifier sandbox lacks the dependency launcher substrate, extending
+    timeouts is the wrong first repair. Prewarm the verifier dependency surface
+    in a temporary wrapper/task-copy layer, prove oracle sanity, and only then
+    claim no-upload case readiness.
+    """
+
+    safe_dataset = _skillsbench_public_safe_label(dataset, limit=80)
+    safe_task_id = _skillsbench_public_safe_label(task_id, limit=120)
+    blockers = [str(item) for item in known_blockers if str(item)]
+    if not safe_dataset:
+        safe_dataset = SKILLSBENCH_DEFAULT_DATASET
+        blockers.append("skillsbench_dataset_not_public_safe")
+    if not safe_task_id:
+        safe_task_id = "hello-world"
+        blockers.append("skillsbench_task_id_not_public_safe")
+
+    normalized_scope = _skillsbench_public_safe_label(patch_scope, limit=80) or ""
+    if normalized_scope not in SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_SCOPES:
+        blockers.append("skillsbench_verifier_prewarm_scope_unsupported")
+    if not no_upload:
+        blockers.append("skillsbench_no_upload_boundary_not_enabled")
+    if submit_enabled:
+        blockers.append("skillsbench_submit_must_remain_disabled")
+    if not oracle_sanity_required:
+        blockers.append("skillsbench_oracle_sanity_probe_required")
+
+    ready = not blockers
+    first_blocker = (
+        "ready_for_skillsbench_verifier_dependency_prewarm"
+        if ready
+        else blockers[0]
+    )
+    next_action = (
+        "apply_verifier_dependency_prewarm_then_run_oracle_sanity"
+        if ready
+        else "repair_skillsbench_verifier_dependency_prewarm_plan"
+    )
+
+    return {
+        "schema_version": SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_SCHEMA_VERSION,
+        "benchmark_id": safe_dataset,
+        "task_id": safe_task_id,
+        "ready": ready,
+        "first_blocker": first_blocker,
+        "blockers": blockers,
+        "next_action": next_action,
+        "prewarm_blocker_label": SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_BLOCKER,
+        "prewarm_scope": {
+            "selected": normalized_scope or patch_scope,
+            "allowed": list(SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_SCOPES),
+            "forbidden": [
+                "upstream_task_truth",
+                "official_scorer",
+                "official_prompt",
+                "leaderboard_upload",
+            ],
+        },
+        "dependency_contract": {
+            "apt_packages": list(SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_APT_PACKAGES),
+            "required_tools": list(SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_REQUIRED_TOOLS),
+            "launcher_surface": "uvx",
+            "install_shape": "apt_minimal_python_plus_uv_installer",
+            "dockerfile_snippet": [
+                "RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates curl",
+                "RUN rm -rf /var/lib/apt/lists/*",
+                "RUN curl -LsSf https://astral.sh/uv/install.sh | sh",
+                "ENV PATH=\"/root/.local/bin:${PATH}\"",
+            ],
+        },
+        "oracle_sanity_contract": {
+            "required": oracle_sanity_required,
+            "agent": "oracle",
+            "sandbox": "docker",
+            "attempts": 1,
+            "no_upload": no_upload,
+            "submit_enabled": submit_enabled,
+            "expected_reward": 1.0,
+            "claim_policy": (
+                "claim no-upload SkillsBench case readiness only after oracle "
+                "sanity completes with reward 1.0 and verifier_errored=0"
+            ),
+        },
+        "timeout_policy": {
+            "generic_timeout_extension_first": False,
+            "extend_timeout_after_dependency_substrate_verified": True,
+            "timeout_blocker_label": "skillsbench_verifier_timeout",
+        },
+        "boundary": {
+            "raw_task_text_read": False,
+            "raw_logs_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_trajectory_recorded": False,
+            "credential_values_recorded": False,
+            "host_paths_recorded": False,
+            "remote_paths_recorded": False,
+            "upload_allowed": False,
+            "submit_allowed": False,
+        },
+    }
 
 
 def build_skillsbench_local_driver_a2a_contract(

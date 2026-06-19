@@ -98,6 +98,32 @@ def main() -> int:
         assert reduced["boundary"]["raw_logs_read"] is False
         assert reduced["boundary"]["private_paths_recorded"] is False
 
+        skillsbench_prewarm = run_json(
+            [
+                "scripts/skillsbench_verifier_prewarm_plan.py",
+                "--task-id",
+                "hello-world",
+            ]
+        )
+        assert (
+            skillsbench_prewarm["schema_version"]
+            == "skillsbench_verifier_dependency_prewarm_plan_v0"
+        )
+        assert skillsbench_prewarm["ready"] is True
+        assert (
+            skillsbench_prewarm["prewarm_blocker_label"]
+            == "skillsbench_verifier_dependency_prewarm_required"
+        )
+        assert skillsbench_prewarm["oracle_sanity_contract"]["no_upload"] is True
+        assert skillsbench_prewarm["oracle_sanity_contract"]["expected_reward"] == 1.0
+        assert (
+            "upstream_task_truth"
+            in skillsbench_prewarm["prewarm_scope"]["forbidden"]
+        )
+        assert "uvx" in skillsbench_prewarm["dependency_contract"]["required_tools"]
+        assert skillsbench_prewarm["boundary"]["raw_logs_recorded"] is False
+        assert skillsbench_prewarm["boundary"]["remote_paths_recorded"] is False
+
     print("benchmark-ecs-developer-tooling-smoke ok")
     return 0
 
