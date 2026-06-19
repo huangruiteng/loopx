@@ -12,6 +12,7 @@ TODO_METADATA_TOKEN_PATTERN = re.compile(r"(?P<key>[a-z_][a-z0-9_-]*)=(?P<value>
 TODO_ACTION_KIND_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 TODO_ID_PATTERN = re.compile(r"^todo_[a-z0-9_-]{3,64}$")
 TODO_AGENT_CLAIM_PATTERN = re.compile(r"^[a-z][a-z0-9_.:@-]{0,79}$")
+TODO_CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9_:-]{0,63}$")
 TODO_WRITE_SCOPE_MAX_CHARS = 160
 
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
@@ -183,6 +184,28 @@ def normalize_required_write_scopes(value: Any) -> list[str]:
     return scopes
 
 
+def normalize_required_capabilities(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        raw_values = [str(item or "") for item in value]
+    else:
+        raw_values = re.split(r"[,;|]", str(value or ""))
+    capabilities: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        capability = compact_todo_text(raw).lower().replace("-", "_").replace(" ", "_")
+        if not capability:
+            continue
+        if not TODO_CAPABILITY_PATTERN.match(capability):
+            continue
+        if capability in seen:
+            continue
+        seen.add(capability)
+        capabilities.append(capability)
+    return capabilities
+
+
 def build_todo_id(
     *,
     role: Any,
@@ -267,6 +290,10 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             scopes = normalize_required_write_scopes(value)
             if scopes:
                 metadata["required_write_scopes"] = scopes
+        elif key in {"required_capability", "required_capabilities"}:
+            capabilities = normalize_required_capabilities(value)
+            if capabilities:
+                metadata["required_capabilities"] = capabilities
         elif key == "claimed_by":
             claimed_by = normalize_todo_claimed_by(value)
             if claimed_by:
@@ -288,6 +315,7 @@ def format_todo_metadata_line(
     task_class: str | None = None,
     action_kind: str | None = None,
     required_write_scopes: Any = None,
+    required_capabilities: Any = None,
     claimed_by: str | None = None,
     note: str | None = None,
     evidence: str | None = None,
@@ -324,6 +352,14 @@ def format_todo_metadata_line(
         fields.append(
             "required_write_scopes="
             f"{encode_metadata_value(','.join(normalized_write_scopes))}"
+        )
+    normalized_capabilities = normalize_required_capabilities(required_capabilities)
+    if required_capabilities and not normalized_capabilities:
+        raise ValueError("required_capabilities must contain public-safe capability tokens")
+    if normalized_capabilities:
+        fields.append(
+            "required_capabilities="
+            f"{encode_metadata_value(','.join(normalized_capabilities))}"
         )
     normalized_claimed_by = normalize_todo_claimed_by(claimed_by)
     if claimed_by and not normalized_claimed_by:

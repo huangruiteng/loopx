@@ -258,6 +258,58 @@ for a bounded repair turn but sets `normal_delivery_allowed=false`,
 checkpointed boundary projection, rewrite the todo inside the current boundary,
 or write a concrete user/controller gate before attempting the write.
 
+Executable todos can also declare environment capability requirements through
+todo metadata, for example `required_capabilities=shell%2Cbenchmark_runner` or
+the CLI flag `goal-harness todo add --required-capability benchmark_runner`.
+This is not a global agent profile and not a permission system. It is a
+per-todo execution preflight so the guard can distinguish "quota is available"
+from "this step can actually run in the current environment."
+
+`quota should-run` compares the visible executable advancement queue with the
+current launcher capabilities. Basic local capabilities such as `shell`,
+`filesystem_read`, and `filesystem_write` are assumed by default; launchers can
+add temporary capabilities with `--available-capability`, for example:
+
+```bash
+goal-harness --format json quota should-run \
+  --goal-id <goal-id> \
+  --available-capability benchmark_runner
+```
+
+Use the same `--available-capability` flags for `quota spend-slot` after a
+validated turn, because spend preview recomputes the same should-run guard
+before writing quota accounting.
+
+The resulting `capability_gate` is a read-only projection:
+
+```json
+{
+  "schema_version": "capability_gate_v0",
+  "action": "run",
+  "required": ["shell", "filesystem_write"],
+  "missing": [],
+  "selected_todo": {"todo_id": "todo_docs"},
+  "blocked_candidates": [
+    {
+      "todo_id": "todo_eval",
+      "required_capabilities": ["shell", "benchmark_runner"],
+      "missing_capabilities": ["benchmark_runner"]
+    }
+  ]
+}
+```
+
+Multiple P0/P1 items are handled as an ordered queue, not as a single selected
+todo. The guard scans visible executable candidates in projection order:
+another runnable P0 beats any P1 fallback; if all visible P0 candidates are
+blocked, the first runnable P1/P2 candidate may run while blocked
+higher-priority candidates stay visible in `blocked_candidates`. If every
+visible executable candidate is missing a capability, the gate returns
+`action=repair_bridge` for repairable local bridges such as
+`benchmark_runner`/`external_evidence_poll`, `action=ask_owner` for owner-held
+capabilities such as `network`/`credentials`/`production_access`, or
+`action=skip` for unsupported capability classes.
+
 External-evidence waits have an additional CLI-level observation contract. When
 the selected goal is `state=waiting`, `waiting_on=external_evidence`, and its
 current lane is a continuous monitor, or when the active state says a

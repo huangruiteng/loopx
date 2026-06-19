@@ -5473,6 +5473,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     todo_parser.add_argument(
+        "--required-capability",
+        dest="required_capabilities",
+        action="append",
+        help=(
+            "For todo add/update, declare an execution capability such as shell, "
+            "filesystem_write, network, benchmark_runner, or external_evidence_poll. "
+            "Repeat for multiple capabilities."
+        ),
+    )
+    todo_parser.add_argument(
         "--claimed-by",
         help=(
             "For todo add/claim/update/complete, soft-claim the todo for a registered "
@@ -5535,6 +5545,16 @@ def main(argv: list[str] | None = None) -> int:
     quota_parser.add_argument(
         "--agent-id",
         help="Registered agent id for `quota should-run`; suppresses identity-upgrade warnings for current prompts.",
+    )
+    quota_parser.add_argument(
+        "--available-capability",
+        dest="available_capabilities",
+        action="append",
+        help=(
+            "For `quota should-run` and `quota spend-slot`, declare a capability "
+            "available in this current agent environment. Repeat for multiple "
+            "capabilities; basic local shell/filesystem capabilities are assumed."
+        ),
     )
     quota_parser.add_argument("--slots", type=int, default=1, help="Slots to account for `quota spend-slot`.")
     quota_parser.add_argument("--source", choices=["heartbeat", "controller", "adapter"], default="heartbeat", help="Source label for `quota spend-slot`.")
@@ -9674,6 +9694,7 @@ def main(argv: list[str] | None = None) -> int:
                     task_class=args.task_class,
                     action_kind=args.action_kind,
                     required_write_scopes=args.required_write_scopes,
+                    required_capabilities=args.required_capabilities,
                     claimed_by=args.claimed_by,
                     project=Path(args.project).expanduser() if args.project else None,
                     state_file=Path(args.state_file).expanduser() if args.state_file else None,
@@ -9697,6 +9718,7 @@ def main(argv: list[str] | None = None) -> int:
                         ("--task-class", args.task_class),
                         ("--action-kind", args.action_kind),
                         ("--required-write-scope", args.required_write_scopes),
+                        ("--required-capability", args.required_capabilities),
                         ("--next-agent-todo", args.next_agent_todo),
                         ("--next-user-todo", args.next_user_todo),
                         ("--next-claimed-by", args.next_claimed_by),
@@ -9737,10 +9759,11 @@ def main(argv: list[str] | None = None) -> int:
                     args.task_class,
                     args.action_kind,
                     args.required_write_scopes,
+                    args.required_capabilities,
                     args.claimed_by,
                     args.clear_claim,
                 ]):
-                    raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --claimed-by, or --clear-claim")
+                    raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --claimed-by, or --clear-claim")
                 if args.next_claimed_by:
                     raise ValueError("todo update does not support --next-claimed-by")
                 if args.side_agent_self_merged:
@@ -9758,6 +9781,7 @@ def main(argv: list[str] | None = None) -> int:
                     task_class=args.task_class,
                     action_kind=args.action_kind,
                     required_write_scopes=args.required_write_scopes,
+                    required_capabilities=args.required_capabilities,
                     claimed_by=args.claimed_by,
                     clear_claim=bool(args.clear_claim),
                     project=Path(args.project).expanduser() if args.project else None,
@@ -9862,7 +9886,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.quota_command == "should-run":
                 if not args.goal_id:
                     raise ValueError("`goal-harness quota should-run` requires --goal-id")
-                payload = build_quota_should_run(status_payload, goal_id=args.goal_id, agent_id=args.agent_id)
+                payload = build_quota_should_run(
+                    status_payload,
+                    goal_id=args.goal_id,
+                    agent_id=args.agent_id,
+                    available_capabilities=args.available_capabilities,
+                )
             elif args.quota_command == "monitor-poll":
                 if not args.goal_id:
                     raise ValueError("`goal-harness quota monitor-poll` requires --goal-id")
@@ -9886,6 +9915,7 @@ def main(argv: list[str] | None = None) -> int:
                     slots=args.slots,
                     execute=bool(args.execute),
                     source=args.source,
+                    available_capabilities=args.available_capabilities,
                 )
             elif args.quota_command == "void-slot":
                 if not args.goal_id:

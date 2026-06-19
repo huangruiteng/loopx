@@ -45,6 +45,7 @@ from .todo_contract import (
     TODO_TASK_PATTERN,
     build_todo_id,
     normalize_todo_action_kind,
+    normalize_required_capabilities,
     normalize_required_write_scopes,
     normalize_todo_claimed_by,
     normalize_todo_status,
@@ -3592,6 +3593,9 @@ def structured_todo_item(
     required_write_scopes = normalize_required_write_scopes(item.get("required_write_scopes"))
     if required_write_scopes:
         normalized["required_write_scopes"] = required_write_scopes
+    required_capabilities = normalize_required_capabilities(item.get("required_capabilities"))
+    if required_capabilities:
+        normalized["required_capabilities"] = required_capabilities
     claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
     if claimed_by:
         normalized["claimed_by"] = claimed_by
@@ -3619,6 +3623,7 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "task_class",
         "action_kind",
         "required_write_scopes",
+        "required_capabilities",
         "claimed_by",
         "note",
         "evidence",

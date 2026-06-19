@@ -19,6 +19,7 @@ from .todo_contract import (
     TODO_TASK_PATTERN,
     build_todo_id,
     format_todo_metadata_line,
+    normalize_required_capabilities,
     normalize_required_write_scopes,
     normalize_todo_claimed_by,
     normalize_todo_id,
@@ -41,6 +42,7 @@ TODO_METADATA_FIELDS = (
     "task_class",
     "action_kind",
     "required_write_scopes",
+    "required_capabilities",
     "claimed_by",
     "note",
     "evidence",
@@ -299,6 +301,11 @@ def block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             if scopes:
                 metadata[key] = scopes
             continue
+        if key == "required_capabilities":
+            capabilities = normalize_required_capabilities(value)
+            if capabilities:
+                metadata[key] = capabilities
+            continue
         if str(value or "").strip():
             metadata[key] = str(value).strip()
     return metadata
@@ -315,6 +322,12 @@ def metadata_line_for_block(block: dict[str, Any], updates: dict[str, Any]) -> s
             scopes = normalize_required_write_scopes(value)
             if scopes:
                 metadata[key] = scopes
+            else:
+                metadata.pop(key, None)
+        elif key == "required_capabilities":
+            capabilities = normalize_required_capabilities(value)
+            if capabilities:
+                metadata[key] = capabilities
             else:
                 metadata.pop(key, None)
         elif str(value).strip():
@@ -420,6 +433,7 @@ def add_todo_to_lines(
     task_class: str | None = None,
     action_kind: str | None = None,
     required_write_scopes: list[str] | None = None,
+    required_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
 ) -> dict[str, Any]:
     todo_text = normalize_new_todo(text)
@@ -454,6 +468,7 @@ def add_todo_to_lines(
             task_class=task_class,
             action_kind=action_kind,
             required_write_scopes=required_write_scopes,
+            required_capabilities=required_capabilities,
             claimed_by=claimed_by,
         )
         todo_line = "\n".join([f"- [ ] {todo_text}", metadata_line] if metadata_line else [f"- [ ] {todo_text}"])
@@ -472,6 +487,8 @@ def add_todo_to_lines(
             updates["action_kind"] = action_kind
         if required_write_scopes is not None:
             updates["required_write_scopes"] = required_write_scopes
+        if required_capabilities is not None:
+            updates["required_capabilities"] = required_capabilities
         if claimed_by:
             updates["claimed_by"] = claimed_by
         metadata_line = metadata_line_for_block(block, updates)
@@ -489,6 +506,7 @@ def add_todo_to_lines(
         "task_class": task_class,
         "action_kind": action_kind,
         "required_write_scopes": normalize_required_write_scopes(required_write_scopes),
+        "required_capabilities": normalize_required_capabilities(required_capabilities),
         "claimed_by": normalize_todo_claimed_by(claimed_by),
     }
 
@@ -502,6 +520,7 @@ def add_goal_todo(
     task_class: str | None = None,
     action_kind: str | None = None,
     required_write_scopes: list[str] | None = None,
+    required_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
@@ -537,6 +556,7 @@ def add_goal_todo(
             task_class=task_class,
             action_kind=action_kind,
             required_write_scopes=required_write_scopes,
+            required_capabilities=required_capabilities,
             claimed_by=effective_claimed_by,
         )
         added = bool(add_result["added"])
@@ -562,6 +582,7 @@ def add_goal_todo(
         "task_class": add_result.get("task_class"),
         "action_kind": add_result.get("action_kind"),
         "required_write_scopes": add_result.get("required_write_scopes"),
+        "required_capabilities": add_result.get("required_capabilities"),
         "claimed_by": add_result.get("claimed_by"),
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
@@ -599,6 +620,7 @@ def apply_todo_update_to_lines(
     task_class: str | None = None,
     action_kind: str | None = None,
     required_write_scopes: list[str] | None = None,
+    required_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     clear_claim: bool = False,
     claim_only: bool = False,
@@ -644,6 +666,8 @@ def apply_todo_update_to_lines(
         updates["action_kind"] = action_kind
     if required_write_scopes is not None:
         updates["required_write_scopes"] = required_write_scopes
+    if required_capabilities is not None:
+        updates["required_capabilities"] = required_capabilities
     if clear_claim:
         updates["claimed_by"] = None
     elif claimed_by:
@@ -688,6 +712,7 @@ def update_goal_todo(
     task_class: str | None = None,
     action_kind: str | None = None,
     required_write_scopes: list[str] | None = None,
+    required_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     clear_claim: bool = False,
     claim_only: bool = False,
@@ -726,6 +751,7 @@ def update_goal_todo(
             task_class=task_class,
             action_kind=action_kind,
             required_write_scopes=required_write_scopes,
+            required_capabilities=required_capabilities,
             claimed_by=effective_claimed_by,
             clear_claim=clear_claim,
             claim_only=claim_only,
@@ -1105,6 +1131,7 @@ def render_todo_markdown(payload: dict[str, Any]) -> str:
                 f"- already_exists: `{payload.get('already_exists')}`",
                 f"- todo_id: `{payload.get('todo_id')}`",
                 f"- status: `{payload.get('status')}`",
+                f"- required_capabilities: `{payload.get('required_capabilities')}`",
                 f"- claimed_by: `{payload.get('claimed_by')}`",
             ]
         )

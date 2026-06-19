@@ -34,6 +34,7 @@ from .todo_contract import (
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
     next_action_requires_advancement_text,
+    normalize_required_capabilities,
     normalize_todo_claimed_by,
     normalize_required_write_scopes,
     normalize_todo_status,
@@ -133,6 +134,23 @@ EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION = "external_evidence_observation_ob
 INTERACTION_CONTRACT_SCHEMA_VERSION = "goal_harness_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
+CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
+DEFAULT_AVAILABLE_CAPABILITIES = (
+    "shell",
+    "filesystem_read",
+    "filesystem_write",
+)
+CAPABILITY_REPAIR_BRIDGE_HINTS = {
+    "benchmark_runner",
+    "external_evidence_poll",
+    "worker_bridge",
+    "cli_bridge",
+}
+CAPABILITY_OWNER_GATE_HINTS = {
+    "network",
+    "credentials",
+    "production_access",
+}
 TODO_BACKLOG_ITEM_LIMIT = 8
 TODO_MISSING_PRIORITY_RANK = 50
 TODO_MISSING_INDEX = 999999
@@ -936,6 +954,7 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "task_class",
         "action_kind",
         "required_write_scopes",
+        "required_capabilities",
         "claimed_by",
     ):
         if item.get(key) is not None:
@@ -947,6 +966,131 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         compact.pop("required_write_scopes", None)
     compact["task_class"] = _todo_task_class(compact)
     return compact
+
+
+def _available_capabilities(value: Any) -> list[str]:
+    capabilities = list(DEFAULT_AVAILABLE_CAPABILITIES)
+    for capability in normalize_required_capabilities(value):
+        if capability not in capabilities:
+            capabilities.append(capability)
+    return capabilities
+
+
+def _capability_missing_action(missing: list[str]) -> str:
+    missing_set = set(missing)
+    if not missing_set:
+        return "run"
+    if missing_set & CAPABILITY_REPAIR_BRIDGE_HINTS:
+        return "repair_bridge"
+    if missing_set & CAPABILITY_OWNER_GATE_HINTS:
+        return "ask_owner"
+    return "skip"
+
+
+def _capability_candidate_item(item: dict[str, Any], *, missing: list[str]) -> dict[str, Any]:
+    text = str(item.get("text") or "").strip()
+    payload = _compact_todo_summary_item(item, text=text)
+    required = normalize_required_capabilities(item.get("required_capabilities"))
+    payload["required_capabilities"] = required
+    payload["missing_capabilities"] = missing
+    payload["capability_action"] = _capability_missing_action(missing)
+    return payload
+
+
+def _capability_gate(
+    agent_todo_summary: dict[str, Any] | None,
+    *,
+    available_capabilities: list[str],
+) -> dict[str, Any] | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    executable_backlog_items = agent_todo_summary.get("executable_backlog_items")
+    first_executable_items = agent_todo_summary.get("first_executable_items")
+    if isinstance(executable_backlog_items, list) and executable_backlog_items:
+        raw_items = executable_backlog_items
+        source = "agent_todo_summary.executable_backlog_items"
+    elif isinstance(first_executable_items, list) and first_executable_items:
+        raw_items = first_executable_items
+        source = "agent_todo_summary.first_executable_items"
+    else:
+        raw_items = []
+        source = "agent_todo_summary.executable_backlog_items"
+    candidates = [
+        item
+        for item in raw_items
+        if isinstance(item, dict)
+        and _todo_item_is_actionable_open(item)
+        and _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+    ]
+    if not candidates:
+        return None
+
+    available = _available_capabilities(available_capabilities)
+    blocked: list[dict[str, Any]] = []
+    saw_requirement = False
+    selected_item: dict[str, Any] | None = None
+    selected_required: list[str] = []
+    for item in candidates:
+        required = normalize_required_capabilities(item.get("required_capabilities"))
+        if required:
+            saw_requirement = True
+        missing = [capability for capability in required if capability not in available]
+        if missing:
+            blocked.append(_capability_candidate_item(item, missing=missing))
+            continue
+        selected_item = item
+        selected_required = required
+        break
+
+    if not saw_requirement and not blocked:
+        return None
+    if selected_item is not None:
+        selected_text = str(selected_item.get("text") or "").strip()
+        selected = _compact_todo_summary_item(selected_item, text=selected_text)
+        selected["required_capabilities"] = selected_required
+        return {
+            "schema_version": CAPABILITY_GATE_SCHEMA_VERSION,
+            "source": source,
+            "required": selected_required,
+            "available": available,
+            "missing": [],
+            "action": "run",
+            "selected_todo": selected,
+            "blocked_candidates": blocked,
+            "reason": (
+                "selected executable todo capability requirements are satisfied"
+                if not blocked
+                else "higher-priority executable todo(s) are capability-blocked; selected first runnable fallback"
+            ),
+        }
+
+    missing_all: list[str] = []
+    required_all: list[str] = []
+    for item in blocked:
+        for capability in item.get("required_capabilities") or []:
+            if capability not in required_all:
+                required_all.append(str(capability))
+        for capability in item.get("missing_capabilities") or []:
+            if capability not in missing_all:
+                missing_all.append(str(capability))
+    action = _capability_missing_action(missing_all)
+    return {
+        "schema_version": CAPABILITY_GATE_SCHEMA_VERSION,
+        "source": source,
+        "required": required_all,
+        "available": available,
+        "missing": missing_all,
+        "action": action,
+        "blocked_candidates": blocked,
+        "blocks_delivery": True,
+        "reason": "all visible executable todo candidates require unavailable capabilities",
+        "owner_action": (
+            "provide an environment with the missing capability, mark the todo blocked, "
+            "or add a lower-risk fallback todo"
+        )
+        if action == "ask_owner"
+        else None,
+    }
 
 
 def _todo_priority_label(item: dict[str, Any]) -> str | None:
@@ -1638,6 +1782,20 @@ def _protocol_todo_actions(summary: Any, *, limit: int = 3) -> list[str]:
 
 def _protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
     goal_id = str(payload.get("goal_id") or "")
+    capability_gate = (
+        payload.get("capability_gate")
+        if isinstance(payload.get("capability_gate"), dict)
+        else {}
+    )
+    if capability_gate.get("action") == "run":
+        selected_capability_todo = (
+            capability_gate.get("selected_todo")
+            if isinstance(capability_gate.get("selected_todo"), dict)
+            else {}
+        )
+        text = _protocol_action_label(selected_capability_todo.get("text"))
+        if text:
+            return text
     scoped_fallback = (
         payload.get("scoped_user_gate_fallback")
         if isinstance(payload.get("scoped_user_gate_fallback"), dict)
@@ -1778,7 +1936,18 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
 
     user_actions = _protocol_todo_actions(payload.get("user_todo_summary"))
     if requires_user_action and not user_actions:
+        capability_gate = (
+            payload.get("capability_gate")
+            if isinstance(payload.get("capability_gate"), dict)
+            else {}
+        )
+        if capability_gate.get("action") == "ask_owner":
+            owner_action = _protocol_action_text(capability_gate.get("owner_action"))
+            if owner_action:
+                user_actions = [owner_action]
         for key in ("gate_prompt", "operator_question", "open_todo_notify_reason"):
+            if user_actions:
+                break
             text = _protocol_action_text(payload.get(key))
             if text:
                 user_actions = [text]
@@ -1797,7 +1966,17 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
     elif requires_user_action:
         primary_actor = "user"
         agent_action_required = False
-        agent_action = "wait for user/owner action after surfacing the blocker or gate"
+        capability_gate = (
+            payload.get("capability_gate")
+            if isinstance(payload.get("capability_gate"), dict)
+            else {}
+        )
+        agent_action = (
+            capability_gate.get("owner_action")
+            if capability_gate.get("action") == "ask_owner"
+            and capability_gate.get("owner_action")
+            else "wait for user/owner action after surfacing the blocker or gate"
+        )
     elif must_attempt_work:
         primary_actor = "agent"
         agent_action_required = True
@@ -1891,6 +2070,8 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
         return "monitor_quiet_skip"
     if payload.get("recovery_delivery_allowed") or effective_action == "outcome_floor_recovery":
         return "outcome_floor_recovery"
+    if effective_action == "capability_bridge_repair":
+        return "capability_bridge_repair"
     if effective_action == "boundary_projection_repair":
         return "boundary_projection_repair"
     if payload.get("self_repair_allowed"):
@@ -1944,6 +2125,8 @@ def _interaction_primary_agent_action(payload: dict[str, Any], *, mode: str) -> 
         return "wait for user/owner action after surfacing the blocker or gate"
     if mode == "outcome_floor_recovery":
         return "produce the required outcome-floor evidence artifact or write the concrete blocker"
+    if mode == "capability_bridge_repair":
+        return "repair or materialize the missing bridge capability, rewrite the todo, or write a compact blocker"
     if mode == "control_plane_self_repair":
         return "repair the bounded control-plane/status projection fault exposed by quota"
     if mode == "boundary_projection_repair":
@@ -1973,6 +2156,7 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
     if mode in {
         "bounded_delivery",
         "outcome_floor_recovery",
+        "capability_bridge_repair",
         "autonomous_replan",
         "control_plane_self_repair",
         "boundary_projection_repair",
@@ -2056,6 +2240,7 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     spend_after_validation = mode in {
         "bounded_delivery",
         "outcome_floor_recovery",
+        "capability_bridge_repair",
         "autonomous_replan",
         "control_plane_self_repair",
         "boundary_projection_repair",
@@ -2081,6 +2266,11 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         or (
             payload.get("scoped_user_gate_fallback", {}).get("reason")
             if isinstance(payload.get("scoped_user_gate_fallback"), dict)
+            else None
+        )
+        or (
+            payload.get("capability_gate", {}).get("reason")
+            if isinstance(payload.get("capability_gate"), dict)
             else None
         )
     )
@@ -3343,6 +3533,25 @@ def _execution_obligation(
                 "goal_boundary does not project"
             ),
         }
+    if should_run and recommended_mode == "repair_capability_bridge":
+        return {
+            "must_attempt_work": True,
+            "kind": "capability_bridge_repair",
+            "minimum": "one_bridge_or_environment_repair_or_blocker_writeback_segment",
+            "delivery_allowed": False,
+            "notify_is_execution_gate": False,
+            "contract": "capability_gate",
+            "contract_obligation": (
+                "do not execute the selected capability-blocked todo; repair or "
+                "materialize the missing bridge/capability, rewrite the todo to an "
+                "available capability, or write a compact blocker"
+            ),
+            "spend_policy": heartbeat_recommendation.get("spend_policy"),
+            "reason": (
+                "all executable todos require unavailable bridge-style capabilities, "
+                "but a bounded bridge repair may be attempted"
+            ),
+        }
     if should_run and work_lane_contract:
         return {
             "must_attempt_work": bool(work_lane_contract.get("must_attempt_work", should_run)),
@@ -3636,6 +3845,7 @@ def _effective_action(
     normal_delivery_allowed: bool,
     recovery_delivery_allowed: bool,
     self_repair_allowed: bool,
+    capability_repair_allowed: bool = False,
     stall_self_repair: dict[str, Any] | None,
     state: str,
     quota: dict[str, Any],
@@ -3651,6 +3861,8 @@ def _effective_action(
             else None
         )
         return str(repair_action or "control_plane_repair")
+    if capability_repair_allowed:
+        return "capability_bridge_repair"
     if state == "operator_gate":
         return "operator_gate_notify"
     if state == "blocked_health":
@@ -3664,7 +3876,13 @@ def _effective_action(
     return "quota_skip"
 
 
-def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agent_id: str | None = None) -> dict[str, Any]:
+def build_quota_should_run(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    agent_id: str | None = None,
+    available_capabilities: Any = None,
+) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     plan = build_quota_plan(status_payload, mode="should-run")
     item = next((candidate for candidate in _quota_plan_items(plan) if candidate.get("goal_id") == safe_goal_id), None)
@@ -3729,6 +3947,11 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agen
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         work_lane_contract = _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
+        capability_gate = _capability_gate(
+            agent_todo_summary,
+            available_capabilities=_available_capabilities(available_capabilities),
+        )
+        capability_repair_allowed = False
         projection_gap = _state_projection_gap(item, project_asset)
         projection_gap_repair = _state_projection_gap_repair_hint(
             projection_gap,
@@ -3758,11 +3981,25 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agen
             normal_delivery_allowed = False
             recovery_allowed = False
             reason = str(boundary_projection_repair.get("reason") or reason)
-        should_run = bool(normal_delivery_allowed or recovery_allowed or self_repair_allowed)
+        if capability_gate and capability_gate.get("action") != "run":
+            normal_delivery_allowed = False
+            recovery_allowed = False
+            if capability_gate.get("action") == "repair_bridge":
+                capability_repair_allowed = True
+                reason = str(capability_gate.get("reason") or "capability bridge repair required")
+            else:
+                reason = str(capability_gate.get("reason") or "selected todo capability is unavailable")
+        should_run = bool(
+            normal_delivery_allowed
+            or recovery_allowed
+            or self_repair_allowed
+            or capability_repair_allowed
+        )
         effective_action = _effective_action(
             normal_delivery_allowed=normal_delivery_allowed,
             recovery_delivery_allowed=recovery_allowed,
             self_repair_allowed=self_repair_allowed,
+            capability_repair_allowed=capability_repair_allowed,
             stall_self_repair=stall_self_repair,
             state=state,
             quota=quota,
@@ -3778,6 +4015,33 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agen
             work_lane_contract=work_lane_contract,
             stall_self_repair=stall_self_repair,
         )
+        if capability_gate and capability_gate.get("action") == "repair_bridge":
+            heartbeat_recommendation = {
+                **heartbeat_recommendation,
+                "recommended_mode": "repair_capability_bridge",
+                "notify": "DONT_NOTIFY",
+                "reason": capability_gate.get("reason") or heartbeat_recommendation.get("reason"),
+                "spend_policy": (
+                    "append exactly one quota spend only after a validated bridge "
+                    "repair, todo rewrite, or compact blocker writeback"
+                ),
+            }
+        elif capability_gate and capability_gate.get("action") == "ask_owner":
+            heartbeat_recommendation = {
+                **heartbeat_recommendation,
+                "recommended_mode": "ask_owner_for_capability",
+                "notify": "NOTIFY",
+                "reason": capability_gate.get("reason") or heartbeat_recommendation.get("reason"),
+                "spend_policy": "do not append quota spend while asking for missing capability",
+            }
+        elif capability_gate and capability_gate.get("action") == "skip":
+            heartbeat_recommendation = {
+                **heartbeat_recommendation,
+                "recommended_mode": "capability_skip",
+                "notify": "DONT_NOTIFY",
+                "reason": capability_gate.get("reason") or heartbeat_recommendation.get("reason"),
+                "spend_policy": "do not append quota spend while all executable todos lack current capabilities",
+            }
         if blocked_priority_fallback and should_run:
             heartbeat_recommendation = {
                 **heartbeat_recommendation,
@@ -3831,13 +4095,27 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agen
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
         )
+        if capability_gate:
+            if capability_gate.get("action") == "run":
+                selected_todo = (
+                    capability_gate.get("selected_todo")
+                    if isinstance(capability_gate.get("selected_todo"), dict)
+                    else {}
+                )
+                selected_recommended_action = selected_todo.get("text") or selected_recommended_action
+            elif capability_gate.get("action") in {"repair_bridge", "ask_owner", "skip"}:
+                selected_recommended_action = (
+                    capability_gate.get("owner_action")
+                    or capability_gate.get("reason")
+                    or selected_recommended_action
+                )
         state_action_projection_warning = _state_action_projection_warning(
             item,
             selected_action=selected_recommended_action,
             work_lane_contract=work_lane_contract,
         )
         payload = {
-            "ok": bool(plan.get("ok")) or self_repair_allowed,
+            "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed,
             "status_health_ok": bool(plan.get("ok")),
             "mode": "should-run",
             "goal_id": safe_goal_id,
@@ -3850,14 +4128,22 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agen
                 if recovery_allowed
                 else "self_repair"
                 if self_repair_allowed
+                else "repair_bridge"
+                if capability_repair_allowed
                 else "skip"
             ),
             "should_run": should_run,
             "normal_delivery_allowed": normal_delivery_allowed,
             "recovery_delivery_allowed": recovery_allowed,
             "self_repair_allowed": self_repair_allowed,
+            "capability_repair_allowed": capability_repair_allowed,
             "effective_action": effective_action,
-            "actionable_by_codex": bool(should_run or recovery_allowed or external_evidence_observation),
+            "actionable_by_codex": bool(
+                should_run
+                or recovery_allowed
+                or external_evidence_observation
+                or capability_repair_allowed
+            ),
             "reason": (
                 str(stall_self_repair.get("reason"))
                 if self_repair_allowed and isinstance(stall_self_repair, dict)
@@ -3904,6 +4190,10 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agen
             payload["automation_prompt_upgrade"] = automation_prompt_upgrade
         if work_lane_contract:
             payload["work_lane_contract"] = work_lane_contract
+        if capability_gate:
+            payload["capability_gate"] = capability_gate
+            if capability_gate.get("action") == "ask_owner":
+                payload["notify_user_on_capability_gate"] = True
         if external_evidence_observation:
             payload["external_evidence_observation"] = external_evidence_observation
         control_plane = compact_control_plane_policy(item.get("control_plane"))
@@ -3990,6 +4280,7 @@ def build_quota_should_run(status_payload: dict[str, Any], *, goal_id: str, agen
             state == "operator_gate"
             or payload.get("notify_user_on_gate") is True
             or payload.get("notify_user_on_open_todo") is True
+            or payload.get("notify_user_on_capability_gate") is True
         )
         if agent_todo_summary:
             payload["agent_todo_summary"] = agent_todo_summary
@@ -4157,10 +4448,15 @@ def build_quota_slot_preview(
     *,
     goal_id: str,
     slots: int = 1,
+    available_capabilities: Any = None,
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     safe_slots = max(1, _int_number(slots, default=1))
-    before = build_quota_should_run(status_payload, goal_id=safe_goal_id)
+    before = build_quota_should_run(
+        status_payload,
+        goal_id=safe_goal_id,
+        available_capabilities=available_capabilities,
+    )
     safe_bypass_spend = (
         (
             before.get("state") == "operator_gate"
@@ -4170,6 +4466,10 @@ def build_quota_slot_preview(
         and before.get("safe_bypass_allowed") is True
     )
     self_repair_spend = before.get("effective_action") in SELF_REPAIR_SPEND_ACTIONS
+    capability_repair_spend = (
+        before.get("effective_action") == "capability_bridge_repair"
+        and before.get("capability_repair_allowed") is True
+    )
     raw_runtime_root = status_payload.get("runtime_root")
     delivery_completion_run = (
         _latest_unspent_accountable_delivery_run(Path(str(raw_runtime_root)).expanduser(), safe_goal_id)
@@ -4189,6 +4489,7 @@ def build_quota_slot_preview(
     if not before.get("ok") or (
         not before.get("should_run")
         and not safe_bypass_spend
+        and not capability_repair_spend
         and not delivery_completion_spend
     ):
         return {
@@ -4236,7 +4537,11 @@ def build_quota_slot_preview(
         status=before.get("status") or queue_item.get("status"),
     )
     _set_quota_for_goal(after_status, goal_id=safe_goal_id, quota=after_quota)
-    after = build_quota_should_run(after_status, goal_id=safe_goal_id)
+    after = build_quota_should_run(
+        after_status,
+        goal_id=safe_goal_id,
+        available_capabilities=available_capabilities,
+    )
 
     return {
         "ok": True,
@@ -4266,6 +4571,7 @@ def build_quota_slot_preview(
         ),
         "safe_bypass_spend": safe_bypass_spend,
         "self_repair_spend": self_repair_spend,
+        "capability_repair_spend": capability_repair_spend,
         "delivery_completion_spend": delivery_completion_spend,
         "delivery_run_generated_at": delivery_completion_run.get("generated_at")
         if delivery_completion_run
@@ -4284,6 +4590,7 @@ def _compact_quota_decision(decision: dict[str, Any]) -> dict[str, Any]:
         "recovery_delivery_allowed": bool(decision.get("recovery_delivery_allowed")),
         "effective_action": decision.get("effective_action"),
         "self_repair_allowed": bool(decision.get("self_repair_allowed")),
+        "capability_repair_allowed": bool(decision.get("capability_repair_allowed")),
         "state": str(decision.get("state") or ""),
         "safe_bypass_allowed": bool(decision.get("safe_bypass_allowed")),
         "safe_bypass_kind": decision.get("safe_bypass_kind"),
@@ -4415,12 +4722,18 @@ def build_quota_slot_spend_event(
         and before_compact["effective_action"] in SELF_REPAIR_SPEND_ACTIONS
         and before_compact["self_repair_allowed"] is True
     )
+    capability_repair_spend = (
+        before_compact["should_run"] is True
+        and before_compact["effective_action"] == "capability_bridge_repair"
+        and before_compact["capability_repair_allowed"] is True
+    )
     delivery_completion_spend = bool(preview.get("delivery_completion_spend"))
     eligible_spend = (
         before_compact["should_run"] is True
         and before_compact["state"] == "eligible"
         and before_compact["effective_action"] != "external_evidence_observe"
         and not self_repair_spend
+        and not capability_repair_spend
     )
     safe_bypass_spend = (
         (
@@ -4430,10 +4743,16 @@ def build_quota_slot_spend_event(
         )
         and before_compact["safe_bypass_allowed"] is True
     )
-    if not eligible_spend and not safe_bypass_spend and not self_repair_spend and not delivery_completion_spend:
+    if (
+        not eligible_spend
+        and not safe_bypass_spend
+        and not self_repair_spend
+        and not capability_repair_spend
+        and not delivery_completion_spend
+    ):
         raise ValueError(
             "quota slot spend requires an eligible, safe-bypass, control-plane self-repair, "
-            "or latest validated delivery-completion quota should-run decision"
+            "capability bridge repair, or latest validated delivery-completion quota should-run decision"
         )
 
     return {
@@ -4451,9 +4770,13 @@ def build_quota_slot_spend_event(
                     "quota control-plane self-repair; quota slot spend event public-safe"
                     if self_repair_spend
                     else (
-                        "quota validated delivery completion; quota slot spend event public-safe"
-                        if delivery_completion_spend
-                        else "quota safe-bypass operator gate; quota slot spend event public-safe"
+                        "quota capability bridge repair; quota slot spend event public-safe"
+                        if capability_repair_spend
+                        else (
+                            "quota validated delivery completion; quota slot spend event public-safe"
+                            if delivery_completion_spend
+                            else "quota safe-bypass operator gate; quota slot spend event public-safe"
+                        )
                     )
                 )
             )
@@ -4472,10 +4795,14 @@ def build_quota_slot_spend_event(
                         f"{slots} automatic agent slot(s) completed as control-plane self-repair work"
                         if self_repair_spend
                         else (
-                            f"{slots} automatic agent slot(s) accounted after validated delivery "
-                            f"{preview.get('delivery_run_classification')}"
-                            if delivery_completion_spend
-                            else f"{slots} automatic agent slot(s) completed as safe-bypass work under an operator gate"
+                            f"{slots} automatic agent slot(s) completed as capability bridge repair work"
+                            if capability_repair_spend
+                            else (
+                                f"{slots} automatic agent slot(s) accounted after validated delivery "
+                                f"{preview.get('delivery_run_classification')}"
+                                if delivery_completion_spend
+                                else f"{slots} automatic agent slot(s) completed as safe-bypass work under an operator gate"
+                            )
                         )
                     )
                 )
@@ -4826,9 +5153,15 @@ def spend_quota_slot(
     slots: int = 1,
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
+    available_capabilities: Any = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
-    preview = build_quota_slot_preview(status_payload, goal_id=safe_goal_id, slots=slots)
+    preview = build_quota_slot_preview(
+        status_payload,
+        goal_id=safe_goal_id,
+        slots=slots,
+        available_capabilities=available_capabilities,
+    )
     if not preview.get("ok"):
         return preview
 
@@ -5087,6 +5420,36 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- automation_prompt_upgrade_primary: {automation_prompt_upgrade.get('primary_example_command')}")
         if automation_prompt_upgrade.get("side_agent_example_command"):
             lines.append(f"- automation_prompt_upgrade_side: {automation_prompt_upgrade.get('side_agent_example_command')}")
+    capability_gate = (
+        payload.get("capability_gate")
+        if isinstance(payload.get("capability_gate"), dict)
+        else {}
+    )
+    if capability_gate:
+        lines.append(
+            "- capability_gate: "
+            f"action={capability_gate.get('action')} "
+            f"required={capability_gate.get('required')} "
+            f"missing={capability_gate.get('missing')}"
+        )
+        selected_todo = (
+            capability_gate.get("selected_todo")
+            if isinstance(capability_gate.get("selected_todo"), dict)
+            else {}
+        )
+        if selected_todo.get("todo_id") or selected_todo.get("text"):
+            lines.append(
+                "- capability_gate_selected: "
+                f"todo_id={selected_todo.get('todo_id')} "
+                f"text={selected_todo.get('text')}"
+            )
+        blocked_candidates = (
+            capability_gate.get("blocked_candidates")
+            if isinstance(capability_gate.get("blocked_candidates"), list)
+            else []
+        )
+        if blocked_candidates:
+            lines.append(f"- capability_gate_blocked_candidates: `{len(blocked_candidates)}`")
     stale_latest_run_warning = (
         payload.get("stale_latest_run_warning")
         if isinstance(payload.get("stale_latest_run_warning"), dict)

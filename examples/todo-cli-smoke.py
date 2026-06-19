@@ -185,18 +185,24 @@ def main() -> int:
             "advancement_task",
             "--action-kind",
             "run_eval",
+            "--required-capability",
+            "shell",
+            "--required-capability",
+            "benchmark_runner",
         )
         assert metadata_payload["added"] is False, metadata_payload
         assert metadata_payload["already_exists"] is True, metadata_payload
         assert metadata_payload["metadata_updated"] is True, metadata_payload
         assert metadata_payload["task_class"] == "advancement_task", metadata_payload
         assert metadata_payload["action_kind"] == "run_eval", metadata_payload
+        assert metadata_payload["required_capabilities"] == ["shell", "benchmark_runner"], metadata_payload
         after_metadata = state_file.read_text(encoding="utf-8")
         assert after_metadata.count("- [ ] Summarize the read-only evidence after the user") == 1, after_metadata
         agent_block_start = after_metadata.index("- [ ] Summarize the read-only evidence after the user")
         agent_metadata_start = after_metadata.index("<!-- goal-harness:todo", agent_block_start)
         assert after_metadata.index("checklist is done.", agent_block_start) < agent_metadata_start, after_metadata
         assert "status=open task_class=advancement_task action_kind=run_eval" in after_metadata
+        assert "required_capabilities=shell%2Cbenchmark_runner" in after_metadata
         fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
         assert fields["user_todos"]["items"][0]["text"] == USER_TODO, fields
         assert fields["user_todos"]["items"][0]["todo_id"].startswith("todo_"), fields
@@ -204,6 +210,10 @@ def main() -> int:
         assert fields["agent_todos"]["items"][0]["todo_id"].startswith("todo_"), fields
         assert fields["agent_todos"]["items"][0]["task_class"] == "advancement_task", fields
         assert fields["agent_todos"]["items"][0]["action_kind"] == "run_eval", fields
+        assert fields["agent_todos"]["items"][0]["required_capabilities"] == [
+            "shell",
+            "benchmark_runner",
+        ], fields
         assert fields["user_todos"]["source_section"] == "User Todo / Owner Review Reading Queue", fields
         assert fields["agent_todos"]["source_section"] == "Agent Todo", fields
 

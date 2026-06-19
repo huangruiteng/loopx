@@ -264,25 +264,53 @@ the structured projection emitted by status/quota when available. Todo summaries
 carry `schema_version=todo_summary_v0`; individual items carry
 `schema_version=todo_item_v0`, `todo_id`, `role`, `status`, `priority`,
 `title`, `archive_state`, `source_section`, `index`, `text`, `task_class`, and
-optional `action_kind` and `claimed_by`. The `todo_id`
+optional `action_kind`, `claimed_by`, and `required_capabilities`. The `todo_id`
 is first-class when written by the CLI. `claimed_by` values are normalized
 public-safe agent ids and should correspond to
 `coordination.registered_agents`. Legacy Markdown without metadata still gets a
 parser-derived compatibility id from local section/index/text, and the first
 lifecycle command will materialize that id back into metadata. Future lease
-timestamps, dependency, and evidence-link fields should extend this item shape
-instead of adding another todo format.
+timestamps, dependency, capability detail, and evidence-link fields should
+extend this item shape instead of adding another todo format.
 In Markdown, lane metadata is stored as an indented HTML comment directly under
 the checkbox, for example:
 
 ```markdown
 - [ ] Run one validated benchmark case and write back result or blocker.
-  <!-- goal-harness:todo todo_id=todo_8e280be49441 status=open task_class=advancement_task action_kind=run_eval claimed_by=codex-main-control -->
+  <!-- goal-harness:todo todo_id=todo_8e280be49441 status=open task_class=advancement_task action_kind=run_eval required_capabilities=shell%2Cbenchmark_runner claimed_by=codex-main-control -->
 ```
 
 Plain checkbox text remains a compatibility fallback. New automation-facing
 work should prefer the CLI metadata path so quota and dashboard consumers do
 not need project-specific word lists.
+
+Executable agent todos may declare per-todo environment needs with
+`--required-capability`. Keep this field near the todo, not in a global agent
+profile: the same agent may have shell/filesystem capability for docs work, but
+lack `benchmark_runner`, `external_evidence_poll`, `network`, or another bridge
+for a specific step.
+
+```bash
+goal-harness todo add \
+  --goal-id <goal-id> \
+  --role agent \
+  --text "<public-safe executable agent action>" \
+  --task-class advancement_task \
+  --action-kind run_eval \
+  --required-capability shell \
+  --required-capability benchmark_runner
+```
+
+`status` projects `required_capabilities` on every visible todo. `quota
+should-run` then derives a read-only `capability_gate` from the visible
+executable queue, not from a single preselected todo. With multiple P0 or P1
+items, it scans the projected queue in order: if the first P0 is capability
+blocked but the second P0 can run, the second P0 is selected; only when the
+visible P0 candidates are blocked does it fall through to the first runnable
+P1/P2 candidate. Blocked higher-priority candidates remain visible in
+`capability_gate.blocked_candidates`. If no visible executable candidate can
+run, the gate returns `repair_bridge`, `ask_owner`, or `skip` according to the
+missing capability class.
 
 ## Execution Order
 
@@ -308,6 +336,7 @@ python3 examples/todo-cli-smoke.py
 python3 examples/todo-lifecycle-cli-smoke.py
 python3 examples/project-agent-adoption-smoke.py
 python3 examples/todo-concurrent-write-lock-smoke.py
+python3 examples/capability-gate-smoke.py
 ```
 
 The first verifies the todo CLI writes canonical active-state sections. The
@@ -318,3 +347,5 @@ The third verifies an executor-facing path from quota guard hint, to user todo
 write, to status projection, to approved project-agent handoff.
 The fourth verifies concurrent todo writers wait on the active-state lock and
 preserve both claim metadata and unrelated updates.
+The fifth verifies per-todo `required_capabilities`, including multiple P0/P1
+candidate selection, bridge repair, and owner-gated capability misses.
