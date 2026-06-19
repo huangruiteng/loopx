@@ -45,6 +45,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import inspect
 import json
 import logging
 import os
@@ -90,6 +91,7 @@ DEFAULT_GOAL_ID = "goal-harness-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
 DEFAULT_MAX_ROUNDS = 5
+_MISSING = object()
 SUPPORTED_ROUTES = (
     "codex-acp-blind-loop-baseline",
     "goal-harness-blind-loop-treatment",
@@ -112,6 +114,30 @@ PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
     PRODUCT_MODE_CASE_GOAL_ID
 )
 PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION = BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
+
+
+def _filter_kwargs_for_signature(
+    target: Any,
+    kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """Drop optional kwargs that an installed upstream callable cannot accept."""
+
+    try:
+        signature = inspect.signature(target)
+    except (TypeError, ValueError):
+        return dict(kwargs)
+    if any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    ):
+        return dict(kwargs)
+    return {
+        key: value
+        for key, value in kwargs.items()
+        if key in signature.parameters
+    }
+
+
 DOCKER_APP_SKILLS_MOUNT_BEGIN = "# BEGIN GOAL_HARNESS_SKILLSBENCH_APP_SKILLS_MOUNT"
 DOCKER_APP_SKILLS_MOUNT_END = "# END GOAL_HARNESS_SKILLSBENCH_APP_SKILLS_MOUNT"
 DOCKER_APT_RETRY_BEGIN = "# BEGIN GOAL_HARNESS_SKILLSBENCH_APT_RETRY"
@@ -2729,7 +2755,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
 
     original_install_agent = Rollout.install_agent
     original_runtime_connect_acp = benchflow_acp_runtime.connect_acp
-    original_rollout_connect_acp = benchflow_rollout_module.connect_acp
+    original_rollout_connect_acp = getattr(
+        benchflow_rollout_module, "connect_acp", _MISSING
+    )
 
     async def install_agent_host_local_acp(self: Any) -> None:
         cfg = self._config
@@ -2770,7 +2798,11 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             cfg.sandbox_user,
             self._agent_cwd,
             self._task,
-            include_task_skills=cfg.include_task_skills,
+            include_task_skills=getattr(
+                cfg,
+                "include_task_skills",
+                bool(args.include_task_skills),
+            ),
         )
         if cfg.export_generated_skills_to:
             await benchflow_rollout_module._ensure_sandbox_dir(
@@ -2835,27 +2867,31 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     if args.route == "goal-harness-product-mode":
         pre_agent_hooks.append(seed_product_mode_case_state)
 
+    rollout_config_kwargs = {
+        "task_path": effective_task_path,
+        "environment": args.sandbox,
+        "sandbox_user": args.sandbox_user,
+        "sandbox_setup_timeout": args.sandbox_setup_timeout,
+        "job_name": plan["job_name"],
+        "rollout_name": plan["rollout_name"],
+        "jobs_dir": Path(plan["jobs_dir"]),
+        "user": controller_user,
+        "max_user_rounds": args.max_rounds,
+        "agent": "codex-acp",
+        "model": args.model,
+        "agent_idle_timeout": args.agent_idle_timeout,
+        "include_task_skills": bool(args.include_task_skills),
+        "pre_agent_hooks": pre_agent_hooks,
+    }
     config = RolloutConfig(
-        task_path=effective_task_path,
-        environment=args.sandbox,
-        sandbox_user=args.sandbox_user,
-        sandbox_setup_timeout=args.sandbox_setup_timeout,
-        job_name=plan["job_name"],
-        rollout_name=plan["rollout_name"],
-        jobs_dir=Path(plan["jobs_dir"]),
-        user=controller_user,
-        max_user_rounds=args.max_rounds,
-        agent="codex-acp",
-        model=args.model,
-        agent_idle_timeout=args.agent_idle_timeout,
-        include_task_skills=bool(args.include_task_skills),
-        pre_agent_hooks=pre_agent_hooks,
+        **_filter_kwargs_for_signature(RolloutConfig, rollout_config_kwargs)
     )
     result_path: Path | None = None
     Rollout.install_agent = install_agent_with_launch_preflight
     if args.host_local_acp_launch:
         benchflow_acp_runtime.connect_acp = connect_host_local_acp
-        benchflow_rollout_module.connect_acp = connect_host_local_acp
+        if original_rollout_connect_acp is not _MISSING:
+            benchflow_rollout_module.connect_acp = connect_host_local_acp
     try:
         await benchflow_run(config)
         result_path = discover_benchflow_result_path(plan)
@@ -2864,7 +2900,8 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     finally:
         Rollout.install_agent = original_install_agent
         benchflow_acp_runtime.connect_acp = original_runtime_connect_acp
-        benchflow_rollout_module.connect_acp = original_rollout_connect_acp
+        if original_rollout_connect_acp is not _MISSING:
+            benchflow_rollout_module.connect_acp = original_rollout_connect_acp
         _merge_acp_trajectory_summary(plan, controller_trace)
         _write_controller_trace(plan, controller_trace)
     if result_path is None:

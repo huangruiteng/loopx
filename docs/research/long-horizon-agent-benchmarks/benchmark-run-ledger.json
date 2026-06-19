@@ -6040,9 +6040,9 @@
         "travel-planning": {
           "case_id": "travel-planning",
           "latest_decision": {
-            "baseline_run_id": "084e5289e5ea",
-            "decision": "baseline_passed_not_current_treatment_priority",
-            "failure_scope": "passed"
+            "baseline_run_id": "e553cee31756",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
           },
           "runs": [
             {
@@ -6107,11 +6107,77 @@
                 "staged": true,
                 "task_skills_removed": true
               }
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_raw_codex_autonomous_max5_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/skillsbench-real-case/gh-skillsbench-travel-planning-container-acp-configfix-20260620T063851/benchmark_run.compact.json"
+              },
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "travel-planning",
+              "case_ids": [
+                "travel-planning"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "official_score_zero_case_failure",
+              "failure_labels": [
+                "skillsbench_runner_error",
+                "official_score_zero_case_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "goal_harness_inside_case": false,
+              "job_name": "skillsbench_1_1_travel_planning_raw_codex_autonomous_max5",
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "max_rounds_budget": 1,
+              "mode": "skillsbench_raw_codex_autonomous_max5_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "official SkillsBench v1.1 travel-planning raw Codex autonomous max5; official score completed at 0.0 from reward artifact; runner_failure retained as closeout diagnostic, score failure classified as official_score_zer...",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_policy": "final_workspace_official_result",
+              "recorded_at": "2026-06-20T07:08:23+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 1,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward_present": false
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "gh-skillsbench-travel-planning-container-acp-configfix-20260620T063851",
+              "run_id": "e553cee31756",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": false,
+                "apt_retry_patch_required": false,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": false,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "host_cpus": 32.0
+                },
+                "staged": true,
+                "task_skills_removed": true
+              }
             }
           ]
         }
       },
-      "run_count": 110
+      "run_count": 111
     },
     "terminal-bench-worker-materialization@v0": {
       "benchmark_id": "terminal-bench-worker-materialization@v0",
@@ -9601,5 +9667,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-20T04:51:08+08:00"
+  "updated_at": "2026-06-20T07:08:23+08:00"
 }

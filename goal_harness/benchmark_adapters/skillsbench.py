@@ -1963,6 +1963,14 @@ def build_skillsbench_benchflow_result_benchmark_run(
     if reward_value == 0 and not failure_labels and not partial_trajectory:
         failure_labels.append("official_verifier_solution_failure")
         score_failure_attribution = "official_verifier_solution_failure"
+    elif (
+        reward_value == 0
+        and reward_artifact_source
+        and score_failure_attribution == "skillsbench_runner_error"
+        and failure_labels == ["skillsbench_runner_error"]
+    ):
+        failure_labels.append("official_score_zero_case_failure")
+        score_failure_attribution = "official_score_zero_case_failure"
     elif reward_value == 0 and not failure_labels:
         failure_labels.append("official_score_zero_case_failure")
     real_run_completed = not error_text and (

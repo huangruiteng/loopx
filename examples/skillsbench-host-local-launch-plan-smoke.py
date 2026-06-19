@@ -15,6 +15,11 @@ SCRIPT = REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"
 
 
 def main() -> int:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "def _filter_kwargs_for_signature(" in source
+    assert "getattr(\n        benchflow_rollout_module, \"connect_acp\", _MISSING" in source
+    assert "if original_rollout_connect_acp is not _MISSING:" in source
+    assert "_filter_kwargs_for_signature(RolloutConfig, rollout_config_kwargs)" in source
     with tempfile.TemporaryDirectory(prefix="gh-skillsbench-plan-") as tmp:
         root = Path(tmp) / "skillsbench"
         task = root / "tasks" / "demo-task" / "environment"

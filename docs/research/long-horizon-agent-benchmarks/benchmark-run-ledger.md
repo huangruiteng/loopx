@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-20T04:51:08+08:00`
+- updated_at: `2026-06-20T07:08:23+08:00`
 
 ## Case Decisions
 
@@ -32,7 +32,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `software-dependency-audit` | `paired_no_score_uplift` | - | `6` |
 | `skillsbench@1.1` | `suricata-custom-exfil` | `paired_treatment_codex_acp_runtime_preflight_required` | - | `5` |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `baseline_runner_or_setup_repair_required` | - | `1` |
-| `skillsbench@1.1` | `travel-planning` | `baseline_passed_not_current_treatment_priority` | - | `1` |
+| `skillsbench@1.1` | `travel-planning` | `baseline_failed_treatment_candidate` | - | `2` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `single_arm_recorded` | - | `2` |
 | `terminal-bench@2.0` | `build-cython-ext` | `baseline_passed_not_current_treatment_priority` | - | `5` |
 | `terminal-bench@2.0` | `cobol-modernization` | `paired_baseline_solved_treatment_preserved` | - | `2` |
@@ -186,6 +186,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `suricata-custom-exfil` | `codex_goal_harness_treatment` | `` | `missing` | `` | `` | `skillsbench_codex_acp_jsonrpc_internal_error` | `` |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_setup_failure` | `.local/private-benchmark-jobs/skillsbench-product-mode-tictoc-unnecessary-abort-detection-raw-baseline-20260616T202521CST/skillsbench-product-mode-tictoc-unnecessary-abort-detection-raw-baseline-20260616T202521CST/tictoc-unnecessary-abort-detection__raw_codex_autonomous_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `travel-planning` | `baseline` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-travel-planning-blind-baseline-20260616T1238CST/travel-planning__codex_acp_blind_loop/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `travel-planning` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `0.0` | `` | `1:missing` | `official_score_zero_case_failure` | `cloud-ecs/skillsbench-real-case/gh-skillsbench-travel-planning-container-acp-configfix-20260620T063851/benchmark_run.compact.json` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `hardened_codex_worker_materialization_runtime_probe` | `` | `missing` | `` | `` | `not_applicable_worker_materialization_probe` | `.local/private-benchmark-jobs/terminal-bench-nginx-hardened-worker-materialization-runtime-probe-20260616T113050CST/jobs/terminal_bench_nginx_request_logging_hardened_worker_materialization_runtime_probe_20260616T113050CST/result.json` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `hardened_codex_worker_materialization_runtime_probe` | `` | `missing` | `` | `` | `not_applicable_worker_materialization_probe` | `` |
 | `terminal-bench@2.0` | `build-cython-ext` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `codex_model_access_unsupported_for_account` | `.local/private-benchmark-jobs/terminal-bench-build-cython-ext-goal-mode-baseline-20260614T175604CST/jobs/terminal_bench_2_0_build_cython_ext_codex_goal_mode_baseline_real_no_upload_20260614T175604CST/result.json` |

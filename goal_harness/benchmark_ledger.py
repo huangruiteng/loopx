@@ -553,6 +553,7 @@ def _failure_scope(failure_class: str, score: float | int | None, passed: bool |
     if failure_class in {
         "none",
         "official_verifier_solution_failure",
+        "official_score_zero_case_failure",
         "model_solution_failure",
         "agent_solution_failure",
         "task_solution_failure",

@@ -446,33 +446,34 @@ def test_skillsbench_host_local_acp_transport_probe_uses_benchflow_client() -> N
 
 
 def test_skillsbench_worker_handshake_preflight_probe_clears_relay_gap() -> None:
-    proc = subprocess.run(
-        [
-            sys.executable,
-            str(REPO_ROOT / "scripts/skillsbench_automation_loop.py"),
-            "--local-driver-worker-handshake-preflight",
-            "--local-codex-cli-participant-ready",
-            "--local-acp-relay-probe",
-            "--task-id",
-            "ada-bathroom-plan-repair",
-        ],
-        cwd=REPO_ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr
-    payload = json.loads(proc.stdout)
+    with tempfile.TemporaryDirectory(prefix="skillsbench-worker-preflight-") as tmp:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts/skillsbench_automation_loop.py"),
+                "--local-driver-worker-handshake-preflight",
+                "--skillsbench-root",
+                str(Path(tmp) / "missing-skillsbench"),
+                "--local-codex-cli-participant-ready",
+                "--local-acp-relay-probe",
+                "--task-id",
+                "ada-bathroom-plan-repair",
+            ],
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stderr
+        payload = json.loads(proc.stdout)
     assert payload["local_driver_contract"]["acp_relay_materialized"] is True, payload
     assert (
         payload["local_driver_contract"]["acp_relay_probe"]["ready"] is True
     ), payload
     assert "skillsbench_local_acp_relay_missing" not in payload["blockers"], payload
-    assert payload["first_blocker"] == "skillsbench_host_local_acp_transport_missing"
-    assert (
-        payload["next_action"] == "wire_host_local_acp_transport_before_mini_pair"
-    ), payload
+    assert payload["first_blocker"] == "skillsbench_benchflow_runtime_missing"
+    assert payload["next_action"] == "install_or_select_skillsbench_benchflow_runtime"
     assert payload["boundary"]["credential_values_recorded"] is False, payload
     text = json.dumps(payload, sort_keys=True)
     for forbidden in ("/Users/", "~/.codex", "OPENAI_API_KEY", "HF_TOKEN"):
@@ -931,6 +932,31 @@ def write_official_skillsbench_reward_artifact_recovery_result(root: Path) -> Pa
     return result_path
 
 
+def write_official_skillsbench_runner_error_zero_reward_result(root: Path) -> Path:
+    run_dir = root / "official" / "2026-06-20__06-38-51" / "travel-planning__raw"
+    result_path = run_dir / "result.json"
+    write_json(
+        result_path,
+        {
+            "task_name": "travel-planning",
+            "rollout_name": "travel-planning__raw",
+            "agent": "codex-acp",
+            "agent_name": "codex-acp",
+            "model": "gpt-5.5",
+            "n_tool_calls": 0,
+            "n_prompts": 1,
+            "error": "agent process ended after verifier wrote reward",
+            "verifier_error": "reward missing from compact result",
+            "partial_trajectory": False,
+            "trajectory_source": None,
+        },
+    )
+    reward_path = run_dir / "verifier" / "reward.txt"
+    reward_path.parent.mkdir(parents=True, exist_ok=True)
+    reward_path.write_text("0\n", encoding="utf-8")
+    return result_path
+
+
 def write_official_skillsbench_oracle_reward_artifact_recovery_result(
     root: Path,
 ) -> Path:
@@ -1337,6 +1363,49 @@ def test_skillsbench_result_reward_artifact_recovery() -> None:
         ), compact
         assert compact["progress"]["n_completed_trials"] == 1, compact
         assert compact["progress"]["n_errored_trials"] == 0, compact
+
+
+def test_skillsbench_runner_error_zero_reward_is_case_score_failure() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-zero-reward-") as tmp:
+        result_path = write_official_skillsbench_runner_error_zero_reward_result(
+            Path(tmp)
+        )
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="raw-codex-autonomous-max5",
+            )
+        )
+        assert compact is not None
+        assert compact["official_score_status"] == "completed", compact
+        assert compact["official_task_score"] == {
+            "kind": "skillsbench_verifier_reward_recovered_from_reward_txt",
+            "passed": False,
+            "value": 0.0,
+        }, compact
+        assert compact["progress"]["n_errored_trials"] == 1, compact
+        assert compact["runner_failure"]["failure_class"] == (
+            "skillsbench_runner_error"
+        ), compact
+        assert compact["score_failure_attribution"] == (
+            "official_score_zero_case_failure"
+        ), compact
+        assert "skillsbench_runner_error" in compact["failure_attribution_labels"]
+        assert "official_score_zero_case_failure" in compact[
+            "failure_attribution_labels"
+        ]
+        ledger_path = Path(tmp) / "ledger.json"
+        update = update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=compact,
+            run_group_id="skillsbench-travel-planning-zero-score",
+            dry_run=False,
+        )
+        assert update["entry"]["score_status"] == "failed", update
+        assert update["entry"]["failure_class"] == (
+            "official_score_zero_case_failure"
+        ), update
+        assert update["entry"]["failure_scope"] == "case_or_solution", update
 
 
 def test_skillsbench_oracle_result_reward_artifact_recovery() -> None:
