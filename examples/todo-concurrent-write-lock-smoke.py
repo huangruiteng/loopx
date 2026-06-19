@@ -60,6 +60,10 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
                         "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
                         "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
                         "authority_sources": [],
+                        "coordination": {
+                            "registered_agents": ["codex-main-control", "codex-side-bypass"],
+                            "primary_agent": "codex-main-control",
+                        },
                     }
                 ],
             },
@@ -182,6 +186,8 @@ def main() -> int:
                 "blocked",
                 "--reason",
                 "waiting-on-concurrent-state",
+                "--claimed-by",
+                "codex-side-bypass",
             )
             assert_waiting_on_lock(update_process, "todo update")
             append_agent_todo(state_file, PARENT_UPDATE_TODO)
@@ -190,6 +196,7 @@ def main() -> int:
         updated_target = find_item(state_file, UPDATE_TARGET_TODO)
         assert updated_target["status"] == "blocked", updated_target
         assert updated_target["reason"] == "waiting-on-concurrent-state", updated_target
+        assert updated_target["claimed_by"] == "codex-side-bypass", updated_target
         assert find_item(state_file, PARENT_UPDATE_TODO), state_file.read_text(encoding="utf-8")
 
     print("todo-concurrent-write-lock-smoke ok")

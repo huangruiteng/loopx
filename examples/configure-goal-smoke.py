@@ -104,6 +104,12 @@ def main() -> int:
             "docs",
             "--allowed-domain",
             "validation",
+            "--registered-agent",
+            "codex-main-control",
+            "--registered-agent",
+            "codex-side-bypass,codex-main-control",
+            "--primary-agent",
+            "codex-main-control",
             "--waiting-on",
             "user_or_controller",
             "--boundary-authority-scope",
@@ -118,8 +124,12 @@ def main() -> int:
         assert dry["changed"] is True, dry
         assert "waiting_on" in dry["changed_fields"], dry
         assert "checkpointed_boundary_authority" in dry["changed_fields"], dry
+        assert "registered_agents" in dry["changed_fields"], dry
+        assert "primary_agent" in dry["changed_fields"], dry
         assert dry["after"]["waiting_on"] == "user_or_controller", dry
         assert dry["after"]["checkpointed_boundary_authority"]["active_write_scope"] == ["docs/**"], dry
+        assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
+        assert dry["after"]["primary_agent"] == "codex-main-control", dry
         assert dry["written"] is False, dry
         assert registry_path.read_text(encoding="utf-8") == original
 
@@ -140,6 +150,10 @@ def main() -> int:
             "2",
             "--allowed-domain",
             "docs,validation",
+            "--registered-agent",
+            "codex-main-control,codex-side-bypass",
+            "--primary-agent",
+            "codex-main-control",
             "--waiting-on",
             "user_or_controller",
             "--boundary-authority-scope",
@@ -162,6 +176,8 @@ def main() -> int:
         assert goal["spawn_policy"]["allowed"] is True, goal
         assert goal["spawn_policy"]["max_children"] == 2, goal
         assert goal["spawn_policy"]["allowed_domains"] == ["docs", "validation"], goal
+        assert goal["coordination"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], goal
+        assert goal["coordination"]["primary_agent"] == "codex-main-control", goal
         assert goal["waiting_on"] == "user_or_controller", goal
         authority = goal["coordination"]["checkpointed_boundary_authority"][0]
         assert authority["schema_version"] == "checkpointed_boundary_authority_v0", authority
@@ -205,6 +221,21 @@ def main() -> int:
         assert authority_cleared["changed"] is True, authority_cleared
         assert "checkpointed_boundary_authority" in authority_cleared["changed_fields"], authority_cleared
         assert "checkpointed_boundary_authority" not in goal_from_registry(registry_path)["coordination"], authority_cleared
+
+        agents_cleared = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--clear-registered-agents",
+            "--execute",
+        ))
+        assert agents_cleared["ok"] is True, agents_cleared
+        assert agents_cleared["changed"] is True, agents_cleared
+        assert "registered_agents" in agents_cleared["changed_fields"], agents_cleared
+        assert "primary_agent" in agents_cleared["changed_fields"], agents_cleared
+        assert "registered_agents" not in goal_from_registry(registry_path)["coordination"], agents_cleared
+        assert "primary_agent" not in goal_from_registry(registry_path)["coordination"], agents_cleared
 
         invalid = payload(run_cli(
             registry_path,

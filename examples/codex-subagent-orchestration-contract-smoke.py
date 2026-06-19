@@ -24,6 +24,12 @@ REQUIRED_PHRASES = (
     "child reports evidence only; parent writes and spends",
     "control_plane_handoff_version",
     "A child may produce evidence, a validation result, or a blocker",
+    "one pending lease for `(goal_id, todo_id)`",
+    "`goal_id` is the shared control-plane lane",
+    "`todo_id` is the work item being claimed",
+    "`coordination.primary_agent`",
+    "independent git worktrees/branches",
+    "primary-agent review todo",
 )
 
 FORBIDDEN_PHRASES = (

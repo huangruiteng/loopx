@@ -83,6 +83,49 @@ def main() -> int:
     brief_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, brief=True)
     thin_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, thin=True)
     registry_default_payload = build_heartbeat_prompt(goal_id=GOAL_ID, compact=True)
+    scoped_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=ACTIVE_STATE,
+        compact=True,
+        agent_id="codex-side-bypass",
+        agent_scopes=[
+            "control-plane coordination and todo claim ergonomics",
+            "do not take benchmark execution todos unless reassigned",
+        ],
+        registered_agents=["codex-main-control", "codex-side-bypass"],
+        primary_agent="codex-main-control",
+    )
+    primary_scoped_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=ACTIVE_STATE,
+        compact=True,
+        agent_id="codex-main-control",
+        agent_scopes=["benchmark readiness and final review"],
+        registered_agents=["codex-main-control", "codex-side-bypass"],
+        primary_agent="codex-main-control",
+    )
+    missing_agent_id = None
+    try:
+        build_heartbeat_prompt(
+            goal_id=GOAL_ID,
+            active_state=ACTIVE_STATE,
+            agent_scopes=["control-plane coordination and todo claim ergonomics"],
+        )
+    except ValueError as exc:
+        missing_agent_id = str(exc)
+    assert missing_agent_id and "requires --agent-id" in missing_agent_id, missing_agent_id
+    unregistered_agent = None
+    try:
+        build_heartbeat_prompt(
+            goal_id=GOAL_ID,
+            active_state=ACTIVE_STATE,
+            agent_id="unregistered-agent",
+            registered_agents=["codex-side-bypass"],
+            primary_agent="codex-side-bypass",
+        )
+    except ValueError as exc:
+        unregistered_agent = str(exc)
+    assert unregistered_agent and "is not registered" in unregistered_agent, unregistered_agent
     assert_prompt_budget("full", str(payload["task_body"]))
     assert_prompt_budget("compact", str(compact_payload["task_body"]))
     assert_prompt_budget("brief", str(brief_payload["task_body"]))
@@ -91,6 +134,8 @@ def main() -> int:
     assert_interface_budget_payload("compact", compact_payload)
     assert_interface_budget_payload("brief", brief_payload)
     assert_interface_budget_payload("thin", thin_payload)
+    assert_interface_budget_payload("compact", scoped_payload)
+    assert_interface_budget_payload("compact", primary_scoped_payload)
     assert_no_project_specific_prompt_leaks("full", str(payload["task_body"]))
     assert_no_project_specific_prompt_leaks("compact", str(compact_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("brief", str(brief_payload["task_body"]))
@@ -158,6 +203,37 @@ def main() -> int:
         "goal-harness heartbeat-prompt --compact --goal-id public-heartbeat-goal"
     ), registry_default_payload
     assert "using `the registry-declared active state`" in registry_default_task, registry_default_task
+    scoped_task = normalized(str(scoped_payload["task_body"]))
+    assert scoped_payload["agent_id"] == "codex-side-bypass", scoped_payload
+    assert scoped_payload["agent_role"] == "side-agent", scoped_payload
+    assert scoped_payload["primary_agent"] == "codex-main-control", scoped_payload
+    assert scoped_payload["agent_scopes"] == [
+        "control-plane coordination and todo claim ergonomics",
+        "do not take benchmark execution todos unless reassigned",
+    ], scoped_payload
+    assert scoped_payload["registered_agents"] == ["codex-main-control", "codex-side-bypass"], scoped_payload
+    assert "--agent-id codex-side-bypass" in scoped_payload["compact_prompt_command"], scoped_payload
+    assert "--agent-scope 'control-plane coordination and todo claim ergonomics'" in scoped_payload["compact_prompt_command"], (
+        scoped_payload
+    )
+    for phrase in (
+        "Agent identity and scope",
+        "role: side-agent",
+        "primary_agent `codex-main-control`",
+        "independent git worktree/branch",
+        "Primary agent review, verify, and merge this side-agent work",
+        "--next-claimed-by codex-main-control",
+        "agent_id `codex-side-bypass`",
+        "control-plane coordination and todo claim ergonomics",
+        "do not take benchmark execution todos unless reassigned",
+        "goal-harness todo claim --goal-id public-heartbeat-goal --todo-id <todo_id> --claimed-by codex-side-bypass",
+        "Do not write agent scope into todo metadata",
+    ):
+        assert phrase in scoped_task, phrase
+    primary_task = normalized(str(primary_scoped_payload["task_body"]))
+    assert primary_scoped_payload["agent_role"] == "primary-agent", primary_scoped_payload
+    assert "role: primary-agent" in primary_task, primary_task
+    assert "single primary agent" in primary_task, primary_task
     assert "--active-state" not in registry_default_payload["expanded_prompt_command"], registry_default_payload
     assert brief_payload["brief"] is True, brief_payload
     assert brief_payload["compact"] is False, brief_payload
@@ -709,6 +785,10 @@ def main() -> int:
                             "repo": str(project),
                             "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
                             "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
+                            "coordination": {
+                                "registered_agents": ["codex-main-control", "codex-side-bypass"],
+                                "primary_agent": "codex-main-control",
+                            },
                         }
                     ]
                 }
@@ -778,6 +858,110 @@ def main() -> int:
         ), cli_registry_thin_payload
         assert "--active-state" not in cli_registry_thin_payload["task_body"], cli_registry_thin_payload
 
+        cli_scoped_json = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "goal_harness.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(registry_path),
+                "heartbeat-prompt",
+                "--goal-id",
+                GOAL_ID,
+                "--compact",
+                "--agent-id",
+                "codex-side-bypass",
+                "--agent-scope",
+                "control-plane coordination and todo claim ergonomics",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        cli_scoped_payload = json.loads(cli_scoped_json)
+        assert cli_scoped_payload["agent_id"] == "codex-side-bypass", cli_scoped_payload
+        assert cli_scoped_payload["agent_role"] == "side-agent", cli_scoped_payload
+        assert cli_scoped_payload["primary_agent"] == "codex-main-control", cli_scoped_payload
+        assert cli_scoped_payload["agent_scopes"] == [
+            "control-plane coordination and todo claim ergonomics"
+        ], cli_scoped_payload
+        assert cli_scoped_payload["registered_agents"] == [
+            "codex-main-control",
+            "codex-side-bypass",
+        ], cli_scoped_payload
+        assert "todo claim --goal-id public-heartbeat-goal" in cli_scoped_payload["task_body"], cli_scoped_payload
+
+        cli_unknown_scoped = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "goal_harness.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(registry_path),
+                "heartbeat-prompt",
+                "--goal-id",
+                GOAL_ID,
+                "--agent-id",
+                "unregistered-agent",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert cli_unknown_scoped.returncode != 0, cli_unknown_scoped.stdout
+        cli_unknown_payload = json.loads(cli_unknown_scoped.stdout)
+        assert "is not registered" in cli_unknown_payload["error"], cli_unknown_payload
+
+        legacy_registry_path = project / ".goal-harness" / "legacy-registry.json"
+        legacy_registry_path.write_text(
+            json.dumps(
+                {
+                    "goals": [
+                        {
+                            "id": GOAL_ID,
+                            "domain": "legacy-smoke",
+                            "status": "active",
+                            "repo": str(project),
+                            "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
+                            "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        cli_legacy_scoped = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "goal_harness.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(legacy_registry_path),
+                "heartbeat-prompt",
+                "--goal-id",
+                GOAL_ID,
+                "--agent-id",
+                "codex-side-bypass",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert cli_legacy_scoped.returncode != 0, cli_legacy_scoped.stdout
+        cli_legacy_payload = json.loads(cli_legacy_scoped.stdout)
+        assert "legacy project" in cli_legacy_payload["error"], cli_legacy_payload
+        assert "Register this agent identity first" in cli_legacy_payload["error"], cli_legacy_payload
+        assert "--registered-agent codex-side-bypass" in cli_legacy_payload["error"], cli_legacy_payload
+
     with tempfile.TemporaryDirectory() as fallback_tmp:
         root = Path(fallback_tmp)
         project = root / "project"
@@ -815,6 +999,10 @@ def main() -> int:
                             "status": "active",
                             "repo": str(project),
                             "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
+                            "coordination": {
+                                "registered_agents": ["codex-side-bypass"],
+                                "primary_agent": "codex-side-bypass",
+                            },
                         }
                     ]
                 }
@@ -850,6 +1038,37 @@ def main() -> int:
         )
         assert cli_global_fallback_payload["resolved_active_state"] == str(state_file), (
             cli_global_fallback_payload
+        )
+        cli_global_agent_json = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "goal_harness.cli",
+                "--format",
+                "json",
+                "--runtime-root",
+                str(runtime),
+                "heartbeat-prompt",
+                "--goal-id",
+                GOAL_ID,
+                "--compact",
+                "--agent-id",
+                "codex-side-bypass",
+                "--agent-scope",
+                "control-plane coordination",
+            ],
+            cwd=project,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        cli_global_agent_payload = json.loads(cli_global_agent_json.stdout)
+        assert cli_global_agent_payload["active_state_source"] == f"registry:{global_registry_path}", (
+            cli_global_agent_payload
+        )
+        assert cli_global_agent_payload["registered_agents"] == ["codex-side-bypass"], (
+            cli_global_agent_payload
         )
 
     cli_markdown = subprocess.run(

@@ -21,6 +21,8 @@ GOAL_ID = "todo-lifecycle-goal"
 RUN_TODO = "Run a fresh-seed full PR3-r8 treatment repeat after the support-blocked seed failed."
 REBUILD_TODO = "Rebuild labels and scorer after the fresh repeat."
 VALIDATE_TODO = "Validate scorer labels and write back the compact result."
+SIDE_TODO = "Refine todo ownership contract from a side worktree."
+REVIEW_TODO = "Primary agent review, verify, and merge the side-agent ownership contract work."
 
 
 def write_fixture(root: Path) -> tuple[Path, Path]:
@@ -57,6 +59,10 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
                         "state_file": ".codex/goals/todo-lifecycle-goal/ACTIVE_GOAL_STATE.md",
                         "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
                         "authority_sources": [],
+                        "coordination": {
+                            "registered_agents": ["codex-main-control", "codex-side-bypass"],
+                            "primary_agent": "codex-main-control",
+                        },
                     }
                 ],
             },
@@ -86,6 +92,27 @@ def run_cli(registry_path: Path, *args: str) -> dict:
         text=True,
         capture_output=True,
     )
+    return json.loads(result.stdout)
+
+
+def run_cli_error(registry_path: Path, *args: str) -> dict:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "goal_harness.cli",
+            "--registry",
+            str(registry_path),
+            "--format",
+            "json",
+            *args,
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
     return json.loads(result.stdout)
 
 
@@ -142,6 +169,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             run_todo_id,
+            "--claimed-by",
+            "codex-main-control",
             "--evidence",
             "fresh-repeat-result-ready",
             "--next-agent-todo",
@@ -157,8 +186,70 @@ def main() -> int:
         rebuild_item = next(item for item in items if item["todo_id"] == rebuild_todo_id)
         assert completed_item["done"] is True and completed_item["status"] == "done", completed_item
         assert completed_item["evidence"] == "fresh-repeat-result-ready", completed_item
+        assert completed_item["claimed_by"] == "codex-main-control", completed_item
         assert rebuild_item["done"] is False and rebuild_item["task_class"] == "advancement_task", rebuild_item
         assert rebuild_item["action_kind"] == "rebuild_score", rebuild_item
+
+        side_added = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            SIDE_TODO,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--task-class",
+            "advancement_task",
+            "--action-kind",
+            "contract_refine",
+        )
+        assert side_added["added"] is True, side_added
+        side_todo_id = side_added["todo_id"]
+        missing_review = run_cli_error(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            side_todo_id,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--evidence",
+            "side-worktree-contract-diff",
+        )
+        assert "side-agent completion" in missing_review["error"], missing_review
+        assert "--next-agent-todo" in missing_review["error"], missing_review
+
+        side_completed = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            side_todo_id,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--evidence",
+            "side-worktree-contract-diff",
+            "--next-agent-todo",
+            REVIEW_TODO,
+            "--next-action-kind",
+            "primary_review",
+        )
+        assert side_completed["changed"] is True, side_completed
+        review_todo_id = side_completed["next_todos"][0]["todo_id"]
+        assert side_completed["next_todos"][0]["claimed_by"] == "codex-main-control", side_completed
+        items = parsed_items(state_file)
+        side_item = next(item for item in items if item["todo_id"] == side_todo_id)
+        review_item = next(item for item in items if item["todo_id"] == review_todo_id)
+        assert side_item["done"] is True and side_item["claimed_by"] == "codex-side-bypass", side_item
+        assert review_item["done"] is False and review_item["claimed_by"] == "codex-main-control", review_item
 
         repeated = run_cli(
             registry_path,

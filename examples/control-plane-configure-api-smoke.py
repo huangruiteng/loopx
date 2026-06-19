@@ -197,6 +197,10 @@ def configure_payload() -> dict[str, Any]:
         "max_children": 2,
         "allowed_domains": ["docs", "validation"],
         "clear_allowed_domains": False,
+        "registered_agents": ["codex-main-control", "codex-side-bypass"],
+        "primary_agent": "codex-main-control",
+        "clear_registered_agents": False,
+        "clear_primary_agent": False,
     }
 
 
@@ -227,6 +231,8 @@ def main() -> None:
             assert status == 200, dry
             assert dry["changed"] is True, dry
             assert dry["written"] is False, dry
+            assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
+            assert dry["after"]["primary_agent"] == "codex-main-control", dry
             assert goal_from_registry(registry)["quota"]["compute"] == 1
             status, blocked = request_json(
                 "POST",
@@ -290,6 +296,8 @@ def main() -> None:
             status, dry = request_json("POST", f"{base_url}/control-plane/configure-goal/dry-run", configure_payload())
             assert status == 200, dry
             assert dry["preview_id"], dry
+            assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
+            assert dry["after"]["primary_agent"] == "codex-main-control", dry
             status, stale = request_json(
                 "POST",
                 f"{base_url}/control-plane/configure-goal/apply",
@@ -322,6 +330,8 @@ def main() -> None:
             assert goal["spawn_policy"]["allowed"] is True, goal
             assert goal["spawn_policy"]["max_children"] == 2, goal
             assert goal["spawn_policy"]["allowed_domains"] == ["docs", "validation"], goal
+            assert goal["coordination"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], goal
+            assert goal["coordination"]["primary_agent"] == "codex-main-control", goal
             status, refreshed = request_json("GET", f"{base_url}/status.json")
             assert status == 200, refreshed
             assert refreshed["local_dashboard_api"]["control_plane_write_enabled"] is True, refreshed

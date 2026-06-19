@@ -33,6 +33,13 @@
         ]
       },
       "coordination": {
+        "registered_agents": [
+          "codex-main-control",
+          "codex-docs-map",
+          "codex-validation-map",
+          "codex-implementation-slice"
+        ],
+        "primary_agent": "codex-main-control",
         "write_scope": [
           "docs/**",
           "examples/**",
@@ -65,6 +72,10 @@
         "status": "planned"
       },
       "coordination": {
+        "registered_agents": [
+          "codex-docs-map"
+        ],
+        "primary_agent": "codex-docs-map",
         "write_scope": [],
         "claim_ttl_minutes": 15,
         "requires_parent_approval": [
@@ -91,6 +102,10 @@
         "status": "planned"
       },
       "coordination": {
+        "registered_agents": [
+          "codex-validation-map"
+        ],
+        "primary_agent": "codex-validation-map",
         "write_scope": [],
         "claim_ttl_minutes": 15,
         "requires_parent_approval": [
