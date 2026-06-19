@@ -5,12 +5,13 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-18T22:54:59+08:00`
+- updated_at: `2026-06-20T04:51:08+08:00`
 
 ## Case Decisions
 
 | Benchmark | Case | Decision | Case Routing | Runs |
 | --- | --- | --- | --- | --- |
+| `skillsbench-cloud-oracle-sanity@v0` | `hello-world` | `single_arm_recorded` | - | `1` |
 | `skillsbench@1.1` | `3d-scan-calc` | `paired_baseline_solved_treatment_preserved` | - | `3` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `paired_baseline_solved_treatment_preserved` | - | `4` |
 | `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_runner_or_setup_repair_required` | - | `1` |
@@ -74,6 +75,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 | Benchmark | Case | Arm | Attempt | Score | First Success Round | Round Rewards | Failure | Artifact |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `skillsbench-cloud-oracle-sanity@v0` | `hello-world` | `oracle_uv_prewarm_no_upload_sanity` | `oracle_sanity_attempt` | `1.0` | `1` | `1:1*` | `none` | `docs/research/long-horizon-agent-benchmarks/skillsbench-cloud-oracle-sanity-20260620.md` |
 | `skillsbench@1.1` | `3d-scan-calc` | `codex_goal_mode_baseline` | `` | `1.0` | `` | `` | `none` | `` |
 | `skillsbench@1.1` | `3d-scan-calc` | `baseline` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-3d-scan-calc-blind-baseline-v0/3d-scan-calc__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `3d-scan-calc` | `codex_goal_harness_treatment` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-3d-scan-calc-blind-treatment-baseline-safe-v0/3d-scan-calc__goal_harness_blind_loop_baseline_safe_v0/benchmark_run.compact.json` |

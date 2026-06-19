@@ -1,5 +1,65 @@
 {
   "benchmarks": {
+    "skillsbench-cloud-oracle-sanity@v0": {
+      "benchmark_id": "skillsbench-cloud-oracle-sanity@v0",
+      "case_count": 1,
+      "cases": {
+        "hello-world": {
+          "case_id": "hello-world",
+          "latest_decision": {
+            "decision": "single_arm_recorded",
+            "latest_run_id": "ba6d29ecc60f"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_model": "oracle",
+              "arm_id": "oracle_uv_prewarm_no_upload_sanity",
+              "artifact_refs": {
+                "compact_artifact_ref": "docs/research/long-horizon-agent-benchmarks/skillsbench-cloud-oracle-sanity-20260620.md"
+              },
+              "benchmark_id": "skillsbench-cloud-oracle-sanity@v0",
+              "case_id": "hello-world",
+              "case_ids": [
+                "hello-world"
+              ],
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "first_success_round": 1,
+              "goal_harness_inside_case": false,
+              "job_name": "skillsbench_cloud_hello_world_uv_prewarm_oracle_sanity",
+              "leaderboard_evidence": false,
+              "ledger_attempt_kind": "oracle_sanity_attempt",
+              "mode": "oracle_uv_prewarm_no_upload_sanity",
+              "model_control_status": "not_applicable_oracle_sanity",
+              "notes": "cloud host SkillsBench hello-world oracle sanity passed after uv verifier dependency prewarm; compact summary only; no raw task/log/verifier/trajectory material recorded",
+              "official_feedback_blinded": false,
+              "official_passed": true,
+              "official_score": 1.0,
+              "recorded_at": "2026-06-20T04:51:08+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 1,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": true,
+                  "reward": 1.0,
+                  "reward_present": true
+                }
+              ],
+              "round_success_observed": true,
+              "run_group_id": "skillsbench-cloud-hello-world-uv-prewarm-oracle-sanity-20260620",
+              "run_id": "ba6d29ecc60f",
+              "score_status": "passed",
+              "source_event_schema": "cloud_host_summary_json_v0",
+              "status": "completed",
+              "submit_eligible": false
+            }
+          ]
+        }
+      },
+      "run_count": 1
+    },
     "skillsbench@1.1": {
       "benchmark_id": "skillsbench@1.1",
       "case_count": 21,
@@ -9541,5 +9601,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-18T22:54:59+08:00"
+  "updated_at": "2026-06-20T04:51:08+08:00"
 }
