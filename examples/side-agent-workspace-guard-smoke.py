@@ -100,6 +100,7 @@ def status_payload(repo: Path, registry: Path) -> dict:
         "recommended_action": "Advance one public-safe side-agent slice.",
         "quota": quota,
         "project_asset": {
+            "next_action": PRIMARY_TODO,
             "agent_todos": {
                 "schema_version": "todo_summary_v0",
                 "total_count": 3,
@@ -224,6 +225,7 @@ def main() -> int:
         assert side_ok["normal_delivery_allowed"] is True, side_ok
         assert "workspace_guard" not in side_ok, side_ok
         assert side_ok["recommended_action"] == SIDE_TODO, side_ok
+        assert "state_action_projection_warning" not in side_ok, side_ok
         side_summary = side_ok["agent_todo_summary"]
         assert side_summary["first_executable_items"][0]["todo_id"] == "todo_side", side_summary
         assert side_summary["claim_scope"]["current_agent_claimed_open_count"] == 1, side_summary

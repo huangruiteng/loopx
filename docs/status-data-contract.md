@@ -810,7 +810,9 @@ Item fields:
   primary/other-agent claimed todos as `blocked_claimed_items` context. This is
   claim-aware routing, not a hard lease: the primary agent still sees the whole
   backlog, and a side agent still uses its automation/handoff scope to decide
-  whether an unclaimed todo is appropriate.
+  whether an unclaimed todo is appropriate. A current-agent claimed todo may be
+  selected even when the active state's global `Next Action` names the primary
+  lane; that is not a state projection mismatch.
 - `dependency_blockers`: optional compact summary of unfinished user todos from
   other current attention-queue goals. This lets dashboards and heartbeat
   dispatchers show sibling/project dependency gates separately from the current

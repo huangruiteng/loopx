@@ -1626,6 +1626,7 @@ def _actions_are_projection_aligned(left: Any, right: Any) -> bool:
 def _state_action_projection_warning(
     item: dict[str, Any],
     *,
+    agent_todo_summary: dict[str, Any] | None,
     selected_action: Any,
     work_lane_contract: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
@@ -1645,6 +1646,27 @@ def _state_action_projection_warning(
     selected_text = str(selected_action or "").strip()
     if not active_next_action or not selected_text:
         return None
+    if isinstance(agent_todo_summary, dict):
+        claim_scope = agent_todo_summary.get("claim_scope")
+        first_executable = (
+            agent_todo_summary.get("first_executable_items")
+            if isinstance(agent_todo_summary.get("first_executable_items"), list)
+            else []
+        )
+        selected_item = next((item for item in first_executable if isinstance(item, dict)), None)
+        selected_claimed_by = normalize_todo_claimed_by(
+            selected_item.get("claimed_by") if selected_item else None
+        )
+        claim_agent_id = normalize_todo_claimed_by(
+            claim_scope.get("agent_id") if isinstance(claim_scope, dict) else None
+        )
+        if (
+            selected_item
+            and selected_claimed_by
+            and claim_agent_id
+            and selected_claimed_by == claim_agent_id
+        ):
+            return None
     if _actions_are_projection_aligned(active_next_action, selected_text):
         return None
     return {
@@ -4386,6 +4408,7 @@ def build_quota_should_run(
             )
         state_action_projection_warning = _state_action_projection_warning(
             item,
+            agent_todo_summary=agent_todo_summary,
             selected_action=selected_recommended_action,
             work_lane_contract=work_lane_contract,
         )
