@@ -58,6 +58,11 @@ work still belongs in the existing code, examples, and contract documents:
   dependencies, task-data staging, bounded execution, and compact result
   reduction. It makes missing remote Codex/Codex-ACP non-blocking and routes
   real blockers to adapter, runner-tooling, or task-data gates.
+- `cloud-codex-benchmark-route-20260619.md`: route-decision note that makes an
+  exclusive cloud benchmark host the default path for Terminal-Bench,
+  SkillsBench, and ALE. It preserves the split-control work as fallback
+  research, but moves near-term execution back to clean upstream-close
+  benchmark checkouts with Codex CLI and containers on the same host.
 - `benchmark-priority-review-20260614.md`: corrected priority review using
   Codex CLI goal mode as the baseline. It separates direct low Codex baselines,
   selected hard-subset failures, and adjacent-agent-low benchmarks that still

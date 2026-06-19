@@ -16,10 +16,12 @@ The benchmark workflow has four layers:
 
 1. **Select** a benchmark family, task, and arm without exposing private task
    text or reward leakage.
-2. **Launch** through an explicit route contract: local agent, local Goal
-   Harness state, and a local model invocation boundary; optional remote
-   execution substrate for Docker, runner dependencies, task data, and compact
-   reduction.
+2. **Launch** through an explicit route contract. The default route is now an
+   exclusive cloud benchmark host where Codex CLI, the benchmark runner, Docker
+   or compatible container runtime, task data, and compact reduction all run in
+   one isolated environment. Split-control routes remain useful for constrained
+   hosts or route research, but they are not the first choice when a dedicated
+   cloud host is available.
 3. **Observe** the run through compact handles: pid or job state, readiness
    re-check, materialization, result or blocker, and cleanup state.
 4. **Ingest** only public-safe evidence into Goal Harness history, ledger, and
@@ -42,9 +44,14 @@ goal-harness benchmark --help
 For a real benchmark slice, use this sequence:
 
 1. Run a source and boundary preflight for the target benchmark.
-2. Build or inspect the split-control readiness payload.
+2. Prepare or select the benchmark host route:
+   - prefer the default cloud Codex route when the host is dedicated, has
+     enough CPU/memory/disk, and can run Codex CLI plus containers directly;
+   - use a split-control route only when host credentials, local policy, or
+     runner constraints make a single cloud host unsuitable.
 3. Produce a launch plan or runner batch only after a fresh readiness re-check.
-4. Build benchmark-specific command-adapter facts, such as
+4. Build benchmark-specific command-adapter facts when the route still needs a
+   Goal Harness adapter, such as
    `goal-harness benchmark terminal-bench-command-adapter terminal-bench`.
    When Terminal-Bench uses a remote executor, first reduce the local-driver
    request plus private remote launch result through the launch adapter:
@@ -91,10 +98,55 @@ the result or blocker:
 The goal is a living runner guide. Repeated benchmark attempts should make the
 next attempt easier to launch and debug, not only add more private evidence.
 
+## Cloud Codex Route
+
+Use the cloud Codex route as the default for Terminal-Bench, SkillsBench, ALE,
+and other Docker-heavy benchmark families when a dedicated benchmark host is
+available.
+
+| Owner | Responsibility |
+| --- | --- |
+| Cloud benchmark host | Codex CLI, benchmark source checkout, runner dependencies, container runtime, task-data staging, no-upload run execution, compact result reduction, and private raw artifacts. |
+| Goal Harness repo | Public-safe route contracts, reducer schemas, benchmark ledger ingestion, todo/state writeback, public docs, and focused smokes. |
+| Operator | Codex login on the cloud host, benchmark data gates, upload/leaderboard decisions, and any private-material or credential approval. |
+
+The route is intentionally simpler than split-control: SSH reaches the host,
+then Codex CLI runs there like a normal developer would. Goal Harness should not
+need to understand SSH internals, jump hosts, or remote file bridges in the hot
+path. It should only record compact route readiness, result handles, blockers,
+and no-upload boundaries.
+
+Default cloud-host readiness:
+
+- SSH access works through the operator's approved access path.
+- Codex CLI is installed on the host; auth is completed by the operator on that
+  host and is not copied from another machine.
+- `git`, Python, `uv`, Node/npm when required, and Docker or a Docker-compatible
+  runtime are available.
+- Container image pulls use a documented reachable registry or mirror.
+- The benchmark workspace is dedicated and private enough for raw artifacts.
+- The first task is a no-upload dry-run or mini-pair that writes compact
+  `benchmark_run_v0` / `benchmark_result_v0` evidence before any score claim.
+
+Keep upstream benchmark sources clean:
+
+- Use upstream `main` or a pinned upstream commit for official runner code.
+- Keep any internal convenience changes on a tiny, rebased adapter branch.
+- Prefer wrapper scripts, environment files, and reducer sidecars over editing
+  upstream benchmark logic.
+- Fork only when we need to preserve a small reusable patch set; keep the fork
+  close enough that upstream pulls remain routine.
+- Do not mix Goal Harness runner experiments, local bridge probes, raw logs, or
+  credential setup into benchmark forks.
+
 ## Split-Control Route
 
-Docker-heavy benchmarks should use the split-control route unless a narrower
-local-only route is explicitly safer:
+The split-control route is now a fallback and research route, not the default
+when a dedicated cloud host exists.
+
+Use it when Codex auth cannot live on the execution host, when the host is
+shared, or when the product question is specifically about a local Goal Harness
+controller using a separate Docker substrate.
 
 | Owner | Responsibility |
 | --- | --- |
@@ -107,14 +159,10 @@ things like missing split-control adapter, missing runner tooling, missing task
 data or images, missing remote node runtime when a specific runner requires it,
 or a failed cleanup/readiness check.
 
-An all-remote runner may be useful as an experimental fallback when an
-exclusive machine is available and the split-control seam is repeatedly the
-only thing blocking benchmark insight. Label those results as
-`all_remote_experimental`, keep credentials off shared machines, and do not use
-them as product-path evidence for the local-agent / remote-executor control
-plane. The product-path target remains: local Codex owns auth, model calls,
-state, and writeback; the remote side owns Docker, runner tooling, task
-staging, bounded command/file execution, and compact reduction.
+Historical split-control work is still useful: it records which boundaries
+matter when credentials cannot move, and it produced adapter/reducer seams that
+can be reused for compact evidence. Do not continue adding split-control bridge
+layers when a cloud-host route can answer the benchmark question directly.
 
 See
 [`benchmark-split-control-remote-executor-v0.md`](research/long-horizon-agent-benchmarks/benchmark-split-control-remote-executor-v0.md)
@@ -124,18 +172,22 @@ for the current machine contract.
 
 | Family | Product-path target | Current maturity |
 | --- | --- | --- |
-| Terminal-Bench | Local Codex/Goal Harness controls the attempt; remote executor provides Docker or runner substrate and compact result ingestion. | Has public adapter facts, compact reducers, a remote-executor materializer contract, and an explicit local-driver / remote-sandbox seam contract. Current blocker is wiring that seam to one real no-upload dry-run or exact compact blocker. A direct Harbor/remote-Docker path that requires agent or Codex runtime inside the remote worker is not product-path evidence. |
-| SkillsBench | Local Codex/Goal Harness controls state, prompt, and writeback; remote executor stages task files and runs Docker-bound worker surfaces. | Has a local ACP stdio relay probe plus a BenchFlow `ACPClient` host-local transport probe, both dry-run and public-safe. Current launch blocker is the bounded remote command/file bridge; until it exists, a successful relay/transport probe is not mini-pair readiness. |
-| Agents' Last Exam | Local Codex/Goal Harness controls the agent; remote Docker/CUA provides the sandbox; compact result or blocker is ingested locally. | A demo/tool-smoke style split-control surface is product-path proven; formal task runs still need task-data and public-claim gates. |
+| Terminal-Bench | Cloud Codex CLI runs the task on a dedicated benchmark host; Goal Harness ingests compact no-upload evidence. | Prior split-control adapters remain useful reducers, but the next run should prefer direct cloud-host Codex plus container runtime. |
+| SkillsBench | Cloud Codex CLI and BenchFlow run on the same dedicated host; Goal Harness records compact base/test mini-pair evidence. | Prior host-local ACP relay work is historical route-repair evidence. Do not add more bridge layers before trying the cloud-host path. |
+| Agents' Last Exam | Cloud Codex CLI drives the local-Docker-capable ALE route on the dedicated host; Goal Harness ingests compact no-upload evidence. | Formal task runs still need task-data and public-claim gates, but Docker/Codex colocation should replace the earlier local-host split-control assumption. |
 
 This table is intentionally about runner maturity, not leaderboard score.
 Score claims require separate public-safe result ingestion and review.
 
-### SkillsBench Local ACP Preflight
+### SkillsBench Split-Control Preflight
+
+This preflight is retained for historical split-control debugging and for
+shared-host environments where Codex auth cannot live on the runner host. It is
+not the default route when a dedicated cloud benchmark host is available.
 
 SkillsBench currently uses BenchFlow's ACP stdio worker protocol for Codex-like
-agents. For Goal Harness product-mode runs, Codex auth, model invocation, and
-goal state must stay local. Before launching a mini-pair, run:
+agents. For split-control runs, Codex auth, model invocation, and goal state
+stay local. Before launching a split-control mini-pair, run:
 
 ```bash
 python3 scripts/skillsbench_automation_loop.py \
