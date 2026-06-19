@@ -139,6 +139,25 @@ selected-image, source-extraction, entrypoint eval, compact reducer, and
 credential-boundary contracts without invoking Codex or Docker.
 
 ```bash
+python3 regression/codex-app-server-goal-baseline-contract.py
+```
+
+Runs the contract-only Codex Goal benchmark baseline seam. It verifies that the
+preferred automation surface is Codex app-server `thread/goal/set` plus
+`thread/goal/get` with `experimentalApi=true`, that `codex exec` remains only a
+connectivity smoke, and that slash-prefixed prompts or Goal Harness state leaks
+cannot be promoted into paired baseline evidence.
+
+```bash
+python3 regression/codex-app-server-goal-baseline-contract.py --real-codex
+```
+
+Optionally starts a real local `codex app-server` with isolated `HOME` and
+`CODEX_HOME`, sets a paused goal, reads it back, and prints only compact
+public-safe evidence. This is an explicit release/debug probe, not part of the
+default suite.
+
+```bash
 python3 regression/agentissue-lagent239-real-codex-runner.py \
   --real-codex \
   --prompt-path <private-agentissue-prompt.md>
