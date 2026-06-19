@@ -95,6 +95,68 @@ registry and active goal files.
 Use the canary wrapper for one or two selected controllers before promoting a
 checkout to the default local release.
 
+## Global Skill Install, Update, Repair, And Cleanup
+
+`scripts/install-local.sh` manages two reusable local surfaces:
+
+- the CLI wrappers under `~/.local/bin`;
+- the Goal Harness Codex skills under `~/.codex/skills`.
+
+Re-run the installer to update both surfaces from the current checkout:
+
+```bash
+cd ~/goal-harness
+git pull --ff-only
+./scripts/install-local.sh
+goal-harness doctor
+```
+
+Use `goal-harness-canary` when you want to test the live checkout before making
+it the default release snapshot. `goal-harness doctor` reports whether the
+default wrapper points at a release snapshot, whether the canary wrapper points
+at the live checkout, and whether the required skills are installed.
+
+If an agent says it cannot find Goal Harness, repair in this order:
+
+1. Ensure `~/.local/bin` is on `PATH`.
+2. Re-run `~/goal-harness/scripts/install-local.sh`.
+3. Run `goal-harness doctor`.
+4. If a recurring automation is stale, regenerate it with
+   `goal-harness heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"`.
+
+The reusable skills have intentionally narrow jobs:
+
+| Skill | Use it for | Do not use it for |
+| --- | --- | --- |
+| `goal-harness-project` | Connecting projects, reading status/quota/history, diagnosing Goal Harness, generating heartbeat/review packets, and refreshing state. | Reading private project documents by default or replacing the CLI as source of truth. |
+| `goal-harness-doc-registry` | Registering durable project material and redacted authority-source metadata. | Copying raw doc bodies, internal URLs, or private comments into public repo docs. |
+| `goal-harness-self-repair` | Repairing surprising control-plane behavior, stale projection, tiny turns, or contradictory guard payloads. | Lowering gates, guessing around missing authority, or committing private runtime state. |
+
+Keep three layers separate:
+
+- **Global skill behavior** belongs in `skills/` and is installed under
+  `~/.codex/skills`.
+- **Project state** belongs in `.goal-harness/`, `.codex/goals/`, and
+  `~/.codex/goal-harness`; keep it local unless a sanitized fixture is
+  intentionally committed.
+- **Repository rules** belong in `AGENTS.md`, `CONTRIBUTING.md`, and public
+  docs. They can constrain contributors and agents in this repository, but they
+  should not silently become global skill policy for every project.
+
+There is no dedicated uninstall command yet. For manual cleanup, remove only
+the reusable surfaces you intend to drop:
+
+```bash
+rm -f ~/.local/bin/goal-harness ~/.local/bin/goal-harness-canary
+rm -rf ~/.codex/skills/goal-harness-project \
+       ~/.codex/skills/goal-harness-doc-registry \
+       ~/.codex/skills/goal-harness-self-repair
+```
+
+This does not archive connected project state or runtime history. Archive or
+remove `.goal-harness/`, `.codex/goals/`, and `~/.codex/goal-harness` only when
+you intentionally want to retire those local project records.
+
 ## Connect A Project Manually
 
 From the project repository:
