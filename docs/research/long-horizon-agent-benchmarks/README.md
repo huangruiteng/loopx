@@ -65,6 +65,11 @@ work still belongs in the existing code, examples, and contract documents:
   SkillsBench, and ALE. It preserves the split-control work as fallback
   research, but moves near-term execution back to clean upstream-close
   benchmark checkouts with Codex CLI and containers on the same host.
+- `benchmark-route-transition-retrospective-20260619.md`: retrospective and
+  runbook for the local-Codex split-control to cloud-host Codex route pivot. It
+  records why split-control was hard, which contracts/reducers remain useful,
+  how to keep benchmark branches upstream-close, and when to retire bridge
+  layers from the mainline path.
 - `benchmark-priority-review-20260614.md`: corrected priority review using
   Codex CLI goal mode as the baseline. It separates direct low Codex baselines,
   selected hard-subset failures, and adjacent-agent-low benchmarks that still

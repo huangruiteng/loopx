@@ -177,7 +177,9 @@ Treat split-control assets as a retained research branch, not a live default:
 
 See
 [`benchmark-split-control-remote-executor-v0.md`](research/long-horizon-agent-benchmarks/benchmark-split-control-remote-executor-v0.md)
-for the current machine contract.
+for the current machine contract, and
+[`benchmark-route-transition-retrospective-20260619.md`](research/long-horizon-agent-benchmarks/benchmark-route-transition-retrospective-20260619.md)
+for the split-control retention, branch-hygiene, and retirement runbook.
 
 ## Current Benchmark Families
 
