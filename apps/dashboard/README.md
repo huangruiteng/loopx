@@ -11,10 +11,30 @@ source of truth for day-to-day work. Use the dashboard for public-safe demos,
 local inspection, and focused UI experiments until it receives a dedicated
 product iteration pass.
 
+## Fresh Clone Public Preview
+
+No private Goal Harness state is required for the first dashboard preview. The
+app bundles `examples/status.example.json` as its public-safe example source,
+so a fresh checkout can validate and open the UI before starting any local
+status server:
+
+```bash
+cd apps/dashboard
+npm ci
+npm run smoke:demo-readiness -- --skip-browser
+npm run dev
+```
+
+Then open `http://127.0.0.1:5173/`. Use the bundled example source for a public
+demo, or switch to a loopback status URL only after you have started
+`goal-harness serve-status` locally. Do not commit `status.local.json` or live
+status exports; they can contain local registry/runtime paths and private
+project summaries.
+
 ## Run
 
 ```bash
-npm install
+npm ci
 npm run build
 npm run dev
 ```

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -56,9 +57,25 @@ def build_env() -> dict[str, str]:
     }
 
 
+def ensure_dashboard_dependencies(env: dict[str, str]) -> None:
+    if shutil.which("npm", path=env.get("PATH")) is None:
+        raise SystemExit(
+            "dashboard demo-readiness smoke requires npm; install Node/npm "
+            "before running apps/dashboard smokes"
+        )
+    tsc_bin = DASHBOARD_DIR / "node_modules" / ".bin" / ("tsc.cmd" if os.name == "nt" else "tsc")
+    if not tsc_bin.exists():
+        raise SystemExit(
+            "dashboard npm dependencies are missing; run "
+            "`cd apps/dashboard && npm ci` before "
+            "`npm run smoke:demo-readiness -- --skip-browser`"
+        )
+
+
 def main() -> int:
     args = parse_args()
     env = build_env()
+    ensure_dashboard_dependencies(env)
     commands = list(BASE_COMMANDS)
     if not args.skip_browser:
         commands.extend(BROWSER_COMMANDS)

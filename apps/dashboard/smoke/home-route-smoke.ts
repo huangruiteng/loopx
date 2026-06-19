@@ -55,6 +55,9 @@ includes(packageSource, '"smoke:demo-readiness"', "demo readiness smoke script")
 includes(readmeSource, "npm run smoke:home-browser", "README home browser smoke command");
 includes(readmeSource, "npm run smoke:demo-readiness", "README demo readiness smoke command");
 includes(readmeSource, "--skip-browser", "README demo readiness CI skip-browser command");
+includes(readmeSource, "Fresh Clone Public Preview", "README fresh-clone preview section");
+includes(readmeSource, "npm ci", "README fresh-clone npm dependency install");
+includes(readmeSource, "examples/status.example.json", "README bundled public status fixture");
 includes(readmeSource, "without `view=share`", "README home smoke canonical route expectation");
 
 for (const [source, sourceLabel] of [
