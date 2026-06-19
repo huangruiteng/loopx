@@ -55,7 +55,11 @@ def run_goal_harness(*args: str, registry: Path, runtime: Path) -> dict[str, Any
     return payload
 
 
-def write_fixture(root: Path) -> tuple[Path, Path]:
+def write_fixture(
+    root: Path,
+    *,
+    state_next_action: str = POLL_ACTION,
+) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
@@ -72,7 +76,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
         "---\n\n"
         "# Quota Executable Backlog Projection Fixture\n\n"
         "## Next Action\n\n"
-        f"- {POLL_ACTION}\n\n"
+        f"- {state_next_action}\n\n"
         "## Agent Todo\n\n"
         "- [ ] [P0] [P0 monitor] Observe no-upload Terminal-Bench train-fasttext "
         "using compact process/result markers only.\n"
@@ -183,6 +187,28 @@ def assert_refresh_state_prefers_open_agent_todo(
     assert refresh["recommended_action"] != POLL_ACTION, refresh
 
 
+def assert_latest_run_action_does_not_create_false_projection_gap() -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="goal-harness-quota-executable-backlog-synced-"
+    ) as tmp:
+        runtime, registry = write_fixture(
+            Path(tmp),
+            state_next_action=EXECUTABLE_TODO,
+        )
+        guard = run_goal_harness(
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            registry=registry,
+            runtime=runtime,
+        )
+        assert guard["should_run"] is True, guard
+        assert guard["recommended_action"] == EXECUTABLE_TODO, guard
+        assert guard["recommended_action"] != POLL_ACTION, guard
+        assert "state_action_projection_warning" not in guard, guard
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="goal-harness-quota-executable-backlog-") as tmp:
         runtime, registry = write_fixture(Path(tmp))
@@ -199,6 +225,7 @@ def main() -> int:
             registry=registry,
             runtime=runtime,
         )
+    assert_latest_run_action_does_not_create_false_projection_gap()
     print("quota-executable-backlog-projection-regression ok")
     return 0
 

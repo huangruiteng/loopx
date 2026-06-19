@@ -124,6 +124,17 @@ def _section_entries(lines: list[str]) -> list[str]:
     return [entry for entry in entries if entry]
 
 
+def active_state_next_action_entries(
+    state_text: str,
+    *,
+    limit: int | None = 3,
+) -> list[str]:
+    entries = _section_entries(_section_lines(state_text, "Next Action"))
+    if limit is None:
+        return entries
+    return entries[: max(0, limit)]
+
+
 def summarize_state_todo_open_counts(state_text: str) -> dict[str, int]:
     role: str | None = None
     counts = {"user": 0, "agent": 0}

@@ -1543,6 +1543,15 @@ def _action_label_for_compare(value: Any) -> str:
     return text[:120].strip()
 
 
+def _action_prefix_for_compare(value: Any) -> str:
+    text = _normalize_action_for_compare(value)
+    text = re.split(r"[,.;:，。；：]", text, maxsplit=1)[0].strip()
+    words = text.split()
+    if len(words) >= 4:
+        return " ".join(words[:6])
+    return text
+
+
 def _actions_are_projection_aligned(left: Any, right: Any) -> bool:
     left_text = _normalize_action_for_compare(left)
     right_text = _normalize_action_for_compare(right)
@@ -1554,6 +1563,11 @@ def _actions_are_projection_aligned(left: Any, right: Any) -> bool:
     right_label = _action_label_for_compare(right_text)
     for label, text in ((left_label, right_text), (right_label, left_text)):
         if label and len(label) >= 8 and label in text:
+            return True
+    left_prefix = _action_prefix_for_compare(left_text)
+    right_prefix = _action_prefix_for_compare(right_text)
+    for prefix, text in ((left_prefix, right_text), (right_prefix, left_text)):
+        if prefix and len(prefix) >= 24 and prefix in text:
             return True
     shorter, longer = sorted((left_text, right_text), key=len)
     return len(shorter) >= 32 and shorter in longer
@@ -1577,7 +1591,11 @@ def _state_action_projection_warning(
     ):
         return None
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
-    active_next_action = str(project_asset.get("next_action") or "").strip()
+    active_next_action = str(
+        item.get("active_state_next_action")
+        or project_asset.get("next_action")
+        or ""
+    ).strip()
     selected_text = str(selected_action or "").strip()
     if not active_next_action or not selected_text:
         return None
@@ -3861,6 +3879,8 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
             "handoff_readiness",
             "user_todos",
             "agent_todos",
+            "active_state_next_action",
+            "active_state_next_action_entries",
         ):
             if optional_field in attention:
                 if optional_field == "handoff_readiness":

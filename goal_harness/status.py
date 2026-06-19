@@ -37,7 +37,7 @@ from .paths import global_registry_path, resolve_runtime_root
 from .promotion_gate import build_promotion_gate
 from .quota import QUOTA_MONITOR_POLL_CLASSIFICATION, quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
-from .state_projection import state_projection_gap_warning
+from .state_projection import active_state_next_action_entries, state_projection_gap_warning
 from .todo_contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -5168,6 +5168,10 @@ def active_state_todo_fields(goal: dict[str, Any]) -> dict[str, Any]:
     except OSError:
         return {}
     fields = parse_active_state_todos(state_text, goal=goal, state_path=state_path)
+    next_action_entries = active_state_next_action_entries(state_text, limit=3)
+    if next_action_entries:
+        fields["active_state_next_action"] = next_action_entries[0]
+        fields["active_state_next_action_entries"] = next_action_entries
     warning = backlog_hygiene_warning(
         state_text,
         agent_todos=fields.get("agent_todos") if isinstance(fields.get("agent_todos"), dict) else None,
