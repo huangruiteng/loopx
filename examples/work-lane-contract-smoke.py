@@ -663,7 +663,41 @@ def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
     assert guard["interaction_contract"]["agent_channel"]["primary_action"] == executable_todo, guard
     assert f"agent_action={executable_todo}" in guard["protocol_action_packet"]["summary"], guard
     first_items = guard["agent_todo_summary"]["first_open_items"]
-    assert [item["task_class"] for item in first_items] == ["continuous_monitor", "advancement_task"], guard
+    assert [item["task_class"] for item in first_items] == ["advancement_task", "continuous_monitor"], guard
+
+
+def assert_lower_priority_executable_before_higher_priority_is_reordered() -> None:
+    p2_todo = "[P2] Fold server scheduling into the longer-term roadmap."
+    p1_todo = "[P1] Fix first-screen dashboard acceptance before roadmap cleanup."
+    guard = build_quota_should_run(
+        status_payload(
+            status="todo_priority_projection_fixture",
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": p2_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P2",
+                    "task_class": "advancement_task",
+                },
+                {
+                    "index": 2,
+                    "text": p1_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                    "task_class": "advancement_task",
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    assert guard["decision"] == "run", guard
+    assert guard["recommended_action"] == p1_todo, guard
+    assert guard["interaction_contract"]["agent_channel"]["primary_action"] == p1_todo, guard
+    executable_items = guard["agent_todo_summary"]["first_executable_items"]
+    assert [item["priority"] for item in executable_items[:2]] == ["P1", "P2"], guard
 
 
 def assert_external_monitor_context_recommends_executable_backlog() -> None:
@@ -981,6 +1015,7 @@ def main() -> int:
     assert_structured_todo_lane_registration_beats_text_fallback()
     assert_structured_monitor_registration_beats_action_text()
     assert_mixed_monitor_and_advancement_routes_to_advancement()
+    assert_lower_priority_executable_before_higher_priority_is_reordered()
     assert_external_monitor_context_recommends_executable_backlog()
     assert_benchmark_readiness_scan_routes_to_advancement()
     assert_benchmark_source_preflight_routes_to_advancement()
