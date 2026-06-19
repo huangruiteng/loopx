@@ -104,6 +104,7 @@ must not decide delivery gates, spend policy, or write permission directly.
 | IP-015 | Benchmark Lifecycle Countability | Benchmark adapter/controller | no interruption by default | advance only through compact countable lifecycle gates |
 | IP-016 | Task Lease Claim | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
 | IP-017 | User Reward Lesson Promotion | User plus Goal Harness | acknowledge only when lesson changes route/priority/boundary | promote correction into durable lesson, todo, or projection before continuing |
+| IP-018 | Plan To Todo Writeback | Agent plus Goal Harness | no interruption unless a user todo is created | write user-facing plans into todos, Next Action, or refresh-state |
 
 ## Visual Model
 
@@ -965,6 +966,63 @@ main blocker or keeps following a stale local-only benchmark staging todo.
 - future `user_reward_lesson_projection_gap` status/quota smoke that checks
   explicit operating lessons are projected into `recommended_action`,
   active `Agent Todo`, or a state-projection repair warning.
+
+## IP-018 Plan To Todo Writeback
+
+**Trigger**
+
+- the agent tells the user a connected Goal Harness plan, top-todo list,
+  route change, benchmark branch policy, deprecation policy, or priority stack;
+- the plan contains concrete future P0/P1/P2 work, user actions, route
+  decisions, or cleanup/deprecation commitments;
+- future agents would need that plan to choose the next bounded segment.
+
+**Expected behavior**
+
+User-facing plans are not durable control-plane state by themselves. Before the
+final response, the agent must do one of:
+
+- add or update concrete `Agent Todo` / `User Todo` items;
+- refresh `Next Action` or the latest run's `recommended_action`;
+- write a public-safe doc/catalog entry and add the corresponding todo;
+- explicitly say the plan is speculative and no writeback was performed.
+
+This keeps the model's understanding, the user's mental plan, and Goal Harness
+state from diverging. It also prevents a later heartbeat from following a stale
+`recommended_action` even though the previous turn already explained a better
+route.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  P["agent explains plan / top todos / route change"] --> C{"concrete future work?"}
+  C -->|"no"| A["answer normally"]
+  C -->|"yes"| W{"writeback target"}
+  W --> T["todo add/update"]
+  W --> N["Next Action / refresh-state"]
+  W --> D["doc/catalog plus todo"]
+  W --> R["no-writeback rationale"]
+  T --> Q["quota/status can project it"]
+  N --> Q
+  D --> Q
+  R --> F["final says speculative/no durable change"]
+```
+
+**Bad smell**
+
+The agent says "current Top Todo: P0 cloud Codex login, P0 pull clean benchmark
+workspaces, P1 split-control retrospective, P1 branch hygiene runbook", but the
+active Goal Harness state contains only one broad P0 and none of the P1
+successor work. The next automation then behaves as if the plan never existed.
+
+**Validation**
+
+- `skills/goal-harness-project/SKILL.md`
+- `skills/goal-harness-self-repair/references/repair-patterns.md`
+- `examples/heartbeat-prompt-smoke.py`
+- future status/quota smoke that flags user-facing plans without todo or
+  refresh-state writeback.
 
 ## Maintenance Rules
 
