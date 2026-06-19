@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any, Iterable
@@ -45,6 +46,25 @@ def _skillsbench_public_safe_label(value: Any, *, limit: int = 120) -> str | Non
     while "--" in label:
         label = label.replace("--", "-")
     return (label or None)[:limit]
+
+
+def _skillsbench_rollout_reward_artifact(
+    result_path: Path,
+) -> tuple[float | None, str | None]:
+    reward_path = result_path.parent / "verifier" / "reward.txt"
+    if not reward_path.exists():
+        return None, None
+    try:
+        raw_reward = reward_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None, None
+    try:
+        reward = float(raw_reward)
+    except ValueError:
+        return None, None
+    if not math.isfinite(reward):
+        return None, None
+    return reward, "official_skillsbench_rollout_verifier_reward_txt"
 
 
 def skillsbench_route_contract(route: str) -> dict[str, Any]:
@@ -1084,6 +1104,11 @@ def build_skillsbench_benchflow_result_benchmark_run(
     reward_value = rewards.get("reward")
     if not isinstance(reward_value, (int, float)) or isinstance(reward_value, bool):
         reward_value = None
+    reward_artifact_source: str | None = None
+    if reward_value is None:
+        reward_value, reward_artifact_source = _skillsbench_rollout_reward_artifact(
+            result_path
+        )
     official_passed = bool(reward_value is not None and reward_value >= 1)
 
     timing_path = result_path.with_name("timing.json")
@@ -1120,7 +1145,11 @@ def build_skillsbench_benchflow_result_benchmark_run(
             skillsbench_runner_error_attribution(error_text)
         )
         runner_score_failure_attribution = score_failure_attribution
-    if verifier_error_text:
+    if verifier_error_text and reward_artifact_source:
+        warning_labels.append(
+            "skillsbench_result_json_reward_missing_recovered_from_reward_txt"
+        )
+    elif verifier_error_text:
         exception_type = "skillsbench_verifier_error"
         failure_labels.append("verifier_infrastructure_failure")
         score_failure_attribution = "verifier_infrastructure_failure"
@@ -1133,7 +1162,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
         score_failure_attribution = "official_verifier_solution_failure"
     elif reward_value == 0 and not failure_labels:
         failure_labels.append("official_score_zero_case_failure")
-    real_run_completed = not error_text and not verifier_error_text
+    real_run_completed = not error_text and (
+        not verifier_error_text or reward_artifact_source is not None
+    )
     job_name = skillsbench_job_name(dataset, task_id, route)
     controller_counters = _skillsbench_controller_trace_counters(controller_trace)
     controller_trace_present = bool(controller_counters.get("controller_trace_present"))
@@ -1151,6 +1182,8 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "official_skillsbench:result.json",
         "official_skillsbench:timing.json" if timing else "official_skillsbench:timing_missing",
     ]
+    if reward_artifact_source:
+        evidence_files.append("official_skillsbench:verifier/reward.txt")
     if controller_trace_present:
         evidence_files.append("goal_harness:controller_trace.public.json")
     trajectory_summary = (
@@ -1256,6 +1289,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
     official_score_source = "official_skillsbench_benchflow_result_json"
     official_score_status = "completed" if reward_value is not None else "missing"
     validation_scope = "official_benchflow_result_json_only"
+    if reward_artifact_source:
+        official_score_kind = "skillsbench_verifier_reward_recovered_from_reward_txt"
+        official_score_source = reward_artifact_source
+        validation_scope = "official_benchflow_result_json_plus_rollout_reward_artifact"
+        if not controller_trace_present:
+            counter_trust_level = "official_benchflow_result_plus_rollout_reward_artifact"
     if post_success_score:
         official_score_kind = (
             "skillsbench_verifier_reward_recovered_from_controller_trace"

@@ -464,6 +464,31 @@ def write_official_skillsbench_result(root: Path, *, reward: float = 0.0) -> Pat
     return result_path
 
 
+def write_official_skillsbench_reward_artifact_recovery_result(root: Path) -> Path:
+    run_dir = root / "official" / "2026-06-15__00-00-00" / "sample-task__abc123"
+    result_path = run_dir / "result.json"
+    write_json(
+        result_path,
+        {
+            "task_name": "sample-task",
+            "rollout_name": "sample-task__abc123",
+            "agent": "codex-acp",
+            "agent_name": "codex-acp",
+            "model": "gpt-5.5",
+            "n_tool_calls": 7,
+            "n_prompts": 1,
+            "error": None,
+            "verifier_error": "reward missing from compact result",
+            "partial_trajectory": False,
+            "trajectory_source": "acp",
+        },
+    )
+    reward_path = run_dir / "verifier" / "reward.txt"
+    reward_path.parent.mkdir(parents=True, exist_ok=True)
+    reward_path.write_text("1\n", encoding="utf-8")
+    return result_path
+
+
 def write_official_skillsbench_app_mount_failure(root: Path) -> Path:
     run_dir = root / "official" / "2026-06-15__00-00-00" / "citation-check__abc123"
     result_path = run_dir / "result.json"
@@ -811,6 +836,38 @@ def test_skillsbench_official_result_builder() -> None:
         assert compact["trials"][0]["task_id"] == "sample-task"
         assert compact["read_boundary"]["compact_only"] is True
         assert compact["read_boundary"]["trajectory_read"] is False
+
+
+def test_skillsbench_result_reward_artifact_recovery() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-reward-recovery-") as tmp:
+        result_path = write_official_skillsbench_reward_artifact_recovery_result(
+            Path(tmp)
+        )
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="codex-goal-mode-baseline",
+            )
+        )
+        assert compact is not None
+        assert compact["official_task_score"]["value"] == 1.0, compact
+        assert compact["official_task_score"]["passed"] is True, compact
+        assert compact["official_score_status"] == "completed", compact
+        assert compact["official_score_source"] == (
+            "official_skillsbench_rollout_verifier_reward_txt"
+        ), compact
+        assert compact["score_failure_attribution"] == "none", compact
+        assert "verifier_infrastructure_failure" not in compact.get(
+            "failure_attribution_labels", []
+        ), compact
+        assert "official_skillsbench:verifier/reward.txt" in compact[
+            "evidence_files"
+        ], compact
+        assert compact["validation"]["validation_scope"] == (
+            "official_benchflow_result_json_plus_rollout_reward_artifact"
+        ), compact
+        assert compact["progress"]["n_completed_trials"] == 1, compact
+        assert compact["progress"]["n_errored_trials"] == 0, compact
 
 
 def test_skillsbench_app_mount_failure_attribution() -> None:
@@ -3257,6 +3314,7 @@ if __name__ == "__main__":
     test_product_mode_declared_done_requires_case_state_depth()
     test_skillsbench_skeleton_builder()
     test_skillsbench_official_result_builder()
+    test_skillsbench_result_reward_artifact_recovery()
     test_skillsbench_app_mount_failure_attribution()
     test_skillsbench_app_skills_failure_attribution()
     test_skillsbench_docker_port_conflict_attribution()
