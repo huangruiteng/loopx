@@ -10,11 +10,11 @@ examples, or contract docs outside this topic folder.
 ## Current Recommendation
 
 Use Terminal-Bench 2.0 as the first official-runner probe, then SWE-Marathon as
-the first heavy long-horizon software-engineering probe. The next milestone is
-not another broad survey; it is a first official-pilot decision packet that
-freezes what a compliant Terminal-Bench pilot must collect before any real
-Terminal-Bench, Docker, model API, cloud sandbox, or leaderboard path is
-invoked.
+the first heavy long-horizon software-engineering probe, with FrontierSWE added
+as the next frontier-stress readiness lane. The next milestone is not another
+broad survey; it is a cloud-host no-upload pilot path that proves what a
+compliant run must collect before any real Docker-heavy benchmark, model API,
+cloud sandbox, or leaderboard path is invoked.
 
 The reason is pragmatic. Terminal-Bench has an open runner, Docker-style
 terminal tasks, verified leaderboard entries, and visible Codex/Codex-adjacent
@@ -22,26 +22,29 @@ agent rows. It is the fastest way to test whether a passive Goal Harness wrapper
 can add restartability, state truth, event ledgers, and failure attribution
 without changing the official scoring protocol.
 
-SWE-Marathon is closer to the user's paper-level ambition because the tasks are
-explicitly ultra-long software-engineering work, but it is heavier: the public
-repo uses a Harbor fork, task execution is likely expensive, and some log
-access is gated by external credentials. It should be the second lane after the
-Terminal-Bench wrapper boundary is understood.
+SWE-Marathon and FrontierSWE are closer to the user's paper-level ambition
+because both are explicitly long-horizon software-engineering work. SWE-Marathon
+remains the first heavy SWE probe because this repo already has a
+source-pinned readiness scan and a low direct Codex baseline. FrontierSWE is
+now the next readiness lane because it has direct Codex leaderboard rows and
+20-hour task framing, but the runner boundary, no-upload surface, and task
+inventory still need a no-execution launch packet.
 
 ## Ranking
 
 | Rank | Candidate | Use | Why |
 | --- | --- | --- | --- |
 | 1 | Terminal-Bench 2.0 | First official-runner probe | Open benchmark repo, terminal task model, verified leaderboard, visible Codex entries, and a protocol that already treats agent tools as part of the scored system. |
-| 2 | SWE-Marathon | First heavy SWE probe | Strongest fit for hours-to-days software-engineering work; public repo and 20 ultra-long tasks, but setup and cost are heavier. |
-| 3 | LongCLI-Bench | Paper hypothesis and failure-analysis source | Directly studies long-horizon CLI programming, step-level failures, and human-agent collaboration gains; runner openness still needs verification before it becomes an execution lane. |
-| 4 | WildClawBench | Native-runtime comparison lane | Promising because it evaluates real CLI harnesses including Codex-style harnesses in reproducible containers, but it is very new and needs protocol/code review. |
-| 5 | HORIZON / METR-style signals | Diagnostic and positioning signal | Useful to explain long-horizon degradation and compare across domains, but currently better as a leaderboard/diagnostic reference than as the first runnable Goal Harness integration. |
-| 6 | RoadmapBench / SWE-EVO | Software-evolution watchlist | Strong long-horizon SWE framing around version upgrades and multi-step codebase evolution, but runner maturity and Codex CLI compatibility need review before they displace Terminal-Bench. |
-| 7 | ALE-Bench | Objective-driven algorithm lane | Good future lane for scored iterative search and restart discipline, but requires heavier compute and stricter benchmark-surface controls. |
-| 8 | OSWorld / WebArena / TheAgentCompany | Cross-surface and simulator design references | Useful for GUI/web/workplace environment design and user-simulator thinking, but not the first Goal Harness engineering runner. |
-| 9 | RALPHBench | Extremely long-horizon watchlist | Potentially close to the paper ambition and advertises Codex rows, but it is pre-launch enough to treat as monitoring input, not a first execution lane. |
-| 10 | Tau-style suites | Simulator research only | Valuable for user-simulator design, but not the headline long-horizon engineering benchmark. |
+| 2 | SWE-Marathon | First heavy SWE probe | Strongest fit for hours-to-days software-engineering work with a low direct Codex baseline; public repo and 20 ultra-long tasks, but Harbor setup and cost are heavier. |
+| 3 | FrontierSWE | Frontier-stress SWE readiness lane | Direct Codex leaderboard rows and 20-hour task framing across performance engineering, computational science, and ML research; needs runner/no-upload mapping before execution. |
+| 4 | LongCLI-Bench | Paper hypothesis and failure-analysis source | Directly studies long-horizon CLI programming, step-level failures, and human-agent collaboration gains; runner openness still needs verification before it becomes an execution lane. |
+| 5 | WildClawBench | Native-runtime comparison lane | Promising because it evaluates real CLI harnesses including Codex-style harnesses in reproducible containers, but it is very new and needs protocol/code review. |
+| 6 | HORIZON / METR-style signals | Diagnostic and positioning signal | Useful to explain long-horizon degradation and compare across domains, but currently better as a leaderboard/diagnostic reference than as the first runnable Goal Harness integration. |
+| 7 | RoadmapBench / SWE-EVO | Software-evolution watchlist | Strong long-horizon SWE framing around version upgrades and multi-step codebase evolution, but runner maturity and Codex CLI compatibility need review before they displace Terminal-Bench. |
+| 8 | ALE-Bench | Objective-driven algorithm lane | Good future lane for scored iterative search and restart discipline, but requires heavier compute and stricter benchmark-surface controls. |
+| 9 | OSWorld / WebArena / TheAgentCompany | Cross-surface and simulator design references | Useful for GUI/web/workplace environment design and user-simulator thinking, but not the first Goal Harness engineering runner. |
+| 10 | RALPHBench | Extremely long-horizon watchlist | Potentially close to the paper ambition and advertises Codex rows, but it is pre-launch enough to treat as monitoring input, not a first execution lane. |
+| 11 | Tau-style suites | Simulator research only | Valuable for user-simulator design, but not the headline long-horizon engineering benchmark. |
 
 ## Source Notes
 
@@ -120,6 +123,43 @@ Sources:
 - https://github.com/abundant-ai/swe-marathon
 - https://www.swe-marathon.org/
 - https://huggingface.co/datasets/rdesai2/swe-marathon
+
+### FrontierSWE
+
+Evidence:
+
+- Public repo frames FrontierSWE as a benchmark for the hardest
+  ultra-long-horizon technical challenges across performance engineering,
+  computational science, and machine-learning research.
+- Repo structure includes `tasks/`, `docker/`, and `harbor_ext/`, suggesting an
+  execution surface close to the Harbor-oriented work already done for
+  Terminal-Bench and SWE-Marathon.
+- Public leaderboard includes direct GPT-5.5 via Codex and GPT-5.4 via Codex
+  rows.
+- Public launch framing gives agents up to roughly 20 hours per task, making it
+  a stronger long-horizon stress test than short issue-fix suites.
+
+Fit for Goal Harness:
+
+- High-value strategic lane for long-horizon checkpointing, validation,
+  partial-progress capture, restart discipline, and compute stewardship.
+- Good public comparison candidate because direct Codex rows exist.
+- Strong paper-positioning candidate once Goal Harness has a stable cloud-host
+  execution substrate and compact reducer.
+
+Risks:
+
+- No Goal Harness source-pinned checkout or runner map exists yet.
+- The no-upload/no-submit boundary, artifact schema, and task inventory need a
+  setup-readiness scan before any real run.
+- The wall-clock budget is high enough that FrontierSWE should not preempt the
+  nearer Terminal-Bench and SkillsBench cloud-smoke lanes.
+
+Sources:
+
+- https://github.com/Proximal-Labs/frontier-swe
+- https://www.frontierswe.com/
+- https://www.proximal.ai/blog/frontierswe
 
 ### LongCLI-Bench
 

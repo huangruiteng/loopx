@@ -103,6 +103,11 @@ work still belongs in the existing code, examples, and contract documents:
   reachable but under-provisioned at 4 CPUs / 8 GiB memory, below the task's
   16 GiB memory requirement, with host disk headroom also tight before any
   task image build/start.
+- `frontier-swe-setup-readiness-v0.md`: setup-readiness scan that adds
+  FrontierSWE to the candidate set as a P1 frontier-stress lane. It records the
+  official repo, public Codex leaderboard surface, 20-hour task framing,
+  current runner/no-upload unknowns, and the required no-execution launch
+  packet before any task container, model call, upload, or leaderboard path.
 - `remote-gpu-benchmark-route-v0.md`: credential-isolated route packet for
   evaluating the user's `to` SSH path to a shared remote GPU development host.
   It keeps Codex auth/session material local by default, uses an isolated

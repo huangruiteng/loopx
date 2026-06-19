@@ -266,6 +266,8 @@ contract.
   Harness.
 - [Showcase catalog](docs/showcases/README.md): public-safe cases and future
   frontend data.
+- [Benchmark developer workflow](docs/benchmark-developer-workflow.md):
+  public-safe benchmark setup, cloud-host execution, and evidence rules.
 - [Status data contract](docs/status-data-contract.md): dashboard/status JSON
   contract.
 - [Quota allocation](docs/quota-allocation.md): `should-run` and spend

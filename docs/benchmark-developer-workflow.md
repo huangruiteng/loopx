@@ -177,6 +177,33 @@ Benchmark source materialization should stay close to upstream:
 - never mix temporary runner probes, raw evidence, local auth setup, or private
   benchmark artifacts into upstream benchmark source trees.
 
+For cloud hosts that cannot reliably fetch public Git sources, stage sources as
+archives from the operator machine. Prefer one compressed archive over many
+small-file transfers, and on macOS disable copyfile metadata and xattrs:
+
+```bash
+COPYFILE_DISABLE=1 tar --no-xattrs -C /tmp -czf benchmark-source.tgz upstream-checkout
+scp benchmark-source.tgz "$BENCHMARK_HOST_ALIAS":~/goal-harness-bench/cache/
+```
+
+After extraction, verify the upstream commit and clean status. If the staged
+archive includes `.git` and Git reports a dubious ownership boundary, add a
+bounded remote `safe.directory` entry for that checkout or restage it as a
+source-only archive with a `.goal-harness-upstream` marker. Do not commit the
+host-specific path or exception.
+
+When a benchmark pins a runner dependency to a public Git repository and the
+cloud host cannot fetch that dependency, stage the dependency source separately
+and patch only a temporary run-work copy to use a local `path` source. Keep the
+upstream-clean checkout unchanged, record the dependency commit, and classify
+the result as dependency readiness or a precise dependency-fetch blocker. Do
+not patch official scorer, task, prompt, or runner behavior merely to work
+around network fetch.
+
+Remote bootstrap snippets should assume a small base image: use `grep`, `find`,
+`git`, `python`, and the benchmark runner itself unless the bootstrap probe has
+confirmed extra tools such as `rg`.
+
 For Terminal-Bench, the first product-path launcher should be no-upload and
 probe-only:
 

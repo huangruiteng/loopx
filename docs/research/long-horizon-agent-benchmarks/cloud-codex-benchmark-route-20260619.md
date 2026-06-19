@@ -40,6 +40,48 @@ Public evidence should record only that the SSH alias was reachable and the
 slice used a short-lived multiplexed SSH session; private host names, keys,
 jump-host details, control paths, and shell history stay out of commits.
 
+In practice, treat the SSH path as serial by default. Avoid parallel `ssh` or
+`rsync` probes through the same jump-host path unless the connection has been
+explicitly stress-tested; GSSAPI-backed paths can fail transiently under rapid
+or concurrent handshakes even when the ticket is still valid. On failure,
+prefer a short backoff plus a single retry before projecting a user gate.
+
+When the cloud host cannot fetch a public benchmark source directly, stage the
+source from the operator machine as a single archive rather than thousands of
+small files through `rsync`. From macOS, build that archive with
+`COPYFILE_DISABLE=1` and xattrs disabled so AppleDouble `._*` files and
+extended attributes do not pollute the remote checkout or produce noisy remote
+tar output:
+
+```bash
+COPYFILE_DISABLE=1 tar --no-xattrs -C /tmp -czf benchmark-source.tgz upstream-checkout
+scp benchmark-source.tgz benchmark-host:/path/to/upstream-clean/
+```
+
+After extraction, verify `git status --short --branch` is clean before treating
+the checkout as upstream-close. If a previous archive already produced `._*`
+files, delete them on the remote checkout and re-run the clean-status check
+before any runner preflight.
+
+If the archive includes `.git` metadata and is extracted under a different user
+or privilege boundary, Git may reject the checkout as a dubious repository.
+Either prefer a source-only archive with an explicit upstream marker, or add a
+bounded `safe.directory` entry for the staged checkout before running
+`git status`. Keep that exception local to the benchmark host setup; do not
+commit host-specific paths.
+
+The same staging rule applies to runner dependencies pinned to public Git
+repositories. If the host cannot fetch a Git dependency directly, stage the
+dependency source as its own upstream-close checkout, then patch only a
+temporary run-work copy to use a local `path` source. Keep the upstream-clean
+benchmark checkout unmodified, record the dependency commit, and reduce the
+result to a compact readiness or blocker. This avoids turning network fetch
+failures into benchmark runner failures.
+
+Assume the cloud host starts from a small tool surface. Use POSIX-ish `grep`,
+`find`, `git`, `python`, and runner commands in remote bootstrap snippets unless
+the bootstrap probe has already confirmed tools such as `rg`.
+
 ## Why This Replaces The Default Split-Control Route
 
 The earlier split-control route was the right safety choice for shared hosts:
