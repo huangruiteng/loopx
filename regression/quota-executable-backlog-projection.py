@@ -164,6 +164,25 @@ def assert_executable_backlog_projection(guard: dict[str, Any]) -> None:
     assert first_open[1]["task_class"] == "advancement_task", guard
 
 
+def assert_refresh_state_prefers_open_agent_todo(
+    *,
+    registry: Path,
+    runtime: Path,
+) -> None:
+    refresh = run_goal_harness(
+        "refresh-state",
+        "--goal-id",
+        GOAL_ID,
+        "--classification",
+        "refresh_agent_todo_projection_fixture_v0",
+        "--dry-run",
+        registry=registry,
+        runtime=runtime,
+    )
+    assert refresh["recommended_action"] == EXECUTABLE_TODO, refresh
+    assert refresh["recommended_action"] != POLL_ACTION, refresh
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="goal-harness-quota-executable-backlog-") as tmp:
         runtime, registry = write_fixture(Path(tmp))
@@ -176,6 +195,10 @@ def main() -> int:
             runtime=runtime,
         )
         assert_executable_backlog_projection(guard)
+        assert_refresh_state_prefers_open_agent_todo(
+            registry=registry,
+            runtime=runtime,
+        )
     print("quota-executable-backlog-projection-regression ok")
     return 0
 

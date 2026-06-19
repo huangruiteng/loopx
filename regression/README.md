@@ -101,7 +101,9 @@ and a P1 advancement todo is executable, `quota should-run` selects the P1
 backlog item as `recommended_action`, interaction primary action, and protocol
 packet action while keeping the monitor as context. It also checks that the
 payload exposes a state-action projection warning when the visible
-`Next Action` still points at the stale monitor action.
+`Next Action` still points at the stale monitor action, and that
+`refresh-state` derives its default recommended action from the first open
+Agent Todo rather than the stale `Next Action`.
 
 ```bash
 python3 regression/automation-loop-heartbeat-poll-contract.py

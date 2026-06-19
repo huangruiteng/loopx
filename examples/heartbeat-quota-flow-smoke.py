@@ -545,7 +545,9 @@ def main() -> int:
         )
         assert refresh["ok"] is True, refresh
         assert refresh["appended"] is True, refresh
-        assert LONG_NEXT_ACTION_TAIL in refresh["recommended_action"], refresh
+        expected_action = "[P1] Run one bounded heartbeat marker and validate the compact result."
+        assert refresh["recommended_action"] == expected_action, refresh
+        assert LONG_NEXT_ACTION_TAIL in " ".join(refresh["state"]["next_action"]), refresh
         assert count_spend_events(runtime) == 0
 
         spend = run_cli(
@@ -592,10 +594,7 @@ def main() -> int:
         assert follow_up["recommended_action"] == expected_action, follow_up
         interaction = follow_up["interaction_contract"]
         assert interaction["agent_channel"]["primary_action"] == expected_action, interaction
-        warning = follow_up["state_action_projection_warning"]
-        assert warning["requires_state_writeback"] is True, warning
-        assert warning["selected_recommended_action"] == expected_action, warning
-        assert "executable backlog item" in warning["reason"], warning
+        assert "state_action_projection_warning" not in follow_up, follow_up
         assert "agent_action=" + expected_action in follow_up["protocol_action_packet"]["summary"], follow_up
         assert registry_path.read_text(encoding="utf-8") == registry_before
 

@@ -15,12 +15,19 @@ from .paths import resolve_runtime_root
 from .registry import registry_goals, resolve_state_file
 from .runtime import validate_goal_id_path_segment
 from .state_projection import state_projection_gap_warning
+from .todo_contract import (
+    TODO_TASK_CLASS_ADVANCEMENT,
+    TODO_TASK_CLASS_BLOCKER,
+    TODO_TASK_CLASS_MONITOR,
+    TODO_TASK_CLASS_USER_GATE,
+)
 
 
 DEFAULT_REFRESH_CLASSIFICATION = "state_refreshed"
 DEFAULT_REFRESH_ACTION = "inspect refreshed active goal state and continue the next bounded progress segment"
 RECOMMENDED_ACTION_SECTION_LINE_LIMIT = 16
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
+CHECKBOX_PREFIX_RE = re.compile(r"^\[(?P<mark>[ xX])\]\s+")
 DELIVERY_BATCH_SCALE_CHOICES = ("test_only", "single_surface", "multi_surface", "implementation")
 
 
@@ -66,7 +73,8 @@ def extract_section_lines(text: str, heading: str, limit: int = 8) -> list[str]:
 
 
 def clean_action_line(line: str) -> str:
-    return BULLET_PREFIX_RE.sub("", line.strip()).strip()
+    text = BULLET_PREFIX_RE.sub("", line.strip()).strip()
+    return CHECKBOX_PREFIX_RE.sub("", text).strip()
 
 
 def is_bullet_line(line: str) -> bool:
@@ -80,10 +88,74 @@ def first_action_item(lines: list[str], start: int) -> str:
         for line in lines[start + 1 :]:
             if is_bullet_line(line):
                 break
+            if line.strip().startswith("<!--"):
+                continue
             cleaned = clean_action_line(line)
             if cleaned:
                 parts.append(cleaned)
     return " ".join(part for part in parts if part).strip()
+
+
+def checkbox_mark(line: str) -> str | None:
+    text = BULLET_PREFIX_RE.sub("", line.strip()).strip()
+    match = CHECKBOX_PREFIX_RE.match(text)
+    if not match:
+        return None
+    return match.group("mark")
+
+
+def todo_metadata(lines: list[str], start: int) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for line in lines[start + 1 :]:
+        if is_bullet_line(line):
+            break
+        text = line.strip()
+        if not text.startswith("<!-- goal-harness:todo"):
+            continue
+        for key, value in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)=([^ >]+)", text):
+            metadata[key] = value
+        break
+    return metadata
+
+
+def todo_priority_rank(action: str) -> int:
+    match = re.match(r"^\[P(?P<rank>\d+)\]\s+", action.strip(), flags=re.IGNORECASE)
+    if not match:
+        return 99
+    return int(match.group("rank"))
+
+
+def first_open_agent_todo_action(state_text: str) -> str | None:
+    lines = extract_section_lines(state_text, "Agent Todo", limit=512)
+    advancement_candidates: list[tuple[int, int, str]] = []
+    fallback_candidates: list[tuple[int, int, str]] = []
+    for index, line in enumerate(lines):
+        mark = checkbox_mark(line)
+        if mark is None or mark.lower() == "x":
+            continue
+        action = first_action_item(lines, index)
+        if not action:
+            continue
+        try:
+            validate_public_safe_text("derived agent_todo recommended_action", action)
+        except ValueError:
+            continue
+        metadata = todo_metadata(lines, index)
+        if metadata.get("task_class") == TODO_TASK_CLASS_ADVANCEMENT:
+            advancement_candidates.append((todo_priority_rank(action), index, action))
+            continue
+        if metadata.get("task_class") in {
+            TODO_TASK_CLASS_MONITOR,
+            TODO_TASK_CLASS_USER_GATE,
+            TODO_TASK_CLASS_BLOCKER,
+        }:
+            continue
+        fallback_candidates.append((todo_priority_rank(action), index, action))
+    if advancement_candidates:
+        return sorted(advancement_candidates)[0][2]
+    if fallback_candidates:
+        return sorted(fallback_candidates)[0][2]
+    return None
 
 
 def section_list_items(lines: list[str]) -> list[str]:
@@ -107,6 +179,9 @@ def section_list_items(lines: list[str]) -> list[str]:
 
 
 def derive_recommended_action(state_text: str) -> str:
+    agent_todo_action = first_open_agent_todo_action(state_text)
+    if agent_todo_action:
+        return agent_todo_action
     lines = extract_section_lines(state_text, "Next Action", limit=RECOMMENDED_ACTION_SECTION_LINE_LIMIT)
     for index, line in enumerate(lines):
         action = first_action_item(lines, index)

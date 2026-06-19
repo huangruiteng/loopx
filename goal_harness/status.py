@@ -4004,6 +4004,8 @@ def _run_history_stall_signal(run: dict[str, Any]) -> dict[str, Any] | None:
     classification = str(run.get("classification") or "").strip()
     if not classification or classification in AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS:
         return None
+    if AUTONOMOUS_RUN_HISTORY_REPLAN_ACK_CLASSIFICATION.search(classification):
+        return None
     delivery_outcome = normalize_delivery_outcome(run.get("delivery_outcome"))
     if delivery_outcome in AUTONOMOUS_RUN_HISTORY_PROGRESS_OUTCOMES:
         return None
