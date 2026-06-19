@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import selectors
@@ -17,6 +18,9 @@ from typing import Any, TextIO
 SKILLSBENCH_LOCAL_ACP_RELAY_SCHEMA_VERSION = "skillsbench_local_acp_relay_v0"
 SKILLSBENCH_LOCAL_ACP_RELAY_PROBE_SCHEMA_VERSION = (
     "skillsbench_local_acp_relay_probe_v0"
+)
+SKILLSBENCH_HOST_LOCAL_ACP_TRANSPORT_PROBE_SCHEMA_VERSION = (
+    "skillsbench_host_local_acp_transport_probe_v0"
 )
 SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER = (
     "GOAL_HARNESS_SKILLSBENCH_LOCAL_ACP_RELAY_READY"
@@ -323,10 +327,115 @@ def run_skillsbench_local_acp_relay_probe(
             _terminate_probe_process(proc)
 
 
+def run_skillsbench_host_local_acp_transport_probe(
+    command: str | list[str] | tuple[str, ...] | None = None,
+    *,
+    skillsbench_root: str | Path | None = None,
+    timeout_sec: float = 10.0,
+    cwd: str | Path | None = None,
+) -> dict[str, Any]:
+    """Probe the real BenchFlow ACPClient against a host-local ACP relay.
+
+    This proves the host-local stdio transport route without invoking Codex,
+    reading task text, launching a task sandbox, or recording raw ACP traffic.
+    """
+
+    argv = (
+        _command_to_argv(command)
+        if command
+        else default_skillsbench_local_acp_relay_command()
+    )
+    stage = {"value": "import"}
+    try:
+        _prepend_optional_skillsbench_site_packages(skillsbench_root)
+        from benchflow.acp.client import ACPClient
+        from benchflow.acp.transport import StdioTransport
+
+        async def probe() -> dict[str, Any]:
+            client = ACPClient(
+                StdioTransport(
+                    command=argv[0],
+                    args=argv[1:],
+                    cwd=str(cwd) if cwd is not None else None,
+                )
+            )
+
+            async def step(name: str, awaitable: Any) -> Any:
+                stage["value"] = name
+                return await asyncio.wait_for(awaitable, timeout=timeout_sec)
+
+            request_count = 0
+            try:
+                await step("connect", client.connect())
+                initialize = await step("initialize", client.initialize())
+                request_count += 1
+                session = await step(
+                    "session_new",
+                    client.session_new(
+                        cwd=str(cwd) if cwd is not None else os.getcwd()
+                    ),
+                )
+                request_count += 1
+                await step("set_model", client.set_model("probe-model"))
+                request_count += 1
+                prompt = await step("prompt", client.prompt("relay handshake probe"))
+                request_count += 1
+                agent_name = str(getattr(initialize.agent_info, "name", "") or "")
+                session_id = str(getattr(session, "session_id", "") or "")
+                stop_reason = str(getattr(prompt, "stop_reason", "") or "")
+                ready = (
+                    agent_name == "goal-harness-skillsbench-local-acp-relay"
+                    and bool(session_id)
+                    and stop_reason == "end_turn"
+                )
+                return _host_local_transport_probe_payload(
+                    ready=ready,
+                    first_blocker=(
+                        "skillsbench_host_local_acp_transport_ready"
+                        if ready
+                        else "skillsbench_host_local_acp_transport_probe_failed"
+                    ),
+                    stage="complete",
+                    request_count=request_count,
+                    benchflow_acp_client_used=True,
+                )
+            finally:
+                await client.close()
+
+        return asyncio.run(probe())
+    except Exception:
+        return _host_local_transport_probe_payload(
+            ready=False,
+            first_blocker=(
+                f"skillsbench_host_local_acp_transport_{stage['value']}_failed"
+            ),
+            stage=stage["value"],
+            request_count=0,
+            benchflow_acp_client_used=stage["value"] != "import",
+        )
+
+
 def _command_to_argv(command: str | list[str] | tuple[str, ...]) -> list[str]:
     if isinstance(command, str):
         return shlex.split(command)
     return [str(part) for part in command]
+
+
+def _prepend_optional_skillsbench_site_packages(
+    skillsbench_root: str | Path | None,
+) -> None:
+    if skillsbench_root is None:
+        return
+    root = Path(skillsbench_root).expanduser()
+    venv = root / ".venv"
+    if not venv.exists():
+        return
+    for candidate in sorted((venv / "lib").glob("python*/site-packages")):
+        if candidate.exists():
+            candidate_text = str(candidate)
+            if candidate_text not in sys.path:
+                sys.path.insert(0, candidate_text)
+            return
 
 
 def _probe_request(
@@ -404,6 +513,31 @@ def _relay_probe_payload(
         "stage": stage,
         "request_count": request_count,
         "worker_protocol": "acp_stdio",
+        "codex_cli_invoked": False,
+        "raw_output_recorded": False,
+        "raw_event_jsonl_recorded": False,
+        "credential_values_recorded": False,
+        "host_paths_recorded": False,
+    }
+
+
+def _host_local_transport_probe_payload(
+    *,
+    ready: bool,
+    first_blocker: str,
+    stage: str,
+    request_count: int,
+    benchflow_acp_client_used: bool,
+) -> dict[str, Any]:
+    return {
+        "schema_version": SKILLSBENCH_HOST_LOCAL_ACP_TRANSPORT_PROBE_SCHEMA_VERSION,
+        "ready": ready,
+        "first_blocker": first_blocker,
+        "stage": stage,
+        "request_count": request_count,
+        "benchflow_acp_client_used": benchflow_acp_client_used,
+        "transport": "host_local_stdio",
+        "container_transport_used": False,
         "codex_cli_invoked": False,
         "raw_output_recorded": False,
         "raw_event_jsonl_recorded": False,

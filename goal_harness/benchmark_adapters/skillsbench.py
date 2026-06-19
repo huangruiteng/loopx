@@ -529,6 +529,9 @@ def build_skillsbench_worker_handshake_preflight(
     local_codex_cli_participant_ready: bool = False,
     local_acp_relay_ready: bool = False,
     local_acp_relay_probe: dict[str, Any] | None = None,
+    host_local_acp_transport_ready: bool = False,
+    host_local_acp_transport_probe: dict[str, Any] | None = None,
+    remote_command_file_bridge_ready: bool = False,
     remote_executor_ready: bool = True,
     remote_task_data_ready: bool = True,
     compact_artifact_reducer_ready: bool = True,
@@ -571,6 +574,10 @@ def build_skillsbench_worker_handshake_preflight(
         blockers.append("skillsbench_local_codex_cli_participant_not_materialized")
     if local_codex_cli_participant_ready and not local_acp_relay_ready:
         blockers.append("skillsbench_local_acp_relay_missing")
+    if local_acp_relay_ready and not host_local_acp_transport_ready:
+        blockers.append("skillsbench_host_local_acp_transport_missing")
+    if host_local_acp_transport_ready and not remote_command_file_bridge_ready:
+        blockers.append("skillsbench_remote_command_file_bridge_missing")
     if not remote_executor_ready:
         blockers.append("skillsbench_remote_executor_contract_missing")
     if not remote_task_data_ready:
@@ -595,6 +602,12 @@ def build_skillsbench_worker_handshake_preflight(
     elif "skillsbench_local_acp_relay_missing" in blockers:
         first_blocker = "skillsbench_local_acp_relay_missing"
         next_action = "implement_local_acp_stdio_relay_before_mini_pair"
+    elif "skillsbench_host_local_acp_transport_missing" in blockers:
+        first_blocker = "skillsbench_host_local_acp_transport_missing"
+        next_action = "wire_host_local_acp_transport_before_mini_pair"
+    elif "skillsbench_remote_command_file_bridge_missing" in blockers:
+        first_blocker = "skillsbench_remote_command_file_bridge_missing"
+        next_action = "wire_bounded_remote_command_file_bridge_before_mini_pair"
     else:
         first_blocker = blockers[0] if blockers else "skillsbench_worker_handshake_incomplete"
         next_action = "repair_skillsbench_worker_handshake_before_mini_pair"
@@ -625,6 +638,13 @@ def build_skillsbench_worker_handshake_preflight(
             "acp_relay_probe": _skillsbench_public_acp_relay_probe(
                 local_acp_relay_probe
             ),
+            "host_local_acp_transport_materialized": host_local_acp_transport_ready,
+            "host_local_acp_transport_probe": (
+                _skillsbench_public_host_local_acp_transport_probe(
+                    host_local_acp_transport_probe
+                )
+            ),
+            "remote_command_file_bridge_materialized": remote_command_file_bridge_ready,
             "credential_sync_allowed": False,
             "remote_codex_runtime_allowed": False,
             "remote_model_api_invocation_allowed": False,
@@ -633,6 +653,7 @@ def build_skillsbench_worker_handshake_preflight(
             "ready": remote_executor_ready,
             "task_data_ready": remote_task_data_ready,
             "compact_artifact_reducer_ready": compact_artifact_reducer_ready,
+            "command_file_bridge_ready": remote_command_file_bridge_ready,
             "owns": [
                 "docker",
                 "benchflow_runner",
@@ -667,6 +688,35 @@ def _skillsbench_public_acp_relay_probe(
             compact[field] = _skillsbench_public_safe_label(value, limit=120)
     for field in (
         "ready",
+        "codex_cli_invoked",
+        "raw_output_recorded",
+        "raw_event_jsonl_recorded",
+        "credential_values_recorded",
+        "host_paths_recorded",
+    ):
+        value = probe.get(field)
+        if isinstance(value, bool):
+            compact[field] = value
+    value = probe.get("request_count")
+    if isinstance(value, int) and not isinstance(value, bool):
+        compact["request_count"] = max(0, min(value, 20))
+    return compact or None
+
+
+def _skillsbench_public_host_local_acp_transport_probe(
+    probe: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(probe, dict):
+        return None
+    compact: dict[str, Any] = {}
+    for field in ("schema_version", "first_blocker", "stage", "transport"):
+        value = probe.get(field)
+        if isinstance(value, str) and value:
+            compact[field] = _skillsbench_public_safe_label(value, limit=120)
+    for field in (
+        "ready",
+        "benchflow_acp_client_used",
+        "container_transport_used",
         "codex_cli_invoked",
         "raw_output_recorded",
         "raw_event_jsonl_recorded",

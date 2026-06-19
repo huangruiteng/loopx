@@ -69,6 +69,7 @@ from goal_harness.benchmark_adapters.skillsbench import (  # noqa: E402
     build_skillsbench_worker_handshake_preflight,
 )
 from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
+    run_skillsbench_host_local_acp_transport_probe,
     run_skillsbench_local_acp_relay_probe,
 )
 from goal_harness.benchmark_trajectory import summarize_public_acp_trajectory
@@ -459,8 +460,11 @@ def inspect_skillsbench_worker_handshake(
     local_acp_relay_command: str | None = None,
     probe_local_acp_relay: bool = False,
     local_acp_relay_probe_timeout_sec: float = 10.0,
+    probe_host_local_acp_transport: bool = False,
+    host_local_acp_transport_probe_timeout_sec: float = 10.0,
     remote_executor_ready: bool = True,
     remote_task_data_ready: bool = True,
+    remote_command_file_bridge_ready: bool = False,
 ) -> dict[str, Any]:
     """Inspect BenchFlow's worker protocol requirements without launching a task."""
 
@@ -475,12 +479,23 @@ def inspect_skillsbench_worker_handshake(
     codex_agent_launch_registered = False
     local_acp_relay_probe = None
     local_acp_relay_ready = False
+    host_local_acp_transport_probe = None
+    host_local_acp_transport_ready = False
     if probe_local_acp_relay:
         local_acp_relay_probe = run_skillsbench_local_acp_relay_probe(
             local_acp_relay_command,
             timeout_sec=local_acp_relay_probe_timeout_sec,
         )
         local_acp_relay_ready = local_acp_relay_probe.get("ready") is True
+    if probe_host_local_acp_transport:
+        host_local_acp_transport_probe = run_skillsbench_host_local_acp_transport_probe(
+            local_acp_relay_command,
+            skillsbench_root=root,
+            timeout_sec=host_local_acp_transport_probe_timeout_sec,
+        )
+        host_local_acp_transport_ready = (
+            host_local_acp_transport_probe.get("ready") is True
+        )
     try:
         __import__("benchflow")
         benchflow_available = True
@@ -519,6 +534,9 @@ def inspect_skillsbench_worker_handshake(
         local_codex_cli_participant_ready=local_codex_cli_participant_ready,
         local_acp_relay_ready=local_acp_relay_ready,
         local_acp_relay_probe=local_acp_relay_probe,
+        host_local_acp_transport_ready=host_local_acp_transport_ready,
+        host_local_acp_transport_probe=host_local_acp_transport_probe,
+        remote_command_file_bridge_ready=remote_command_file_bridge_ready,
         remote_executor_ready=remote_executor_ready,
         remote_task_data_ready=remote_task_data_ready,
     )
@@ -3043,6 +3061,29 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Timeout for --local-acp-relay-probe.",
     )
     parser.add_argument(
+        "--host-local-acp-transport-probe",
+        action="store_true",
+        help=(
+            "During --local-driver-worker-handshake-preflight, use BenchFlow's "
+            "ACPClient over host-local stdio to talk to the local relay. This "
+            "does not launch a task or invoke Codex."
+        ),
+    )
+    parser.add_argument(
+        "--host-local-acp-transport-probe-timeout-sec",
+        type=float,
+        default=10.0,
+        help="Timeout for --host-local-acp-transport-probe.",
+    )
+    parser.add_argument(
+        "--remote-command-file-bridge-ready",
+        action="store_true",
+        help=(
+            "Tell --local-driver-worker-handshake-preflight that the bounded "
+            "remote command/file bridge is already materialized."
+        ),
+    )
+    parser.add_argument(
         "--fail-fast-on-apt-risk",
         action="store_true",
         help=(
@@ -3144,6 +3185,11 @@ def main(argv: list[str] | None = None) -> int:
             local_acp_relay_command=args.local_acp_relay_command,
             probe_local_acp_relay=args.local_acp_relay_probe,
             local_acp_relay_probe_timeout_sec=args.local_acp_relay_probe_timeout_sec,
+            probe_host_local_acp_transport=args.host_local_acp_transport_probe,
+            host_local_acp_transport_probe_timeout_sec=(
+                args.host_local_acp_transport_probe_timeout_sec
+            ),
+            remote_command_file_bridge_ready=args.remote_command_file_bridge_ready,
             remote_executor_ready=True,
             remote_task_data_ready=True,
         )

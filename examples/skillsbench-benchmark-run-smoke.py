@@ -217,6 +217,69 @@ def test_skillsbench_worker_handshake_preflight_exposes_acp_relay_gap() -> None:
         assert forbidden not in text, forbidden
 
 
+def test_skillsbench_worker_handshake_preflight_distinguishes_host_transport() -> None:
+    payload = build_skillsbench_worker_handshake_preflight(
+        task_id="ada-bathroom-plan-repair",
+        benchflow_available=True,
+        benchflow_agent_registry_available=True,
+        benchflow_acp_runtime_available=True,
+        default_codex_agent="codex-acp",
+        codex_agent_protocol="acp",
+        codex_agent_launch_registered=True,
+        local_codex_cli_participant_ready=True,
+        local_acp_relay_ready=True,
+        host_local_acp_transport_ready=False,
+        remote_executor_ready=True,
+        remote_task_data_ready=True,
+    )
+    assert payload["ready"] is False, payload
+    assert (
+        payload["first_blocker"] == "skillsbench_host_local_acp_transport_missing"
+    ), payload
+    assert (
+        payload["next_action"] == "wire_host_local_acp_transport_before_mini_pair"
+    ), payload
+    assert (
+        payload["local_driver_contract"]["acp_relay_materialized"] is True
+    ), payload
+    assert (
+        payload["local_driver_contract"]["host_local_acp_transport_materialized"]
+        is False
+    ), payload
+
+
+def test_skillsbench_worker_handshake_preflight_distinguishes_remote_bridge() -> None:
+    payload = build_skillsbench_worker_handshake_preflight(
+        task_id="ada-bathroom-plan-repair",
+        benchflow_available=True,
+        benchflow_agent_registry_available=True,
+        benchflow_acp_runtime_available=True,
+        default_codex_agent="codex-acp",
+        codex_agent_protocol="acp",
+        codex_agent_launch_registered=True,
+        local_codex_cli_participant_ready=True,
+        local_acp_relay_ready=True,
+        host_local_acp_transport_ready=True,
+        remote_command_file_bridge_ready=False,
+        remote_executor_ready=True,
+        remote_task_data_ready=True,
+    )
+    assert payload["ready"] is False, payload
+    assert payload["first_blocker"] == "skillsbench_remote_command_file_bridge_missing"
+    assert (
+        payload["next_action"]
+        == "wire_bounded_remote_command_file_bridge_before_mini_pair"
+    ), payload
+    assert (
+        payload["local_driver_contract"]["host_local_acp_transport_materialized"]
+        is True
+    ), payload
+    assert (
+        payload["local_driver_contract"]["remote_command_file_bridge_materialized"]
+        is False
+    ), payload
+
+
 def test_skillsbench_local_acp_relay_probe_completes_stdio_handshake() -> None:
     payload = run_skillsbench_local_acp_relay_probe(timeout_sec=10)
     assert (
@@ -232,6 +295,51 @@ def test_skillsbench_local_acp_relay_probe_completes_stdio_handshake() -> None:
     assert payload["raw_event_jsonl_recorded"] is False, payload
     assert payload["credential_values_recorded"] is False, payload
     assert payload["host_paths_recorded"] is False, payload
+    text = json.dumps(payload, sort_keys=True)
+    for forbidden in ("/Users/", "~/.codex", "OPENAI_API_KEY", "HF_TOKEN"):
+        assert forbidden not in text, forbidden
+
+
+def test_skillsbench_host_local_acp_transport_probe_uses_benchflow_client() -> None:
+    skillsbench_root = REPO_ROOT / ".local/benchmark/externals/skillsbench"
+    if not (skillsbench_root / ".venv").exists():
+        return
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/skillsbench_automation_loop.py"),
+            "--local-driver-worker-handshake-preflight",
+            "--local-codex-cli-participant-ready",
+            "--local-acp-relay-probe",
+            "--host-local-acp-transport-probe",
+            "--task-id",
+            "ada-bathroom-plan-repair",
+        ],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    probe = payload["local_driver_contract"]["host_local_acp_transport_probe"]
+    assert probe["ready"] is True, payload
+    assert probe["first_blocker"] == "skillsbench_host_local_acp_transport_ready"
+    assert probe["benchflow_acp_client_used"] is True, payload
+    assert probe["transport"] == "host_local_stdio", payload
+    assert probe["container_transport_used"] is False, payload
+    assert probe["request_count"] == 4, payload
+    assert probe["codex_cli_invoked"] is False, payload
+    assert probe["raw_output_recorded"] is False, payload
+    assert probe["raw_event_jsonl_recorded"] is False, payload
+    assert probe["credential_values_recorded"] is False, payload
+    assert probe["host_paths_recorded"] is False, payload
+    assert payload["first_blocker"] == "skillsbench_remote_command_file_bridge_missing"
+    assert (
+        payload["next_action"]
+        == "wire_bounded_remote_command_file_bridge_before_mini_pair"
+    ), payload
     text = json.dumps(payload, sort_keys=True)
     for forbidden in ("/Users/", "~/.codex", "OPENAI_API_KEY", "HF_TOKEN"):
         assert forbidden not in text, forbidden
@@ -261,6 +369,10 @@ def test_skillsbench_worker_handshake_preflight_probe_clears_relay_gap() -> None
         payload["local_driver_contract"]["acp_relay_probe"]["ready"] is True
     ), payload
     assert "skillsbench_local_acp_relay_missing" not in payload["blockers"], payload
+    assert payload["first_blocker"] == "skillsbench_host_local_acp_transport_missing"
+    assert (
+        payload["next_action"] == "wire_host_local_acp_transport_before_mini_pair"
+    ), payload
     assert payload["boundary"]["credential_values_recorded"] is False, payload
     text = json.dumps(payload, sort_keys=True)
     for forbidden in ("/Users/", "~/.codex", "OPENAI_API_KEY", "HF_TOKEN"):
@@ -3607,7 +3719,10 @@ if __name__ == "__main__":
     test_skillsbench_local_driver_a2a_contract_ready_only_after_both_sides()
     test_skillsbench_local_driver_a2a_contract_distinguishes_cli_from_handshake()
     test_skillsbench_worker_handshake_preflight_exposes_acp_relay_gap()
+    test_skillsbench_worker_handshake_preflight_distinguishes_host_transport()
+    test_skillsbench_worker_handshake_preflight_distinguishes_remote_bridge()
     test_skillsbench_local_acp_relay_probe_completes_stdio_handshake()
+    test_skillsbench_host_local_acp_transport_probe_uses_benchflow_client()
     test_skillsbench_worker_handshake_preflight_probe_clears_relay_gap()
     test_skillsbench_worker_handshake_preflight_missing_runtime_is_compact()
     test_local_codex_participant_ping_missing_binary_is_compact()
