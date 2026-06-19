@@ -80,17 +80,37 @@ def main() -> int:
             assert demo_command is None, case
             workload = case.get("workload_signal")
             assert isinstance(workload, dict), case
-            assert workload.get("git_range") == "32b466d^..9acdaa2", workload
-            assert workload.get("commit_count", 0) >= 10, workload
-            assert workload.get("files_touched", 0) >= 40, workload
-            assert workload.get("insertions", 0) >= 2500, workload
+            assert workload.get("anchor_commit") == "0510dda", workload
+            assert workload.get("scope") == "whole_public_repository_with_side_agent_slice", workload
+            whole_repository = workload.get("whole_repository")
+            assert isinstance(whole_repository, dict), workload
+            assert whole_repository.get("commit_count", 0) >= 700, whole_repository
+            assert whole_repository.get("files_touched", 0) >= 500, whole_repository
+            assert whole_repository.get("insertions", 0) >= 200000, whole_repository
+            assert whole_repository.get("deletions", 0) >= 40000, whole_repository
+            recent_window = workload.get("recent_window")
+            assert isinstance(recent_window, dict), workload
+            assert recent_window.get("since") == "2026-06-18T00:00:00+08:00", recent_window
+            assert recent_window.get("commit_count", 0) >= 170, recent_window
+            assert recent_window.get("files_touched", 0) >= 180, recent_window
+            side_agent_slice = workload.get("side_agent_slice")
+            assert isinstance(side_agent_slice, dict), workload
+            assert side_agent_slice.get("git_range") == "32b466d^..0510dda", side_agent_slice
+            assert side_agent_slice.get("commit_count", 0) >= 14, side_agent_slice
+            assert side_agent_slice.get("files_touched", 0) >= 45, side_agent_slice
+            assert side_agent_slice.get("insertions", 0) >= 3000, side_agent_slice
             assert "side_agent_scope" in case.get("pattern_tags", []), case
             page_text = read(page)
             for phrase in (
-                "Goal Harness was used to improve Goal Harness itself",
+                "Goal Harness was used to improve a fast-moving Goal Harness repository",
+                "The public repository history shows a connected long-horizon feature chain",
+                "Benchmark and adapter maturation",
+                "Control-plane correctness",
+                "Planning and dreaming lanes",
                 "--side-agent-self-merged --evidence",
-                "The public self-iteration slice",
-                "evidence writeback",
+                "The workload signal is the whole public repository through fixed anchor commit",
+                "32b466d^..0510dda",
+                "completion evidence recorded self-merge and validation outcomes",
             ):
                 assert phrase in page_text, phrase
 

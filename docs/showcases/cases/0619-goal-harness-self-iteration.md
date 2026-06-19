@@ -1,102 +1,165 @@
-# 0619: Goal Harness Self-Iteration Loop
+# 0619: Goal Harness Public Repo Self-Iteration
 
 ## Summary
 
-Goal Harness was used to improve Goal Harness itself. A side agent worked on a
-productization and coordination lane while the primary control agent stayed
-focused on benchmark readiness. The shared control plane kept the work visible:
-identity, todo claims, scope, validation, self-merge policy, and successor work
-all stayed in structured state instead of private chat memory.
+Goal Harness was used to improve a fast-moving Goal Harness repository, not only
+one isolated feature. The public repo shows a long-running agent project moving
+across benchmark adapters, control-plane correctness, planning lanes, dashboard
+surfaces, public docs, smokes, and multi-agent coordination while still keeping
+work reviewable.
 
-This case is useful because it is public and commit-backed. The same repo that
-contains the feature also contains the evidence of how the agent loop changed.
+The case matters because it is public and commit-backed. A reader can inspect
+the same Git history that produced the product behavior: the repo records the
+workload, the feature chain, the validation surfaces, and the boundaries of
+what evidence is safe to publish.
 
-## Public Workload Signal
+This is not a claim that one side agent authored every commit. The point is
+stronger and more product-relevant: Goal Harness can keep a high-churn,
+multi-lane agent engineering project coherent while primary and side work move
+in parallel.
 
-The public self-iteration slice from `32b466d^..9acdaa2` contains:
+## Public Repository Signal
+
+The workload signal is the whole public repository through fixed anchor commit
+`0510dda` (`Project outcome-floor blocker noop state`). The fixed anchor avoids
+letting this documentation update change its own evidence window.
 
 | Signal | Value |
 | --- | --- |
-| Commits | 11 |
-| Files touched | 44 |
-| Insertions / deletions | 2777 / 92 |
-| Main surfaces | CLI, todo metadata, quota/status/review projection, heartbeat prompt, docs, smokes |
-| Release outcome | Installed local release `20260619T152248Z` with the new side-agent self-merge flag available |
+| All public commits in the repository | 736 |
+| Unique files touched across public history | 547 |
+| Cumulative public insertions / deletions | 254763 / 48601 |
+| Public commits since 2026-06-18 00:00 +08:00 | 179 |
+| Recent unique files touched since 2026-06-18 | 189 |
+| Recent cumulative insertions / deletions | 41958 / 19641 |
+| Public commits on 2026-06-19 | 71 |
+| 2026-06-19 unique files touched | 114 |
+| 2026-06-19 cumulative insertions / deletions | 15181 / 957 |
 
-This is not a raw transcript metric. It is a public Git range that a reader can
-inspect locally with:
+Inside that repo-scale activity, the side-agent coordination slice from
+`32b466d^..0510dda` is the productization lane that made multi-agent ownership
+visible:
+
+| Signal | Value |
+| --- | --- |
+| Commits | 14 |
+| Unique files touched | 45 |
+| Cumulative insertions / deletions | 3248 / 165 |
+| Main side-agent surfaces | CLI, todo metadata, quota/status/review projection, heartbeat prompt, docs, smokes, showcases |
+
+The repo-scale numbers show the environment Goal Harness had to manage:
+benchmark work, control-plane fixes, public docs, smoke coverage,
+dashboard/status contracts, and product positioning all moved in the same short
+window.
+
+These are not raw transcript metrics. They are public Git facts that a reader
+can inspect locally with commands such as:
 
 ```bash
-git log --reverse --oneline 32b466d^..9acdaa2
-git diff --shortstat 32b466d^..9acdaa2
+git rev-list --count HEAD
+git log --numstat --format=COMMIT:%H
+git log --reverse --oneline --since="2026-06-18T00:00:00+08:00"
+git log --reverse --oneline 32b466d^..0510dda
 ```
 
 ## Feature Chain
 
-The self-iteration produced four connected product changes:
+The public repository history shows a connected long-horizon feature chain, not
+only a todo/claim feature:
 
-1. **Registered todo ownership**: todos can carry `claimed_by`, and the CLI only
-   accepts registered public-safe agent ids.
-2. **Identity-aware automation prompts**: scoped goals fail closed until the
-   agent prompt names an `agent_id` and natural-language scope.
-3. **Side-agent worktree policy**: side agents are instructed to work in an
-   independent branch/worktree and avoid out-of-scope benchmark execution.
-4. **Small self-merge path**: side agents can self-merge small validated changes
-   with `--side-agent-self-merged --evidence`, while broad or high-risk work
-   still creates a primary-agent review todo.
+1. **Benchmark and adapter maturation**: Terminal-Bench, ALE, SkillsBench, and
+   split-control execution routes gained public contracts, readiness probes,
+   compact reducers, cloud-host guidance, and benchmark workflow docs.
+2. **Control-plane correctness**: quota routing, scoped gates, action scopes,
+   active-state write locks, todo projection gaps, project-asset handoffs, and
+   outcome-floor blocker/no-op states were tightened so automation does not
+   confuse surface progress with real progress.
+3. **Planning and dreaming lanes**: autonomous replanning, advisory dreaming,
+   server-managed planning proposals, and dreaming lane badges were separated
+   so background thinking can propose work without silently becoming executable
+   project truth.
+4. **User/operator surfaces**: lifetime-goal language, agent-led diagnostics,
+   dashboard first-screen decision framing, onboarding todo candidates,
+   quickstart clarity, and showcase-first README material made the control
+   plane easier for humans and future agents to understand.
+5. **Multi-agent ownership**: the repo added registered todo ownership,
+   `claimed_by`, registered-agent checks, identity-aware heartbeat prompts,
+   side-agent scope rules, and independent worktree policy.
+6. **Side-agent self-merge discipline**: small validated side-agent work can be
+   completed with `--side-agent-self-merged --evidence`, while broad, risky, or
+   unclear work still routes to primary review.
+7. **Evidence and public-boundary discipline**: public smokes, regression
+   wrappers, docs governance, showcase catalog checks, and public/private
+   boundary scans keep the case reproducible without exposing private chats,
+   raw trajectories, internal docs, or benchmark logs.
 
-That chain matters because it converts a fuzzy collaboration question into
+That chain matters because it converts a fuzzy collaboration problem into
 product behavior:
 
-- Who owns this todo?
-- Is this agent allowed to take it?
-- Where should it edit?
-- Does this work need primary review, or can it self-merge?
-- What evidence proves the work finished?
+- What is the durable goal?
+- Which lane owns the next bounded move?
+- Which agent has claimed a todo?
+- Which gate is waiting for a human?
+- What can safely continue while another path is gated?
+- Which validation or public evidence proves the move happened?
+- Which work can self-merge, and which work must go to primary review?
 
 ## Goal Harness Behavior
 
-Goal Harness made the loop durable in three places:
+Goal Harness made the full loop durable in several places:
 
-- the registry named `codex-main-control` as the primary agent and
-  `codex-side-bypass` as a registered side agent;
-- active todos separated primary benchmark work from the side productization
-  lane;
-- completion evidence recorded the side-agent self-merge instead of leaving the
-  decision only in chat. This evidence writeback is the control-plane record
-  that lets a later agent understand why the side lane is complete.
+- the registry and prompt contracts named primary and side-agent identities
+  instead of relying on chat memory;
+- active todos separated benchmark, productization, documentation, planning,
+  and follow-up work into reviewable obligations;
+- quota and status projection kept executable work, monitor work, user gates,
+  and blockers distinct;
+- side-agent scope stayed in the agent prompt and handoff, while todo metadata
+  kept a simple `claimed_by` owner;
+- completion evidence recorded self-merge and validation outcomes instead of
+  leaving them only in conversation;
+- public docs and smokes turned reusable lessons into repository artifacts;
+- public/private boundary checks kept showcase material free of internal
+  links, raw benchmark evidence, credentials, and machine-local state.
 
-The product value is not that an agent wrote code. The value is that a
-multi-agent self-improvement loop stayed reviewable: a future agent can see the
-claim, the scope, the validation, and the remaining follow-up work.
+The product value is not that an agent wrote many files. The value is that a
+high-churn, multi-lane repository stayed legible: a future agent can recover
+the goal, ownership, gates, validation, evidence, and remaining follow-up work
+from public project surfaces.
 
 ## User-Facing Value
 
 For an operator, this case shows how Goal Harness reduces coordination load:
 
-- the primary agent can keep focus on a high-priority lane;
-- a side agent can improve product surfaces without silently racing the primary;
+- the primary agent can keep focus on a high-priority benchmark lane;
+- side agents can improve product, docs, and control-plane surfaces without
+  silently racing the primary agent;
+- user gates remain explicit instead of turning into hidden idle time;
+- safe fallback or side work can continue when the gated path is blocked;
 - small validated side changes do not become primary-agent queue pressure;
 - larger or riskier side work still flows through primary review.
 
-For a potential user, this is the reusable pattern: Goal Harness lets a project
+For a potential user, the reusable pattern is this: Goal Harness lets a project
 delegate bounded improvement lanes to agents without losing ownership, evidence,
-or merge discipline.
+gate discipline, or merge discipline.
 
 ## Evidence Boundary
 
 This case intentionally uses only public repository evidence: commit ids, file
-counts, public docs, public CLI behavior, and smoke names. It excludes private
-thread text, local active-state bodies, internal document links, screenshots,
-raw benchmark material, credentials, and machine-specific paths.
+counts, public docs, public CLI behavior, public smokes, and public boundary
+checks. It excludes private thread text, local active-state bodies, internal
+document links, screenshots, raw benchmark material, credentials, and
+machine-specific paths.
 
 ## Website Story Beats
 
-1. User feedback identifies a coordination problem: side-agent work should not
-   always become primary-agent queue pressure.
-2. Goal Harness records identity and scope so the side agent can take a bounded
-   productization lane.
-3. The side agent ships claim, prompt, showcase, and self-merge policy changes
-   with focused validation.
-4. Completion evidence writes the decision back to the control plane, leaving
-   the next frontend/showcase lane visible for future work.
+1. A long-running agent engineering repo is moving quickly across benchmark,
+   runtime, docs, dashboard, planning, and smoke surfaces.
+2. Goal Harness keeps the whole project legible through durable goals, todos,
+   gates, quota, evidence, and run history.
+3. A side-agent lane is introduced so productization and coordination work can
+   progress beside the primary benchmark lane.
+4. The side lane ships ownership, identity-aware prompts, showcase material,
+   self-merge policy, and outcome-floor projection with focused validation.
+5. Public docs and smokes turn the experience into a reusable case without
+   publishing private chat, internal docs, or raw benchmark evidence.
