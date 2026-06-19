@@ -72,6 +72,9 @@ from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E40
     run_skillsbench_host_local_acp_transport_probe,
     run_skillsbench_local_acp_relay_probe,
 )
+from goal_harness.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
+    run_skillsbench_remote_command_file_bridge_probe,
+)
 from goal_harness.benchmark_trajectory import summarize_public_acp_trajectory
 
 DEFAULT_SKILLSBENCH_ROOT = REPO_ROOT / ".local/benchmark/externals/skillsbench"
@@ -462,6 +465,9 @@ def inspect_skillsbench_worker_handshake(
     local_acp_relay_probe_timeout_sec: float = 10.0,
     probe_host_local_acp_transport: bool = False,
     host_local_acp_transport_probe_timeout_sec: float = 10.0,
+    probe_remote_command_file_bridge: bool = False,
+    remote_command_file_bridge_probe_command: str | None = None,
+    remote_command_file_bridge_probe_timeout_sec: float = 10.0,
     remote_executor_ready: bool = True,
     remote_task_data_ready: bool = True,
     remote_command_file_bridge_ready: bool = False,
@@ -481,6 +487,7 @@ def inspect_skillsbench_worker_handshake(
     local_acp_relay_ready = False
     host_local_acp_transport_probe = None
     host_local_acp_transport_ready = False
+    remote_command_file_bridge_probe = None
     if probe_local_acp_relay:
         local_acp_relay_probe = run_skillsbench_local_acp_relay_probe(
             local_acp_relay_command,
@@ -495,6 +502,16 @@ def inspect_skillsbench_worker_handshake(
         )
         host_local_acp_transport_ready = (
             host_local_acp_transport_probe.get("ready") is True
+        )
+    if probe_remote_command_file_bridge:
+        remote_command_file_bridge_probe = (
+            run_skillsbench_remote_command_file_bridge_probe(
+                remote_command_file_bridge_probe_command,
+                timeout_sec=remote_command_file_bridge_probe_timeout_sec,
+            )
+        )
+        remote_command_file_bridge_ready = (
+            remote_command_file_bridge_probe.get("ready") is True
         )
     try:
         __import__("benchflow")
@@ -537,6 +554,7 @@ def inspect_skillsbench_worker_handshake(
         host_local_acp_transport_ready=host_local_acp_transport_ready,
         host_local_acp_transport_probe=host_local_acp_transport_probe,
         remote_command_file_bridge_ready=remote_command_file_bridge_ready,
+        remote_command_file_bridge_probe=remote_command_file_bridge_probe,
         remote_executor_ready=remote_executor_ready,
         remote_task_data_ready=remote_task_data_ready,
     )
@@ -3084,6 +3102,29 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--remote-command-file-bridge-probe",
+        action="store_true",
+        help=(
+            "During --local-driver-worker-handshake-preflight, call a bounded "
+            "remote command/file bridge probe command and derive readiness from "
+            "its compact response."
+        ),
+    )
+    parser.add_argument(
+        "--remote-command-file-bridge-probe-command",
+        default=None,
+        help=(
+            "Command used by --remote-command-file-bridge-probe. It must read "
+            "the probe JSON from stdin and write compact probe JSON to stdout."
+        ),
+    )
+    parser.add_argument(
+        "--remote-command-file-bridge-probe-timeout-sec",
+        type=float,
+        default=10.0,
+        help="Timeout for --remote-command-file-bridge-probe.",
+    )
+    parser.add_argument(
         "--fail-fast-on-apt-risk",
         action="store_true",
         help=(
@@ -3188,6 +3229,13 @@ def main(argv: list[str] | None = None) -> int:
             probe_host_local_acp_transport=args.host_local_acp_transport_probe,
             host_local_acp_transport_probe_timeout_sec=(
                 args.host_local_acp_transport_probe_timeout_sec
+            ),
+            probe_remote_command_file_bridge=args.remote_command_file_bridge_probe,
+            remote_command_file_bridge_probe_command=(
+                args.remote_command_file_bridge_probe_command
+            ),
+            remote_command_file_bridge_probe_timeout_sec=(
+                args.remote_command_file_bridge_probe_timeout_sec
             ),
             remote_command_file_bridge_ready=args.remote_command_file_bridge_ready,
             remote_executor_ready=True,

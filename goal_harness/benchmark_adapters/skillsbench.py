@@ -532,6 +532,7 @@ def build_skillsbench_worker_handshake_preflight(
     host_local_acp_transport_ready: bool = False,
     host_local_acp_transport_probe: dict[str, Any] | None = None,
     remote_command_file_bridge_ready: bool = False,
+    remote_command_file_bridge_probe: dict[str, Any] | None = None,
     remote_executor_ready: bool = True,
     remote_task_data_ready: bool = True,
     compact_artifact_reducer_ready: bool = True,
@@ -558,6 +559,21 @@ def build_skillsbench_worker_handshake_preflight(
         safe_task_id = SKILLSBENCH_DEFAULT_TASK
         blockers.append("skillsbench_task_id_not_public_safe")
 
+    remote_command_file_bridge_probe_ready = (
+        isinstance(remote_command_file_bridge_probe, dict)
+        and remote_command_file_bridge_probe.get("ready") is True
+    )
+    remote_command_file_bridge_materialized = (
+        remote_command_file_bridge_ready is True
+        or remote_command_file_bridge_probe_ready is True
+    )
+    if remote_command_file_bridge_probe_ready:
+        remote_command_file_bridge_readiness_source = "probe"
+    elif remote_command_file_bridge_ready:
+        remote_command_file_bridge_readiness_source = "manual_declaration"
+    else:
+        remote_command_file_bridge_readiness_source = "missing"
+
     protocol = str(codex_agent_protocol or "").strip().lower()
     worker_protocol = "acp_stdio" if protocol == "acp" else protocol or "unknown"
     if not benchflow_available:
@@ -576,7 +592,7 @@ def build_skillsbench_worker_handshake_preflight(
         blockers.append("skillsbench_local_acp_relay_missing")
     if local_acp_relay_ready and not host_local_acp_transport_ready:
         blockers.append("skillsbench_host_local_acp_transport_missing")
-    if host_local_acp_transport_ready and not remote_command_file_bridge_ready:
+    if host_local_acp_transport_ready and not remote_command_file_bridge_materialized:
         blockers.append("skillsbench_remote_command_file_bridge_missing")
     if not remote_executor_ready:
         blockers.append("skillsbench_remote_executor_contract_missing")
@@ -644,7 +660,17 @@ def build_skillsbench_worker_handshake_preflight(
                     host_local_acp_transport_probe
                 )
             ),
-            "remote_command_file_bridge_materialized": remote_command_file_bridge_ready,
+            "remote_command_file_bridge_materialized": (
+                remote_command_file_bridge_materialized
+            ),
+            "remote_command_file_bridge_readiness_source": (
+                remote_command_file_bridge_readiness_source
+            ),
+            "remote_command_file_bridge_probe": (
+                _skillsbench_public_remote_command_file_bridge_probe(
+                    remote_command_file_bridge_probe
+                )
+            ),
             "credential_sync_allowed": False,
             "remote_codex_runtime_allowed": False,
             "remote_model_api_invocation_allowed": False,
@@ -653,7 +679,7 @@ def build_skillsbench_worker_handshake_preflight(
             "ready": remote_executor_ready,
             "task_data_ready": remote_task_data_ready,
             "compact_artifact_reducer_ready": compact_artifact_reducer_ready,
-            "command_file_bridge_ready": remote_command_file_bridge_ready,
+            "command_file_bridge_ready": remote_command_file_bridge_materialized,
             "owns": [
                 "docker",
                 "benchflow_runner",
@@ -729,6 +755,77 @@ def _skillsbench_public_host_local_acp_transport_probe(
     value = probe.get("request_count")
     if isinstance(value, int) and not isinstance(value, bool):
         compact["request_count"] = max(0, min(value, 20))
+    return compact or None
+
+
+def _skillsbench_public_remote_command_file_bridge_probe(
+    probe: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(probe, dict):
+        return None
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "first_blocker",
+        "stage",
+        "request_schema_version",
+        "response_schema_version",
+    ):
+        value = probe.get(field)
+        if isinstance(value, str) and value:
+            compact[field] = _skillsbench_public_safe_label(value, limit=120)
+    for field in (
+        "ready",
+        "bridge_command_invoked",
+        "raw_command_recorded",
+        "raw_stdout_recorded",
+        "raw_stderr_recorded",
+        "raw_task_text_recorded",
+        "raw_logs_recorded",
+        "raw_trajectory_recorded",
+        "credential_values_recorded",
+        "host_paths_recorded",
+        "remote_paths_recorded",
+        "upload_performed",
+        "submit_performed",
+    ):
+        value = probe.get(field)
+        if isinstance(value, bool):
+            compact[field] = value
+    for field in ("elapsed_ms", "operation_count"):
+        value = probe.get(field)
+        if isinstance(value, int) and not isinstance(value, bool):
+            compact[field] = max(0, min(value, 600_000))
+    for field in (
+        "required_operations",
+        "missing_operations",
+        "failed_operations",
+        "boundary_violations",
+    ):
+        values = probe.get(field)
+        if isinstance(values, list):
+            compact[field] = [
+                label
+                for item in values[:12]
+                if (label := _skillsbench_public_safe_label(item, limit=80))
+            ]
+    operations = probe.get("operations")
+    if isinstance(operations, list):
+        compact["operations"] = []
+        for item in operations[:8]:
+            if not isinstance(item, dict):
+                continue
+            op: dict[str, Any] = {}
+            for field in ("kind", "label", "status"):
+                value = item.get(field)
+                if isinstance(value, str) and value:
+                    op[field] = _skillsbench_public_safe_label(value, limit=80)
+            for field in ("exit_code_zero", "content_match"):
+                value = item.get(field)
+                if isinstance(value, bool):
+                    op[field] = value
+            if op:
+                compact["operations"].append(op)
     return compact or None
 
 

@@ -38,6 +38,10 @@ from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E40
     SKILLSBENCH_LOCAL_ACP_RELAY_PROBE_SCHEMA_VERSION,
     run_skillsbench_local_acp_relay_probe,
 )
+from goal_harness.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
+    SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_SCHEMA_VERSION,
+    run_skillsbench_remote_command_file_bridge_probe,
+)
 from goal_harness.status import compact_benchmark_run  # noqa: E402
 from scripts.skillsbench_automation_loop import (  # noqa: E402
     CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD,
@@ -278,6 +282,102 @@ def test_skillsbench_worker_handshake_preflight_distinguishes_remote_bridge() ->
         payload["local_driver_contract"]["remote_command_file_bridge_materialized"]
         is False
     ), payload
+
+
+def test_skillsbench_remote_command_file_bridge_probe_requires_command() -> None:
+    payload = run_skillsbench_remote_command_file_bridge_probe(None)
+    assert (
+        payload["schema_version"]
+        == SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_SCHEMA_VERSION
+    ), payload
+    assert payload["ready"] is False, payload
+    assert (
+        payload["first_blocker"]
+        == "skillsbench_remote_command_file_bridge_probe_command_missing"
+    ), payload
+    assert payload["bridge_command_invoked"] is False, payload
+    assert payload["raw_command_recorded"] is False, payload
+    assert payload["credential_values_recorded"] is False, payload
+    assert payload["host_paths_recorded"] is False, payload
+
+
+def test_skillsbench_remote_command_file_bridge_probe_fake_bridge_ready() -> None:
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "scripts/skillsbench_remote_command_file_bridge.py"),
+        "--serve-probe",
+    ]
+    payload = run_skillsbench_remote_command_file_bridge_probe(command)
+    assert payload["ready"] is True, payload
+    assert (
+        payload["first_blocker"] == "skillsbench_remote_command_file_bridge_ready"
+    ), payload
+    assert payload["bridge_command_invoked"] is True, payload
+    assert payload["operation_count"] == 4, payload
+    assert payload["missing_operations"] == [], payload
+    assert payload["failed_operations"] == [], payload
+    assert payload["boundary_violations"] == [], payload
+    assert {item["kind"] for item in payload["operations"]} == {
+        "exec",
+        "write_file",
+        "read_file",
+        "cleanup",
+    }, payload
+    assert payload["raw_command_recorded"] is False, payload
+    assert payload["raw_stdout_recorded"] is False, payload
+    assert payload["raw_stderr_recorded"] is False, payload
+    assert payload["raw_task_text_recorded"] is False, payload
+    assert payload["credential_values_recorded"] is False, payload
+    assert payload["host_paths_recorded"] is False, payload
+    assert payload["remote_paths_recorded"] is False, payload
+    text = json.dumps(payload, sort_keys=True)
+    for forbidden in ("/Users/", "~/.codex", "OPENAI_API_KEY", "HF_TOKEN"):
+        assert forbidden not in text, forbidden
+
+
+def test_skillsbench_worker_handshake_preflight_accepts_bridge_probe() -> None:
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "scripts/skillsbench_remote_command_file_bridge.py"),
+        "--serve-probe",
+    ]
+    bridge_probe = run_skillsbench_remote_command_file_bridge_probe(command)
+    payload = build_skillsbench_worker_handshake_preflight(
+        task_id="ada-bathroom-plan-repair",
+        benchflow_available=True,
+        benchflow_agent_registry_available=True,
+        benchflow_acp_runtime_available=True,
+        default_codex_agent="codex-acp",
+        codex_agent_protocol="acp",
+        codex_agent_launch_registered=True,
+        local_codex_cli_participant_ready=True,
+        local_acp_relay_ready=True,
+        host_local_acp_transport_ready=True,
+        remote_command_file_bridge_probe=bridge_probe,
+        remote_executor_ready=True,
+        remote_task_data_ready=True,
+    )
+    assert payload["ready"] is True, payload
+    assert (
+        payload["first_blocker"]
+        == "ready_for_skillsbench_local_driver_worker_handshake"
+    ), payload
+    assert (
+        payload["local_driver_contract"]["remote_command_file_bridge_materialized"]
+        is True
+    ), payload
+    assert (
+        payload["local_driver_contract"][
+            "remote_command_file_bridge_readiness_source"
+        ]
+        == "probe"
+    ), payload
+    assert (
+        payload["local_driver_contract"]["remote_command_file_bridge_probe"]["ready"]
+        is True
+    ), payload
+    assert payload["remote_executor_contract"]["command_file_bridge_ready"] is True
+    assert "skillsbench_remote_command_file_bridge_missing" not in payload["blockers"]
 
 
 def test_skillsbench_local_acp_relay_probe_completes_stdio_handshake() -> None:
@@ -3721,6 +3821,9 @@ if __name__ == "__main__":
     test_skillsbench_worker_handshake_preflight_exposes_acp_relay_gap()
     test_skillsbench_worker_handshake_preflight_distinguishes_host_transport()
     test_skillsbench_worker_handshake_preflight_distinguishes_remote_bridge()
+    test_skillsbench_remote_command_file_bridge_probe_requires_command()
+    test_skillsbench_remote_command_file_bridge_probe_fake_bridge_ready()
+    test_skillsbench_worker_handshake_preflight_accepts_bridge_probe()
     test_skillsbench_local_acp_relay_probe_completes_stdio_handshake()
     test_skillsbench_host_local_acp_transport_probe_uses_benchflow_client()
     test_skillsbench_worker_handshake_preflight_probe_clears_relay_gap()

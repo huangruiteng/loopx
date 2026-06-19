@@ -161,6 +161,28 @@ is product-path evidence only after the remote bridge is also materialized, so
 the preflight may legitimately return `skillsbench_remote_command_file_bridge_missing`
 after both local probes pass.
 
+For the remote bridge, prefer a machine-verifiable probe over a manual
+readiness flag:
+
+```bash
+python3 scripts/skillsbench_automation_loop.py \
+  --local-driver-worker-handshake-preflight \
+  --local-codex-cli-participant-ready \
+  --local-acp-relay-probe \
+  --host-local-acp-transport-probe \
+  --remote-command-file-bridge-probe \
+  --remote-command-file-bridge-probe-command '<private-remote-bridge-command>'
+```
+
+The bridge command reads a fixed JSON request from stdin and writes compact JSON
+to stdout. It must prove four bounded operations: `exec`, `write_file`,
+`read_file`, and `cleanup`. Its public result records only operation kinds,
+statuses, and boundary flags; it must not return raw commands, stdout, stderr,
+task text, paths, credentials, logs, trajectories, uploads, or submissions.
+`scripts/skillsbench_remote_command_file_bridge.py --serve-probe` is only a
+local fake bridge for smoke tests and adapter development. It is not evidence
+that a real remote executor is ready.
+
 ## Evidence Contract
 
 Benchmark evidence may include:
