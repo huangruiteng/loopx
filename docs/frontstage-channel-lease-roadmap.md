@@ -157,7 +157,10 @@ review-packet, artifact, and lease/claim payloads; the builder emits
 those values into the channel. The static HTML fixture in
 `examples/goal-channel-frontstage-fixture.py` renders that projection into
 semantic panels with `data-panel` markers, no write controls, and a visible
-truth contract for future dashboard or CLI export work.
+truth contract. `goal-harness --format json status` and the loopback
+`serve-status` feed now expose the same read-only projection on
+`attention_queue.items[].goal_channel_projection`, so a dashboard can render the
+channel without recomputing project truth.
 
 ### `agent_member_v0`
 
@@ -225,9 +228,9 @@ P1:
   controller confusion, and it naturally extends the existing todo locking
   lane. The durable invariant is per-todo pending: one active pending lease per
   `(goal_id, todo_id)`, not one active lease per goal or project.
-- Wire `goal_channel_projection_v0` into a real dashboard data feed or a new
-  read-only CLI/status export so UI can show a goal as a channel without
-  becoming truth.
+- Teach the React dashboard to render `goal_channel_projection_v0` cards from
+  the existing status feed while keeping the CLI/status export as the source
+  and avoiding browser write authority.
 
 P2:
 

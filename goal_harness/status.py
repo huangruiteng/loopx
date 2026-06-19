@@ -27,6 +27,7 @@ from .execution_profile import (
     execution_profile_outcome_floor,
     execution_profile_summary,
 )
+from .frontstage import build_goal_channel_projection
 from .handoff_budget import handoff_budget_contract
 from .history import collect_history, load_registry
 from .interface_budget import interface_budget_cadence_for_runs
@@ -5960,6 +5961,31 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def attach_goal_channel_projection(
+    item: dict[str, Any],
+    *,
+    goal: dict[str, Any],
+    goal_latest_runs: list[dict[str, Any]],
+) -> None:
+    """Attach a read-only frontstage projection to a status attention item."""
+
+    run_history_goal = dict(goal)
+    run_history_goal["latest_runs"] = goal_latest_runs
+    quota_payload: dict[str, Any] = {
+        "status": item.get("status"),
+        "waiting_on": item.get("waiting_on"),
+        "recommended_action": item.get("recommended_action"),
+    }
+    if isinstance(item.get("quota"), dict):
+        quota_payload["quota"] = item["quota"]
+    item["goal_channel_projection"] = build_goal_channel_projection(
+        goal_id=str(item.get("goal_id") or goal.get("id") or ""),
+        status_item=item,
+        quota_payload=quota_payload,
+        run_history_goal=run_history_goal,
+    )
+
+
 def build_attention_queue(
     *,
     contract: dict[str, Any],
@@ -6093,6 +6119,11 @@ def build_attention_queue(
                         subagent_activity=subagent_activity,
                         interface_budget_cadence=interface_budget_cadence,
                     )
+            attach_goal_channel_projection(
+                item,
+                goal=goal,
+                goal_latest_runs=goal_latest_runs,
+            )
             history_items.append(item)
 
     live_quota_items_by_goal: dict[str, list[dict[str, Any]]] = {}

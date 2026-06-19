@@ -39,6 +39,15 @@ The disposable `goal-harness demo` path intentionally uses a project-local
 server on `127.0.0.1:8765`; it does not sync the temporary demo into the shared
 global registry.
 
+Each project-backed `attention_queue.items[]` row may include a read-only
+`goal_channel_projection` object with
+`schema_version=goal_channel_projection_v0`. This is the dashboard/frontstage
+projection of the same status item: current decision frame, user and agent
+todos, quota, soft claims, compact run events, source warnings, and an explicit
+truth contract. It is not a write API. Dashboards may render it as a channel
+card or timeline, but project truth still comes from the registry, active
+state, quota guard, and append-only run history.
+
 Loopback status exports include `status_contract.schema_version`. The dashboard
 uses that small protocol marker to detect when `127.0.0.1:8766` is still served
 by an older daemon or release snapshot after the checkout has moved forward. If
