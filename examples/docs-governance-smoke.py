@@ -60,6 +60,7 @@ def main() -> int:
         "docs/archive/",
         "docs/outreach/",
         "docs/reference/",
+        "docs/showcases/",
     ]:
         assert required in docs_index, required
 
@@ -71,11 +72,12 @@ def main() -> int:
         "docs/reference/README.md",
         "docs/reference/protocols/README.md",
         "docs/research/long-horizon-agent-benchmarks/README.md",
+        "docs/showcases/README.md",
     ]:
         assert (REPO_ROOT / path).is_file(), path
 
     root_markdown = sorted(DOCS.glob("*.md"))
-    assert len(root_markdown) <= 26, [path.name for path in root_markdown]
+    assert len(root_markdown) <= 27, [path.name for path in root_markdown]
 
     for old_path, new_path in MOVED_PATHS.items():
         assert not (REPO_ROOT / old_path).exists(), old_path
@@ -90,6 +92,7 @@ def main() -> int:
             read("docs/outreach/README.md"),
             read("docs/reference/protocols/README.md"),
             read("docs/research/long-horizon-agent-benchmarks/README.md"),
+            read("docs/showcases/README.md"),
         ]
     )
     for old_path in MOVED_PATHS:
