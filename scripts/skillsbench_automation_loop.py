@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -69,6 +70,7 @@ from goal_harness.benchmark_adapters.skillsbench import (  # noqa: E402
     build_skillsbench_worker_handshake_preflight,
 )
 from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
+    default_skillsbench_local_acp_relay_command,
     run_skillsbench_host_local_acp_transport_probe,
     run_skillsbench_local_acp_relay_probe,
 )
@@ -560,6 +562,28 @@ def inspect_skillsbench_worker_handshake(
     )
 
 
+def _host_local_acp_launch_command(args: argparse.Namespace) -> list[str]:
+    if args.local_acp_relay_command:
+        return shlex.split(args.local_acp_relay_command)
+    command = list(default_skillsbench_local_acp_relay_command())
+    if "--dry-run-response" in command:
+        index = command.index("--dry-run-response")
+        del command[index : index + 2]
+    command.extend(
+        [
+            "--codex-bin",
+            args.local_codex_bin,
+            "--sandbox",
+            args.local_codex_sandbox,
+            "--timeout-sec",
+            str(args.local_codex_exec_timeout_sec),
+        ]
+    )
+    if args.model:
+        command.extend(["--model", args.model])
+    return command
+
+
 def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -567,6 +591,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
     compact: dict[str, Any] = {}
     for field in (
         "schema_version",
+        "agent_execution_mode",
+        "host_local_acp_launch_status",
         "codex_acp_runtime_launch_preflight_stage",
         "codex_acp_runtime_launch_preflight_status",
     ):
@@ -578,6 +604,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_acp_runtime_dependency_preflight",
         "codex_acp_runtime_launch_preflight",
         "codex_acp_runtime_launch_preflight_raw_logs_read",
+        "host_local_acp_launch",
+        "container_codex_acp_install_skipped",
+        "remote_command_file_bridge_materialized",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -1361,6 +1390,11 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "sandbox_setup_timeout_sec": args.sandbox_setup_timeout,
         "agent_idle_timeout_sec": args.agent_idle_timeout,
         "include_task_skills": bool(args.include_task_skills),
+        "host_local_acp_launch": bool(args.host_local_acp_launch),
+        "remote_command_file_bridge_ready": bool(
+            args.remote_command_file_bridge_ready
+            or args.remote_command_file_bridge_probe
+        ),
         "skillsbench_root": str(Path(args.skillsbench_root).expanduser()),
         "jobs_dir": str(jobs_dir),
         "job_name": job_name,
@@ -1392,6 +1426,20 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "codex_acp_runtime_launch_preflight_status": "pending",
             "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+            "agent_execution_mode": (
+                "host_local_acp"
+                if args.host_local_acp_launch
+                else "container_codex_acp"
+            ),
+            "host_local_acp_launch": bool(args.host_local_acp_launch),
+            "host_local_acp_launch_status": (
+                "pending" if args.host_local_acp_launch else "not_requested"
+            ),
+            "container_codex_acp_install_skipped": False,
+            "remote_command_file_bridge_materialized": bool(
+                args.remote_command_file_bridge_ready
+                or args.remote_command_file_bridge_probe
+            ),
         },
         "public_boundary": {
             "leaderboard_upload": False,
@@ -2508,8 +2556,55 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
 
+    import benchflow.acp.runtime as benchflow_acp_runtime
+    import benchflow.rollout as benchflow_rollout_module
     from benchflow.rollout import Rollout, RolloutConfig
     from benchflow.runtime import run as benchflow_run
+
+    host_local_acp_command = _host_local_acp_launch_command(args)
+
+    async def connect_host_local_acp(
+        env: Any,
+        agent: str,
+        agent_launch: str,
+        agent_env: dict[str, str],
+        sandbox_user: str | None,
+        model: str | None,
+        rollout_dir: Path,
+        environment: str,
+        agent_cwd: str,
+    ) -> tuple[Any, Any, str]:
+        del env, agent_launch, agent_env, sandbox_user, rollout_dir, environment
+        from benchflow.acp.client import ACPClient
+        from benchflow.acp.transport import StdioTransport
+
+        prerequisites = plan.setdefault("runner_prerequisites", {})
+        prerequisites["host_local_acp_launch_status"] = "connecting"
+        client = ACPClient(
+            StdioTransport(
+                command=host_local_acp_command[0],
+                args=host_local_acp_command[1:],
+                cwd=str(REPO_ROOT),
+            )
+        )
+        try:
+            await asyncio.wait_for(client.connect(), timeout=60)
+            init_result = await asyncio.wait_for(client.initialize(), timeout=60)
+            session = await asyncio.wait_for(
+                client.session_new(cwd=agent_cwd), timeout=60
+            )
+            agent_name = (
+                init_result.agent_info.name if init_result.agent_info else agent
+            )
+            if model:
+                await asyncio.wait_for(client.set_model(model), timeout=60)
+            prerequisites["host_local_acp_launch_status"] = "connected"
+            return client, session, agent_name
+        except Exception:
+            prerequisites["host_local_acp_launch_status"] = "failed"
+            with contextlib.suppress(Exception):
+                await client.close()
+            raise
 
     async def ensure_codex_acp_runtime_deps(env: Any) -> None:
         bootstrap = await env.exec(
@@ -2591,8 +2686,63 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         trace["case_goal_state_init_status"] = "passed"
 
     original_install_agent = Rollout.install_agent
+    original_runtime_connect_acp = benchflow_acp_runtime.connect_acp
+    original_rollout_connect_acp = benchflow_rollout_module.connect_acp
+
+    async def install_agent_host_local_acp(self: Any) -> None:
+        cfg = self._config
+        prerequisites = plan.setdefault("runner_prerequisites", {})
+        prerequisites["agent_execution_mode"] = "host_local_acp"
+        prerequisites["host_local_acp_launch"] = True
+        prerequisites["host_local_acp_launch_status"] = "installing_sandbox"
+        prerequisites["container_codex_acp_install_skipped"] = True
+        prerequisites["codex_acp_runtime_container_bootstrap"] = False
+        prerequisites["codex_acp_runtime_dependency_preflight"] = False
+        prerequisites["codex_acp_runtime_launch_preflight"] = True
+        prerequisites["codex_acp_runtime_launch_preflight_stage"] = (
+            "host_local_acp_container_install_skipped"
+        )
+        prerequisites["codex_acp_runtime_launch_preflight_status"] = "skipped"
+        prerequisites["codex_acp_runtime_launch_preflight_raw_logs_read"] = False
+        cwd_result = await self._env.exec("pwd", timeout_sec=10)
+        self._agent_cwd = (cwd_result.stdout or "").strip() or "/app"
+        self._agent_cfg = None
+        if cfg.sandbox_user:
+            self._agent_cwd = await benchflow_rollout_module.setup_sandbox_user(
+                self._env,
+                cfg.sandbox_user,
+                workspace=self._agent_cwd,
+                timeout_sec=cfg.sandbox_setup_timeout,
+            )
+        await benchflow_rollout_module._snapshot_build_config(
+            self._env, workspace=self._agent_cwd
+        )
+        await benchflow_rollout_module._seed_verifier_workspace(
+            self._env, workspace=self._agent_cwd, sandbox_user=cfg.sandbox_user
+        )
+        await benchflow_rollout_module.deploy_skills(
+            self._env,
+            getattr(self, "_effective_task_path", cfg.task_path),
+            cfg.skills_dir,
+            None,
+            cfg.sandbox_user,
+            self._agent_cwd,
+            self._task,
+            include_task_skills=cfg.include_task_skills,
+        )
+        if cfg.export_generated_skills_to:
+            await benchflow_rollout_module._ensure_sandbox_dir(
+                self._env, cfg.generated_skills_root, cfg.sandbox_user
+            )
+        await benchflow_rollout_module.lockdown_paths(
+            self._env, self._effective_locked
+        )
+        prerequisites["host_local_acp_launch_status"] = "sandbox_installed"
+        self._phase = "installed"
 
     async def install_agent_with_launch_preflight(self: Any) -> Any:
+        if args.host_local_acp_launch:
+            return await install_agent_host_local_acp(self)
         result = await original_install_agent(self)
         prerequisites = plan.setdefault("runner_prerequisites", {})
         if prerequisites.get("codex_acp_runtime_launch_preflight_status") != "passed":
@@ -2639,7 +2789,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     elif args.route == "codex-goal-mode-baseline":
         controller_user = _build_codex_goal_mode_baseline_user()
 
-    pre_agent_hooks = [ensure_codex_acp_runtime_deps]
+    pre_agent_hooks = [] if args.host_local_acp_launch else [ensure_codex_acp_runtime_deps]
     if args.route == "goal-harness-product-mode":
         pre_agent_hooks.append(seed_product_mode_case_state)
 
@@ -2661,6 +2811,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     )
     result_path: Path | None = None
     Rollout.install_agent = install_agent_with_launch_preflight
+    if args.host_local_acp_launch:
+        benchflow_acp_runtime.connect_acp = connect_host_local_acp
+        benchflow_rollout_module.connect_acp = connect_host_local_acp
     try:
         await benchflow_run(config)
         result_path = discover_benchflow_result_path(plan)
@@ -2668,6 +2821,8 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             _merge_final_result_round_reward(controller_trace, result_path)
     finally:
         Rollout.install_agent = original_install_agent
+        benchflow_acp_runtime.connect_acp = original_runtime_connect_acp
+        benchflow_rollout_module.connect_acp = original_rollout_connect_acp
         _merge_acp_trajectory_summary(plan, controller_trace)
         _write_controller_trace(plan, controller_trace)
     if result_path is None:
@@ -3033,6 +3188,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Codex CLI binary for --local-codex-participant-ping.",
     )
     parser.add_argument(
+        "--local-codex-sandbox",
+        choices=("read-only", "workspace-write", "danger-full-access"),
+        default="workspace-write",
+        help=(
+            "Sandbox mode used by the host-local ACP relay when it invokes "
+            "local Codex for a full SkillsBench launch."
+        ),
+    )
+    parser.add_argument(
+        "--local-codex-exec-timeout-sec",
+        type=int,
+        default=DEFAULT_TIMEOUT_SEC,
+        help="Per-prompt timeout for local Codex exec in host-local ACP launch mode.",
+    )
+    parser.add_argument(
         "--local-codex-ping-timeout-sec",
         type=int,
         default=120,
@@ -3092,6 +3262,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=float,
         default=10.0,
         help="Timeout for --host-local-acp-transport-probe.",
+    )
+    parser.add_argument(
+        "--host-local-acp-launch",
+        action="store_true",
+        help=(
+            "Run the official BenchFlow rollout with the ACP agent hosted by "
+            "the local stdio relay instead of container-local codex-acp. "
+            "This keeps Codex auth/model/state local; remote execution still "
+            "requires a separate command/file bridge visible to the local Codex "
+            "worker."
+        ),
     )
     parser.add_argument(
         "--remote-command-file-bridge-ready",
