@@ -65,6 +65,9 @@ from goal_harness.benchmark_case_state import (  # noqa: E402
     benchmark_case_active_state_seed_text,
     benchmark_case_active_state_write_command,
 )
+from goal_harness.benchmark_adapters.skillsbench import (  # noqa: E402
+    build_skillsbench_worker_handshake_preflight,
+)
 from goal_harness.benchmark_trajectory import summarize_public_acp_trajectory
 
 DEFAULT_SKILLSBENCH_ROOT = REPO_ROOT / ".local/benchmark/externals/skillsbench"
@@ -248,6 +251,18 @@ def ensure_benchflow_runtime(args: argparse.Namespace) -> None:
         str(venv_python),
         [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]],
     )
+
+
+def ensure_skillsbench_dependency_python(args: argparse.Namespace) -> None:
+    """Re-exec diagnostics with the SkillsBench venv Python when available."""
+
+    venv_python = Path(args.skillsbench_root).expanduser() / ".venv/bin/python"
+    current_python = Path(sys.executable)
+    if venv_python.exists() and not _same_executable(venv_python, current_python):
+        os.execv(
+            str(venv_python),
+            [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]],
+        )
 CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD = (
     "agent_bin=/opt/benchflow/bin/codex-acp; "
     "if [ ! -x \"$agent_bin\" ]; then "
@@ -414,11 +429,84 @@ def materialize_local_codex_participant(
             "host_paths_recorded": False,
             "a2a_worker_handshake_ready": False,
             "next_blocker_after_ready": (
-                "skillsbench_local_a2a_worker_handshake_not_materialized"
+                "skillsbench_local_acp_relay_missing"
                 if ready
                 else first_blocker
             ),
         }
+
+
+def _prepend_skillsbench_site_packages(skillsbench_root: Path) -> None:
+    venv = skillsbench_root.expanduser() / ".venv"
+    if not venv.exists():
+        return
+    for candidate in sorted((venv / "lib").glob("python*/site-packages")):
+        candidate_text = str(candidate)
+        if candidate.exists() and candidate_text not in sys.path:
+            sys.path.insert(0, candidate_text)
+            return
+
+
+def inspect_skillsbench_worker_handshake(
+    *,
+    skillsbench_root: str | Path,
+    dataset: str,
+    task_id: str,
+    local_codex_cli_participant_ready: bool = False,
+    remote_executor_ready: bool = True,
+    remote_task_data_ready: bool = True,
+) -> dict[str, Any]:
+    """Inspect BenchFlow's worker protocol requirements without launching a task."""
+
+    root = Path(skillsbench_root).expanduser()
+    _prepend_skillsbench_site_packages(root)
+
+    benchflow_available = False
+    registry_available = False
+    acp_runtime_available = False
+    default_codex_agent = "codex-acp"
+    codex_agent_protocol = None
+    codex_agent_launch_registered = False
+    try:
+        __import__("benchflow")
+        benchflow_available = True
+    except ModuleNotFoundError:
+        pass
+
+    if benchflow_available:
+        try:
+            from benchflow.agents.registry import AGENTS, AGENT_ALIASES, AGENT_LAUNCH
+
+            registry_available = True
+            default_codex_agent = str(AGENT_ALIASES.get("codex", "codex-acp"))
+            agent_config = AGENTS.get(default_codex_agent)
+            if agent_config is not None:
+                codex_agent_protocol = str(getattr(agent_config, "protocol", "") or "")
+            codex_agent_launch_registered = bool(AGENT_LAUNCH.get(default_codex_agent))
+        except Exception:
+            pass
+
+        try:
+            from benchflow.acp.runtime import connect_acp, execute_prompts  # noqa: F401
+
+            acp_runtime_available = True
+        except Exception:
+            pass
+
+    return build_skillsbench_worker_handshake_preflight(
+        dataset=dataset,
+        task_id=task_id,
+        benchflow_available=benchflow_available,
+        benchflow_agent_registry_available=registry_available,
+        benchflow_acp_runtime_available=acp_runtime_available,
+        default_codex_agent=default_codex_agent,
+        codex_agent_protocol=codex_agent_protocol,
+        codex_agent_launch_registered=codex_agent_launch_registered,
+        local_codex_cli_participant_ready=local_codex_cli_participant_ready,
+        local_acp_relay_ready=False,
+        remote_executor_ready=remote_executor_ready,
+        remote_task_data_ready=remote_task_data_ready,
+    )
 
 
 def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
@@ -2900,6 +2988,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Timeout for --local-codex-participant-ping.",
     )
     parser.add_argument(
+        "--local-driver-worker-handshake-preflight",
+        action="store_true",
+        help=(
+            "Inspect the local SkillsBench/BenchFlow worker protocol contract "
+            "and print compact readiness JSON. This does not launch a task or "
+            "invoke Codex."
+        ),
+    )
+    parser.add_argument(
+        "--local-codex-cli-participant-ready",
+        action="store_true",
+        help=(
+            "Tell --local-driver-worker-handshake-preflight that a prior local "
+            "Codex CLI participant ping is already materialized."
+        ),
+    )
+    parser.add_argument(
         "--fail-fast-on-apt-risk",
         action="store_true",
         help=(
@@ -2991,6 +3096,18 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
         return 0 if payload.get("codex_cli_invoked") is True else 1
+    if args.local_driver_worker_handshake_preflight:
+        ensure_skillsbench_dependency_python(args)
+        payload = inspect_skillsbench_worker_handshake(
+            skillsbench_root=args.skillsbench_root,
+            dataset=args.dataset,
+            task_id=args.task_id,
+            local_codex_cli_participant_ready=args.local_codex_cli_participant_ready,
+            remote_executor_ready=True,
+            remote_task_data_ready=True,
+        )
+        print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
+        return 0
     closeout_recorded = False
     if args.run_group_id is None:
         args.run_group_id = (
