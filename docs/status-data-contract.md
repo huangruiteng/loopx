@@ -928,6 +928,16 @@ an independent worktree/branch, and require rerunning `quota should-run` with
 the same `--agent-id` before repository edits. This preflight does not spend
 quota; `quota spend-slot` should fail closed until the guard is rerun from the
 independent worktree.
+Dashboard and Review Packet consumers should project `workspace_guard` as an
+agent-channel workspace repair, not as an operator or user gate. The first
+screen can render the current workspace class, required workspace class, repair
+action, and whether normal delivery is allowed. It should not ask the user to
+approve the move, mark the primary todo as blocked by the user, or hide open
+same-scope work. If a side agent is also looking at a `claimed_by` primary-agent
+todo, the packet should explain both boundaries separately: the workspace guard
+requires moving to an independent worktree, while the claim boundary requires
+choosing an in-scope unclaimed/side-agent todo or creating a primary review
+successor.
 When the payload includes `notify_user_on_open_todo=true`, the open
 `user_todo_summary` is the current blocker-push surface even if there is no
 operator gate. This is intended for `focus_wait`, `waiting`,
