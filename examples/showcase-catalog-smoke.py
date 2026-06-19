@@ -45,6 +45,7 @@ def main() -> int:
     case_ids = {case.get("id") for case in cases}
     assert "2026-06-17-blocked-p0-safe-rotation" in case_ids, case_ids
     assert "2026-06-19-dynamic-workflow-hardware-agent" in case_ids, case_ids
+    assert "2026-06-19-goal-harness-self-iteration" in case_ids, case_ids
 
     assert_public_safe(CATALOG)
     assert_public_safe(SHOWCASES)
@@ -74,6 +75,24 @@ def main() -> int:
             page_text = read(page)
             assert "public-safe stub" in page_text, case_id
             assert "No reproducible public demo is included yet" in page_text, case_id
+        if case_id == "2026-06-19-goal-harness-self-iteration":
+            assert case.get("status") == "public_evidence_case", case
+            assert demo_command is None, case
+            workload = case.get("workload_signal")
+            assert isinstance(workload, dict), case
+            assert workload.get("git_range") == "32b466d^..9acdaa2", workload
+            assert workload.get("commit_count", 0) >= 10, workload
+            assert workload.get("files_touched", 0) >= 40, workload
+            assert workload.get("insertions", 0) >= 2500, workload
+            assert "side_agent_scope" in case.get("pattern_tags", []), case
+            page_text = read(page)
+            for phrase in (
+                "Goal Harness was used to improve Goal Harness itself",
+                "--side-agent-self-merged --evidence",
+                "The public self-iteration slice",
+                "evidence writeback",
+            ):
+                assert phrase in page_text, phrase
 
     docs_index = read(REPO_ROOT / "docs" / "README.md")
     repo_readme = read(REPO_ROOT / "README.md")

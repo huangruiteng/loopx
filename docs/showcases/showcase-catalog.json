@@ -111,6 +111,74 @@
           "public demo waits for safe abstraction"
         ]
       }
+    },
+    {
+      "id": "2026-06-19-goal-harness-self-iteration",
+      "date": "2026-06-19",
+      "title": "Goal Harness self-iteration loop",
+      "status": "public_evidence_case",
+      "case_page": "docs/showcases/cases/0619-goal-harness-self-iteration.md",
+      "demo_command": null,
+      "domain": "agent-platform-self-improvement",
+      "audience": [
+        "open-source-user",
+        "agent-platform-developer",
+        "technical-lead"
+      ],
+      "pattern_tags": [
+        "self_iteration",
+        "side_agent_scope",
+        "todo_claim_ownership",
+        "identity_aware_prompt",
+        "self_merge_policy",
+        "evidence_writeback"
+      ],
+      "headline": "A side agent improved Goal Harness itself while the primary agent kept benchmark focus.",
+      "problem": "Multi-agent product work needed a way to delegate bounded side lanes without hiding ownership, racing the primary agent, or pushing every small change into the primary queue.",
+      "goal_harness_behavior": [
+        "register primary and side-agent identities",
+        "project side-agent scope through automation prompts instead of todo metadata",
+        "claim and complete scoped todos with public-safe evidence",
+        "allow small validated side-agent self-merges while preserving primary review for risky work"
+      ],
+      "user_value": "The operator can split productization work from benchmark work while keeping ownership, validation, and follow-up visible in one shared control plane.",
+      "workload_signal": {
+        "git_range": "32b466d^..9acdaa2",
+        "commit_count": 11,
+        "files_touched": 44,
+        "insertions": 2777,
+        "deletions": 92,
+        "main_surfaces": [
+          "CLI",
+          "todo metadata",
+          "status and quota projection",
+          "heartbeat prompt",
+          "docs",
+          "smokes"
+        ]
+      },
+      "feature_points": [
+        "registered todo claim ownership",
+        "identity-aware scoped heartbeat prompts",
+        "showcase catalog and redaction workflow",
+        "side-agent self-merge completion flag with evidence"
+      ],
+      "evidence_boundary": "Public Git evidence only; no private thread text, local active-state bodies, internal document links, screenshots, raw benchmark material, credentials, or machine-specific paths.",
+      "frontend_card": {
+        "visual_metaphor": "two agent lanes sharing one control plane while one side lane self-merges a small validated improvement",
+        "primary_metric_hint": "11 public commits across 44 files turned coordination feedback into shipped control-plane behavior",
+        "badges": [
+          "self-iteration",
+          "commit-backed",
+          "side-agent"
+        ],
+        "story_beats": [
+          "user identifies side-agent review pressure",
+          "Goal Harness records identity, scope, and todo ownership",
+          "side agent ships claim, prompt, showcase, and self-merge policy changes",
+          "evidence writeback leaves the next productization lane visible"
+        ]
+      }
     }
   ]
 }
