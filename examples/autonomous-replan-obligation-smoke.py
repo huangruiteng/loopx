@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -11,28 +13,63 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from goal_harness import cli as goal_harness_cli
+
 GOAL_ID = "autonomous-replan-fixture"
+CLI_TIMEOUT_SECONDS = 30
+USE_SUBPROCESS_CLI = False
 
 
-def run_cli(*args: str, registry_path: Path, runtime: Path) -> dict:
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "goal_harness.cli",
-            "--registry",
-            str(registry_path),
-            "--runtime-root",
-            str(runtime),
-            "--format",
-            "json",
-            *args,
-        ],
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+def run_cli(
+    *args: str,
+    registry_path: Path,
+    runtime: Path,
+    timeout: int = CLI_TIMEOUT_SECONDS,
+    use_subprocess: bool | None = None,
+) -> dict:
+    use_subprocess = USE_SUBPROCESS_CLI if use_subprocess is None else use_subprocess
+    project_root = registry_path.parent.parent
+    scan_path_args = ["--scan-path", str(project_root)] if args and args[0] in {"status", "quota"} else []
+    argv = [
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        "json",
+        *args,
+        *scan_path_args,
+    ]
+    if not use_subprocess:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            exit_code = goal_harness_cli.main(argv)
+        if exit_code != 0:
+            public_args = " ".join(args)
+            raise AssertionError(
+                f"goal-harness fixture command failed with exit {exit_code}: {public_args}\n"
+                f"{stderr.getvalue().strip()}"
+            )
+        return json.loads(stdout.getvalue())
+
+    command = [sys.executable, "-m", "goal_harness.cli", *argv]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        public_args = " ".join(args)
+        raise AssertionError(
+            f"goal-harness fixture command timed out after {timeout}s: {public_args}"
+        ) from exc
     return json.loads(result.stdout)
 
 
@@ -355,6 +392,12 @@ def assert_no_replan_obligation_without_signal() -> None:
 
 
 def main() -> int:
+    global USE_SUBPROCESS_CLI
+    argv = sys.argv[1:]
+    unknown_args = sorted(set(argv) - {"--subprocess-cli"})
+    if unknown_args:
+        raise SystemExit(f"unknown arguments: {' '.join(unknown_args)}")
+    USE_SUBPROCESS_CLI = "--subprocess-cli" in argv
     assert_replan_obligation_projected()
     assert_replan_obligation_projected_from_run_history()
     assert_periodic_replan_obligation_projected_from_run_history()
