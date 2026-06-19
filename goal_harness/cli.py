@@ -9915,6 +9915,7 @@ def main(argv: list[str] | None = None) -> int:
                     slots=args.slots,
                     execute=bool(args.execute),
                     source=args.source,
+                    agent_id=args.agent_id,
                     available_capabilities=args.available_capabilities,
                 )
             elif args.quota_command == "void-slot":

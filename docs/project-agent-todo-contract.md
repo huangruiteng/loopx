@@ -92,6 +92,12 @@ when the side agent records public-safe evidence; higher-risk or unclear work
 should be handed back through a primary-agent review todo. First register the
 agent ids and primary agent in the goal registry:
 
+`quota should-run --agent-id <side-agent-id>` enforces this as a preflight: when
+the side agent is running from the registered primary checkout, a non-git
+directory, or an unrelated git worktree, it returns `workspace_guard` and blocks
+normal delivery until the agent moves to an independent worktree and reruns the
+guard.
+
 ```bash
 goal-harness configure-goal \
   --goal-id <goal-id> \

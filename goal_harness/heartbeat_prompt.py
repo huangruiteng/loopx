@@ -318,7 +318,12 @@ def build_heartbeat_prompt(
         thin=thin,
     )
     quota_guard_command = render_quota_guard_command(goal_id, cli_bin=cli_bin, agent_id=normalized_agent_id)
-    quota_spend_command = render_quota_spend_command(goal_id, source="heartbeat", cli_bin=cli_bin)
+    quota_spend_command = render_quota_spend_command(
+        goal_id,
+        source="heartbeat",
+        cli_bin=cli_bin,
+        agent_id=normalized_agent_id,
+    )
     cli_preflight = render_cli_preflight(cli_bin=cli_bin)
     expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}"
     compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}"

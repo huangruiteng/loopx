@@ -976,6 +976,15 @@ a primary review todo claimed by the primary agent instead. `claimed_by` remains
 a soft owner and not a permission grant: quota, user gates, public/private
 boundary checks, write scopes, and repository rules still apply.
 
+Because prompt text alone is not a reliable guard, `quota should-run --agent-id
+<side-agent-id>` should also project `workspace_guard` when the side agent is
+running from the registered primary checkout, a non-git directory, or an
+unrelated git worktree. In that state `normal_delivery_allowed=false` and
+`interaction_contract.mode=side_agent_workspace_repair`: the only allowed action
+is to create or switch to an independent worktree/branch and rerun the guard
+before editing repository files. Moving workspaces is a preflight repair and
+does not get quota spend.
+
 **Visual Model**
 
 ```mermaid
@@ -998,7 +1007,9 @@ flowchart TD
 A side agent edits the primary checkout, chooses work from chat memory instead
 of the shared todo list, encodes scope into todo metadata, self-merges broad or
 runtime-sensitive work, or creates a review successor and claims it back to
-itself without the explicit self-merge path.
+itself without the explicit self-merge path. A related bad smell is treating
+"the prompt said use a worktree" as sufficient product protection; the guard
+must be machine-visible before the first file edit.
 
 **Validation**
 
@@ -1009,6 +1020,7 @@ itself without the explicit self-merge path.
 - `examples/todo-cli-smoke.py`
 - `examples/todo-concurrent-write-lock-smoke.py`
 - `examples/heartbeat-prompt-smoke.py`
+- `examples/side-agent-workspace-guard-smoke.py`
 
 #### IP-020 Todo Claim / Supersede / Successor Lifecycle
 

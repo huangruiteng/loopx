@@ -44,13 +44,20 @@ def render_quota_guard_command(goal_id: str, *, cli_bin: str = "goal-harness", a
     )
 
 
-def render_quota_spend_command(goal_id: str, *, source: str = "adapter", cli_bin: str = "goal-harness") -> str:
+def render_quota_spend_command(
+    goal_id: str,
+    *,
+    source: str = "adapter",
+    cli_bin: str = "goal-harness",
+    agent_id: str | None = None,
+) -> str:
+    agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
     return (
         f"{shell_arg(cli_bin)} "
         f"--registry {SHARED_GLOBAL_REGISTRY} "
         "quota spend-slot "
         f"--goal-id {shell_arg(goal_id)} "
-        f"--slots 1 --source {shell_arg(source)} --execute"
+        f"--slots 1 --source {shell_arg(source)} --execute{agent_arg}"
     )
 
 

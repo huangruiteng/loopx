@@ -4,6 +4,7 @@ from copy import deepcopy
 import fnmatch
 import json
 import re
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -135,6 +136,7 @@ INTERACTION_CONTRACT_SCHEMA_VERSION = "goal_harness_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
 CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
+SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "side_agent_workspace_guard_v0"
 DEFAULT_AVAILABLE_CAPABILITIES = (
     "shell",
     "filesystem_read",
@@ -2072,6 +2074,8 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
         return "outcome_floor_recovery"
     if effective_action == "capability_bridge_repair":
         return "capability_bridge_repair"
+    if effective_action == "side_agent_workspace_repair":
+        return "side_agent_workspace_repair"
     if effective_action == "boundary_projection_repair":
         return "boundary_projection_repair"
     if payload.get("self_repair_allowed"):
@@ -2127,6 +2131,8 @@ def _interaction_primary_agent_action(payload: dict[str, Any], *, mode: str) -> 
         return "produce the required outcome-floor evidence artifact or write the concrete blocker"
     if mode == "capability_bridge_repair":
         return "repair or materialize the missing bridge capability, rewrite the todo, or write a compact blocker"
+    if mode == "side_agent_workspace_repair":
+        return "create or switch to an independent worktree/branch, then rerun quota guard before file edits"
     if mode == "control_plane_self_repair":
         return "repair the bounded control-plane/status projection fault exposed by quota"
     if mode == "boundary_projection_repair":
@@ -2152,6 +2158,21 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
             "read approved controller/job/marker/writeback surfaces only",
             f"goal-harness refresh-state --goal-id {goal_id} --classification <compact_blocker_or_transition>",
             f"goal-harness quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
+        ]
+    if mode == "side_agent_workspace_repair":
+        agent_identity = (
+            payload.get("agent_identity")
+            if isinstance(payload.get("agent_identity"), dict)
+            else {}
+        )
+        agent_arg = (
+            f" --agent-id {agent_identity.get('agent_id')}"
+            if agent_identity.get("agent_id")
+            else ""
+        )
+        return [
+            "create or switch to an independent git worktree/branch",
+            f"goal-harness --format json quota should-run --goal-id {goal_id}{agent_arg}",
         ]
     if mode in {
         "bounded_delivery",
@@ -2183,6 +2204,8 @@ def _interaction_spend_policy(
         return "no spend for gate or blocker push"
     if mode == "monitor_quiet_skip":
         return "no spend for unchanged monitor poll"
+    if mode == "side_agent_workspace_repair":
+        return "no spend for moving side-agent work into an independent worktree"
     if spend_after_validation:
         return "spend once after validated writeback"
     raw_policy = execution_obligation.get("spend_policy") or heartbeat_recommendation.get(
@@ -2492,6 +2515,108 @@ def _quota_agent_identity(goal: dict[str, Any], *, agent_id: str | None) -> dict
         "role": "primary-agent" if primary_agent and normalized_agent_id == primary_agent else "side-agent",
         "primary_agent": primary_agent,
         "registered_agents": registered_agents,
+    }
+
+
+def _is_same_or_child_path(path: Path, root: Path) -> bool:
+    try:
+        current = path.expanduser().resolve()
+        target = root.expanduser().resolve()
+    except OSError:
+        return False
+    return current == target or target in current.parents
+
+
+def _git_command_output(path: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), *args],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=1.5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    output = result.stdout.strip()
+    return output or None
+
+
+def _git_worktree_root(path: Path) -> Path | None:
+    output = _git_command_output(path, "rev-parse", "--show-toplevel")
+    if not output:
+        return None
+    try:
+        return Path(output).expanduser().resolve()
+    except OSError:
+        return None
+
+
+def _git_common_dir(path: Path) -> Path | None:
+    root = _git_worktree_root(path)
+    if root is None:
+        return None
+    output = _git_command_output(root, "rev-parse", "--git-common-dir")
+    if not output:
+        return None
+    common = Path(output).expanduser()
+    if not common.is_absolute():
+        common = root / common
+    try:
+        return common.resolve()
+    except OSError:
+        return None
+
+
+def _side_agent_workspace_guard(
+    goal: dict[str, Any],
+    agent_identity: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(agent_identity, dict) or agent_identity.get("role") != "side-agent":
+        return None
+    repo_value = goal.get("repo") or goal.get("project") or goal.get("root")
+    if not repo_value:
+        return None
+    repo_path = Path(str(repo_value)).expanduser()
+    if not repo_path.is_absolute():
+        return None
+    current_path = Path.cwd()
+    current_workspace = ""
+    if _is_same_or_child_path(current_path, repo_path):
+        current_workspace = "primary_checkout"
+    else:
+        primary_root = _git_worktree_root(repo_path) or repo_path
+        current_root = _git_worktree_root(current_path)
+        primary_common = _git_common_dir(primary_root)
+        current_common = _git_common_dir(current_path) if current_root else None
+        if current_root is None:
+            current_workspace = "not_git_worktree"
+        elif primary_common is None or current_common is None or current_common != primary_common:
+            current_workspace = "foreign_git_worktree"
+        elif current_root == primary_root:
+            current_workspace = "primary_checkout"
+    if not current_workspace:
+        return None
+    return {
+        "schema_version": SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION,
+        "source": "quota.should-run",
+        "action": "move_to_independent_worktree",
+        "current_workspace": current_workspace,
+        "required_workspace": "independent_git_worktree",
+        "blocks_delivery": True,
+        "agent_id": agent_identity.get("agent_id"),
+        "primary_agent": agent_identity.get("primary_agent"),
+        "reason": (
+            "side-agent quota guard is not running from an independent worktree for "
+            "the registered project; normal delivery must move before repository edits"
+        ),
+        "required_action": (
+            "create or switch to an independent git worktree/branch for this side-agent "
+            "lane, then rerun quota should-run with the same --agent-id before editing files"
+        ),
     }
 
 
@@ -3449,6 +3574,25 @@ def _execution_obligation(
         if isinstance(external_evidence_observation, dict)
         else {}
     )
+    if should_run and recommended_mode == "repair_side_agent_workspace":
+        return {
+            "must_attempt_work": True,
+            "kind": "side_agent_workspace_repair",
+            "minimum": "one_workspace_move_then_guard_rerun",
+            "delivery_allowed": False,
+            "notify_is_execution_gate": False,
+            "contract": "side_agent_workspace_guard",
+            "contract_obligation": (
+                "do not edit repository files from the registered primary checkout; "
+                "create or switch to an independent worktree/branch, then rerun "
+                "quota should-run with the same agent id"
+            ),
+            "spend_policy": heartbeat_recommendation.get("spend_policy"),
+            "reason": (
+                "side-agent identity is active while the current workspace is the "
+                "registered primary checkout"
+            ),
+        }
     if external_evidence_observation.get("required") is True:
         return {
             "must_attempt_work": True,
@@ -3678,6 +3822,7 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
             or latest.get("recommended_action"),
             "adapter_kind": goal.get("adapter_kind"),
             "adapter_status": goal.get("adapter_status"),
+            "repo": goal.get("repo") or goal.get("project") or goal.get("root"),
             "coordination": goal.get("coordination") if isinstance(goal.get("coordination"), dict) else None,
             "spawn_policy": goal.get("spawn_policy") if isinstance(goal.get("spawn_policy"), dict) else None,
             "guards": goal.get("guards") if isinstance(goal.get("guards"), list) else [],
@@ -3846,6 +3991,7 @@ def _effective_action(
     recovery_delivery_allowed: bool,
     self_repair_allowed: bool,
     capability_repair_allowed: bool = False,
+    workspace_repair_allowed: bool = False,
     stall_self_repair: dict[str, Any] | None,
     state: str,
     quota: dict[str, Any],
@@ -3854,6 +4000,8 @@ def _effective_action(
         return "normal_run"
     if recovery_delivery_allowed:
         return "outcome_floor_recovery"
+    if workspace_repair_allowed:
+        return "side_agent_workspace_repair"
     if self_repair_allowed:
         repair_action = (
             stall_self_repair.get("effective_action")
@@ -3931,6 +4079,7 @@ def build_quota_should_run(
             reason = str(quota["reason"])
         goal_boundary = _goal_boundary(item)
         agent_identity = _quota_agent_identity(item, agent_id=agent_id)
+        workspace_guard = _side_agent_workspace_guard(item, agent_identity)
         automation_prompt_upgrade = _automation_prompt_upgrade(
             item,
             goal_id=safe_goal_id,
@@ -3952,6 +4101,7 @@ def build_quota_should_run(
             available_capabilities=_available_capabilities(available_capabilities),
         )
         capability_repair_allowed = False
+        workspace_repair_allowed = False
         projection_gap = _state_projection_gap(item, project_asset)
         projection_gap_repair = _state_projection_gap_repair_hint(
             projection_gap,
@@ -3989,17 +4139,26 @@ def build_quota_should_run(
                 reason = str(capability_gate.get("reason") or "capability bridge repair required")
             else:
                 reason = str(capability_gate.get("reason") or "selected todo capability is unavailable")
+        if workspace_guard:
+            normal_delivery_allowed = False
+            recovery_allowed = False
+            self_repair_allowed = False
+            capability_repair_allowed = False
+            workspace_repair_allowed = True
+            reason = str(workspace_guard.get("reason") or "side-agent workspace guard blocks delivery")
         should_run = bool(
             normal_delivery_allowed
             or recovery_allowed
             or self_repair_allowed
             or capability_repair_allowed
+            or workspace_repair_allowed
         )
         effective_action = _effective_action(
             normal_delivery_allowed=normal_delivery_allowed,
             recovery_delivery_allowed=recovery_allowed,
             self_repair_allowed=self_repair_allowed,
             capability_repair_allowed=capability_repair_allowed,
+            workspace_repair_allowed=workspace_repair_allowed,
             stall_self_repair=stall_self_repair,
             state=state,
             quota=quota,
@@ -4042,6 +4201,17 @@ def build_quota_should_run(
                 "reason": capability_gate.get("reason") or heartbeat_recommendation.get("reason"),
                 "spend_policy": "do not append quota spend while all executable todos lack current capabilities",
             }
+        if workspace_guard:
+            heartbeat_recommendation = {
+                **heartbeat_recommendation,
+                "recommended_mode": "repair_side_agent_workspace",
+                "notify": "DONT_NOTIFY",
+                "reason": workspace_guard.get("reason") or heartbeat_recommendation.get("reason"),
+                "spend_policy": (
+                    "do not append quota spend for workspace relocation; rerun quota "
+                    "from the independent worktree before delivery"
+                ),
+            }
         if blocked_priority_fallback and should_run:
             heartbeat_recommendation = {
                 **heartbeat_recommendation,
@@ -4056,7 +4226,7 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
         )
-        if external_evidence_observation:
+        if external_evidence_observation and not workspace_guard:
             normal_delivery_allowed = False
             should_run = True
             heartbeat_recommendation = {
@@ -4109,13 +4279,19 @@ def build_quota_should_run(
                     or capability_gate.get("reason")
                     or selected_recommended_action
                 )
+        if workspace_guard:
+            selected_recommended_action = (
+                workspace_guard.get("required_action")
+                or workspace_guard.get("reason")
+                or selected_recommended_action
+            )
         state_action_projection_warning = _state_action_projection_warning(
             item,
             selected_action=selected_recommended_action,
             work_lane_contract=work_lane_contract,
         )
         payload = {
-            "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed,
+            "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed or workspace_repair_allowed,
             "status_health_ok": bool(plan.get("ok")),
             "mode": "should-run",
             "goal_id": safe_goal_id,
@@ -4130,6 +4306,8 @@ def build_quota_should_run(
                 if self_repair_allowed
                 else "repair_bridge"
                 if capability_repair_allowed
+                else "workspace_guard"
+                if workspace_repair_allowed
                 else "skip"
             ),
             "should_run": should_run,
@@ -4137,12 +4315,14 @@ def build_quota_should_run(
             "recovery_delivery_allowed": recovery_allowed,
             "self_repair_allowed": self_repair_allowed,
             "capability_repair_allowed": capability_repair_allowed,
+            "workspace_repair_allowed": workspace_repair_allowed,
             "effective_action": effective_action,
             "actionable_by_codex": bool(
                 should_run
                 or recovery_allowed
                 or external_evidence_observation
                 or capability_repair_allowed
+                or workspace_repair_allowed
             ),
             "reason": (
                 str(stall_self_repair.get("reason"))
@@ -4186,6 +4366,8 @@ def build_quota_should_run(
         }
         if agent_identity:
             payload["agent_identity"] = agent_identity
+        if workspace_guard:
+            payload["workspace_guard"] = workspace_guard
         if automation_prompt_upgrade:
             payload["automation_prompt_upgrade"] = automation_prompt_upgrade
         if work_lane_contract:
@@ -4448,6 +4630,7 @@ def build_quota_slot_preview(
     *,
     goal_id: str,
     slots: int = 1,
+    agent_id: str | None = None,
     available_capabilities: Any = None,
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
@@ -4455,6 +4638,7 @@ def build_quota_slot_preview(
     before = build_quota_should_run(
         status_payload,
         goal_id=safe_goal_id,
+        agent_id=agent_id,
         available_capabilities=available_capabilities,
     )
     safe_bypass_spend = (
@@ -4470,6 +4654,26 @@ def build_quota_slot_preview(
         before.get("effective_action") == "capability_bridge_repair"
         and before.get("capability_repair_allowed") is True
     )
+    workspace_repair_no_spend = (
+        before.get("effective_action") == "side_agent_workspace_repair"
+        and before.get("workspace_repair_allowed") is True
+    )
+    if workspace_repair_no_spend:
+        return {
+            "ok": False,
+            "mode": "spend-slot",
+            "dry_run": True,
+            "goal_id": safe_goal_id,
+            "slots": safe_slots,
+            "appended": False,
+            "registry_mutated": False,
+            "reason": (
+                "side-agent workspace guard requires moving to an independent "
+                "worktree and rerunning quota should-run before quota spend"
+            ),
+            "before": before,
+            "after": None,
+        }
     raw_runtime_root = status_payload.get("runtime_root")
     delivery_completion_run = (
         _latest_unspent_accountable_delivery_run(Path(str(raw_runtime_root)).expanduser(), safe_goal_id)
@@ -4540,6 +4744,7 @@ def build_quota_slot_preview(
     after = build_quota_should_run(
         after_status,
         goal_id=safe_goal_id,
+        agent_id=agent_id,
         available_capabilities=available_capabilities,
     )
 
@@ -4591,6 +4796,7 @@ def _compact_quota_decision(decision: dict[str, Any]) -> dict[str, Any]:
         "effective_action": decision.get("effective_action"),
         "self_repair_allowed": bool(decision.get("self_repair_allowed")),
         "capability_repair_allowed": bool(decision.get("capability_repair_allowed")),
+        "workspace_repair_allowed": bool(decision.get("workspace_repair_allowed")),
         "state": str(decision.get("state") or ""),
         "safe_bypass_allowed": bool(decision.get("safe_bypass_allowed")),
         "safe_bypass_kind": decision.get("safe_bypass_kind"),
@@ -4734,6 +4940,7 @@ def build_quota_slot_spend_event(
         and before_compact["effective_action"] != "external_evidence_observe"
         and not self_repair_spend
         and not capability_repair_spend
+        and before_compact["workspace_repair_allowed"] is not True
     )
     safe_bypass_spend = (
         (
@@ -5153,6 +5360,7 @@ def spend_quota_slot(
     slots: int = 1,
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
+    agent_id: str | None = None,
     available_capabilities: Any = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
@@ -5160,6 +5368,7 @@ def spend_quota_slot(
         status_payload,
         goal_id=safe_goal_id,
         slots=slots,
+        agent_id=agent_id,
         available_capabilities=available_capabilities,
     )
     if not preview.get("ok"):
@@ -5450,6 +5659,20 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if blocked_candidates:
             lines.append(f"- capability_gate_blocked_candidates: `{len(blocked_candidates)}`")
+    workspace_guard = (
+        payload.get("workspace_guard")
+        if isinstance(payload.get("workspace_guard"), dict)
+        else {}
+    )
+    if workspace_guard:
+        lines.append(
+            "- workspace_guard: "
+            f"action={workspace_guard.get('action')} "
+            f"current_workspace={workspace_guard.get('current_workspace')} "
+            f"required_workspace={workspace_guard.get('required_workspace')}"
+        )
+        if workspace_guard.get("required_action"):
+            lines.append(f"- workspace_guard_action: {workspace_guard.get('required_action')}")
     stale_latest_run_warning = (
         payload.get("stale_latest_run_warning")
         if isinstance(payload.get("stale_latest_run_warning"), dict)

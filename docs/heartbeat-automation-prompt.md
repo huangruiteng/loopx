@@ -125,7 +125,10 @@ the goal. Scope stays in the automation prompt or handoff; todo metadata records
 only the soft `claimed_by` owner. The prompt also classifies the agent as
 `primary-agent` or `side-agent` from `coordination.primary_agent`. Side-agent
 prompts require repository edits to happen in an independent git worktree/branch
-and instruct the worker to use one of two finish paths:
+and instruct the worker to use one of two finish paths. Generated scoped
+heartbeat commands pass the same `--agent-id` to both `quota should-run` and
+`quota spend-slot`, so workspace guards and quota accounting evaluate the same
+agent identity.
 
 - for small AGENTS-eligible validated changes, self-merge and complete the todo
   with `--side-agent-self-merged --evidence "<commit and validation summary>"`;

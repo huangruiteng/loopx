@@ -915,6 +915,19 @@ old installed prompt omits that flag, the quota payload should include
 example `heartbeat-prompt --agent-id ... --agent-scope ...` commands. Executors
 should treat this as a prompt-upgrade action, not as delivery permission or a
 new operator gate.
+When the resolved `agent_identity.role` is `side-agent`, `quota should-run`
+also enforces the workspace boundary. If the guard is being run from the
+registered primary checkout, from a non-git directory, or from an unrelated git
+worktree, the payload should include
+`workspace_guard.schema_version=side_agent_workspace_guard_v0`,
+`workspace_guard.action=move_to_independent_worktree`,
+`workspace_repair_allowed=true`, `normal_delivery_allowed=false`, and
+`effective_action=side_agent_workspace_repair`. The interaction contract should
+use `mode=side_agent_workspace_repair`, require the agent to create or switch to
+an independent worktree/branch, and require rerunning `quota should-run` with
+the same `--agent-id` before repository edits. This preflight does not spend
+quota; `quota spend-slot` should fail closed until the guard is rerun from the
+independent worktree.
 When the payload includes `notify_user_on_open_todo=true`, the open
 `user_todo_summary` is the current blocker-push surface even if there is no
 operator gate. This is intended for `focus_wait`, `waiting`,

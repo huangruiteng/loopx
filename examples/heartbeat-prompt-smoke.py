@@ -244,6 +244,12 @@ def main() -> int:
     assert scoped_payload["quota_guard_command"].endswith(
         "quota should-run --goal-id public-heartbeat-goal --agent-id codex-side-bypass"
     ), scoped_payload
+    assert scoped_payload["quota_spend_command"].endswith(
+        "quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute --agent-id codex-side-bypass"
+    ), scoped_payload
+    assert primary_scoped_payload["quota_spend_command"].endswith(
+        "quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute --agent-id codex-main-control"
+    ), primary_scoped_payload
     for phrase in (
         "Agent identity and scope",
         "role: side-agent",
