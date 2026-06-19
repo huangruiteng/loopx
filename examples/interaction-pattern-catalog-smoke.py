@@ -31,8 +31,15 @@ def main() -> int:
     require(
         catalog,
         [
+            "## Pattern Families",
+            "| Work Routing |",
+            "| Human Decision |",
+            "| State And Boundary |",
+            "| Evidence Lifecycle |",
+            "| Planning Governance |",
             "IP-017 | User Reward Lesson Promotion",
             "IP-018 | Plan To Todo Writeback",
+            "IP-018 | Plan To Todo Writeback | Planning Governance",
             "promote correction into durable lesson",
             "User-facing plans are not durable control-plane state by themselves",
             "writeback target",

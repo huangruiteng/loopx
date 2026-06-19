@@ -83,28 +83,43 @@ agent todo. LLM-assisted interpretation belongs in a cold-path proposal or
 authoring helper; it may suggest converting prose into a structured todo, but
 must not decide delivery gates, spend policy, or write permission directly.
 
+## Pattern Families
+
+Use families as the first routing layer. They keep the catalog readable as the
+number of patterns grows, and they make it easier for skills, dashboards, and
+benchmark reviews to ask for "the relevant interaction family" instead of
+scanning every IP.
+
+| Family | Purpose | Start Here When |
+| --- | --- | --- |
+| Work Routing | Decide whether the agent should deliver, fallback, recover, or stay quiet. | quota/status says work may run, but the next action is blocked, monitor-only, or outcome-thin |
+| Human Decision | Represent user, owner, simulator, reward, and approval moments without hiding the exact ask. | a user action, correction, approval, or run-bound judgment changes what the agent should do |
+| State And Boundary | Keep compact control-plane truth aligned with todos, scopes, leases, authority, and write boundaries. | state says one thing but todos, permissions, or authority sources imply another |
+| Evidence Lifecycle | Make external evidence and benchmark work countable without copying raw logs or task data. | a benchmark, CI, model run, or external handle must advance through observable lifecycle states |
+| Planning Governance | Control replanning, dreaming, cadence, and future-work writeback without turning chat into state. | the agent is planning, widening work, proposing future routes, or publishing top todos |
+
 ## Catalog
 
-| ID | Name | Primary Owner | User Channel | Agent Channel |
-| --- | --- | --- | --- | --- |
-| IP-001 | Bounded Delivery | Agent | no interruption | implement, validate, write back, spend once |
-| IP-002 | Blocked Priority With Safe Fallback | Agent plus user-visible notification | notify without requiring an answer | continue safe fallback after exposing blocked higher-priority work |
-| IP-003 | Scoped Gate With Safe Fallback | User plus agent | notify concrete scoped gate | execute non-dependent fallback; no gated action |
-| IP-004 | Concrete User Todo Projection | User | ask or notify with concrete todo/question | do not hide behind generic "owner gate" text |
-| IP-005 | State Projection Gap | Agent | no user ask unless a user todo is missing | repair todo/state projection before ordinary delivery |
-| IP-006 | Checkpointed Scope Mismatch | CLI/controller | ask or repair boundary projection | do not execute action whose write scope is not projected |
-| IP-007 | Outcome Floor Recovery | Agent | usually no interruption | produce missing outcome-scale evidence or blocker only |
-| IP-008 | Monitor Quiet Skip | CLI/controller | no notification | append at most one no-spend poll, then stay quiet |
-| IP-009 | Active User Assistance | User simulator / operator | bounded intervention | inject audited user help without leaking reward/oracle signals |
-| IP-010 | Cadence Widening | Agent/controller | no interruption by default | widen next work segment when turns become too small |
-| IP-011 | Authority Material Intake | Agent plus registry | notify only on gate/conflict | register redacted source contract before relying on material |
-| IP-012 | External Evidence Observation | Agent/controller | no interruption unless handle missing needs owner input | observe compact handles/results; do not launch benchmark/model work |
-| IP-013 | Autonomous Replan Vs Advisory Dreaming | Agent/controller plus user when promoted | ask only for promotion/decision | repair stalled delivery; keep dreaming proposal non-executable |
-| IP-014 | Decision Write Preview And Append | User/operator | explicit preview/apply decision | append only exact run-bound reward or gate decision event |
-| IP-015 | Benchmark Lifecycle Countability | Benchmark adapter/controller | no interruption by default | advance only through compact countable lifecycle gates |
-| IP-016 | Task Lease Claim | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
-| IP-017 | User Reward Lesson Promotion | User plus Goal Harness | acknowledge only when lesson changes route/priority/boundary | promote correction into durable lesson, todo, or projection before continuing |
-| IP-018 | Plan To Todo Writeback | Agent plus Goal Harness | no interruption unless a user todo is created | write user-facing plans into todos, Next Action, or refresh-state |
+| ID | Name | Family | Primary Owner | User Channel | Agent Channel |
+| --- | --- | --- | --- | --- | --- |
+| IP-001 | Bounded Delivery | Work Routing | Agent | no interruption | implement, validate, write back, spend once |
+| IP-002 | Blocked Priority With Safe Fallback | Work Routing | Agent plus user-visible notification | notify without requiring an answer | continue safe fallback after exposing blocked higher-priority work |
+| IP-003 | Scoped Gate With Safe Fallback | Work Routing | User plus agent | notify concrete scoped gate | execute non-dependent fallback; no gated action |
+| IP-004 | Concrete User Todo Projection | Human Decision | User | ask or notify with concrete todo/question | do not hide behind generic "owner gate" text |
+| IP-005 | State Projection Gap | State And Boundary | Agent | no user ask unless a user todo is missing | repair todo/state projection before ordinary delivery |
+| IP-006 | Checkpointed Scope Mismatch | State And Boundary | CLI/controller | ask or repair boundary projection | do not execute action whose write scope is not projected |
+| IP-007 | Outcome Floor Recovery | Work Routing | Agent | usually no interruption | produce missing outcome-scale evidence or blocker only |
+| IP-008 | Monitor Quiet Skip | Work Routing | CLI/controller | no notification | append at most one no-spend poll, then stay quiet |
+| IP-009 | Active User Assistance | Human Decision | User simulator / operator | bounded intervention | inject audited user help without leaking reward/oracle signals |
+| IP-010 | Cadence Widening | Planning Governance | Agent/controller | no interruption by default | widen next work segment when turns become too small |
+| IP-011 | Authority Material Intake | State And Boundary | Agent plus registry | notify only on gate/conflict | register redacted source contract before relying on material |
+| IP-012 | External Evidence Observation | Evidence Lifecycle | Agent/controller | no interruption unless handle missing needs owner input | observe compact handles/results; do not launch benchmark/model work |
+| IP-013 | Autonomous Replan Vs Advisory Dreaming | Planning Governance | Agent/controller plus user when promoted | ask only for promotion/decision | repair stalled delivery; keep dreaming proposal non-executable |
+| IP-014 | Decision Write Preview And Append | Human Decision | User/operator | explicit preview/apply decision | append only exact run-bound reward or gate decision event |
+| IP-015 | Benchmark Lifecycle Countability | Evidence Lifecycle | Benchmark adapter/controller | no interruption by default | advance only through compact countable lifecycle gates |
+| IP-016 | Task Lease Claim | State And Boundary | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
+| IP-017 | User Reward Lesson Promotion | Human Decision | User plus Goal Harness | acknowledge only when lesson changes route/priority/boundary | promote correction into durable lesson, todo, or projection before continuing |
+| IP-018 | Plan To Todo Writeback | Planning Governance | Agent plus Goal Harness | no interruption unless a user todo is created | write user-facing plans into todos, Next Action, or refresh-state |
 
 ## Visual Model
 
