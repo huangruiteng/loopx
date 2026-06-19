@@ -192,6 +192,19 @@ That command is a dry-run by default. Add `--execute` only after Codex auth,
 network, Docker, source, and task-data readiness are known. It emits command
 shape and boundary facts, not argv values or raw runner output.
 
+For direct `tb run` smoke runs on the cloud host, keep the runner invocation
+boring and Docker-compose-safe:
+
+- use an all-lowercase run id with only letters, digits, hyphens, or
+  underscores; Docker Compose rejects project names with uppercase timestamp
+  separators such as `T`;
+- pass `--output-path` as the parent runs directory and let Terminal-Bench
+  create the run-id subdirectory itself; pre-creating that directory can make
+  the runner think it is resuming a run and fail before execution;
+- keep `--no-upload-results` explicit for every developer smoke;
+- start with `--no-rebuild` only after the task image already exists, otherwise
+  record the image/build blocker instead of hiding it behind a score result.
+
 When a Terminal-Bench launch produces only startup or materialization state,
 reduce it before writing Goal Harness evidence:
 
