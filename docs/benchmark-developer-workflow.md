@@ -49,8 +49,13 @@ For a real benchmark slice, use this sequence:
      enough CPU/memory/disk, and can run Codex CLI plus containers directly;
    - use a split-control route only when host credentials, local policy, or
      runner constraints make a single cloud host unsuitable.
-3. Produce a launch plan or runner batch only after a fresh readiness re-check.
-4. Build benchmark-specific command-adapter facts when the route still needs a
+3. Prove the comparison baseline before any treatment claim. The preferred
+   baseline is real Codex Goal mode, not a hand-rolled polling loop and not a
+   prompt that merely starts with `/goal`. If the runner cannot prove that Codex
+   entered a persistent goal state through a supported Codex surface, park the
+   A/B baseline and continue only readiness, runner, or blocker work.
+4. Produce a launch plan or runner batch only after a fresh readiness re-check.
+5. Build benchmark-specific command-adapter facts when the route still needs a
    Goal Harness adapter, such as
    `goal-harness benchmark terminal-bench-command-adapter terminal-bench`.
    When Terminal-Bench uses a remote executor, first reduce the local-driver
@@ -70,10 +75,10 @@ For a real benchmark slice, use this sequence:
    launch-adapter results, missing local-driver materializers, missing sandbox
    contracts, remote-agent-runtime requirements, or compact reducers as
    blockers instead of launching a private script.
-5. Run the smallest no-upload dry-run or mini-pair that can answer the current
+6. Run the smallest no-upload dry-run or mini-pair that can answer the current
    product question.
-6. Ingest a compact result or precise blocker.
-7. Update Goal Harness todo/state so the next developer sees the current route.
+7. Ingest a compact result or precise blocker.
+8. Update Goal Harness todo/state so the next developer sees the current route.
 
 Do not start from a raw shell command hidden in a local note. If a benchmark
 cannot be launched through a documented route, the next product task is to
@@ -118,6 +123,27 @@ host, then Codex CLI runs there like a normal developer would. Goal Harness
 should not need to understand SSH internals, jump hosts, or remote file bridges
 in the hot path. It should only record compact route readiness, result handles,
 blockers, and no-upload boundaries.
+
+### Codex Goal Baseline Gate
+
+The primary comparison target is **Codex Goal mode** running on the benchmark
+host. A benchmark route may call itself a Codex Goal baseline only when it has
+evidence for all of the following:
+
+- the installed Codex build exposes `features.goals=true` or an equivalent
+  enabled Goal feature;
+- the runner starts Goal mode through a supported Codex surface, such as the
+  interactive CLI slash command documented as `/goal`;
+- the run evidence shows a persistent goal attached to the active thread, not
+  only a prompt string whose first token is `/goal`;
+- the route does not add Goal Harness state, access packets, reward feedback,
+  or polling semantics to the baseline arm.
+
+If these facts are not available, classify the result as a runner/readiness
+probe or unverified slash-goal prompt experiment, not as a Codex Goal baseline.
+In that state, do not launch matched Goal Harness treatment for uplift claims;
+instead record the exact trigger gap and keep working on cloud host, runner,
+task-data, or compact-result readiness.
 
 Default cloud ECS host readiness:
 

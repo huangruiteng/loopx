@@ -18,6 +18,13 @@ The route is:
    raw artifacts, and compact reducers on that host.
 4. Write only compact public-safe evidence back to Goal Harness.
 
+The comparison baseline for product claims is real Codex Goal mode, not a
+Codex CLI polling loop. If the cloud host can run `codex exec` but the benchmark
+runner cannot prove a stable `/goal` invocation and persistent goal state, the
+run remains a readiness or unverified slash-goal experiment. It should not be
+paired with a Goal Harness treatment for uplift claims until that baseline
+trigger is proven or an equivalent supported Codex Goal surface is documented.
+
 Goal Harness should not need to understand the SSH jump path, remote file
 bridge, or command relay in the hot path. Once the host is reachable and Codex
 is authenticated there by the operator, benchmark execution should look like a
@@ -96,9 +103,9 @@ run:
 
 | Family | Next route | Remaining gate |
 | --- | --- | --- |
-| Terminal-Bench | Run Codex CLI and the runner directly on the cloud host. | Pick a bounded no-upload case and verify the Docker-compatible runtime is sufficient for the runner. |
-| SkillsBench | Run BenchFlow and Codex CLI on the cloud host; compare base/test mini-pair through compact evidence. | Run the first no-upload mini-pair and record any BenchFlow/container blocker compactly. |
-| Agents' Last Exam | Run upstream-close ALE local-Docker route on the cloud host. | Resolve task-data access and disk budget before formal task execution. |
+| Terminal-Bench | Run Codex CLI and the runner directly on the cloud host; use real Codex Goal only after goal-state evidence exists. | Pick a bounded no-upload case, verify Docker-compatible runtime, and prove or park the Goal baseline trigger. |
+| SkillsBench | Run BenchFlow and Codex CLI on the cloud host; compare only after the Codex Goal baseline trigger is proven. | Prove native Goal-state entry for the baseline, or classify the route as readiness/unverified slash-goal instead of treatment evidence. |
+| Agents' Last Exam | Run upstream-close ALE local-Docker route on the cloud host; use Codex Goal baseline only after the trigger proof exists. | Resolve task-data access, disk budget, and Goal baseline trigger before formal paired claims. |
 
 ## Claim Boundary
 

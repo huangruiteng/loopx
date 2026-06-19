@@ -445,11 +445,16 @@ Run the same task slice under at least two user-simulator settings. Record
 whether failures are caused by the agent, the simulator, policy ambiguity,
 tool-state mismatch, or orchestration overhead.
 
-### P1: Codex CLI Engineering Baseline
+### P1: Codex Goal Engineering Baseline
 
-Run the selected engineering pilot with Codex CLI goal mode and a Goal Harness
-wrapped goal-mode Codex worker. Measure completion, validation, restartability,
-stale-state errors, overhead, and evidence quality.
+Run the selected engineering pilot against real Codex Goal mode and a Goal
+Harness wrapped Codex worker. The baseline is not a Codex CLI polling loop and
+not a prompt that merely begins with `/goal`; it must show that Codex entered a
+persistent goal state through a supported surface. If no stable benchmark-runner
+trigger exists yet, park the A/B comparison and keep only runner readiness,
+task-data, or trigger-validation work active. Measure completion, validation,
+restartability, stale-state errors, overhead, and evidence quality only after
+that baseline is proven.
 
 ### P1/P2: Cross-Benchmark Failure-Case Gate
 
@@ -485,12 +490,13 @@ separate from external benchmark execution.
 
 ## Active Agent Todo Seed
 
-- [ ] [P0] Run the Terminal-Bench 2.0 private/no-upload baseline failure gate
-  with Codex CLI goal mode for the selected first case
-  (`fix-code-vulnerability` unless the runner blocker forces a backup). Record
-  a compact baseline event with goal-mode invocation surface, official outcome,
-  terminal phase, failure class, trace boundary, and Goal Harness leverage
-  decision.
+- [ ] [P0] Prove the Terminal-Bench 2.0 private/no-upload baseline trigger for
+  real Codex Goal mode before any paired treatment: identify the supported
+  runner invocation surface, show persistent goal-state evidence, and only then
+  run the selected first case (`fix-code-vulnerability` unless the runner
+  blocker forces a backup). If the trigger is not stable, record the precise
+  trigger gap and do not treat a slash-prefix prompt or polling loop as the
+  baseline.
 - [ ] [P0] If the Terminal-Bench goal-mode baseline failure is
   control-plane-addressable, run the matched `codex-goal-harness` treatment on
   the same case with task, prompt, tests, scorer, image, timeout, model, runner

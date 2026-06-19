@@ -24,7 +24,9 @@ For the ``codex-goal-mode-baseline`` route it uses BenchFlow's user hook only
 to request a slash-goal-style initial prompt, with no reward follow-up, no Goal
 Harness controller state, and no verifier feedback. This is not sufficient by
 itself to prove native Codex CLI goal mode; that requires separate CLI
-slash-command/goal-state evidence.
+slash-command/goal-state evidence. Full execution of this route is blocked by
+default until that evidence exists; use it only for explicit slash-prefix
+experiments.
 
 Run from the SkillsBench checkout so BenchFlow's dependency environment is
 available, for example:
@@ -3106,7 +3108,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "main-table product-mode comparison routes; "
             "codex-goal-mode-baseline sends one /goal-prefixed prompt request "
             "with no reward follow-up, but native goal-mode invocation remains "
-            "unconfirmed without interactive CLI goal-state evidence; "
+            "unconfirmed without CLI slash-command/goal-state evidence and is "
+            "blocked by default except for --plan-only or explicit experiments; "
             "automation-loop-treatment is a reward-feedback ablation."
         ),
     )
@@ -3140,6 +3143,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Diagnostic prompt wrapper for goal-harness-blind-loop-treatment. "
             "baseline-safe keeps treatment routing/ledger metadata while using "
             "the baseline-style first prompt to isolate ACP prompt-wrapper issues."
+        ),
+    )
+    parser.add_argument(
+        "--allow-unverified-goal-prefix-baseline",
+        action="store_true",
+        help=(
+            "Allow the codex-goal-mode-baseline route to run as an explicit "
+            "slash-prefix experiment. This does not prove native Codex Goal "
+            "mode and must not be used for A/B uplift claims."
         ),
     )
     parser.add_argument("--outer-timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
@@ -3390,6 +3402,28 @@ async def async_main(
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     logging.getLogger().setLevel(logging.WARNING)
+    if (
+        args.route == "codex-goal-mode-baseline"
+        and not args.plan_only
+        and not args.allow_unverified_goal_prefix_baseline
+    ):
+        payload = {
+            "ok": False,
+            "error_type": "CodexGoalModeBaselineUnverified",
+            "route": args.route,
+            "reason": (
+                "codex-goal-mode-baseline currently sends a slash-goal-style "
+                "prompt through BenchFlow; it is not proven to enter native "
+                "Codex Goal mode or attach persistent goal state"
+            ),
+            "next_action": (
+                "prove a stable Codex CLI /goal trigger with goal-state evidence, "
+                "or rerun with --allow-unverified-goal-prefix-baseline only as a "
+                "non-claiming slash-prefix experiment"
+            ),
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+        return 2
     if args.local_codex_participant_ping:
         payload = materialize_local_codex_participant(
             codex_bin=args.local_codex_bin,
