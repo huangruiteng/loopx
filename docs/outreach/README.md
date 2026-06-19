@@ -6,6 +6,7 @@ without mixing them into stable product contracts.
 
 Current drafts:
 
+- [Marketing copy bank](marketing-copy-bank.md)
 - [Public launch narrative draft](public-launch-narrative-draft.md)
 - [Xiaohongshu launch draft](xiaohongshu-launch-draft.md)
 
