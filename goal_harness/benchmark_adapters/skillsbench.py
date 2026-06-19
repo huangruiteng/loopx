@@ -281,6 +281,8 @@ def build_skillsbench_local_driver_a2a_contract(
     task_id: str = SKILLSBENCH_DEFAULT_TASK,
     pair_routes: Iterable[str] = SKILLSBENCH_LOCAL_DRIVER_A2A_PAIR_ROUTES,
     local_codex_driver_ready: bool = False,
+    local_codex_cli_participant_ready: bool | None = None,
+    local_a2a_worker_handshake_ready: bool | None = None,
     local_a2a_participant_ready: bool = False,
     remote_executor_ready: bool = False,
     remote_task_data_ready: bool = False,
@@ -336,10 +338,30 @@ def build_skillsbench_local_driver_a2a_contract(
         blockers.append("skillsbench_remote_executor_contract_missing")
     if not local_codex_driver_ready:
         blockers.append("skillsbench_local_codex_driver_not_ready")
-    if local_codex_driver_ready and not local_a2a_participant_ready:
-        blockers.append("skillsbench_local_codex_a2a_participant_not_materialized")
+    codex_cli_participant_ready = (
+        local_a2a_participant_ready
+        if local_codex_cli_participant_ready is None
+        else local_codex_cli_participant_ready
+    )
+    a2a_worker_handshake_ready = (
+        local_a2a_participant_ready
+        if local_a2a_worker_handshake_ready is None
+        else local_a2a_worker_handshake_ready
+    )
+    if local_codex_driver_ready and not codex_cli_participant_ready:
+        blockers.append("skillsbench_local_codex_cli_participant_not_materialized")
+    if (
+        local_codex_driver_ready
+        and codex_cli_participant_ready
+        and not a2a_worker_handshake_ready
+    ):
+        blockers.append("skillsbench_local_a2a_worker_handshake_not_materialized")
 
-    local_ready = local_codex_driver_ready is True and local_a2a_participant_ready is True
+    local_ready = (
+        local_codex_driver_ready is True
+        and codex_cli_participant_ready is True
+        and a2a_worker_handshake_ready is True
+    )
     remote_ready = (
         remote_executor_ready is True
         and remote_task_data_ready is True
@@ -370,9 +392,12 @@ def build_skillsbench_local_driver_a2a_contract(
     if ready:
         first_blocker = "ready_for_skillsbench_local_driver_a2a_mini_pair"
         next_action = "launch_no_upload_skillsbench_local_driver_a2a_mini_pair"
-    elif "skillsbench_local_codex_a2a_participant_not_materialized" in blockers:
-        first_blocker = "skillsbench_local_codex_a2a_participant_not_materialized"
-        next_action = "materialize_local_codex_a2a_participant_before_mini_pair"
+    elif "skillsbench_local_codex_cli_participant_not_materialized" in blockers:
+        first_blocker = "skillsbench_local_codex_cli_participant_not_materialized"
+        next_action = "materialize_local_codex_cli_participant_before_mini_pair"
+    elif "skillsbench_local_a2a_worker_handshake_not_materialized" in blockers:
+        first_blocker = "skillsbench_local_a2a_worker_handshake_not_materialized"
+        next_action = "wire_local_codex_participant_to_a2a_worker_before_mini_pair"
     elif "skillsbench_remote_executor_contract_missing" in blockers:
         first_blocker = "skillsbench_remote_executor_contract_missing"
         next_action = "materialize_remote_executor_contract_before_mini_pair"
@@ -421,7 +446,9 @@ def build_skillsbench_local_driver_a2a_contract(
                 "no_upload",
                 "compact_artifact_ref",
             ],
-            "participant_materialized": local_a2a_participant_ready is True,
+            "participant_materialized": local_ready,
+            "codex_cli_participant_materialized": codex_cli_participant_ready is True,
+            "a2a_worker_handshake_materialized": a2a_worker_handshake_ready is True,
             "credential_sync_allowed": False,
         },
         "remote_executor_contract": {

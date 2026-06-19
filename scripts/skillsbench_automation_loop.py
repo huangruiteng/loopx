@@ -50,6 +50,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
@@ -86,6 +87,12 @@ SUPPORTED_ROUTES = (
 DEFAULT_ROUTE = "goal-harness-blind-loop-treatment"
 CODEX_ACP_SET_MODEL_UNSUPPORTED_LABEL = "codex_acp_set_model_unsupported"
 ACP_TRAJECTORY_SUMMARY_SCHEMA_VERSION = "skillsbench_acp_trajectory_summary_v0"
+LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION = (
+    "skillsbench_local_codex_participant_materialization_v0"
+)
+LOCAL_CODEX_PARTICIPANT_READY_MARKER = (
+    "GOAL_HARNESS_LOCAL_CODEX_PARTICIPANT_READY"
+)
 PRODUCT_MODE_CASE_GOAL_ID = "skillsbench-case"
 PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
     PRODUCT_MODE_CASE_GOAL_ID
@@ -276,6 +283,142 @@ def _json_default(value: Any) -> str:
     if isinstance(value, Path):
         return str(value)
     return str(value)
+
+
+def _compact_size_bucket(size: int) -> str:
+    if size <= 0:
+        return "empty"
+    if size < 200:
+        return "1_199"
+    if size < 1000:
+        return "200_999"
+    if size < 5000:
+        return "1000_4999"
+    return "5000_plus"
+
+
+def materialize_local_codex_participant(
+    *,
+    codex_bin: str = "codex",
+    timeout_sec: int = 120,
+) -> dict[str, Any]:
+    """Run a fixed local Codex CLI ping and return a compact materialization proof.
+
+    This proves only the local CLI participant. It does not claim that the
+    SkillsBench A2A/worker handshake is wired, and it deliberately drops raw
+    JSONL events, stderr, prompts, paths, and credentials.
+    """
+
+    resolved = shutil.which(codex_bin) if os.sep not in codex_bin else codex_bin
+    if not resolved or (os.sep in str(resolved) and not Path(resolved).exists()):
+        return {
+            "schema_version": LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
+            "ready": False,
+            "first_blocker": "local_codex_cli_not_on_path",
+            "codex_cli_available": False,
+            "codex_cli_invoked": False,
+            "raw_output_recorded": False,
+            "raw_event_jsonl_recorded": False,
+            "credential_values_recorded": False,
+            "host_paths_recorded": False,
+            "a2a_worker_handshake_ready": False,
+        }
+
+    with tempfile.TemporaryDirectory(prefix="gh-skillsbench-codex-") as tmp:
+        tmpdir = Path(tmp)
+        output_path = tmpdir / "last-message.txt"
+        prompt = (
+            "Respond with exactly this single line and nothing else: "
+            f"{LOCAL_CODEX_PARTICIPANT_READY_MARKER}"
+        )
+        cmd = [
+            resolved,
+            "exec",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "-C",
+            str(tmpdir),
+            "--output-last-message",
+            str(output_path),
+            "--json",
+            prompt,
+        ]
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=tmpdir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout_sec,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "schema_version": LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
+                "ready": False,
+                "first_blocker": "local_codex_cli_participant_timeout",
+                "codex_cli_available": True,
+                "codex_cli_invoked": True,
+                "exit_code": None,
+                "timeout_sec": timeout_sec,
+                "stdout_len_bucket": _compact_size_bucket(
+                    len(exc.stdout or "")
+                    if isinstance(exc.stdout, str)
+                    else len(exc.stdout or b"")
+                ),
+                "stderr_len_bucket": _compact_size_bucket(
+                    len(exc.stderr or "")
+                    if isinstance(exc.stderr, str)
+                    else len(exc.stderr or b"")
+                ),
+                "raw_output_recorded": False,
+                "raw_event_jsonl_recorded": False,
+                "credential_values_recorded": False,
+                "host_paths_recorded": False,
+                "a2a_worker_handshake_ready": False,
+            }
+
+        marker = ""
+        if output_path.exists():
+            try:
+                marker = output_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                marker = ""
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+        event_count = len([line for line in stdout.splitlines() if line.strip()])
+        ready = proc.returncode == 0 and marker == LOCAL_CODEX_PARTICIPANT_READY_MARKER
+        if ready:
+            first_blocker = "local_codex_cli_participant_ready"
+        elif proc.returncode != 0:
+            first_blocker = "local_codex_cli_participant_exit_nonzero"
+        else:
+            first_blocker = "local_codex_cli_participant_marker_missing"
+        return {
+            "schema_version": LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
+            "ready": ready,
+            "first_blocker": first_blocker,
+            "codex_cli_available": True,
+            "codex_cli_invoked": True,
+            "exit_code": proc.returncode,
+            "marker_matched": marker == LOCAL_CODEX_PARTICIPANT_READY_MARKER,
+            "json_event_count": event_count,
+            "stdout_len_bucket": _compact_size_bucket(len(stdout)),
+            "stderr_len_bucket": _compact_size_bucket(len(stderr)),
+            "raw_output_recorded": False,
+            "raw_event_jsonl_recorded": False,
+            "credential_values_recorded": False,
+            "host_paths_recorded": False,
+            "a2a_worker_handshake_ready": False,
+            "next_blocker_after_ready": (
+                "skillsbench_local_a2a_worker_handshake_not_materialized"
+                if ready
+                else first_blocker
+            ),
+        }
 
 
 def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
@@ -2737,6 +2880,26 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Reduce an existing result.json for the selected job without rerunning the task.",
     )
     parser.add_argument(
+        "--local-codex-participant-ping",
+        action="store_true",
+        help=(
+            "Run a fixed local Codex CLI participant materialization ping and "
+            "print compact public-safe readiness JSON. This does not launch "
+            "BenchFlow or claim the A2A worker handshake is wired."
+        ),
+    )
+    parser.add_argument(
+        "--local-codex-bin",
+        default="codex",
+        help="Codex CLI binary for --local-codex-participant-ping.",
+    )
+    parser.add_argument(
+        "--local-codex-ping-timeout-sec",
+        type=int,
+        default=120,
+        help="Timeout for --local-codex-participant-ping.",
+    )
+    parser.add_argument(
         "--fail-fast-on-apt-risk",
         action="store_true",
         help=(
@@ -2821,6 +2984,13 @@ async def async_main(
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     logging.getLogger().setLevel(logging.WARNING)
+    if args.local_codex_participant_ping:
+        payload = materialize_local_codex_participant(
+            codex_bin=args.local_codex_bin,
+            timeout_sec=args.local_codex_ping_timeout_sec,
+        )
+        print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
+        return 0 if payload.get("codex_cli_invoked") is True else 1
     closeout_recorded = False
     if args.run_group_id is None:
         args.run_group_id = (
