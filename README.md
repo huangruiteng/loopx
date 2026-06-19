@@ -232,6 +232,12 @@ Success looks like this:
 - `goal-harness status` shows the goal and who should act next;
 - local runtime state is ignored, not committed.
 
+Maintainers can validate the public fresh-clone path with:
+
+```bash
+python3 examples/fresh-clone-quickstart-smoke.py
+```
+
 ## Diagnose From Your Agent
 
 Users should not need to run diagnostic commands by hand. Ask your Codex,
