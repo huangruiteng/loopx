@@ -55,6 +55,10 @@ CONTRACT_ONLY_REGRESSIONS = (
         path="regression/agentissue-lagent239-real-codex-runner.py",
         description="AgentIssue lagent_239 runner materializes public-safe boundaries",
     ),
+    Regression(
+        path="regression/codex-app-server-goal-baseline-contract.py",
+        description="Codex Goal benchmark baselines require app-server goal-state evidence",
+    ),
 )
 
 
