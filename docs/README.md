@@ -8,9 +8,9 @@ incident report, or launch draft.
 
 - [Project README](../README.md): product positioning, showcases, and the
   shortest quick start.
-- [Getting started](guides/getting-started.md): installation, project
-  connection, diagnosis, daily workflow, heartbeats, dashboard, development,
-  and command reference.
+- [Getting started](guides/getting-started.md): agent-first start, manual
+  installation, project connection, diagnosis, daily workflow, heartbeats,
+  dashboard, development, and command reference.
 - [Product vision](product/vision.md): long-term product direction and the
   creator-operator medium-term case.
 - [Architecture](architecture.md): core concepts and control-plane shape.

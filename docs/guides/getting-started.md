@@ -5,31 +5,7 @@ README. The root README is now the short product landing page; this page is the
 hands-on path for installation, project connection, diagnosis, heartbeats,
 dashboard use, development checks, and command discovery.
 
-## Install
-
-Install one shared local checkout manually, or ask your agent to run these
-steps:
-
-```bash
-git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
-~/goal-harness/scripts/install-local.sh
-goal-harness doctor
-```
-
-The installer creates:
-
-- `~/.local/bin/goal-harness`, pointing at a stable local release snapshot;
-- `~/.local/bin/goal-harness-canary`, pointing at the live checkout;
-- the Goal Harness Codex skills under `~/.codex/skills`.
-
-Those global skills are the intended product surface for reusable Goal Harness
-agent behavior; project-specific state and private decisions stay in the local
-registry and active goal files.
-
-Use the canary wrapper for one or two selected controllers before promoting a
-checkout to the default local release.
-
-## Connect A Project With An Agent
+## Start With An Agent
 
 If you already use Codex, Claude Code, Cursor, or another terminal agent, paste
 this into the agent from your project repo:
@@ -94,6 +70,30 @@ Maintainers can validate the public fresh-clone path with:
 ```bash
 python3 examples/fresh-clone-quickstart-smoke.py
 ```
+
+## Manual Install
+
+Install one shared local checkout manually when you want to drive setup without
+an agent:
+
+```bash
+git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
+~/goal-harness/scripts/install-local.sh
+goal-harness doctor
+```
+
+The installer creates:
+
+- `~/.local/bin/goal-harness`, pointing at a stable local release snapshot;
+- `~/.local/bin/goal-harness-canary`, pointing at the live checkout;
+- the Goal Harness Codex skills under `~/.codex/skills`.
+
+Those global skills are the intended product surface for reusable Goal Harness
+agent behavior; project-specific state and private decisions stay in the local
+registry and active goal files.
+
+Use the canary wrapper for one or two selected controllers before promoting a
+checkout to the default local release.
 
 ## Connect A Project Manually
 
@@ -170,6 +170,15 @@ disposable demo goal:
 export PATH="$HOME/.local/bin:$PATH"
 goal-harness demo
 ```
+
+Expected first-run signals:
+
+- the output contains `ok: True`;
+- a project-local registry and active goal state were created under
+  `/tmp/goal-harness-demo`;
+- one user todo and one agent todo are visible;
+- `refresh-state` appended a compact run;
+- `quota should-run` returns `should_run=True` and `state=eligible`.
 
 Inspect the demo:
 
@@ -264,6 +273,11 @@ goal-harness quota plan
 goal-harness quota should-run --goal-id your-project-goal
 ```
 
+The `next_automatic_turn` reported by `quota plan` is only an advisory
+scheduling hint: it chooses the highest-compute eligible goal, while
+operator-gated, focus-waiting, waiting, throttled, paused, and health-blocked
+goals stay out of the eligible lane.
+
 `quota should-run` returns the machine contract a heartbeat should obey:
 
 - `should_run`: whether delivery work may run now;
@@ -273,6 +287,17 @@ goal-harness quota should-run --goal-id your-project-goal
 - user and agent todo summaries;
 - safe-bypass or self-repair hints, when enabled;
 - the exact spend policy.
+
+Agent todo summaries separate `first_executable_items` from
+`monitor_open_items`: executable items drive the selected goal's primary
+action, while monitor items stay visible as supplemental observation context
+and only spend compute when they produce a material transition or blocker.
+
+Registry entries can expose per-goal `control_plane` policy. For example,
+`control_plane.self_repair.enabled=true` lets `quota should-run` return a
+bounded `decision=self_repair` contract for repairable control-plane stalls;
+missing policy defaults off, so other goals keep their normal skip or wait
+behavior.
 
 If `quota should-run` returns a `gate_prompt` or `operator_question`, the
 target heartbeat should proactively ask that concrete user/controller gate. If
@@ -439,6 +464,28 @@ goal-harness promotion-gate --format json
 goal-harness upgrade-plan --format json
 ```
 
+## Documentation Map
+
+Start here:
+
+- [Documentation index](../README.md)
+- [Showcase catalog](../showcases/README.md)
+- [State interaction model](../state-interaction-model.md)
+- [Interaction pattern catalog](../interaction-pattern-catalog.md)
+- [Integration guide](../integration.md)
+- [Attention queue](../attention-queue.md)
+- [Project agent todo contract](../project-agent-todo-contract.md)
+- [Quota allocation](../quota-allocation.md)
+- [Heartbeat automation prompt](../heartbeat-automation-prompt.md)
+- [Long-task cadence policy](../long-task-cadence-policy.md)
+- [Public/private boundary](../public-private-boundary.md)
+- [Benchmark developer workflow](../benchmark-developer-workflow.md)
+- [Public launch narrative draft](../outreach/public-launch-narrative-draft.md)
+- [Xiaohongshu launch draft](../outreach/xiaohongshu-launch-draft.md)
+- [Dashboard status contract](../status-data-contract.md)
+- [Codex subagent orchestration](../codex-subagent-orchestration.md)
+- [Benchmark long-run design](../research/long-horizon-agent-benchmarks/codex-cli-long-run-benchmark-design.md)
+
 ## Command Reference
 
 ```text
@@ -467,3 +514,15 @@ check                   run contract and public/private boundary checks
 ```
 
 Use `goal-harness <command> --help` for command-specific flags.
+
+## Repository Quality Guard
+
+This repository should stay readable to a new contributor. Treat these as
+periodic maintainer checks:
+
+- the README first screen explains the product before internal operations;
+- quick start commands still run on a clean checkout;
+- live local state is not committed;
+- public/private scan is clean before docs or examples are published;
+- docs linked from the README still exist and describe current CLI behavior;
+- smoke commands cover the highest-risk control-plane contracts.

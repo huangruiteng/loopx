@@ -125,7 +125,39 @@ the human/operator.
 Requirements: Python 3.11+, Git, macOS or Linux shell. The Python package has
 no runtime dependencies outside the standard library.
 
-Install one shared local checkout:
+The recommended start is agent-first. Paste this into Codex, Claude Code,
+Cursor, or another terminal agent from the project repo:
+
+```text
+Install and connect Goal Harness for this project end to end. Do not stop at a
+plan.
+
+If `goal-harness` is not on PATH:
+- clone https://github.com/huangruiteng/goal-harness to ~/goal-harness if it is
+  not already present;
+- run ~/goal-harness/scripts/install-local.sh;
+- export PATH="$HOME/.local/bin:$PATH".
+
+Then:
+1. Run `goal-harness doctor`.
+2. Choose a stable goal id from this repo name unless I gave one explicitly.
+3. Read the project goal doc if present (`GOAL.md`, `README.md`, or the doc I
+   name); otherwise ask me for a one-sentence objective.
+4. Run `goal-harness connect` or `goal-harness bootstrap` for this repo with
+   that goal id, objective, domain, and goal doc.
+5. Explain the onboarding todo candidates and ask which ones I accept, edit,
+   or reject.
+6. Ensure `.goal-harness/` and `.codex/goals/` are ignored in this project.
+7. Run `goal-harness registry`, `goal-harness status`, and
+   `goal-harness check --scan-root .`.
+8. Report the goal id, created files, current user todo, current agent todo,
+   and next safe action.
+
+Do not commit `.goal-harness/`, `.codex/goals/`, live ACTIVE_GOAL_STATE files,
+runtime registries, raw logs, credentials, or private local paths.
+```
+
+Manual install is still available when you want to drive the setup yourself:
 
 ```bash
 git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
@@ -133,7 +165,7 @@ git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
 goal-harness doctor
 ```
 
-Then connect a project manually:
+Then connect a project:
 
 ```bash
 cd /path/to/your-project
@@ -143,23 +175,67 @@ goal-harness bootstrap \
   --goal-doc GOAL.md
 ```
 
-Or paste this into Codex, Claude Code, Cursor, or another terminal agent from
-the project repo:
-
-```text
-Install and connect Goal Harness for this project end to end. Do not stop at a
-plan. Run doctor, choose a stable goal id, read the project goal doc if one
-exists, run goal-harness bootstrap/connect, explain onboarding todo candidates,
-ask which ones I accept, ignore .goal-harness/ and .codex/goals/, then report
-the goal id, current user todo, current agent todo, and next safe action.
-
-Do not commit .goal-harness/, .codex/goals/, live ACTIVE_GOAL_STATE files,
-runtime registries, raw logs, credentials, or private local paths.
-```
-
 For the full install, diagnose, connect, heartbeat, dashboard, development, and
 command-reference workflow, read
 [docs/guides/getting-started.md](docs/guides/getting-started.md).
+
+## Core Workflows
+
+After a project is connected, the daily loop is intentionally small:
+
+```bash
+goal-harness status
+goal-harness history --goal-id your-project-goal
+goal-harness quota should-run --goal-id your-project-goal
+```
+
+Users should not need to diagnose Goal Harness by hand. Ask your agent to run
+the diagnostic packet and reason from it:
+
+```text
+Diagnose Goal Harness for this project end to end. Do not ask me to run shell
+commands. Run goal-harness diagnose, tell me whether the project can
+self-drive, what blocks it, the exact user/controller question if one exists,
+and what you will do next.
+```
+
+Common operator actions:
+
+```bash
+goal-harness todo add --goal-id your-project-goal --role agent --text "Run the next bounded validation slice."
+goal-harness review-packet --goal-id your-project-goal
+goal-harness refresh-state --goal-id your-project-goal
+```
+
+Automatic turns should check quota before work and spend exactly once after
+validated writeback:
+
+```bash
+goal-harness quota should-run --goal-id your-project-goal
+goal-harness heartbeat-prompt --thin --goal-id your-project-goal
+goal-harness quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat --execute
+```
+
+The dashboard is optional and local:
+
+```bash
+goal-harness serve-status --global-registry --port 8766 --limit 80
+cd ~/goal-harness/apps/dashboard && npm install && npm run dev
+```
+
+Before publishing docs or examples, keep the public/private boundary explicit:
+
+```bash
+goal-harness check \
+  --scan-path README.md \
+  --scan-path docs/ \
+  --scan-path examples/
+```
+
+More detail lives in [Getting Started](docs/guides/getting-started.md);
+contracts live in [Status Data](docs/status-data-contract.md),
+[Quota Allocation](docs/quota-allocation.md), and
+[Public/Private Boundary](docs/public-private-boundary.md).
 
 ## Product Vision
 
