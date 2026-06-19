@@ -1,0 +1,469 @@
+# Getting Started With Goal Harness
+
+This guide carries the operational detail that used to live in the root
+README. The root README is now the short product landing page; this page is the
+hands-on path for installation, project connection, diagnosis, heartbeats,
+dashboard use, development checks, and command discovery.
+
+## Install
+
+Install one shared local checkout manually, or ask your agent to run these
+steps:
+
+```bash
+git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
+~/goal-harness/scripts/install-local.sh
+goal-harness doctor
+```
+
+The installer creates:
+
+- `~/.local/bin/goal-harness`, pointing at a stable local release snapshot;
+- `~/.local/bin/goal-harness-canary`, pointing at the live checkout;
+- the Goal Harness Codex skills under `~/.codex/skills`.
+
+Those global skills are the intended product surface for reusable Goal Harness
+agent behavior; project-specific state and private decisions stay in the local
+registry and active goal files.
+
+Use the canary wrapper for one or two selected controllers before promoting a
+checkout to the default local release.
+
+## Connect A Project With An Agent
+
+If you already use Codex, Claude Code, Cursor, or another terminal agent, paste
+this into the agent from your project repo:
+
+```text
+Install and connect Goal Harness for this project end to end. Do not stop at a
+plan.
+
+If `goal-harness` is not on PATH:
+- clone https://github.com/huangruiteng/goal-harness to ~/goal-harness if it is
+  not already present;
+- run ~/goal-harness/scripts/install-local.sh;
+- export PATH="$HOME/.local/bin:$PATH".
+
+Then:
+1. Run `goal-harness doctor`.
+2. Choose a stable goal id from this repo name unless I gave one explicitly.
+3. Read the project goal doc if present (`GOAL.md`, `README.md`, or the doc I
+   name); otherwise ask me for a one-sentence objective.
+4. Run `goal-harness connect` or `goal-harness bootstrap` for this repo with
+   that goal id, objective, domain, and goal doc.
+5. Read the `Onboarding Scan`, `Proposed Onboarding Candidates`,
+   `Accept Candidate Commands`, and `Autonomy Choice` from the connect output.
+   Briefly explain the candidate agent todos to me and ask:
+   - which candidates I accept, edit, or reject;
+   - whether `autonomous=yes`, meaning you may start the first accepted agent
+     todo after the quota guard passes.
+   Do not make me run the acceptance commands manually; run the accepted
+   `goal-harness todo add ...` commands yourself. If I choose
+   `autonomous=no`, stop after `goal-harness refresh-state`.
+6. Ensure `.goal-harness/` and `.codex/goals/` are ignored in this project.
+7. Run `goal-harness registry`, `goal-harness status`, and
+   `goal-harness check --scan-root .`.
+8. Report the goal id, created files, current user todo, current agent todo,
+   and next safe action.
+
+Do not commit `.goal-harness/`, `.codex/goals/`, live ACTIVE_GOAL_STATE files,
+runtime registries, raw logs, credentials, or private local paths.
+```
+
+For a longer generated handoff prompt, install once and run:
+
+```bash
+goal-harness new-project-prompt \
+  --project /path/to/your-project \
+  --goal-doc /path/to/your-project/GOAL.md
+```
+
+The command output is meant to be pasted into Codex or Claude Code. It contains
+the full guard, quota, todo, and heartbeat protocol for a new project.
+
+Success looks like this:
+
+- `goal-harness doctor` passes;
+- the project has `.goal-harness/registry.json`;
+- the project has `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`;
+- `goal-harness status` shows the goal and who should act next;
+- local runtime state is ignored, not committed.
+
+Maintainers can validate the public fresh-clone path with:
+
+```bash
+python3 examples/fresh-clone-quickstart-smoke.py
+```
+
+## Connect A Project Manually
+
+From the project repository:
+
+```bash
+cd /path/to/your-project
+goal-harness bootstrap \
+  --goal-id your-project-goal \
+  --objective "Improve this project through bounded, verified goal segments." \
+  --goal-doc GOAL.md
+```
+
+`connect` is an alias for `bootstrap`:
+
+```bash
+goal-harness connect --goal-id your-project-goal
+```
+
+This creates or connects:
+
+```text
+your-project/
+  .goal-harness/registry.json
+  .codex/goals/your-project-goal/ACTIVE_GOAL_STATE.md
+
+~/.codex/goal-harness/
+  goals/<goal-id>/runs/
+```
+
+Treat live goal state and registries as local runtime data. Add these paths to
+the connected project `.gitignore` before committing:
+
+```gitignore
+.goal-harness/
+.codex/goals/
+goals/**/ACTIVE_GOAL_STATE.md
+```
+
+Commit only sanitized templates or examples, not a controller's live
+`ACTIVE_GOAL_STATE.md`.
+
+## Diagnose From Your Agent
+
+Users should not need to run diagnostic commands by hand. Ask your Codex,
+Claude Code, Cursor, or terminal agent:
+
+```text
+Diagnose Goal Harness for this project end to end. Do not ask me to run shell
+commands.
+
+If `goal-harness` is missing, install or repair it first. Then run
+`goal-harness diagnose` yourself, read the diagnostic packet, and use your own
+reasoning to tell me:
+- whether this project can currently self-drive;
+- what evidence supports that answer;
+- what is blocking it, if anything;
+- the exact question I need to answer, if a user/controller gate exists;
+- what you will do next.
+
+Do not treat Goal Harness machine signals as the final verdict. They are
+evidence for your diagnosis.
+```
+
+`goal-harness diagnose` is intentionally an agent-facing evidence packet. It
+collects compact `status`, `quota should-run`, todo, interaction-contract, and
+boundary signals, then gives the agent a reasoning checklist. The agent makes
+the diagnosis in natural language.
+
+If you want to try Goal Harness before connecting a real repo, create a
+disposable demo goal:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+goal-harness demo
+```
+
+Inspect the demo:
+
+```bash
+cd /tmp/goal-harness-demo
+goal-harness status
+goal-harness quota should-run --goal-id demo-goal
+goal-harness history --goal-id demo-goal
+```
+
+## Daily Workflow
+
+Inspect installation and registry health:
+
+```bash
+goal-harness doctor
+goal-harness registry
+goal-harness check --scan-root .
+```
+
+Read status and history:
+
+```bash
+goal-harness status
+goal-harness history --goal-id your-project-goal
+```
+
+Add explicit work:
+
+```bash
+goal-harness todo add \
+  --goal-id your-project-goal \
+  --role user \
+  --text "Review the owner checklist."
+
+goal-harness todo add \
+  --goal-id your-project-goal \
+  --role agent \
+  --text "Summarize the safe read-only evidence." \
+  --task-class advancement_task \
+  --action-kind evidence_summary
+```
+
+Complete an agent todo and atomically add the next executable item:
+
+```bash
+goal-harness todo complete \
+  --goal-id your-project-goal \
+  --todo-id todo_ab12cd34ef56 \
+  --evidence "Validated with examples/demo-cli-smoke.py" \
+  --next-agent-todo "Run the next bounded validation slice." \
+  --next-task-class advancement_task \
+  --next-action-kind validation \
+  --execute
+```
+
+Append a state-only refresh after local state or docs change:
+
+```bash
+goal-harness refresh-state --goal-id your-project-goal
+```
+
+Generate a compact handoff packet for an agent:
+
+```bash
+goal-harness review-packet --goal-id your-project-goal
+```
+
+Record an operator gate decision or run-bound reward:
+
+```bash
+goal-harness operator-gate \
+  --goal-id your-project-goal \
+  --decision approve \
+  --reason-summary "Approve read-only map opt-in"
+
+goal-harness reward \
+  --goal-id your-project-goal \
+  --decision continue_route \
+  --reward positive \
+  --reason-summary "validation improved and the route is worth extending"
+```
+
+## Heartbeats And Quota
+
+Quota is compute eligibility, not strategy. It answers whether an automatic
+turn may run now, and what kind of turn is allowed.
+
+```bash
+goal-harness quota status
+goal-harness quota plan
+goal-harness quota should-run --goal-id your-project-goal
+```
+
+`quota should-run` returns the machine contract a heartbeat should obey:
+
+- `should_run`: whether delivery work may run now;
+- `waiting_on`: user, controller, Codex, external evidence, health, or quota;
+- `work_lane_contract`: the next executable lane or monitor/blocker lane;
+- `execution_obligation`: whether the agent must attempt a bounded segment;
+- user and agent todo summaries;
+- safe-bypass or self-repair hints, when enabled;
+- the exact spend policy.
+
+If `quota should-run` returns a `gate_prompt` or `operator_question`, the
+target heartbeat should proactively ask that concrete user/controller gate. If
+open user todos are present, do not call the turn "no new user action" while
+they remain open; its report still has to list existing open user todos.
+
+When `safe_bypass_allowed=true`, the heartbeat may still do one bounded
+read-only steering or analysis step that is independent of the blocked gate.
+See [quota allocation](../quota-allocation.md) for the full allocation
+contract.
+
+After an automatic turn actually spends delivery compute, append one spend
+event:
+
+```bash
+goal-harness quota spend-slot \
+  --goal-id your-project-goal \
+  --slots 1 \
+  --source heartbeat \
+  --execute
+```
+
+Do not append spend for quiet `should_run=false` skips, preflight failures, or
+pure dry-run previews.
+
+Generate a guarded Codex App heartbeat body:
+
+```bash
+goal-harness heartbeat-prompt --thin --goal-id your-project-goal
+```
+
+For shared-control-plane agents, pass identity and scope in the automation
+prompt, then let the agent soft-claim matching todos with a registered
+`--claimed-by` id:
+
+```bash
+goal-harness configure-goal --goal-id your-project-goal \
+  --registered-agent codex-main-control \
+  --registered-agent codex-side-bypass \
+  --primary-agent codex-main-control \
+  --execute
+
+goal-harness heartbeat-prompt --compact --goal-id your-project-goal \
+  --agent-id codex-side-bypass \
+  --agent-scope "control-plane coordination"
+```
+
+Once `coordination.registered_agents` is set, `heartbeat-prompt` fails closed
+when called without `--agent-id`; this makes stale Codex App automations
+surface an upgrade error instead of silently running without identity or
+scope. Old goal registries without `coordination.registered_agents` also fail
+closed when a scoped heartbeat or todo claim names an agent; register the agent
+identity first instead of letting workers invent claim ids.
+
+Set exactly one `coordination.primary_agent`: that primary agent owns final
+review, verification, merge, publication, and high-risk side-agent review. Side
+agents are prompted to work in separate worktrees. Small AGENTS-eligible
+validated changes may be self-merged with explicit Goal Harness evidence;
+higher-risk or unclear work should still be handed back through a primary
+review todo.
+
+See [heartbeat automation prompt](../heartbeat-automation-prompt.md).
+
+## Dashboard
+
+Dashboard status is an experimental operator preview. The CLI and
+`goal-harness status` remain the canonical daily workflow; the React dashboard
+is useful for demos, public-safe fixtures, and local inspection.
+
+Serve status JSON:
+
+```bash
+goal-harness serve-status --port 8765
+```
+
+Run the dashboard:
+
+```bash
+cd ~/goal-harness/apps/dashboard
+npm install
+npm run dev
+```
+
+For the shared multi-project view:
+
+```bash
+goal-harness serve-status --global-registry --port 8766 --limit 80
+```
+
+On macOS, keep the global feed and built dashboard running after login:
+
+```bash
+~/goal-harness/scripts/macos-dashboard-launchagent.sh install
+~/goal-harness/scripts/macos-dashboard-launchagent.sh status
+```
+
+The dashboard should answer, before raw log drill-down:
+
+- what the human needs to judge;
+- what Codex can do next;
+- what is waiting on evidence;
+- what boundary cannot be crossed yet.
+
+See [apps/dashboard/README.md](../../apps/dashboard/README.md).
+
+## Public / Private Boundary
+
+Safe to publish:
+
+- registry schema and runtime layout;
+- adapter lifecycle and generic control-plane contracts;
+- sanitized examples and smoke fixtures;
+- generic validation commands.
+
+Keep private:
+
+- real local paths;
+- task ids and internal document links;
+- production logs and raw experiment metrics;
+- credentials and auth material;
+- user-specific active goal state and local registries;
+- raw agent sessions or benchmark traces.
+
+Run the public/private scan before publishing docs or examples:
+
+```bash
+goal-harness check \
+  --scan-path README.md \
+  --scan-path docs/ \
+  --scan-path examples/
+```
+
+See [public/private boundary](../public-private-boundary.md).
+
+## Development
+
+Run the focused CLI and contract smokes from the repository root:
+
+```bash
+python3 -m py_compile goal_harness/*.py
+python3 examples/demo-cli-smoke.py
+python3 examples/todo-cli-smoke.py
+python3 examples/todo-lifecycle-cli-smoke.py
+python3 examples/quota-contract-smoke.py
+python3 examples/review-packet-cli-smoke.py
+python3 examples/benchmark-run-v0-append-cli-smoke.py
+git diff --check
+```
+
+For dashboard work:
+
+```bash
+cd apps/dashboard
+npm install
+npm run build
+npm run smoke:demo-readiness
+```
+
+For release-promotion readiness:
+
+```bash
+python3 examples/canary-promotion-readiness-smoke.py
+goal-harness promotion-gate --format json
+goal-harness upgrade-plan --format json
+```
+
+## Command Reference
+
+```text
+bootstrap / connect     connect a project-local goal
+new-project-prompt      generate a Codex prompt for project connection
+demo                    create a disposable local demo goal
+doctor                  diagnose installation and import health
+registry                inspect registered goals
+registry-boundary       classify registry local/public boundary and push policy
+status                  show first-screen operator status
+diagnose                build an agent-facing diagnostic evidence packet
+history                 read run history
+refresh-state           append a state-only run
+read-only-map           map a project without mutating files
+operator-gate           record a human gate decision
+reward                  append run-bound human reward
+todo                    add, claim, complete, update, supersede, or archive todos
+quota                   inspect or account for automatic agent turns
+heartbeat-prompt        generate Codex App heartbeat task bodies
+upgrade-plan            plan local default-upgrade heartbeat propagation
+review-packet           package a CLI-visible handoff packet
+serve-status            serve local status JSON for the dashboard
+archive-runtime         archive obsolete runtime-only goal history
+sync-global             merge project registry into the global registry
+check                   run contract and public/private boundary checks
+```
+
+Use `goal-harness <command> --help` for command-specific flags.

@@ -6,8 +6,11 @@ incident report, or launch draft.
 
 ## Start Here
 
-- [Project README](../README.md): installation, quick start, smoke tests, and
-  command reference.
+- [Project README](../README.md): product positioning, showcases, and the
+  shortest quick start.
+- [Getting started](guides/getting-started.md): installation, project
+  connection, diagnosis, daily workflow, heartbeats, dashboard, development,
+  and command reference.
 - [Product vision](product/vision.md): long-term product direction and the
   creator-operator medium-term case.
 - [Architecture](architecture.md): core concepts and control-plane shape.
@@ -41,6 +44,7 @@ incident report, or launch draft.
 
 ### Operator Workflows
 
+- [Getting started](guides/getting-started.md)
 - [Integration guide](integration.md)
 - [Benchmark developer workflow](benchmark-developer-workflow.md)
 - [Attention queue](attention-queue.md)
