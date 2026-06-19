@@ -1,7 +1,8 @@
 # Cloud Codex Benchmark Route 2026-06-19
 
-Status: default route selected; benchmark execution still requires per-family
-no-upload readiness and task/data gates.
+Status: default route selected; remote Codex CLI auth and tiny execution smoke
+are ready through a local-private network route. Benchmark execution still
+requires per-family no-upload readiness and task/data gates.
 
 ## Decision
 
@@ -78,6 +79,9 @@ The cloud host should satisfy this compact checklist before a benchmark run:
 - Codex CLI is installed on the cloud host.
 - The operator completes Codex auth on the cloud host; no auth files are copied
   from another machine.
+- If direct network egress to the model provider is unavailable, an
+  operator-approved loopback-only proxy or tunnel is active for the run.
+- A tiny `codex exec` smoke succeeds before any benchmark task starts.
 - `git`, Python, `uv`, Node/npm when needed, and a Docker-compatible runtime
   are available.
 - A reachable container registry or mirror is configured.
@@ -92,7 +96,7 @@ The cloud host should satisfy this compact checklist before a benchmark run:
 | Family | Next route | Remaining gate |
 | --- | --- | --- |
 | Terminal-Bench | Run Codex CLI and the runner directly on the cloud host. | Pick a bounded no-upload case and verify the Docker-compatible runtime is sufficient for the runner. |
-| SkillsBench | Run BenchFlow and Codex CLI on the cloud host; compare base/test mini-pair through compact evidence. | Authenticate Codex on the host and run the first no-upload mini-pair. |
+| SkillsBench | Run BenchFlow and Codex CLI on the cloud host; compare base/test mini-pair through compact evidence. | Run the first no-upload mini-pair and record any BenchFlow/container blocker compactly. |
 | Agents' Last Exam | Run upstream-close ALE local-Docker route on the cloud host. | Resolve task-data access and disk budget before formal task execution. |
 
 ## Claim Boundary

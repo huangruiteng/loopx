@@ -128,6 +128,28 @@ Default cloud-host readiness:
 - The first task is a no-upload dry-run or mini-pair that writes compact
   `benchmark_run_v0` / `benchmark_result_v0` evidence before any score claim.
 
+Cloud-host Codex connectivity is its own preflight, separate from benchmark
+runner readiness. A host can have a valid Codex login and still fail model calls
+because its network egress cannot reach the provider endpoints. Before blaming
+the benchmark runner, prove three layers in order:
+
+1. **Auth**: `codex login status` or equivalent reports an authenticated local
+   user on the benchmark host.
+2. **Network**: a bounded model-provider probe reaches the endpoint through the
+   operator-approved route. If direct egress is unavailable, use an approved
+   loopback-only proxy or tunnel instead of copying credentials or embedding
+   proxy details in public docs.
+3. **Execution**: `codex exec` can complete a tiny read-only smoke in a scratch
+   directory and write a compact last-message or exit-code artifact.
+
+The reusable trick is the shape, not the private wiring: keep the concrete SSH
+jump path, local ports, auth-cache handling, and proxy process command in a
+local-private runbook, then expose only these public-safe facts to Goal Harness:
+auth ready, network route ready or blocked, `codex exec` smoke result, and the
+next benchmark-family blocker. Prefer per-command tunnels or short-lived
+operator-managed proxy sessions for benchmark slices; long-running unattended
+network bridges should have an explicit owner and cleanup rule.
+
 Keep upstream benchmark sources clean:
 
 - Use upstream `main` or a pinned upstream commit for official runner code.
