@@ -16,6 +16,9 @@ Each pattern should answer:
 
 - **Trigger**: which status, quota, todo, run-history, or boundary signals make
   the pattern active;
+- **Importance**: `P0` for hot-path behaviors that can block or misroute a
+  controller turn, `P1` for durable operational behaviors, and `P2` for
+  specialized or experiment-specific behaviors;
 - **User channel**: whether the user must be interrupted, only notified, or not
   contacted;
 - **Agent channel**: what Codex must do, may do, or must not do;
@@ -100,26 +103,64 @@ scanning every IP.
 
 ## Catalog
 
-| ID | Name | Family | Primary Owner | User Channel | Agent Channel |
+Catalog rows are grouped by family and sorted by importance inside each family.
+`P0` means hot-path behavior that can block or misroute a controller turn;
+`P1` means durable operational behavior that should be preserved once the hot
+path is healthy; `P2` means specialized or experiment-specific behavior.
+IP IDs remain stable even when display order changes.
+
+### Work Routing
+
+Hot-path execution decisions: deliver, fallback, recover, or stay quiet.
+
+| Importance | ID | Name | Primary Owner | User Channel | Agent Channel |
 | --- | --- | --- | --- | --- | --- |
-| IP-001 | Bounded Delivery | Work Routing | Agent | no interruption | implement, validate, write back, spend once |
-| IP-002 | Blocked Priority With Safe Fallback | Work Routing | Agent plus user-visible notification | notify without requiring an answer | continue safe fallback after exposing blocked higher-priority work |
-| IP-003 | Scoped Gate With Safe Fallback | Work Routing | User plus agent | notify concrete scoped gate | execute non-dependent fallback; no gated action |
-| IP-004 | Concrete User Todo Projection | Human Decision | User | ask or notify with concrete todo/question | do not hide behind generic "owner gate" text |
-| IP-005 | State Projection Gap | State And Boundary | Agent | no user ask unless a user todo is missing | repair todo/state projection before ordinary delivery |
-| IP-006 | Checkpointed Scope Mismatch | State And Boundary | CLI/controller | ask or repair boundary projection | do not execute action whose write scope is not projected |
-| IP-007 | Outcome Floor Recovery | Work Routing | Agent | usually no interruption | produce missing outcome-scale evidence or blocker only |
-| IP-008 | Monitor Quiet Skip | Work Routing | CLI/controller | no notification | append at most one no-spend poll, then stay quiet |
-| IP-009 | Active User Assistance | Human Decision | User simulator / operator | bounded intervention | inject audited user help without leaking reward/oracle signals |
-| IP-010 | Cadence Widening | Planning Governance | Agent/controller | no interruption by default | widen next work segment when turns become too small |
-| IP-011 | Authority Material Intake | State And Boundary | Agent plus registry | notify only on gate/conflict | register redacted source contract before relying on material |
-| IP-012 | External Evidence Observation | Evidence Lifecycle | Agent/controller | no interruption unless handle missing needs owner input | observe compact handles/results; do not launch benchmark/model work |
-| IP-013 | Autonomous Replan Vs Advisory Dreaming | Planning Governance | Agent/controller plus user when promoted | ask only for promotion/decision | repair stalled delivery; keep dreaming proposal non-executable |
-| IP-014 | Decision Write Preview And Append | Human Decision | User/operator | explicit preview/apply decision | append only exact run-bound reward or gate decision event |
-| IP-015 | Benchmark Lifecycle Countability | Evidence Lifecycle | Benchmark adapter/controller | no interruption by default | advance only through compact countable lifecycle gates |
-| IP-016 | Task Lease Claim | State And Boundary | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
-| IP-017 | User Reward Lesson Promotion | Human Decision | User plus Goal Harness | acknowledge only when lesson changes route/priority/boundary | promote correction into durable lesson, todo, or projection before continuing |
-| IP-018 | Plan To Todo Writeback | Planning Governance | Agent plus Goal Harness | no interruption unless a user todo is created | write user-facing plans into todos, Next Action, or refresh-state |
+| P0 | IP-001 | Bounded Delivery | Agent | no interruption | implement, validate, write back, spend once |
+| P0 | IP-002 | Blocked Priority With Safe Fallback | Agent plus user-visible notification | notify without requiring an answer | continue safe fallback after exposing blocked higher-priority work |
+| P0 | IP-003 | Scoped Gate With Safe Fallback | User plus agent | notify concrete scoped gate | execute non-dependent fallback; no gated action |
+| P0 | IP-007 | Outcome Floor Recovery | Agent | usually no interruption | produce missing outcome-scale evidence or blocker only |
+| P1 | IP-008 | Monitor Quiet Skip | CLI/controller | no notification | append at most one no-spend poll, then stay quiet |
+
+### Human Decision
+
+Human asks, approvals, interventions, and reward-derived lessons.
+
+| Importance | ID | Name | Primary Owner | User Channel | Agent Channel |
+| --- | --- | --- | --- | --- | --- |
+| P0 | IP-004 | Concrete User Todo Projection | User | ask or notify with concrete todo/question | do not hide behind generic "owner gate" text |
+| P0 | IP-014 | Decision Write Preview And Append | User/operator | explicit preview/apply decision | append only exact run-bound reward or gate decision event |
+| P1 | IP-017 | User Reward Lesson Promotion | User plus Goal Harness | acknowledge only when lesson changes route/priority/boundary | promote correction into durable lesson, todo, or projection before continuing |
+| P2 | IP-009 | Active User Assistance | User simulator / operator | bounded intervention | inject audited user help without leaking reward/oracle signals |
+
+### State And Boundary
+
+Projection, authority, write scope, and lease integrity.
+
+| Importance | ID | Name | Primary Owner | User Channel | Agent Channel |
+| --- | --- | --- | --- | --- | --- |
+| P0 | IP-005 | State Projection Gap | Agent | no user ask unless a user todo is missing | repair todo/state projection before ordinary delivery |
+| P0 | IP-006 | Checkpointed Scope Mismatch | CLI/controller | ask or repair boundary projection | do not execute action whose write scope is not projected |
+| P1 | IP-011 | Authority Material Intake | Agent plus registry | notify only on gate/conflict | register redacted source contract before relying on material |
+| P1 | IP-016 | Task Lease Claim | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
+
+### Evidence Lifecycle
+
+External handles, benchmark transitions, and countable proof.
+
+| Importance | ID | Name | Primary Owner | User Channel | Agent Channel |
+| --- | --- | --- | --- | --- | --- |
+| P0 | IP-012 | External Evidence Observation | Agent/controller | no interruption unless handle missing needs owner input | observe compact handles/results; do not launch benchmark/model work |
+| P1 | IP-015 | Benchmark Lifecycle Countability | Benchmark adapter/controller | no interruption by default | advance only through compact countable lifecycle gates |
+
+### Planning Governance
+
+Replanning, dreaming, cadence, and future-work writeback.
+
+| Importance | ID | Name | Primary Owner | User Channel | Agent Channel |
+| --- | --- | --- | --- | --- | --- |
+| P0 | IP-013 | Autonomous Replan Vs Advisory Dreaming | Agent/controller plus user when promoted | ask only for promotion/decision | repair stalled delivery; keep dreaming proposal non-executable |
+| P1 | IP-010 | Cadence Widening | Agent/controller | no interruption by default | widen next work segment when turns become too small |
+| P1 | IP-018 | Plan To Todo Writeback | Agent plus Goal Harness | no interruption unless a user todo is created | write user-facing plans into todos, Next Action, or refresh-state |
 
 ## Visual Model
 
@@ -167,7 +208,15 @@ Future public surfaces can include:
   benchmark artifacts;
 - a public demo script that can be narrated to potential collaborators.
 
-## IP-001 Bounded Delivery
+## Pattern Details
+
+Pattern details use the same family order as the catalog. Within each
+family, P0 patterns come first, followed by P1 and P2 patterns. The IP
+number is stable identity, not display priority.
+
+### Work Routing
+
+#### IP-001 Bounded Delivery
 
 **Trigger**
 
@@ -205,7 +254,7 @@ without a validated artifact or blocker.
 - `examples/heartbeat-quota-flow-smoke.py`
 - `goal-harness check`
 
-## IP-002 Blocked Priority With Safe Fallback
+#### IP-002 Blocked Priority With Safe Fallback
 
 **Trigger**
 
@@ -253,7 +302,7 @@ of the P0 blocker.
 - `examples/todo-first-open-summary-smoke.py`
 - `docs/heartbeat-automation-prompt.md`
 
-## IP-003 Scoped Gate With Safe Fallback
+#### IP-003 Scoped Gate With Safe Fallback
 
 **Trigger**
 
@@ -319,7 +368,83 @@ story and the human loses the critical gate.
 - `examples/protocol-action-packet-smoke.py`
 - `examples/work-lane-contract-smoke.py`
 
-## IP-004 Concrete User Todo Projection
+#### IP-007 Outcome Floor Recovery
+
+**Trigger**
+
+- repeated surface-only work has crossed the outcome floor;
+- `safe_bypass_kind=outcome_floor_recovery` or
+  `heartbeat_recommendation.recommended_mode=outcome_floor_recovery`;
+- quota exposes a concrete `must_advance` target.
+
+**Expected behavior**
+
+The agent may do only the bounded recovery: produce the missing evidence named
+by `must_advance`, or write the blocker explaining why that evidence cannot be
+produced. Ordinary docs/status propagation should wait.
+
+**Visual Model**
+
+```mermaid
+flowchart LR
+  F["outcome floor crossed"] --> T["read must_advance"]
+  T --> E{"can produce outcome evidence?"}
+  E -->|"yes"| P["produce evidence"]
+  E -->|"no"| B["write concrete blocker"]
+  P --> V["validate and spend once"]
+  B --> V
+```
+
+**Bad smell**
+
+The system keeps improving wrappers, summaries, or queues while never producing
+the evidence needed to decide whether the goal is working.
+
+**Validation**
+
+- `docs/archive/incidents/outcome-floor-safe-bypass-incident-20260606.md`
+- `examples/quota-plan-smoke.py`
+- `examples/upgrade-plan-smoke.py`
+
+#### IP-008 Monitor Quiet Skip
+
+**Trigger**
+
+- `should_run=false`;
+- `effective_action=monitor_quiet_skip`;
+- no user gate, user todo blocker, external handle observation, or self-repair
+  obligation is active.
+
+**Expected behavior**
+
+The agent may append at most one no-spend monitor poll, rerun the guard, and
+then stay quiet. The automation remains alive; monitor-only quiet skips are not
+completion or deletion signals.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  N["should_run=false"] --> M{"monitor_quiet_skip and no gate?"}
+  M -->|"no"| C["follow concrete contract"]
+  M -->|"yes"| P["append no-spend poll"]
+  P --> R["rerun quota guard"]
+  R --> Q["quiet; keep automation active"]
+```
+
+**Bad smell**
+
+The heartbeat stops itself because nothing changed, or spends quota on a
+no-op status repetition.
+
+**Validation**
+
+- `examples/heartbeat-quota-flow-smoke.py`
+- `docs/heartbeat-automation-prompt.md`
+
+### Human Decision
+
+#### IP-004 Concrete User Todo Projection
 
 **Trigger**
 
@@ -362,415 +487,7 @@ needed.
 - `examples/quota-plan-smoke.py`
 - `examples/heartbeat-quota-flow-smoke.py`
 
-## IP-005 State Projection Gap
-
-**Trigger**
-
-- quota says work is eligible or `must_attempt=true`;
-- `agent_todo_summary.open_count=0` and `user_todo_summary.open_count=0`;
-- `Next Action`, handoff prose, or recent run history still contains
-  actionable work.
-- compatibility lint sees explicit user-wait prose in `Next Action`, but no
-  structured `User Todo` or `interaction_contract.user_channel` gate exists.
-
-**Expected behavior**
-
-The next step should become replan / todo expansion / blocker writeback rather
-than normal delivery. Machine projection must be repaired before the controller
-pretends there is no work.
-
-When structured fields are present, they are authoritative over Markdown lint.
-If `interaction_contract.user_channel.action_required=false`,
-`user_todo_summary.open_count=0`, and an executable agent todo exists, the
-controller should continue bounded agent work instead of asking the agent to
-report "具体 user todo 未投影". Conversely, if a real owner/user gate exists, it
-must be represented as a concrete user todo or scoped decision rather than only
-as prose in `Next Action`.
-
-**Visual Model**
-
-```mermaid
-flowchart TD
-  E["eligible or must_attempt"] --> O{"open user/agent todos?"}
-  O -->|"yes"| D["normal lane selection"]
-  O -->|"no"| P{"actionable Next Action or handoff prose?"}
-  P -->|"yes"| R["replan / todo expansion / blocker writeback"]
-  P -->|"no"| M["monitor or quiet no-op"]
-```
-
-**Bad smell**
-
-Humans can see a next action in prose, but the machine projection sees no open
-todo and the automation drifts into monitor-only no-ops.
-
-**Validation**
-
-- `examples/state-projection-gap-smoke.py`
-- `docs/project-agent-todo-contract.md`
-
-## IP-006 Checkpointed Scope Mismatch
-
-**Trigger**
-
-- the selected todo or `recommended_action` requires writing a scope;
-- `goal_boundary.write_scope` does not include that scope;
-- a historical owner decision may exist, but it is not projected into the
-  current boundary contract.
-
-**Expected behavior**
-
-Goal Harness should return boundary projection repair or a concrete
-user/controller gate. The agent should not execute the write, and should not
-spend turns on repo-only handoff if the real blocker is missing scope
-projection.
-
-Only structured checkpointed authority can extend the runtime boundary. A
-historical approval written in prose is not enough. The registry may carry
-`coordination.checkpointed_boundary_authority[]` entries with:
-
-- `schema_version=checkpointed_boundary_authority_v0`;
-- `write_scope`;
-- `source` or equivalent public-safe provenance;
-- `recorded_at`;
-- optional `expires_at`;
-- `decision=approve` and active status.
-
-Fresh approved entries are compiled into `goal_boundary.write_scope` and
-exposed under `goal_boundary.checkpointed_boundary_authority`. Expired,
-rejected, missing-provenance, or missing-timestamp entries remain visible only
-as diagnostics; they do not authorize writes.
-
-**Visual Model**
-
-```mermaid
-flowchart TD
-  A["selected action"] --> S{"requires write scope?"}
-  S -->|"no"| E["execute if otherwise safe"]
-  S -->|"yes"| C{"fresh checkpointed authority?"}
-  C -->|"yes"| P["compile authority into goal_boundary.write_scope"]
-  C -->|"no"| B{"scope already in explicit write_scope?"}
-  P --> B
-  B -->|"yes"| E
-  B -->|"no"| R["boundary projection repair or user/controller gate"]
-```
-
-**Bad smell**
-
-The control plane remembers that a user once approved a path, but the current
-quota boundary blocks it, so agents loop on small handoffs instead of repairing
-the checkpointed decision.
-
-**Validation**
-
-- `examples/quota-action-scope-guard-smoke.py`;
-- `examples/configure-goal-smoke.py`;
-- `docs/state-interaction-model.md` checkpointed decision sections.
-
-## IP-007 Outcome Floor Recovery
-
-**Trigger**
-
-- repeated surface-only work has crossed the outcome floor;
-- `safe_bypass_kind=outcome_floor_recovery` or
-  `heartbeat_recommendation.recommended_mode=outcome_floor_recovery`;
-- quota exposes a concrete `must_advance` target.
-
-**Expected behavior**
-
-The agent may do only the bounded recovery: produce the missing evidence named
-by `must_advance`, or write the blocker explaining why that evidence cannot be
-produced. Ordinary docs/status propagation should wait.
-
-**Visual Model**
-
-```mermaid
-flowchart LR
-  F["outcome floor crossed"] --> T["read must_advance"]
-  T --> E{"can produce outcome evidence?"}
-  E -->|"yes"| P["produce evidence"]
-  E -->|"no"| B["write concrete blocker"]
-  P --> V["validate and spend once"]
-  B --> V
-```
-
-**Bad smell**
-
-The system keeps improving wrappers, summaries, or queues while never producing
-the evidence needed to decide whether the goal is working.
-
-**Validation**
-
-- `docs/archive/incidents/outcome-floor-safe-bypass-incident-20260606.md`
-- `examples/quota-plan-smoke.py`
-- `examples/upgrade-plan-smoke.py`
-
-## IP-008 Monitor Quiet Skip
-
-**Trigger**
-
-- `should_run=false`;
-- `effective_action=monitor_quiet_skip`;
-- no user gate, user todo blocker, external handle observation, or self-repair
-  obligation is active.
-
-**Expected behavior**
-
-The agent may append at most one no-spend monitor poll, rerun the guard, and
-then stay quiet. The automation remains alive; monitor-only quiet skips are not
-completion or deletion signals.
-
-**Visual Model**
-
-```mermaid
-flowchart TD
-  N["should_run=false"] --> M{"monitor_quiet_skip and no gate?"}
-  M -->|"no"| C["follow concrete contract"]
-  M -->|"yes"| P["append no-spend poll"]
-  P --> R["rerun quota guard"]
-  R --> Q["quiet; keep automation active"]
-```
-
-**Bad smell**
-
-The heartbeat stops itself because nothing changed, or spends quota on a
-no-op status repetition.
-
-**Validation**
-
-- `examples/heartbeat-quota-flow-smoke.py`
-- `docs/heartbeat-automation-prompt.md`
-
-## IP-009 Active User Assistance
-
-**Trigger**
-
-- the experiment or product lane explicitly enables active user assistance;
-- an intervention budget/frequency policy exists;
-- hidden tests, reward/pass/fail, expected solutions, and credentials remain
-  hidden from the worker.
-
-**Expected behavior**
-
-The assistant or user simulator may provide bounded help through an audited
-channel. Results must be labeled as assisted and must not be merged into
-official autonomous score claims.
-
-**Visual Model**
-
-```mermaid
-sequenceDiagram
-  participant Sim as User simulator
-  participant GH as Goal Harness
-  participant Agent as Agent
-  Sim->>GH: Public-safe intervention within budget
-  GH->>Agent: Audited assistance channel
-  Agent->>GH: Assisted result evidence
-  GH->>GH: Label assisted and keep official score separate
-```
-
-**Bad smell**
-
-The system calls a run "Goal Harness uplift" when the treatment secretly saw
-reward signals, oracle information, or unbounded human hints.
-
-**Validation**
-
-- `examples/worker-bridge-active-user-after-start-observation-smoke.py`
-- `examples/worker-bridge-install-contract-smoke.py`
-- benchmark active-user protocol docs.
-
-## IP-010 Cadence Widening
-
-**Trigger**
-
-- recent eligible turns have a small-step streak;
-- delivery repeatedly lands as `single_surface`, status-only, or shallow docs
-  without a coherent artifact;
-- no safety boundary prevents a larger segment.
-
-**Expected behavior**
-
-The controller widens the next eligible turn according to the configured
-cadence preset. For the default `long` preset, a turn should usually include an
-artifact, focused validation, and state writeback.
-
-**Visual Model**
-
-```mermaid
-flowchart TD
-  R["recent turns"] --> S{"small-step streak >= threshold?"}
-  S -->|"no"| C["keep current cadence"]
-  S -->|"yes"| B{"safe to widen?"}
-  B -->|"no"| G["ask gate or write blocker"]
-  B -->|"yes"| W["widen next segment by preset"]
-  W --> D["artifact + validation + writeback"]
-```
-
-**Bad smell**
-
-The agent's native long-task ability is degraded because the control plane keeps
-asking it to do tiny heartbeat-shaped steps.
-
-**Validation**
-
-- `docs/long-task-cadence-policy.md`
-- future status/quota preset projection smoke.
-
-## IP-011 Authority Material Intake
-
-**Trigger**
-
-- a worker discovers or receives a durable design doc, research memo, owner
-  packet, migration report, benchmark paper, external registry, or other source
-  that future agents may need;
-- the target project and `goal_id` are known;
-- the material can be represented as public-safe metadata without storing raw
-  URLs, document ids, local paths, source bodies, comments, credentials, or
-  private logs.
-
-**Expected behavior**
-
-The agent should first identify the owning project, then register a compact
-source contract in that project's authority surface. If the project has a
-tracked `docs/meta/DOC_REGISTRY.yaml`, update that authority map first. If it
-does not, use the project-local `.goal-harness/registry.json` through
-`authority_registry.topic_authority` and `authority_registry.project_materials`.
-This distinction is a storage/publication boundary, not two competing authority
-systems: tracked `DOC_REGISTRY` files are project assets for review, while the
-ignored `authority_registry` fallback is Goal Harness control-plane state.
-
-The stored material should answer what it is, how fresh it is, which topic it
-governs, whether owner review or read access is needed, and how conflicts are
-resolved. It should not read or summarize the material body as part of the
-registration step.
-
-**Visual Model**
-
-```mermaid
-flowchart TD
-  M["durable material discovered"] --> P{"target project and goal known?"}
-  P -->|"no"| B["write blocker or ask owner"]
-  P -->|"yes"| R{"public-safe source contract possible?"}
-  R -->|"no"| B
-  R -->|"yes"| D{"tracked DOC_REGISTRY exists?"}
-  D -->|"yes"| Y["update tracked project DOC_REGISTRY topic/source"]
-  D -->|"no"| L["write ignored project-local authority_registry fallback"]
-  Y --> C["register redacted authority source for harness/status sync"]
-  L --> C
-  C --> S["sync compact summary / refresh status"]
-```
-
-**Bad smell**
-
-An agent remembers an important article or design only in chat, or registers it
-into the meta controller because that is the current repo, even though the
-material belongs to another connected project.
-
-**Validation**
-
-- `docs/authority-source-registration.md`
-- `examples/register-authority-source-smoke.py`
-- `examples/import-doc-registry-authority-smoke.py`
-- `examples/platform-migration-material-registry-smoke.py`
-
-## IP-012 External Evidence Observation
-
-**Trigger**
-
-- `waiting_on=external_evidence`, a launched external worker is being polled, or
-  `interaction_contract.mode=external_evidence_observation`;
-- the selected action is evidence observation, compact result ingest, or compact
-  blocker writeback;
-- benchmark/model/Docker/cloud execution is not explicitly authorized by the
-  current guard.
-
-**Expected behavior**
-
-The agent must distinguish observing an external handle from launching new
-external work. If a compact handle exists, it may poll or ingest compact
-public-safe result files. If the required handle is missing, the correct action
-is a compact blocker or projection repair, not a quiet no-op. Benchmark
-execution, model calls, Docker, cloud jobs, uploads, and leaderboard paths stay
-blocked unless the guard explicitly selects that work.
-
-**Visual Model**
-
-```mermaid
-flowchart TD
-  E["external evidence mode"] --> H{"observable handle present?"}
-  H -->|"no"| B["write compact blocker / repair projection"]
-  H -->|"yes"| P{"compact result or failure marker present?"}
-  P -->|"no"| O["bounded poll; no spend if unchanged"]
-  P -->|"yes"| I["ingest compact result or blocker"]
-  I --> V["validate boundary and write event"]
-  V --> N["next guard decision"]
-```
-
-**Bad smell**
-
-The heartbeat treats external-evidence waiting as a harmless quiet skip even
-though the guard requires an observable handle, or it launches a benchmark run
-from a meta/controller poll that was only authorized to observe.
-
-**Validation**
-
-- `regression/external-evidence-observation-real-codex.py`
-- `examples/benchmark-lifecycle-state-smoke.py`
-- `docs/state-interaction-model.md`
-
-## IP-013 Autonomous Replan Vs Advisory Dreaming
-
-**Trigger**
-
-- no-progress streaks, repeated action loops, phase transitions, or periodic
-  review thresholds make a blocking `autonomous_replan_obligation_v0` visible
-  in active state, status, quota, or run history; or
-- a background planning lane surfaces `dreaming_proposal_v0` /
-  `server_managed_planning_contract_v0` as advisory context.
-
-**Expected behavior**
-
-An autonomous replan obligation is executable repair work: split, add, retire,
-or re-rank todos so the next delivery segment can advance. A dreaming proposal
-is advisory until promoted by an operator/controller decision and a normal
-quota/boundary check. Dreaming proposals may be displayed alongside a blocking
-replan obligation, but they stay a side lane: they can inform review or repair,
-not enter promotion/execution until the blocking replan obligation is absent or
-resolved. The two lanes must not collapse into each other.
-
-**Visual Model**
-
-```mermaid
-flowchart TD
-  S["status / run history"] --> R{"blocking replan obligation visible?"}
-  S --> D{"dreaming proposal present?"}
-  D -->|"yes"| V["display advisory dreaming side lane"]
-  D -->|"no"| Z["no dreaming side lane"]
-  R -->|"yes"| A["execute bounded replan repair"]
-  A --> T["update todos / guidance"]
-  T --> Q["rerun quota guard"]
-  V -. "may inform repair; no delivery spend while blocked" .-> A
-  R -->|"no"| G{"dreaming proposal eligible for promotion?"}
-  G -->|"yes"| U["ask/promote through user or controller gate"]
-  U --> P{"promoted and boundary approved?"}
-  P -->|"yes"| Q
-  P -->|"no"| X["proposal remains non-executable"]
-  G -->|"no"| N["normal selected interaction mode"]
-```
-
-**Bad smell**
-
-A proposal from the dreaming/planning lane carries an `agent_command` or spends
-delivery quota before promotion. The opposite failure is also costly: repeated
-no-progress evidence is treated as optional brainstorming instead of a required
-state repair.
-
-**Validation**
-
-- `examples/autonomous-replan-obligation-smoke.py`
-- `regression/autonomous-replan-vs-dreaming-contract.py`
-
-## IP-014 Decision Write Preview And Append
+#### IP-014 Decision Write Preview And Append
 
 **Trigger**
 
@@ -824,104 +541,7 @@ decision-point re-read.
 - `examples/dashboard-reward-append-browser-smoke.mjs`
 - `examples/operator-gate-resume-contract-smoke.py`
 
-## IP-015 Benchmark Lifecycle Countability
-
-**Trigger**
-
-- a benchmark adapter, runner wrapper, or reducer observes preflight, launch,
-  materialization, compact result, comparison, claim review, or learning-ledger
-  evidence;
-- a controller is deciding whether a process launch, case attempt, score,
-  budget spend, rerun, or public claim is countable.
-
-**Expected behavior**
-
-Benchmark work should advance through compact lifecycle gates instead of raw
-runner narratives. `process_started` alone is not case entry. Case entry starts
-at `job_root_materialized` or later. Budget/counting and candidate selection
-require compact result ingestion, claim boundary review, and learning-ledger
-state where applicable. Terminal failure markers can close out a launched
-attempt without making it a case attempt or benchmark-budget event.
-
-**Visual Model**
-
-```mermaid
-flowchart LR
-  P["preflight ready"] --> L["process started"]
-  L --> M{"job root / trial materialized?"}
-  M -->|"no"| B["not countable; materialization blocker"]
-  M -->|"failure marker"| F["terminal compact failure closeout"]
-  M -->|"yes"| R["compact result ingest"]
-  R --> C["claim / attribution review"]
-  C --> G{"learning ledger ready?"}
-  G -->|"no"| W["block budget count / candidate switch"]
-  G -->|"yes"| K["budget count allowed"]
-```
-
-**Bad smell**
-
-A runner PID, detached process, stale active job, or raw log tail is treated as
-evidence of a benchmark case attempt or score claim before the compact lifecycle
-state says it is countable.
-
-**Validation**
-
-- `docs/research/long-horizon-agent-benchmarks/benchmark-core-adapter-contract-v0.md`
-- `docs/research/long-horizon-agent-benchmarks/terminal-bench-runner-mode-contract-v0.md`
-- `examples/benchmark-lifecycle-state-smoke.py`
-- `examples/benchmark-core-adapter-contract-smoke.py`
-- `examples/terminal-bench-runner-mode-contract-smoke.py`
-
-## IP-016 Task Lease Claim
-
-**Trigger**
-
-- multiple agents, heartbeats, child workers, or frontstage channel views may
-  act on the same todo;
-- the selected work has a bounded `task_id`, owner, TTL, write scope, and
-  idempotency key;
-- the system needs to prevent duplicate work, duplicate spend, or overlapping
-  writes without moving truth into chat.
-
-**Expected behavior**
-
-A task claim should become `task_lease_v0`: an explicit, expiring claim over
-one bounded work item. Status and future channel projections may render the
-claim, but the lease remains a projection over the Goal Harness ledger and
-does not override `goal_boundary`, user gates, quota, or write-scope checks.
-
-When a lease is active and the selected action is inside its scope, the owner
-may proceed. When a competing worker sees an active overlapping lease, it must
-choose a non-overlapping fallback, wait, or surface a conflict. Expired leases
-need cleanup or renewal before they authorize continued work.
-
-**Visual Model**
-
-```mermaid
-flowchart TD
-  T["selected todo"] --> A{"active lease for task?"}
-  A -->|"no"| C["create lease with TTL, owner, scope, idempotency key"]
-  A -->|"yes same owner/scope"| R["renew or continue bounded work"]
-  A -->|"yes different owner or overlapping scope"| K["conflict: fallback, wait, or ask controller"]
-  C --> W{"write scope still allowed?"}
-  R --> W
-  W -->|"yes"| D["deliver, validate, append event"]
-  W -->|"no"| G["boundary repair or user/controller gate"]
-  D --> X["release/expire lease through ledger"]
-```
-
-**Bad smell**
-
-Two workers repeat the same task, double-spend quota, or write overlapping
-files because the only ownership signal was a chat message or dashboard label.
-
-**Validation**
-
-- `docs/frontstage-channel-lease-roadmap.md`
-- `docs/architecture.md` local server / daemon roadmap
-- future `task_lease_v0` status and conflict smoke.
-
-## IP-017 User Reward Lesson Promotion
+#### IP-017 User Reward Lesson Promotion
 
 **Trigger**
 
@@ -982,7 +602,444 @@ main blocker or keeps following a stale local-only benchmark staging todo.
   explicit operating lessons are projected into `recommended_action`,
   active `Agent Todo`, or a state-projection repair warning.
 
-## IP-018 Plan To Todo Writeback
+#### IP-009 Active User Assistance
+
+**Trigger**
+
+- the experiment or product lane explicitly enables active user assistance;
+- an intervention budget/frequency policy exists;
+- hidden tests, reward/pass/fail, expected solutions, and credentials remain
+  hidden from the worker.
+
+**Expected behavior**
+
+The assistant or user simulator may provide bounded help through an audited
+channel. Results must be labeled as assisted and must not be merged into
+official autonomous score claims.
+
+**Visual Model**
+
+```mermaid
+sequenceDiagram
+  participant Sim as User simulator
+  participant GH as Goal Harness
+  participant Agent as Agent
+  Sim->>GH: Public-safe intervention within budget
+  GH->>Agent: Audited assistance channel
+  Agent->>GH: Assisted result evidence
+  GH->>GH: Label assisted and keep official score separate
+```
+
+**Bad smell**
+
+The system calls a run "Goal Harness uplift" when the treatment secretly saw
+reward signals, oracle information, or unbounded human hints.
+
+**Validation**
+
+- `examples/worker-bridge-active-user-after-start-observation-smoke.py`
+- `examples/worker-bridge-install-contract-smoke.py`
+- benchmark active-user protocol docs.
+
+### State And Boundary
+
+#### IP-005 State Projection Gap
+
+**Trigger**
+
+- quota says work is eligible or `must_attempt=true`;
+- `agent_todo_summary.open_count=0` and `user_todo_summary.open_count=0`;
+- `Next Action`, handoff prose, or recent run history still contains
+  actionable work.
+- compatibility lint sees explicit user-wait prose in `Next Action`, but no
+  structured `User Todo` or `interaction_contract.user_channel` gate exists.
+
+**Expected behavior**
+
+The next step should become replan / todo expansion / blocker writeback rather
+than normal delivery. Machine projection must be repaired before the controller
+pretends there is no work.
+
+When structured fields are present, they are authoritative over Markdown lint.
+If `interaction_contract.user_channel.action_required=false`,
+`user_todo_summary.open_count=0`, and an executable agent todo exists, the
+controller should continue bounded agent work instead of asking the agent to
+report "具体 user todo 未投影". Conversely, if a real owner/user gate exists, it
+must be represented as a concrete user todo or scoped decision rather than only
+as prose in `Next Action`.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  E["eligible or must_attempt"] --> O{"open user/agent todos?"}
+  O -->|"yes"| D["normal lane selection"]
+  O -->|"no"| P{"actionable Next Action or handoff prose?"}
+  P -->|"yes"| R["replan / todo expansion / blocker writeback"]
+  P -->|"no"| M["monitor or quiet no-op"]
+```
+
+**Bad smell**
+
+Humans can see a next action in prose, but the machine projection sees no open
+todo and the automation drifts into monitor-only no-ops.
+
+**Validation**
+
+- `examples/state-projection-gap-smoke.py`
+- `docs/project-agent-todo-contract.md`
+
+#### IP-006 Checkpointed Scope Mismatch
+
+**Trigger**
+
+- the selected todo or `recommended_action` requires writing a scope;
+- `goal_boundary.write_scope` does not include that scope;
+- a historical owner decision may exist, but it is not projected into the
+  current boundary contract.
+
+**Expected behavior**
+
+Goal Harness should return boundary projection repair or a concrete
+user/controller gate. The agent should not execute the write, and should not
+spend turns on repo-only handoff if the real blocker is missing scope
+projection.
+
+Only structured checkpointed authority can extend the runtime boundary. A
+historical approval written in prose is not enough. The registry may carry
+`coordination.checkpointed_boundary_authority[]` entries with:
+
+- `schema_version=checkpointed_boundary_authority_v0`;
+- `write_scope`;
+- `source` or equivalent public-safe provenance;
+- `recorded_at`;
+- optional `expires_at`;
+- `decision=approve` and active status.
+
+Fresh approved entries are compiled into `goal_boundary.write_scope` and
+exposed under `goal_boundary.checkpointed_boundary_authority`. Expired,
+rejected, missing-provenance, or missing-timestamp entries remain visible only
+as diagnostics; they do not authorize writes.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  A["selected action"] --> S{"requires write scope?"}
+  S -->|"no"| E["execute if otherwise safe"]
+  S -->|"yes"| C{"fresh checkpointed authority?"}
+  C -->|"yes"| P["compile authority into goal_boundary.write_scope"]
+  C -->|"no"| B{"scope already in explicit write_scope?"}
+  P --> B
+  B -->|"yes"| E
+  B -->|"no"| R["boundary projection repair or user/controller gate"]
+```
+
+**Bad smell**
+
+The control plane remembers that a user once approved a path, but the current
+quota boundary blocks it, so agents loop on small handoffs instead of repairing
+the checkpointed decision.
+
+**Validation**
+
+- `examples/quota-action-scope-guard-smoke.py`;
+- `examples/configure-goal-smoke.py`;
+- `docs/state-interaction-model.md` checkpointed decision sections.
+
+#### IP-011 Authority Material Intake
+
+**Trigger**
+
+- a worker discovers or receives a durable design doc, research memo, owner
+  packet, migration report, benchmark paper, external registry, or other source
+  that future agents may need;
+- the target project and `goal_id` are known;
+- the material can be represented as public-safe metadata without storing raw
+  URLs, document ids, local paths, source bodies, comments, credentials, or
+  private logs.
+
+**Expected behavior**
+
+The agent should first identify the owning project, then register a compact
+source contract in that project's authority surface. If the project has a
+tracked `docs/meta/DOC_REGISTRY.yaml`, update that authority map first. If it
+does not, use the project-local `.goal-harness/registry.json` through
+`authority_registry.topic_authority` and `authority_registry.project_materials`.
+This distinction is a storage/publication boundary, not two competing authority
+systems: tracked `DOC_REGISTRY` files are project assets for review, while the
+ignored `authority_registry` fallback is Goal Harness control-plane state.
+
+The stored material should answer what it is, how fresh it is, which topic it
+governs, whether owner review or read access is needed, and how conflicts are
+resolved. It should not read or summarize the material body as part of the
+registration step.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  M["durable material discovered"] --> P{"target project and goal known?"}
+  P -->|"no"| B["write blocker or ask owner"]
+  P -->|"yes"| R{"public-safe source contract possible?"}
+  R -->|"no"| B
+  R -->|"yes"| D{"tracked DOC_REGISTRY exists?"}
+  D -->|"yes"| Y["update tracked project DOC_REGISTRY topic/source"]
+  D -->|"no"| L["write ignored project-local authority_registry fallback"]
+  Y --> C["register redacted authority source for harness/status sync"]
+  L --> C
+  C --> S["sync compact summary / refresh status"]
+```
+
+**Bad smell**
+
+An agent remembers an important article or design only in chat, or registers it
+into the meta controller because that is the current repo, even though the
+material belongs to another connected project.
+
+**Validation**
+
+- `docs/authority-source-registration.md`
+- `examples/register-authority-source-smoke.py`
+- `examples/import-doc-registry-authority-smoke.py`
+- `examples/platform-migration-material-registry-smoke.py`
+
+#### IP-016 Task Lease Claim
+
+**Trigger**
+
+- multiple agents, heartbeats, child workers, or frontstage channel views may
+  act on the same todo;
+- the selected work has a bounded `task_id`, owner, TTL, write scope, and
+  idempotency key;
+- the system needs to prevent duplicate work, duplicate spend, or overlapping
+  writes without moving truth into chat.
+
+**Expected behavior**
+
+A task claim should become `task_lease_v0`: an explicit, expiring claim over
+one bounded work item. Status and future channel projections may render the
+claim, but the lease remains a projection over the Goal Harness ledger and
+does not override `goal_boundary`, user gates, quota, or write-scope checks.
+
+When a lease is active and the selected action is inside its scope, the owner
+may proceed. When a competing worker sees an active overlapping lease, it must
+choose a non-overlapping fallback, wait, or surface a conflict. Expired leases
+need cleanup or renewal before they authorize continued work.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  T["selected todo"] --> A{"active lease for task?"}
+  A -->|"no"| C["create lease with TTL, owner, scope, idempotency key"]
+  A -->|"yes same owner/scope"| R["renew or continue bounded work"]
+  A -->|"yes different owner or overlapping scope"| K["conflict: fallback, wait, or ask controller"]
+  C --> W{"write scope still allowed?"}
+  R --> W
+  W -->|"yes"| D["deliver, validate, append event"]
+  W -->|"no"| G["boundary repair or user/controller gate"]
+  D --> X["release/expire lease through ledger"]
+```
+
+**Bad smell**
+
+Two workers repeat the same task, double-spend quota, or write overlapping
+files because the only ownership signal was a chat message or dashboard label.
+
+**Validation**
+
+- `docs/frontstage-channel-lease-roadmap.md`
+- `docs/architecture.md` local server / daemon roadmap
+- future `task_lease_v0` status and conflict smoke.
+
+### Evidence Lifecycle
+
+#### IP-012 External Evidence Observation
+
+**Trigger**
+
+- `waiting_on=external_evidence`, a launched external worker is being polled, or
+  `interaction_contract.mode=external_evidence_observation`;
+- the selected action is evidence observation, compact result ingest, or compact
+  blocker writeback;
+- benchmark/model/Docker/cloud execution is not explicitly authorized by the
+  current guard.
+
+**Expected behavior**
+
+The agent must distinguish observing an external handle from launching new
+external work. If a compact handle exists, it may poll or ingest compact
+public-safe result files. If the required handle is missing, the correct action
+is a compact blocker or projection repair, not a quiet no-op. Benchmark
+execution, model calls, Docker, cloud jobs, uploads, and leaderboard paths stay
+blocked unless the guard explicitly selects that work.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  E["external evidence mode"] --> H{"observable handle present?"}
+  H -->|"no"| B["write compact blocker / repair projection"]
+  H -->|"yes"| P{"compact result or failure marker present?"}
+  P -->|"no"| O["bounded poll; no spend if unchanged"]
+  P -->|"yes"| I["ingest compact result or blocker"]
+  I --> V["validate boundary and write event"]
+  V --> N["next guard decision"]
+```
+
+**Bad smell**
+
+The heartbeat treats external-evidence waiting as a harmless quiet skip even
+though the guard requires an observable handle, or it launches a benchmark run
+from a meta/controller poll that was only authorized to observe.
+
+**Validation**
+
+- `regression/external-evidence-observation-real-codex.py`
+- `examples/benchmark-lifecycle-state-smoke.py`
+- `docs/state-interaction-model.md`
+
+#### IP-015 Benchmark Lifecycle Countability
+
+**Trigger**
+
+- a benchmark adapter, runner wrapper, or reducer observes preflight, launch,
+  materialization, compact result, comparison, claim review, or learning-ledger
+  evidence;
+- a controller is deciding whether a process launch, case attempt, score,
+  budget spend, rerun, or public claim is countable.
+
+**Expected behavior**
+
+Benchmark work should advance through compact lifecycle gates instead of raw
+runner narratives. `process_started` alone is not case entry. Case entry starts
+at `job_root_materialized` or later. Budget/counting and candidate selection
+require compact result ingestion, claim boundary review, and learning-ledger
+state where applicable. Terminal failure markers can close out a launched
+attempt without making it a case attempt or benchmark-budget event.
+
+**Visual Model**
+
+```mermaid
+flowchart LR
+  P["preflight ready"] --> L["process started"]
+  L --> M{"job root / trial materialized?"}
+  M -->|"no"| B["not countable; materialization blocker"]
+  M -->|"failure marker"| F["terminal compact failure closeout"]
+  M -->|"yes"| R["compact result ingest"]
+  R --> C["claim / attribution review"]
+  C --> G{"learning ledger ready?"}
+  G -->|"no"| W["block budget count / candidate switch"]
+  G -->|"yes"| K["budget count allowed"]
+```
+
+**Bad smell**
+
+A runner PID, detached process, stale active job, or raw log tail is treated as
+evidence of a benchmark case attempt or score claim before the compact lifecycle
+state says it is countable.
+
+**Validation**
+
+- `docs/research/long-horizon-agent-benchmarks/benchmark-core-adapter-contract-v0.md`
+- `docs/research/long-horizon-agent-benchmarks/terminal-bench-runner-mode-contract-v0.md`
+- `examples/benchmark-lifecycle-state-smoke.py`
+- `examples/benchmark-core-adapter-contract-smoke.py`
+- `examples/terminal-bench-runner-mode-contract-smoke.py`
+
+### Planning Governance
+
+#### IP-013 Autonomous Replan Vs Advisory Dreaming
+
+**Trigger**
+
+- no-progress streaks, repeated action loops, phase transitions, or periodic
+  review thresholds make a blocking `autonomous_replan_obligation_v0` visible
+  in active state, status, quota, or run history; or
+- a background planning lane surfaces `dreaming_proposal_v0` /
+  `server_managed_planning_contract_v0` as advisory context.
+
+**Expected behavior**
+
+An autonomous replan obligation is executable repair work: split, add, retire,
+or re-rank todos so the next delivery segment can advance. A dreaming proposal
+is advisory until promoted by an operator/controller decision and a normal
+quota/boundary check. Dreaming proposals may be displayed alongside a blocking
+replan obligation, but they stay a side lane: they can inform review or repair,
+not enter promotion/execution until the blocking replan obligation is absent or
+resolved. The two lanes must not collapse into each other.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  S["status / run history"] --> R{"blocking replan obligation visible?"}
+  S --> D{"dreaming proposal present?"}
+  D -->|"yes"| V["display advisory dreaming side lane"]
+  D -->|"no"| Z["no dreaming side lane"]
+  R -->|"yes"| A["execute bounded replan repair"]
+  A --> T["update todos / guidance"]
+  T --> Q["rerun quota guard"]
+  V -. "may inform repair; no delivery spend while blocked" .-> A
+  R -->|"no"| G{"dreaming proposal eligible for promotion?"}
+  G -->|"yes"| U["ask/promote through user or controller gate"]
+  U --> P{"promoted and boundary approved?"}
+  P -->|"yes"| Q
+  P -->|"no"| X["proposal remains non-executable"]
+  G -->|"no"| N["normal selected interaction mode"]
+```
+
+**Bad smell**
+
+A proposal from the dreaming/planning lane carries an `agent_command` or spends
+delivery quota before promotion. The opposite failure is also costly: repeated
+no-progress evidence is treated as optional brainstorming instead of a required
+state repair.
+
+**Validation**
+
+- `examples/autonomous-replan-obligation-smoke.py`
+- `regression/autonomous-replan-vs-dreaming-contract.py`
+
+#### IP-010 Cadence Widening
+
+**Trigger**
+
+- recent eligible turns have a small-step streak;
+- delivery repeatedly lands as `single_surface`, status-only, or shallow docs
+  without a coherent artifact;
+- no safety boundary prevents a larger segment.
+
+**Expected behavior**
+
+The controller widens the next eligible turn according to the configured
+cadence preset. For the default `long` preset, a turn should usually include an
+artifact, focused validation, and state writeback.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  R["recent turns"] --> S{"small-step streak >= threshold?"}
+  S -->|"no"| C["keep current cadence"]
+  S -->|"yes"| B{"safe to widen?"}
+  B -->|"no"| G["ask gate or write blocker"]
+  B -->|"yes"| W["widen next segment by preset"]
+  W --> D["artifact + validation + writeback"]
+```
+
+**Bad smell**
+
+The agent's native long-task ability is degraded because the control plane keeps
+asking it to do tiny heartbeat-shaped steps.
+
+**Validation**
+
+- `docs/long-task-cadence-policy.md`
+- future status/quota preset projection smoke.
+
+#### IP-018 Plan To Todo Writeback
 
 **Trigger**
 
