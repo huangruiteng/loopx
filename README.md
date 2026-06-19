@@ -38,18 +38,7 @@ human-in-the-loop control surface: keep human judgment at high-value decision
 points, keep safe fallback work moving when one lane is gated, and stop compute
 spend when a turn cannot produce a verified transition.
 
-```mermaid
-flowchart LR
-  U["Human decision"] --> GH["Shared goal state"]
-  P["Primary agent"] --> GH
-  S["Side agent"] --> GH
-  GH --> T["Claimed todos"]
-  GH --> H["Run history and evidence"]
-  GH --> Q["Quota guard"]
-  T --> A["Next bounded action"]
-  Q --> A
-  A --> GH
-```
+![Goal Harness control-plane board](docs/assets/control-plane-board.svg)
 
 ## See It In Action
 

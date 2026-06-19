@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Goal Harness control-plane board</title>
+  <desc id="desc">A public-safe synthetic board showing a user gate, shared goal state, claimed todo, safe fallback, run history, quota guard, and evidence writeback.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2 L10 6 L2 10 Z" fill="#475569" />
+    </marker>
+    <style>
+      .label { font: 600 18px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
+      .body { font: 500 15px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #374151; }
+      .small { font: 500 13px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #4b5563; }
+      .tiny { font: 500 12px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #64748b; }
+      .box { stroke-width: 2; rx: 14; }
+      .line { stroke: #475569; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .softline { stroke: #94a3b8; stroke-width: 2; fill: none; marker-end: url(#arrow); stroke-dasharray: 7 7; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="620" fill="#fbfbf8" />
+  <text x="60" y="58" class="label" style="font-size:28px">Gate-aware human-in-the-loop control plane</text>
+  <text x="60" y="88" class="body">The required human decision is explicit; safe side work can still continue with evidence.</text>
+
+  <rect x="60" y="130" width="255" height="128" fill="#fff7ed" stroke="#f59e0b" class="box" />
+  <text x="84" y="166" class="label">User gate</text>
+  <text x="84" y="195" class="body">Needs owner judgment</text>
+  <text x="84" y="221" class="small">Status: waiting on user</text>
+
+  <rect x="60" y="342" width="255" height="128" fill="#f8fafc" stroke="#64748b" class="box" />
+  <text x="84" y="378" class="label">Primary agent</text>
+  <text x="84" y="407" class="body">Owns high-risk route</text>
+  <text x="84" y="433" class="small">Focus: benchmark lane</text>
+
+  <rect x="390" y="192" width="320" height="215" fill="#eff6ff" stroke="#2563eb" class="box" />
+  <text x="416" y="230" class="label">Shared goal state</text>
+  <text x="416" y="262" class="body">lifetime goal</text>
+  <text x="416" y="289" class="body">open user + agent todos</text>
+  <text x="416" y="316" class="body">scope and claim visibility</text>
+  <text x="416" y="343" class="body">latest validation / blocker</text>
+  <text x="416" y="370" class="body">public/private boundary</text>
+
+  <rect x="790" y="108" width="292" height="110" fill="#eef2ff" stroke="#6366f1" class="box" />
+  <text x="814" y="144" class="label">Quota guard</text>
+  <text x="814" y="173" class="body">should-run before work</text>
+  <text x="814" y="198" class="small">spend after validated writeback</text>
+
+  <rect x="790" y="266" width="292" height="110" fill="#ecfdf5" stroke="#10b981" class="box" />
+  <text x="814" y="302" class="label">Claimed todo</text>
+  <text x="814" y="331" class="body">claimed_by: side agent</text>
+  <text x="814" y="356" class="small">scope: productization docs</text>
+
+  <rect x="790" y="424" width="292" height="110" fill="#fff1f2" stroke="#e11d48" class="box" />
+  <text x="814" y="460" class="label">Run history</text>
+  <text x="814" y="489" class="body">evidence writeback</text>
+  <text x="814" y="514" class="small">blocker, validation, outcome</text>
+
+  <rect x="392" y="464" width="320" height="96" fill="#f0fdf4" stroke="#22c55e" class="box" />
+  <text x="416" y="500" class="label">Safe side path</text>
+  <text x="416" y="529" class="body">continues only when independent of the gate</text>
+
+  <path d="M315 194 C342 194 356 220 390 238" class="line" />
+  <path d="M315 406 C350 406 358 372 390 354" class="line" />
+  <path d="M710 245 C748 220 752 180 790 164" class="line" />
+  <path d="M710 318 C746 318 754 318 790 318" class="line" />
+  <path d="M710 378 C750 414 752 474 790 482" class="line" />
+  <path d="M552 407 L552 464" class="softline" />
+  <path d="M650 512 C714 512 735 494 790 486" class="line" />
+
+  <text x="345" y="176" class="tiny">gate stays visible</text>
+  <text x="724" y="248" class="tiny">bounded turn</text>
+  <text x="686" y="536" class="tiny">validated writeback</text>
+
+  <rect x="60" y="522" width="260" height="46" fill="#ffffff" stroke="#cbd5e1" rx="12" />
+  <text x="82" y="551" class="small">No bypass: gated route still waits</text>
+
+  <rect x="60" y="86" width="1070" height="1" fill="#e5e7eb" />
+</svg>

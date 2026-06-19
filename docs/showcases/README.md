@@ -17,6 +17,11 @@ The machine-readable catalog lives in
 [showcase-catalog.json](showcase-catalog.json). Public docs and future frontend
 surfaces should consume that file instead of scraping prose.
 
+The first static visual asset is the public-safe
+[control-plane board](../assets/control-plane-board.svg), which shows a user
+gate staying visible while a scoped side path continues through claimed todo,
+quota guard, run history, and evidence writeback.
+
 ## Current Cases
 
 | Case | Pattern | Status | Public Surface |
