@@ -393,8 +393,8 @@ function ShowcaseMotionBoard() {
     },
     {
       label: "agent lanes",
-      value: "always-on work",
-      helper: "safe side paths keep moving while gated work waits",
+      value: "day-night work",
+      helper: "safe side paths keep moving while gated decisions wait",
     },
     {
       label: "evidence loop",
@@ -409,13 +409,13 @@ function ShowcaseMotionBoard() {
   ];
 
   return (
-    <Panel icon={Activity} title="Showcase Motion">
+    <Panel icon={Activity} title="Async Work Loop">
       <div className="space-y-4 p-4" data-testid="frontstage-showcase-motion">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-slate-950">Case-driven motion board</h3>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-              Public cases become narrative lanes: gate, coordination, evidence, and outcome stay visible while the live status feed remains separate.
+              Public cases become motion: human gates, agent lanes, evidence writeback, and recoverable next turns.
             </p>
           </div>
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600">
@@ -438,7 +438,7 @@ function ShowcaseMotionBoard() {
                 Asynchronous agent rhythm
               </div>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-100">
-                Always-on agent teams can keep safe work moving, while human judgment remains a visible control-plane gate.
+                Agent teams work across turns and off-hours; human judgment stays in the control plane.
               </p>
             </div>
             <Badge variant="neutral">case-first</Badge>
@@ -719,7 +719,7 @@ function ShowcaseStateFlowHero() {
             State flow control plane
           </div>
           <p className="mt-2 max-w-2xl text-xl font-semibold leading-8 text-white">
-            The work moves. Judgment stays visible.
+            Work keeps moving. Judgment stays in charge.
           </p>
         </div>
         <Badge variant="neutral">showcase-first</Badge>
@@ -804,7 +804,7 @@ function ShowcaseKineticCaseStrip() {
             Multi-agent work rhythm
           </div>
           <p className="mt-1 text-sm font-semibold leading-6 text-white">
-            Day-and-night agent lanes, governed by one human control plane.
+            Agent lanes run across turns; the human control plane decides what ships.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -878,10 +878,10 @@ function FrontstageRoute({
   const heroTitle = isOpsMode ? projection.display_name : "Goal Harness Showcase Frontstage";
   const heroSubtitle = isOpsMode
     ? "Always-on agent operations, with human judgment kept in the control plane."
-    : "Always-on agent teams, governed by human judgment.";
+    : "Async agent teams, governed by human judgment.";
   const heroBody = isOpsMode
     ? projection.next_action
-    : "Explore public-safe cases rendered from the showcase catalog: gated decisions stay explicit, safe side paths keep moving, and evidence remains reviewable.";
+    : "Public cases show the operating model: gates stay explicit, safe lanes keep moving, and evidence makes every handoff recoverable.";
   const heroStats = isOpsMode
     ? [
         { label: "open user todos", value: String(openUserTodos) },
