@@ -46,6 +46,10 @@ live registry files or local status exports.
 Once repository Pages is enabled for GitHub Actions, the same generated bundle
 is available as the
 [hosted frontstage](https://huangruiteng.github.io/goal-harness/frontstage/).
+That hosted route is intentionally case-first. It should help a new user or
+developer understand the showcased patterns before reading CLI output: public
+cases, efficiency evidence, and the public boundary come from this directory;
+live local `statusUrl` feeds belong only to explicit ops-mode inspection.
 
 ## Current Cases
 

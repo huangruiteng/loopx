@@ -65,6 +65,9 @@ public-safe, reproducible where possible, and ready for future frontend
 surfaces.
 The hosted frontstage path publishes only the generated public-safe share bundle,
 not live registry state or local status exports.
+It opens in showcase-first mode: public case cards, narrative motion, and the
+public/private boundary render from `docs/showcases/` before any ops-style live
+projection is available.
 
 ## Why It Matters
 
