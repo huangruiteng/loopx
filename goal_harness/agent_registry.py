@@ -59,6 +59,32 @@ def primary_agent_id_for_goal(goal: dict[str, Any] | None) -> str | None:
     return None
 
 
+def agent_profile_for_goal(goal: dict[str, Any] | None, agent_id: str | None) -> dict[str, Any] | None:
+    normalized_agent_id = normalize_todo_claimed_by(agent_id)
+    if not isinstance(goal, dict) or not normalized_agent_id:
+        return None
+    coordination = goal.get("coordination")
+    if not isinstance(coordination, dict):
+        return None
+    profiles = coordination.get("agent_profiles")
+    raw_profile: Any = None
+    if isinstance(profiles, dict):
+        raw_profile = profiles.get(normalized_agent_id)
+    elif isinstance(profiles, list):
+        for item in profiles:
+            if not isinstance(item, dict):
+                continue
+            item_id = normalize_todo_claimed_by(item.get("agent_id") or item.get("id") or item.get("name"))
+            if item_id == normalized_agent_id:
+                raw_profile = item
+                break
+    if not isinstance(raw_profile, dict):
+        return None
+    profile = dict(raw_profile)
+    profile["agent_id"] = normalized_agent_id
+    return profile
+
+
 def load_goal_from_registry(registry_path: Path, goal_id: str) -> dict[str, Any] | None:
     if not registry_path.exists():
         return None
@@ -75,6 +101,10 @@ def registered_agent_ids_from_registry(registry_path: Path, goal_id: str) -> lis
 
 def primary_agent_id_from_registry(registry_path: Path, goal_id: str) -> str | None:
     return primary_agent_id_for_goal(load_goal_from_registry(registry_path, goal_id))
+
+
+def agent_profile_from_registry(registry_path: Path, goal_id: str, agent_id: str | None) -> dict[str, Any] | None:
+    return agent_profile_for_goal(load_goal_from_registry(registry_path, goal_id), agent_id)
 
 
 def require_registered_agent_id(

@@ -19,6 +19,7 @@ from goal_harness.heartbeat_prompt import INTERFACE_BUDGET_CHARS, build_heartbea
 
 DOC = REPO_ROOT / "docs" / "heartbeat-automation-prompt.md"
 README = REPO_ROOT / "README.md"
+GETTING_STARTED = REPO_ROOT / "docs" / "guides" / "getting-started.md"
 INTEGRATION_DOC = REPO_ROOT / "docs" / "integration.md"
 PROJECT_SKILL = REPO_ROOT / "skills" / "goal-harness-project" / "SKILL.md"
 GOAL_ID = "public-heartbeat-goal"
@@ -113,6 +114,20 @@ def main() -> int:
         registered_agents=["codex-main-control", "codex-side-bypass"],
         primary_agent="codex-main-control",
     )
+    profile_scoped_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=ACTIVE_STATE,
+        thin=True,
+        agent_id="codex-side-bypass",
+        agent_profile={
+            "schema_version": "agent_profile_v0",
+            "agent_id": "codex-side-bypass",
+            "scope_summary": "productization showcase docs lane",
+            "private_note": "must stay out of heartbeat payload",
+        },
+        registered_agents=["codex-main-control", "codex-side-bypass"],
+        primary_agent="codex-main-control",
+    )
     missing_agent_id = None
     try:
         build_heartbeat_prompt(
@@ -161,6 +176,7 @@ def main() -> int:
     assert_interface_budget_payload("compact", scoped_payload)
     assert_interface_budget_payload("compact", primary_scoped_payload)
     assert_interface_budget_payload("thin", thin_scoped_payload)
+    assert_interface_budget_payload("thin", profile_scoped_payload)
     assert_no_project_specific_prompt_leaks("full", str(payload["task_body"]))
     assert_no_project_specific_prompt_leaks("compact", str(compact_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("brief", str(brief_payload["task_body"]))
@@ -250,6 +266,17 @@ def main() -> int:
     assert primary_scoped_payload["quota_spend_command"].endswith(
         "quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute --agent-id codex-main-control"
     ), primary_scoped_payload
+    assert profile_scoped_payload["agent_scopes"] == ["productization showcase docs lane"], profile_scoped_payload
+    assert profile_scoped_payload["agent_scope_source"] == "agent_profile_v0", profile_scoped_payload
+    assert "private_note" not in profile_scoped_payload["agent_profile"], profile_scoped_payload
+    assert profile_scoped_payload["thin_prompt_command"] == (
+        "goal-harness heartbeat-prompt --thin --goal-id public-heartbeat-goal "
+        "--active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md --agent-id codex-side-bypass"
+    ), profile_scoped_payload
+    assert "--agent-scope" not in profile_scoped_payload["thin_prompt_command"], profile_scoped_payload
+    assert "productization showcase docs lane" in normalized(str(profile_scoped_payload["task_body"])), (
+        profile_scoped_payload
+    )
     for phrase in (
         "Agent identity and scope",
         "role: side-agent",
@@ -616,17 +643,21 @@ def main() -> int:
         ),
     )
 
-    assert "docs/heartbeat-automation-prompt.md" in readme, readme
-    assert "goal-harness heartbeat-prompt" in readme, readme
+    getting_started = GETTING_STARTED.read_text(encoding="utf-8")
+    assert "docs/guides/getting-started.md" in readme, readme
     assert "goal-harness heartbeat-prompt --thin" in readme, readme
-    assert "goal-harness-canary" in readme, readme
-    assert "release snapshot" in readme, readme
-    assert "execution_obligation" in readme, readme
-    assert "safe-bypass or self-repair hints" in readme, readme
+    assert "goal-harness quota spend-slot" in readme, readme
+    assert "Generate a guarded Codex App heartbeat body" in getting_started, getting_started
+    assert "goal-harness heartbeat-prompt --thin" in getting_started, getting_started
+    assert "goal-harness heartbeat-prompt --compact" in getting_started, getting_started
+    assert "goal-harness-canary" in getting_started, getting_started
+    assert "release snapshot" in getting_started, getting_started
+    assert "execution_obligation" in getting_started, getting_started
+    assert "safe-bypass or self-repair hints" in getting_started, getting_started
+    assert "../heartbeat-automation-prompt.md" in getting_started, getting_started
     assert "execution_obligation" in doc, doc
     assert "must_attempt_work=true" in doc, doc
     assert "not an execution gate" in normalized(doc), doc
-    assert "Generate a guarded Codex App heartbeat body" in readme, readme
     assert "goal-harness heartbeat-prompt" in doc, doc
     assert "--compact" in doc, doc
     assert "--brief" in doc, doc
@@ -828,6 +859,12 @@ def main() -> int:
                             "coordination": {
                                 "registered_agents": ["codex-main-control", "codex-side-bypass"],
                                 "primary_agent": "codex-main-control",
+                                "agent_profiles": {
+                                    "codex-side-bypass": {
+                                        "schema_version": "agent_profile_v0",
+                                        "scope_summary": "productization showcase docs lane",
+                                    }
+                                },
                             },
                         }
                     ]
@@ -999,6 +1036,43 @@ def main() -> int:
             "codex-side-bypass",
         ], cli_scoped_payload
         assert "todo claim --goal-id public-heartbeat-goal" in cli_scoped_payload["task_body"], cli_scoped_payload
+
+        cli_profile_scoped_json = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "goal_harness.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(registry_path),
+                "heartbeat-prompt",
+                "--goal-id",
+                GOAL_ID,
+                "--thin",
+                "--agent-id",
+                "codex-side-bypass",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        cli_profile_scoped_payload = json.loads(cli_profile_scoped_json)
+        assert cli_profile_scoped_payload["agent_id"] == "codex-side-bypass", cli_profile_scoped_payload
+        assert cli_profile_scoped_payload["agent_scopes"] == ["productization showcase docs lane"], (
+            cli_profile_scoped_payload
+        )
+        assert cli_profile_scoped_payload["agent_scope_source"] == "agent_profile_v0", cli_profile_scoped_payload
+        assert cli_profile_scoped_payload["thin_prompt_command"] == (
+            "goal-harness heartbeat-prompt --thin --goal-id public-heartbeat-goal --agent-id codex-side-bypass"
+        ), cli_profile_scoped_payload
+        assert "--agent-scope" not in cli_profile_scoped_payload["thin_prompt_command"], (
+            cli_profile_scoped_payload
+        )
+        assert "productization showcase docs lane" in normalized(cli_profile_scoped_payload["task_body"]), (
+            cli_profile_scoped_payload
+        )
 
         cli_unknown_scoped = subprocess.run(
             [
