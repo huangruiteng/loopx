@@ -38,6 +38,7 @@ Use these catalog fields directly:
 | `frontend_card.primary_metric_hint` | Lightweight signal, not a hard claim. |
 | `frontend_card.badges` | Compact chips. |
 | `frontend_card.story_beats` | Case detail timeline. |
+| `workload_signal.efficiency_model` | Optional evidence panel for conservative baseline-vs-actual efficiency modeling. |
 
 ## First Screen
 
@@ -78,6 +79,20 @@ Each case card should show:
 - user value;
 - evidence boundary badge;
 - demo command only when `demo_command` is present.
+
+When a case includes `workload_signal.efficiency_model`, render it as a
+separate evidence panel rather than burying it in prose. The panel should show:
+
+- public Git workload, such as commit count;
+- actual public evidence window;
+- conservative AI-coding-assisted baseline range;
+- single-engineer and small-team compression ranges;
+- claim boundary, especially whether the estimate is directional,
+  maturity-adjusted, and public-Git-only.
+
+Do not present this as a universal benchmark. It is a case-specific evidence
+model that helps readers understand why the self-iteration case is more than
+"an agent wrote files."
 
 The polished mock should also expose lightweight catalog controls:
 

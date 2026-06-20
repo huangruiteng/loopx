@@ -55,6 +55,10 @@ def main() -> int:
         'data-status-filter="all"',
         'data-case-search',
         'data-visible-count',
+        "Efficiency Evidence Model",
+        "Baseline vs actual public window",
+        "AI-assisted baseline",
+        "two-person lens",
         "docs/showcases/showcase-catalog.json",
         "control-plane-board.svg",
         str(catalog["schema_version"]),
@@ -85,6 +89,22 @@ def main() -> int:
         frontend = case["frontend_card"]
         for beat in frontend.get("story_beats", []):
             assert str(beat) in html, (case_id, beat)
+        workload = case.get("workload_signal")
+        if isinstance(workload, dict) and isinstance(workload.get("efficiency_model"), dict):
+            model = workload["efficiency_model"]
+            whole = workload.get("whole_repository")
+            public_window = workload.get("public_window")
+            assert isinstance(whole, dict), case_id
+            assert isinstance(public_window, dict), case_id
+            assert str(whole["commit_count"]) in html, case_id
+            assert f'{public_window["calendar_days"]}d' in html, case_id
+            baseline = model["estimated_developer_days"]
+            single = model["single_engineer_calendar_compression"]
+            team = model["two_person_team_calendar_compression"]
+            assert f'{baseline["low"]}-{baseline["high"]}d' in html, case_id
+            assert f'{single["low"]}-{single["high"]}x' in html, case_id
+            assert f'{team["low"]}-{team["high"]}x' in html, case_id
+            assert str(model["claim_boundary"]) in html, case_id
 
     print("showcase-frontstage-prototype-smoke ok")
     return 0

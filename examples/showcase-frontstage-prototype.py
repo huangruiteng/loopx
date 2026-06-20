@@ -38,8 +38,62 @@ def render_badges(values: list[Any]) -> str:
     return "".join(f"<span>{esc(value)}</span>" for value in values)
 
 
+def format_range(value: dict[str, Any] | None, *, suffix: str = "") -> str:
+    if not isinstance(value, dict):
+        return ""
+    low = value.get("low")
+    high = value.get("high")
+    if low is None or high is None:
+        return ""
+    if isinstance(low, float) or isinstance(high, float):
+        return f"{esc(f'{float(low):.1f}')}-{esc(f'{float(high):.1f}')}{suffix}"
+    return f"{esc(low)}-{esc(high)}{suffix}"
+
+
+def render_efficiency_panel(case: dict[str, Any]) -> str:
+    workload = case.get("workload_signal")
+    if not isinstance(workload, dict):
+        return ""
+    model = workload.get("efficiency_model")
+    if not isinstance(model, dict):
+        return ""
+    whole = workload.get("whole_repository") if isinstance(workload.get("whole_repository"), dict) else {}
+    public_window = workload.get("public_window") if isinstance(workload.get("public_window"), dict) else {}
+    baseline = model.get("estimated_developer_days")
+    single = model.get("single_engineer_calendar_compression")
+    team = model.get("two_person_team_calendar_compression")
+    baseline_label = format_range(baseline, suffix="d")
+    single_label = format_range(single, suffix="x")
+    team_label = format_range(team, suffix="x")
+    if not baseline_label or not single_label:
+        return ""
+    calendar_days = public_window.get("calendar_days")
+    commit_count = whole.get("commit_count")
+    claim_boundary = str(model.get("claim_boundary") or "directional public evidence")
+    return f"""
+        <section class="efficiency-panel" aria-label="Efficiency evidence model">
+          <div class="efficiency-panel__header">
+            <div>
+              <span>Efficiency Evidence Model</span>
+              <h4>Baseline vs actual public window</h4>
+            </div>
+            <strong>{single_label}</strong>
+          </div>
+          <div class="efficiency-grid">
+            <div><strong>{esc(commit_count or "")}</strong><span>public commits</span></div>
+            <div><strong>{esc(calendar_days or "")}d</strong><span>actual Git window</span></div>
+            <div><strong>{baseline_label}</strong><span>AI-assisted baseline</span></div>
+            <div><strong>{team_label}</strong><span>two-person lens</span></div>
+          </div>
+          <p>{esc(claim_boundary)}</p>
+        </section>
+    """
+
+
 def search_blob(case: dict[str, Any]) -> str:
     frontend = case.get("frontend_card") if isinstance(case.get("frontend_card"), dict) else {}
+    workload = case.get("workload_signal") if isinstance(case.get("workload_signal"), dict) else {}
+    efficiency = workload.get("efficiency_model") if isinstance(workload.get("efficiency_model"), dict) else {}
     values: list[Any] = [
         case.get("id"),
         case.get("date"),
@@ -49,6 +103,9 @@ def search_blob(case: dict[str, Any]) -> str:
         case.get("status"),
         case.get("user_value"),
         case.get("evidence_boundary"),
+        frontend.get("primary_metric_hint"),
+        efficiency.get("baseline"),
+        efficiency.get("claim_boundary"),
     ]
     for key in ("audience", "pattern_tags", "goal_harness_behavior"):
         field = case.get(key)
@@ -111,6 +168,7 @@ def render_case(case: dict[str, Any], *, output: Path | None) -> str:
     )
     story = "".join(f"<li>{esc(beat)}</li>" for beat in story_beats)
     behavior_items = "".join(f"<li>{esc(item)}</li>" for item in behavior)
+    efficiency_panel = render_efficiency_panel(case)
 
     return f"""
       <article class="case-card"
@@ -125,6 +183,7 @@ def render_case(case: dict[str, Any], *, output: Path | None) -> str:
         <h3>{esc(case.get("title") or "")}</h3>
         <p class="headline">{esc(case.get("headline") or "")}</p>
         <div class="badges">{render_badges(badges)}</div>
+        {efficiency_panel}
         <dl>
           <div><dt>Pattern</dt><dd>{render_badges(tags)}</dd></div>
           <div><dt>User value</dt><dd>{esc(case.get("user_value") or "")}</dd></div>
@@ -237,6 +296,16 @@ def render(catalog: dict[str, Any], *, output: Path | None) -> str:
     .headline {{ color: var(--muted); margin: 0 0 14px; }}
     .badges, dd {{ display: flex; flex-wrap: wrap; gap: 6px; }}
     .badges span, dd span {{ border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; color: var(--muted); font-size: 12px; }}
+    .efficiency-panel {{ margin: 16px 0; border: 1px solid #b7e4d2; border-radius: 8px; background: #f0fbf6; padding: 14px; }}
+    .efficiency-panel__header {{ display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 12px; }}
+    .efficiency-panel__header span {{ color: var(--green); font-size: 12px; font-weight: 800; text-transform: uppercase; }}
+    .efficiency-panel__header h4 {{ margin: 3px 0 0; font-size: 15px; }}
+    .efficiency-panel__header strong {{ color: var(--green); font-size: 25px; line-height: 1; white-space: nowrap; }}
+    .efficiency-grid {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }}
+    .efficiency-grid div {{ min-width: 0; border: 1px solid #caeadc; border-radius: 8px; background: var(--paper); padding: 8px; }}
+    .efficiency-grid strong {{ display: block; font-size: 17px; overflow-wrap: anywhere; }}
+    .efficiency-grid span {{ color: var(--muted); font-size: 11px; }}
+    .efficiency-panel p {{ margin: 10px 0 0; color: var(--muted); font-size: 12px; }}
     dl {{ margin: 16px 0; display: grid; gap: 12px; }}
     dt {{ font-size: 12px; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 4px; }}
     dd {{ margin: 0; }}
@@ -251,6 +320,7 @@ def render(catalog: dict[str, Any], *, output: Path | None) -> str:
     @media (max-width: 840px) {{
       main {{ padding: 28px 16px 44px; }}
       .hero, .comparison, .control-row {{ grid-template-columns: 1fr; }}
+      .efficiency-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       h1 {{ font-size: 34px; }}
       .punchline {{ font-size: 20px; }}
     }}
