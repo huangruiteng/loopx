@@ -86,30 +86,6 @@ flowchart LR
 完整案例目录见 [docs/showcases/README.md](docs/showcases/README.md)。案例默认只保留
 public-safe 信息，不提交内部截图、私有链接、raw benchmark 日志或本地状态。
 
-## 用户群与反馈
-
-Goal Harness 还在早期，最需要真实长期 agent 任务里的反馈：控制面帮到了哪里、
-哪里太重、哪些 user gate / handoff / scope 仍然不够清楚。
-
-- 可复现 bug、安装问题、功能建议：请优先提
-  [GitHub Issue](https://github.com/huangruiteng/goal-harness/issues)。
-- 文档修正、showcase 补充、小型 public-safe 示例：欢迎直接开 PR。
-- 想快速交流、试用 onboarding、一起打磨 showcase：欢迎优先加入飞书用户群；
-  微信群作为备用入口，二维码可能过期，失效时请先走飞书或提 Issue 提醒更新。
-
-<table>
-  <tr>
-    <td align="center" width="240">
-      <img src="docs/assets/goal-harness-lark-user-group.png" alt="Goal Harness 飞书用户群二维码" width="200"><br>
-      飞书用户群
-    </td>
-    <td align="center" width="240">
-      <img src="docs/assets/goal-harness-wechat-user-group.png" alt="Goal Harness 微信用户群二维码" width="200"><br>
-      微信用户群，可能过期
-    </td>
-  </tr>
-</table>
-
 ## 适合什么场景
 
 Goal Harness 适合长期、多人、多 agent 或带边界的工作：
@@ -176,6 +152,30 @@ goal-harness diagnose
 goal-harness status
 goal-harness quota should-run --goal-id your-project-goal
 ```
+
+## 用户群与反馈
+
+Goal Harness 还在早期，最需要真实长期 agent 任务里的反馈：控制面帮到了哪里、
+哪里太重、哪些 user gate / handoff / scope 仍然不够清楚。
+
+- 可复现 bug、安装问题、功能建议：请优先提
+  [GitHub Issue](https://github.com/huangruiteng/goal-harness/issues)。
+- 文档修正、showcase 补充、小型 public-safe 示例：欢迎直接开 PR。
+- 想快速交流、试用 onboarding、一起打磨 showcase：欢迎优先加入飞书用户群；
+  微信群作为备用入口，二维码可能过期，失效时请先走飞书或提 Issue 提醒更新。
+
+<table>
+  <tr>
+    <td align="center" width="240">
+      <img src="docs/assets/goal-harness-lark-user-group.png" alt="Goal Harness 飞书用户群二维码" width="200"><br>
+      飞书用户群
+    </td>
+    <td align="center" width="240">
+      <img src="docs/assets/goal-harness-wechat-user-group.png" alt="Goal Harness 微信用户群二维码" width="200"><br>
+      微信用户群，可能过期
+    </td>
+  </tr>
+</table>
 
 ## 产品化方向
 
