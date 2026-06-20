@@ -369,6 +369,29 @@ function ShowcaseMotionBoard() {
     return null;
   }
 
+  const journeySegments = [
+    {
+      label: "human judgment",
+      value: "visible gates",
+      helper: "decisions stay explicit instead of disappearing inside chat logs",
+    },
+    {
+      label: "agent lanes",
+      value: "always-on work",
+      helper: "safe side paths keep moving while gated work waits",
+    },
+    {
+      label: "evidence loop",
+      value: `${countShowcaseStoryBeats()} story beats`,
+      helper: "each case records blocker, progress, validation, and outcome signals",
+    },
+    {
+      label: "public story",
+      value: `${frontstageShowcases.length} cases`,
+      helper: "the hosted surface renders public-safe showcase data, not local state",
+    },
+  ];
+
   return (
     <Panel icon={Activity} title="Showcase Motion">
       <div className="space-y-4 p-4" data-testid="frontstage-showcase-motion">
@@ -382,6 +405,42 @@ function ShowcaseMotionBoard() {
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600">
             <span className="text-slate-500">Case source</span>
             <span className="ml-2 text-slate-950">docs/showcases/showcase-catalog.json</span>
+          </div>
+        </div>
+        <div
+          className="overflow-hidden rounded-md border border-slate-800 bg-slate-950 p-3 text-white shadow-sm"
+          data-testid="frontstage-showcase-journey-rail"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-300">
+                Asynchronous agent rhythm
+              </div>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-100">
+                Always-on agent teams can keep safe work moving, while human judgment remains a visible control-plane gate.
+              </p>
+            </div>
+            <Badge variant="neutral">case-first</Badge>
+          </div>
+          <div className="mt-4 grid gap-2 lg:grid-cols-4">
+            {journeySegments.map((segment, index) => (
+              <div className="relative rounded-md border border-white/10 bg-white/5 px-3 py-3" key={segment.label}>
+                {index < journeySegments.length - 1 ? (
+                  <span className="absolute left-[calc(100%-6px)] top-6 hidden h-px w-5 bg-white/30 lg:block" />
+                ) : null}
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-30" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-300" />
+                  </span>
+                  <span className="text-[11px] font-semibold uppercase tracking-normal text-slate-300">
+                    {segment.label}
+                  </span>
+                </div>
+                <div className="mt-2 text-sm font-semibold leading-6 text-white">{segment.value}</div>
+                <p className="mt-1 text-xs leading-5 text-slate-300">{segment.helper}</p>
+              </div>
+            ))}
           </div>
         </div>
         <div className="grid gap-3 xl:grid-cols-4">

@@ -350,6 +350,8 @@ async function main() {
         "story beats",
         "showcase mode",
         "Showcase mode ignores statusUrl",
+        "ASYNCHRONOUS AGENT RHYTHM",
+        "Always-on agent teams can keep safe work moving",
         "SEARCH PUBLIC SHOWCASES",
         "Showing 4 of 4 public-safe cases",
         "Public Boundary",

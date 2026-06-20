@@ -89,8 +89,11 @@ includes(frontstageSource, "Showing {filteredCases.length} of {frontstageShowcas
 includes(frontstageSource, "No public showcase matched the current filters.", "showcase empty state");
 includes(frontstageSource, "frontstageShowcases", "catalog-driven showcase cases");
 includes(frontstageSource, 'data-testid="frontstage-showcase-motion"', "showcase motion panel");
+includes(frontstageSource, 'data-testid="frontstage-showcase-journey-rail"', "showcase journey rail");
 includes(frontstageSource, "Showcase Motion", "showcase motion copy");
 includes(frontstageSource, "Case-driven motion board", "case-driven motion board copy");
+includes(frontstageSource, "Asynchronous agent rhythm", "showcase asynchronous rhythm copy");
+includes(frontstageSource, "Always-on agent teams can keep safe work moving", "showcase always-on agent copy");
 includes(frontstageSource, "docs/showcases/showcase-catalog.json", "showcase catalog source copy");
 includes(frontstageSource, "Open case page", "case page outbound link");
 includes(frontstageSource, "github.com/huangruiteng/goal-harness/blob/main", "public GitHub case page links");
@@ -107,8 +110,10 @@ includes(catalogSource, '"2026-06-20-creator-operator-case-spec"', "creator oper
 
 const motionSource = sourceBetween(frontstageSource, "function ShowcaseMotionBoard", "function ShowcaseCasePackPanel", "showcase motion board");
 includes(motionSource, "frontstageShowcases", "motion board catalog source");
+includes(motionSource, "journeySegments", "motion board journey summary");
 includes(motionSource, "visual_metaphor", "motion board visual metaphor field");
 includes(motionSource, "story_beats", "motion board story beats field");
+includes(motionSource, "Always-on agent teams", "motion board always-on copy");
 excludes(motionSource, "projection", "motion board live projection dependency");
 excludes(motionSource, "payload", "motion board live payload dependency");
 
