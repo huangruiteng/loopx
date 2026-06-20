@@ -43,7 +43,18 @@ export const frontstageRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([dashboardRoute, frontstageRoute]);
 
-export const router = createRouter({ routeTree });
+function routerBasepathFromViteBase(baseUrl: string) {
+  if (!baseUrl || baseUrl === "/" || baseUrl === "./") {
+    return "/";
+  }
+  const withLeadingSlash = baseUrl.startsWith("/") ? baseUrl : `/${baseUrl}`;
+  return withLeadingSlash.replace(/\/+$/, "") || "/";
+}
+
+export const router = createRouter({
+  routeTree,
+  basepath: routerBasepathFromViteBase(import.meta.env.BASE_URL),
+});
 
 declare module "@tanstack/react-router" {
   interface Register {

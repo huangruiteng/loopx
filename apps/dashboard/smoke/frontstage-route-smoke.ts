@@ -26,6 +26,8 @@ const packageSource = readFileSync("package.json", "utf8");
 includes(routerSource, 'path: "/frontstage"', "frontstage route path");
 includes(routerSource, "component: FrontstagePage", "frontstage route component");
 includes(routerSource, "frontstageSearchSchema", "frontstage search schema");
+includes(routerSource, "basepath:", "router basepath option");
+includes(routerSource, "import.meta.env.BASE_URL", "Vite base URL router source");
 includes(packageSource, '"smoke:frontstage-browser"', "frontstage browser smoke script");
 includes(packageSource, '"smoke:frontstage-route"', "frontstage smoke script");
 
