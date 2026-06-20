@@ -6,11 +6,21 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+from goal_harness.rollout_event_log import (  # noqa: E402
+    load_rollout_events,
+    rollout_event_log_path,
+)
+
+
 SCRIPT = REPO / "scripts" / "benchmark_run_status_snapshot.py"
 
 
@@ -101,6 +111,49 @@ def main() -> int:
         assert item["capture_files"][0]["patterns"]["Working"] is True
         assert "secret raw transcript" not in proc.stdout
         assert str(root) not in proc.stdout
+
+        runtime_root = root / "runtime"
+        rollout_proc = subprocess.run(
+            [
+                "python3",
+                str(SCRIPT),
+                "--run-root",
+                str(root),
+                "--label",
+                "terminal-case-r1",
+                "--pattern",
+                "Working",
+                "--record-rollout-event",
+                "--goal-id",
+                "rollout-status-smoke",
+                "--runtime-root",
+                str(runtime_root),
+                "--agent-id",
+                "codex-main-control",
+                "--todo-id",
+                "todo_status_smoke",
+                "--pretty",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        rollout_payload = json.loads(rollout_proc.stdout)
+        assert rollout_payload["rollout_event"]["event_kind"] == "benchmark_status"
+        assert rollout_payload["rollout_event"]["status"] == "running"
+        assert str(root) not in rollout_proc.stdout
+        events = load_rollout_events(
+            rollout_event_log_path(runtime_root, "rollout-status-smoke")
+        )
+        assert len(events) == 1, events
+        event = events[0]
+        assert event["event_kind"] == "benchmark_status", event
+        assert event["status"] == "running", event
+        assert event["details"]["run_count"] == 1, event
+        assert event["details"]["pid_alive_count"] == 1, event
+        assert event["details"]["compact_result_count"] == 2, event
+        assert event["boundary"]["raw_logs_recorded"] is False, event
+        assert event["boundary"]["absolute_paths_recorded"] is False, event
 
     print("benchmark run status snapshot smoke passed")
     return 0

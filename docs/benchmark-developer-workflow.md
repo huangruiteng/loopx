@@ -112,6 +112,9 @@ python3 scripts/benchmark_run_status_snapshot.py \
   --label <terminal-bench-run-label> \
   --label <skillsbench-run-label> \
   --label <swe-marathon-run-label> \
+  --record-rollout-event \
+  --goal-id goal-harness-meta \
+  --agent-id codex-main-control \
   --pattern Working \
   --pattern timed\ out \
   --pretty
@@ -119,7 +122,10 @@ python3 scripts/benchmark_run_status_snapshot.py \
 
 The snapshot reports `status.env`, pid liveness, compact result summaries,
 standard artifact presence, and optional keyword booleans for tmux captures. It
-does not emit task text, trajectories, raw logs, or capture content.
+does not emit task text, trajectories, raw logs, or capture content. With
+`--record-rollout-event`, it also appends one aggregate `benchmark_status`
+event to the rollout log so the control plane can see that a poll happened
+without seeing host paths or capture text.
 
 ### Goal Rollout Event Log
 

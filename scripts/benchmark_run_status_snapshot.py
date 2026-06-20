@@ -6,9 +6,21 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from goal_harness.rollout_event_log import (  # noqa: E402
+    append_rollout_event,
+    build_rollout_event,
+    rollout_event_log_path,
+)
 
 
 DEFAULT_COMPACT_KEYS = (
@@ -178,6 +190,95 @@ def build_snapshot(
     }
 
 
+def _snapshot_rollout_status(payload: dict[str, Any]) -> str:
+    runs = payload.get("runs") if isinstance(payload.get("runs"), list) else []
+    if not runs:
+        return "empty_snapshot"
+    existing = [run for run in runs if isinstance(run, dict) and run.get("exists")]
+    alive = [run for run in existing if run.get("pid_alive") is True]
+    compact_results = sum(
+        len(run.get("compact_results") or [])
+        for run in existing
+        if isinstance(run, dict)
+    )
+    if alive:
+        return "running"
+    if compact_results:
+        return "compact_artifact_seen"
+    if len(existing) < len(runs):
+        return "missing_run_dir"
+    return "polled"
+
+
+def _snapshot_rollout_details(payload: dict[str, Any]) -> dict[str, Any]:
+    runs = payload.get("runs") if isinstance(payload.get("runs"), list) else []
+    run_items = [run for run in runs if isinstance(run, dict)]
+    existing = [run for run in run_items if run.get("exists")]
+    return {
+        "command": "benchmark_run_status_snapshot",
+        "run_count": len(run_items),
+        "exists_count": len(existing),
+        "missing_count": len(run_items) - len(existing),
+        "pid_alive_count": sum(1 for run in existing if run.get("pid_alive") is True),
+        "compact_result_count": sum(
+            len(run.get("compact_results") or []) for run in existing
+        ),
+        "bridge_request_dir_count": sum(
+            len(run.get("bridge_request_dirs") or []) for run in existing
+        ),
+        "capture_file_count": sum(
+            len(run.get("capture_files") or []) for run in existing
+        ),
+    }
+
+
+def _snapshot_rollout_labels(payload: dict[str, Any]) -> list[str]:
+    runs = payload.get("runs") if isinstance(payload.get("runs"), list) else []
+    labels: list[str] = []
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        label = str(run.get("label") or "").strip()
+        if label:
+            labels.append(f"run:{label}")
+    return labels[:20]
+
+
+def append_status_rollout_event(
+    payload: dict[str, Any],
+    *,
+    goal_id: str,
+    runtime_root: Path,
+    agent_id: str | None = None,
+    todo_id: str | None = None,
+) -> dict[str, Any]:
+    status = _snapshot_rollout_status(payload)
+    details = _snapshot_rollout_details(payload)
+    event = build_rollout_event(
+        goal_id=goal_id,
+        event_kind="benchmark_status",
+        agent_id=agent_id,
+        todo_id=todo_id,
+        status=status,
+        labels=_snapshot_rollout_labels(payload),
+        summary=(
+            "benchmark status snapshot recorded: "
+            f"runs={details['run_count']} existing={details['exists_count']} "
+            f"alive={details['pid_alive_count']} compacts={details['compact_result_count']}"
+        ),
+        details=details,
+    )
+    appended = append_rollout_event(rollout_event_log_path(runtime_root, goal_id), event)
+    payload["rollout_event"] = {
+        "schema_version": appended["schema_version"],
+        "event_id": appended["event_id"],
+        "event_kind": appended["event_kind"],
+        "recorded_at": appended["recorded_at"],
+        "status": appended.get("status"),
+    }
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Summarize benchmark run dirs without emitting raw logs."
@@ -197,8 +298,23 @@ def main() -> int:
     )
     parser.add_argument("--max-compacts", type=int, default=12)
     parser.add_argument("--max-captures", type=int, default=3)
+    parser.add_argument(
+        "--record-rollout-event",
+        action="store_true",
+        help="Append a public-safe benchmark_status event to the Goal Harness rollout log.",
+    )
+    parser.add_argument("--goal-id", help="Goal id for --record-rollout-event.")
+    parser.add_argument(
+        "--runtime-root",
+        default=str(Path.home() / ".codex" / "goal-harness"),
+        help="Goal Harness runtime root for --record-rollout-event.",
+    )
+    parser.add_argument("--agent-id", help="Optional public-safe agent id.")
+    parser.add_argument("--todo-id", help="Optional structured todo id.")
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
+    if args.record_rollout_event and not args.goal_id:
+        parser.error("--record-rollout-event requires --goal-id")
 
     payload = build_snapshot(
         run_root=Path(args.run_root),
@@ -207,6 +323,14 @@ def main() -> int:
         max_compacts=args.max_compacts,
         max_captures=args.max_captures,
     )
+    if args.record_rollout_event:
+        payload = append_status_rollout_event(
+            payload,
+            goal_id=args.goal_id,
+            runtime_root=Path(args.runtime_root),
+            agent_id=args.agent_id,
+            todo_id=args.todo_id,
+        )
     print(json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0
 
