@@ -63,6 +63,10 @@ includes(frontstageSource, 'data-testid="frontstage-timeline"', "timeline lane")
 includes(frontstageSource, "Frontstage channel", "frontstage channel copy");
 includes(frontstageSource, "Channel board", "channel board nav");
 includes(frontstageSource, "Always-on agent operations", "always-on operations copy");
+includes(frontstageSource, "Goal Harness Showcase Frontstage", "showcase-first hero title");
+includes(frontstageSource, "Always-on agent teams, governed by human judgment", "showcase-first hero copy");
+includes(frontstageSource, 'data-testid="frontstage-public-showcase-contract"', "public showcase contract panel");
+includes(frontstageSource, "Local status URLs stay behind the explicit Ops live switch", "ops-only live status copy");
 includes(frontstageSource, "human judgment kept in the control plane", "human judgment control-plane copy");
 includes(frontstageSource, "Role Map", "role map copy");
 includes(frontstageSource, "claim owners", "claim owner role signal");
