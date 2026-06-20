@@ -233,6 +233,7 @@ def build_state_refresh_record(
     delivery_outcome: str | None = None,
     agent_id: str | None = None,
     agent_lane: str | None = None,
+    autonomous_replan_recorded: bool = False,
 ) -> dict[str, Any]:
     frontmatter = parse_frontmatter(state_text)
     next_action = extract_section_lines(state_text, "Next Action")
@@ -274,6 +275,12 @@ def build_state_refresh_record(
         record["delivery_batch_scale"] = delivery_batch_scale
     if delivery_outcome:
         record["delivery_outcome"] = delivery_outcome
+    if autonomous_replan_recorded:
+        record["autonomous_replan_ack"] = {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "refresh_state",
+        }
     if agent_id:
         record["progress_scope"] = AGENT_LANE_PROGRESS_SCOPE
         record["agent_id"] = agent_id
@@ -297,6 +304,7 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
         f"- agent_lane: `{payload.get('agent_lane')}`",
         f"- delivery_batch_scale: `{payload.get('delivery_batch_scale')}`",
         f"- delivery_outcome: `{payload.get('delivery_outcome')}`",
+        f"- autonomous_replan_recorded: `{payload.get('autonomous_replan_recorded')}`",
         f"- generated_at: `{payload.get('generated_at')}`",
         f"- state_file: `{state.get('path')}`",
         f"- state_updated_at: `{frontmatter.get('updated_at')}`",
@@ -363,6 +371,7 @@ def refresh_state_run(
     delivery_outcome: str | None = None,
     agent_id: str | None = None,
     agent_lane: str | None = None,
+    autonomous_replan_recorded: bool = False,
     dry_run: bool,
     sync_global: bool = True,
 ) -> dict[str, Any]:
@@ -424,6 +433,7 @@ def refresh_state_run(
         delivery_outcome=normalized_delivery_outcome,
         agent_id=normalized_agent_id or None,
         agent_lane=normalized_agent_lane or None,
+        autonomous_replan_recorded=autonomous_replan_recorded,
     )
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
@@ -442,6 +452,8 @@ def refresh_state_run(
         index_record["delivery_batch_scale"] = delivery_batch_scale
     if normalized_delivery_outcome:
         index_record["delivery_outcome"] = normalized_delivery_outcome
+    if autonomous_replan_recorded:
+        index_record["autonomous_replan_ack"] = record["autonomous_replan_ack"]
     if normalized_agent_id:
         index_record["progress_scope"] = AGENT_LANE_PROGRESS_SCOPE
         index_record["agent_id"] = normalized_agent_id
@@ -458,6 +470,7 @@ def refresh_state_run(
         "progress_scope": record.get("progress_scope"),
         "agent_id": record.get("agent_id"),
         "agent_lane": record.get("agent_lane"),
+        "autonomous_replan_recorded": autonomous_replan_recorded,
         "recommended_action": action,
         "generated_at": generated_at,
         "health_check": record["health_check"],

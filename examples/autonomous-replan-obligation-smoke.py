@@ -378,6 +378,63 @@ def assert_no_periodic_replan_before_threshold_or_after_ack() -> None:
         assert guard["heartbeat_recommendation"]["recommended_mode"] != "autonomous_replan_required", guard
 
 
+def assert_validated_classification_without_ack_does_not_clear_replan() -> None:
+    with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
+        registry_path, runtime = write_fixture(
+            Path(tmp),
+            include_replan_signals=False,
+            periodic_run_count=20,
+        )
+        append_run_record(
+            runtime / "goals" / GOAL_ID / "runs",
+            {
+                "generated_at": "2026-01-02T00:30:00+00:00",
+                "classification": "autonomous_replan_validated_20260621",
+                "recommended_action": "A progress refresh was written, but no explicit replan ACK was recorded.",
+                "health_check": "compact progress refresh",
+                "delivery_outcome": "surface_only",
+            },
+        )
+        guard = run_cli("quota", "should-run", "--goal-id", GOAL_ID, registry_path=registry_path, runtime=runtime)
+        obligation = guard["autonomous_replan_obligation"]
+        assert obligation["required"] is True, guard
+        assert obligation["triggers"][0]["kind"] == "periodic_review_due", guard
+        assert guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", guard
+
+
+def assert_refresh_state_structured_ack_clears_replan() -> None:
+    with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
+        registry_path, runtime = write_fixture(
+            Path(tmp),
+            include_replan_signals=False,
+            periodic_run_count=20,
+        )
+        refresh = run_cli(
+            "refresh-state",
+            "--goal-id",
+            GOAL_ID,
+            "--classification",
+            "autonomous_replan_validated_20260621",
+            "--autonomous-replan-recorded",
+            "--delivery-batch-scale",
+            "single_surface",
+            "--delivery-outcome",
+            "surface_only",
+            "--recommended-action",
+            "Explicit bounded replan ACK recorded; continue the selected next slice.",
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert refresh["autonomous_replan_recorded"] is True, refresh
+        json_path = Path(refresh["json_path"])
+        record = json.loads(json_path.read_text(encoding="utf-8"))
+        assert record["autonomous_replan_ack"]["recorded"] is True, record
+
+        guard = run_cli("quota", "should-run", "--goal-id", GOAL_ID, registry_path=registry_path, runtime=runtime)
+        assert "autonomous_replan_obligation" not in guard, guard
+        assert guard["heartbeat_recommendation"]["recommended_mode"] != "autonomous_replan_required", guard
+
+
 def assert_no_replan_obligation_without_signal() -> None:
     with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
         registry_path, runtime = write_fixture(Path(tmp), include_replan_signals=False)
@@ -402,6 +459,8 @@ def main() -> int:
     assert_replan_obligation_projected_from_run_history()
     assert_periodic_replan_obligation_projected_from_run_history()
     assert_no_periodic_replan_before_threshold_or_after_ack()
+    assert_validated_classification_without_ack_does_not_clear_replan()
+    assert_refresh_state_structured_ack_clears_replan()
     assert_no_replan_obligation_without_signal()
     print("autonomous-replan-obligation-smoke ok")
     return 0

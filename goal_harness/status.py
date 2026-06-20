@@ -4084,10 +4084,10 @@ def _normalized_run_history_stall_signature(value: str) -> str:
 
 
 def _run_history_stall_signal(run: dict[str, Any]) -> dict[str, Any] | None:
+    if autonomous_replan_ack_recorded(run):
+        return None
     classification = str(run.get("classification") or "").strip()
     if not classification or classification in AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS:
-        return None
-    if AUTONOMOUS_RUN_HISTORY_REPLAN_ACK_CLASSIFICATION.search(classification):
         return None
     delivery_outcome = normalize_delivery_outcome(run.get("delivery_outcome"))
     if delivery_outcome in AUTONOMOUS_RUN_HISTORY_PROGRESS_OUTCOMES:
@@ -4126,6 +4126,8 @@ def run_history_monitor_wait_already_acknowledged(
     for run in (latest_runs or [])[signal_count:]:
         if not isinstance(run, dict):
             continue
+        if autonomous_replan_ack_recorded(run):
+            return True
         classification = str(run.get("classification") or "").strip()
         if not classification:
             continue
@@ -4133,8 +4135,16 @@ def run_history_monitor_wait_already_acknowledged(
             continue
         if classification == "quota_monitor_poll":
             continue
-        return bool(AUTONOMOUS_RUN_HISTORY_REPLAN_ACK_CLASSIFICATION.search(classification))
+        return False
     return False
+
+
+def autonomous_replan_ack_recorded(run: dict[str, Any]) -> bool:
+    ack = run.get("autonomous_replan_ack")
+    if isinstance(ack, dict) and ack.get("recorded") is True:
+        return True
+    classification = str(run.get("classification") or "").strip()
+    return bool(classification and AUTONOMOUS_RUN_HISTORY_REPLAN_ACK_CLASSIFICATION.search(classification))
 
 
 def autonomous_replan_periodic_review_from_runs(
@@ -4146,11 +4156,11 @@ def autonomous_replan_periodic_review_from_runs(
     for run in latest_runs or []:
         if not isinstance(run, dict):
             continue
+        if autonomous_replan_ack_recorded(run):
+            break
         classification = str(run.get("classification") or "").strip()
         if not classification:
             continue
-        if AUTONOMOUS_RUN_HISTORY_REPLAN_ACK_CLASSIFICATION.search(classification):
-            break
         if classification in AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS:
             continue
         durable_runs.append(run)

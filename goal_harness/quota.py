@@ -2433,11 +2433,16 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
             "create or switch to an independent git worktree/branch",
             f"goal-harness --format json quota should-run --goal-id {goal_id}{agent_arg}",
         ]
+    if mode == "autonomous_replan":
+        return [
+            "run one bounded autonomous replan slice and write back the selected next action/todo changes",
+            f"goal-harness refresh-state --goal-id {goal_id} --classification autonomous_replan_recorded --autonomous-replan-recorded --delivery-batch-scale <scale> --delivery-outcome <outcome>",
+            f"goal-harness quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
+        ]
     if mode in {
         "bounded_delivery",
         "outcome_floor_recovery",
         "capability_bridge_repair",
-        "autonomous_replan",
         "control_plane_self_repair",
         "boundary_projection_repair",
         "scoped_user_gate_fallback",

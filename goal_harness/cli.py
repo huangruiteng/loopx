@@ -5512,6 +5512,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional explicit outcome-floor signal for this refresh run.",
     )
     refresh_state_parser.add_argument(
+        "--autonomous-replan-recorded",
+        action="store_true",
+        help=(
+            "Mark this refresh as the explicit autonomous replan ACK. "
+            "Use only after the agent has performed and written back the bounded replan slice."
+        ),
+    )
+    refresh_state_parser.add_argument(
         "--agent-id",
         help=(
             "Registered agent id for agent-lane state refreshes. When set, the "
@@ -9765,6 +9773,7 @@ def main(argv: list[str] | None = None) -> int:
                 delivery_outcome=args.delivery_outcome,
                 agent_id=args.agent_id,
                 agent_lane=args.agent_lane,
+                autonomous_replan_recorded=bool(args.autonomous_replan_recorded),
                 dry_run=bool(args.dry_run),
                 sync_global=not bool(args.no_global_sync),
             )
@@ -9795,6 +9804,9 @@ def main(argv: list[str] | None = None) -> int:
                     "command": "refresh-state",
                     "progress_scope": payload.get("progress_scope") or "",
                     "agent_lane": payload.get("agent_lane") or "",
+                    "autonomous_replan_recorded": bool(
+                        payload.get("autonomous_replan_recorded")
+                    ),
                     "global_sync_wrote": bool(
                         isinstance(payload.get("global_sync"), dict)
                         and payload["global_sync"].get("wrote")
