@@ -28,6 +28,12 @@ slash-command/goal-state evidence. Full execution of this route is blocked by
 default until that evidence exists; use it only for explicit slash-prefix
 experiments.
 
+The ``codex-app-server-goal-baseline`` route is the real native Codex Goal
+baseline surface. It requires a host-side Codex app-server worker using
+``thread/start``, ``thread/goal/set``, ``thread/goal/get``, and ``turn/start``.
+Until the BenchFlow worker integration is wired, full execution fails closed;
+``--plan-only`` still emits the public-safe launch contract.
+
 Run from the SkillsBench checkout so BenchFlow's dependency environment is
 available, for example:
 
@@ -70,6 +76,7 @@ from goal_harness.benchmark_case_state import (  # noqa: E402
     benchmark_case_active_state_write_command,
 )
 from goal_harness.benchmark_adapters.skillsbench import (  # noqa: E402
+    build_skillsbench_app_server_goal_worker_contract,
     build_skillsbench_worker_handshake_preflight,
 )
 from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
@@ -97,6 +104,7 @@ SUPPORTED_ROUTES = (
     "goal-harness-blind-loop-treatment",
     "raw-codex-autonomous-max5",
     "goal-harness-product-mode",
+    "codex-app-server-goal-baseline",
     "codex-goal-mode-baseline",
     "automation-loop-treatment",
 )
@@ -695,6 +703,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_acp_runtime_launch_preflight_status",
         "benchflow_agent_runtime_layer_status",
         "benchflow_agent_runtime_layer_mount_target",
+        "codex_app_server_goal_worker_plan_schema",
     ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
@@ -714,6 +723,10 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_agent_runtime_mount_injected",
         "benchflow_agent_runtime_mount_read_only",
         "benchflow_agent_runtime_mount_source_recorded",
+        "codex_app_server_goal_worker_adapter_present",
+        "codex_app_server_goal_worker_turn_start_required",
+        "codex_app_server_goal_worker_goal_get_required",
+        "codex_app_server_goal_worker_runner_integration_ready",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -1561,6 +1574,8 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         rollout_suffix = "raw_codex_autonomous_max5"
     elif route == "codex-acp-blind-loop-baseline":
         rollout_suffix = "codex_acp_blind_loop"
+    elif route == "codex-app-server-goal-baseline":
+        rollout_suffix = "codex_app_server_goal"
     elif route == "automation-loop-treatment":
         rollout_suffix = "goal_harness_reward_feedback_ablation"
     else:
@@ -1577,12 +1592,33 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     )
     agent_runtime_layer = _benchflow_agent_runtime_layer_contract(args)
     requires_preinstalled_runtime = bool(agent_runtime_layer.get("required"))
+    is_app_server_goal_route = route == "codex-app-server-goal-baseline"
+    app_server_goal_worker_contract = (
+        build_skillsbench_app_server_goal_worker_contract(
+            dataset=args.dataset,
+            task_id=task_id,
+            cwd="<skillsbench-task-workspace>",
+            model=args.model,
+            sandbox="workspace-write",
+            approval_policy="never",
+            no_upload=True,
+            submit_enabled=False,
+            compact_reducer_ready=True,
+            runner_integration_ready=False,
+        )
+        if is_app_server_goal_route
+        else None
+    )
     launch_plan = {
         "schema_version": "skillsbench_runner_launch_plan_v0",
         "benchmark_id": args.dataset,
         "task_id": task_id,
         "route": route,
-        "agent": "codex-acp",
+        "agent": (
+            "codex-app-server-goal"
+            if is_app_server_goal_route
+            else "codex-acp"
+        ),
         "model": args.model,
         "sandbox": args.sandbox,
         "max_rounds": args.max_rounds,
@@ -1621,23 +1657,37 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "runner_prerequisites": {
             "schema_version": "skillsbench_runner_prerequisites_v0",
             "codex_acp_runtime_container_bootstrap": (
-                not requires_preinstalled_runtime
+                False
+                if is_app_server_goal_route
+                else not requires_preinstalled_runtime
             ),
             "codex_acp_runtime_dependency_preflight": (
-                not requires_preinstalled_runtime
+                False
+                if is_app_server_goal_route
+                else not requires_preinstalled_runtime
             ),
             "codex_acp_runtime_dependency_setup_skipped": (
-                requires_preinstalled_runtime
+                True
+                if is_app_server_goal_route
+                else requires_preinstalled_runtime
             ),
             "codex_acp_runtime_launch_preflight": False,
             "codex_acp_runtime_launch_preflight_stage": (
+                "not_applicable_app_server_goal_worker"
+                if is_app_server_goal_route
+                else
                 "preinstalled_benchflow_layer_before_acp_connect"
                 if requires_preinstalled_runtime
                 else "after_agent_install_before_acp_connect"
             ),
-            "codex_acp_runtime_launch_preflight_status": "pending",
+            "codex_acp_runtime_launch_preflight_status": (
+                "not_requested" if is_app_server_goal_route else "pending"
+            ),
             "codex_acp_runtime_launch_preflight_raw_logs_read": False,
             "agent_execution_mode": (
+                "host_codex_app_server_goal_worker"
+                if is_app_server_goal_route
+                else
                 "host_local_acp"
                 if args.host_local_acp_launch
                 else "container_codex_acp_preinstalled_runtime"
@@ -1648,9 +1698,11 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "host_local_acp_launch_status": (
                 "pending" if args.host_local_acp_launch else "not_requested"
             ),
-            "container_codex_acp_install_skipped": requires_preinstalled_runtime,
+            "container_codex_acp_install_skipped": (
+                True if is_app_server_goal_route else requires_preinstalled_runtime
+            ),
             "benchflow_agent_install_skipped_by_runtime_layer": (
-                requires_preinstalled_runtime
+                True if is_app_server_goal_route else requires_preinstalled_runtime
             ),
             "remote_command_file_bridge_materialized": bool(
                 args.remote_command_file_bridge_ready
@@ -1673,6 +1725,29 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 requires_preinstalled_runtime
             ),
             "benchflow_agent_runtime_mount_source_recorded": False,
+            "codex_app_server_goal_worker_plan_schema": (
+                app_server_goal_worker_contract["worker_plan"]["schema_version"]
+                if app_server_goal_worker_contract
+                else ""
+            ),
+            "codex_app_server_goal_worker_adapter_present": bool(
+                app_server_goal_worker_contract
+            ),
+            "codex_app_server_goal_worker_turn_start_required": bool(
+                app_server_goal_worker_contract
+            ),
+            "codex_app_server_goal_worker_goal_get_required": bool(
+                app_server_goal_worker_contract
+            ),
+            "codex_app_server_goal_worker_runner_integration_ready": (
+                bool(
+                    app_server_goal_worker_contract.get(
+                        "runner_integration_ready"
+                    )
+                )
+                if app_server_goal_worker_contract
+                else False
+            ),
         },
         "public_boundary": {
             "leaderboard_upload": False,
@@ -1683,6 +1758,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "public_secret_values": False,
         },
     }
+    if app_server_goal_worker_contract:
+        launch_plan["app_server_goal_worker_contract"] = (
+            app_server_goal_worker_contract
+        )
     return launch_plan
 
 
@@ -3501,6 +3580,7 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> None:
         "goal-harness-product-mode": "skillsbench_goal_harness_product_mode_result_v0",
         "raw-codex-autonomous-max5": "skillsbench_raw_codex_autonomous_max5_result_v0",
         "automation-loop-treatment": "skillsbench_reward_feedback_ablation_result_v0",
+        "codex-app-server-goal-baseline": "skillsbench_codex_app_server_goal_baseline_result_v0",
         "codex-goal-mode-baseline": "skillsbench_codex_goal_mode_baseline_result_v0",
     }
     classification = classification_by_route.get(
@@ -3544,6 +3624,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "no-goal baseline with the same loop budget; "
             "raw-codex-autonomous-max5 and goal-harness-product-mode are the "
             "main-table product-mode comparison routes; "
+            "codex-app-server-goal-baseline is the native Codex Goal baseline "
+            "contract using app-server thread/goal/set/get and turn/start; "
             "codex-goal-mode-baseline sends one /goal-prefixed prompt request "
             "with no reward follow-up, but native goal-mode invocation remains "
             "unconfirmed without CLI slash-command/goal-state evidence and is "
@@ -3900,6 +3982,25 @@ def main(argv: list[str] | None = None) -> int:
                 "prove a stable Codex CLI /goal trigger with goal-state evidence, "
                 "or rerun with --allow-unverified-goal-prefix-baseline only as a "
                 "non-claiming slash-prefix experiment"
+            ),
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+        return 2
+    if args.route == "codex-app-server-goal-baseline" and not args.plan_only:
+        payload = {
+            "ok": False,
+            "error_type": "SkillsBenchNativeGoalWorkerIntegrationPending",
+            "route": args.route,
+            "reason": (
+                "codex-app-server-goal-baseline requires a BenchFlow worker "
+                "integration that launches host Codex app-server Goal turns via "
+                "thread/start, thread/goal/set/get, and turn/start; the current "
+                "runner must not fall back to codex-acp"
+            ),
+            "next_action": (
+                "wire the SkillsBench host Codex app-server Goal worker into "
+                "BenchFlow, then rerun the selected case with compact no-upload "
+                "proof"
             ),
         }
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)

@@ -861,6 +861,7 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "agent_execution_mode",
         "benchflow_agent_runtime_layer_status",
         "benchflow_agent_runtime_layer_mount_target",
+        "codex_app_server_goal_worker_plan_schema",
     ):
         text = public_safe_compact_text(value.get(field), limit=180)
         if text:
@@ -880,6 +881,10 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_agent_runtime_mount_source_recorded",
         "host_local_acp_launch",
         "remote_command_file_bridge_materialized",
+        "codex_app_server_goal_worker_adapter_present",
+        "codex_app_server_goal_worker_turn_start_required",
+        "codex_app_server_goal_worker_goal_get_required",
+        "codex_app_server_goal_worker_runner_integration_ready",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]

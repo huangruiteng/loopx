@@ -159,6 +159,18 @@ truth. Record only the compact fact: ready, blocked, or needs operator setup.
 The concrete mirror URL, proxy port, shell history, raw logs, and local host
 paths stay outside public evidence.
 
+Temporary patches to an upstream benchmark checkout are allowed during route
+bring-up only when they are explicit, reversible, and recorded as route
+substrate. Keep the upstream checkout clean enough to rebase: prefer a small
+patch file, wrapper script, or sidecar module over editing scorer, task truth,
+or prompts in place. After patching a remote checkout, record the compact
+metadata another developer needs: upstream repo/ref, patch purpose, files
+touched by category, whether scoring/task truth changed, validation command,
+and rollback command. Do not publish the raw patched checkout, task text, raw
+logs, private paths, or internal hostnames. Once a patch repeats, promote it to
+one of three durable surfaces: an upstreamable PR, a Goal Harness wrapper, or a
+documented benchmark-host SOP.
+
 When the host has both a system disk and a data disk, move every large runner
 cache onto the data disk before calling the host ready. Docker `data-root`
 alone is not enough: containerd snapshot state can still fill the system disk
@@ -588,6 +600,40 @@ no-upload task result. A timeout-looking failure can actually be a missing
 verifier launcher surface: the verifier may need minimal Python, pip, curl,
 certificates, `uv`, and `uvx` before it can run the official oracle sanity path.
 Do not repair that first by globally extending timeouts.
+
+For the Codex baseline arm, use the native app-server Goal route instead of the
+older slash-prefix experiment. The SkillsBench route name is
+`codex-app-server-goal-baseline`; it requires host Codex app-server Goal
+methods `thread/start`, `thread/goal/set`, `thread/goal/get`, and `turn/start`.
+Generate the public-safe plan first:
+
+```bash
+python3 scripts/skillsbench_automation_loop.py \
+  --task-id llm-prefix-cache-replay \
+  --route codex-app-server-goal-baseline \
+  --plan-only
+```
+
+The plan must show
+`agent_execution_mode=host_codex_app_server_goal_worker`,
+`codex_app_server_goal_worker_turn_start_required=true`, and
+`codex_app_server_goal_worker_runner_integration_ready=false` until the
+BenchFlow worker integration is actually wired. A full launch of this route
+must fail closed rather than falling back to `codex-acp`. The host-side worker
+surface is:
+
+```bash
+python3 scripts/skillsbench_host_codex_goal_worker.py \
+  --task-id <task-id> \
+  --contract-only
+```
+
+When used for a private case, the same worker reads the private prompt file and
+workspace path on the benchmark host, invokes Codex app-server Goal mode, and
+writes only compact turn metadata plus prompt hash/size. Do not copy raw task
+text, raw trajectory, raw logs, Goal Harness state, credentials, or host paths
+into the compact result. Keep `codex-goal-mode-baseline` for historical
+slash-prefix probes only; it is not a scored Codex Goal baseline.
 
 Preview the public-safe prewarm plan:
 

@@ -10,6 +10,7 @@ from ..benchmark_case_state import (
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
     benchmark_case_active_state_path,
 )
+from ..codex_goal_baseline import build_codex_app_server_goal_worker_plan
 
 
 SKILLSBENCH_DEFAULT_DATASET = "skillsbench@1.1"
@@ -22,6 +23,7 @@ SKILLSBENCH_PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
 SKILLSBENCH_ROUTES = (
     "codex-acp-blind-loop-baseline",
     "goal-harness-blind-loop-treatment",
+    "codex-app-server-goal-baseline",
     "codex-goal-mode-baseline",
     "automation-loop-treatment",
     "curated-skills-baseline",
@@ -41,6 +43,9 @@ SKILLSBENCH_WORKER_HANDSHAKE_PREFLIGHT_SCHEMA_VERSION = (
 )
 SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_SCHEMA_VERSION = (
     "skillsbench_verifier_dependency_prewarm_plan_v0"
+)
+SKILLSBENCH_APP_SERVER_GOAL_WORKER_CONTRACT_SCHEMA_VERSION = (
+    "skillsbench_app_server_goal_worker_contract_v0"
 )
 SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_BLOCKER = (
     "skillsbench_verifier_dependency_prewarm_required"
@@ -238,6 +243,38 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
                 "before any automation-loop treatment"
             ),
         }
+    if route == "codex-app-server-goal-baseline":
+        return {
+            "mode": "skillsbench_codex_app_server_goal_baseline",
+            "arm_id": "codex_app_server_goal_baseline",
+            "source_runner": "goal_harness_skillsbench_host_codex_app_server_goal_worker",
+            "inner_codex_goal_mode": True,
+            "native_goal_mode_requested": True,
+            "native_goal_mode_invoked": True,
+            "native_goal_mode_confirmation_status": (
+                "requires_thread_goal_set_get_and_turn_start_compact_proof"
+            ),
+            "codex_acp_protocol_used": False,
+            "skillsbench_route_semantics": (
+                "host_codex_app_server_goal_worker_no_reward_feedback"
+            ),
+            "curated_skills_visible": False,
+            "goal_harness_automation_loop": False,
+            "goal_harness_inside_case": False,
+            "blind_loop": False,
+            "official_feedback_blinded": True,
+            "reward_feedback_forwarded": False,
+            "case_semantics_changed_by_harness": False,
+            "official_score_comparable_to_native_codex": True,
+            "official_score_comparable_to_goal_harness_treatment": True,
+            "first_blocker": "skillsbench_app_server_goal_worker_compact_proof_missing",
+            "next_action": (
+                "launch SkillsBench through Codex app-server Goal APIs "
+                "thread/start plus thread/goal/set/get plus turn/start, ingest "
+                "only compact no-upload evidence, and fail closed rather than "
+                "falling back to ACP or slash-prefix prompt experiments"
+            ),
+        }
     if route == "automation-loop-treatment":
         return {
             "mode": "skillsbench_goal_harness_automation_loop_treatment",
@@ -297,6 +334,150 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
 def skillsbench_job_name(dataset: str, task_id: str, route: str) -> str:
     raw = f"{dataset}_{task_id}_{route}"
     return re.sub(r"[^A-Za-z0-9]+", "_", raw).strip("_").lower()
+
+
+def build_skillsbench_app_server_goal_worker_contract(
+    *,
+    dataset: str = SKILLSBENCH_DEFAULT_DATASET,
+    task_id: str = SKILLSBENCH_DEFAULT_TASK,
+    cwd: str = "<skillsbench-task-workspace>",
+    model: str = SKILLSBENCH_DEFAULT_MODEL,
+    codex_bin: str = "codex",
+    sandbox: str = "workspace-write",
+    approval_policy: str = "never",
+    no_upload: bool = True,
+    submit_enabled: bool = False,
+    compact_reducer_ready: bool = True,
+    runner_integration_ready: bool = False,
+    raw_task_text_public: bool = False,
+    raw_logs_public: bool = False,
+    raw_trajectory_public: bool = False,
+    include_goal_harness_state: bool = False,
+    known_blockers: Iterable[str] = (),
+) -> dict[str, Any]:
+    """Build the public-safe SkillsBench native Codex Goal worker contract.
+
+    This contract is the benchmark-specific wrapper around the generic Codex
+    app-server Goal worker plan. It intentionally records only task identity,
+    route semantics, method requirements, and boundary flags. The task body
+    itself stays inside the private SkillsBench sandbox and is not copied into
+    public state.
+    """
+
+    safe_dataset = _skillsbench_public_safe_label(dataset, limit=80)
+    safe_task_id = _skillsbench_public_safe_label(task_id, limit=120)
+    blockers = [str(item) for item in known_blockers if str(item)]
+    if not safe_dataset:
+        safe_dataset = SKILLSBENCH_DEFAULT_DATASET
+        blockers.append("skillsbench_dataset_not_public_safe")
+    if not safe_task_id:
+        safe_task_id = SKILLSBENCH_DEFAULT_TASK
+        blockers.append("skillsbench_task_id_not_public_safe")
+    if not no_upload:
+        blockers.append("skillsbench_no_upload_boundary_not_enabled")
+    if submit_enabled:
+        blockers.append("skillsbench_submit_must_remain_disabled")
+    if raw_task_text_public:
+        blockers.append("skillsbench_raw_task_text_publication_forbidden")
+    if raw_logs_public:
+        blockers.append("skillsbench_raw_logs_publication_forbidden")
+    if raw_trajectory_public:
+        blockers.append("skillsbench_raw_trajectory_publication_forbidden")
+    if include_goal_harness_state:
+        blockers.append("skillsbench_native_baseline_must_not_include_goal_harness_state")
+    if not compact_reducer_ready:
+        blockers.append("skillsbench_compact_reducer_not_ready")
+
+    objective = f"Complete SkillsBench task {safe_task_id} with no upload"
+    task_instruction = (
+        "Solve the SkillsBench task mounted in the current benchmark workspace. "
+        "Use the official private task files available in the sandbox, do not "
+        "upload or submit externally, and do not copy raw task text, raw logs, "
+        "or raw trajectories into public artifacts."
+    )
+    worker_plan = build_codex_app_server_goal_worker_plan(
+        objective=objective,
+        task_instruction=task_instruction,
+        cwd=cwd,
+        sandbox=sandbox,
+        approval_policy=approval_policy,
+        model=model,
+    )
+    ready = not blockers and compact_reducer_ready and no_upload and not submit_enabled
+    if ready:
+        first_blocker = "ready_for_skillsbench_app_server_goal_worker"
+        next_action = "wire_or_launch_skillsbench_native_app_server_goal_worker"
+    else:
+        first_blocker = blockers[0] if blockers else "skillsbench_goal_worker_contract_incomplete"
+        next_action = "repair_skillsbench_app_server_goal_worker_contract"
+
+    return {
+        "schema_version": SKILLSBENCH_APP_SERVER_GOAL_WORKER_CONTRACT_SCHEMA_VERSION,
+        "benchmark_id": safe_dataset,
+        "task_id": safe_task_id,
+        "route": "codex-app-server-goal-baseline",
+        "ready": ready,
+        "runner_integration_ready": bool(runner_integration_ready),
+        "first_blocker": first_blocker,
+        "blockers": blockers,
+        "next_action": next_action,
+        "worker_adapter": {
+            "label": "skillsbench_host_codex_app_server_goal_worker",
+            "script": "scripts/skillsbench_host_codex_goal_worker.py",
+            "codex_bin": _skillsbench_public_safe_label(codex_bin, limit=80) or "codex",
+            "agent_execution_mode": "host_codex_app_server_goal_worker",
+            "worker_surface": "codex_app_server",
+            "native_goal_methods_required": list(worker_plan["methods"]),
+            "thread_goal_get_required": True,
+            "turn_start_required": True,
+            "raw_transcript_recorded": False,
+        },
+        "worker_plan": {
+            "schema_version": worker_plan["schema_version"],
+            "surface": worker_plan["surface"],
+            "worker_mode": worker_plan["worker_mode"],
+            "methods": list(worker_plan["methods"]),
+            "objective_sha256": worker_plan["objective_sha256"],
+            "objective_chars": worker_plan["objective_chars"],
+            "task_instruction_sha256": worker_plan["task_instruction_sha256"],
+            "task_instruction_chars": worker_plan["task_instruction_chars"],
+            "token_budget_present": worker_plan["token_budget_present"],
+            "claim_boundary": worker_plan["claim_boundary"],
+        },
+        "runtime_layer_contract": {
+            "agent_runtime_preinstalled": True,
+            "case_container_runs": [
+                "task_files",
+                "benchmark_sandbox",
+                "official_verifier",
+            ],
+            "case_container_does_not_install": [
+                "codex_cli",
+                "codex_acp",
+                "node_runtime",
+                "model_credentials",
+            ],
+        },
+        "proof_required": {
+            "thread_start": True,
+            "thread_goal_set": True,
+            "thread_goal_get": True,
+            "turn_start": True,
+            "compact_turn_metadata": True,
+            "official_result_reducer": True,
+        },
+        "boundary": {
+            "upload_allowed": False,
+            "submit_allowed": False,
+            "raw_task_text_read_into_public_state": False,
+            "raw_logs_recorded": False,
+            "raw_trajectory_recorded": False,
+            "goal_harness_state_included": False,
+            "credential_values_recorded": False,
+            "host_paths_recorded": False,
+            "remote_paths_recorded": False,
+        },
+    }
 
 
 def build_skillsbench_verifier_dependency_prewarm_plan(
@@ -1213,6 +1394,15 @@ def build_skillsbench_benchmark_run(
                 ]
                 if route == "codex-goal-mode-baseline"
                 else [
+                    "codex_app_server_goal_worker",
+                    "thread_goal_set_get",
+                    "turn_start",
+                    "fixture_only",
+                    "no_upload",
+                    "single_task_planned",
+                ]
+                if route == "codex-app-server-goal-baseline"
+                else [
                     "ordinary_codex_cli_actor",
                     "fixed_blind_loop_budget",
                     "fixture_only",
@@ -1337,6 +1527,8 @@ def build_skillsbench_benchmark_run(
                 if route == "raw-codex-autonomous-max5"
                 else "fixed_blind_loop_runner"
                 if route == "codex-acp-blind-loop-baseline"
+                else "codex_app_server_goal_worker"
+                if route == "codex-app-server-goal-baseline"
                 else "runner_only"
             ),
             "inner_case_actor": (
@@ -1351,6 +1543,8 @@ def build_skillsbench_benchmark_run(
                 }
                 else "codex_acp_goal_prompt_request_unconfirmed_native_goal_mode"
                 if route == "codex-goal-mode-baseline"
+                else "host_codex_app_server_goal_worker"
+                if route == "codex-app-server-goal-baseline"
                 else "codex_acp_with_curated_skills"
             ),
             "blind_loop": contract["blind_loop"],
