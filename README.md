@@ -69,6 +69,8 @@ It opens in showcase-first mode: public case cards, narrative motion, and the
 public/private boundary render from `docs/showcases/` before any ops-style live
 projection is available.
 
+![Hosted Goal Harness frontstage showing public-safe showcase cases](docs/assets/frontstage-showcase-first-screen.png)
+
 ## Why It Matters
 
 Short agent tasks usually fail because the model makes a bad local choice.
