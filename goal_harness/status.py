@@ -118,6 +118,11 @@ BENCHMARK_VALIDATION_NEUTRAL_FALSE_FIELDS = {
     "case_solution_not_required_for_probe",
     "official_case_success",
     "official_verifier_validation_present",
+    "native_goal_worker_route",
+    "native_goal_worker_connected",
+    "native_goal_worker_trace_dir_present",
+    "native_goal_worker_public_trace_read",
+    "native_goal_worker_trace_observed",
     "leaderboard_claim_allowed",
     "official_score_claim_allowed",
     "probe_contract_result_present",
@@ -2243,10 +2248,15 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "validation_scope",
             "case_success_claim_kind",
             "official_verifier_status",
+            "native_goal_worker_trace_status",
         ):
             text = public_safe_compact_text(validation.get(field), limit=140)
             if text:
                 compact_validation[field] = text
+        for field in ("native_goal_worker_trace_count",):
+            value = validation.get(field)
+            if isinstance(value, int) and not isinstance(value, bool):
+                compact_validation[field] = value
         for field in (
             "active_user_assisted_treatment_preflight",
             "bridge_connected",
@@ -2320,6 +2330,11 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "worker_startup_blocker_recorded",
             "goal_harness_controller_trace_present",
             "goal_harness_controller_trace_public_safe",
+            "native_goal_worker_route",
+            "native_goal_worker_connected",
+            "native_goal_worker_trace_dir_present",
+            "native_goal_worker_public_trace_read",
+            "native_goal_worker_trace_observed",
         ):
             if isinstance(validation.get(field), bool):
                 compact_validation[field] = validation[field]

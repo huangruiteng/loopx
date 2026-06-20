@@ -2963,6 +2963,43 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert native_counters["native_goal_worker_turn_start_count"] == 1, native_compact
         assert native_counters["native_goal_worker_turn_completed_observed_count"] == 1, native_compact
         assert native_counters["native_goal_worker_raw_material_recorded"] is False, native_compact
+        native_validation = native_compact["validation"]
+        assert native_validation["native_goal_worker_trace_observed"] is True, native_compact
+        assert native_validation["native_goal_worker_trace_count"] == 1, native_compact
+        assert native_validation["native_goal_worker_trace_status"] == "public_trace_observed", native_compact
+
+        connected_no_trace = {
+            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_connect_count": 1,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        connected_no_trace_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                write_official_skillsbench_result(
+                    root / "native-connected-no-trace",
+                    reward=0.0,
+                    task_id="tictoc-unnecessary-abort-detection",
+                ),
+                route="codex-app-server-goal-baseline",
+                controller_trace=connected_no_trace,
+            )
+        )
+        assert connected_no_trace_compact is not None
+        no_trace_validation = connected_no_trace_compact["validation"]
+        assert no_trace_validation["failed_checks"] == [], connected_no_trace_compact
+        assert no_trace_validation["native_goal_worker_connected"] is True, connected_no_trace_compact
+        assert no_trace_validation["native_goal_worker_trace_observed"] is False, connected_no_trace_compact
+        assert no_trace_validation["native_goal_worker_trace_count"] == 0, connected_no_trace_compact
+        assert (
+            no_trace_validation["native_goal_worker_trace_status"]
+            == "worker_connected_trace_dir_missing"
+        ), connected_no_trace_compact
 
         baseline = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(

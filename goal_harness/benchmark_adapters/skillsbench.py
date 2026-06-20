@@ -1913,6 +1913,26 @@ def _skillsbench_controller_trace_counters(
     return counters
 
 
+def _skillsbench_native_goal_worker_trace_status(
+    counters: dict[str, Any],
+) -> str:
+    if counters.get("native_goal_worker_route") is not True:
+        return "not_native_goal_worker_route"
+    trace_count = counters.get("native_goal_worker_trace_count")
+    if (
+        isinstance(trace_count, int)
+        and not isinstance(trace_count, bool)
+        and trace_count > 0
+        and counters.get("native_goal_worker_public_trace_read") is True
+    ):
+        return "public_trace_observed"
+    if counters.get("native_goal_worker_connected") is True:
+        if counters.get("native_goal_worker_trace_dir_present") is not True:
+            return "worker_connected_trace_dir_missing"
+        return "worker_connected_no_public_trace"
+    return "worker_route_selected_not_connected"
+
+
 def _round_reward_trace_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
     numeric_records: list[dict[str, Any]] = []
     for item in records:
@@ -2346,6 +2366,18 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "official_benchflow_result_json_plus_goal_harness_controller_trace"
         )
 
+    native_goal_worker_trace_count = controller_counters.get(
+        "native_goal_worker_trace_count", 0
+    )
+    if not isinstance(native_goal_worker_trace_count, int) or isinstance(
+        native_goal_worker_trace_count, bool
+    ):
+        native_goal_worker_trace_count = 0
+    native_goal_worker_trace_observed = native_goal_worker_trace_count > 0
+    native_goal_worker_trace_status = _skillsbench_native_goal_worker_trace_status(
+        controller_counters
+    )
+
     benchmark_run: dict[str, Any] = {
         "schema_version": "benchmark_run_v0",
         "source_runner": "official_skillsbench_benchflow_result",
@@ -2613,6 +2645,21 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "official_verifier_status": official_score_status,
             "goal_harness_controller_trace_present": controller_trace_present,
             "goal_harness_controller_trace_public_safe": not controller_raw_material_recorded,
+            "native_goal_worker_route": controller_counters.get(
+                "native_goal_worker_route", False
+            ),
+            "native_goal_worker_connected": controller_counters.get(
+                "native_goal_worker_connected", False
+            ),
+            "native_goal_worker_trace_dir_present": controller_counters.get(
+                "native_goal_worker_trace_dir_present", False
+            ),
+            "native_goal_worker_public_trace_read": controller_counters.get(
+                "native_goal_worker_public_trace_read", False
+            ),
+            "native_goal_worker_trace_observed": native_goal_worker_trace_observed,
+            "native_goal_worker_trace_count": native_goal_worker_trace_count,
+            "native_goal_worker_trace_status": native_goal_worker_trace_status,
         },
         "authorization": {
             "real_case_execution_authorized": True,
