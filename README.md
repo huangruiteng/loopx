@@ -17,7 +17,7 @@ working on safe lanes while gated work waits for the person.
 
 [Quick Start](#quick-start) · [Getting Started](docs/guides/getting-started.md) ·
 [Showcases](docs/showcases/README.md) · [Hosted Frontstage](https://huangruiteng.github.io/goal-harness/frontstage/) ·
-[Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
+[Community](#community--feedback) · [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
 [Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
 
 > Your agents keep the night shift. You keep the judgment.
@@ -71,6 +71,20 @@ or local status projections are separate ops-mode surfaces, not public demo
 content.
 
 ![Hosted Goal Harness frontstage showing public-safe showcase cases](docs/assets/frontstage-showcase-first-screen.png)
+
+## Community & Feedback
+
+Goal Harness is still early. The most useful feedback comes from real
+long-running agent projects: where the control plane helped, where it felt
+heavy, and which user gates or handoffs still disappeared from view.
+
+- Use [GitHub Issues](https://github.com/huangruiteng/goal-harness/issues) for
+  reproducible bugs, install problems, and feature requests.
+- Open PRs for docs fixes, showcase writeups, and small public-safe examples.
+- For Chinese-speaking early users, scan the Lark group QR code for fast
+  onboarding help, feedback loops, and showcase co-creation.
+
+<img src="docs/assets/goal-harness-lark-user-group.png" alt="Goal Harness Lark user group QR code" width="220">
 
 ## Why It Matters
 
