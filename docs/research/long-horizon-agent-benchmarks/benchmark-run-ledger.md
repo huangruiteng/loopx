@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-20T23:49:38+08:00`
+- updated_at: `2026-06-21T02:25:49+08:00`
 
 ## Case Decisions
 
@@ -35,7 +35,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `travel-planning` | `baseline_failed_treatment_candidate` | - | `2` |
 | `swe-marathon` | `find-network-alignments` | `baseline_failed_treatment_candidate` | - | `1` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `single_arm_recorded` | - | `2` |
-| `terminal-bench@2.0` | `build-cython-ext` | `baseline_failed_treatment_candidate` | - | `6` |
+| `terminal-bench@2.0` | `build-cython-ext` | `baseline_passed_not_current_treatment_priority` | - | `7` |
 | `terminal-bench@2.0` | `cobol-modernization` | `paired_baseline_solved_treatment_preserved` | - | `2` |
 | `terminal-bench@2.0` | `compile-compcert` | `baseline_passed_not_current_treatment_priority` | - | `1` |
 | `terminal-bench@2.0` | `financial-document-processor` | `baseline_passed_not_current_treatment_priority` | - | `2` |
@@ -201,6 +201,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `terminal-bench@2.0` | `build-cython-ext` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `codex_cli_not_on_path` | `` |
 | `terminal-bench@2.0` | `build-cython-ext` | `codex_goal_mode_baseline` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-build-cython-ext-runtime-extended-20260614T2257CST/terminal_bench_2_0_build_cython_ext_codex_goal_mode_baseline_runtime_extended_no_upload_20260614T2257CST/result.json` |
 | `terminal-bench@2.0` | `build-cython-ext` | `terminal_bench_host_codex_app_server_goal_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/terminal-bench-build-cython-ext-host-app-server-goal-r9/terminal_official_metadata.compact.json` |
+| `terminal-bench@2.0` | `build-cython-ext` | `terminal_bench_host_codex_app_server_goal_baseline` | `` | `1.0` | `` | `` | `none` | `cloud-ecs/parallel-benchmark-20260621T020900Z/terminal-bench-build-cython-ext-app-server-pr335-r1/terminal_bench_official_result.compact.json` |
 | `terminal-bench@2.0` | `cobol-modernization` | `hardened_codex_baseline` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-cobol-modernization-paired-20260611T0903Z/baseline.compact.json` |
 | `terminal-bench@2.0` | `cobol-modernization` | `codex_goal_harness_treatment` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-cobol-modernization-paired-20260611T0903Z/treatment.compact.json` |
 | `terminal-bench@2.0` | `compile-compcert` | `codex_goal_mode_baseline` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-compile-compcert-baseline-2h-20260615T1934CST/baseline/jobs/terminal_bench_compile_compcert_codex_goal_mode_baseline_2h_20260615T1934CST/result.json` |
