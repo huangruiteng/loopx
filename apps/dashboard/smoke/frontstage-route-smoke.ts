@@ -61,6 +61,10 @@ excludes(frontstageSource, "method=", "form method");
 excludes(frontstageSource, "onclick=", "inline click handler");
 
 includes(readmeSource, "/frontstage", "README frontstage route mention");
+includes(readmeSource, "operations strip", "README operations strip explanation");
+includes(readmeSource, "Role Map", "README role map explanation");
+includes(readmeSource, "read-only projection", "README read-only projection boundary");
+includes(readmeSource, "write authority", "README write authority boundary");
 includes(selectionSource, "Multica", "Multica benchmark note");
 includes(selectionSource, "agent board", "agent board benchmark note");
 

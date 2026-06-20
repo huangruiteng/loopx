@@ -38,6 +38,15 @@ contract lanes. Treat it as the product-path replacement for expanding the
 no-dependency static HTML renderer; the Python renderer remains the fallback
 demo/diagnostic surface.
 
+The frontstage first screen is meant to teach the control-plane model before a
+developer reads raw status JSON. The top operations strip answers whether the
+human gate is explicit, whether agent work is active, how many lanes are
+claimed, and whether recent evidence exists. The `Role Map` then separates the
+owner, agent lane, and claim-owner responsibilities so a new contributor can
+tell which part of the system is waiting, running, or coordinating side work.
+Both panels are derived from the read-only projection; they are not browser
+write authority.
+
 For live local control-plane inspection, open
 `/frontstage?statusUrl=http://127.0.0.1:8766/status.json`. The route reads
 `attention_queue.items[].goal_channel_projection` and stays read-only; if the
