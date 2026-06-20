@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .benchmark_core import compact_run_permission_policy_for_quota
 from .boundary_authority import checkpointed_boundary_authority_summary
 from .control_plane import (
     compact_control_plane_policy,
@@ -2673,9 +2674,25 @@ def _goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> 
     if spawn_policy is not None:
         boundary["orchestration"] = compact_orchestration_policy(spawn_policy)
     project_asset_source = item if item is not None else goal
+    for policy_source in (goal, project_asset_source):
+        if not isinstance(policy_source, dict):
+            continue
+        policy = compact_run_permission_policy_for_quota(
+            policy_source.get("run_permission_policy")
+            or policy_source.get("run_permission_policy_v0")
+        )
+        if policy:
+            boundary["run_permission_policy"] = policy
+            break
     if isinstance(project_asset_source, dict) and project_asset_source.get("project_asset"):
         project_asset = project_asset_source.get("project_asset")
         if isinstance(project_asset, dict):
+            policy = compact_run_permission_policy_for_quota(
+                project_asset.get("run_permission_policy")
+                or project_asset.get("run_permission_policy_v0")
+            )
+            if policy:
+                boundary["run_permission_policy"] = policy
             if project_asset.get("stop_condition"):
                 boundary["stop_condition"] = project_asset.get("stop_condition")
             if isinstance(project_asset.get("execution_profile"), dict):
@@ -6531,6 +6548,20 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if orchestration:
             lines.append(f"- goal_boundary_orchestration: {orchestration_policy_summary(orchestration)}")
+        run_permission_policy = (
+            goal_boundary.get("run_permission_policy")
+            if isinstance(goal_boundary.get("run_permission_policy"), dict)
+            else None
+        )
+        if run_permission_policy:
+            lines.append(
+                "- goal_boundary_run_permission_policy: "
+                f"valid={run_permission_policy.get('valid')} "
+                f"delivery_allowed={run_permission_policy.get('delivery_allowed')} "
+                f"no_upload={run_permission_policy.get('no_upload_required')} "
+                f"compact_only={run_permission_policy.get('compact_observation_only')} "
+                f"max_minutes={run_permission_policy.get('max_wall_time_minutes')}"
+            )
         if goal_boundary.get("stop_condition"):
             lines.append(f"- goal_boundary_stop_condition: {goal_boundary.get('stop_condition')}")
     if payload.get("operator_question"):
