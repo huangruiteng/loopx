@@ -58,6 +58,10 @@ includes(frontstageSource, 'if (!liveMode)', "live status feed requires ops mode
 includes(frontstageSource, 'data-testid="frontstage-operations-strip"', "operations signal strip");
 includes(frontstageSource, 'data-testid="frontstage-goal-select"', "goal selector");
 includes(frontstageSource, "parseStatusPayload", "status payload parser");
+includes(frontstageSource, "resolveOpsStatusUrl", "ops status URL resolver");
+includes(frontstageSource, "isLoopbackHostname", "ops loopback source guard");
+includes(frontstageSource, "Ops statusUrl must be relative or loopback", "ops status URL guard copy");
+includes(frontstageSource, "Ops statusUrl accepts only relative or loopback sources.", "ops source guard helper copy");
 includes(frontstageSource, 'data-testid="frontstage-user-todos"', "user todo lane");
 includes(frontstageSource, 'data-testid="frontstage-agent-todos"', "agent todo lane");
 includes(frontstageSource, 'data-testid="frontstage-todo-discovery"', "todo discovery controls");

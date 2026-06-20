@@ -64,7 +64,9 @@ For live local control-plane inspection, explicitly enter ops mode:
 `/frontstage?mode=ops&statusUrl=http://127.0.0.1:8766/status.json`. The route
 then reads `attention_queue.items[].goal_channel_projection` and stays
 read-only; if the feed is missing or has no projection, the bundled demo
-fixture remains visible. Do not use ops-mode URLs as public links.
+fixture remains visible. Ops-mode status sources are limited to relative or
+loopback URLs so public frontstage links do not silently pull external/private
+feeds. Do not use ops-mode URLs as public links.
 
 To create a public-safe static bundle for demos, Lark shares, or future GitHub
 Pages hosting, export the frontstage with the sanitized fixture:
