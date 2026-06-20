@@ -10,14 +10,21 @@ from typing import Any, Callable
 from .authority import goal_authority_registry_summary
 from .control_plane import compact_control_plane_policy
 from .delivery_outcome import require_delivery_outcome
+from .doctor import PROMOTION_READINESS_CLASSIFICATIONS
 from .execution_profile import compact_execution_profile
 from .paths import resolve_runtime_root
-from .quota import goal_quota_with_spend_ledger
+from .quota import (
+    QUOTA_MONITOR_POLL_CLASSIFICATION,
+    QUOTA_SLOT_SPENT_CLASSIFICATION,
+    goal_quota_with_spend_ledger,
+)
 from .registry import read_json, registry_goals
 
 
 STATUS_NEUTRAL_CLASSIFICATIONS = {
-    "quota_slot_spent",
+    QUOTA_SLOT_SPENT_CLASSIFICATION,
+    QUOTA_MONITOR_POLL_CLASSIFICATION,
+    *PROMOTION_READINESS_CLASSIFICATIONS,
 }
 AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
 REGISTRY_ATTENTION_FIELDS = (

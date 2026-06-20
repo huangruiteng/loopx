@@ -76,6 +76,7 @@ STATUS_NEUTRAL_CLASSIFICATIONS = {
     QUOTA_MONITOR_POLL_CLASSIFICATION,
     *PROMOTION_READINESS_CLASSIFICATIONS,
 }
+STATUS_CONTROL_PLANE_CONTEXT_LIMIT = 20
 AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
 HANDOFF_READY_CLASSIFICATIONS = {
     "operator_gate_approved",
@@ -6530,7 +6531,8 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     return compact
 
 
-def build_run_history(history: dict[str, Any]) -> dict[str, Any]:
+def build_run_history(history: dict[str, Any], *, display_limit: int | None = None) -> dict[str, Any]:
+    display_limit = None if display_limit is None else max(0, display_limit)
     goals: list[dict[str, Any]] = []
     for goal in history.get("goals") or []:
         if not isinstance(goal, dict):
@@ -6538,6 +6540,13 @@ def build_run_history(history: dict[str, Any]) -> dict[str, Any]:
         current_run = latest_run(goal)
         lifecycle_fields = goal_lifecycle_fields(goal, current_run)
         subagent_activity = subagent_activity_for_goal(goal)
+        latest_runs = [
+            compact_run(run)
+            for run in goal.get("latest_runs") or []
+            if isinstance(run, dict)
+        ]
+        if display_limit is not None:
+            latest_runs = latest_runs[:display_limit]
         goals.append(
             {
                 "id": goal.get("id"),
@@ -6559,11 +6568,7 @@ def build_run_history(history: dict[str, Any]) -> dict[str, Any]:
                 "unique_runs": goal.get("unique_runs"),
                 "subagent_activity": subagent_activity,
                 "latest_status_run": compact_run(current_run) if current_run else None,
-                "latest_runs": [
-                    compact_run(run)
-                    for run in goal.get("latest_runs") or []
-                    if isinstance(run, dict)
-                ],
+                "latest_runs": latest_runs,
             }
         )
 
@@ -6572,6 +6577,8 @@ def build_run_history(history: dict[str, Any]) -> dict[str, Any]:
         for run in history.get("runs") or []
         if isinstance(run, dict)
     ]
+    if display_limit is not None:
+        recent_runs = recent_runs[:display_limit]
     return {
         "available": True,
         "goal_count": history.get("goal_count"),
@@ -7047,6 +7054,8 @@ def collect_status(
     scan_roots: list[Path],
     limit: int,
 ) -> dict[str, Any]:
+    display_limit = max(0, limit)
+    control_plane_limit = max(display_limit, STATUS_CONTROL_PLANE_CONTEXT_LIMIT)
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
     global_registry = collect_global_registry_health(
@@ -7059,7 +7068,7 @@ def collect_status(
         registry_path=registry_path,
         runtime_root=runtime_root,
         goal_id=None,
-        limit=limit,
+        limit=control_plane_limit,
         include_runtime_goals=include_runtime_goals,
     )
     contract = check_contract(
@@ -7069,7 +7078,7 @@ def collect_status(
         limit=limit,
     )
     queue = build_attention_queue(contract=contract, history=history, global_registry=global_registry)
-    run_history = build_run_history(history)
+    run_history = build_run_history(history, display_limit=display_limit)
     event_ledger_summary = build_event_ledger_summary(history)
     promotion_readiness_summary = build_promotion_readiness_summary(
         history,
