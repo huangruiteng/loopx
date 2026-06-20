@@ -2626,9 +2626,10 @@
         "llm-prefix-cache-replay": {
           "case_id": "llm-prefix-cache-replay",
           "latest_decision": {
-            "baseline_failure_scope": "case_or_solution",
-            "baseline_run_id": "ec3f2c4a4a79",
-            "decision": "paired_no_score_uplift",
+            "baseline_failure_scope": "runner_or_setup",
+            "baseline_run_id": "07af93abd7ae",
+            "decision": "paired_baseline_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_runner_error",
             "official_score_delta": 0.0,
             "treatment_failure_scope": "case_or_solution",
             "treatment_run_id": "5bfbc9e250f5"
@@ -3796,6 +3797,43 @@
               "round_success_observed": false,
               "run_group_id": "gh-skillsbench-llm-prefix-cloud-pair-r1-20260620",
               "run_id": "5bfbc9e250f5",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260621T194222Z/skillsbench-llm-prefix-native-goal-keepalive-r3/benchmark_run.compact.json"
+              },
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "llm-prefix-cache-replay",
+              "case_ids": [
+                "llm-prefix-cache-replay"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "skillsbench_runner_error",
+              "failure_labels": [
+                "skillsbench_runner_error"
+              ],
+              "failure_scope": "runner_or_setup",
+              "goal_harness_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_app_server_goal_baseline",
+              "leaderboard_evidence": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "ECS native app-server Goal keepalive compact official BenchFlow result; score=0.0; attribution=skillsbench_runner_error plus controller-trace validation gap; no raw task/log/trajectory read.",
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-21T04:38:45+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-llm-prefix-native-goal-keepalive-r3-20260621T194222Z",
+              "run_id": "07af93abd7ae",
               "score_status": "failed",
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
@@ -6145,9 +6183,10 @@
         "tictoc-unnecessary-abort-detection": {
           "case_id": "tictoc-unnecessary-abort-detection",
           "latest_decision": {
-            "baseline_failure_scope": "case_or_solution",
-            "baseline_run_id": "99b2fe6538a4",
-            "decision": "paired_no_score_uplift",
+            "baseline_failure_scope": "runner_or_setup",
+            "baseline_run_id": "617dd17115c6",
+            "decision": "paired_baseline_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_runner_error",
             "official_score_delta": 0.0,
             "treatment_failure_scope": "case_or_solution",
             "treatment_run_id": "f86e63762ab2"
@@ -6375,6 +6414,43 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260621T194222Z/skillsbench-tictoc-native-goal-keepalive-r2/benchmark_run.compact.json"
+              },
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "tictoc-unnecessary-abort-detection",
+              "case_ids": [
+                "tictoc-unnecessary-abort-detection"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "skillsbench_runner_error",
+              "failure_labels": [
+                "skillsbench_runner_error"
+              ],
+              "failure_scope": "runner_or_setup",
+              "goal_harness_inside_case": false,
+              "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_codex_app_server_goal_baseline",
+              "leaderboard_evidence": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "ECS native app-server Goal keepalive compact official BenchFlow result; score=0.0; attribution=skillsbench_runner_error plus controller-trace validation gap; no raw task/log/trajectory read.",
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-21T04:38:45+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-tictoc-native-goal-keepalive-r2-20260621T194222Z",
+              "run_id": "617dd17115c6",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
             }
           ]
         },
@@ -6518,7 +6594,7 @@
           ]
         }
       },
-      "run_count": 115
+      "run_count": 117
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -7059,6 +7135,37 @@
               "run_group_id": "terminal-bench-build-cython-ext-app-server-pr336-r2",
               "run_id": "36cb8a6eabd8",
               "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
+            },
+            {
+              "agent_declared_done": false,
+              "arm_id": "terminal_bench_host_codex_app_server_goal_observe_only",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260621T203200Z/terminal-bench-build-cython-ext-app-server-observe-pr346-r1/terminal_bench_official_result.compact.json"
+              },
+              "benchmark_id": "terminal-bench@2.0",
+              "case_id": "build-cython-ext",
+              "case_ids": [
+                "build-cython-ext"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "goal_harness_inside_case": false,
+              "job_name": "build-cython-ext-host-app-server-goal-observe-20260620t203545z",
+              "leaderboard_evidence": false,
+              "mode": "terminal_bench_host_codex_app_server_goal_observe_only",
+              "notes": "ECS Terminal-Bench build-cython-ext host app-server Goal observe-only compact official result; accuracy=1.0; marker/official-verifier gated; no raw task/log/trajectory read.",
+              "official_passed": true,
+              "official_score": 1.0,
+              "recorded_at": "2026-06-21T04:42:27+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "terminal-bench-build-cython-ext-app-server-observe-pr346-r1-20260621T203200Z",
+              "run_id": "80d729022ae6",
+              "score_status": "passed",
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
@@ -10214,7 +10321,7 @@
           ]
         }
       },
-      "run_count": 84
+      "run_count": 85
     }
   },
   "schema_version": "benchmark_run_ledger_v0",
@@ -10225,5 +10332,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-21T04:08:18+08:00"
+  "updated_at": "2026-06-21T04:42:27+08:00"
 }
