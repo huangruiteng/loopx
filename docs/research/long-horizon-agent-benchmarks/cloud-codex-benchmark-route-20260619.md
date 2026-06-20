@@ -40,6 +40,14 @@ Public evidence should record only that the SSH alias was reachable and the
 slice used a short-lived multiplexed SSH session; private host names, keys,
 jump-host details, control paths, and shell history stay out of commits.
 
+For long-running benchmark jobs, pair the multiplexed SSH path with a persistent
+remote `tmux` session. Launch the runner inside that session, detach, then
+observe via compact artifacts or bounded `tmux capture-pane` reads. This keeps
+benchmark execution alive across local Codex app restarts, laptop network
+changes, or SSH master expiry. Treat the session name and working directory as
+operator-private details; public notes may record only that the run used a
+persistent remote session and compact no-upload evidence.
+
 In practice, treat the SSH path as serial by default. Avoid parallel `ssh` or
 `rsync` probes through the same jump-host path unless the connection has been
 explicitly stress-tested; GSSAPI-backed paths can fail transiently under rapid

@@ -281,34 +281,73 @@ Keep these boundaries:
 ### SSH Session Hygiene
 
 When the benchmark host is reached through a jump host, GSSAPI, or another
-access path with expensive handshakes, use one SSH multiplexed master for the
-benchmark slice and run remote commands through that connection. This is an
-operator workflow convention, not a Goal Harness protocol requirement.
+access path with expensive handshakes, do not make every probe open a fresh SSH
+session. Keep one SSH multiplexed master warm for the benchmark slice and run
+remote commands through that connection. This is an operator workflow
+convention, not a Goal Harness protocol requirement.
+
+For repeated benchmark work, prefer a host-local SSH config stanza instead of
+spelling the multiplexing flags on every command:
+
+```sshconfig
+Host benchmark-host-alias
+  ControlMaster auto
+  ControlPath ~/.ssh/cm/%C
+  ControlPersist 8h
+  ServerAliveInterval 30
+  ServerAliveCountMax 6
+  BatchMode yes
+  LogLevel ERROR
+```
+
+Use a hashed `ControlPath` such as `%C` so the socket does not expose host
+names and is unlikely to exceed path-length limits. `BatchMode yes` keeps
+automation from hanging on an interactive auth prompt; `LogLevel ERROR` avoids
+known-host chatter in compact run logs when the operator intentionally uses an
+ephemeral known-host policy. Keep the real host name, jump path, identity file,
+and control socket directory in private operator config.
 
 ```bash
 BENCHMARK_HOST_ALIAS=<your-ssh-config-alias>
-CONTROL_PATH=/tmp/goal-harness-ssh-cm/benchmark-host
-mkdir -p "$(dirname "$CONTROL_PATH")"
+mkdir -p ~/.ssh/cm
+chmod 700 ~/.ssh/cm
 
-ssh -M -S "$CONTROL_PATH" \
-  -o ControlPersist=600 \
-  -fN \
-  -o BatchMode=yes \
-  -o ConnectTimeout=20 \
-  "$BENCHMARK_HOST_ALIAS"
-
-ssh -S "$CONTROL_PATH" -o BatchMode=yes "$BENCHMARK_HOST_ALIAS" \
-  'hostname && docker --version && codex --version'
-
-ssh -S "$CONTROL_PATH" -O exit "$BENCHMARK_HOST_ALIAS" || true
+ssh -MNf "$BENCHMARK_HOST_ALIAS" || ssh -O check "$BENCHMARK_HOST_ALIAS"
+ssh -O check "$BENCHMARK_HOST_ALIAS"
+ssh "$BENCHMARK_HOST_ALIAS" 'hostname && docker --version && codex --version'
 ```
 
 Keep commands through the master connection mostly serial when the access path
 is sensitive to concurrent authentication. Do not commit SSH aliases, host
 names, private keys, jump-host details, raw shell history, or local control-path
 values into public benchmark evidence. Public docs should preserve the shape:
-create one short-lived master, reuse it for bounded probes or run launch, then
-close it during cleanup.
+create or reuse one master, route bounded probes and launch commands through it,
+then let `ControlPersist` expire or close it explicitly with `ssh -O exit` when
+the benchmark slice is done.
+
+Long-running benchmark jobs should not live in a foreground SSH session. Start a
+stable remote `tmux` session and send benchmark launch commands into it, then
+poll with `capture-pane` or compact artifact files:
+
+```bash
+BENCHMARK_TMUX_SESSION=gh-bench
+
+ssh "$BENCHMARK_HOST_ALIAS" \
+  'tmux has-session -t gh-bench 2>/dev/null || tmux new-session -d -s gh-bench -c "$HOME"'
+
+ssh "$BENCHMARK_HOST_ALIAS" \
+  'tmux send-keys -t gh-bench "cd benchmark-work && ./run-no-upload-smoke.sh" C-m'
+
+ssh "$BENCHMARK_HOST_ALIAS" \
+  'tmux capture-pane -pt gh-bench -S -120'
+```
+
+This gives the operator a durable remote workspace even if the local Codex app,
+laptop network, or SSH master connection restarts. Treat `tmux` as benchmark
+host bootstrap tooling: installing it on the host is an operations step, not a
+benchmark result. Public evidence may say that a long run used a persistent
+remote session; raw panes, host paths, task text, verifier output, and command
+history still stay private.
 
 ### Codex Goal Baseline Gate
 
