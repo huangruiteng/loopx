@@ -51,6 +51,8 @@ developer understand the showcased patterns before reading CLI output: public
 cases, efficiency evidence, and the public boundary come from this directory;
 live local `statusUrl` feeds belong only to explicit ops-mode inspection.
 
+![Hosted Goal Harness frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
+
 ## Current Cases
 
 | Case | Pattern | Status | Public Surface |
