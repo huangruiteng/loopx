@@ -4143,6 +4143,140 @@ def test_skillsbench_main_marks_empty_acp_trajectory_after_host_install() -> Non
         ), compact
 
 
+def test_skillsbench_main_marks_agent_message_only_no_tool_calls() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-agent-message-only-") as tmp:
+        jobs_dir = Path(tmp) / "jobs"
+        job_name = "skillsbench-agent-message-only-fixture"
+
+        original_ensure = skillsbench_loop.ensure_benchflow_runtime
+        original_run = skillsbench_loop.run_benchflow_case
+
+        def fake_ensure(_args: Any) -> None:
+            return None
+
+        async def fake_run(_args: Any, plan: dict[str, Any]) -> Path:
+            prerequisites = plan.setdefault("runner_prerequisites", {})
+            prerequisites.update(
+                {
+                    "agent_execution_mode": "container_local_acp",
+                    "container_codex_acp_install_skipped": False,
+                    "codex_acp_runtime_container_bootstrap": True,
+                    "codex_acp_runtime_dependency_preflight": True,
+                    "codex_acp_runtime_launch_preflight": True,
+                    "codex_acp_runtime_launch_preflight_status": "passed",
+                    "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+                }
+            )
+            write_json(
+                Path(plan["controller_trace_json"]),
+                {
+                    "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+                    "route": "goal-harness-blind-loop-treatment",
+                    "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+                    "heartbeat_count": 2,
+                    "controller_action_decisions": 2,
+                    "initial_prompt_count": 1,
+                    "followup_prompt_count": 1,
+                    "round_rewards": [
+                        {
+                            "agent_round": 1,
+                            "reward_present": False,
+                            "passed": False,
+                        },
+                        {
+                            "agent_round": 2,
+                            "reward_present": False,
+                            "passed": False,
+                        },
+                    ],
+                    "official_success_observed": False,
+                    "raw_task_text_recorded": False,
+                    "raw_verifier_output_recorded": False,
+                    "raw_agent_trajectory_recorded": False,
+                    "acp_trajectory_summary": {
+                        "schema_version": "skillsbench_acp_trajectory_summary_v0",
+                        "private_trajectory_present": True,
+                        "raw_text_copied_to_public": False,
+                        "event_count": 4,
+                        "round_count": 2,
+                        "user_message_count": 2,
+                        "agent_message_count": 2,
+                        "tool_call_count": 0,
+                        "codex_acp_text_present": False,
+                        "codex_acp_text_bytes": 0,
+                    },
+                },
+            )
+            result_path = Path(plan["result_json"])
+            write_json(
+                result_path,
+                {
+                    "task_name": "tictoc-unnecessary-abort-detection",
+                    "rollout_name": "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                    "rewards": None,
+                    "agent": "codex-acp",
+                    "agent_name": "codex-acp",
+                    "model": "gpt-5.5",
+                    "n_tool_calls": 0,
+                    "n_prompts": 2,
+                    "error": "compact-safe official runner error",
+                    "error_category": "agent_behavior",
+                    "verifier_error": None,
+                    "partial_trajectory": False,
+                    "trajectory_source": "acp",
+                },
+            )
+            write_json(result_path.with_name("timing.json"), {"total": 2.0})
+            raise RuntimeError("PRIVATE_EXCEPTION_DETAIL_SHOULD_NOT_ESCAPE")
+
+        skillsbench_loop.ensure_benchflow_runtime = fake_ensure
+        skillsbench_loop.run_benchflow_case = fake_run
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = skillsbench_automation_loop_main(
+                    [
+                        "--task-id",
+                        "tictoc-unnecessary-abort-detection",
+                        "--route",
+                        "goal-harness-blind-loop-treatment",
+                        "--jobs-dir",
+                        str(jobs_dir),
+                        "--job-name",
+                        job_name,
+                        "--rollout-name",
+                        "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                        "--run-group-id",
+                        "skillsbench-agent-message-only-fixture",
+                    ]
+                )
+        finally:
+            skillsbench_loop.ensure_benchflow_runtime = original_ensure
+            skillsbench_loop.run_benchflow_case = original_run
+
+        assert rc == 0, stderr.getvalue()
+        payload = json.loads(stdout.getvalue())
+        compact = json.loads(
+            Path(payload["compact_benchmark_run_json"]).read_text(encoding="utf-8")
+        )
+        assert compact["official_score_status"] == "missing", compact
+        assert compact["interaction_counters"]["private_trajectory_event_count"] == 4
+        assert compact["interaction_counters"]["private_trajectory_tool_call_count"] == 0
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_acp_agent_message_only_no_tool_calls"
+        ), compact
+        assert compact["first_blocker"] == (
+            "skillsbench_acp_agent_message_only_no_tool_calls"
+        ), compact
+        assert "skillsbench_agent_behavior_gap" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert "PRIVATE_EXCEPTION_DETAIL_SHOULD_NOT_ESCAPE" not in json.dumps(
+            compact
+        ), compact
+
+
 def test_skillsbench_main_redirects_runner_output_to_private_log() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-private-runner-output-") as tmp:
         jobs_dir = Path(tmp) / "jobs"
@@ -4387,6 +4521,7 @@ if __name__ == "__main__":
     test_skillsbench_main_recovers_official_result_after_runner_exception()
     test_skillsbench_main_recovers_missing_reward_with_structured_prereq_blocker()
     test_skillsbench_main_marks_empty_acp_trajectory_after_host_install()
+    test_skillsbench_main_marks_agent_message_only_no_tool_calls()
     test_skillsbench_main_redirects_runner_output_to_private_log()
     test_skillsbench_reduce_only_discovers_nested_official_result()
     test_skillsbench_reduce_only_preserves_round_reward_trace()

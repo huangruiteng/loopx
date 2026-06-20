@@ -3026,6 +3026,34 @@ def reduce_result(
                     if item not in existing_labels:
                         existing_labels.append(item)
                 compact["failure_attribution_labels"] = existing_labels
+    elif compact.get("official_score_status") == "missing":
+        counters = compact.get("interaction_counters")
+        if isinstance(counters, dict):
+            event_count = counters.get("private_trajectory_event_count")
+            round_count = counters.get("private_trajectory_round_count")
+            tool_count = counters.get("private_trajectory_tool_call_count")
+            controller_decisions = counters.get("controller_action_decisions")
+            if (
+                isinstance(event_count, int)
+                and event_count > 0
+                and isinstance(round_count, int)
+                and round_count > 0
+                and tool_count == 0
+                and isinstance(controller_decisions, int)
+                and controller_decisions > 0
+            ):
+                label = "skillsbench_acp_agent_message_only_no_tool_calls"
+                compact["score_failure_attribution"] = label
+                compact.setdefault("first_blocker", label)
+                existing_labels = [
+                    item
+                    for item in compact.get("failure_attribution_labels", [])
+                    if isinstance(item, str)
+                ]
+                for item in (label, "skillsbench_agent_behavior_gap"):
+                    if item not in existing_labels:
+                        existing_labels.append(item)
+                compact["failure_attribution_labels"] = existing_labels
     if task_staging:
         compact["task_staging"] = task_staging
     discovery = plan.get("result_discovery")
