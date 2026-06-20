@@ -130,6 +130,11 @@ function warningMessage(value: string | string[] | undefined) {
   return value ?? "compact source warning";
 }
 
+function artifactDisplayValue(value: string | number | boolean | null | undefined) {
+  const text = stringifyScalar(value);
+  return text.length > 96 ? `${text.slice(0, 93)}...` : text;
+}
+
 function countOpenTodos(todos: GoalChannelTodo[]) {
   return todos.filter((todo) => todo.status === "open").length;
 }
@@ -1199,6 +1204,60 @@ function FrontstageRoute({
                     <div className="mt-2 break-all text-xs font-medium text-slate-500">{lease.todo_id}</div>
                   </div>
                 ))}
+              </div>
+            </Panel>
+          ) : null}
+
+          {isOpsMode ? (
+            <Panel icon={CircleAlert} title="Open Gates">
+              <div className="divide-y divide-slate-200" data-testid="frontstage-open-gates">
+                {projection.open_gates.map((gate) => (
+                  <div className="px-4 py-3" key={gate.gate_id}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={statusTone(gate.status)}>{gate.status}</Badge>
+                      <Badge variant="neutral">{gate.kind}</Badge>
+                    </div>
+                    <div className="mt-2 break-all text-xs font-semibold text-slate-600">{gate.gate_id}</div>
+                    {gate.blocks?.length ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {gate.blocks.map((blocker) => (
+                          <Badge key={blocker} variant="warning">{blocker}</Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {!projection.open_gates.length ? (
+                  <div className="px-4 py-4 text-sm font-medium leading-6 text-slate-500">No open gates in this projection.</div>
+                ) : null}
+              </div>
+            </Panel>
+          ) : null}
+
+          {isOpsMode ? (
+            <Panel icon={ExternalLink} title="Artifacts">
+              <div className="divide-y divide-slate-200" data-testid="frontstage-artifacts">
+                {projection.artifacts.map((artifact, index) => (
+                  <div className="space-y-2 px-4 py-3" key={`${artifact.kind ?? "artifact"}-${index}`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="info">{artifactDisplayValue(artifact.kind)}</Badge>
+                      {artifact.label ? <Badge variant="neutral">{artifactDisplayValue(artifact.label)}</Badge> : null}
+                    </div>
+                    {Object.entries(artifact)
+                      .filter(([key]) => !["kind", "label"].includes(key))
+                      .map(([key, value]) => (
+                        <div className="grid gap-1 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5" key={key}>
+                          <span className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">{key}</span>
+                          <span className="break-words text-xs font-medium leading-5 text-slate-700">
+                            {artifactDisplayValue(value)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                ))}
+                {!projection.artifacts.length ? (
+                  <div className="px-4 py-4 text-sm font-medium leading-6 text-slate-500">No compact artifacts projected.</div>
+                ) : null}
               </div>
             </Panel>
           ) : null}

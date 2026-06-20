@@ -60,6 +60,8 @@ includes(frontstageSource, 'data-testid="frontstage-user-todos"', "user todo lan
 includes(frontstageSource, 'data-testid="frontstage-agent-todos"', "agent todo lane");
 includes(frontstageSource, 'data-testid="frontstage-role-map"', "role map lane");
 includes(frontstageSource, 'data-testid="frontstage-active-claims"', "active claims lane");
+includes(frontstageSource, 'data-testid="frontstage-open-gates"', "open gates lane");
+includes(frontstageSource, 'data-testid="frontstage-artifacts"', "artifacts lane");
 includes(frontstageSource, 'data-testid="frontstage-timeline"', "timeline lane");
 includes(frontstageSource, "Frontstage channel", "frontstage channel copy");
 includes(frontstageSource, "Channel board", "channel board nav");
@@ -76,6 +78,9 @@ includes(frontstageSource, "Role Map", "role map copy");
 includes(frontstageSource, "claim owners", "claim owner role signal");
 includes(frontstageSource, "claimed lanes", "claimed lane signal");
 includes(frontstageSource, "evidence loop", "evidence loop signal");
+includes(frontstageSource, "No open gates in this projection.", "open gates empty state");
+includes(frontstageSource, "No compact artifacts projected.", "artifacts empty state");
+includes(frontstageSource, "artifactDisplayValue", "artifact value truncation helper");
 includes(frontstageSource, 'data-testid="frontstage-efficiency-evidence"', "efficiency evidence panel");
 includes(frontstageSource, "Efficiency Evidence", "efficiency evidence copy");
 includes(frontstageSource, "showcaseCatalog", "showcase catalog import");

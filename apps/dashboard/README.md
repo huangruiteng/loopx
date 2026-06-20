@@ -33,8 +33,8 @@ project summaries.
 
 The first read-only channel frontstage lives at `/frontstage`. It renders a
 public-safe `goal_channel_projection_v0` fixture as a dense channel board with
-decision, quota, user todo, agent todo, active-claim, timeline, and truth
-contract lanes. Treat it as the product-path replacement for expanding the
+decision, quota, user todo, agent todo, active-claim, open-gate, artifact,
+timeline, and truth contract lanes. Treat it as the product-path replacement for expanding the
 no-dependency static HTML renderer; the Python renderer remains the fallback
 demo/diagnostic surface.
 

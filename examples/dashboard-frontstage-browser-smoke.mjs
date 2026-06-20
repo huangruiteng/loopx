@@ -54,7 +54,14 @@ function projectionFor(goalId, displayName, claimedBy, todoTitle) {
         title: `${todoTitle} FAKE_PRIVATE_TODO_GAMMA`,
       },
     ],
-    open_gates: [],
+    open_gates: [
+      {
+        gate_id: `${goalId}_gate`,
+        kind: "user_channel",
+        status: "clear",
+        blocks: [],
+      },
+    ],
     active_leases: [
       {
         owner_agent: claimedBy,
@@ -66,6 +73,7 @@ function projectionFor(goalId, displayName, claimedBy, todoTitle) {
       {
         kind: "fixture",
         label: "browser smoke statusUrl",
+        path: "docs/showcases/showcase-catalog.json",
       },
     ],
     recent_events: [
@@ -285,7 +293,7 @@ async function captureFrontstage(page, url, label, requiredText = []) {
     "SINGLE-ENGINEER COMPRESSION",
     "maturity-adjusted",
     "PUBLIC GIT FACTS",
-    "Showcase Motion",
+    "Async Work Loop",
     "Case-driven motion board",
     "Case source",
     "docs/showcases/showcase-catalog.json",
@@ -345,16 +353,16 @@ async function main() {
     try {
       await captureFrontstage(desktopPage, `${baseUrl}/frontstage`, "desktop-frontstage", [
         "Goal Harness Showcase Frontstage",
-        "Always-on agent teams, governed by human judgment",
+        "Async agent teams, governed by human judgment",
         "public cases",
         "story beats",
         "showcase mode",
         "Showcase mode ignores statusUrl",
         "STATE FLOW CONTROL PLANE",
-        "The work moves. Judgment stays visible.",
+        "Work keeps moving. Judgment stays in charge.",
         "safe work moves",
         "ASYNCHRONOUS AGENT RHYTHM",
-        "Always-on agent teams can keep safe work moving",
+        "Agent teams work across turns and off-hours",
         "SEARCH PUBLIC SHOWCASES",
         "Showing 4 of 4 public-safe cases",
         "Public Boundary",
@@ -455,9 +463,13 @@ async function main() {
           "Run Timeline",
           "Role Map",
           "Active Claims",
+          "Open Gates",
+          "Artifacts",
           "Truth Contract",
           "CLAIMED LANES",
           "EVIDENCE LOOP",
+          "live-goal-a_gate",
+          "browser smoke statusUrl",
           "browser_smoke_public_fixture",
         ],
       );
@@ -499,7 +511,7 @@ async function main() {
     try {
       await captureFrontstage(mobilePage, `${baseUrl}/frontstage`, "mobile-frontstage", [
         "Goal Harness Showcase Frontstage",
-        "Always-on agent teams, governed by human judgment",
+        "Async agent teams, governed by human judgment",
         "showcase mode",
         "Showcase mode ignores statusUrl",
         "Public Boundary",
