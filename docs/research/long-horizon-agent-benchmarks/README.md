@@ -69,6 +69,11 @@ work still belongs in the existing code, examples, and contract documents:
   queue after the agent-runtime refactor and app-server Goal pivot. It tracks
   running, superseded, and next-rerun case state without copying raw task text,
   logs, trajectories, verifier output, credentials, or remote host paths.
+- `benchmark-goal-rollout-debug-20260620.md`: public-safe rollout/debug layer
+  for the first cloud app-server Goal closeouts. It links compact benchmark
+  outcomes, GH todo/status transitions, case routes, failure attribution, and
+  next debug questions without copying raw task text, logs, trajectories,
+  verifier output, credentials, or private paths.
 - `benchmark-route-transition-retrospective-20260619.md`: retrospective and
   runbook for the local-Codex split-control to cloud-host Codex route pivot. It
   records why split-control was hard, which contracts/reducers remain useful,

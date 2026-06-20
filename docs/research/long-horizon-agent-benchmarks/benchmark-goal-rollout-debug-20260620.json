@@ -1,0 +1,190 @@
+{
+  "schema_version": "benchmark_goal_rollout_debug_v0",
+  "generated_at": "2026-06-21T00:18:00+08:00",
+  "scope": "public_safe_rollout_metadata_for_20260620_cloud_goal_closeouts",
+  "public_boundary": {
+    "raw_task_text_copied": false,
+    "raw_logs_copied": false,
+    "raw_verifier_output_copied": false,
+    "raw_trajectory_copied": false,
+    "credential_material_copied": false,
+    "private_or_absolute_paths_copied": false,
+    "notes": "This file records compact rollout/control-plane metadata only. Raw benchmark artifacts stay on the private cloud host or ignored local runtime state."
+  },
+  "goal_harness_control_plane": {
+    "goal_id": "goal-harness-meta",
+    "pre_debug_recommended_action": {
+      "todo_id": "todo_9b33c85f5b7c",
+      "action_kind": "benchmark_case_rotation",
+      "summary": "Rotate next benchmark cases after app-server Goal closeout."
+    },
+    "debug_reprioritization": {
+      "todo_id": "todo_c5ca9f496ed6",
+      "claimed_by": "codex-main-control",
+      "action_kind": "benchmark_rollout_debug",
+      "summary": "Analyze just-closed benchmark rollouts and GH status flow before launching another rotation."
+    },
+    "recent_status_flow": [
+      {
+        "generated_at": "2026-06-20T23:25:02+08:00",
+        "classification": "benchmark_app_server_goal_runtime_lane_progress_20260620",
+        "delivery_outcome": "outcome_progress",
+        "meaning": "Three benchmark lanes were still active; next action was polling until compact result or precise blocker."
+      },
+      {
+        "generated_at": "2026-06-20T23:57:24+08:00",
+        "classification": "benchmark_cloud_goal_closeouts_pr319_merged_20260620",
+        "delivery_outcome": "outcome_progress",
+        "meaning": "Closeout helpers, reducers, SOP updates, and compact case evidence landed through PR #319."
+      },
+      {
+        "generated_at": "2026-06-20T23:57:59+08:00",
+        "classification": "benchmark_next_action_successor_sync_20260620",
+        "delivery_outcome": "surface_only",
+        "meaning": "Control plane successor switched to case rotation after closeout."
+      },
+      {
+        "generated_at": "2026-06-21T00:03:04+08:00",
+        "classification": "benchmark_rollout_debug_reprioritized_20260621",
+        "delivery_outcome": "surface_only",
+        "meaning": "Owner redirected the next step from rotation to rollout/debug analysis; a dedicated GH todo was created and claimed."
+      }
+    ]
+  },
+  "case_rollouts": [
+    {
+      "benchmark_id": "terminal-bench@2.0",
+      "case_id": "build-cython-ext",
+      "current_run_id": "f004782b573f",
+      "route": "host_codex_app_server_goal",
+      "arm_id": "terminal_bench_host_codex_app_server_goal_baseline",
+      "native_codex_goal_evidence": true,
+      "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T131254Z/terminal-bench-build-cython-ext-host-app-server-goal-r9/terminal_official_metadata.compact.json",
+      "official_score": 0.0,
+      "official_passed": false,
+      "failure_class": "official_verifier_solution_failure",
+      "failure_scope": "case_or_solution",
+      "rollout_stages": [
+        "remote_cloud_host_selected",
+        "codex_app_server_goal_started",
+        "terminal_bench_runner_reached_official_closeout",
+        "metadata_only_reducer_wrote_compact_result",
+        "ledger_upserted"
+      ],
+      "historical_control": {
+        "run_id": "53729101fea3",
+        "route": "codex_goal_mode_baseline_runtime_extended",
+        "official_score": 1.0,
+        "meaning": "This case previously passed after worker runtime setup repair, so the current app-server Goal zero is not enough to claim case impossibility."
+      },
+      "debug_read": "The route reached official scoring, but the public reducer does not yet expose enough solution-phase detail to distinguish timeout, incomplete edit, wrong validation target, or actual task reasoning failure.",
+      "next_debug_questions": [
+        "Can a public-safe terminal/goal phase summary be derived without copying raw trial fields?",
+        "Did app-server Goal get enough task-visible time compared with the historical passing run?",
+        "Should the next Terminal-Bench step be a historical pass/control rerun before treatment?"
+      ]
+    },
+    {
+      "benchmark_id": "skillsbench@1.1",
+      "case_id": "llm-prefix-cache-replay",
+      "current_run_ids": {
+        "baseline": "ec3f2c4a4a79",
+        "treatment": "5bfbc9e250f5"
+      },
+      "route": "benchflow_acp_blind_loop",
+      "native_codex_goal_evidence": false,
+      "compact_artifact_refs": {
+        "baseline": "cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-llm-prefix-baseline-r1/benchmark_run.compact.json",
+        "treatment": "cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-llm-prefix-treatment-r1/benchmark_run.compact.json"
+      },
+      "official_scores": {
+        "baseline": 0.0,
+        "treatment": 0.0,
+        "delta": 0.0
+      },
+      "failure_class": "official_score_zero_case_failure",
+      "failure_scope": "case_or_solution",
+      "rollout_stages": [
+        "runtime_layer_refactor_applied",
+        "codex_acp_runtime_preflight_passed",
+        "benchflow_runner_entered_rounds",
+        "official_score_zero_for_both_arms",
+        "paired_no_score_uplift_ledger_decision"
+      ],
+      "debug_read": "This is useful runner/verifier evidence, but it is not the native app-server Goal baseline the benchmark program now wants as the primary comparison target.",
+      "next_debug_questions": [
+        "Should SkillsBench get a native app-server Goal worker before more score claims?",
+        "Is the case a poor canary for Goal Harness lift, or is the blind-loop policy too weak?",
+        "Can reduce-only preserve persisted runtime prerequisites to avoid stale setup blockers?"
+      ]
+    },
+    {
+      "benchmark_id": "skillsbench@1.1",
+      "case_id": "tictoc-unnecessary-abort-detection",
+      "current_run_ids": {
+        "baseline": "99b2fe6538a4",
+        "treatment": "f86e63762ab2"
+      },
+      "route": "benchflow_acp_blind_loop",
+      "native_codex_goal_evidence": false,
+      "compact_artifact_refs": {
+        "baseline": "cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-tictoc-baseline-r2/benchmark_run.compact.json",
+        "treatment": "cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-tictoc-treatment-r2/benchmark_run.compact.json"
+      },
+      "official_scores": {
+        "baseline": 0.0,
+        "treatment": 0.0,
+        "delta": 0.0
+      },
+      "failure_class": "official_score_zero_case_failure",
+      "failure_scope": "case_or_solution",
+      "rollout_stages": [
+        "runtime_layer_refactor_applied",
+        "codex_acp_runtime_preflight_passed",
+        "benchflow_runner_entered_rounds",
+        "official_score_zero_for_both_arms",
+        "paired_no_score_uplift_ledger_decision"
+      ],
+      "debug_read": "The run validates that setup/prewarm no longer blocks this case, but not that the current Goal Harness policy improves task outcome.",
+      "next_debug_questions": [
+        "Is this case suitable as a stability canary only?",
+        "Should future SkillsBench treatment wait for native app-server Goal rather than another blind-loop repeat?",
+        "What compact trajectory counters predict zero-score before spending full case budget?"
+      ]
+    },
+    {
+      "benchmark_id": "swe-marathon",
+      "case_id": "find-network-alignments",
+      "current_run_id": "78318f625e3f",
+      "route": "harbor_host_codex_app_server_goal",
+      "arm_id": "swe_marathon_host_codex_app_server_goal_baseline",
+      "native_codex_goal_evidence": true,
+      "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T131254Z/swe-marathon-find-network-alignments-host-app-server-goal-r6/harbor_job_result.compact.json",
+      "official_score": 0.0,
+      "official_passed": false,
+      "failure_class": "official_verifier_solution_failure",
+      "failure_scope": "case_or_solution",
+      "rollout_stages": [
+        "harbor_source_and_jobconfig_preflight_passed",
+        "codex_app_server_goal_started",
+        "harbor_environment_operation_reached",
+        "agent_execution_reached",
+        "official_verifier_completed_zero",
+        "ledger_upserted"
+      ],
+      "debug_read": "This is the first real native Goal SWE-Marathon cloud closeout. It proves runner reachability but not task-solving capability.",
+      "next_debug_questions": [
+        "Was the solution incomplete because of app-server Goal timeout or because the model made a wrong edit?",
+        "Can Harbor expose public-safe phase counters for edit/test/verify without raw diffs?",
+        "Should the next SWE-Marathon step be a second small case or a matched treatment arm?"
+      ]
+    }
+  ],
+  "cross_case_findings": [
+    "The cloud host and app-server Goal route are now proven for Terminal-Bench and SWE-Marathon, but both native Goal baselines currently score zero.",
+    "SkillsBench closeouts are runner/verifier progress, not native Codex Goal evidence, because the current route is ACP/blind-loop.",
+    "The current failure taxonomy is too coarse: official_verifier_solution_failure should be split from agent timeout, incomplete solution, and verifier dependency failures when compact evidence supports it.",
+    "A dedicated rollout layer is needed between raw private trajectories and the public benchmark ledger: ledger says what closed; rollout says how the case moved through control-plane and runner phases."
+  ],
+  "recommended_next_step": "Before launching another rotation, add a durable public-safe rollout/traj debug artifact and use it to decide which case needs phase-counter reducers, native SkillsBench Goal support, or treatment comparison."
+}

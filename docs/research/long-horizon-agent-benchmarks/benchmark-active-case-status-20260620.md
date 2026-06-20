@@ -25,6 +25,12 @@ Public boundary:
   run the task, official tests, and benchmark verifier only.
 - Remote benchmark checkout patches must follow
   `docs/benchmark-developer-workflow.md#remote-checkout-patch-protocol`.
+- After a compact closeout batch, write or update a public-safe rollout/debug
+  layer before rotating new cases. The first such artifact is
+  `benchmark-goal-rollout-debug-20260620.md`: it links compact result rows,
+  GH todo/status transitions, route shape, failure attribution, and next debug
+  questions without copying raw task text, logs, trajectories, verifier output,
+  credentials, or private paths.
 
 ## Active Cloud Batch
 
@@ -66,3 +72,6 @@ or blocker.
 4. Promote a case into `benchmark-case-analysis.json` only after the compact
    result teaches a durable routing, uplift, no-uplift, regression, or
    infrastructure lesson.
+5. For closeout batches with ambiguous zero scores, update the rollout/debug
+   layer before launching another rotation so future agents can inspect the GH
+   state flow and runner phase boundary, not only the final score.
