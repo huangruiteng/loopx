@@ -4386,12 +4386,23 @@ def first_open_todo_text(todos: dict[str, Any] | None) -> str | None:
     return str(items[0].get("text") or "") or None
 
 
-def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] | None:
+def project_asset_todo_summary(
+    todos: dict[str, Any] | None,
+    *,
+    role: str | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(todos, dict):
         return None
     open_count = todos.get("open_count", 0)
     done_count = todos.get("done_count", 0)
     total_count = todos.get("total_count", 0)
+    todo_role = str(role or todos.get("role") or "").strip().lower()
+    if todo_role == "user":
+        canonical_source = "attention_queue.items[].user_todos"
+    elif todo_role == "agent":
+        canonical_source = "attention_queue.items[].agent_todos"
+    else:
+        canonical_source = "attention_queue.items[].{user_todos,agent_todos}"
     summary: dict[str, Any] = {
         "schema_version": todos.get("schema_version") or "todo_summary_v0",
         "source_section": "project_asset",
@@ -4402,7 +4413,7 @@ def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] |
             "schema_version": TODO_PROJECTION_VIEW_SCHEMA_VERSION,
             "view": "project_asset_overview",
             "truth": "derived",
-            "canonical_source": "attention_queue.items[].agent_todos",
+            "canonical_source": canonical_source,
             "item_limit": MAX_PROJECT_ASSET_TODO_ITEMS,
         },
         "detail_pointer": {
@@ -5180,10 +5191,10 @@ def enrich_project_asset(
     project_asset = item.get("project_asset")
     if not isinstance(project_asset, dict):
         return
-    user_summary = project_asset_todo_summary(user_todos)
+    user_summary = project_asset_todo_summary(user_todos, role="user")
     if user_summary:
         project_asset["user_todos"] = user_summary
-    agent_summary = project_asset_todo_summary(agent_todos)
+    agent_summary = project_asset_todo_summary(agent_todos, role="agent")
     if agent_summary:
         project_asset["agent_todos"] = agent_summary
     todo_projection_gap = project_asset_todo_projection_gap(

@@ -125,8 +125,16 @@ def main() -> int:
     assert empty_summary["projection_view"]["schema_version"] == TODO_PROJECTION_VIEW_SCHEMA_VERSION, empty_summary
     assert empty_summary["projection_view"]["view"] == "project_asset_overview", empty_summary
     assert empty_summary["projection_view"]["truth"] == "derived", empty_summary
+    assert (
+        empty_summary["projection_view"]["canonical_source"]
+        == "attention_queue.items[].{user_todos,agent_todos}"
+    ), empty_summary
     assert empty_summary["detail_pointer"]["schema_version"] == TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION, empty_summary
     assert empty_summary["detail_pointer"]["full_list_included"] is False, empty_summary
+    user_empty_summary = project_asset_todo_summary(empty_summary, role="user")
+    assert user_empty_summary["projection_view"]["canonical_source"] == "attention_queue.items[].user_todos"
+    agent_empty_summary = project_asset_todo_summary(empty_summary, role="agent")
+    assert agent_empty_summary["projection_view"]["canonical_source"] == "attention_queue.items[].agent_todos"
     assert project_asset_todo_projection_gap(user_todos=empty_summary, agent_todos=empty_summary) is None
     gap = project_asset_todo_projection_gap(user_todos=None, agent_todos=empty_summary)
     assert gap and gap["missing_roles"] == ["user"], gap

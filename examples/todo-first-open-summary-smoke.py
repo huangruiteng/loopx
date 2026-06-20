@@ -132,7 +132,7 @@ def build_blocked_priority_fallback_status_payload() -> dict:
     assert agent_todos is not None, agent_todos
     assert agent_todos["first_open_items"][0]["status"] == "blocked", agent_todos
     assert agent_todos["first_executable_items"][0]["text"] == FALLBACK_TODO, agent_todos
-    asset_summary = project_asset_todo_summary(agent_todos)
+    asset_summary = project_asset_todo_summary(agent_todos, role="agent")
     assert asset_summary is not None, agent_todos
     attention_item = {
         "goal_id": GOAL_ID,
@@ -250,7 +250,7 @@ def assert_claimed_frontstage_lanes_visible() -> None:
     assert agent_todos["claimed_advancement_open_count"] == 1, agent_todos
     assert agent_todos["claimed_monitor_open_count"] == 1, agent_todos
 
-    asset_summary = project_asset_todo_summary(agent_todos)
+    asset_summary = project_asset_todo_summary(agent_todos, role="agent")
     assert asset_summary is not None, agent_todos
     assert asset_summary["projection_view"]["view"] == "project_asset_overview", asset_summary
     assert asset_summary["projection_view"]["truth"] == "derived", asset_summary
@@ -331,7 +331,7 @@ def main() -> int:
     agent_todos = build_truncated_todo_group()
     parsed_agent_todos = parse_multiline_deep_open_todo()
     assert parsed_agent_todos["first_open_items"] == agent_todos["first_open_items"], parsed_agent_todos
-    asset_summary = project_asset_todo_summary(agent_todos)
+    asset_summary = project_asset_todo_summary(agent_todos, role="agent")
     assert asset_summary is not None, agent_todos
     assert asset_summary["open"] == 4, asset_summary
     assert asset_summary["next"] == APPENDED_P0_TODO, asset_summary
