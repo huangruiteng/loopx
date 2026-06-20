@@ -49,6 +49,15 @@ Success means:
 - the implementation adds a boundary smoke or scripted scan proving the public
   video path does not consume local live status.
 
+## Validation
+
+Run `python3 examples/showcase-animation-source-boundary-smoke.py` before
+publishing any animation artifact. The smoke keeps the input contract narrow:
+`docs/showcases/showcase-catalog.json` plus public assets are allowed; live
+registry state, local status exports, user-specific active state, private
+chats, internal project names, and raw benchmark traces are not animation
+sources.
+
 ## Decision Boundary
 
 Do not install animation tooling into the core package or dashboard dependency
