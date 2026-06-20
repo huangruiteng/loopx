@@ -3,9 +3,9 @@
 Goal Harness is not only a developer tool for AI coding loops. It starts there
 because engineering work exposes the hard control-plane problems quickly:
 state drift, human gates, run evidence, handoffs, ownership, quota, and
-public/private boundaries. The larger product category is a control plane for
-lifetime goals: long-running agent work that has to stay understandable and
-recoverable across many turns.
+public/private boundaries. The larger product category is a dynamic goal
+control plane: a way to turn a static agent goal into long-running, reviewable
+state that stays understandable and recoverable across many turns.
 
 The long-term product should help humans who do not want to inspect prompts,
 logs, or traces. A user should be able to run multiple agents across tools and
@@ -24,6 +24,8 @@ off-hours, then open a first screen and understand:
 
 **Gate-aware human-in-the-loop control plane**
 
+**Dynamic goal control plane for long-running agents**
+
 **让多个 agent 昼夜接力，把人的判断留在控制面。**
 
 Goal Harness 把目标、用户决策、agent todo、认领关系、scope、safe fallback、
@@ -32,7 +34,9 @@ run history 和 quota 放进同一层状态：该等人的地方明确等人，�
 
 The product promise is always-on progress without uncontrolled autonomy:
 primary and side agents can continue bounded work, while human gates,
-capability gates, quota, evidence, and project boundaries remain explicit.
+capability gates, quota, evidence, and project boundaries remain explicit. In
+that sense, Goal Harness is not just a longer prompt or a bigger todo list; it
+is the dynamic goal state around executor loops.
 
 ## Creator-Operator Case
 

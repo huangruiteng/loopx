@@ -226,7 +226,7 @@ public/private boundary check before it becomes part of a richer UI.
 ## Roadmap Implication
 
 This product shape changes the center of gravity from "a CLI around a Markdown
-goal file" to "a lifetime-goal control plane with CLI as the first client."
+goal file" to "a dynamic goal control plane with CLI as the first client."
 
 That does not make the CLI obsolete. The CLI is the compatibility baseline and
 the safety fallback. It also keeps contracts honest: if a future server or

@@ -28,18 +28,19 @@ Gate-aware human-in-the-loop control plane
 Use this supporting category/tagline language when more explanation is needed:
 
 ```text
-lifetime-goal control plane
+dynamic goal control plane
 ```
 
 The public story should be:
 
-> Goal Harness is the lifetime-goal control plane around agent loops. Codex,
+> Goal Harness is the dynamic goal control plane around agent loops. Codex,
 > Claude Code, Cursor, terminal agents, and benchmark runners execute bounded
-> work; Goal Harness keeps the long-running goal, gates, todos, claims, scopes,
-> quota, evidence, and handoffs visible across those loops.
+> work; Goal Harness turns a static goal into long-running state: gates, todos,
+> claims, scopes, quota, evidence, and handoffs stay visible across those loops.
 
-Do not rename the repo to `lifetime-goal-harness` now. Use "lifetime-goal" as
-category language until there is stronger evidence that users remember it
+Do not rename the repo to `lifetime-goal-harness` or
+`dynamic-goal-harness` now. Use "dynamic goal control plane" as category
+language until there is stronger evidence that users remember another name
 better than `Goal Harness`.
 
 ## Why Not Rename Yet
@@ -57,7 +58,7 @@ copy:
 
 ```text
 Not an agent runtime; the control plane around the runtime.
-Not Codex goal mode; the lifetime-goal state that survives across executor
+Not Codex goal mode; the dynamic goal state that survives across executor
 loops.
 ```
 
@@ -71,6 +72,7 @@ comprehension.
 | --- | --- | --- | --- |
 | `Goal Harness` | Short, current, command-friendly, broad enough for engineering and creator/operator cases. | Needs category copy to avoid confusion with Codex goal mode or todo apps. | Keep as brand. |
 | `Lifetime Goal Harness` | Makes the long-horizon ambition explicit. | Long, heavy, awkward as a repo/package name, and can sound abstract before users understand the product. | Use as explanatory language, not brand. |
+| `Dynamic Goal Harness` | Captures the contrast with static goal prompts and one-shot automation. | Still long as a repo/package name, and "dynamic" can sound generic without the control-plane proof. | Use as category signal, not brand. |
 | `Goal Control Plane` | Directly names the category. | Too generic; weak brand; less distinctive in search or conversation. | Use as occasional explanation only. |
 | `Agent Control Plane` | Clear for agent-infrastructure audiences. | Overclaims the scope and implies Goal Harness is a runtime/orchestrator. | Avoid as primary framing. |
 | `Long-Horizon Control Plane` | Emphasizes the real problem. | Broad and technical; less connected to the user's concrete goal. | Use in long-form docs when useful. |
@@ -83,7 +85,7 @@ Use three layers:
 1. **Brand**: `Goal Harness`
 2. **Hero promise**: `Always-on agent teams, governed by human judgment`
 3. **Category**: `Gate-aware human-in-the-loop control plane`
-4. **Support phrase**: `lifetime-goal control plane`
+4. **Support phrase**: `dynamic goal control plane`
 
 This lets the project keep a stable name while still sharpening the product
 category.
@@ -96,6 +98,8 @@ Goal Harness
 Always-on agent teams, governed by human judgment.
 
 Gate-aware human-in-the-loop control plane.
+
+Dynamic goal control plane for long-running agents.
 ```
 
 Chinese-first stack:
@@ -105,10 +109,11 @@ Goal Harness
 
 Always-on agent teams, governed by human judgment
 Gate-aware human-in-the-loop control plane
+Dynamic goal control plane for long-running agents
 让多个 agent 昼夜接力，把人的判断留在控制面。
 
 Goal Harness 不是替代 Codex goal/automation，而是给这些 executor loop
-提供 lifetime-goal 控制面。
+提供动态长期目标控制面。
 ```
 
 ## When To Use Each Phrase
@@ -123,8 +128,10 @@ overclaiming autonomous production control.
 Use `Gate-aware human-in-the-loop control plane` when a first-contact reader
 needs the technical category immediately.
 
-Use `lifetime-goal control plane` when explaining why this is larger than one
-agent session, one terminal command, or one benchmark run.
+Use `dynamic goal control plane` when explaining why this is larger than one
+agent session, one terminal command, or one benchmark run. Use
+`lifetime-goal` only as a secondary explanation for time horizon, not as the
+main category.
 
 Use `Your agents keep the night shift. You keep the judgment.` as a social or
 demo tagline, not as a formal architecture term.
@@ -144,8 +151,8 @@ A good validation cycle:
    - Is Goal Harness replacing Codex/Claude/Cursor, or wrapping them?
    - What problem does it solve in long-running agent work?
    - What phrase do they remember after closing the page?
-3. Compare recall of `Goal Harness`, `lifetime-goal control plane`, and
-   `human-in-the-loop control plane`.
+3. Compare recall of `Goal Harness`, `dynamic goal control plane`,
+   `lifetime-goal control plane`, and `human-in-the-loop control plane`.
 4. Record only public-safe aggregated notes: no raw chat transcripts, personal
    names, screenshots, internal links, or private project context.
 5. Rename only if users consistently remember another name better and also
@@ -160,8 +167,9 @@ changing the brand.
   `Goal Harness, an always-on control plane for agent teams governed by human
   judgment`.
 - When users confuse it with Codex goal mode, answer with the executor-loop
-  split: Codex does bounded work; Goal Harness preserves lifetime-goal state.
-- Use "lifetime-goal" in explanatory paragraphs, not every headline.
+  split: Codex does bounded work; Goal Harness preserves dynamic goal state.
+- Use "dynamic goal" for the category; use "lifetime-goal" in explanatory
+  paragraphs only when the time horizon needs emphasis.
 - Keep bilingual hero copy for Chinese-first surfaces, but keep English README
   body primarily English.
 - Treat naming claims as outreach language. Do not add brittle smoke tests that

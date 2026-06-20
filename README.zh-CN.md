@@ -4,16 +4,18 @@
 
 **Gate-aware human-in-the-loop control plane**
 
+**Dynamic goal control plane for long-running agents**
+
 **让多个 agent 昼夜接力，把人的判断留在控制面。**
 
 Goal Harness 把目标、用户决策、agent todo、认领关系、scope、safe fallback、
 run history 和 quota 放进同一层状态：该等人的地方明确等人，不该空等的
 安全侧路继续推进。
 
-Goal Harness 是一个面向长期 agent 工作的本地控制面。它让 Codex、Claude Code、
-Cursor、automation 和旁路 agent 共享同一份长期目标状态：目标、gate、todo、
-认领、scope、运行历史、quota、证据和项目边界在多轮工作中保持可见、可恢复、
-可交接。
+Goal Harness 是一个面向长期 agent 工作的本地控制面。它把一次性的静态 goal
+变成可演化、可复盘、可接力的动态目标状态：Codex、Claude Code、Cursor、
+automation 和旁路 agent 共享目标、gate、todo、认领、scope、运行历史、quota、
+证据和项目边界，在多轮工作中保持可见、可恢复、可交接。
 
 [English](README.md) · [快速开始](#快速开始) · [Showcases](docs/showcases/README.md) ·
 [用户群与反馈](#用户群与反馈) · [产品愿景](docs/product/vision.md) · [架构](docs/architecture.md)
@@ -30,7 +32,7 @@ Cursor 或其他终端 agent。更准确地说：
 | Goal Harness | 维护长期目标的控制面：当前目标、用户决策、agent todo、run history、quota、证据、边界和交接 |
 
 一句话：Goal Harness 不是 Codex goal 的替代品，而是让 Codex goal、automation
-和外部脚本触发的 agent loop 都能共享同一份长期状态。
+和外部脚本触发的 agent loop 都能共享同一份动态长期目标状态。
 
 ## 为什么需要
 

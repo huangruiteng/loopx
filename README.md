@@ -4,6 +4,8 @@
 
 **Gate-aware human-in-the-loop control plane**
 
+**Dynamic goal control plane for long-running agents**
+
 **让多个 agent 昼夜接力，把人的判断留在控制面。**
 
 Goal Harness 把目标、用户决策、agent todo、认领关系、scope、safe fallback、
@@ -11,9 +13,10 @@ run history 和 quota 放进同一层状态：该等人的地方明确等人，�
 安全侧路继续推进。
 
 Goal Harness is a local control plane for long-running AI agent projects. It
-keeps goals, gates, todos, claims, scopes, run history, quota, evidence, and
-human decisions visible across many turns, so primary and side agents can keep
-working on safe lanes while gated work waits for the person.
+turns a static agent goal into a dynamic, reviewable state layer: goals, gates,
+todos, claims, scopes, run history, quota, evidence, and human decisions stay
+visible across many turns, so primary and side agents can keep working on safe
+lanes while gated work waits for the person.
 
 [Quick Start](#quick-start) · [Getting Started](docs/guides/getting-started.md) ·
 [Showcases](docs/showcases/README.md) · [Hosted Frontstage](https://huangruiteng.github.io/goal-harness/frontstage/) ·
@@ -30,14 +33,14 @@ long-running work.
 
 Short answer: Goal Harness is not replacing Codex goal mode. Codex goal,
 Codex App automation, and CLI scripts can trigger executor loops; Goal Harness
-preserves the lifetime-goal state those loops need to keep working across
+preserves the dynamic goal state those loops need to keep working across
 turns.
 
 | Layer | Role |
 | --- | --- |
 | Codex / Claude Code / Cursor | Execute an agent loop: read, write, run commands, and respond. |
 | Codex goal / automation / CLI scripts | Trigger or schedule the next executor loop. |
-| Goal Harness | Preserve the lifetime goal: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
+| Goal Harness | Preserve the dynamic goal state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
 
 The product promise is not "more todo lists." It is a better
 human-in-the-loop control surface: keep human judgment at high-value decision
@@ -301,7 +304,7 @@ contracts live in [Status Data](docs/status-data-contract.md),
 
 Goal Harness starts with AI coding, research, and benchmark loops because those
 workflows make state drift easy to see. The broader product direction is a
-lifetime-goal control plane for any long-running agent work where humans need
+dynamic goal control plane for any long-running agent work where humans need
 clear progress, gates, feedback, and recovery without reading raw logs.
 
 One medium-term productization case is a creator-operator workflow: a

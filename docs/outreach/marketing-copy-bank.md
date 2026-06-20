@@ -39,7 +39,7 @@ Technical angle:
 > The always-on promise is backed by agent identity, `claimed_by`, scope,
 > capability gates, quota, run history, evidence writeback, and public/private
 > boundary checks. Goal Harness is not "run agents forever"; it is governed
-> continuity.
+> continuity: a dynamic goal control plane around executor loops.
 
 Plain Chinese form:
 
@@ -53,7 +53,7 @@ Plain Chinese form:
 When someone asks whether Goal Harness replaces Codex goal mode:
 
 > No. Codex goal, automation, CLI loops, Claude Code, Cursor, and benchmark
-> runners execute bounded work. Goal Harness keeps the lifetime-goal control
+> runners execute bounded work. Goal Harness keeps the dynamic goal control
 > plane visible across those loops.
 
 When someone asks why this matters:
@@ -260,8 +260,17 @@ Then explain the relationship:
 
 ```text
 Codex, Claude Code, Cursor, and scheduled terminal agents execute work.
-Goal Harness keeps the lifetime-goal control plane visible across those loops:
+Goal Harness keeps the dynamic goal control plane visible across those loops:
 goals, gates, todos, claims, scopes, run history, quota, and evidence.
+```
+
+Prefer this wording when the reader is comparing Goal Harness to static goal
+prompts:
+
+```text
+Goal Harness turns a static agent goal into dynamic, reviewable state: gates,
+todos, claims, scopes, evidence, quota, and handoff boundaries survive across
+executor loops.
 ```
 
 ### Lark / Internal Intro
@@ -274,8 +283,8 @@ Gate-aware human-in-the-loop control plane
 让多个 agent 昼夜接力，把人的判断留在控制面。
 
 Goal Harness 不是替代 Codex goal/automation，而是给这些 agent loop
-提供长期控制面：目标、用户决策、agent todo、认领、scope、safe fallback、
-run history 和 quota 能在同一层状态里被看见、继承、验证。
+提供动态长期目标控制面：目标、用户决策、agent todo、认领、scope、
+safe fallback、run history 和 quota 能在同一层状态里被看见、继承、验证。
 ```
 
 ### Social Post
@@ -313,8 +322,8 @@ handoff boundary.
 
 - Prefer concrete cases over abstract hype.
 - Prefer "control plane around agent loops" over "agent teammate" framing.
-- Keep "lifetime-goal" as category/tagline language unless a rename decision
-  packet changes the public brand.
+- Keep `Goal Harness` as the brand. Use "dynamic goal control plane" as the
+  category, and reserve "lifetime-goal" for explaining the time horizon.
 - If a phrase becomes a stable product promise, move it into README/docs and
   add appropriate validation. Do not enforce temporary marketing wording with
   brittle text-only smokes.
