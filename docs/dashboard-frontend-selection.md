@@ -28,6 +28,14 @@ The useful reference products cluster around three product surfaces:
 - Observability products such as Datadog and Grafana set the density bar:
   reusable widgets, health panels, filters, dashboard links, and drill-downs
   that turn a first screen into an operator cockpit.
+- Multica is a useful near-neighbor for product shape, not for direct cloning:
+  its public repo uses a Next.js web app, Go backend, PostgreSQL/pgvector,
+  local agent daemon, shared UI package, Base UI/shadcn-style components,
+  TanStack Query/Table, resizable panels, command menus, agent boards, agent
+  profiles, runtimes, squads, task timelines, and reusable skill surfaces.
+  Goal Harness should borrow the dense agent-board and workspace-member
+  grammar while keeping the control-plane source of truth in Goal Harness
+  status/quota/run history rather than in a chat or issue board.
 
 For Goal Harness, the common lesson is not "more charts." The first screen
 needs an action-oriented queue and trustworthy drill-downs:
@@ -144,6 +152,13 @@ stack and renders a real screen from `examples/status.example.json`:
 Keep `examples/render-status-dashboard.py` as a low-friction fallback until the
 React dashboard can be built and opened in one command.
 
+The next product-path slice is `/frontstage`: a read-only
+`goal_channel_projection_v0` channel board that makes a single goal feel like a
+managed workspace lane. It should show the decision frame, quota guard, user
+todo lane, agent todo lane, active claims, timeline, source warnings, and truth
+contract. This route is where Multica-style agent board density belongs; the
+existing Python/HTML renderer should stay a no-build diagnostic fallback.
+
 ## Sources Checked
 
 - Langfuse observability docs: <https://langfuse.com/docs/observability/overview>
@@ -164,3 +179,4 @@ React dashboard can be built and opened in one command.
 - Vercel Geist design system: <https://vercel.com/geist/introduction>
 - Linear changelog and interface direction: <https://linear.app/changelog>
 - Datadog dashboard widgets docs: <https://docs.datadoghq.com/dashboards/widgets/>
+- Multica public repo and README architecture section: <https://github.com/multica-ai/multica>

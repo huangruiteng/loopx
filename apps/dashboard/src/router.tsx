@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 
 import { DashboardPage } from "./views/dashboard-page";
+import { FrontstagePage } from "./views/frontstage-page";
 
 const searchSchema = z.object({
   actionKind: z.enum(["all", "reward", "controller", "codex", "evidence", "health"]).optional().default("all"),
@@ -28,7 +29,13 @@ export const dashboardRoute = createRoute({
   component: DashboardPage,
 });
 
-const routeTree = rootRoute.addChildren([dashboardRoute]);
+export const frontstageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/frontstage",
+  component: FrontstagePage,
+});
+
+const routeTree = rootRoute.addChildren([dashboardRoute, frontstageRoute]);
 
 export const router = createRouter({ routeTree });
 
