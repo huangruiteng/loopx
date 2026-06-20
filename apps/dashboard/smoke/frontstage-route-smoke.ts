@@ -125,8 +125,13 @@ includes(motionSource, "visual_metaphor", "motion board visual metaphor field");
 includes(motionSource, "story_beats", "motion board story beats field");
 includes(motionSource, "evidence_boundary", "motion board evidence boundary field");
 includes(motionSource, "Always-on agent teams", "motion board always-on copy");
+includes(motionSource, 'data-testid="frontstage-showcase-motion-beam"', "motion board animated beam");
+includes(motionSource, 'aria-hidden="true"', "motion board decorative motion hidden from assistive tech");
 excludes(motionSource, "projection", "motion board live projection dependency");
 excludes(motionSource, "payload", "motion board live payload dependency");
+includes(stylesSource, ".frontstage-showcase-motion-rail", "motion board rail CSS");
+includes(stylesSource, ".frontstage-showcase-motion-beam", "motion board beam CSS");
+includes(stylesSource, "@keyframes frontstage-case-traffic", "motion board case traffic keyframes");
 
 const stateFlowHeroSource = sourceBetween(frontstageSource, "function ShowcaseStateFlowHero", "function PublicShowcaseBoundaryPanel", "showcase state-flow hero");
 includes(stateFlowHeroSource, "showcaseStateFlow", "state-flow hero source");

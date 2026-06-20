@@ -415,10 +415,15 @@ function ShowcaseMotionBoard() {
           </div>
         </div>
         <div
-          className="overflow-hidden rounded-md border border-slate-800 bg-slate-950 p-3 text-white shadow-sm"
+          className="frontstage-showcase-motion-rail relative overflow-hidden rounded-md border border-slate-800 bg-slate-950 p-3 text-white shadow-sm"
           data-testid="frontstage-showcase-journey-rail"
         >
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <span
+            aria-hidden="true"
+            className="frontstage-showcase-motion-beam"
+            data-testid="frontstage-showcase-motion-beam"
+          />
+          <div className="relative z-10 flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-300">
                 Asynchronous agent rhythm
@@ -429,7 +434,7 @@ function ShowcaseMotionBoard() {
             </div>
             <Badge variant="neutral">case-first</Badge>
           </div>
-          <div className="mt-4 grid gap-2 lg:grid-cols-4">
+          <div className="relative z-10 mt-4 grid gap-2 lg:grid-cols-4">
             {journeySegments.map((segment, index) => (
               <div className="relative rounded-md border border-white/10 bg-white/5 px-3 py-3" key={segment.label}>
                 {index < journeySegments.length - 1 ? (

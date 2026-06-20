@@ -74,6 +74,55 @@ select {
   }
 }
 
+.frontstage-showcase-motion-rail {
+  isolation: isolate;
+}
+
+.frontstage-showcase-motion-rail::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: "";
+  background:
+    linear-gradient(120deg, rgb(255 255 255 / 0.06), transparent 36%),
+    radial-gradient(circle at 18% 24%, rgb(103 232 249 / 0.14), transparent 28%),
+    radial-gradient(circle at 76% 18%, rgb(52 211 153 / 0.12), transparent 30%);
+}
+
+.frontstage-showcase-motion-beam {
+  position: absolute;
+  z-index: 0;
+  top: 0.75rem;
+  left: -22%;
+  width: 22%;
+  height: 0.125rem;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent, rgb(103 232 249), rgb(52 211 153), transparent);
+  box-shadow:
+    0 0 16px rgb(103 232 249 / 0.5),
+    0 0 24px rgb(52 211 153 / 0.24);
+  animation: frontstage-case-traffic 3.6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+
+@keyframes frontstage-case-traffic {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(560%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frontstage-showcase-motion-beam {
+    animation: none;
+    left: 1rem;
+    width: calc(100% - 2rem);
+    opacity: 0.35;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .frontstage-state-flow-beam {
     animation: none;
