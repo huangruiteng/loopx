@@ -70,7 +70,22 @@ and public/private boundary notes rendered from `docs/showcases/`. Live registry
 or local status projections are separate ops-mode surfaces, not public demo
 content.
 
-![Hosted Goal Harness frontstage showing public-safe showcase cases](docs/assets/frontstage-showcase-first-screen.png)
+<table>
+  <tr>
+    <td width="62%">
+      <img src="docs/assets/frontstage-showcase-first-screen.png" alt="Hosted Goal Harness frontstage showing public-safe showcase cases">
+    </td>
+    <td width="38%">
+      <strong>From AI assist to async agent work.</strong><br><br>
+      Traditional AI-assisted development speeds up the active coding session.
+      Goal Harness changes the operating model: humans set gates, scope, and
+      evidence, while primary and side agents keep safe lanes moving across
+      turns and off-hours.<br><br>
+      <strong>从“人带着 AI 写代码”，到“agent 团队异步接力”。</strong><br>
+      人在关键判断处掌舵，agent 在可验证边界内持续推进。
+    </td>
+  </tr>
+</table>
 
 ## Community & Feedback
 
