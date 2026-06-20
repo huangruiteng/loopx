@@ -31,6 +31,11 @@ class CodexAppServerGoalTurn:
     agent_message_item_count: int = 0
     item_completed_count: int = 0
     notifications: list[str] = field(default_factory=list)
+    _responses: "queue.Queue[dict[str, Any] | Exception] | None" = field(
+        default=None,
+        repr=False,
+    )
+    _assistant_message_parts: list[str] = field(default_factory=list, repr=False)
 
     def terminate(self, *, timeout_sec: float = 2.0) -> None:
         self.process.terminate()
@@ -159,61 +164,105 @@ def _item_text(item: Any) -> str:
     return ""
 
 
-def _wait_for_turn_completion(
+def _record_turn_event(
     turn: CodexAppServerGoalTurn,
-    responses: "queue.Queue[dict[str, Any] | Exception]",
+    msg: dict[str, Any] | Exception,
     *,
-    timeout_sec: float,
-) -> None:
-    deadline = time.monotonic() + timeout_sec
-    deltas: list[str] = []
-    while time.monotonic() < deadline:
-        try:
-            msg = responses.get(timeout=max(0.1, min(0.5, deadline - time.monotonic())))
-        except queue.Empty:
-            continue
-        if isinstance(msg, EOFError):
+    raise_on_error: bool,
+) -> bool:
+    if isinstance(msg, EOFError):
+        if raise_on_error:
             raise CodexAppServerGoalDriverError(
                 "codex app-server exited before turn completion"
             )
-        if isinstance(msg, Exception):
+        turn.notifications.append("stream/eof")
+        return False
+    if isinstance(msg, Exception):
+        if raise_on_error:
             raise CodexAppServerGoalDriverError(str(msg))
-        method = str(msg.get("method") or "")
-        if method:
-            turn.notifications.append(method)
-        params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
-        if not method:
-            continue
-        msg_turn_id = _notification_turn_id(params)
-        msg_thread_id = _notification_thread_id(params)
-        if msg_turn_id and msg_turn_id != turn.turn_id:
-            continue
-        if msg_thread_id and msg_thread_id != turn.thread_id:
-            continue
-        if method == "item/agentMessage/delta":
-            delta = params.get("delta")
-            if isinstance(delta, str) and delta:
-                deltas.append(delta)
-                turn.agent_message_delta_count += 1
-            continue
-        if method == "item/completed":
-            turn.item_completed_count += 1
-            item = params.get("item")
-            item_text = _item_text(item)
-            if item_text:
-                turn.agent_message_item_count += 1
-                if not deltas:
-                    deltas.append(item_text)
-            continue
-        if method == "turn/completed":
-            turn.turn_completed_observed = True
-            turn.turn_status = _extract_turn_status(params) or turn.turn_status
-            turn.assistant_message = "".join(deltas)
-            return
-        if method == "error":
-            message = params.get("message") if isinstance(params, dict) else ""
+        turn.notifications.append("stream/error")
+        return False
+    method = str(msg.get("method") or "")
+    if method:
+        turn.notifications.append(method)
+    params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+    if not method:
+        return False
+    msg_turn_id = _notification_turn_id(params)
+    msg_thread_id = _notification_thread_id(params)
+    if msg_turn_id and msg_turn_id != turn.turn_id:
+        return False
+    if msg_thread_id and msg_thread_id != turn.thread_id:
+        return False
+    if method == "item/agentMessage/delta":
+        delta = params.get("delta")
+        if isinstance(delta, str) and delta:
+            turn._assistant_message_parts.append(delta)
+            turn.agent_message_delta_count += 1
+        return False
+    if method == "item/completed":
+        turn.item_completed_count += 1
+        item = params.get("item")
+        item_text = _item_text(item)
+        if item_text:
+            turn.agent_message_item_count += 1
+            if not turn._assistant_message_parts:
+                turn._assistant_message_parts.append(item_text)
+        return False
+    if method == "turn/completed":
+        turn.turn_completed_observed = True
+        turn.turn_status = _extract_turn_status(params) or turn.turn_status
+        turn.assistant_message = "".join(turn._assistant_message_parts)
+        return True
+    if method == "error":
+        message = params.get("message") if isinstance(params, dict) else ""
+        if raise_on_error:
             raise CodexAppServerGoalDriverError(str(message or "app-server error"))
-    raise CodexAppServerGoalDriverError("timed out waiting for turn completion")
+        turn.notifications.append("turn/error")
+    return False
+
+
+def observe_codex_app_server_goal_turn(
+    turn: CodexAppServerGoalTurn,
+    *,
+    timeout_sec: float = 0.0,
+    until_completed: bool = False,
+    raise_on_error: bool = False,
+) -> bool:
+    """Drain app-server turn events without making completion a success gate."""
+    if turn._responses is None:
+        return bool(turn.turn_completed_observed)
+    deadline = time.monotonic() + max(0.0, timeout_sec)
+    while True:
+        wait = 0.0
+        if timeout_sec > 0:
+            wait = max(0.0, min(0.5, deadline - time.monotonic()))
+        try:
+            msg = turn._responses.get(timeout=wait) if wait else turn._responses.get_nowait()
+        except queue.Empty:
+            if not until_completed or time.monotonic() >= deadline:
+                return bool(turn.turn_completed_observed)
+            continue
+        if _record_turn_event(turn, msg, raise_on_error=raise_on_error):
+            return True
+        if not until_completed and timeout_sec <= 0:
+            continue
+        if time.monotonic() >= deadline and not until_completed:
+            return bool(turn.turn_completed_observed)
+
+
+def _wait_for_turn_completion(
+    turn: CodexAppServerGoalTurn,
+    *,
+    timeout_sec: float,
+) -> None:
+    if not observe_codex_app_server_goal_turn(
+        turn,
+        timeout_sec=timeout_sec,
+        until_completed=True,
+        raise_on_error=True,
+    ):
+        raise CodexAppServerGoalDriverError("timed out waiting for turn completion")
 
 
 def start_codex_app_server_goal_turn(
@@ -363,11 +412,11 @@ def start_codex_app_server_goal_turn(
             goal_status=goal_status,
             turn_status=_extract_turn_status(turn_result),
             notifications=notifications,
+            _responses=responses,
         )
         if wait_for_completion:
             _wait_for_turn_completion(
                 turn,
-                responses,
                 timeout_sec=turn_timeout_sec or response_timeout_sec,
             )
         return turn

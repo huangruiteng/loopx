@@ -28,6 +28,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from codex_app_server_goal_driver import (
     CodexAppServerGoalDriverError,
     compact_turn_metadata,
+    observe_codex_app_server_goal_turn,
     start_codex_app_server_goal_turn,
 )
 
@@ -176,7 +177,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
         task_workdir: str = "/app",
         goal_surface: str = "tui",
         reasoning_effort: str | None = "high",
-        app_server_wait_for_completion: str | bool = True,
+        app_server_wait_for_completion: str | bool = False,
         app_server_response_timeout_sec: str | int | float = 30,
         startup_delay_sec: str | int | float = 5,
         poll_interval_sec: str | int | float = 5,
@@ -313,8 +314,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         model_name=self.model_name,
                         reasoning_effort=self.reasoning_effort,
                         response_timeout_sec=self.app_server_response_timeout_sec,
-                        wait_for_completion=self.app_server_wait_for_completion,
-                        turn_timeout_sec=self.goal_timeout_sec,
+                        wait_for_completion=False,
                     )
                 )
                 while not turn_task.done():
@@ -345,49 +345,47 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 }
                 return
             await self._serve_bridge_requests(environment, request_dir)
-            compact = compact_turn_metadata(turn)
-            compact.update(
-                {
-                    "goal_surface": "app_server",
-                    "app_server_wait_for_completion": self.app_server_wait_for_completion,
-                    "completion_marker_observed": marker.exists(),
-                    "bridge_request_count": self._served_request_count,
-                    "first_blocker": ""
-                    if marker.exists()
-                    else "harbor_completion_marker_missing_after_turn_completed",
-                }
-            )
-            (work_dir / "app_server_goal_turn.compact.json").write_text(
-                json.dumps(compact, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            if self.app_server_wait_for_completion:
-                turn.terminate()
-                context.metadata = {
-                    "goal_harness_agent": self.name(),
-                    "completion_marker_observed": marker.exists(),
-                    "bridge_request_count": self._served_request_count,
-                    "goal_surface": "app_server",
-                    "turn_completed_observed": bool(turn.turn_completed_observed),
-                    "first_blocker": ""
-                    if marker.exists()
-                    else "harbor_completion_marker_missing_after_turn_completed",
-                }
-                return
+
+            def write_compact(first_blocker: str = "") -> None:
+                compact = compact_turn_metadata(turn)
+                compact.update(
+                    {
+                        "goal_surface": "app_server",
+                        "app_server_wait_for_completion_requested": self.app_server_wait_for_completion,
+                        "app_server_completion_hard_gate": False,
+                        "completion_marker_observed": marker.exists(),
+                        "bridge_request_count": self._served_request_count,
+                        "first_blocker": first_blocker,
+                    }
+                )
+                (work_dir / "app_server_goal_turn.compact.json").write_text(
+                    json.dumps(compact, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+
             deadline = time.time() + self.goal_timeout_sec
             try:
                 while time.time() < deadline:
+                    observe_codex_app_server_goal_turn(turn)
                     await self._serve_bridge_requests(environment, request_dir)
                     if marker.exists():
+                        observe_codex_app_server_goal_turn(
+                            turn,
+                            timeout_sec=min(2.0, self.poll_interval_sec),
+                        )
+                        write_compact()
                         turn.terminate()
                         context.metadata = {
                             "goal_harness_agent": self.name(),
                             "completion_marker_observed": True,
                             "bridge_request_count": self._served_request_count,
                             "goal_surface": "app_server",
+                            "turn_completed_observed": bool(turn.turn_completed_observed),
                         }
                         return
                     await asyncio.sleep(self.poll_interval_sec)
+                observe_codex_app_server_goal_turn(turn)
+                write_compact("harbor_completion_marker_missing_before_timeout")
             finally:
                 turn.terminate()
             context.metadata = {
@@ -395,6 +393,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 "completion_marker_observed": False,
                 "bridge_request_count": self._served_request_count,
                 "goal_surface": "app_server",
+                "turn_completed_observed": bool(turn.turn_completed_observed),
                 "first_blocker": "harbor_host_codex_app_server_goal_timeout",
             }
             return

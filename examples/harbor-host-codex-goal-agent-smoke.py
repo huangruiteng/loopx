@@ -77,7 +77,7 @@ def main() -> int:
         assert agent.task_workdir == "/workspace"
         assert agent.goal_surface == "app_server"
         assert agent.reasoning_effort == "high"
-        assert agent.app_server_wait_for_completion is True
+        assert agent.app_server_wait_for_completion is False
         assert agent.app_server_response_timeout_sec == 4.0
 
         no_wait_agent = module.HarborHostCodexGoalAgent(

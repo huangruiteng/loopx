@@ -27,6 +27,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from codex_app_server_goal_driver import (
     CodexAppServerGoalDriverError,
     compact_turn_metadata,
+    observe_codex_app_server_goal_turn,
     start_codex_app_server_goal_turn,
 )
 
@@ -124,7 +125,7 @@ class HostCodexGoalAgent(BaseAgent):
         codex_bin: str = "codex",
         goal_surface: str = "tui",
         reasoning_effort: str | None = "high",
-        app_server_wait_for_completion: str | bool = True,
+        app_server_wait_for_completion: str | bool = False,
         app_server_response_timeout_sec: str | int | float = 30,
         startup_delay_sec: str | int | float = 5,
         poll_interval_sec: str | int | float = 5,
@@ -211,8 +212,7 @@ class HostCodexGoalAgent(BaseAgent):
                     model_name=self.model_name,
                     reasoning_effort=self.reasoning_effort,
                     response_timeout_sec=self.app_server_response_timeout_sec,
-                    wait_for_completion=self.app_server_wait_for_completion,
-                    turn_timeout_sec=self.goal_timeout_sec,
+                    wait_for_completion=False,
                 )
             except CodexAppServerGoalDriverError as exc:
                 (work_dir / "app_server_goal_turn.compact.json").write_text(
@@ -235,37 +235,38 @@ class HostCodexGoalAgent(BaseAgent):
                     total_output_tokens=0,
                     failure_mode=FailureMode.AGENT_TIMEOUT,
                 )
-            compact = compact_turn_metadata(turn)
-            compact.update(
-                {
-                    "goal_surface": "app_server",
-                    "app_server_wait_for_completion": self.app_server_wait_for_completion,
-                    "completion_marker_observed": marker.exists(),
-                    "first_blocker": ""
-                    if marker.exists()
-                    else "terminal_bench_completion_marker_missing_after_turn_completed",
-                }
-            )
-            (work_dir / "app_server_goal_turn.compact.json").write_text(
-                json.dumps(compact, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            if self.app_server_wait_for_completion:
-                turn.terminate()
-                if marker.exists():
-                    return AgentResult(total_input_tokens=0, total_output_tokens=0)
-                return AgentResult(
-                    total_input_tokens=0,
-                    total_output_tokens=0,
-                    failure_mode=FailureMode.AGENT_TIMEOUT,
+
+            def write_compact(first_blocker: str = "") -> None:
+                compact = compact_turn_metadata(turn)
+                compact.update(
+                    {
+                        "goal_surface": "app_server",
+                        "app_server_wait_for_completion_requested": self.app_server_wait_for_completion,
+                        "app_server_completion_hard_gate": False,
+                        "completion_marker_observed": marker.exists(),
+                        "first_blocker": first_blocker,
+                    }
                 )
+                (work_dir / "app_server_goal_turn.compact.json").write_text(
+                    json.dumps(compact, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+
             deadline = time.time() + self.goal_timeout_sec
             try:
                 while time.time() < deadline:
+                    observe_codex_app_server_goal_turn(turn)
                     if marker.exists():
+                        observe_codex_app_server_goal_turn(
+                            turn,
+                            timeout_sec=min(2.0, self.poll_interval_sec),
+                        )
+                        write_compact()
                         turn.terminate()
                         return AgentResult(total_input_tokens=0, total_output_tokens=0)
                     time.sleep(self.poll_interval_sec)
+                observe_codex_app_server_goal_turn(turn)
+                write_compact("terminal_bench_completion_marker_missing_before_timeout")
                 return AgentResult(
                     total_input_tokens=0,
                     total_output_tokens=0,

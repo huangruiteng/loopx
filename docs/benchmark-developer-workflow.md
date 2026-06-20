@@ -376,7 +376,6 @@ UV_LINK_MODE=copy uv run --no-default-groups harbor run \
   --env docker \
   --agent-import-path harbor_host_codex_goal_agent:HarborHostCodexGoalAgent \
   --agent-kwarg goal_timeout_sec=1200 \
-  --agent-kwarg app_server_wait_for_completion=true \
   --agent-kwarg task_workdir=/app \
   --jobs-dir <run-dir>/jobs \
   -p <task-dir>
@@ -389,11 +388,14 @@ benchmark family instead of hardcoding `/app` in runner patches. Commands issued
 through that bridge are forwarded to Harbor's `environment.exec()`, so the
 benchmark environment remains the task/scoring surface while Codex login, model
 access, tmux, and runtime state stay on the stable host layer.
-The Harbor app-server agent waits for `turn/completed` in a background thread
-while the async runner loop continues to serve `harbor-env-exec` bridge
-requests. Its compact turn file records bridge request count, marker
+The Harbor app-server agent drains app-server turn events while the async
+runner loop continues to serve `harbor-env-exec` bridge requests. Its compact
+turn file records bridge request count, marker observation, `turn/completed`
 observation, and assistant-message counters without raw task text, raw logs, or
-raw trajectories.
+raw trajectories. Do not make `turn/completed` the benchmark success gate for
+Harbor-family runs: the official environment result and the host completion
+marker are the scoring path, while app-server completion events are diagnostic
+only.
 
 The Harbor bundle requires `codex` and `rg`. `curl` is intentionally optional:
 host-copied dynamic curl binaries can fail inside Ubuntu task images because of
@@ -616,7 +618,6 @@ tb run \
   --no-rebuild \
   --agent-import-path terminal_bench_host_codex_goal_agent:HostCodexGoalAgent \
   --agent-kwarg goal_surface=app_server \
-  --agent-kwarg app_server_wait_for_completion=true \
   --agent-kwarg goal_timeout_sec=1200
 ```
 
@@ -627,11 +628,14 @@ case container while the container remains responsible for task files and
 official tests. The TUI `/goal` surface is a manual fallback only; do not count
 it as the default baseline when app-server `thread/goal/set`,
 `thread/goal/get`, and `turn/start` are available.
-The app-server host agent waits for `turn/completed` by default and writes a
-compact turn file with `turn_completed_observed`, assistant-message counters,
-and `completion_marker_observed`; pass
-`--agent-kwarg app_server_wait_for_completion=false` only for an explicit
-marker-only fallback probe.
+The app-server host agent treats the benchmark completion marker and official
+verifier as the success path. It drains app-server events opportunistically and
+writes a compact turn file with `turn_completed_observed`,
+assistant-message counters, and `completion_marker_observed`, but missing or
+late `turn/completed` is diagnostic only. Do not use `turn/completed` as a hard
+failure gate for Terminal-Bench: doing so can change execution semantics by
+terminating a still-running Goal turn before the marker or verifier has a chance
+to reflect the case outcome.
 
 When a Terminal-Bench launch produces only startup or materialization state,
 reduce it before writing Goal Harness evidence:

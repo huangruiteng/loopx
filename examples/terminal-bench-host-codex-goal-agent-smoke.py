@@ -67,7 +67,7 @@ def main() -> int:
     assert agent.poll_interval_sec == 0.5
     assert agent.goal_surface == "app_server"
     assert agent.reasoning_effort == "high"
-    assert agent.app_server_wait_for_completion is True
+    assert agent.app_server_wait_for_completion is False
     assert agent.app_server_response_timeout_sec == 4.0
     assert str(agent.work_root) == "/tmp/goal-harness-terminal-bench"
     assert agent.network_bootstrap_script is None

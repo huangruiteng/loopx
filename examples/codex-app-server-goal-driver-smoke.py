@@ -101,6 +101,16 @@ def main() -> int:
             assert compact["turn_completed_observed"] is False
             assert compact["raw_transcript_recorded"] is False
             assert "Synthetic prompt" not in json.dumps(compact)
+            observed = module.observe_codex_app_server_goal_turn(
+                turn,
+                timeout_sec=5,
+                until_completed=True,
+            )
+            assert observed is True
+            compact = module.compact_turn_metadata(turn)
+            assert compact["turn_completed_observed"] is True, compact
+            assert compact["assistant_message_present"] is True, compact
+            assert "Synthetic final answer." not in json.dumps(compact), compact
         finally:
             turn.terminate()
 
