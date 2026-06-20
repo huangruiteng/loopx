@@ -12,6 +12,8 @@ const dashboardDir = resolve(repoRoot, "apps/dashboard");
 const defaultOutDir = resolve("/tmp", "goal-harness-frontstage-share-bundle");
 const statusFileName = "status.frontstage-share.json";
 const manifestFileName = "frontstage-share-manifest.json";
+const showcaseCatalogPath = "docs/showcases/showcase-catalog.json";
+const projectionFixturePath = "examples/goal-channel-frontstage-fixture.py";
 
 function parseArgs(argv) {
   const args = {
@@ -170,15 +172,20 @@ dashboard build plus a sanitized \`goal_channel_projection_v0\` status fixture.
 The public entry opens frontstage showcase mode and does not load \`statusUrl\`
 by default.
 
+Primary public story content is rendered from \`${showcaseCatalogPath}\`. The
+status fixture only gives the frontstage a read-only control-plane shell for
+demo navigation; live local status feeds stay out of this bundle.
+
 ${previewBlock}
 
 ## Publication Boundary
 
 - Includes: compiled dashboard assets, \`${statusFileName}\`, and direct
   \`/frontstage/\` static route support.
+- Primary case source: \`${showcaseCatalogPath}\`.
+- Demo shell fixture: \`${projectionFixturePath} --format json\`.
 - Excludes: live registry state, local paths, credentials, raw logs, raw
   benchmark evidence, and write APIs.
-- Source fixture: \`examples/goal-channel-frontstage-fixture.py --format json\`.
 `;
   await writeFile(resolve(outDir, "README.md"), readme);
 }
@@ -190,7 +197,13 @@ async function writeManifest(outDir, base) {
     site_dir: "site",
     status_fixture: `site/${statusFileName}`,
     frontstage_entry: "site/frontstage/index.html",
+    content_sources: {
+      primary_public_story: showcaseCatalogPath,
+      read_only_control_plane_shell: projectionFixturePath,
+      live_status_feed: false,
+    },
     public_boundary: {
+      primary_content_is_showcase_catalog: true,
       live_registry_state: false,
       write_api: false,
       raw_logs: false,
@@ -226,7 +239,7 @@ async function scanPublicBoundary(outDir) {
   const patterns = [
     { label: "macOS user path", pattern: /\/Users\// },
     { label: "private temp path", pattern: /\/private\// },
-    { label: "workspace owner name", pattern: /bytedance/i },
+    { label: "workspace owner name", pattern: new RegExp("byte" + "dance", "i") },
     { label: "internal doc host", pattern: new RegExp("lark" + "office", "i") },
     { label: "private goal state", pattern: new RegExp("\\.codex/goals|\\.goal-" + "harness") },
     { label: "raw internal key", pattern: new RegExp("raw_" + "internal_note") },

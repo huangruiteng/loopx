@@ -2,7 +2,7 @@
 // Smoke-test the public-safe frontstage static export bundle.
 
 import { spawnSync } from "node:child_process";
-import { readFile, rm } from "node:fs/promises";
+import { readFile, readdir, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,7 +36,7 @@ function assertNoLeak(text, label) {
   const forbidden = [
     /\/Users\//,
     /\/private\//,
-    /bytedance/i,
+    new RegExp("byte" + "dance", "i"),
     new RegExp("lark" + "office", "i"),
     new RegExp("\\.codex/goals|\\.goal-" + "harness"),
     new RegExp("raw_" + "internal_note"),
@@ -47,6 +47,25 @@ function assertNoLeak(text, label) {
   if (hit) {
     throw new Error(`${label} leaked forbidden pattern: ${hit}`);
   }
+}
+
+async function collectGeneratedTextFiles(rootDir) {
+  const files = [];
+  async function visit(dir) {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = resolve(dir, entry.name);
+      if (entry.isDirectory()) {
+        await visit(path);
+      } else if (entry.isFile()) {
+        const info = await stat(path);
+        if (info.size <= 2_000_000 && /\.(css|html|js|json|md|txt)$/i.test(path)) {
+          files.push(path);
+        }
+      }
+    }
+  }
+  await visit(rootDir);
+  return files;
 }
 
 await rm(outDir, { force: true, recursive: true });
@@ -85,18 +104,26 @@ if (manifest.base !== "/goal-harness/") {
 if (manifest.public_boundary.write_api !== false || manifest.public_boundary.live_registry_state !== false) {
   throw new Error(`manifest public boundary is too permissive: ${JSON.stringify(manifest.public_boundary)}`);
 }
+if (manifest.public_boundary.primary_content_is_showcase_catalog !== true) {
+  throw new Error("manifest must declare showcase catalog as the primary public content source");
+}
+if (manifest.content_sources?.primary_public_story !== "docs/showcases/showcase-catalog.json") {
+  throw new Error(`manifest primary content source mismatch: ${JSON.stringify(manifest.content_sources)}`);
+}
+if (manifest.content_sources?.live_status_feed !== false) {
+  throw new Error("public share bundle must not declare a live status feed content source");
+}
 
-for (const [label, path] of Object.entries({
-  readme: resolve(outDir, "README.md"),
-  status: resolve(siteDir, "status.frontstage-share.json"),
-  manifest: resolve(outDir, "frontstage-share-manifest.json"),
-})) {
-  assertNoLeak(await readFile(path, "utf8"), label);
+for (const path of await collectGeneratedTextFiles(outDir)) {
+  assertNoLeak(await readFile(path, "utf8"), path);
 }
 
 const readmeText = await readFile(resolve(outDir, "README.md"), "utf8");
 if (readmeText.includes("?statusUrl=")) {
   throw new Error("share bundle README must not publish a statusUrl-loaded frontstage link");
+}
+if (!readmeText.includes("docs/showcases/showcase-catalog.json")) {
+  throw new Error("share bundle README must name the showcase catalog as the primary story source");
 }
 if (!readmeText.includes("frontstage/")) {
   throw new Error("share bundle README must publish the frontstage showcase entry");
