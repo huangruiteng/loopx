@@ -9,6 +9,7 @@ Current drafts:
 - [Frontstage demo script](frontstage-demo-script.md)
 - [Marketing copy bank](marketing-copy-bank.md)
 - [Public launch narrative draft](public-launch-narrative-draft.md)
+- [Showcase animation skill spike](showcase-animation-skill-spike.md)
 - [Xiaohongshu launch draft](xiaohongshu-launch-draft.md)
 
 Keep examples synthetic or public-safe. Do not include raw private benchmark

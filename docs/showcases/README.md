@@ -52,6 +52,9 @@ cases, efficiency evidence, and the public boundary come from this directory;
 live local `statusUrl` feeds belong only to explicit ops-mode inspection.
 For a short external walkthrough, use the
 [frontstage demo script](../outreach/frontstage-demo-script.md).
+For animated outreach assets, start from the
+[showcase animation skill spike](../outreach/showcase-animation-skill-spike.md)
+and keep `showcase-catalog.json` as the only case data source.
 
 ![Hosted Goal Harness frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
 
