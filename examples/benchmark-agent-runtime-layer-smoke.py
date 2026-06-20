@@ -84,7 +84,11 @@ def main() -> None:
         skillsbench = profiles["skillsbench"]
         assert (
             skillsbench["host_materialization"]["materializer_status"]
-            == "planned"
+            == "implemented"
+        )
+        assert (
+            skillsbench["host_materialization"]["script"]
+            == "scripts/skillsbench_agent_runtime_layer.py"
         )
         assert "codex-acp" in skillsbench["container_contract"]["required_commands"]
         assert "/opt/benchflow" in skillsbench["container_contract"]["environment"][

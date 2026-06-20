@@ -146,11 +146,13 @@ def _benchflow_profile(
         "layer_id": "benchflow_js_agent_runtime",
         "layer_target": BENCHFLOW_TARGET,
         "host_materialization": {
-            "materializer_status": "planned",
+            "materializer_status": "implemented",
             "script": "scripts/skillsbench_agent_runtime_layer.py",
             "command": (
-                "materialize Node.js and codex-acp into "
-                "<workspace>/benchflow-agent-runtime before case launch"
+                "python3 scripts/skillsbench_agent_runtime_layer.py "
+                "--output <workspace>/benchflow-agent-runtime "
+                "--node-root <cached-node-root> "
+                "--codex-acp-bin <cached-codex-acp-bin> --pretty"
             ),
             "source": source,
             "source_basename": benchflow_tools_dir.expanduser().name,

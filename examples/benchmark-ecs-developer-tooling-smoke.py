@@ -82,6 +82,46 @@ def main() -> int:
             == "benchflow_js_agent_runtime"
         )
 
+        node_root = tmp_path / "node-v22.test-linux-x64"
+        (node_root / "bin").mkdir(parents=True)
+        for name, output in (
+            ("node", "v22.20.0"),
+            ("npm", "10.9.0"),
+        ):
+            executable = node_root / "bin" / name
+            executable.write_text(
+                f"#!/usr/bin/env sh\necho {output!r}\n",
+                encoding="utf-8",
+            )
+            executable.chmod(0o755)
+        codex_acp = tmp_path / "codex-acp"
+        codex_acp.write_text(
+            "#!/usr/bin/env sh\necho 'codex-acp 0.test'\n",
+            encoding="utf-8",
+        )
+        codex_acp.chmod(0o755)
+        skillsbench_agent_layer = run_json(
+            [
+                "scripts/skillsbench_agent_runtime_layer.py",
+                "--output",
+                str(tmp_path / "benchflow-agent-runtime"),
+                "--node-root",
+                str(node_root),
+                "--codex-acp-bin",
+                str(codex_acp),
+            ]
+        )
+        assert (
+            skillsbench_agent_layer["schema_version"]
+            == "skillsbench_agent_runtime_layer_v0"
+        )
+        assert skillsbench_agent_layer["ready"] is True
+        assert (
+            skillsbench_agent_layer["output"]["mount_target"]
+            == "/opt/benchflow"
+        )
+        assert skillsbench_agent_layer["boundary"]["raw_logs_read"] is False
+
         launch = run_json(
             [
                 "scripts/terminal_bench_no_upload_smoke.py",

@@ -51,6 +51,7 @@ def main() -> int:
             "preinstalled as a stable layer",
             "harbor_codex_cli_tools",
             "benchflow_js_agent_runtime",
+            "scripts/skillsbench_agent_runtime_layer.py",
             "scripts/terminal_bench_no_upload_smoke.py",
             "scripts/terminal_bench_compose_startup_reducer.py",
             "scripts/skillsbench_verifier_prewarm_plan.py",

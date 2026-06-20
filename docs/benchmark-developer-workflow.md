@@ -248,6 +248,21 @@ run the `codex-acp` launch preflight before a real case. Until that preflight is
 green, classify SkillsBench as agent-runtime readiness blocked rather than
 spending more official attempts.
 
+Use the SkillsBench materializer with host-side cached sources:
+
+```bash
+python3 scripts/skillsbench_agent_runtime_layer.py \
+  --output ~/goal-harness-bench/benchflow-agent-runtime \
+  --node-root ~/goal-harness-bench/cache/node-v22.20.0-linux-x64 \
+  --codex-acp-bin ~/goal-harness-bench/cache/codex-acp \
+  --pretty
+```
+
+If the host has no cached `codex-acp` binary but may use network outside the
+case container, use `--use-default-codex-acp-package` once during host
+bootstrap. Record that as host dependency materialization, not as a benchmark
+case step.
+
 The probe checks command presence, Docker server reachability, disk budget, and
 the standard workspace shape. It intentionally emits only command names,
 version first lines, booleans, counts, and the workspace basename.
