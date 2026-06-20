@@ -6,9 +6,11 @@ on:
     paths:
       - ".github/workflows/frontstage-pages.yml"
       - "apps/dashboard/**"
+      - "docs/showcases/**"
       - "examples/export-frontstage-share-bundle.mjs"
       - "examples/frontstage-share-bundle-smoke.mjs"
       - "examples/goal-channel-frontstage-fixture.py"
+      - "examples/showcase-catalog-smoke.py"
       - "examples/status.example.json"
   push:
     branches:
@@ -16,9 +18,11 @@ on:
     paths:
       - ".github/workflows/frontstage-pages.yml"
       - "apps/dashboard/**"
+      - "docs/showcases/**"
       - "examples/export-frontstage-share-bundle.mjs"
       - "examples/frontstage-share-bundle-smoke.mjs"
       - "examples/goal-channel-frontstage-fixture.py"
+      - "examples/showcase-catalog-smoke.py"
       - "examples/status.example.json"
 
 permissions:
@@ -51,6 +55,9 @@ jobs:
       - name: Install dashboard dependencies
         working-directory: apps/dashboard
         run: npm ci --include=dev --no-audit --no-fund --registry=https://registry.npmjs.org
+
+      - name: Validate public showcase catalog
+        run: python3 examples/showcase-catalog-smoke.py
 
       - name: Validate public-safe frontstage bundle
         working-directory: apps/dashboard
