@@ -23,6 +23,7 @@ PRIVATE_SHAPES = [
     re.compile(r"[A-Za-z]:\\\\Users\\\\[^\\\\]+\\\\"),
     re.compile(r"/private/var/folders/"),
     re.compile(r"code\.byted\.org"),
+    re.compile("bnpm" + r"\.byted\.org"),
     re.compile(r"bytedance" + r"\." + "lark" + "office" + r"\.com"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bBearer\s+[A-Za-z0-9._-]+"),

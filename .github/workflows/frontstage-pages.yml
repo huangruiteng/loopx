@@ -1,0 +1,85 @@
+name: Frontstage Pages
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/frontstage-pages.yml"
+      - "apps/dashboard/**"
+      - "examples/export-frontstage-share-bundle.mjs"
+      - "examples/frontstage-share-bundle-smoke.mjs"
+      - "examples/goal-channel-frontstage-fixture.py"
+      - "examples/status.example.json"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/frontstage-pages.yml"
+      - "apps/dashboard/**"
+      - "examples/export-frontstage-share-bundle.mjs"
+      - "examples/frontstage-share-bundle-smoke.mjs"
+      - "examples/goal-channel-frontstage-fixture.py"
+      - "examples/status.example.json"
+
+permissions:
+  actions: read
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: frontstage-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/dashboard/package-lock.json
+
+      - name: Use stable npm
+        run: npm install -g npm@11
+
+      - name: Install dashboard dependencies
+        working-directory: apps/dashboard
+        run: npm ci --include=dev --no-audit --no-fund --registry=https://registry.npmjs.org
+
+      - name: Validate public-safe frontstage bundle
+        working-directory: apps/dashboard
+        run: npm run smoke:frontstage-share-bundle
+
+      - name: Export Pages frontstage artifact
+        working-directory: apps/dashboard
+        run: npm run export:frontstage-share -- --base /goal-harness/ --out-dir ../../output/frontstage-pages
+
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v6
+        with:
+          enablement: true
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: output/frontstage-pages/site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

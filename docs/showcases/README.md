@@ -43,6 +43,9 @@ dashboard, a sanitized `goal_channel_projection_v0` status fixture, direct
 `/frontstage/` static-route support, and a manifest. It is the foundation for a
 future GitHub Pages showcase: Pages should publish this generated artifact, not
 live registry files or local status exports.
+Once repository Pages is enabled for GitHub Actions, the same generated bundle
+is available as the
+[hosted frontstage](https://huangruiteng.github.io/goal-harness/frontstage/?statusUrl=%2Fgoal-harness%2Fstatus.frontstage-share.json).
 
 ## Current Cases
 
