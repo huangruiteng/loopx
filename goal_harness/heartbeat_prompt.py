@@ -57,6 +57,47 @@ def normalize_agent_scopes(values: list[str] | tuple[str, ...] | None) -> list[s
     return scopes
 
 
+def agent_profile_scopes(profile: dict[str, Any] | None) -> list[str]:
+    if not isinstance(profile, dict):
+        return []
+    raw_scopes: list[Any] = []
+    for key in ("scope_summary", "default_scope", "scope"):
+        value = profile.get(key)
+        if isinstance(value, list):
+            raw_scopes.extend(value)
+        elif value:
+            raw_scopes.append(value)
+    for key in ("scope_summaries", "default_scopes", "scopes"):
+        value = profile.get(key)
+        if isinstance(value, list):
+            raw_scopes.extend(value)
+    return normalize_agent_scopes(raw_scopes)
+
+
+def agent_profile_prompt_projection(profile: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(profile, dict):
+        return None
+    public_keys = {
+        "schema_version",
+        "agent_id",
+        "role",
+        "primary_agent",
+        "scope_summary",
+        "default_scope",
+        "scope",
+        "scope_summaries",
+        "default_scopes",
+        "scopes",
+        "default_task_classes",
+        "preferred_action_kinds",
+        "avoid_action_kinds",
+        "worktree_policy",
+        "review_policy",
+    }
+    projection = {key: value for key, value in profile.items() if key in public_keys}
+    return projection or None
+
+
 def agent_prompt_command_args(*, agent_id: str | None, agent_scopes: list[str]) -> str:
     parts: list[str] = []
     if agent_id:
@@ -241,6 +282,7 @@ def build_heartbeat_prompt(
     cli_bin: str = "goal-harness",
     agent_id: str | None = None,
     agent_scopes: list[str] | tuple[str, ...] | None = None,
+    agent_profile: dict[str, Any] | None = None,
     registered_agents: list[str] | tuple[str, ...] | None = None,
     primary_agent: str | None = None,
 ) -> dict[str, Any]:
@@ -256,7 +298,10 @@ def build_heartbeat_prompt(
     normalized_agent_id = normalize_todo_claimed_by(agent_id) if agent_id else None
     if agent_id and not normalized_agent_id:
         raise ValueError("agent_id must be a public-safe token such as codex-main-control")
-    normalized_agent_scopes = normalize_agent_scopes(agent_scopes)
+    explicit_agent_scopes = normalize_agent_scopes(agent_scopes)
+    profile_agent_scopes = agent_profile_scopes(agent_profile)
+    normalized_agent_scopes = explicit_agent_scopes or profile_agent_scopes
+    agent_scope_source = "argument" if explicit_agent_scopes else "agent_profile_v0" if profile_agent_scopes else None
     if normalized_agent_scopes and not normalized_agent_id:
         raise ValueError("--agent-scope requires --agent-id so claimed_by uses a registered agent")
     normalized_registered_agents = normalize_registered_agents(registered_agents)
@@ -304,9 +349,10 @@ def build_heartbeat_prompt(
         if normalized_agent_id
         else None
     )
+    command_agent_scopes = explicit_agent_scopes
     agent_args = agent_prompt_command_args(
         agent_id=normalized_agent_id,
-        agent_scopes=normalized_agent_scopes,
+        agent_scopes=command_agent_scopes,
     )
     agent_scope_instruction = render_agent_scope_instruction(
         goal_id=goal_id,
@@ -367,6 +413,8 @@ def build_heartbeat_prompt(
         "agent_id": normalized_agent_id,
         "agent_role": agent_role,
         "agent_scopes": normalized_agent_scopes,
+        "agent_scope_source": agent_scope_source,
+        "agent_profile": agent_profile_prompt_projection(agent_profile),
         "registered_agents": normalized_registered_agents,
         "primary_agent": normalized_primary_agent,
         "expanded_prompt_command": expanded_prompt_command,

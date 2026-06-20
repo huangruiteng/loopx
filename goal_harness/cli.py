@@ -13,6 +13,7 @@ from .authority import (
     render_authority_source_markdown,
 )
 from .agent_registry import (
+    agent_profile_from_registry,
     primary_agent_id_from_registry,
     registered_agent_ids_from_registry,
     require_registered_agent_id,
@@ -5690,6 +5691,7 @@ def main(argv: list[str] | None = None) -> int:
             registered_agents = registered_agent_ids_from_registry(agent_registry_path, args.goal_id)
             primary_agent = primary_agent_id_from_registry(agent_registry_path, args.goal_id)
             effective_agent_id = None
+            agent_profile = None
             if args.agent_id:
                 effective_agent_id = require_registered_agent_id(
                     registry_path=agent_registry_path,
@@ -5697,6 +5699,7 @@ def main(argv: list[str] | None = None) -> int:
                     agent_id=args.agent_id,
                     field="agent_id",
                 )
+                agent_profile = agent_profile_from_registry(agent_registry_path, args.goal_id, effective_agent_id)
             payload = build_heartbeat_prompt(
                 goal_id=args.goal_id,
                 active_state=active_state,
@@ -5710,6 +5713,7 @@ def main(argv: list[str] | None = None) -> int:
                 cli_bin=args.cli_bin,
                 agent_id=effective_agent_id,
                 agent_scopes=args.agent_scopes,
+                agent_profile=agent_profile,
                 registered_agents=registered_agents,
                 primary_agent=primary_agent,
             )
