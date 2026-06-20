@@ -3049,6 +3049,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     original_rollout_connect_acp = getattr(
         benchflow_rollout_module, "connect_acp", _MISSING
     )
+    original_rollout_planes_connect_acp = getattr(
+        benchflow_rollout_planes_module, "connect_acp", _MISSING
+    )
     rollout_planes_class = getattr(
         benchflow_rollout_planes_module, "DefaultRolloutPlanes", None
     )
@@ -3251,6 +3254,8 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         benchflow_acp_runtime.connect_acp = connect_host_local_acp
         if original_rollout_connect_acp is not _MISSING:
             benchflow_rollout_module.connect_acp = connect_host_local_acp
+        if original_rollout_planes_connect_acp is not _MISSING:
+            benchflow_rollout_planes_module.connect_acp = connect_host_local_acp
     try:
         await benchflow_run(config)
         result_path = discover_benchflow_result_path(plan)
@@ -3267,6 +3272,10 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         benchflow_acp_runtime.connect_acp = original_runtime_connect_acp
         if original_rollout_connect_acp is not _MISSING:
             benchflow_rollout_module.connect_acp = original_rollout_connect_acp
+        if original_rollout_planes_connect_acp is not _MISSING:
+            benchflow_rollout_planes_module.connect_acp = (
+                original_rollout_planes_connect_acp
+            )
         _merge_acp_trajectory_summary(plan, controller_trace)
         _write_controller_trace(plan, controller_trace)
     if result_path is None:

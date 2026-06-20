@@ -368,6 +368,23 @@ def test_full_run_with_bridge_ready_requires_host_acp_launch() -> None:
     assert "--host-local-acp-launch" in payload["reason"], payload
 
 
+def test_launcher_patches_rollout_planes_connect_acp() -> None:
+    source = (REPO_ROOT / "scripts" / "skillsbench_automation_loop.py").read_text(
+        encoding="utf-8"
+    )
+    assert "original_rollout_planes_connect_acp" in source, source
+    assert (
+        "benchflow_rollout_planes_module.connect_acp = connect_host_local_acp"
+        in source
+    ), source
+    assert (
+        "benchflow_rollout_planes_module.connect_acp = (\n"
+        "                original_rollout_planes_connect_acp\n"
+        "            )"
+        in source
+    ), source
+
+
 if __name__ == "__main__":
     test_route_contract_requires_native_goal_proof()
     test_worker_contract_is_public_safe()
@@ -380,4 +397,5 @@ if __name__ == "__main__":
     test_acp_relay_delegates_to_app_server_goal_worker()
     test_full_run_fails_closed_until_bridge_is_materialized()
     test_full_run_with_bridge_ready_requires_host_acp_launch()
+    test_launcher_patches_rollout_planes_connect_acp()
     print("skillsbench-app-server-goal-worker smoke ok")
