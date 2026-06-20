@@ -6963,6 +6963,40 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
+            },
+            {
+              "agent_declared_done": false,
+              "arm_id": "terminal_bench_host_codex_app_server_goal_completion_aware",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260621T022100Z/terminal-bench-build-cython-ext-app-server-pr336-r2/terminal_bench_official_result.compact.json"
+              },
+              "benchmark_id": "terminal-bench@2.0",
+              "case_id": "build-cython-ext",
+              "case_ids": [
+                "build-cython-ext"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "goal_harness_inside_case": false,
+              "job_name": "build-cython-ext-host-app-server-goal-20260620t182136z",
+              "leaderboard_evidence": false,
+              "mode": "terminal_bench_host_codex_app_server_goal_completion_aware",
+              "notes": "ECS host app-server Goal completion-aware rerun; official Terminal-Bench metadata-only reducer; compact public-safe result only; no raw task/log/trajectory material recorded",
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-21T02:50:45+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "parallel-benchmark-20260621T022100Z",
+              "run_id": "b674c8b7b3a3",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
             }
           ]
         },
@@ -10115,7 +10149,7 @@
           ]
         }
       },
-      "run_count": 81
+      "run_count": 82
     }
   },
   "schema_version": "benchmark_run_ledger_v0",
@@ -10126,5 +10160,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-21T02:25:49+08:00"
+  "updated_at": "2026-06-21T02:50:45+08:00"
 }
