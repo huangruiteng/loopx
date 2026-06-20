@@ -67,7 +67,9 @@ includes(frontstageSource, "Always-on agent operations", "always-on operations c
 includes(frontstageSource, "Goal Harness Showcase Frontstage", "showcase-first hero title");
 includes(frontstageSource, "Always-on agent teams, governed by human judgment", "showcase-first hero copy");
 includes(frontstageSource, 'data-testid="frontstage-public-showcase-contract"', "public showcase contract panel");
-includes(frontstageSource, "Local status URLs stay behind the explicit Ops live switch", "ops-only live status copy");
+includes(frontstageSource, "Local status URLs stay behind explicit Ops live URLs", "ops-only live status copy");
+includes(frontstageSource, 'data-testid="frontstage-ops-entry-hint"', "explicit ops entry hint");
+excludes(frontstageSource, 'data-testid="frontstage-enable-ops-live"', "in-page ops live switch");
 includes(frontstageSource, "human judgment kept in the control plane", "human judgment control-plane copy");
 includes(frontstageSource, "Role Map", "role map copy");
 includes(frontstageSource, "claim owners", "claim owner role signal");

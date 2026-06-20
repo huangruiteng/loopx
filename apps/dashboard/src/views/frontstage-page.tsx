@@ -773,7 +773,7 @@ function PublicShowcaseBoundaryPanel() {
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">live feeds</div>
           <div className="mt-2 text-sm font-semibold leading-6 text-slate-950">Ops live only</div>
-          <p className="mt-1 text-xs leading-5 text-slate-600">Local status URLs stay behind the explicit Ops live switch and are not the public showcase source.</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">Local status URLs stay behind explicit Ops live URLs and are not the public showcase source.</p>
         </div>
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">write authority</div>
@@ -844,7 +844,6 @@ function FrontstageRoute({
   isLoading,
   loadError,
   mode,
-  onEnableOpsMode,
   onGoalChange,
   onLoadStatusUrl,
   onResetDemo,
@@ -859,7 +858,6 @@ function FrontstageRoute({
   isLoading: boolean;
   loadError: string | null;
   mode: FrontstageMode;
-  onEnableOpsMode: () => void;
   onGoalChange: (goalId: string) => void;
   onLoadStatusUrl: () => void;
   onResetDemo: () => void;
@@ -1034,12 +1032,12 @@ function FrontstageRoute({
                 data-testid="frontstage-public-boundary-note"
               >
                 <p>
-                  Showcase mode ignores statusUrl and renders docs/showcases only. Use Ops live for local control-plane inspection.
+                  Showcase mode ignores statusUrl and renders docs/showcases only. Use an explicit ops URL for local control-plane inspection.
                 </p>
                 {hasIgnoredStatusUrl ? <Badge variant="warning">statusUrl ignored</Badge> : null}
-                <Button data-testid="frontstage-enable-ops-live" onClick={onEnableOpsMode} size="sm">
-                  Ops live
-                </Button>
+                <div className="text-[11px] font-semibold text-emerald-800" data-testid="frontstage-ops-entry-hint">
+                  Ops live requires ?mode=ops&amp;statusUrl=...
+                </div>
               </div>
             )}
             {loadError ? (
@@ -1317,10 +1315,6 @@ export function FrontstagePage() {
     void updateSearch({ goalId });
   }
 
-  function enableOpsMode() {
-    void updateSearch({ mode: "ops" });
-  }
-
   useEffect(() => {
     if (liveMode && search.statusUrl) {
       void loadFromUrl(search.statusUrl, false);
@@ -1341,7 +1335,6 @@ export function FrontstagePage() {
       isLoading={isLoading}
       loadError={loadError}
       mode={mode}
-      onEnableOpsMode={enableOpsMode}
       onGoalChange={changeGoal}
       onLoadStatusUrl={() => void loadFromUrl(statusUrl)}
       onResetDemo={resetToDemo}
