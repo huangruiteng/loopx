@@ -84,6 +84,14 @@ function warningMessage(value: string | string[] | undefined) {
   return value ?? "compact source warning";
 }
 
+function countOpenTodos(todos: GoalChannelTodo[]) {
+  return todos.filter((todo) => todo.status === "open").length;
+}
+
+function countClaimedTodos(todos: GoalChannelTodo[]) {
+  return todos.filter((todo) => Boolean(todo.claimed_by)).length;
+}
+
 function TodoRow({ todo }: { todo: GoalChannelTodo }) {
   return (
     <div className="grid gap-3 border-b border-slate-200 px-3 py-3 last:border-b-0 md:grid-cols-[96px_minmax(0,1fr)_156px]">
@@ -176,6 +184,31 @@ function FrontstageRoute({
   setStatusUrl: (value: string) => void;
 }) {
   const quotaUsed = `${stringifyScalar(projection.quota.spent_slots)} / ${stringifyScalar(projection.quota.allowed_slots ?? "?")}`;
+  const openUserTodos = countOpenTodos(projection.user_todos);
+  const openAgentTodos = countOpenTodos(projection.agent_todos);
+  const claimedAgentTodos = countClaimedTodos(projection.agent_todos);
+  const operationSignals = [
+    {
+      label: "human gate",
+      value: projection.decision_frame.user_action_required ? "explicit" : "clear",
+      tone: projection.decision_frame.user_action_required ? "warning" : "success",
+    },
+    {
+      label: "agent work",
+      value: projection.decision_frame.agent_action_required ? "running" : "idle",
+      tone: projection.decision_frame.agent_action_required ? "info" : "neutral",
+    },
+    {
+      label: "claimed lanes",
+      value: `${claimedAgentTodos} / ${projection.agent_todos.length}`,
+      tone: claimedAgentTodos ? "info" : "neutral",
+    },
+    {
+      label: "evidence loop",
+      value: `${projection.recent_events.length} events`,
+      tone: projection.recent_events.length ? "success" : "neutral",
+    },
+  ] satisfies Array<{ label: string; value: string; tone: BadgeTone }>;
   return (
     <main
       className="min-h-screen bg-[#f7f7f4] px-4 py-4 text-slate-950 sm:px-5"
@@ -276,18 +309,31 @@ function FrontstageRoute({
                 <h1 className="mt-3 text-3xl font-semibold tracking-normal text-slate-950">
                   {projection.display_name}
                 </h1>
+                <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-700">
+                  Always-on agent operations, with human judgment kept in the control plane.
+                </p>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{projection.next_action}</p>
               </div>
               <div className="grid min-w-[220px] grid-cols-2 gap-2 text-center">
                 <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="text-lg font-semibold">{projection.user_todos.length}</div>
-                  <div className="text-[11px] font-medium text-slate-500">user todos</div>
+                  <div className="text-lg font-semibold">{openUserTodos}</div>
+                  <div className="text-[11px] font-medium text-slate-500">open user todos</div>
                 </div>
                 <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="text-lg font-semibold">{projection.agent_todos.length}</div>
-                  <div className="text-[11px] font-medium text-slate-500">agent todos</div>
+                  <div className="text-lg font-semibold">{openAgentTodos}</div>
+                  <div className="text-[11px] font-medium text-slate-500">open agent todos</div>
                 </div>
               </div>
+            </div>
+            <div className="mt-5 grid gap-2 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-4" data-testid="frontstage-operations-strip">
+              {operationSignals.map((signal) => (
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3" key={signal.label}>
+                  <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">{signal.label}</div>
+                  <div className="mt-2">
+                    <Badge variant={signal.tone}>{signal.value}</Badge>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -315,9 +361,9 @@ function FrontstageRoute({
             <Panel icon={Clock3} title="Source Freshness">
               <div className="space-y-2 p-4 text-xs leading-5 text-slate-600">
                 {Object.entries(projection.source_refs).map(([key, value]) => (
-                  <div className="grid grid-cols-[118px_minmax(0,1fr)] gap-2" key={key}>
+                  <div className="grid gap-1 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5" key={key}>
                     <span className="font-semibold text-slate-500">{key}</span>
-                    <span className="break-words">{stringifyScalar(value)}</span>
+                    <span className="break-words font-medium text-slate-700">{stringifyScalar(value)}</span>
                   </div>
                 ))}
               </div>

@@ -38,6 +38,7 @@ includes(statusSource, "goal_channel_projection: goalChannelProjectionSchema", "
 
 includes(frontstageSource, 'data-testid="goal-channel-frontstage-route"', "route test id");
 includes(frontstageSource, 'data-testid="frontstage-live-source-panel"', "live source panel");
+includes(frontstageSource, 'data-testid="frontstage-operations-strip"', "operations signal strip");
 includes(frontstageSource, 'data-testid="frontstage-goal-select"', "goal selector");
 includes(frontstageSource, "parseStatusPayload", "status payload parser");
 includes(frontstageSource, 'data-testid="frontstage-user-todos"', "user todo lane");
@@ -46,6 +47,10 @@ includes(frontstageSource, 'data-testid="frontstage-active-claims"', "active cla
 includes(frontstageSource, 'data-testid="frontstage-timeline"', "timeline lane");
 includes(frontstageSource, "Frontstage channel", "frontstage channel copy");
 includes(frontstageSource, "Channel board", "channel board nav");
+includes(frontstageSource, "Always-on agent operations", "always-on operations copy");
+includes(frontstageSource, "human judgment kept in the control plane", "human judgment control-plane copy");
+includes(frontstageSource, "claimed lanes", "claimed lane signal");
+includes(frontstageSource, "evidence loop", "evidence loop signal");
 includes(frontstageSource, "Projection is read-only", "read-only truth copy");
 includes(frontstageSource, "Inspired by modern agent boards", "product benchmark copy");
 excludes(frontstageSource, "<form", "write form");
