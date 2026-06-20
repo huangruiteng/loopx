@@ -78,6 +78,10 @@ includes(frontstageSource, "showcaseCatalog", "showcase catalog import");
 includes(frontstageSource, "estimated_developer_days", "efficiency baseline range");
 includes(frontstageSource, "single_engineer_calendar_compression", "efficiency compression range");
 includes(frontstageSource, "maturity-adjusted", "maturity adjusted copy");
+includes(frontstageSource, 'data-testid="frontstage-state-flow-hero"', "showcase state-flow hero");
+includes(frontstageSource, "State flow control plane", "state-flow hero label");
+includes(frontstageSource, "The work moves. Judgment stays visible.", "state-flow hero punchline");
+includes(frontstageSource, "showcaseStateFlow", "state-flow nodes");
 includes(frontstageSource, 'data-testid="frontstage-showcase-cases"', "showcase case cards panel");
 includes(frontstageSource, 'data-testid="frontstage-showcase-discovery"', "showcase discovery controls");
 includes(frontstageSource, 'data-testid="frontstage-showcase-search"', "showcase catalog search control");
@@ -122,6 +126,13 @@ includes(motionSource, "evidence_boundary", "motion board evidence boundary fiel
 includes(motionSource, "Always-on agent teams", "motion board always-on copy");
 excludes(motionSource, "projection", "motion board live projection dependency");
 excludes(motionSource, "payload", "motion board live payload dependency");
+
+const stateFlowHeroSource = sourceBetween(frontstageSource, "function ShowcaseStateFlowHero", "function PublicShowcaseBoundaryPanel", "showcase state-flow hero");
+includes(stateFlowHeroSource, "showcaseStateFlow", "state-flow hero source");
+includes(stateFlowHeroSource, "animate-ping", "state-flow hero pulse");
+includes(stateFlowHeroSource, "animate-pulse", "state-flow hero rail pulse");
+excludes(stateFlowHeroSource, "projection", "state-flow hero live projection dependency");
+excludes(stateFlowHeroSource, "payload", "state-flow hero live payload dependency");
 
 const casePackSource = sourceBetween(frontstageSource, "function ShowcaseCasePackPanel", "function PublicShowcaseBoundaryPanel", "showcase case pack");
 includes(casePackSource, "showcaseSearchText", "case pack catalog search index");

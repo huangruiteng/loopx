@@ -652,6 +652,84 @@ function ShowcaseCasePackPanel() {
   );
 }
 
+const showcaseStateFlow = [
+  {
+    icon: Users,
+    label: "Gate",
+    value: "judgment visible",
+  },
+  {
+    icon: Bot,
+    label: "Claim",
+    value: "agent lane owned",
+  },
+  {
+    icon: GitBranch,
+    label: "Side path",
+    value: "safe work moves",
+  },
+  {
+    icon: ShieldCheck,
+    label: "Evidence",
+    value: "proof written back",
+  },
+  {
+    icon: Activity,
+    label: "Next run",
+    value: "state resumes",
+  },
+];
+
+function ShowcaseStateFlowHero() {
+  return (
+    <div
+      className="mt-5 overflow-hidden rounded-lg border border-slate-800 bg-slate-950 p-4 text-white shadow-sm"
+      data-testid="frontstage-state-flow-hero"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-normal text-cyan-200">
+            State flow control plane
+          </div>
+          <p className="mt-2 max-w-2xl text-xl font-semibold leading-8 text-white">
+            The work moves. Judgment stays visible.
+          </p>
+        </div>
+        <Badge variant="neutral">showcase-first</Badge>
+      </div>
+      <div className="relative mt-4">
+        <div className="absolute left-4 right-4 top-6 hidden h-px bg-cyan-300/30 lg:block" />
+        <div className="grid gap-2 lg:grid-cols-5">
+          {showcaseStateFlow.map((item, index) => {
+            const Icon = item.icon;
+            return (
+              <div
+                className="relative overflow-hidden rounded-md border border-white/10 bg-white/[0.06] px-3 py-3"
+                key={item.label}
+              >
+                <span className="absolute inset-x-0 top-0 h-px bg-cyan-300/50" />
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-normal text-slate-300">
+                  <span className="relative flex h-7 w-7 items-center justify-center rounded-md border border-cyan-300/30 bg-cyan-300/10 text-cyan-100">
+                    {index === 0 ? (
+                      <span className="absolute inline-flex h-5 w-5 animate-ping rounded-md bg-cyan-300/20" />
+                    ) : null}
+                    <Icon className="relative h-3.5 w-3.5" />
+                  </span>
+                  {item.label}
+                </div>
+                <div className="mt-2 text-sm font-semibold leading-6 text-white">{item.value}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-cyan-300" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PublicShowcaseBoundaryPanel() {
   return (
     <Panel icon={ShieldCheck} title="Public Boundary">
@@ -921,6 +999,7 @@ function FrontstageRoute({
                 ))}
               </div>
             </div>
+            {!isOpsMode ? <ShowcaseStateFlowHero /> : null}
             <div className="mt-5 grid gap-2 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-4" data-testid="frontstage-operations-strip">
               {operationSignals.map((signal) => (
                 <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3" key={signal.label}>
