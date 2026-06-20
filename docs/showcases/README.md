@@ -50,6 +50,8 @@ That hosted route is intentionally case-first. It should help a new user or
 developer understand the showcased patterns before reading CLI output: public
 cases, efficiency evidence, and the public boundary come from this directory;
 live local `statusUrl` feeds belong only to explicit ops-mode inspection.
+For a short external walkthrough, use the
+[frontstage demo script](../outreach/frontstage-demo-script.md).
 
 ![Hosted Goal Harness frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
 
