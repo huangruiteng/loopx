@@ -76,7 +76,15 @@ def main() -> int:
         assert agent.poll_interval_sec == 0.5
         assert agent.task_workdir == "/workspace"
         assert agent.goal_surface == "app_server"
+        assert agent.app_server_wait_for_completion is True
         assert agent.app_server_response_timeout_sec == 4.0
+
+        no_wait_agent = module.HarborHostCodexGoalAgent(
+            logs_dir=Path(tmp) / "no-wait-logs",
+            goal_surface="app_server",
+            app_server_wait_for_completion="false",
+        )
+        assert no_wait_agent.app_server_wait_for_completion is False
 
     print("harbor host Codex Goal agent smoke passed")
     return 0

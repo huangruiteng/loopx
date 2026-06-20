@@ -70,6 +70,12 @@ def build_codex_tui_command(*, codex_bin: str = "codex", model_name: str | None 
     return command
 
 
+def _coerce_bool(value: str | bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
 def build_host_goal_prompt(
     *,
     container_name: str,
@@ -117,6 +123,7 @@ class HostCodexGoalAgent(BaseAgent):
         task_workdir: str = "/app",
         codex_bin: str = "codex",
         goal_surface: str = "tui",
+        app_server_wait_for_completion: str | bool = True,
         app_server_response_timeout_sec: str | int | float = 30,
         startup_delay_sec: str | int | float = 5,
         poll_interval_sec: str | int | float = 5,
@@ -135,6 +142,7 @@ class HostCodexGoalAgent(BaseAgent):
         self.task_workdir = task_workdir
         self.codex_bin = codex_bin
         self.goal_surface = goal_surface
+        self.app_server_wait_for_completion = _coerce_bool(app_server_wait_for_completion)
         self.app_server_response_timeout_sec = float(app_server_response_timeout_sec)
         self.startup_delay_sec = float(startup_delay_sec)
         self.poll_interval_sec = float(poll_interval_sec)
@@ -200,6 +208,8 @@ class HostCodexGoalAgent(BaseAgent):
                     prompt=prompt,
                     model_name=self.model_name,
                     response_timeout_sec=self.app_server_response_timeout_sec,
+                    wait_for_completion=self.app_server_wait_for_completion,
+                    turn_timeout_sec=self.goal_timeout_sec,
                 )
             except CodexAppServerGoalDriverError as exc:
                 (work_dir / "app_server_goal_turn.compact.json").write_text(
@@ -208,7 +218,7 @@ class HostCodexGoalAgent(BaseAgent):
                             "schema_version": "terminal_bench_host_codex_goal_agent_v0",
                             "goal_surface": "app_server",
                             "ok": False,
-                            "first_blocker": "codex_app_server_goal_turn_start_failed",
+                            "first_blocker": "codex_app_server_goal_turn_failed",
                             "error_type": type(exc).__name__,
                             "raw_transcript_recorded": False,
                         },
@@ -222,10 +232,30 @@ class HostCodexGoalAgent(BaseAgent):
                     total_output_tokens=0,
                     failure_mode=FailureMode.AGENT_TIMEOUT,
                 )
+            compact = compact_turn_metadata(turn)
+            compact.update(
+                {
+                    "goal_surface": "app_server",
+                    "app_server_wait_for_completion": self.app_server_wait_for_completion,
+                    "completion_marker_observed": marker.exists(),
+                    "first_blocker": ""
+                    if marker.exists()
+                    else "terminal_bench_completion_marker_missing_after_turn_completed",
+                }
+            )
             (work_dir / "app_server_goal_turn.compact.json").write_text(
-                json.dumps(compact_turn_metadata(turn), sort_keys=True) + "\n",
+                json.dumps(compact, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
+            if self.app_server_wait_for_completion:
+                turn.terminate()
+                if marker.exists():
+                    return AgentResult(total_input_tokens=0, total_output_tokens=0)
+                return AgentResult(
+                    total_input_tokens=0,
+                    total_output_tokens=0,
+                    failure_mode=FailureMode.AGENT_TIMEOUT,
+                )
             deadline = time.time() + self.goal_timeout_sec
             try:
                 while time.time() < deadline:

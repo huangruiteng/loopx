@@ -66,9 +66,16 @@ def main() -> int:
     assert agent.goal_timeout_sec == 7.0
     assert agent.poll_interval_sec == 0.5
     assert agent.goal_surface == "app_server"
+    assert agent.app_server_wait_for_completion is True
     assert agent.app_server_response_timeout_sec == 4.0
     assert str(agent.work_root) == "/tmp/goal-harness-terminal-bench"
     assert agent.network_bootstrap_script is None
+
+    no_wait_agent = module.HostCodexGoalAgent(
+        goal_surface="app_server",
+        app_server_wait_for_completion="false",
+    )
+    assert no_wait_agent.app_server_wait_for_completion is False
 
     print("terminal-bench host Codex Goal agent smoke passed")
     return 0
