@@ -355,13 +355,14 @@ python3 -m goal_harness.cli --format json benchmark launch-terminal-bench-run \
   --materialization-wait-seconds 0
 ```
 
-Until a real Terminal-Bench worker adapter consumes the Codex app-server
-`thread/goal/set` + `thread/goal/get` proof inside the case launch, this mode
-must return `execution_ready=false`,
-`first_blocker=terminal_bench_app_server_goal_worker_seam_not_implemented`,
-and `codex_goal_mode_baseline_claim_allowed=false`. The older
-`codex-goal-mode` launcher remains a slash-command fallback and must not be
-used as a scored Codex Goal baseline.
+The app-server Goal launcher now exposes a public worker contract for
+`thread/goal/set`, `thread/goal/get`, and `turn/start`. Until a real
+Terminal-Bench case launch returns compact `turn/start` proof plus no-upload
+case proof, this mode must still return `execution_ready=false`,
+`first_blocker=terminal_bench_app_server_goal_turn_start_proof_missing`, and
+`codex_goal_mode_baseline_claim_allowed=false`. The older `codex-goal-mode`
+launcher remains a slash-command fallback and must not be used as a scored
+Codex Goal baseline.
 
 Default cloud ECS host readiness:
 

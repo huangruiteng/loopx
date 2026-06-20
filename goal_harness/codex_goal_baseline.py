@@ -18,6 +18,10 @@ CODEX_APP_SERVER_GOAL_BASELINE_SCHEMA_VERSION = (
 CODEX_APP_SERVER_GOAL_BASELINE_PROOF_SCHEMA_VERSION = (
     "codex_app_server_goal_baseline_proof_v0"
 )
+CODEX_APP_SERVER_GOAL_WORKER_SCHEMA_VERSION = "codex_app_server_goal_worker_v0"
+CODEX_APP_SERVER_GOAL_WORKER_PROOF_SCHEMA_VERSION = (
+    "codex_app_server_goal_worker_proof_v0"
+)
 DEFAULT_CODEX_GOAL_BASELINE_CLIENT_NAME = "goal_harness_benchmark_goal_baseline"
 DEFAULT_CODEX_GOAL_BASELINE_CLIENT_TITLE = "Goal Harness Benchmark Goal Baseline"
 DEFAULT_CODEX_GOAL_BASELINE_CLIENT_VERSION = "0.1.0"
@@ -26,6 +30,10 @@ CODEX_APP_SERVER_GOAL_METHODS = (
     "thread/start",
     "thread/goal/set",
     "thread/goal/get",
+)
+CODEX_APP_SERVER_GOAL_WORKER_METHODS = (
+    *CODEX_APP_SERVER_GOAL_METHODS,
+    "turn/start",
 )
 
 
@@ -133,11 +141,116 @@ def build_codex_app_server_goal_baseline_plan(
     }
 
 
+def build_codex_app_server_goal_worker_plan(
+    *,
+    objective: str,
+    task_instruction: str,
+    cwd: str = "<benchmark-workspace>",
+    sandbox: str = "workspace-write",
+    approval_policy: str = "never",
+    status: str = "active",
+    token_budget: int | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+    client_name: str = DEFAULT_CODEX_GOAL_BASELINE_CLIENT_NAME,
+    client_title: str = DEFAULT_CODEX_GOAL_BASELINE_CLIENT_TITLE,
+    client_version: str = DEFAULT_CODEX_GOAL_BASELINE_CLIENT_VERSION,
+) -> dict[str, Any]:
+    """Describe the app-server Goal worker path used by benchmark launches.
+
+    This is still a compact control contract, not a benchmark result. A scored
+    baseline needs both persistent Goal proof and `turn/start` proof for the
+    benchmark task inside the case launch.
+    """
+
+    task_text = str(task_instruction or "").strip()
+    if not task_text:
+        raise ValueError("task_instruction must be non-empty")
+
+    plan = build_codex_app_server_goal_baseline_plan(
+        objective=objective,
+        cwd=cwd,
+        sandbox=sandbox,
+        approval_policy=approval_policy,
+        status=status,
+        token_budget=token_budget,
+        client_name=client_name,
+        client_title=client_title,
+        client_version=client_version,
+    )
+    turn_start_params: dict[str, Any] = {
+        "threadId": "<thread-id>",
+        "input": [{"type": "text", "text": task_text}],
+        "cwd": cwd,
+        "approvalPolicy": approval_policy,
+    }
+    if model:
+        turn_start_params["model"] = str(model)
+    if effort:
+        turn_start_params["effort"] = str(effort)
+
+    worker_messages = dict(plan["messages"])
+    worker_messages["turn_start"] = {
+        "id": 5,
+        "method": "turn/start",
+        "params": turn_start_params,
+    }
+
+    return {
+        **plan,
+        "schema_version": CODEX_APP_SERVER_GOAL_WORKER_SCHEMA_VERSION,
+        "worker_mode": "codex_app_server_goal_turn",
+        "methods": list(CODEX_APP_SERVER_GOAL_WORKER_METHODS),
+        "task_instruction_sha256": stable_text_digest(task_text),
+        "task_instruction_chars": len(task_text),
+        "messages": worker_messages,
+        "claim_boundary": {
+            **plan["claim_boundary"],
+            "requires_turn_start_evidence": True,
+            "turn_start_input_must_match_task": True,
+        },
+    }
+
+
 def _goal_from_response(response: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(response, dict):
         return {}
     goal = response.get("goal")
     return goal if isinstance(goal, dict) else {}
+
+
+def _turn_from_response(response: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(response, dict):
+        return {}
+    turn = response.get("turn")
+    return turn if isinstance(turn, dict) else {}
+
+
+def _turn_start_input_text(request: dict[str, Any] | None) -> str:
+    if not isinstance(request, dict):
+        return ""
+    params = request.get("params")
+    if not isinstance(params, dict):
+        return ""
+    inputs = params.get("input")
+    if not isinstance(inputs, list):
+        return ""
+    texts: list[str] = []
+    for item in inputs:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "text" and isinstance(item.get("text"), str):
+            texts.append(item["text"])
+    return "\n".join(texts).strip()
+
+
+def _turn_start_thread_id(request: dict[str, Any] | None) -> str:
+    if not isinstance(request, dict):
+        return ""
+    params = request.get("params")
+    if not isinstance(params, dict):
+        return ""
+    return str(params.get("threadId") or "")
 
 
 def compact_goal(goal: dict[str, Any]) -> dict[str, Any]:
@@ -151,6 +264,20 @@ def compact_goal(goal: dict[str, Any]) -> dict[str, Any]:
         "token_budget_present": goal.get("tokenBudget") is not None,
         "tokens_used": goal.get("tokensUsed"),
         "time_used_seconds": goal.get("timeUsedSeconds"),
+    }
+
+
+def compact_turn(turn: dict[str, Any]) -> dict[str, Any]:
+    status = str(turn.get("status") or "")
+    return {
+        "turn_id_present": bool(turn.get("id")),
+        "status": status or None,
+        "items_count": len(turn.get("items") or [])
+        if isinstance(turn.get("items"), list)
+        else None,
+        "started_at_present": turn.get("startedAt") is not None,
+        "completed_at_present": turn.get("completedAt") is not None,
+        "error_present": turn.get("error") is not None,
     }
 
 
@@ -230,6 +357,88 @@ def build_codex_app_server_goal_baseline_proof(
             "raw_transcript_recorded": bool(raw_transcript_recorded),
             "credentials_read_or_recorded": bool(credentials_read_or_recorded),
         },
+    }
+
+
+def build_codex_app_server_goal_worker_proof(
+    *,
+    set_response: dict[str, Any] | None,
+    get_response: dict[str, Any] | None,
+    turn_start_request: dict[str, Any] | None,
+    turn_start_response: dict[str, Any] | None,
+    expected_objective: str | None = None,
+    expected_task_instruction: str | None = None,
+    expected_status: str = "active",
+    notifications: list[str] | None = None,
+    used_codex_exec: bool = False,
+    used_slash_prefix_prompt: bool = False,
+    included_goal_harness_state: bool = False,
+    raw_paths_recorded: bool = False,
+    raw_transcript_recorded: bool = False,
+    credentials_read_or_recorded: bool = False,
+) -> dict[str, Any]:
+    """Reduce app-server Goal plus turn-start responses into worker evidence."""
+
+    baseline = build_codex_app_server_goal_baseline_proof(
+        set_response=set_response,
+        get_response=get_response,
+        expected_objective=expected_objective,
+        expected_status=expected_status,
+        notifications=notifications,
+        used_codex_exec=used_codex_exec,
+        used_slash_prefix_prompt=used_slash_prefix_prompt,
+        included_goal_harness_state=included_goal_harness_state,
+        raw_paths_recorded=raw_paths_recorded,
+        raw_transcript_recorded=raw_transcript_recorded,
+        credentials_read_or_recorded=credentials_read_or_recorded,
+    )
+    set_goal = _goal_from_response(set_response)
+    turn = _turn_from_response(turn_start_response)
+    request_thread_id = _turn_start_thread_id(turn_start_request)
+    goal_thread_id = str(set_goal.get("threadId") or "")
+    task_text = _turn_start_input_text(turn_start_request)
+    expected_task = str(expected_task_instruction or "").strip()
+    task_matches = bool(task_text) and (
+        not expected_task or task_text == expected_task
+    )
+    thread_matches = bool(goal_thread_id) and request_thread_id == goal_thread_id
+    turn_started = bool(turn.get("id")) and bool(str(turn.get("status") or ""))
+    worker_claim_allowed = bool(
+        baseline.get("baseline_claim_allowed")
+        and thread_matches
+        and task_matches
+        and turn_started
+    )
+
+    return {
+        "schema_version": CODEX_APP_SERVER_GOAL_WORKER_PROOF_SCHEMA_VERSION,
+        "surface": "codex_app_server",
+        "baseline_mode": "codex_goal_mode",
+        "worker_mode": "codex_app_server_goal_turn",
+        "persistent_goal_evidence": bool(baseline.get("persistent_goal_evidence")),
+        "turn_start_evidence": bool(turn_started),
+        "baseline_claim_allowed": worker_claim_allowed,
+        "required_methods_observed": {
+            **baseline.get("required_methods_observed", {}),
+            "turn_start": bool(turn_started),
+        },
+        "matches": {
+            **baseline.get("matches", {}),
+            "turn_thread": thread_matches,
+            "task_instruction": task_matches,
+        },
+        "set_goal": baseline.get("set_goal", {}),
+        "get_goal": baseline.get("get_goal", {}),
+        "turn": compact_turn(turn),
+        "task_instruction": {
+            "present": bool(task_text),
+            "sha256": stable_text_digest(task_text) if task_text else None,
+            "chars": len(task_text),
+            "raw_recorded": False,
+        },
+        "notifications": baseline.get("notifications", []),
+        "negative_controls": baseline.get("negative_controls", {}),
+        "read_boundary": baseline.get("read_boundary", {}),
     }
 
 

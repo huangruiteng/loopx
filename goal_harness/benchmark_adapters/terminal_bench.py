@@ -24,6 +24,11 @@ from ..benchmark_case_state import (
     benchmark_case_active_state_path,
     benchmark_case_goal_id,
 )
+from ..codex_goal_baseline import (
+    CODEX_APP_SERVER_GOAL_WORKER_SCHEMA_VERSION,
+    CODEX_APP_SERVER_GOAL_WORKER_METHODS,
+    build_codex_app_server_goal_worker_plan,
+)
 from ..worker_bridge import (
     ACTIVE_USER_INTERVENTION_CHANNEL_CONTRACT_VERSION,
     ACTIVE_USER_INTERVENTION_CHANNEL_SURFACE,
@@ -198,6 +203,9 @@ TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_BASELINE_MODE = (
 )
 TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_WORKER_SEAM_BLOCKER = (
     "terminal_bench_app_server_goal_worker_seam_not_implemented"
+)
+TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_TURN_PROOF_BLOCKER = (
+    "terminal_bench_app_server_goal_turn_start_proof_missing"
 )
 TERMINAL_BENCH_HARDENED_CODEX_LEGACY_CALIBRATION_MODE = (
     "hardened_codex_calibration"
@@ -5809,8 +5817,20 @@ def build_terminal_bench_private_runner_launch(**command_kwargs: Any) -> dict[st
         first_blocker = str(
             material_readiness.get("first_blocker") or f"task_material_{status}"
         )
+    codex_app_server_goal_worker_plan: dict[str, Any] = {}
     if codex_app_server_goal_mode:
-        first_blocker = TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_WORKER_SEAM_BLOCKER
+        task_name = str(
+            resolved_command_kwargs.get("task_id")
+            or resolved_command_kwargs.get("include_task_name")
+            or TERMINAL_BENCH_DEFAULT_TASK
+        )
+        codex_app_server_goal_worker_plan = build_codex_app_server_goal_worker_plan(
+            objective=f"Complete Terminal-Bench task {task_name} under no-upload baseline.",
+            task_instruction="<terminal-bench-task-instruction-from-runner>",
+            cwd="<terminal-bench-case-workspace>",
+            model=str(resolved_command_kwargs.get("model") or TERMINAL_BENCH_DEFAULT_MODEL),
+        )
+        first_blocker = TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_TURN_PROOF_BLOCKER
     return {
         "schema_version": "terminal_bench_private_runner_launch_v0",
         "argv": argv,
@@ -5822,7 +5842,25 @@ def build_terminal_bench_private_runner_launch(**command_kwargs: Any) -> dict[st
         "setup_timeout_repair_profile": setup_timeout_repair_profile,
         "repair_profile": repair_profile or {},
         "codex_app_server_goal_baseline_requested": codex_app_server_goal_mode,
-        "codex_app_server_goal_worker_adapter_present": False,
+        "codex_app_server_goal_worker_adapter_present": codex_app_server_goal_mode,
+        "codex_app_server_goal_worker_plan_schema": (
+            str(
+                codex_app_server_goal_worker_plan.get("schema_version")
+                or CODEX_APP_SERVER_GOAL_WORKER_SCHEMA_VERSION
+            )
+            if codex_app_server_goal_mode
+            else ""
+        ),
+        "codex_app_server_goal_worker_required_methods": (
+            list(
+                codex_app_server_goal_worker_plan.get("methods")
+                or CODEX_APP_SERVER_GOAL_WORKER_METHODS
+            )
+            if codex_app_server_goal_mode
+            else []
+        ),
+        "codex_app_server_goal_worker_turn_start_required": codex_app_server_goal_mode,
+        "codex_app_server_goal_proof_present": False,
         "codex_app_server_goal_required_surface": (
             "codex_app_server_thread_goal_set_get"
             if codex_app_server_goal_mode
@@ -6566,9 +6604,13 @@ def summarize_terminal_bench_private_runner_launch(
     )
     if codex_goal_mode_baseline_claim_allowed:
         codex_goal_mode_baseline_claim_blocker = ""
-    elif codex_app_server_goal_requested:
+    elif codex_app_server_goal_requested and not codex_app_server_goal_adapter_present:
         codex_goal_mode_baseline_claim_blocker = (
             TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_WORKER_SEAM_BLOCKER
+        )
+    elif codex_app_server_goal_requested:
+        codex_goal_mode_baseline_claim_blocker = (
+            TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_TURN_PROOF_BLOCKER
         )
     elif codex_goal_mode_requested:
         codex_goal_mode_baseline_claim_blocker = "missing_codex_app_server_goal_proof"
@@ -6595,6 +6637,22 @@ def summarize_terminal_bench_private_runner_launch(
         "codex_app_server_goal_baseline_requested": codex_app_server_goal_requested,
         "codex_app_server_goal_worker_adapter_present": (
             codex_app_server_goal_adapter_present
+        ),
+        "codex_app_server_goal_worker_plan_schema": str(
+            launch.get("codex_app_server_goal_worker_plan_schema") or ""
+        )[:100],
+        "codex_app_server_goal_worker_required_methods": [
+            str(method or "")[:80]
+            for method in (
+                launch.get("codex_app_server_goal_worker_required_methods")
+                if isinstance(
+                    launch.get("codex_app_server_goal_worker_required_methods"), list
+                )
+                else []
+            )
+        ],
+        "codex_app_server_goal_worker_turn_start_required": (
+            launch.get("codex_app_server_goal_worker_turn_start_required") is True
         ),
         "codex_app_server_goal_proof_present": codex_app_server_goal_proof_present,
         "codex_goal_mode_invocation_surface": codex_goal_mode_invocation_surface,
@@ -9176,11 +9234,15 @@ def build_terminal_bench_benchmark_run(
                         "codex_app_server_thread_goal_set_get"
                     ),
                     "codex_app_server_goal_baseline_requested": True,
-                    "codex_app_server_goal_worker_adapter_present": False,
+                    "codex_app_server_goal_worker_adapter_present": True,
+                    "codex_app_server_goal_worker_plan_schema": (
+                        CODEX_APP_SERVER_GOAL_WORKER_SCHEMA_VERSION
+                    ),
+                    "codex_app_server_goal_worker_turn_start_required": True,
                     "codex_app_server_goal_proof_present": False,
                     "codex_goal_mode_baseline_claim_allowed": False,
                     "codex_goal_mode_baseline_claim_blocker": (
-                        TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_WORKER_SEAM_BLOCKER
+                        TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_TURN_PROOF_BLOCKER
                     ),
                     "goal_harness_access_packet_absent": True,
                     "goal_harness_cli_bridge_absent": True,
@@ -9196,7 +9258,7 @@ def build_terminal_bench_benchmark_run(
                 "slash_command_is_unverified_fallback": False,
                 "baseline_claim_allowed": False,
                 "first_blocker": (
-                    TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_WORKER_SEAM_BLOCKER
+                    TERMINAL_BENCH_CODEX_APP_SERVER_GOAL_TURN_PROOF_BLOCKER
                 ),
             }
         if active_cli_bridge_preflight:

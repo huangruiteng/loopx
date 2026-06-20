@@ -1271,7 +1271,7 @@ time.sleep(3)
     assert cli_app_server_payload["dry_run"] is True, cli_app_server_payload
     assert cli_app_server_payload["execution_ready"] is False, cli_app_server_payload
     assert cli_app_server_payload["first_blocker"] == (
-        "terminal_bench_app_server_goal_worker_seam_not_implemented"
+        "terminal_bench_app_server_goal_turn_start_proof_missing"
     ), cli_app_server_payload
     assert cli_app_server_payload["launch_summary"][
         "codex_goal_mode_invocation_surface"
@@ -2505,15 +2505,21 @@ time.sleep(3)
     assert app_server_goal_summary["codex_goal_mode_invocation_surface"] == (
         "codex_app_server_thread_goal_set_get"
     ), app_server_goal_summary
-    assert app_server_goal_summary["codex_app_server_goal_worker_adapter_present"] is False, app_server_goal_summary
+    assert app_server_goal_summary["codex_app_server_goal_worker_adapter_present"] is True, app_server_goal_summary
+    assert app_server_goal_summary["codex_app_server_goal_worker_plan_schema"] == (
+        "codex_app_server_goal_worker_v0"
+    ), app_server_goal_summary
+    assert app_server_goal_summary[
+        "codex_app_server_goal_worker_turn_start_required"
+    ] is True, app_server_goal_summary
     assert app_server_goal_summary["codex_app_server_goal_proof_present"] is False, app_server_goal_summary
     assert app_server_goal_summary["codex_goal_mode_baseline_claim_allowed"] is False, app_server_goal_summary
     assert app_server_goal_summary["codex_goal_mode_baseline_claim_blocker"] == (
-        "terminal_bench_app_server_goal_worker_seam_not_implemented"
+        "terminal_bench_app_server_goal_turn_start_proof_missing"
     ), app_server_goal_summary
     assert app_server_goal_summary["goal_harness_access_packet_absent"] is True, app_server_goal_summary
     assert app_server_goal_summary["first_blocker"] == (
-        "terminal_bench_app_server_goal_worker_seam_not_implemented"
+        "terminal_bench_app_server_goal_turn_start_proof_missing"
     ), app_server_goal_summary
 
     expect_raises(

@@ -15,12 +15,16 @@ sys.path.insert(0, str(REPO_ROOT))
 from goal_harness.codex_goal_baseline import (  # noqa: E402
     build_codex_app_server_goal_baseline_plan,
     build_codex_app_server_goal_baseline_proof,
+    build_codex_app_server_goal_worker_plan,
+    build_codex_app_server_goal_worker_proof,
     run_isolated_codex_app_server_goal_probe,
 )
 
 
 OBJECTIVE = "Complete the benchmark task and validate the final answer."
+TASK_INSTRUCTION = "Solve the benchmark task, write the answer, and run tests."
 THREAD_ID = "thread-fixture-123"
+TURN_ID = "turn-fixture-456"
 
 
 def assert_plan_contract() -> None:
@@ -108,6 +112,101 @@ def assert_proof_contract() -> None:
     assert leaked_state["baseline_claim_allowed"] is False, leaked_state
 
 
+def assert_worker_plan_and_proof_contract() -> None:
+    plan = build_codex_app_server_goal_worker_plan(
+        objective=OBJECTIVE,
+        task_instruction=TASK_INSTRUCTION,
+        cwd="/workspace/benchmark",
+        model="gpt-5.5",
+        token_budget=200000,
+    )
+    assert plan["schema_version"] == "codex_app_server_goal_worker_v0", plan
+    assert "thread/goal/set" in plan["methods"], plan
+    assert "thread/goal/get" in plan["methods"], plan
+    assert "turn/start" in plan["methods"], plan
+    assert plan["claim_boundary"]["requires_turn_start_evidence"] is True, plan
+    turn_start = plan["messages"]["turn_start"]
+    assert turn_start["method"] == "turn/start", turn_start
+    assert turn_start["params"]["threadId"] == "<thread-id>", turn_start
+    assert turn_start["params"]["input"] == [
+        {"type": "text", "text": TASK_INSTRUCTION}
+    ], turn_start
+    assert turn_start["params"]["model"] == "gpt-5.5", turn_start
+
+    set_response = {
+        "goal": {
+            "threadId": THREAD_ID,
+            "objective": OBJECTIVE,
+            "status": "active",
+            "tokenBudget": 200000,
+            "tokensUsed": 0,
+            "timeUsedSeconds": 0,
+        }
+    }
+    get_response = {
+        "goal": {
+            "threadId": THREAD_ID,
+            "objective": OBJECTIVE,
+            "status": "active",
+            "tokenBudget": 200000,
+            "tokensUsed": 0,
+            "timeUsedSeconds": 0,
+        }
+    }
+    turn_start_request = dict(turn_start)
+    turn_start_request["params"] = dict(turn_start["params"])
+    turn_start_request["params"]["threadId"] = THREAD_ID
+    turn_start_response = {
+        "turn": {
+            "id": TURN_ID,
+            "status": "running",
+            "items": [],
+            "startedAt": 1,
+            "completedAt": None,
+            "error": None,
+        }
+    }
+    proof = build_codex_app_server_goal_worker_proof(
+        set_response=set_response,
+        get_response=get_response,
+        turn_start_request=turn_start_request,
+        turn_start_response=turn_start_response,
+        expected_objective=OBJECTIVE,
+        expected_task_instruction=TASK_INSTRUCTION,
+    )
+    assert proof["persistent_goal_evidence"] is True, proof
+    assert proof["turn_start_evidence"] is True, proof
+    assert proof["baseline_claim_allowed"] is True, proof
+    assert proof["matches"]["turn_thread"] is True, proof
+    assert proof["matches"]["task_instruction"] is True, proof
+    assert proof["task_instruction"]["raw_recorded"] is False, proof
+    assert proof["task_instruction"]["chars"] == len(TASK_INSTRUCTION), proof
+
+    missing_turn = build_codex_app_server_goal_worker_proof(
+        set_response=set_response,
+        get_response=get_response,
+        turn_start_request=turn_start_request,
+        turn_start_response=None,
+        expected_objective=OBJECTIVE,
+        expected_task_instruction=TASK_INSTRUCTION,
+    )
+    assert missing_turn["persistent_goal_evidence"] is True, missing_turn
+    assert missing_turn["turn_start_evidence"] is False, missing_turn
+    assert missing_turn["baseline_claim_allowed"] is False, missing_turn
+
+    wrong_task = build_codex_app_server_goal_worker_proof(
+        set_response=set_response,
+        get_response=get_response,
+        turn_start_request=turn_start_request,
+        turn_start_response=turn_start_response,
+        expected_objective=OBJECTIVE,
+        expected_task_instruction="Different task",
+    )
+    assert wrong_task["turn_start_evidence"] is True, wrong_task
+    assert wrong_task["baseline_claim_allowed"] is False, wrong_task
+    assert wrong_task["matches"]["task_instruction"] is False, wrong_task
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -119,6 +218,7 @@ def main() -> int:
 
     assert_plan_contract()
     assert_proof_contract()
+    assert_worker_plan_and_proof_contract()
 
     if args.real_codex:
         result = run_isolated_codex_app_server_goal_probe(

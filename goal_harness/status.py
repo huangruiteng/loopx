@@ -788,6 +788,7 @@ def _compact_benchmark_preflight_guard(value: Any) -> dict[str, Any]:
         "codex_goal_mode_invocation_surface",
         "codex_goal_mode_required_invocation_surface",
         "codex_goal_mode_baseline_claim_blocker",
+        "codex_app_server_goal_worker_plan_schema",
         "runner_binary_resolution_policy",
         "simulator_setting",
     ):
@@ -809,6 +810,7 @@ def _compact_benchmark_preflight_guard(value: Any) -> dict[str, Any]:
         "codex_app_server_goal_baseline_requested",
         "codex_app_server_goal_worker_adapter_present",
         "codex_app_server_goal_worker_adapter_absent",
+        "codex_app_server_goal_worker_turn_start_required",
         "codex_app_server_goal_proof_present",
         "codex_goal_mode_baseline_claim_allowed",
         "goal_harness_access_packet_absent",
@@ -1218,6 +1220,7 @@ def _compact_benchmark_private_runner_launch(value: Any) -> dict[str, Any]:
         "codex_goal_mode_invocation_surface",
         "codex_goal_mode_required_invocation_surface",
         "codex_goal_mode_baseline_claim_blocker",
+        "codex_app_server_goal_worker_plan_schema",
         "task_material_readiness_status",
         "task_material_first_blocker",
     ):
@@ -1239,6 +1242,7 @@ def _compact_benchmark_private_runner_launch(value: Any) -> dict[str, Any]:
         "codex_goal_mode_baseline_requested",
         "codex_app_server_goal_baseline_requested",
         "codex_app_server_goal_worker_adapter_present",
+        "codex_app_server_goal_worker_turn_start_required",
         "codex_app_server_goal_proof_present",
         "codex_goal_mode_baseline_claim_allowed",
         "goal_harness_access_packet_absent",
