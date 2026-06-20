@@ -1236,6 +1236,52 @@ time.sleep(3)
     assert cli_case_payload["boundary"]["raw_logs_read"] is False, cli_case_payload
     assert cli_case_payload["boundary"]["command_argv_recorded"] is False, cli_case_payload
 
+    cli_app_server_goal = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "goal_harness.cli",
+            "--format",
+            "json",
+            "benchmark",
+            "launch-terminal-bench-run",
+            "terminal-bench",
+            "--mode",
+            "codex-app-server-goal",
+            "--include-task-name",
+            "multi-source-data-merger",
+            "--jobs-dir",
+            "<private-jobs-dir>",
+            "--run-root",
+            "terminal-bench-app-server-goal-launch-cli-smoke",
+            "--job-name",
+            "terminal_bench_app_server_goal_launch_cli_smoke",
+            "--wait-seconds",
+            "0",
+            "--materialization-wait-seconds",
+            "0",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    cli_app_server_payload = json.loads(cli_app_server_goal.stdout)
+    assert cli_app_server_payload["ok"] is True, cli_app_server_payload
+    assert cli_app_server_payload["dry_run"] is True, cli_app_server_payload
+    assert cli_app_server_payload["execution_ready"] is False, cli_app_server_payload
+    assert cli_app_server_payload["first_blocker"] == (
+        "terminal_bench_app_server_goal_worker_seam_not_implemented"
+    ), cli_app_server_payload
+    assert cli_app_server_payload["launch_summary"][
+        "codex_goal_mode_invocation_surface"
+    ] == "codex_app_server_thread_goal_set_get", cli_app_server_payload
+    assert cli_app_server_payload["launch_summary"][
+        "codex_goal_mode_baseline_claim_allowed"
+    ] is False, cli_app_server_payload
+    assert cli_app_server_payload["boundary"]["task_solver_invoked"] is False, cli_app_server_payload
+    assert cli_app_server_payload["boundary"]["model_api_expected"] is False, cli_app_server_payload
+
     cli_managed_case_run = subprocess.run(
         [
             sys.executable,
@@ -2424,6 +2470,14 @@ time.sleep(3)
     assert goal_mode_summary["first_blocker"] == goal_mode_launch["first_blocker"], goal_mode_summary
     assert goal_mode_summary["codex_goal_mode_baseline_requested"] is True, goal_mode_summary
     assert goal_mode_summary["codex_goal_mode_invocation_surface"] == "slash_command", goal_mode_summary
+    assert goal_mode_summary["codex_goal_mode_required_invocation_surface"] == (
+        "codex_app_server_thread_goal_set_get"
+    ), goal_mode_summary
+    assert goal_mode_summary["codex_app_server_goal_proof_present"] is False, goal_mode_summary
+    assert goal_mode_summary["codex_goal_mode_baseline_claim_allowed"] is False, goal_mode_summary
+    assert goal_mode_summary["codex_goal_mode_baseline_claim_blocker"] == (
+        "missing_codex_app_server_goal_proof"
+    ), goal_mode_summary
     assert goal_mode_summary["goal_harness_access_packet_absent"] is True, goal_mode_summary
     assert goal_mode_summary["goal_harness_worker_bridge_requested"] is False, goal_mode_summary
     assert goal_mode_summary["no_upload_boundary"] is True, goal_mode_summary
@@ -2434,6 +2488,33 @@ time.sleep(3)
     assert goal_mode_summary["timeout_multiplier_policy"]["multipliers"][
         "agent_setup_timeout_multiplier"
     ] == 4, goal_mode_summary
+
+    app_server_goal_launch = build_terminal_bench_private_runner_launch(
+        mode="codex-app-server-goal",
+        jobs_dir="<private-jobs-dir>",
+        job_name="terminal_bench_codex_app_server_goal_baseline_env_guard_smoke",
+        agent_timeout_multiplier=4,
+        agent_setup_timeout_multiplier=4,
+    )
+    app_server_goal_summary = summarize_terminal_bench_private_runner_launch(
+        app_server_goal_launch
+    )
+    assert app_server_goal_launch["ready"] is False, app_server_goal_launch
+    assert app_server_goal_summary["codex_goal_mode_baseline_requested"] is True, app_server_goal_summary
+    assert app_server_goal_summary["codex_app_server_goal_baseline_requested"] is True, app_server_goal_summary
+    assert app_server_goal_summary["codex_goal_mode_invocation_surface"] == (
+        "codex_app_server_thread_goal_set_get"
+    ), app_server_goal_summary
+    assert app_server_goal_summary["codex_app_server_goal_worker_adapter_present"] is False, app_server_goal_summary
+    assert app_server_goal_summary["codex_app_server_goal_proof_present"] is False, app_server_goal_summary
+    assert app_server_goal_summary["codex_goal_mode_baseline_claim_allowed"] is False, app_server_goal_summary
+    assert app_server_goal_summary["codex_goal_mode_baseline_claim_blocker"] == (
+        "terminal_bench_app_server_goal_worker_seam_not_implemented"
+    ), app_server_goal_summary
+    assert app_server_goal_summary["goal_harness_access_packet_absent"] is True, app_server_goal_summary
+    assert app_server_goal_summary["first_blocker"] == (
+        "terminal_bench_app_server_goal_worker_seam_not_implemented"
+    ), app_server_goal_summary
 
     expect_raises(
         lambda: build_terminal_bench_managed_harbor_command(

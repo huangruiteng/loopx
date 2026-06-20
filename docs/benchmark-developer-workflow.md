@@ -340,6 +340,29 @@ In that state, do not launch matched Goal Harness treatment for uplift claims;
 instead record the exact trigger gap and keep working on cloud host, runner,
 task-data, or compact-result readiness.
 
+For Terminal-Bench launcher work, use the fail-closed app-server Goal surface
+when validating this boundary:
+
+```bash
+python3 -m goal_harness.cli --format json benchmark launch-terminal-bench-run \
+  terminal-bench \
+  --mode codex-app-server-goal \
+  --include-task-name hello-world \
+  --jobs-dir '<private-jobs-dir>' \
+  --run-root terminal-bench-app-server-goal-probe \
+  --job-name terminal_bench_app_server_goal_probe \
+  --wait-seconds 0 \
+  --materialization-wait-seconds 0
+```
+
+Until a real Terminal-Bench worker adapter consumes the Codex app-server
+`thread/goal/set` + `thread/goal/get` proof inside the case launch, this mode
+must return `execution_ready=false`,
+`first_blocker=terminal_bench_app_server_goal_worker_seam_not_implemented`,
+and `codex_goal_mode_baseline_claim_allowed=false`. The older
+`codex-goal-mode` launcher remains a slash-command fallback and must not be
+used as a scored Codex Goal baseline.
+
 Default cloud ECS host readiness:
 
 - SSH access works through the operator's approved access path.

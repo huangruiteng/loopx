@@ -4886,6 +4886,7 @@ def main(argv: list[str] | None = None) -> int:
         "--mode",
         choices=[
             "codex-goal-mode",
+            "codex-app-server-goal",
             "hardened-codex",
             "codex-goal-harness",
             "goal-harness-managed-codex",
