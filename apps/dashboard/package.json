@@ -6,11 +6,13 @@
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "dev": "vite --host 127.0.0.1",
+    "export:frontstage-share": "node ../../examples/export-frontstage-share-bundle.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "smoke:action-packet": "rm -rf /tmp/goal-harness-action-packet-smoke && tsc --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --strict --outDir /tmp/goal-harness-action-packet-smoke smoke/action-packet-smoke.ts src/data/action-packet.ts && node /tmp/goal-harness-action-packet-smoke/smoke/action-packet-smoke.js",
     "smoke:demo-readiness": "python3 ../../examples/dashboard-demo-readiness-smoke.py",
     "smoke:frontstage-browser": "node ../../examples/dashboard-frontstage-browser-smoke.mjs",
     "smoke:frontstage-route": "rm -rf /tmp/goal-harness-frontstage-route-smoke && tsc --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --strict --outDir /tmp/goal-harness-frontstage-route-smoke smoke/frontstage-route-smoke.ts && node /tmp/goal-harness-frontstage-route-smoke/frontstage-route-smoke.js",
+    "smoke:frontstage-share-bundle": "node ../../examples/frontstage-share-bundle-smoke.mjs",
     "smoke:home-browser": "node ../../examples/dashboard-home-browser-smoke.mjs",
     "smoke:home-route": "rm -rf /tmp/goal-harness-home-route-smoke && tsc --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --strict --outDir /tmp/goal-harness-home-route-smoke smoke/home-route-smoke.ts && node /tmp/goal-harness-home-route-smoke/home-route-smoke.js",
     "smoke:ops-decision-freshness": "node ../../examples/dashboard-ops-decision-freshness-smoke.mjs",

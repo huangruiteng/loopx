@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "registry": ".goal-harness/registry.json",
+  "registry": "./fixtures/project-registry.json",
   "runtime_root": "./runtime",
   "goal_count": 4,
   "run_count": 3,
@@ -152,7 +152,7 @@
   },
   "promotion_gate": {
     "ok": true,
-    "registry": ".goal-harness/registry.json",
+    "registry": "./fixtures/project-registry.json",
     "runtime_root": "./runtime",
     "gate": "promotion_readiness",
     "gate_state": "ready",
@@ -236,8 +236,8 @@
   "global_registry": {
     "available": true,
     "ok": true,
-    "registry": "~/.codex/goal-harness/registry.global.json",
-    "current_registry": ".goal-harness/registry.json",
+    "registry": "./fixtures/registry.global.json",
+    "current_registry": "./fixtures/project-registry.json",
     "current_registry_is_global": false,
     "global_goal_count": 5,
     "current_goal_count": 4,

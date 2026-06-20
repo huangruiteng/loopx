@@ -30,6 +30,20 @@ Its feedback and source-status contract is
 The first static frontstage prototype is generated from the catalog with
 `python3 examples/showcase-frontstage-prototype.py --output /tmp/goal-harness-showcases.html`.
 
+The dashboard frontstage now has a separate public-safe share-bundle path for
+showing a live-looking control-plane board without exposing local state:
+
+```bash
+cd apps/dashboard
+npm run export:frontstage-share
+```
+
+This writes `/tmp/goal-harness-frontstage-share-bundle` with the compiled
+dashboard, a sanitized `goal_channel_projection_v0` status fixture, direct
+`/frontstage/` static-route support, and a manifest. It is the foundation for a
+future GitHub Pages showcase: Pages should publish this generated artifact, not
+live registry files or local status exports.
+
 ## Current Cases
 
 | Case | Pattern | Status | Public Surface |

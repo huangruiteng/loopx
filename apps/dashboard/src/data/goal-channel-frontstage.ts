@@ -231,7 +231,6 @@ export const sampleGoalChannelProjection: GoalChannelProjection = {
   ],
   source_warnings: [
     {
-      key_names: ["path", "raw_internal_note"],
       kind: "raw_or_private_material_omitted",
       message:
         "raw/private-looking fields were omitted; inspect compact source references instead of copying raw material into the frontstage channel projection",

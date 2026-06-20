@@ -43,6 +43,23 @@ For live local control-plane inspection, open
 `attention_queue.items[].goal_channel_projection` and stays read-only; if the
 feed is missing or has no projection, the bundled demo fixture remains visible.
 
+To create a public-safe static bundle for demos, Lark shares, or future GitHub
+Pages hosting, export the frontstage with the sanitized fixture:
+
+```bash
+cd apps/dashboard
+npm run export:frontstage-share
+```
+
+The default output is `/tmp/goal-harness-frontstage-share-bundle`. It includes a
+compiled dashboard, `status.frontstage-share.json`, a direct `/frontstage/`
+static route, a manifest, and a README with the local serve URL. The exporter
+rejects local paths, private registry state, internal document hosts, raw-key
+leaks, token assignments, and private key material before reporting success.
+For repository Pages hosting later, rerun the same exporter with
+`-- --base /goal-harness/ --out-dir <artifact-dir>` and publish only that
+generated site artifact.
+
 ## Run
 
 ```bash
@@ -233,6 +250,7 @@ surface:
 
 ```bash
 npm run smoke:home-browser
+npm run smoke:frontstage-share-bundle
 npm run smoke:ops-decision-freshness
 npm run smoke:promotion-readiness
 node examples/dashboard-throttled-browser-smoke.mjs
