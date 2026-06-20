@@ -49,6 +49,23 @@ Success means:
 - the implementation adds a boundary smoke or scripted scan proving the public
   video path does not consume local live status.
 
+## Storyboard Artifact
+
+The first public-safe storyboard artifact is
+[`docs/showcases/showcase-animation-storyboard.json`](../showcases/showcase-animation-storyboard.json).
+It is not the final MP4; it is the compact contract a Remotion or HyperFrames
+experiment can render without reading live registry state.
+
+The storyboard keeps the video deliberately short:
+
+- one opening control-plane frame;
+- one beat for the 0617 user gate and safe side lane;
+- one beat for the sanitized 0619 multi-agent workflow;
+- one beat for the repo-scale self-iteration efficiency case;
+- one beat for the creator-operator synthetic case;
+- one closing frame that says the public demo reads the showcase catalog, not
+  private control-plane state.
+
 ## Validation
 
 Run `python3 examples/showcase-animation-source-boundary-smoke.py` before

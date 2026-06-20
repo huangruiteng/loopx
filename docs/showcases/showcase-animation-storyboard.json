@@ -1,0 +1,80 @@
+{
+  "schema_version": "goal_harness_showcase_animation_storyboard_v0",
+  "source_catalog": "docs/showcases/showcase-catalog.json",
+  "duration_seconds_target": {
+    "min": 20,
+    "max": 30
+  },
+  "public_boundary": {
+    "allowed_sources": [
+      "docs/showcases/showcase-catalog.json",
+      "docs/showcases/cases/*.md",
+      "docs/assets/control-plane-board.svg",
+      "docs/assets/frontstage-showcase-first-screen.png"
+    ],
+    "live_registry_state": false,
+    "local_status_exports": false,
+    "user_specific_active_state": false,
+    "private_docs_or_chats": false,
+    "raw_benchmark_traces": false,
+    "internal_project_names": false
+  },
+  "recommended_motion_stack": {
+    "video_primary": "remotion-agent-skills",
+    "video_fallback": "hyperframes",
+    "page_motion": "motion-for-react",
+    "micro_loops": "lottie"
+  },
+  "hero_line": "From AI assist to async agent work.",
+  "supporting_line": "A human sets gates and evidence; agent lanes keep safe work moving across turns.",
+  "scenes": [
+    {
+      "id": "opening-control-plane",
+      "time_seconds": [0, 4],
+      "source_case_ids": [],
+      "visual": "dark canvas with a single shared goal state node; agent lanes orbit into view",
+      "copy": "One shared control plane for long-running agent work.",
+      "motion_notes": "fade in the goal node, then pulse two safe lanes without implying live ops data"
+    },
+    {
+      "id": "gate-visible-safe-lane-moves",
+      "time_seconds": [4, 9],
+      "source_case_ids": ["2026-06-17-blocked-p0-safe-rotation"],
+      "visual": "a gated P0 lane pauses while a safe side lane advances with a validation marker",
+      "copy": "A user gate stays visible. Safe side work still moves.",
+      "motion_notes": "keep the blocked lane still; animate only the safe lane and evidence writeback"
+    },
+    {
+      "id": "multi-agent-shared-state",
+      "time_seconds": [9, 14],
+      "source_case_ids": ["2026-06-19-dynamic-workflow-hardware-agent"],
+      "visual": "primary and side-agent lanes claim separate todos against one catalog-backed board",
+      "copy": "Multiple agents can share one project memory without guessing each other's state.",
+      "motion_notes": "show claims and handoff lines as lightweight beams into shared state"
+    },
+    {
+      "id": "self-iteration-efficiency-evidence",
+      "time_seconds": [14, 21],
+      "source_case_ids": ["2026-06-19-goal-harness-self-iteration"],
+      "visual": "repo-scale requirement clusters compress into validated commits, docs, smokes, and frontstage surfaces",
+      "copy": "Async side work turns repo history into recoverable product momentum.",
+      "motion_notes": "avoid raw commit firehoses; use compact clusters and conservative evidence labels"
+    },
+    {
+      "id": "creator-operator-safe-production-loop",
+      "time_seconds": [21, 27],
+      "source_case_ids": ["2026-06-20-creator-operator-case-spec"],
+      "visual": "research, preference memory, and draft material move while publishing remains gated",
+      "copy": "The agent can keep researching while human judgment guards what ships.",
+      "motion_notes": "animate safe research cards; leave publish decision locked until the final frame"
+    },
+    {
+      "id": "boundary-close",
+      "time_seconds": [27, 30],
+      "source_case_ids": [],
+      "visual": "public showcase catalog badge replaces the live status feed",
+      "copy": "Public demos read the showcase catalog, not private control-plane state.",
+      "motion_notes": "close on the catalog badge and a clean public/private boundary line"
+    }
+  ]
+}
