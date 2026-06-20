@@ -60,14 +60,15 @@ boundaries stay visible to the next turn.
 | [Goal Harness self-iteration loop](docs/showcases/cases/0619-goal-harness-self-iteration.md) | A side agent improved Goal Harness itself while the primary agent stayed focused on benchmark work. | Commit-backed public evidence case |
 | [Dynamic workflow for hardware-agent development](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md) | A fuzzy multi-agent engineering workflow can converge through one shared control plane. | Redacted public-safe stub |
 
-The full [showcase catalog](docs/showcases/README.md) keeps each case
-public-safe, reproducible where possible, and ready for future frontend
-surfaces.
-The hosted frontstage path publishes only the generated public-safe share bundle,
-not live registry state or local status exports.
-It opens in showcase-first mode: public case cards, narrative motion, and the
-public/private boundary render from `docs/showcases/` before any ops-style live
-projection is available.
+Start with the [showcase catalog](docs/showcases/README.md): public-safe
+cases that show where Goal Harness helps, with reproducible demos where the
+evidence allows.
+
+Open the [hosted frontstage](https://huangruiteng.github.io/goal-harness/frontstage/)
+for the product-facing view: case cards, narrative motion, efficiency evidence,
+and public/private boundary notes rendered from `docs/showcases/`. Live registry
+or local status projections are separate ops-mode surfaces, not public demo
+content.
 
 ![Hosted Goal Harness frontstage showing public-safe showcase cases](docs/assets/frontstage-showcase-first-screen.png)
 
