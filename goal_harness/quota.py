@@ -155,6 +155,7 @@ CAPABILITY_OWNER_GATE_HINTS = {
     "production_access",
 }
 TODO_BACKLOG_ITEM_LIMIT = 8
+TODO_VISIBILITY_LANE_LIMIT = 16
 TODO_MISSING_PRIORITY_RANK = 50
 TODO_MISSING_INDEX = 999999
 EXTERNAL_EVIDENCE_OBSERVE_PATTERNS = (
@@ -1183,10 +1184,111 @@ def _side_agent_claim_scoped_open_items(
     return selectable_items, claim_scope
 
 
+def _todo_summary_visibility_lanes(
+    open_items: list[dict[str, Any]],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> dict[str, Any]:
+    claimed_items = [item for item in open_items if normalize_todo_claimed_by(item.get("claimed_by"))]
+    unclaimed_items = [item for item in open_items if not normalize_todo_claimed_by(item.get("claimed_by"))]
+    claimed_advancement_items = [
+        item
+        for item in claimed_items
+        if _todo_item_is_actionable_open(item)
+        if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+    ]
+    claimed_monitor_items = [
+        item
+        for item in claimed_items
+        if _todo_item_is_actionable_open(item)
+        if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
+    ]
+
+    def compact_items(items: list[dict[str, Any]], *, limit: int = TODO_BACKLOG_ITEM_LIMIT) -> list[dict[str, Any]]:
+        return [
+            _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+            for item in items[:limit]
+        ]
+
+    lanes: dict[str, Any] = {
+        "unclaimed_priority_open_items": compact_items(unclaimed_items),
+        "claimed_open_items": compact_items(claimed_items, limit=TODO_VISIBILITY_LANE_LIMIT),
+        "claimed_advancement_open_items": compact_items(
+            claimed_advancement_items,
+            limit=TODO_VISIBILITY_LANE_LIMIT,
+        ),
+        "claimed_monitor_open_items": compact_items(
+            claimed_monitor_items,
+            limit=TODO_VISIBILITY_LANE_LIMIT,
+        ),
+    }
+    if claimed_items:
+        lanes["claimed_advancement_open_count"] = len(claimed_advancement_items)
+        lanes["claimed_monitor_open_count"] = len(claimed_monitor_items)
+
+    agent_id = (
+        normalize_todo_claimed_by(agent_identity.get("agent_id"))
+        if isinstance(agent_identity, dict)
+        else None
+    )
+    if agent_id:
+        current_agent_items = [
+            item
+            for item in claimed_items
+            if normalize_todo_claimed_by(item.get("claimed_by")) == agent_id
+        ]
+        claimed_by_others_items = [
+            item
+            for item in claimed_items
+            if normalize_todo_claimed_by(item.get("claimed_by")) != agent_id
+        ]
+        current_agent_advancement_items = [
+            item
+            for item in current_agent_items
+            if _todo_item_is_actionable_open(item)
+            if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+        ]
+        current_agent_monitor_items = [
+            item
+            for item in current_agent_items
+            if _todo_item_is_actionable_open(item)
+            if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
+        ]
+        lanes.update(
+            {
+                "current_agent_claimed_open_items": compact_items(
+                    current_agent_items,
+                    limit=TODO_VISIBILITY_LANE_LIMIT,
+                ),
+                "current_agent_claimed_advancement_items": compact_items(
+                    current_agent_advancement_items,
+                    limit=TODO_VISIBILITY_LANE_LIMIT,
+                ),
+                "current_agent_claimed_monitor_items": compact_items(
+                    current_agent_monitor_items,
+                    limit=TODO_VISIBILITY_LANE_LIMIT,
+                ),
+                "claimed_by_others_items": compact_items(claimed_by_others_items),
+                "current_agent_claimed_open_count": len(current_agent_items),
+                "current_agent_claimed_advancement_count": len(current_agent_advancement_items),
+                "current_agent_claimed_monitor_count": len(current_agent_monitor_items),
+                "claimed_by_others_count": len(claimed_by_others_items),
+            }
+        )
+    return lanes
+
+
 def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
     source_keys = (
         "first_open_items",
         "backlog_items",
+        "unclaimed_priority_open_items",
+        "claimed_open_items",
+        "claimed_advancement_open_items",
+        "claimed_monitor_open_items",
+        "current_agent_claimed_open_items",
+        "current_agent_claimed_advancement_items",
+        "current_agent_claimed_monitor_items",
         "items",
     )
     open_items: list[dict[str, Any]] = []
@@ -1266,6 +1368,12 @@ def _summarize_user_todos(
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
+    summary.update(
+        _todo_summary_visibility_lanes(
+            all_open_items,
+            agent_identity=agent_identity,
+        )
+    )
     if claimed_open_items or value.get("claimed_open_count"):
         summary["claimed_open_count"] = value.get("claimed_open_count", len(claimed_open_items))
         summary["unclaimed_open_count"] = value.get(
@@ -1333,6 +1441,12 @@ def _summarize_project_asset_todos(
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
+    summary.update(
+        _todo_summary_visibility_lanes(
+            all_open_items,
+            agent_identity=agent_identity,
+        )
+    )
     if claimed_open_items or value.get("claimed_open_count"):
         summary["claimed_open_count"] = value.get("claimed_open_count", len(claimed_open_items))
         summary["unclaimed_open_count"] = value.get(
