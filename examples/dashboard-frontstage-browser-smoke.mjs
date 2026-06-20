@@ -26,10 +26,11 @@ function projectionFor(goalId, displayName, claimedBy, todoTitle) {
     generated_at: "2026-06-20T09:00:00Z",
     latest_status: "live_fixture_loaded",
     waiting_on: "codex",
-    next_action: `${displayName} live next action`,
+    next_action: `${displayName} live next action for FAKE_PRIVATE_STATUS_ALPHA`,
     source_refs: {
       status_generated_at: "2026-06-20T09:00:00Z",
       event_ledger_source: "browser-smoke-fixture",
+      private_marker: "FAKE_INTERNAL_TABLE_BETA",
     },
     decision_frame: {
       user_action_required: false,
@@ -50,7 +51,7 @@ function projectionFor(goalId, displayName, claimedBy, todoTitle) {
         status: "open",
         claimed_by: claimedBy,
         task_class: "advancement_task",
-        title: todoTitle,
+        title: `${todoTitle} FAKE_PRIVATE_TODO_GAMMA`,
       },
     ],
     open_gates: [],
@@ -71,7 +72,7 @@ function projectionFor(goalId, displayName, claimedBy, todoTitle) {
       {
         generated_at: "2026-06-20T09:00:00Z",
         classification: "live_fixture_event",
-        summary: `${displayName} rendered from statusUrl`,
+        summary: `${displayName} rendered from statusUrl with FAKE_PRIVATE_EVENT_DELTA`,
       },
     ],
     source_warnings: [
@@ -379,6 +380,10 @@ async function main() {
         "Live Goal Channel",
         "Second Live Channel",
         "Render live statusUrl channel projection",
+        "FAKE_PRIVATE_STATUS_ALPHA",
+        "FAKE_INTERNAL_TABLE_BETA",
+        "FAKE_PRIVATE_TODO_GAMMA",
+        "FAKE_PRIVATE_EVENT_DELTA",
       ];
       const publicModePresent = publicModeForbidden.filter((text) => publicModeText.includes(text));
       if (publicModePresent.length) {
@@ -408,7 +413,15 @@ async function main() {
         "Showcase mode ignores statusUrl",
       ]);
       const resetText = await desktopPage.locator("body").innerText();
-      const resetForbidden = ["Live Goal Channel", "Second Live Channel", "Render live statusUrl channel projection"];
+      const resetForbidden = [
+        "Live Goal Channel",
+        "Second Live Channel",
+        "Render live statusUrl channel projection",
+        "FAKE_PRIVATE_STATUS_ALPHA",
+        "FAKE_INTERNAL_TABLE_BETA",
+        "FAKE_PRIVATE_TODO_GAMMA",
+        "FAKE_PRIVATE_EVENT_DELTA",
+      ];
       const resetPresent = resetForbidden.filter((text) => resetText.includes(text));
       if (resetPresent.length) {
         throw new Error(`Showcase frontstage retained prior ops live text: ${resetPresent.join(", ")}`);
