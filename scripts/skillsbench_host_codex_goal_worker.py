@@ -71,11 +71,25 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         approval_policy=args.approval_policy,
         sandbox=args.sandbox,
         response_timeout_sec=args.response_timeout_sec,
+        wait_for_completion=not args.no_wait_for_completion,
+        turn_timeout_sec=args.turn_timeout_sec,
     )
-    compact = compact_turn_metadata(turn)
+    try:
+        compact = compact_turn_metadata(turn)
+        private_response_written = False
+        if args.response_text_file and turn.assistant_message:
+            response_path = Path(args.response_text_file).expanduser()
+            response_path.parent.mkdir(parents=True, exist_ok=True)
+            response_path.write_text(turn.assistant_message, encoding="utf-8")
+            private_response_written = True
+    finally:
+        turn.terminate()
+    ok = bool(compact.get("turn_id_present")) and (
+        args.no_wait_for_completion or compact.get("turn_completed_observed") is True
+    )
     return {
         "schema_version": "skillsbench_host_codex_goal_worker_result_v0",
-        "ok": bool(compact.get("turn_start_observed")),
+        "ok": ok,
         "route": "codex-app-server-goal-baseline",
         "benchmark_id": args.dataset,
         "task_id": args.task_id,
@@ -86,6 +100,11 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             "raw_recorded": False,
         },
         "turn": compact,
+        "private_response_text": {
+            "written": private_response_written,
+            "path_recorded": False,
+            "raw_recorded_in_public_json": False,
+        },
         "boundary": {
             "raw_task_text_recorded": False,
             "raw_logs_recorded": False,
@@ -108,7 +127,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--work-dir")
     parser.add_argument("--prompt-file")
     parser.add_argument("--output-json")
+    parser.add_argument("--response-text-file")
     parser.add_argument("--response-timeout-sec", type=float, default=30.0)
+    parser.add_argument("--turn-timeout-sec", type=float, default=7200.0)
+    parser.add_argument(
+        "--no-wait-for-completion",
+        action="store_true",
+        help=(
+            "Return after turn/start instead of waiting for turn/completed. "
+            "Use only for external pollers; SkillsBench scored workers should "
+            "wait and write a private response text file."
+        ),
+    )
     parser.add_argument(
         "--runner-integration-ready",
         action="store_true",

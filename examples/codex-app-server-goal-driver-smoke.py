@@ -34,6 +34,24 @@ for line in sys.stdin:
         result = {"goal": {"threadId": "thread-smoke", "status": "active"}}
     elif method == "turn/start":
         result = {"turn": {"id": "turn-smoke", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-smoke",
+                "turnId": "turn-smoke",
+                "itemId": "item-smoke",
+                "delta": "Synthetic final answer.",
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-smoke",
+                "turn": {"id": "turn-smoke", "status": "completed"},
+            },
+        }), flush=True)
+        continue
     else:
         result = {}
     print(json.dumps({"id": mid, "result": result}), flush=True)
@@ -73,10 +91,34 @@ def main() -> int:
             assert compact["goal_get_present"] is True
             assert compact["goal_status"] == "active"
             assert compact["turn_id_present"] is True
+            assert compact["turn_completed_observed"] is False
             assert compact["raw_transcript_recorded"] is False
             assert "Synthetic prompt" not in json.dumps(compact)
         finally:
             turn.terminate()
+
+        completed_turn = module.start_codex_app_server_goal_turn(
+            codex_bin=str(fake),
+            work_dir=root / "work-completed",
+            objective="Synthetic objective.",
+            prompt="Synthetic prompt.",
+            model_name="gpt-5.5",
+            response_timeout_sec=5,
+            wait_for_completion=True,
+            turn_timeout_sec=5,
+        )
+        try:
+            assert completed_turn.assistant_message == "Synthetic final answer."
+            compact = module.compact_turn_metadata(completed_turn)
+            assert compact["turn_completed_observed"] is True, compact
+            assert compact["turn_status"] == "completed", compact
+            assert compact["assistant_message_present"] is True, compact
+            assert compact["assistant_message_chars"] == len("Synthetic final answer.")
+            assert compact["assistant_message_sha256"], compact
+            assert compact["raw_assistant_message_recorded"] is False, compact
+            assert "Synthetic final answer." not in json.dumps(compact), compact
+        finally:
+            completed_turn.terminate()
 
     print("codex app-server goal driver smoke passed")
     return 0

@@ -25,6 +25,49 @@ from goal_harness.benchmark import (  # noqa: E402
 
 ROUTE = "codex-app-server-goal-baseline"
 
+FAKE_CODEX = """#!/usr/bin/env python3
+import json
+import sys
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "turn/start":
+        result = {"turn": {"id": "turn-skillsbench", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-skillsbench",
+                "itemId": "item-skillsbench",
+                "delta": "private worker answer",
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-skillsbench", "status": "completed"},
+            },
+        }), flush=True)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
 
 def assert_plan_prerequisites(plan: dict[str, Any]) -> None:
     prereq = plan["runner_prerequisites"]
@@ -131,6 +174,55 @@ def test_host_worker_contract_only_cli() -> None:
     assert contract["worker_adapter"]["script"] == "scripts/skillsbench_host_codex_goal_worker.py", contract
 
 
+def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-worker-") as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(FAKE_CODEX, encoding="utf-8")
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "skillsbench_host_codex_goal_worker.py"),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        assert result.stdout == "", result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is True, payload
+        assert payload["turn"]["turn_completed_observed"] is True, payload
+        assert payload["turn"]["assistant_message_present"] is True, payload
+        assert payload["private_response_text"]["written"] is True, payload
+        assert payload["private_response_text"]["path_recorded"] is False, payload
+        assert private_response.read_text(encoding="utf-8") == "private worker answer"
+        public_json = json.dumps(payload)
+        assert "private worker answer" not in public_json, payload
+        assert "Private task instruction placeholder" not in public_json, payload
+
+
 def test_full_run_fails_closed_until_worker_is_wired() -> None:
     result = subprocess.run(
         [
@@ -158,5 +250,6 @@ if __name__ == "__main__":
     test_skeleton_marks_app_server_goal_actor()
     test_launcher_plan_only_uses_native_worker_route()
     test_host_worker_contract_only_cli()
+    test_host_worker_waits_for_completion_and_keeps_public_json_compact()
     test_full_run_fails_closed_until_worker_is_wired()
     print("skillsbench-app-server-goal-worker smoke ok")

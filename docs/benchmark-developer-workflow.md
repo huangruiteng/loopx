@@ -708,11 +708,30 @@ python3 scripts/skillsbench_host_codex_goal_worker.py \
 ```
 
 When used for a private case, the same worker reads the private prompt file and
-workspace path on the benchmark host, invokes Codex app-server Goal mode, and
-writes only compact turn metadata plus prompt hash/size. Do not copy raw task
-text, raw trajectory, raw logs, Goal Harness state, credentials, or host paths
-into the compact result. Keep `codex-goal-mode-baseline` for historical
-slash-prefix probes only; it is not a scored Codex Goal baseline.
+workspace path on the benchmark host, invokes Codex app-server Goal mode, waits
+for `turn/completed`, and writes the assistant response only to a private
+response file for the surrounding runner. The public JSON records compact turn
+proof, assistant-message hash/size, and method counters only. Do not copy raw
+task text, raw assistant response, raw trajectory, raw logs, Goal Harness state,
+credentials, or host paths into the compact result. Keep
+`codex-goal-mode-baseline` for historical slash-prefix probes only; it is not a
+scored Codex Goal baseline.
+
+For a scored SkillsBench route, the worker should be called with an explicit
+private output target:
+
+```bash
+python3 scripts/skillsbench_host_codex_goal_worker.py \
+  --task-id <task-id> \
+  --work-dir <private-case-workdir> \
+  --prompt-file <private-prompt-file> \
+  --response-text-file <private-agent-response-file> \
+  --output-json <private-compact-worker-json>
+```
+
+The compact worker JSON is safe to inspect for lifecycle debugging, but the
+response text file is private task execution material and must stay out of
+public docs, ledgers, rollout logs, and PRs.
 
 Preview the public-safe prewarm plan:
 
