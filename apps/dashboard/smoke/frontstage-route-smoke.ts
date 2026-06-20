@@ -98,8 +98,11 @@ includes(frontstageSource, 'data-testid="frontstage-showcase-motion"', "showcase
 includes(frontstageSource, 'data-testid="frontstage-showcase-journey-rail"', "showcase journey rail");
 includes(frontstageSource, 'data-testid="frontstage-showcase-spotlight"', "showcase spotlight panel");
 includes(frontstageSource, 'data-testid="frontstage-showcase-motion-card"', "showcase motion card control");
+includes(frontstageSource, 'data-testid="frontstage-showcase-kinetic-strip"', "showcase kinetic case strip");
+includes(frontstageSource, 'data-testid="frontstage-showcase-kinetic-card"', "showcase kinetic case card");
 includes(frontstageSource, "Showcase Motion", "showcase motion copy");
 includes(frontstageSource, "Case-driven motion board", "case-driven motion board copy");
+includes(frontstageSource, "Day-and-night agent lanes, governed by one human control plane.", "showcase kinetic strip copy");
 includes(frontstageSource, "Asynchronous agent rhythm", "showcase asynchronous rhythm copy");
 includes(frontstageSource, "Always-on agent teams can keep safe work moving", "showcase always-on agent copy");
 includes(frontstageSource, "Evidence boundary:", "showcase spotlight evidence boundary copy");
@@ -135,6 +138,20 @@ excludes(motionSource, "payload", "motion board live payload dependency");
 includes(stylesSource, ".frontstage-showcase-motion-rail", "motion board rail CSS");
 includes(stylesSource, ".frontstage-showcase-motion-beam", "motion board beam CSS");
 includes(stylesSource, "@keyframes frontstage-case-traffic", "motion board case traffic keyframes");
+
+const kineticStripSource = sourceBetween(frontstageSource, "function ShowcaseKineticCaseStrip", "function FrontstageRoute", "showcase kinetic strip");
+includes(kineticStripSource, "frontstageShowcases", "kinetic strip catalog source");
+includes(kineticStripSource, "showcaseCaseHref", "kinetic strip case links");
+includes(kineticStripSource, "uniqueShowcaseDomains", "kinetic strip domain count");
+includes(kineticStripSource, "stripCases", "kinetic strip duplicated marquee cases");
+includes(kineticStripSource, "Day-and-night agent lanes", "kinetic strip product copy");
+excludes(kineticStripSource, "projection", "kinetic strip live projection dependency");
+excludes(kineticStripSource, "payload", "kinetic strip live payload dependency");
+excludes(kineticStripSource, "statusUrl", "kinetic strip local status dependency");
+includes(stylesSource, ".frontstage-showcase-kinetic-viewport", "kinetic strip viewport CSS");
+includes(stylesSource, ".frontstage-showcase-kinetic-track", "kinetic strip track CSS");
+includes(stylesSource, ".frontstage-showcase-kinetic-card", "kinetic strip card CSS");
+includes(stylesSource, "@keyframes frontstage-kinetic-strip", "kinetic strip keyframes");
 
 const stateFlowHeroSource = sourceBetween(frontstageSource, "function ShowcaseStateFlowHero", "function PublicShowcaseBoundaryPanel", "showcase state-flow hero");
 includes(stateFlowHeroSource, "showcaseStateFlow", "state-flow hero source");

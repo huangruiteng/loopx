@@ -785,6 +785,59 @@ function PublicShowcaseBoundaryPanel() {
   );
 }
 
+function ShowcaseKineticCaseStrip() {
+  if (!frontstageShowcases.length) {
+    return null;
+  }
+
+  const stripCases = [...frontstageShowcases, ...frontstageShowcases];
+  const domains = uniqueShowcaseDomains();
+
+  return (
+    <div
+      className="mt-5 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+      data-testid="frontstage-showcase-kinetic-strip"
+    >
+      <div className="grid gap-3 border-b border-slate-200 bg-slate-950 px-4 py-3 text-white md:grid-cols-[minmax(0,1fr)_auto]">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-normal text-cyan-200">
+            Multi-agent work rhythm
+          </div>
+          <p className="mt-1 text-sm font-semibold leading-6 text-white">
+            Day-and-night agent lanes, governed by one human control plane.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="neutral">{frontstageShowcases.length} public cases</Badge>
+          <Badge variant="neutral">{domains.length} domains</Badge>
+        </div>
+      </div>
+      <div className="frontstage-showcase-kinetic-viewport" data-testid="frontstage-showcase-kinetic-viewport">
+        <div className="frontstage-showcase-kinetic-track" data-testid="frontstage-showcase-kinetic-track">
+          {stripCases.map((item, index) => (
+            <a
+              className="frontstage-showcase-kinetic-card"
+              data-testid="frontstage-showcase-kinetic-card"
+              href={showcaseCaseHref(item.case_page) ?? "#"}
+              key={`${item.id}-${index}`}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <span className="frontstage-showcase-kinetic-dot" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold text-slate-950">{item.title}</span>
+                <span className="mt-0.5 block truncate text-[11px] font-medium text-slate-500">
+                  {item.domain ?? "showcase"} / {item.status ?? "case"}
+                </span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FrontstageRoute({
   goalOptions,
   hasIgnoredStatusUrl,
@@ -1031,6 +1084,7 @@ function FrontstageRoute({
               </div>
             </div>
             {!isOpsMode ? <ShowcaseStateFlowHero /> : null}
+            {!isOpsMode ? <ShowcaseKineticCaseStrip /> : null}
             <div className="mt-5 grid gap-2 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-4" data-testid="frontstage-operations-strip">
               {operationSignals.map((signal) => (
                 <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3" key={signal.label}>
