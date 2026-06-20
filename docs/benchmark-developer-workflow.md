@@ -121,6 +121,62 @@ The snapshot reports `status.env`, pid liveness, compact result summaries,
 standard artifact presence, and optional keyword booleans for tmux captures. It
 does not emit task text, trajectories, raw logs, or capture content.
 
+### Goal Rollout Event Log
+
+Each benchmark case should leave a compact Goal Harness rollout trail, separate
+from raw Codex sessions or benchmark runner logs. Use the rollout event log when
+you need to explain the lifecycle of a case or an agent workflow:
+
+- `quota_should_run`: the controller allowed a bounded slice.
+- `todo_claim`: an agent claimed the work item.
+- `benchmark_launch` / `benchmark_status`: a case was launched or polled.
+- `validation`: a smoke, reducer, or official verifier finished.
+- `compact_case_result` / `compact_blocker`: public-safe case outcome.
+- `refresh_state` / `quota_spend`: Goal Harness writeback and spend.
+- `codex_session_observed`: a private Codex session source exists, but raw
+  session contents and file paths are not recorded.
+
+Append one compact event at important transitions:
+
+```bash
+python3 scripts/goal_rollout_event_log.py append \
+  --goal-id goal-harness-meta \
+  --event-kind compact_case_result \
+  --agent-id codex-main-control \
+  --todo-id todo_406bb256efd8 \
+  --benchmark-id terminal-bench@2.0 \
+  --case-id build-cython-ext \
+  --status precise_blocker \
+  --summary "Official verifier failed before a countable agent result." \
+  --artifact-ref docs/research/long-horizon-agent-benchmarks/benchmark-case-analysis.json
+```
+
+Summarize the current trail without reading private sources:
+
+```bash
+python3 scripts/goal_rollout_event_log.py summarize \
+  --goal-id goal-harness-meta \
+  --limit 12 \
+  --pretty
+```
+
+Codex session JSONL files can help local debugging, but treat them as private
+source material. Record only their existence/count, never transcript bodies,
+paths, prompts, tool output, or token-bearing content:
+
+```bash
+python3 scripts/goal_rollout_event_log.py observe-codex-sessions \
+  --goal-id goal-harness-meta \
+  --agent-id codex-main-control
+```
+
+The canonical log lives under the Goal Harness runtime root for the goal, for
+example `goals/<goal-id>/rollout-event-log.jsonl`. It is a local control-plane
+artifact, not a raw evidence file to commit. Public docs and ledgers may cite
+compact event ids, case ids, run ids, and artifact refs, but must keep raw task
+text, logs, trajectories, Codex session transcripts, credentials, and absolute
+host paths out.
+
 ## Cloud ECS Benchmark Host Route
 
 Use the cloud ECS benchmark host route as the default for Terminal-Bench,
