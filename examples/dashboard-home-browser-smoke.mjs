@@ -43,22 +43,22 @@ const quotaFocusWait = {
 
 const goalSpecs = [
   {
-    id: "premium-ui-ai-search-rec-migration",
-    domain: "platform-migration-fixture",
+    id: "showcase-user-gate-safe-side-path",
+    domain: "showcase-user-gate-fixture",
     status: "state_refreshed",
     waiting_on: "user_or_controller",
     quota: { ...quotaEligible, state: "operator_gate" },
-    userTodos: { open: 1, done: 3, total: 4, next: "请确认 ZJXMT 源 topic/table 权威来源。" },
+    userTodos: { open: 1, done: 3, total: 4, next: "请确认 owner 选项 A/B 的取舍。" },
     userTodoItems: [
-      { done: false, text: "请确认 ZJXMT 源 topic/table 权威来源；未确认前不做 Nacos 上传或任务重启。" },
+      { done: false, text: "请确认 owner 选项 A/B 的取舍；未确认前不推进 gated route。" },
       { done: true, text: "已读完核心迁移文档第 8 节，并确认当前结论。" },
       { done: true, text: "已确认 item embedding 不阻塞当前 P0 i2i 路径。" },
       { done: true, text: "已确认 P0 degrade 走统一标准品策略。" },
     ],
-    agentTodos: { open: 4, done: 0, total: 4, next: "验证四个 P0 本地迁移场景。" },
+    agentTodos: { open: 4, done: 0, total: 4, next: "推进与 owner 决策独立的 safe side path。" },
     agentTodoItems: [
-      { done: false, text: "验证四个 P0 本地迁移场景，输出 scene_1/4/6/7 的本地证据。" },
-      { done: false, text: "复查 Nacos 前置条件，确认 upload 前没有 source topic/table 漂移。" },
+      { done: false, text: "推进与 owner 决策独立的 safe side path，输出公开可复现证据。" },
+      { done: false, text: "复查公开边界，确认 showcase 数据不包含内部项目名或生产细节。" },
       { done: false, text: "按安全再生成计划只写私有 tmp_data，不触碰生产配置。" },
       { done: false, text: "把关闭的 P0 阻塞和剩余 gate 写回迁移目标状态。" },
     ],
@@ -72,33 +72,33 @@ const goalSpecs = [
     },
   },
   {
-    id: "tiger-team-maiduidui-regauc",
-    domain: "maiduidui-fixture",
+    id: "showcase-creator-operator",
+    domain: "creator-operator-fixture",
     status: "state_refreshed",
     waiting_on: "codex",
     quota: quotaEligible,
     userTodos: { open: 0, done: 1, total: 1, next: null },
     userTodoItems: [
-      { done: true, text: "用户已授权埋堆堆控制器主动推进。" },
+      { done: true, text: "用户已授权 creator operator 使用合成素材主动推进。" },
     ],
-    agentTodos: { open: 4, done: 0, total: 4, next: "巡检 active p4/p3 占用并写回 board 与 ledger。" },
+    agentTodos: { open: 4, done: 0, total: 4, next: "整理热点、洞察、语料和创作 backlog。" },
     agentTodoItems: [
-      { done: false, text: "巡检 active p4/p3 占用，确认最多 2 个 p4、最多 2 个 p3 运行中。" },
-      { done: false, text: "检查半年度 0.75 eval availability 和 monometrics_eval.txt 是否出现。" },
-      { done: false, text: "如有可启动候选，先验证 prod-compile-clean 再 launch。" },
-      { done: false, text: "每次 launch / fail / eval / retire 都写回 board 和 project ledger。" },
+      { done: false, text: "整理各平台热点，形成按偏好排序的创作候选。" },
+      { done: false, text: "提炼热点洞察，补充素材库和语料库。" },
+      { done: false, text: "把可用素材转成文章或视频脚本草稿。" },
+      { done: false, text: "每次产出都写回 showcase backlog 和证据 ledger。" },
     ],
     latest: {
       generated_at: "2026-01-01T00:01:00+00:00",
       classification: "state_refreshed",
       delivery_batch_scale: "implementation",
-      health_check: "fixture MDD active-delivery authorization",
+      health_check: "fixture creator-operator active-delivery authorization",
       json_exists: true,
       markdown_exists: true,
     },
   },
   {
-    id: "agent-harness-side-bypass",
+    id: "showcase-side-agent-self-iteration",
     domain: "side-bypass-fixture",
     status: "state_refreshed",
     waiting_on: "codex",
@@ -274,19 +274,19 @@ const statusFixture = {
           source: "agent_todos",
         },
         {
-          goal_id: "tiger-team-maiduidui-regauc",
+          goal_id: "showcase-creator-operator",
           status: "state_refreshed",
           waiting_on: "codex",
           quota_state: "eligible",
           priority: "P2",
           todo_index: 1,
-          text: "巡检 active p4/p3 占用，确认最多 2 个 p4、最多 2 个 p3 运行中。",
+          text: "整理热点、洞察、语料和创作 backlog。",
           source: "agent_todos",
         },
       ],
     },
     items: goalSpecs.map((spec) => {
-      const sideBypass = goalSpecs.find((goal) => goal.id === "agent-harness-side-bypass");
+      const sideBypass = goalSpecs.find((goal) => goal.id === "showcase-side-agent-self-iteration");
       const sideBypassUserTodo = sideBypass?.userTodoItems?.find((todo) => !todo.done);
       return {
         goal_id: spec.id,
@@ -305,7 +305,7 @@ const statusFixture = {
               source: "attention_queue.user_todos",
               open_count: 1,
               items: [{
-                goal_id: "agent-harness-side-bypass",
+                goal_id: "showcase-side-agent-self-iteration",
                 status: "state_refreshed",
                 waiting_on: "codex",
                 severity: "action",
@@ -593,12 +593,12 @@ async function main() {
     const body = await page.locator("body").innerText();
     const required = [
       "把多项目 Agent 工作变成可管理的 Todo、证据和配额",
-      "平台迁移",
-      "请确认 ZJXMT 源 topic/table 权威来源",
-      "埋堆堆打平",
-      "最多 2 个 p4 运行中",
-      "最多 2 个 p3 运行中",
-      "Agent Harness 旁路",
+      "0617 User Gate",
+      "请确认 owner 选项 A/B 的取舍",
+      "Creator Operator",
+      "热点",
+      "合成案例",
+      "Side Agent 自迭代",
       "需要 Codex recovery",
       "排序器 / 跨域证据",
       "具体 blocker",
@@ -621,7 +621,7 @@ async function main() {
       "决策需 rebase",
       "审批或转交前先重读",
       "这不是仓库回滚",
-      "验证四个 P0 本地迁移场景",
+      "推进与 owner 决策独立的 safe side path",
       "拆分依赖阻塞和当前目标阻塞",
     ];
     const missing = required.filter((text) => !body.includes(text));
@@ -632,7 +632,7 @@ async function main() {
     const forbidden = [
       "[plugin:vite:oxc]",
       "Transform failed",
-      "active p4 <= 2",
+      "active internal-slot <= 2",
       "single_surface",
       "quota_slot_spent",
       "focus_wait",

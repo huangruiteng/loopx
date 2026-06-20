@@ -68,11 +68,11 @@ REQUIRED_PHRASES = (
 )
 
 FORBIDDEN_PHRASES = (
-    "agent-harness-side-bypass",
-    "tiger-team",
-    "premium-ui",
-    "OpenViking",
-    "/Users/bytedance/",
+    "internal-project-alpha",
+    "internal-team-beta",
+    "internal-product-gamma",
+    "private-runtime-delta",
+    "PRIVATE_HOME/",
     "~/.codex/sessions",
 )
 

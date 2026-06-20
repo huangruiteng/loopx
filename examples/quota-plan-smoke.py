@@ -643,11 +643,11 @@ def assert_plan_shape(plan: dict, markdown: str | None = None) -> None:
 
 def assert_scheduler_advisory_does_not_override_goal_should_run() -> None:
     meta_id = "goal-harness-meta"
-    tiger_id = "tiger-team-maiduidui-regauc"
-    side_bypass_id = "agent-harness-side-bypass"
+    creator_id = "showcase-creator-operator"
+    side_bypass_id = "showcase-side-agent-self-iteration"
     gated_id = "owner-gated"
     meta_goal = goal(meta_id, compute=0.5)
-    tiger_goal = goal(tiger_id, compute=1.0)
+    creator_goal = goal(creator_id, compute=1.0)
     side_bypass_goal = goal(side_bypass_id, compute=0.8)
     gated_goal = goal(gated_id, compute=1.0)
 
@@ -671,8 +671,8 @@ def assert_scheduler_advisory_does_not_override_goal_should_run() -> None:
             },
         ],
     }
-    tiger_item = attention(tiger_id, compute=1.0)
-    tiger_item["recommended_action"] = "continue authorized evaluation monitoring"
+    creator_item = attention(creator_id, compute=1.0)
+    creator_item["recommended_action"] = "continue creator-operator showcase monitoring"
     side_bypass_item = attention(side_bypass_id, compute=0.8, state="focus_wait")
     side_bypass_item["lifecycle_phase"] = "focus_wait"
     side_bypass_item["lifecycle_flags"] = ["continuation_boundary"]
@@ -688,8 +688,8 @@ def assert_scheduler_advisory_does_not_override_goal_should_run() -> None:
         "runtime_root": "./fixtures/runtime",
         "goal_count": 4,
         "run_count": 4,
-        "attention_queue": {"items": [meta_item, tiger_item, side_bypass_item, gated_item]},
-        "run_history": {"goals": [meta_goal, tiger_goal, side_bypass_goal, gated_goal]},
+        "attention_queue": {"items": [meta_item, creator_item, side_bypass_item, gated_item]},
+        "run_history": {"goals": [meta_goal, creator_goal, side_bypass_goal, gated_goal]},
     }
 
     plan = build_quota_plan(payload, mode="plan")
@@ -700,15 +700,15 @@ def assert_scheduler_advisory_does_not_override_goal_should_run() -> None:
 
     assert [item["goal_id"] for item in plan["groups"]["operator_gate"]] == [gated_id], plan
     assert [item["goal_id"] for item in plan["groups"]["focus_wait"]] == [side_bypass_id], plan
-    assert [item["goal_id"] for item in plan["groups"]["eligible"]] == [tiger_id, meta_id], plan
-    assert plan["summary"]["next_automatic_turn"] == tiger_id, plan
-    assert plan["next_automatic_turn"]["goal_id"] == tiger_id, plan
+    assert [item["goal_id"] for item in plan["groups"]["eligible"]] == [creator_id, meta_id], plan
+    assert plan["summary"]["next_automatic_turn"] == creator_id, plan
+    assert plan["next_automatic_turn"]["goal_id"] == creator_id, plan
 
     assert meta_decision["decision"] == "run", meta_decision
     assert meta_decision["should_run"] is True, meta_decision
     assert meta_decision["normal_delivery_allowed"] is True, meta_decision
     assert meta_decision["state"] == "eligible", meta_decision
-    assert meta_decision["plan_summary"]["next_automatic_turn"] == tiger_id, meta_decision
+    assert meta_decision["plan_summary"]["next_automatic_turn"] == creator_id, meta_decision
     assert meta_decision["execution_obligation"]["must_attempt_work"] is True, meta_decision
     assert meta_decision["execution_obligation"]["notify_is_execution_gate"] is False, meta_decision
     assert meta_decision["agent_todo_summary"]["open_count"] == 2, meta_decision

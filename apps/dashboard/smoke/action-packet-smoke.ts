@@ -9,19 +9,19 @@ function assert(condition: boolean, message: string) {
 }
 
 const packet = buildActionPacket({
-  goalId: "premium-ui-ai-search-rec-migration",
+  goalId: "showcase-safe-route",
   title: "Review or authorize",
   summary: "production still blocked; owner/SOP snapshot has 9 blockers, but only two user todos are open",
-  userTodoText: "Read the core Lark document section 8 first. Focus on 当前结论 and the Nacos diff 快速锚点 / Diff Anchors table.",
+  userTodoText: "Read the public decision memo section 8 first. Focus on 当前结论 and the config diff 快速锚点 / Diff Anchors table.",
   agentTodoText: "Run the read-only map dry-run after the owner todo is resolved; stop before writes.",
   todoBlocksGate: true,
-  operatorQuestion: "是否同意 premium-ui 迁移在 owner/SOP review 后继续推进？",
+  operatorQuestion: "是否同意 showcase safe route 在 owner/SOP review 后继续推进？",
   suggestedReply: "同意继续 safe-local/offline 路径 / 暂不同意 + 一句话原因。",
   gateFallbackDecision: "同意继续 safe-local/offline 路径；不授权写入或生产动作。",
-  boundary: "不要执行 Nacos 写入、Prem metadata upsert、workflow creation 或生产状态变化。",
+  boundary: "不要执行配置写入、metadata upsert、workflow creation 或生产状态变化。",
   durableRecordRule: "记录规则：先用 operator-gate dry-run 预览；确认写入时去掉 --dry-run。",
   safePathLabel: "Read-only map dry-run",
-  command: "goal-harness read-only-map --goal-id premium-ui-ai-search-rec-migration --dry-run",
+  command: "goal-harness read-only-map --goal-id showcase-safe-route --dry-run",
   quotaShortLine: "Operator gate; 0/1440 slots",
   authorityShortLine: "default entries 10/10; topic 10; materials 6; owner review 1; stale 1; risk medium",
   projectOwner: "user_or_controller",
@@ -40,14 +40,14 @@ assert(packet.includes("Project Asset：Owner=user_or_controller；Gate=owner_so
 assert(packet.includes("Next：Project asset says the owner/SOP review is the current authority."), "missing project-asset next action");
 assert(packet.includes("Stop：Stop before write-control or production mutation."), "missing project-asset stop condition");
 assert(packet.includes("Handoff：ready; codex_ready=true; source=project_asset; quota=eligible; failed=none"), "missing handoff readiness");
-assert(packet.includes("待办：Read the core Lark document section 8 first."), "missing first user todo");
+assert(packet.includes("待办：Read the public decision memo section 8 first."), "missing first user todo");
 assert(packet.includes("先处理/暂缓再判 gate"), "missing todo-before-gate cue");
-assert(packet.includes("Gate：是否同意 premium-ui 迁移"), "missing gate question");
+assert(packet.includes("Gate：是否同意 showcase safe route"), "missing gate question");
 assert(packet.includes("【给项目 Agent】"), "missing project-agent handoff section");
 assert(packet.includes("待办：Run the read-only map dry-run after the owner todo is resolved; stop before writes."), "missing first agent todo");
 assert(packet.includes("路径：Read-only map dry-run"), "missing safe path");
 assert(packet.includes("上下文：只信当前 state/status/history 与命令输出"), "missing agent context rule");
-assert(packet.includes("不授权写入或生产动作") || packet.includes("不要执行 Nacos 写入"), "missing safety boundary");
+assert(packet.includes("不授权写入或生产动作") || packet.includes("不要执行配置写入"), "missing safety boundary");
 assert(packet.length > 600 && packet.length < 1200, `unexpected packet length: ${packet.length}`);
 assert(
   packet.indexOf("【用户/Gate】") < packet.indexOf("【给项目 Agent】"),

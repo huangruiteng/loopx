@@ -2363,26 +2363,26 @@ type ShareGoalView = {
 
 const shareGoalSpecs: ShareGoalSpec[] = [
   {
-    id: "premium-ui-ai-search-rec-migration",
-    label: "平台迁移",
-    subtitle: "AI Search / ZJXMT 迁移控制",
-    emphasis: "把用户确认项、Agent 本地研究、Nacos 前置风险拆开管理。",
+    id: "showcase-user-gate-safe-side-path",
+    label: "0617 User Gate",
+    subtitle: "公开 showcase / safe side path",
+    emphasis: "把用户决策、Agent 待办和安全侧路拆开管理：该等人的地方明确等人。",
     accent: "border-t-emerald-500",
     icon: GitBranch,
   },
   {
-    id: "tiger-team-maiduidui-regauc",
-    label: "埋堆堆打平",
-    subtitle: "RegAUC 实验推进",
-    emphasis: "已授权主动推进，但必须遵守最多 2 个 p4、最多 2 个 p3 运行中的并发约束。",
+    id: "showcase-creator-operator",
+    label: "Creator Operator",
+    subtitle: "合成案例 / 长程内容运营",
+    emphasis: "让多个 Agent 围绕热点、素材、洞察和创作 backlog 持续推进，但只展示脱敏 showcase 数据。",
     accent: "border-t-amber-500",
     icon: Gauge,
   },
   {
-    id: "agent-harness-side-bypass",
-    label: "Agent Harness 旁路",
-    subtitle: "TAU2 排序器 / 跨域证据",
-    emphasis: "停止重复小步，要求排序器或跨域证据；做不到就不花配额、直接报告阻塞。",
+    id: "showcase-side-agent-self-iteration",
+    label: "Side Agent 自迭代",
+    subtitle: "公开 repo 事实 / 旁路产品化",
+    emphasis: "主控聚焦高风险主线，旁路 Agent 在独立 worktree 中推进产品化、文档和展示。",
     accent: "border-t-rose-500",
     icon: ShieldCheck,
   },
@@ -2776,17 +2776,17 @@ function shareStatusForGoal(view: ShareGoalView): { label: string; summary: stri
       variant: "warning",
     };
   }
-  if (view.spec.id === "premium-ui-ai-search-rec-migration" && (view.userTodos?.open_count ?? 0) > 0) {
+  if (view.spec.id === "showcase-user-gate-safe-side-path" && (view.userTodos?.open_count ?? 0) > 0) {
     return {
       label: "用户待办已捕获",
-      summary: "源 topic/table 权威确认被单独留给用户，Agent 不会越权重启或上传。",
+      summary: "用户决策被单独留给 owner；Agent 只推进与该决策独立的安全侧路。",
       variant: "warning",
     };
   }
-  if (view.spec.id === "tiger-team-maiduidui-regauc") {
+  if (view.spec.id === "showcase-creator-operator") {
     return {
-      label: "已授权主动推进",
-      summary: "可用 open p4/p3 槽位推进，但必须写回 board 与 project ledger。",
+      label: "合成场景主动推进",
+      summary: "创作运营 backlog 可持续推进，但前台只呈现公开 showcase 和合成数据。",
       variant: "info",
     };
   }
@@ -3139,14 +3139,14 @@ function ShareGuardEvidence({
   payload: StatusPayload;
   views: ShareGoalView[];
 }) {
-  const side = views.find((view) => view.spec.id === "agent-harness-side-bypass");
-  const tiger = views.find((view) => view.spec.id === "tiger-team-maiduidui-regauc");
+  const side = views.find((view) => view.spec.id === "showcase-side-agent-self-iteration");
+  const creator = views.find((view) => view.spec.id === "showcase-creator-operator");
   const meta = views.find((view) => view.spec.id === "goal-harness-meta");
-  const premium = views.find((view) => view.spec.id === "premium-ui-ai-search-rec-migration");
+  const gate = views.find((view) => view.spec.id === "showcase-user-gate-safe-side-path");
   const sideGap = side?.row?.queueItem?.handoff_readiness?.post_handoff_outcome_gap_streak
     ?? side?.row?.queueItem?.quota?.post_handoff_outcome_gap_streak
     ?? 0;
-  const tigerUsage = tiger?.usage;
+  const creatorUsage = creator?.usage;
   const metaUsage = meta?.usage;
 
   return (
@@ -3188,28 +3188,28 @@ function ShareGuardEvidence({
         />
 
         <ShareSignalCard
-          body={`24h 已花 ${tigerUsage?.quota_spend_slots_24h ?? 0} 个配额槽，进展信号 ${tigerUsage?.progress_signal_run_count_24h ?? 0}；推进必须落到任务、失败标记、评估或账本。`}
+          body={`24h 已花 ${creatorUsage?.quota_spend_slots_24h ?? 0} 个配额槽，进展信号 ${creatorUsage?.progress_signal_run_count_24h ?? 0}；创作运营推进必须落到任务、证据、回顾或可展示产物。`}
           icon={Gauge}
           metrics={[
-            { label: "24h quota", value: `${tigerUsage?.quota_spend_slots_24h ?? 0} slots` },
-            { label: "并发边界", value: "最多 2 个 p4 运行中" },
-            { label: "补充边界", value: "最多 2 个 p3 运行中" },
+            { label: "24h quota", value: `${creatorUsage?.quota_spend_slots_24h ?? 0} slots` },
+            { label: "素材 backlog", value: "热点 / 洞察 / 语料" },
+            { label: "展示边界", value: "synthetic-only" },
           ]}
           status={{ label: "主动推进", variant: "info" }}
           steps={[
-            { label: "触发", value: "已授权推进" },
-            { label: "控制", value: "配额 + 并发约束" },
-            { label: "写回", value: "board + ledger" },
+            { label: "触发", value: "长期创作目标" },
+            { label: "控制", value: "配额 + 证据边界" },
+            { label: "写回", value: "showcase + backlog" },
           ]}
-          title="埋堆堆：授权推进但要留痕"
+          title="Creator Operator：昼夜不断的合成运营队列"
           tone="amber"
         />
 
         <ShareSignalCard
-          body={`平台迁移保留 ${premium?.userTodos?.open_count ?? 0} 个真实用户待办；Meta 24h 进展信号 ${metaUsage?.progress_signal_run_count_24h ?? 0}，当前合约错误 ${payload.contract.summary.errors}。`}
+          body={`User-gate showcase 保留 ${gate?.userTodos?.open_count ?? 0} 个 owner 决策；Meta 24h 进展信号 ${metaUsage?.progress_signal_run_count_24h ?? 0}，当前合约错误 ${payload.contract.summary.errors}。`}
           icon={FileCheck2}
           metrics={[
-            { label: "真实用户 gate", value: `${premium?.userTodos?.open_count ?? 0} open` },
+            { label: "公开 user gate", value: `${gate?.userTodos?.open_count ?? 0} open` },
             { label: "Meta 进展", value: `${metaUsage?.progress_signal_run_count_24h ?? 0} signals` },
             { label: "全局发现", value: `${payload.global_registry.summary.findings} findings` },
           ]}
@@ -3219,7 +3219,7 @@ function ShareGuardEvidence({
             { label: "控制", value: "registry 真相源" },
             { label: "写回", value: "active-state 写回" },
           ]}
-          title="平台迁移 + Meta：状态真相"
+          title="Showcase + Meta：状态真相"
           tone="emerald"
         />
       </div>
@@ -3370,14 +3370,14 @@ function ShareEvidenceView({
               <div className="max-w-3xl">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="success">Goal Harness 控制面</Badge>
-                  <Badge variant="neutral">四项目实证</Badge>
+                  <Badge variant="neutral">公开 showcase</Badge>
                   <Badge variant={payload.ok ? "success" : "danger"}>{payload.ok ? "状态健康" : "健康阻塞"}</Badge>
                 </div>
                 <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-normal text-slate-950 sm:text-4xl sm:leading-tight">
                   把多项目 Agent 工作变成可管理的 Todo、证据和配额
                 </h1>
                 <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">
-                  这个看板把平台迁移、埋堆堆打平、Agent Harness 旁路和 Goal Harness Meta 统一到同一套控制面：
+                  这个看板只展示公开 showcases：user gate、side-agent 自迭代、creator operator 和 Goal Harness Meta 统一到同一套控制面。
                   用户待办单独挂起，Agent 高优任务继续推进，配额守卫和交接合约负责防止重复空转。
                 </p>
               </div>

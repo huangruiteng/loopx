@@ -21,6 +21,19 @@ const readmeSource = readFileSync("README.md", "utf8");
 const contractSource = readFileSync("../../docs/status-data-contract.md", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
 
+const shareGoalSpecStart = dashboardSource.indexOf("const shareGoalSpecs");
+const shareGoalSpecEnd = dashboardSource.indexOf("const shareStatusLabel", shareGoalSpecStart);
+assert(shareGoalSpecStart >= 0 && shareGoalSpecEnd > shareGoalSpecStart, "missing share goal spec block");
+const shareGoalSpecBlock = dashboardSource.slice(shareGoalSpecStart, shareGoalSpecEnd);
+const shareGoalIds = [...shareGoalSpecBlock.matchAll(/id: "([^"]+)"/g)].map((match) => match[1]);
+assert(shareGoalIds.length >= 4, "expected public showcase goal specs");
+for (const goalId of shareGoalIds) {
+  assert(
+    goalId.startsWith("showcase-") || goalId === "goal-harness-meta",
+    `public dashboard goal spec must use showcase/meta id: ${goalId}`,
+  );
+}
+
 includes(routerSource, 'view: z.enum(["ops", "share"]).optional()', "optional view search param");
 excludes(routerSource, 'view: z.enum(["ops", "share"]).optional().default("share")', "share default route mode");
 
@@ -42,13 +55,13 @@ includes(dashboardSource, "Top-4 Todo", "share top-four todo label");
 includes(dashboardSource, "已完成", "share todo done status");
 includes(dashboardSource, "决策需 rebase", "share decision freshness warning");
 includes(dashboardSource, "这不是仓库回滚", "share decision non-rollback copy");
-includes(dashboardSource, '最多 2 个 p4 运行中', "Chinese p4 concurrency constraint");
+includes(dashboardSource, "synthetic-only", "showcase synthetic-only boundary");
 includes(dashboardSource, '单面改动', "Chinese delivery scale label");
 includes(dashboardSource, '阻塞说明', "Chinese blocker label");
 includes(dashboardSource, '配额守卫', "Chinese quota guard label");
 includes(dashboardSource, '状态写回', "Chinese state writeback label");
 includes(dashboardSource, '<h1 className="text-2xl font-semibold">Goal Operations</h1>', "ops workbench fallback");
-excludes(dashboardSource, '{"active p4 <= 2"}', "raw p4 constraint badge");
+excludes(dashboardSource, "raw internal slot constraints", "raw internal constraint copy");
 includes(packageSource, '"smoke:home-route"', "home route smoke script");
 includes(packageSource, '"smoke:home-browser"', "home browser smoke script");
 includes(packageSource, '"smoke:demo-readiness"', "demo readiness smoke script");

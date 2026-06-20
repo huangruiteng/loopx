@@ -33,7 +33,7 @@ REQUIRED_PHRASES = (
 )
 
 FORBIDDEN_PHRASES = (
-    "/Users/bytedance/",
+    "PRIVATE_HOME/",
     "lark" + "office.com",
     "~/.codex/sessions",
     "raw_thread",

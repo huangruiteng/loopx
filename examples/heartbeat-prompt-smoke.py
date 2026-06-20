@@ -25,13 +25,13 @@ PROJECT_SKILL = REPO_ROOT / "skills" / "goal-harness-project" / "SKILL.md"
 GOAL_ID = "public-heartbeat-goal"
 ACTIVE_STATE = Path("/tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md")
 PROJECT_SPECIFIC_PROMPT_LEAKS = (
-    "agent-harness-side-bypass",
-    "agent-harness-main-control",
-    "OpenViking",
-    "managed Lark mirrors",
+    "internal-side-agent",
+    "internal-main-control",
+    "private-runtime-delta",
+    "managed private mirrors",
     "docs/TODO.md",
-    "premium-ui",
-    "tiger-team",
+    "internal-product-gamma",
+    "internal-team-beta",
 )
 
 

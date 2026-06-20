@@ -273,10 +273,10 @@ node examples/dashboard-operator-gate-browser-smoke.mjs
 
 The home browser smoke protects the canonical control-plane home. It uses a
 public-safe four-project fixture, opens the root route without `view=share`,
-checks the Chinese operator copy for user todos, agent priorities, p4/p3
-concurrency, quota guard state, per-project top-4 todo status, and state
+checks the Chinese operator copy for user todos, agent priorities, showcase
+activity, quota guard state, per-project top-4 todo status, and state
 writeback, and rejects raw machine tokens such as `single_surface`,
-`focus_wait`, or `active p4 <= 2` on the first screen. It also captures desktop
+`focus_wait`, or raw internal slot constraints on the first screen. It also captures desktop
 and mobile first-screen / decision-frame screenshots under
 `output/playwright/dashboard-home-visual-acceptance/` and fails on horizontal
 overflow so density regressions are visible before calling the frontend broadly
