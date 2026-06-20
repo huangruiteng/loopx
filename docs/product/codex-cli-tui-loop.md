@@ -107,6 +107,26 @@ fallback, but it still belongs in a separate spike until Goal Harness proves the
 turn is visible, idle-guarded, interruptible, and not racing a human-typed TUI
 message.
 
+Current driver-plan prototype:
+
+```bash
+goal-harness codex-cli-visible-driver-plan --project . --goal-id <goal-id>
+```
+
+This command turns the probe result into a dry-run driver plan. It does not run
+Codex, read raw transcripts, read session files, mutate a Codex session, or
+spend Goal Harness quota. Its job is to choose one of four next modes:
+
+- `session_attached_visible_turn`: a future local driver may try the detected
+  visible attach primitive, but only behind quota guard and idle guard.
+- `visible_resume_or_remote_control_spike`: `resume [PROMPT]` or
+  `remote-control` exists, but it must prove that the turn is visible and
+  interruptible before Goal Harness treats it as session-attached automation.
+- `explicit_headless_fallback_after_tui_bootstrap`: keep the one-message TUI
+  bootstrap as the main path and use `codex exec` only when the user knowingly
+  accepts a headless fallback.
+- `tui_bootstrap_only`: ask the user to start inside Codex CLI TUI.
+
 ### 3. Headless Fallback
 
 `codex exec` remains useful for scheduled or CI-like work, but it is not the
@@ -177,11 +197,15 @@ projects runnable candidates; it should not over-specify the model's local plan.
    implementation is `goal-harness codex-cli-session-probe`; it separates
    `exec` fallback support, visible resume / remote-control spike surfaces, and
    true same-open-TUI visible injection.
-4. **Local driver**: prototype a scheduler that runs quota, checks session
+4. **Visible driver plan**: generate a dry-run plan with
+   `goal-harness codex-cli-visible-driver-plan` so the next local driver knows
+   whether to attempt visible attach, run a resume/remote-control proof, or
+   fall back explicitly.
+5. **Local driver**: prototype a scheduler that runs quota, checks session
    idle state, and either attaches visibly or falls back explicitly.
-5. **Validation harness**: add a public-safe fixture that proves the driver
+6. **Validation harness**: add a public-safe fixture that proves the driver
    never stores raw transcript text and never spends quota before writeback.
-6. **Claude Code follow-up**: port the same product contract only after the
+7. **Claude Code follow-up**: port the same product contract only after the
    Codex CLI path is credible.
 
 ## Success Criteria

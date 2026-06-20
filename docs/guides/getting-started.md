@@ -93,6 +93,13 @@ session files, run:
 goal-harness codex-cli-session-probe
 ```
 
+To turn that probe into a dry-run driver decision without mutating a Codex
+session, run:
+
+```bash
+goal-harness codex-cli-visible-driver-plan --project . --goal-id <goal-id>
+```
+
 If same-session steering is unavailable and the user explicitly accepts a
 headless fallback, generate the fallback handoff instead of pretending the open
 TUI is preserved:

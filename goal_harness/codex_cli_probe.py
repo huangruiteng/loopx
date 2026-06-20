@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Any, Mapping
+
+from .bootstrap import default_goal_id
 
 
 DEFAULT_CODEX_BIN = "codex"
@@ -219,6 +222,117 @@ def run_codex_cli_session_probe(
     return payload
 
 
+def _shell_arg(value: str) -> str:
+    return shlex.quote(value)
+
+
+def build_codex_cli_visible_driver_plan(
+    *,
+    project: Path,
+    goal_id: str | None,
+    agent_id: str | None,
+    cli_bin: str,
+    codex_bin: str,
+    probe_payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a public-safe plan for a visible Codex CLI automation driver.
+
+    The plan is intentionally read-only. It decides whether a future local
+    driver should attempt a visible session attachment, run a resume/remote
+    control spike, or fall back explicitly to headless `codex exec`.
+    """
+
+    resolved_project = str(project.expanduser())
+    resolved_goal_id = goal_id or default_goal_id(project)
+    capabilities = probe_payload.get("capabilities") if isinstance(probe_payload.get("capabilities"), dict) else {}
+    safe_injection_supported = bool(capabilities.get("safe_injection_supported"))
+    visible_resume_supported = bool(capabilities.get("visible_resume_supported"))
+    remote_control_supported = bool(capabilities.get("remote_control_surface_detected"))
+    exec_supported = bool(capabilities.get("exec_supported"))
+    agent_arg = f" --agent-id {_shell_arg(agent_id)}" if agent_id else ""
+    quota_guard_command = (
+        f"{_shell_arg(cli_bin)} --format json quota should-run "
+        f"--goal-id {_shell_arg(resolved_goal_id)}{agent_arg}"
+    )
+    bootstrap_command = (
+        f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "
+        f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}{agent_arg}"
+    )
+    exec_fallback_command = (
+        f"{_shell_arg(cli_bin)} codex-cli-exec-handoff "
+        f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}{agent_arg} "
+        f"--codex-bin {_shell_arg(codex_bin)}"
+    )
+    probe_command = f"{_shell_arg(cli_bin)} codex-cli-session-probe --codex-bin {_shell_arg(codex_bin)}"
+
+    if safe_injection_supported:
+        driver_mode = "session_attached_visible_turn"
+        automation_action = "try_visible_session_attach_with_idle_guard"
+        next_step = "wire the detected visible attach primitive behind idle guard and quota guard"
+    elif visible_resume_supported or remote_control_supported:
+        driver_mode = "visible_resume_or_remote_control_spike"
+        automation_action = "prototype_visible_resume_or_remote_control_with_idle_guard"
+        next_step = "run an explicit proof that resume or remote-control creates a visible interruptible turn"
+    elif exec_supported:
+        driver_mode = "explicit_headless_fallback_after_tui_bootstrap"
+        automation_action = "keep_tui_bootstrap_primary_and_require_explicit_fallback"
+        next_step = "keep one-message TUI bootstrap primary; use codex exec only as explicit fallback"
+    else:
+        driver_mode = "tui_bootstrap_only"
+        automation_action = "ask_user_to_start_inside_codex_cli_tui"
+        next_step = "ask the user to start in Codex CLI TUI and paste the bootstrap message"
+
+    driver_steps = [
+        "run the session probe and quota guard before any delivery turn",
+        "if user_channel.action_required=true, surface only the concrete user gate",
+        "if delivery is allowed, verify idle_guard before any visible prompt",
+        "prefer a visible same-TUI turn; otherwise use the explicit headless fallback command",
+        "write back compact evidence and spend quota only after validation",
+    ]
+    if driver_mode == "visible_resume_or_remote_control_spike":
+        driver_steps.insert(
+            3,
+            "treat resume [PROMPT] or remote-control as unproven until a visible interruptible turn is observed",
+        )
+    if driver_mode == "session_attached_visible_turn":
+        driver_steps.insert(3, "use only the detected visible attach primitive; do not write hidden session state")
+
+    return {
+        "ok": True,
+        "schema_version": "codex_cli_visible_driver_plan_v0",
+        "project": resolved_project,
+        "goal_id": resolved_goal_id,
+        "agent_id": agent_id,
+        "cli_bin": cli_bin,
+        "codex_bin": codex_bin,
+        "probe_source": probe_payload.get("source"),
+        "probe_recommended_mode": probe_payload.get("recommended_mode"),
+        "driver_mode": driver_mode,
+        "automation_action": automation_action,
+        "next_step": next_step,
+        "capabilities": capabilities,
+        "commands": {
+            "probe": probe_command,
+            "quota_guard": quota_guard_command,
+            "tui_bootstrap_message": bootstrap_command,
+            "explicit_headless_fallback": exec_fallback_command,
+        },
+        "driver_steps": driver_steps,
+        "boundary": {
+            "dry_run_plan_only": True,
+            "runs_codex": False,
+            "reads_raw_transcripts": False,
+            "reads_credentials": False,
+            "reads_session_files": False,
+            "mutates_codex_session": False,
+            "spends_goal_harness_quota": False,
+            "requires_idle_guard_before_visible_prompt": True,
+            "requires_user_gate_stop": True,
+        },
+        "warnings": list(probe_payload.get("warnings") or []),
+    }
+
+
 def render_codex_cli_session_probe_markdown(payload: dict[str, Any]) -> str:
     capabilities = payload.get("capabilities") or {}
     boundary = payload.get("boundary") or {}
@@ -248,6 +362,49 @@ def render_codex_cli_session_probe_markdown(payload: dict[str, Any]) -> str:
 - reads_session_files: `{boundary.get("reads_session_files")}`
 - mutates_codex_session: `{boundary.get("mutates_codex_session")}`
 - spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+
+## Warnings
+
+{warning_lines}
+"""
+
+
+def render_codex_cli_visible_driver_plan_markdown(payload: dict[str, Any]) -> str:
+    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+    steps = payload.get("driver_steps") if isinstance(payload.get("driver_steps"), list) else []
+    warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
+    step_lines = "\n".join(f"{index}. {step}" for index, step in enumerate(steps, start=1))
+    warning_lines = "\n".join(f"- {warning}" for warning in warnings) if warnings else "- none"
+    return f"""# Codex CLI Visible Driver Plan
+
+- driver_mode: `{payload.get("driver_mode")}`
+- automation_action: `{payload.get("automation_action")}`
+- probe_recommended_mode: `{payload.get("probe_recommended_mode")}`
+- next_step: {payload.get("next_step")}
+
+## Commands
+
+```bash
+{commands.get("probe")}
+{commands.get("quota_guard")}
+{commands.get("tui_bootstrap_message")}
+{commands.get("explicit_headless_fallback")}
+```
+
+## Driver Steps
+
+{step_lines}
+
+## Boundary
+
+- dry_run_plan_only: `{boundary.get("dry_run_plan_only")}`
+- reads_raw_transcripts: `{boundary.get("reads_raw_transcripts")}`
+- reads_session_files: `{boundary.get("reads_session_files")}`
+- mutates_codex_session: `{boundary.get("mutates_codex_session")}`
+- spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+- requires_idle_guard_before_visible_prompt: `{boundary.get("requires_idle_guard_before_visible_prompt")}`
+- requires_user_gate_stop: `{boundary.get("requires_user_gate_stop")}`
 
 ## Warnings
 

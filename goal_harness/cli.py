@@ -140,6 +140,7 @@ from .cli_commands import (
     handle_codex_cli_bootstrap_message_command,
     handle_codex_cli_exec_handoff_command,
     handle_codex_cli_session_probe_command,
+    handle_codex_cli_visible_driver_plan_command,
     handle_diagnose_command,
     handle_demo_command,
     handle_doctor_command,
@@ -5936,6 +5937,7 @@ def main(argv: list[str] | None = None) -> int:
             "codex-cli-bootstrap-message",
             "codex-cli-exec-handoff",
             "codex-cli-session-probe",
+            "codex-cli-visible-driver-plan",
             "demo",
             "doctor",
             "new-project-prompt",
@@ -6011,6 +6013,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "codex-cli-session-probe":
         return handle_codex_cli_session_probe_command(args, print_payload)
+
+    if args.command == "codex-cli-visible-driver-plan":
+        return handle_codex_cli_visible_driver_plan_command(args, print_payload)
 
     if args.command == "heartbeat-prompt":
         try:
