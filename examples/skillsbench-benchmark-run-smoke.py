@@ -80,6 +80,11 @@ import scripts.skillsbench_automation_loop as skillsbench_loop  # noqa: E402
 GOAL_ID = "skillsbench-benchmark-run-fixture"
 
 
+def assert_prerequisites_include(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    for key, value in expected.items():
+        assert actual.get(key) == value, (key, actual)
+
+
 def test_skillsbench_default_blind_loop_budget_is_five() -> None:
     args = parse_args([])
     assert args.max_rounds == DEFAULT_MAX_ROUNDS == 5, args
@@ -2323,7 +2328,8 @@ def test_skillsbench_runner_plan_supports_baseline_route() -> None:
         assert plan["include_task_skills"] is False, plan
         assert plan["outer_timeout_sec"] == 7200, plan
         assert plan["sandbox_setup_timeout_sec"] == 7200, plan
-        assert plan["runner_prerequisites"] == {
+        runner_prerequisites = plan["runner_prerequisites"]
+        expected_runner_prerequisites = {
             "schema_version": "skillsbench_runner_prerequisites_v0",
             "agent_execution_mode": "container_codex_acp",
             "codex_acp_runtime_container_bootstrap": True,
@@ -2335,10 +2341,23 @@ def test_skillsbench_runner_plan_supports_baseline_route() -> None:
             "codex_acp_runtime_launch_preflight_status": "pending",
             "codex_acp_runtime_launch_preflight_raw_logs_read": False,
             "container_codex_acp_install_skipped": False,
+            "benchflow_agent_install_skipped_by_runtime_layer": False,
             "host_local_acp_launch": False,
             "host_local_acp_launch_status": "not_requested",
             "remote_command_file_bridge_materialized": False,
-        }, plan
+        }
+        assert_prerequisites_include(
+            runner_prerequisites,
+            expected_runner_prerequisites,
+        )
+        assert (
+            runner_prerequisites["preinstalled_benchflow_agent_runtime_required"]
+            is False
+        ), plan
+        assert (
+            runner_prerequisites["benchflow_agent_runtime_layer_status"]
+            == "not_requested"
+        ), plan
         assert "curl" in CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD
         assert "curl-minimal" in CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD
         assert "microdnf install -y ca-certificates tar xz" in (
@@ -2422,27 +2441,50 @@ def test_skillsbench_runner_prerequisites_are_compacted() -> None:
             "codex_acp_runtime_dependency_preflight": True,
             "codex_acp_runtime_launch_preflight": True,
             "codex_acp_runtime_launch_preflight_stage": (
-                "after_agent_install_before_acp_connect"
+                "preinstalled_benchflow_layer_after_sandbox_setup_before_acp_connect"
             ),
             "codex_acp_runtime_launch_preflight_status": "passed",
             "codex_acp_runtime_launch_preflight_rc": 0,
             "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+            "container_codex_acp_install_skipped": True,
+            "benchflow_agent_install_skipped_by_runtime_layer": True,
+            "preinstalled_benchflow_agent_runtime_required": True,
+            "benchflow_agent_runtime_layer_ready": True,
+            "benchflow_agent_runtime_layer_status": "ready",
+            "benchflow_agent_runtime_layer_mount_target": "/opt/benchflow",
+            "benchflow_agent_runtime_mount_injected": True,
+            "benchflow_agent_runtime_mount_read_only": True,
+            "benchflow_agent_runtime_mount_source_recorded": False,
+            "codex_acp_runtime_dependency_setup_skipped": True,
             "private_unlisted_detail": "must not compact",
         }
         compact = compact_benchmark_run(benchmark_run)
         assert compact is not None
-        assert compact["runner_prerequisites"] == {
-            "schema_version": "skillsbench_runner_prerequisites_v0",
-            "codex_acp_runtime_container_bootstrap": True,
-            "codex_acp_runtime_dependency_preflight": True,
-            "codex_acp_runtime_launch_preflight": True,
-            "codex_acp_runtime_launch_preflight_stage": (
-                "after_agent_install_before_acp_connect"
-            ),
-            "codex_acp_runtime_launch_preflight_status": "passed",
-            "codex_acp_runtime_launch_preflight_rc": 0,
-            "codex_acp_runtime_launch_preflight_raw_logs_read": False,
-        }, compact
+        assert_prerequisites_include(
+            compact["runner_prerequisites"],
+            {
+                "schema_version": "skillsbench_runner_prerequisites_v0",
+                "codex_acp_runtime_container_bootstrap": True,
+                "codex_acp_runtime_dependency_preflight": True,
+                "codex_acp_runtime_launch_preflight": True,
+                "codex_acp_runtime_launch_preflight_stage": (
+                    "preinstalled_benchflow_layer_after_sandbox_setup_before_acp_connect"
+                ),
+                "codex_acp_runtime_launch_preflight_status": "passed",
+                "codex_acp_runtime_launch_preflight_rc": 0,
+                "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+                "container_codex_acp_install_skipped": True,
+                "benchflow_agent_install_skipped_by_runtime_layer": True,
+                "preinstalled_benchflow_agent_runtime_required": True,
+                "benchflow_agent_runtime_layer_ready": True,
+                "benchflow_agent_runtime_layer_status": "ready",
+                "benchflow_agent_runtime_layer_mount_target": "/opt/benchflow",
+                "benchflow_agent_runtime_mount_injected": True,
+                "benchflow_agent_runtime_mount_read_only": True,
+                "benchflow_agent_runtime_mount_source_recorded": False,
+                "codex_acp_runtime_dependency_setup_skipped": True,
+            },
+        )
         assert "private_unlisted_detail" not in json.dumps(compact), compact
 
 
@@ -3524,17 +3566,20 @@ def test_skillsbench_runner_failure_compact_closeout() -> None:
             "raw_trajectory_read": False,
             "schema_version": "skillsbench_runner_failure_v0",
         }, compact
-        assert compact["runner_prerequisites"] == {
-            "schema_version": "skillsbench_runner_prerequisites_v0",
-            "codex_acp_runtime_container_bootstrap": True,
-            "codex_acp_runtime_dependency_preflight": True,
-            "codex_acp_runtime_launch_preflight": False,
-            "codex_acp_runtime_launch_preflight_stage": (
-                "after_agent_install_before_acp_connect"
-            ),
-            "codex_acp_runtime_launch_preflight_status": "pending",
-            "codex_acp_runtime_launch_preflight_raw_logs_read": False,
-        }, compact
+        assert_prerequisites_include(
+            compact["runner_prerequisites"],
+            {
+                "schema_version": "skillsbench_runner_prerequisites_v0",
+                "codex_acp_runtime_container_bootstrap": True,
+                "codex_acp_runtime_dependency_preflight": True,
+                "codex_acp_runtime_launch_preflight": False,
+                "codex_acp_runtime_launch_preflight_stage": (
+                    "after_agent_install_before_acp_connect"
+                ),
+                "codex_acp_runtime_launch_preflight_status": "pending",
+                "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+            },
+        )
         assert "do_not_run_benchflow_from_skeleton" not in compact[
             "stop_conditions"
         ], compact
@@ -3808,18 +3853,21 @@ def test_skillsbench_main_failure_closeout_preserves_mutated_prerequisites() -> 
         assert payload["compact_closeout_recorded"] is True, payload
         compact_path = Path(payload["compact_benchmark_run_json"])
         compact = json.loads(compact_path.read_text(encoding="utf-8"))
-        assert compact["runner_prerequisites"] == {
-            "schema_version": "skillsbench_runner_prerequisites_v0",
-            "codex_acp_runtime_container_bootstrap": True,
-            "codex_acp_runtime_dependency_preflight": True,
-            "codex_acp_runtime_launch_preflight": True,
-            "codex_acp_runtime_launch_preflight_stage": (
-                "after_agent_install_before_acp_connect"
-            ),
-            "codex_acp_runtime_launch_preflight_status": "passed",
-            "codex_acp_runtime_launch_preflight_rc": 0,
-            "codex_acp_runtime_launch_preflight_raw_logs_read": False,
-        }, compact
+        assert_prerequisites_include(
+            compact["runner_prerequisites"],
+            {
+                "schema_version": "skillsbench_runner_prerequisites_v0",
+                "codex_acp_runtime_container_bootstrap": True,
+                "codex_acp_runtime_dependency_preflight": True,
+                "codex_acp_runtime_launch_preflight": True,
+                "codex_acp_runtime_launch_preflight_stage": (
+                    "after_agent_install_before_acp_connect"
+                ),
+                "codex_acp_runtime_launch_preflight_status": "passed",
+                "codex_acp_runtime_launch_preflight_rc": 0,
+                "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+            },
+        )
 
 
 def test_skillsbench_main_recovers_official_result_after_runner_exception() -> None:

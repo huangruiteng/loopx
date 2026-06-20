@@ -860,6 +860,9 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "schema_version",
         "codex_acp_runtime_launch_preflight_stage",
         "codex_acp_runtime_launch_preflight_status",
+        "agent_execution_mode",
+        "benchflow_agent_runtime_layer_status",
+        "benchflow_agent_runtime_layer_mount_target",
     ):
         text = public_safe_compact_text(value.get(field), limit=180)
         if text:
@@ -867,8 +870,18 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
     for field in (
         "codex_acp_runtime_container_bootstrap",
         "codex_acp_runtime_dependency_preflight",
+        "codex_acp_runtime_dependency_setup_skipped",
         "codex_acp_runtime_launch_preflight",
         "codex_acp_runtime_launch_preflight_raw_logs_read",
+        "container_codex_acp_install_skipped",
+        "benchflow_agent_install_skipped_by_runtime_layer",
+        "preinstalled_benchflow_agent_runtime_required",
+        "benchflow_agent_runtime_layer_ready",
+        "benchflow_agent_runtime_mount_injected",
+        "benchflow_agent_runtime_mount_read_only",
+        "benchflow_agent_runtime_mount_source_recorded",
+        "host_local_acp_launch",
+        "remote_command_file_bridge_materialized",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]

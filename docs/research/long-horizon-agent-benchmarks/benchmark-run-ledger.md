@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-20T07:08:23+08:00`
+- updated_at: `2026-06-20T23:49:38+08:00`
 
 ## Case Decisions
 
@@ -22,7 +22,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `paired_baseline_setup_preflight_selection_required` | - | `5` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `paired_baseline_runner_or_setup_repair_required` | - | `9` |
 | `skillsbench@1.1` | `fix-build-agentops` | `baseline_runner_or_setup_repair_required` | - | `2` |
-| `skillsbench@1.1` | `llm-prefix-cache-replay` | `paired_baseline_runner_or_setup_repair_required` | - | `20` |
+| `skillsbench@1.1` | `llm-prefix-cache-replay` | `paired_no_score_uplift` | - | `22` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `paired_no_score_uplift` | - | `4` |
 | `skillsbench@1.1` | `organize-messy-files` | `paired_baseline_solved_treatment_preserved` | - | `3` |
 | `skillsbench@1.1` | `paratransit-routing` | `paired_treatment_improved` | - | `9` |
@@ -31,10 +31,11 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `setup-fuzzing-py` | `baseline_runner_or_setup_repair_required` | - | `3` |
 | `skillsbench@1.1` | `software-dependency-audit` | `paired_no_score_uplift` | - | `6` |
 | `skillsbench@1.1` | `suricata-custom-exfil` | `paired_treatment_codex_acp_runtime_preflight_required` | - | `5` |
-| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `baseline_runner_or_setup_repair_required` | - | `1` |
+| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `paired_no_score_uplift` | - | `3` |
 | `skillsbench@1.1` | `travel-planning` | `baseline_failed_treatment_candidate` | - | `2` |
+| `swe-marathon` | `find-network-alignments` | `baseline_failed_treatment_candidate` | - | `1` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `single_arm_recorded` | - | `2` |
-| `terminal-bench@2.0` | `build-cython-ext` | `baseline_passed_not_current_treatment_priority` | - | `5` |
+| `terminal-bench@2.0` | `build-cython-ext` | `baseline_failed_treatment_candidate` | - | `6` |
 | `terminal-bench@2.0` | `cobol-modernization` | `paired_baseline_solved_treatment_preserved` | - | `2` |
 | `terminal-bench@2.0` | `compile-compcert` | `baseline_passed_not_current_treatment_priority` | - | `1` |
 | `terminal-bench@2.0` | `financial-document-processor` | `baseline_passed_not_current_treatment_priority` | - | `2` |
@@ -141,6 +142,8 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `baseline` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-baseline-max5-launchd-20260616T1531CST/llm-prefix-cache-replay__codex_acp_blind_loop_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `codex_goal_harness_treatment` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-max5-popen-20260616T155346CST/llm-prefix-cache-replay__goal_harness_blind_loop_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_image_build_failure` | `.local/private-benchmark-jobs/skillsbench-product-mode-llm-prefix-raw-baseline-20260616T1954CST/skillsbench_product_mode_llm_prefix_raw_baseline_20260616T1954CST/llm-prefix-cache-replay__raw_codex_autonomous_max5/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `llm-prefix-cache-replay` | `skillsbench_codex_acp_blind_loop_baseline` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:missing` | `official_score_zero_case_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-llm-prefix-baseline-r1/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `llm-prefix-cache-replay` | `skillsbench_goal_harness_blind_loop_treatment` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:missing` | `official_score_zero_case_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-llm-prefix-treatment-r1/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `goal_harness_automation_loop_treatment` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `baseline` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-manufacturing-codebook-normalization-blind-baseline-v0/manufacturing-codebook-normalization__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
@@ -185,8 +188,11 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `suricata-custom-exfil` | `codex_goal_harness_treatment` | `` | `1.0` | `1` | `1:1*,2:1*,3:missing` | `none` | `.local/private-benchmark-jobs/skillsbench-suricata-custom-exfil-goal-harness-product-mode-mountfix-20260617T1508CST/suricata-custom-exfil__goal_harness_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `suricata-custom-exfil` | `codex_goal_harness_treatment` | `` | `missing` | `` | `` | `skillsbench_codex_acp_jsonrpc_internal_error` | `` |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_setup_failure` | `.local/private-benchmark-jobs/skillsbench-product-mode-tictoc-unnecessary-abort-detection-raw-baseline-20260616T202521CST/skillsbench-product-mode-tictoc-unnecessary-abort-detection-raw-baseline-20260616T202521CST/tictoc-unnecessary-abort-detection__raw_codex_autonomous_max5/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `skillsbench_codex_acp_blind_loop_baseline` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:missing` | `official_score_zero_case_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-tictoc-baseline-r2/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `skillsbench_goal_harness_blind_loop_treatment` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:missing` | `official_score_zero_case_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-tictoc-treatment-r2/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `travel-planning` | `baseline` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-travel-planning-blind-baseline-20260616T1238CST/travel-planning__codex_acp_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `travel-planning` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `0.0` | `` | `1:missing` | `official_score_zero_case_failure` | `cloud-ecs/skillsbench-real-case/gh-skillsbench-travel-planning-container-acp-configfix-20260620T063851/benchmark_run.compact.json` |
+| `swe-marathon` | `find-network-alignments` | `swe_marathon_host_codex_app_server_goal_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/swe-marathon-find-network-alignments-host-app-server-goal-r6/harbor_job_result.compact.json` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `hardened_codex_worker_materialization_runtime_probe` | `` | `missing` | `` | `` | `not_applicable_worker_materialization_probe` | `.local/private-benchmark-jobs/terminal-bench-nginx-hardened-worker-materialization-runtime-probe-20260616T113050CST/jobs/terminal_bench_nginx_request_logging_hardened_worker_materialization_runtime_probe_20260616T113050CST/result.json` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `hardened_codex_worker_materialization_runtime_probe` | `` | `missing` | `` | `` | `not_applicable_worker_materialization_probe` | `` |
 | `terminal-bench@2.0` | `build-cython-ext` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `codex_model_access_unsupported_for_account` | `.local/private-benchmark-jobs/terminal-bench-build-cython-ext-goal-mode-baseline-20260614T175604CST/jobs/terminal_bench_2_0_build_cython_ext_codex_goal_mode_baseline_real_no_upload_20260614T175604CST/result.json` |
@@ -194,6 +200,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `terminal-bench@2.0` | `build-cython-ext` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `agent_setup_failed_before_worker_start` | `` |
 | `terminal-bench@2.0` | `build-cython-ext` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `codex_cli_not_on_path` | `` |
 | `terminal-bench@2.0` | `build-cython-ext` | `codex_goal_mode_baseline` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-build-cython-ext-runtime-extended-20260614T2257CST/terminal_bench_2_0_build_cython_ext_codex_goal_mode_baseline_runtime_extended_no_upload_20260614T2257CST/result.json` |
+| `terminal-bench@2.0` | `build-cython-ext` | `terminal_bench_host_codex_app_server_goal_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/terminal-bench-build-cython-ext-host-app-server-goal-r9/terminal_official_metadata.compact.json` |
 | `terminal-bench@2.0` | `cobol-modernization` | `hardened_codex_baseline` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-cobol-modernization-paired-20260611T0903Z/baseline.compact.json` |
 | `terminal-bench@2.0` | `cobol-modernization` | `codex_goal_harness_treatment` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-cobol-modernization-paired-20260611T0903Z/treatment.compact.json` |
 | `terminal-bench@2.0` | `compile-compcert` | `codex_goal_mode_baseline` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-compile-compcert-baseline-2h-20260615T1934CST/baseline/jobs/terminal_bench_compile_compcert_codex_goal_mode_baseline_2h_20260615T1934CST/result.json` |

@@ -65,6 +65,63 @@ def main() -> None:
 
         terminal = profiles["terminal-bench"]
         terminal_args = terminal["runner_fragments"]["harbor_cli_args"]
+        assert terminal["runner_fragments"]["recommended_agent"] == (
+            "codex-api-key-no-search"
+        )
+        assert "uv run --no-default-groups harbor run" in terminal[
+            "runner_fragments"
+        ]["local_harbor_checkout_command_prefix"]
+        assert "terminal_bench_no_rebuild_guard.py" in terminal[
+            "runner_fragments"
+        ]["terminal_bench_no_rebuild_guard_command"]
+        assert "terminal_bench_task_image_bootstrap.py" in terminal[
+            "runner_fragments"
+        ]["terminal_bench_task_image_bootstrap_command"]
+        assert "terminal_bench_safe_run_id.py" in terminal["runner_fragments"][
+            "terminal_bench_safe_run_id_command"
+        ]
+        host_goal = terminal["runner_fragments"][
+            "terminal_bench_host_codex_goal_agent"
+        ]
+        assert host_goal["agent_import_path"] == (
+            "terminal_bench_host_codex_goal_agent:HostCodexGoalAgent"
+        )
+        assert host_goal["pythonpath_source"] == "scripts/"
+        assert host_goal["required_host_commands"] == ["codex", "tmux", "docker"]
+        assert "--agent-import-path" in host_goal["recommended_tb_args"]
+        assert "goal_surface=app_server" in host_goal["recommended_tb_args"]
+        assert host_goal["goal_surface"] == "app_server"
+        assert host_goal["fallback_goal_surface"] == "tui"
+        assert "thread/goal/set" in host_goal["preflight_gate"]
+        assert (
+            "terminal_bench_no_rebuild_guard_command"
+            not in profiles["swe-marathon"]["runner_fragments"]
+        )
+        assert (
+            "terminal_bench_task_image_bootstrap_command"
+            not in profiles["swe-marathon"]["runner_fragments"]
+        )
+        assert (
+            "terminal_bench_safe_run_id_command"
+            not in profiles["swe-marathon"]["runner_fragments"]
+        )
+        assert (
+            "terminal_bench_host_codex_goal_agent"
+            not in profiles["swe-marathon"]["runner_fragments"]
+        )
+        swe_host_goal = profiles["swe-marathon"]["runner_fragments"][
+            "harbor_host_codex_goal_agent"
+        ]
+        assert swe_host_goal["agent_import_path"] == (
+            "harbor_host_codex_goal_agent:HarborHostCodexGoalAgent"
+        )
+        assert swe_host_goal["pythonpath_source"] == "scripts/"
+        assert swe_host_goal["required_host_commands"] == ["codex", "tmux"]
+        assert swe_host_goal["command_bridge"] == "harbor-env-exec"
+        assert swe_host_goal["goal_surface"] == "app_server"
+        assert swe_host_goal["fallback_goal_surface"] == "tui"
+        assert "goal_surface=app_server" in swe_host_goal["recommended_harbor_args"]
+        assert "thread/goal/get" in swe_host_goal["preflight_gate"]
         assert "--mounts" in terminal_args, terminal_args
         assert "--agent-env" in terminal_args, terminal_args
         assert (

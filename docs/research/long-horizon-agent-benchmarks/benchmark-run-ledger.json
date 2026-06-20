@@ -2626,13 +2626,12 @@
         "llm-prefix-cache-replay": {
           "case_id": "llm-prefix-cache-replay",
           "latest_decision": {
-            "baseline_failure_scope": "score_missing",
-            "baseline_run_id": "d6675b3bf1c8",
-            "decision": "paired_baseline_runner_or_setup_repair_required",
-            "failure_class": "skillsbench_docker_compose_image_build_failure",
-            "official_score_delta": null,
+            "baseline_failure_scope": "case_or_solution",
+            "baseline_run_id": "ec3f2c4a4a79",
+            "decision": "paired_no_score_uplift",
+            "official_score_delta": 0.0,
             "treatment_failure_scope": "case_or_solution",
-            "treatment_run_id": "30bde6e237f3"
+            "treatment_run_id": "5bfbc9e250f5"
           },
           "runs": [
             {
@@ -3631,6 +3630,176 @@
                 "staged": true,
                 "task_skills_removed": true
               }
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_codex_acp_blind_loop_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-llm-prefix-baseline-r1/benchmark_run.compact.json"
+              },
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 1,
+              "best_round_is_final": true,
+              "best_round_passed": false,
+              "best_round_reward": 0.0,
+              "case_id": "llm-prefix-cache-replay",
+              "case_ids": [
+                "llm-prefix-cache-replay"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "official_score_zero_case_failure",
+              "failure_labels": [
+                "skillsbench_runner_error",
+                "official_score_zero_case_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "final_round": 4,
+              "final_round_passed": false,
+              "final_round_reward": 0.0,
+              "goal_harness_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "max_rounds_budget": 5,
+              "mode": "skillsbench_codex_acp_blind_loop_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "cloud ECS llm-prefix-cache-replay baseline after runtime-layer refactor; compact official score only; no raw task/log/trajectory copied",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_policy": "final_workspace_official_result",
+              "recorded_at": "2026-06-20T23:15:15+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 5,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 2,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 3,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 4,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 5,
+                  "passed": false,
+                  "reward_present": false
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "gh-skillsbench-llm-prefix-cloud-pair-r1-20260620",
+              "run_id": "ec3f2c4a4a79",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_goal_harness_blind_loop_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-llm-prefix-treatment-r1/benchmark_run.compact.json"
+              },
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 1,
+              "best_round_is_final": true,
+              "best_round_passed": false,
+              "best_round_reward": 0.0,
+              "case_id": "llm-prefix-cache-replay",
+              "case_ids": [
+                "llm-prefix-cache-replay"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "official_score_zero_case_failure",
+              "failure_labels": [
+                "skillsbench_runner_error",
+                "official_score_zero_case_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "final_round": 4,
+              "final_round_passed": false,
+              "final_round_reward": 0.0,
+              "goal_harness_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_goal_harness_blind_loop_treatment",
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "max_rounds_budget": 5,
+              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "cloud ECS llm-prefix-cache-replay treatment after runtime-layer refactor; compact official score only; no raw task/log/trajectory copied",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_policy": "final_workspace_official_result",
+              "recorded_at": "2026-06-20T23:15:16+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 5,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 2,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 3,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 4,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 5,
+                  "passed": false,
+                  "reward_present": false
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "gh-skillsbench-llm-prefix-cloud-pair-r1-20260620",
+              "run_id": "5bfbc9e250f5",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
             }
           ]
         },
@@ -5976,10 +6145,12 @@
         "tictoc-unnecessary-abort-detection": {
           "case_id": "tictoc-unnecessary-abort-detection",
           "latest_decision": {
-            "baseline_run_id": "d081caec0332",
-            "decision": "baseline_runner_or_setup_repair_required",
-            "failure_class": "skillsbench_docker_compose_setup_failure",
-            "failure_scope": "score_missing"
+            "baseline_failure_scope": "case_or_solution",
+            "baseline_run_id": "99b2fe6538a4",
+            "decision": "paired_no_score_uplift",
+            "official_score_delta": 0.0,
+            "treatment_failure_scope": "case_or_solution",
+            "treatment_run_id": "f86e63762ab2"
           },
           "runs": [
             {
@@ -6034,6 +6205,176 @@
                 "staged": true,
                 "task_skills_removed": true
               }
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_codex_acp_blind_loop_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-tictoc-baseline-r2/benchmark_run.compact.json"
+              },
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 1,
+              "best_round_is_final": true,
+              "best_round_passed": false,
+              "best_round_reward": 0.0,
+              "case_id": "tictoc-unnecessary-abort-detection",
+              "case_ids": [
+                "tictoc-unnecessary-abort-detection"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "official_score_zero_case_failure",
+              "failure_labels": [
+                "skillsbench_runner_error",
+                "official_score_zero_case_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "final_round": 4,
+              "final_round_passed": false,
+              "final_round_reward": 0.0,
+              "goal_harness_inside_case": false,
+              "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_codex_acp_blind_loop_baseline",
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "max_rounds_budget": 5,
+              "mode": "skillsbench_codex_acp_blind_loop_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "cloud ECS app-server/ACP baseline compact result; official score completed at 0.0; compact only, no raw task/log/trajectory recorded",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_policy": "final_workspace_official_result",
+              "recorded_at": "2026-06-20T23:44:31+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 5,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 2,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 3,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 4,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 5,
+                  "passed": false,
+                  "reward_present": false
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "gh-skillsbench-tictoc-cloud-pair-r2-20260620",
+              "run_id": "99b2fe6538a4",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_goal_harness_blind_loop_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-tictoc-treatment-r2/benchmark_run.compact.json"
+              },
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 1,
+              "best_round_is_final": true,
+              "best_round_passed": false,
+              "best_round_reward": 0.0,
+              "case_id": "tictoc-unnecessary-abort-detection",
+              "case_ids": [
+                "tictoc-unnecessary-abort-detection"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "official_score_zero_case_failure",
+              "failure_labels": [
+                "skillsbench_runner_error",
+                "official_score_zero_case_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "final_round": 4,
+              "final_round_passed": false,
+              "final_round_reward": 0.0,
+              "goal_harness_inside_case": false,
+              "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_goal_harness_blind_loop_treatment",
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "max_rounds_budget": 5,
+              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "cloud ECS app-server/ACP treatment compact result; official score completed at 0.0; compact only, no raw task/log/trajectory recorded",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_policy": "final_workspace_official_result",
+              "recorded_at": "2026-06-20T23:44:32+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 5,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 2,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 3,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 4,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 5,
+                  "passed": false,
+                  "reward_present": false
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "gh-skillsbench-tictoc-cloud-pair-r2-20260620",
+              "run_id": "f86e63762ab2",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
             }
           ]
         },
@@ -6177,7 +6518,60 @@
           ]
         }
       },
-      "run_count": 111
+      "run_count": 115
+    },
+    "swe-marathon": {
+      "benchmark_id": "swe-marathon",
+      "case_count": 1,
+      "cases": {
+        "find-network-alignments": {
+          "case_id": "find-network-alignments",
+          "latest_decision": {
+            "baseline_run_id": "78318f625e3f",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "swe_marathon_host_codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T131254Z/swe-marathon-find-network-alignments-host-app-server-goal-r6/harbor_job_result.compact.json"
+              },
+              "benchmark_id": "swe-marathon",
+              "case_id": "find-network-alignments",
+              "case_ids": [
+                "find-network-alignments"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "goal_harness_inside_case": false,
+              "job_name": "gh-swe-find-network-alignments-host-app-server-goal-r6-20260620t1516z",
+              "leaderboard_evidence": false,
+              "mode": "swe_marathon_host_codex_app_server_goal",
+              "notes": "cloud ECS Harbor host Codex app-server Goal compact result; official verifier completed at 0.0; compact only, no raw task/log/trajectory recorded",
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-20T23:46:55+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "gh-swe-find-network-alignments-host-app-server-goal-r6-20260620",
+              "run_id": "78318f625e3f",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "worker_bridge_status": "not_required"
+            }
+          ]
+        }
+      },
+      "run_count": 1
     },
     "terminal-bench-worker-materialization@v0": {
       "benchmark_id": "terminal-bench-worker-materialization@v0",
@@ -6258,9 +6652,9 @@
         "build-cython-ext": {
           "case_id": "build-cython-ext",
           "latest_decision": {
-            "baseline_run_id": "53729101fea3",
-            "decision": "baseline_passed_not_current_treatment_priority",
-            "failure_scope": "passed"
+            "baseline_run_id": "f004782b573f",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
           },
           "runs": [
             {
@@ -6504,6 +6898,40 @@
               "status": "completed",
               "submit_eligible": false,
               "worker_bridge_status": "not_required"
+            },
+            {
+              "agent_declared_done": false,
+              "arm_id": "terminal_bench_host_codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T131254Z/terminal-bench-build-cython-ext-host-app-server-goal-r9/terminal_official_metadata.compact.json"
+              },
+              "benchmark_id": "terminal-bench@2.0",
+              "case_id": "build-cython-ext",
+              "case_ids": [
+                "build-cython-ext"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "goal_harness_inside_case": false,
+              "job_name": "build-cython-ext-host-codex-app-server-goal-r9-20260620t1516z",
+              "leaderboard_evidence": false,
+              "mode": "terminal_bench_host_codex_app_server_goal",
+              "notes": "cloud ECS Terminal-Bench host Codex app-server Goal compact metadata result; official accuracy completed at 0.0; metadata-only reducer avoided trial raw fields",
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-20T23:49:38+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "gh-terminal-build-cython-ext-host-app-server-goal-r9-20260620",
+              "run_id": "f004782b573f",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
             }
           ]
         },
@@ -9656,7 +10084,7 @@
           ]
         }
       },
-      "run_count": 79
+      "run_count": 80
     }
   },
   "schema_version": "benchmark_run_ledger_v0",
@@ -9667,5 +10095,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-20T07:08:23+08:00"
+  "updated_at": "2026-06-20T23:49:38+08:00"
 }

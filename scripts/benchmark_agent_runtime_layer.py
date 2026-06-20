@@ -62,6 +62,136 @@ def _harbor_profile(
         placeholder=_public_source_placeholder("harbor-agent-tools"),
     )
     mount = _harbor_mount(source)
+    runner_fragments: dict[str, Any] = {
+        "recommended_agent": "codex-api-key-no-search",
+        "local_harbor_checkout_command_prefix": (
+            "UV_LINK_MODE=copy uv run --no-default-groups harbor run"
+        ),
+        "harbor_cli_args": [
+            "--mounts",
+            json.dumps([mount], separators=(",", ":")),
+            "--agent-env",
+            f"PATH={HARBOR_TARGET}/bin:${{PATH}}",
+            "--agent-kwarg",
+            "goal_harness_codex_install_strategy=require_existing_codex",
+            "--agent-kwarg",
+            (
+                "goal_harness_worker_codex_materialization_strategy="
+                "worker_path_preprovisioned"
+            ),
+        ],
+        "job_config_mount": mount,
+    }
+    notes = [
+        (
+            "Terminal-Bench and SWE-Marathon use Harbor-family containers: "
+            "mount the same Codex CLI tools bundle into each task container."
+        ),
+        (
+            "curl is optional because host-copied dynamic curl binaries are "
+            "not portable across all task images; use the container curl or a "
+            "static curl only when a runner explicitly needs it."
+        ),
+        (
+            "For SWE-Marathon, prefer running Harbor from an already "
+            "materialized local Harbor checkout with uv --no-default-groups; "
+            "the SWE-Marathon pyproject may otherwise fetch Harbor from "
+            "GitHub or install cloud/GPU extras before a case starts."
+        ),
+    ]
+    if benchmark_id == "swe-marathon":
+        runner_fragments["harbor_host_codex_goal_agent"] = {
+            "agent_import_path": (
+                "harbor_host_codex_goal_agent:HarborHostCodexGoalAgent"
+            ),
+            "pythonpath_source": "scripts/",
+            "required_host_commands": ["codex", "tmux"],
+            "recommended_harbor_args": [
+                "--agent-import-path",
+                "harbor_host_codex_goal_agent:HarborHostCodexGoalAgent",
+                "--agent-kwarg",
+                "goal_surface=app_server",
+                "--agent-kwarg",
+                "goal_timeout_sec=<seconds>",
+                "--agent-kwarg",
+                "task_workdir=<task-workdir>",
+            ],
+            "command_bridge": "harbor-env-exec",
+            "goal_surface": "app_server",
+            "fallback_goal_surface": "tui",
+            "task_workdir_default": "/app",
+            "preflight_gate": (
+                "codex app-server generate-json-schema --enable goals must "
+                "include thread/goal/set, thread/goal/get, and turn/start; "
+                "a marker-file app-server Goal probe should pass on the run host"
+            ),
+        }
+        notes.append(
+            "For SWE-Marathon, use the Harbor host Codex Goal custom agent "
+            "when Codex auth should stay on the host. It bridges host Codex "
+            "commands into Harbor environment.exec instead of installing "
+            "Codex inside the task container."
+        )
+    if benchmark_id == "terminal-bench":
+        runner_fragments["terminal_bench_no_rebuild_guard_command"] = (
+            "python3 scripts/terminal_bench_no_rebuild_guard.py "
+            "--terminal-bench-root <terminal-bench-checkout> --apply --pretty"
+        )
+        runner_fragments["terminal_bench_task_image_bootstrap_command"] = (
+            "python3 scripts/terminal_bench_task_image_bootstrap.py "
+            "--source-image <prebuilt-task-image> "
+            "--target-image tb__<task-id>__client "
+            "--work-dir <workspace>/image-bootstrap/<task-id> "
+            "--network-host --execute --pretty"
+        )
+        runner_fragments["terminal_bench_safe_run_id_command"] = (
+            "python3 scripts/terminal_bench_safe_run_id.py "
+            "--prefix <task-id>-host-codex-goal --pretty"
+        )
+        runner_fragments["terminal_bench_host_codex_goal_agent"] = {
+            "agent_import_path": (
+                "terminal_bench_host_codex_goal_agent:HostCodexGoalAgent"
+            ),
+            "pythonpath_source": "scripts/",
+            "required_host_commands": ["codex", "tmux", "docker"],
+            "recommended_tb_args": [
+                "--agent-import-path",
+                "terminal_bench_host_codex_goal_agent:HostCodexGoalAgent",
+                "--agent-kwarg",
+                "goal_surface=app_server",
+                "--agent-kwarg",
+                "goal_timeout_sec=<seconds>",
+            ],
+            "goal_surface": "app_server",
+            "fallback_goal_surface": "tui",
+            "preflight_gate": (
+                "codex app-server generate-json-schema --enable goals must "
+                "include thread/goal/set, thread/goal/get, and turn/start; "
+                "a marker-file app-server Goal probe should pass on the run host"
+            ),
+        }
+        notes.append(
+            "For direct Terminal-Bench tb run with --no-rebuild, apply the "
+            "no-rebuild guard first so docker compose up also uses --no-build "
+            "and cannot silently rebuild a prewarmed task image."
+        )
+        notes.append(
+            "If the prewarmed task image starts but lacks runner utilities such "
+            "as tmux or asciinema, derive one task-image bootstrap layer and "
+            "retag it to the Terminal-Bench client image name before rerunning "
+            "the case."
+        )
+        notes.append(
+            "Generate a lowercase Docker Compose-safe run id before launching "
+            "Terminal-Bench; the runner reuses the run id in compose project "
+            "and container names."
+        )
+        notes.append(
+            "Use the host Codex Goal custom agent when the benchmark container "
+            "should not own Codex auth or download agent runtime. The agent "
+            "runs Codex on the benchmark host and operates on the task "
+            "container through docker exec."
+        )
     return {
         "benchmark_id": benchmark_id,
         "runtime_family": "harbor",
@@ -91,36 +221,11 @@ def _harbor_profile(
                 "command -v rg >/dev/null && rg --version >/dev/null"
             ),
         },
-        "runner_fragments": {
-            "harbor_cli_args": [
-                "--mounts",
-                json.dumps([mount], separators=(",", ":")),
-                "--agent-env",
-                f"PATH={HARBOR_TARGET}/bin:${{PATH}}",
-                "--agent-kwarg",
-                "goal_harness_codex_install_strategy=require_existing_codex",
-                "--agent-kwarg",
-                (
-                    "goal_harness_worker_codex_materialization_strategy="
-                    "worker_path_preprovisioned"
-                ),
-            ],
-            "job_config_mount": mount,
-        },
+        "runner_fragments": runner_fragments,
         "case_container_rule": "agent_runtime_preinstalled_before_case_start",
         "preflight_required_before_official_case_attempt": True,
         "forbidden_case_runtime_steps": list(FORBIDDEN_CASE_RUNTIME_STEPS),
-        "notes": [
-            (
-                "Terminal-Bench and SWE-Marathon use Harbor-family containers: "
-                "mount the same Codex CLI tools bundle into each task container."
-            ),
-            (
-                "curl is optional because host-copied dynamic curl binaries are "
-                "not portable across all task images; use the container curl or a "
-                "static curl only when a runner explicitly needs it."
-            ),
-        ],
+        "notes": notes,
     }
 
 

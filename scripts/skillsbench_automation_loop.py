@@ -255,6 +255,13 @@ CODEX_ACP_RUNTIME_DEPS_SETUP_CMD = (
     "2>/dev/null | grep -q ."
 )
 CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_TIMEOUT_SEC = 60
+BENCHFLOW_AGENT_RUNTIME_MOUNT_TARGET = "/opt/benchflow"
+BENCHFLOW_AGENT_RUNTIME_CONTAINER_PATH = (
+    "/opt/benchflow/bin:"
+    "/opt/benchflow/js-agents/bin:"
+    "/opt/benchflow/node/bin:"
+    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+)
 
 
 class SkillsBenchSetupPreflightBlocked(RuntimeError):
@@ -301,6 +308,10 @@ def ensure_skillsbench_dependency_python(args: argparse.Namespace) -> None:
             [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]],
         )
 CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD = (
+    f"if [ -d {shlex.quote(BENCHFLOW_AGENT_RUNTIME_MOUNT_TARGET)} ]; then "
+    f"  export PATH={shlex.quote(BENCHFLOW_AGENT_RUNTIME_CONTAINER_PATH)}; "
+    f"  export CODEX_ACP_RUNTIME_HOME={shlex.quote(BENCHFLOW_AGENT_RUNTIME_MOUNT_TARGET)}; "
+    "fi; "
     "agent_bin=/opt/benchflow/bin/codex-acp; "
     "if [ ! -x \"$agent_bin\" ]; then "
     "  if command -v codex-acp >/dev/null 2>&1; then "
@@ -612,6 +623,63 @@ def _host_local_acp_launch_command(args: argparse.Namespace) -> list[str]:
     return command
 
 
+def _benchflow_agent_runtime_layer_contract(args: argparse.Namespace) -> dict[str, Any]:
+    runtime_dir_arg = getattr(args, "benchflow_agent_runtime_dir", None)
+    runtime_dir = Path(runtime_dir_arg).expanduser() if runtime_dir_arg else None
+    required = bool(getattr(args, "require_preinstalled_benchflow_agent_runtime", False))
+    required_relatives = (
+        "bin/node",
+        "bin/npm",
+        "bin/codex-acp",
+    )
+    missing: list[str] = []
+    if runtime_dir is None:
+        missing = list(required_relatives)
+    elif not runtime_dir.exists():
+        missing = list(required_relatives)
+    else:
+        for relative in required_relatives:
+            if not (runtime_dir / relative).exists():
+                missing.append(relative)
+    ready = not missing
+    status = "ready" if ready else "missing_runtime_files"
+    if not required and runtime_dir is None:
+        status = "not_requested"
+    return {
+        "schema_version": "skillsbench_benchflow_agent_runtime_layer_contract_v0",
+        "required": required,
+        "ready": ready if required or runtime_dir is not None else False,
+        "status": status,
+        "first_blocker": "" if ready else "missing_preinstalled_benchflow_agent_runtime",
+        "source_basename": runtime_dir.name if runtime_dir else "",
+        "source_path_recorded": False,
+        "mount_target": BENCHFLOW_AGENT_RUNTIME_MOUNT_TARGET,
+        "required_files": list(required_relatives),
+        "missing_files": missing,
+        "case_container_rule": "agent_runtime_preinstalled_before_case_start",
+        "raw_logs_read": False,
+        "raw_task_text_read": False,
+        "credential_values_recorded": False,
+    }
+
+
+def _benchflow_agent_runtime_mounts(
+    args: argparse.Namespace,
+) -> list[dict[str, Any]]:
+    runtime_dir_arg = getattr(args, "benchflow_agent_runtime_dir", None)
+    if not runtime_dir_arg:
+        return []
+    runtime_dir = Path(str(runtime_dir_arg)).expanduser()
+    return [
+        {
+            "type": "bind",
+            "source": str(runtime_dir),
+            "target": BENCHFLOW_AGENT_RUNTIME_MOUNT_TARGET,
+            "read_only": True,
+        }
+    ]
+
+
 def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -625,6 +693,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_install_failed_stage",
         "codex_acp_runtime_launch_preflight_stage",
         "codex_acp_runtime_launch_preflight_status",
+        "benchflow_agent_runtime_layer_status",
+        "benchflow_agent_runtime_layer_mount_target",
     ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
@@ -636,7 +706,14 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_acp_runtime_launch_preflight_raw_logs_read",
         "host_local_acp_launch",
         "container_codex_acp_install_skipped",
+        "benchflow_agent_install_skipped_by_runtime_layer",
         "remote_command_file_bridge_materialized",
+        "preinstalled_benchflow_agent_runtime_required",
+        "benchflow_agent_runtime_layer_ready",
+        "codex_acp_runtime_dependency_setup_skipped",
+        "benchflow_agent_runtime_mount_injected",
+        "benchflow_agent_runtime_mount_read_only",
+        "benchflow_agent_runtime_mount_source_recorded",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -653,6 +730,13 @@ def _runner_prerequisite_failure_attribution(
 
     if not isinstance(value, dict):
         return None
+
+    if (
+        value.get("preinstalled_benchflow_agent_runtime_required") is True
+        and value.get("benchflow_agent_runtime_layer_ready") is False
+    ):
+        label = "skillsbench_preinstalled_benchflow_agent_runtime_missing"
+        return label, label, [label, "skillsbench_runner_setup_error"]
 
     if (
         value.get("codex_acp_runtime_launch_preflight") is False
@@ -1491,6 +1575,8 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         task_path=task_path,
         sandbox=args.sandbox,
     )
+    agent_runtime_layer = _benchflow_agent_runtime_layer_contract(args)
+    requires_preinstalled_runtime = bool(agent_runtime_layer.get("required"))
     launch_plan = {
         "schema_version": "skillsbench_runner_launch_plan_v0",
         "benchmark_id": args.dataset,
@@ -1510,6 +1596,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             args.remote_command_file_bridge_ready
             or args.remote_command_file_bridge_probe
         ),
+        "benchflow_agent_runtime_layer": agent_runtime_layer,
         "skillsbench_root": str(Path(args.skillsbench_root).expanduser()),
         "jobs_dir": str(jobs_dir),
         "job_name": job_name,
@@ -1533,28 +1620,59 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         },
         "runner_prerequisites": {
             "schema_version": "skillsbench_runner_prerequisites_v0",
-            "codex_acp_runtime_container_bootstrap": True,
-            "codex_acp_runtime_dependency_preflight": True,
+            "codex_acp_runtime_container_bootstrap": (
+                not requires_preinstalled_runtime
+            ),
+            "codex_acp_runtime_dependency_preflight": (
+                not requires_preinstalled_runtime
+            ),
+            "codex_acp_runtime_dependency_setup_skipped": (
+                requires_preinstalled_runtime
+            ),
             "codex_acp_runtime_launch_preflight": False,
             "codex_acp_runtime_launch_preflight_stage": (
-                "after_agent_install_before_acp_connect"
+                "preinstalled_benchflow_layer_before_acp_connect"
+                if requires_preinstalled_runtime
+                else "after_agent_install_before_acp_connect"
             ),
             "codex_acp_runtime_launch_preflight_status": "pending",
             "codex_acp_runtime_launch_preflight_raw_logs_read": False,
             "agent_execution_mode": (
                 "host_local_acp"
                 if args.host_local_acp_launch
+                else "container_codex_acp_preinstalled_runtime"
+                if requires_preinstalled_runtime
                 else "container_codex_acp"
             ),
             "host_local_acp_launch": bool(args.host_local_acp_launch),
             "host_local_acp_launch_status": (
                 "pending" if args.host_local_acp_launch else "not_requested"
             ),
-            "container_codex_acp_install_skipped": False,
+            "container_codex_acp_install_skipped": requires_preinstalled_runtime,
+            "benchflow_agent_install_skipped_by_runtime_layer": (
+                requires_preinstalled_runtime
+            ),
             "remote_command_file_bridge_materialized": bool(
                 args.remote_command_file_bridge_ready
                 or args.remote_command_file_bridge_probe
             ),
+            "preinstalled_benchflow_agent_runtime_required": (
+                requires_preinstalled_runtime
+            ),
+            "benchflow_agent_runtime_layer_ready": bool(
+                agent_runtime_layer.get("ready")
+            ),
+            "benchflow_agent_runtime_layer_status": str(
+                agent_runtime_layer.get("status") or ""
+            ),
+            "benchflow_agent_runtime_layer_mount_target": (
+                BENCHFLOW_AGENT_RUNTIME_MOUNT_TARGET
+            ),
+            "benchflow_agent_runtime_mount_injected": False,
+            "benchflow_agent_runtime_mount_read_only": bool(
+                requires_preinstalled_runtime
+            ),
+            "benchflow_agent_runtime_mount_source_recorded": False,
         },
         "public_boundary": {
             "leaderboard_upload": False,
@@ -2673,10 +2791,16 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
 
     import benchflow.acp.runtime as benchflow_acp_runtime
     import benchflow.rollout as benchflow_rollout_module
+    import benchflow.rollout_planes as benchflow_rollout_planes_module
     from benchflow.rollout import Rollout, RolloutConfig
     from benchflow.runtime import run as benchflow_run
 
     host_local_acp_command = _host_local_acp_launch_command(args)
+    runtime_mounts = (
+        _benchflow_agent_runtime_mounts(args)
+        if args.require_preinstalled_benchflow_agent_runtime
+        else []
+    )
 
     async def connect_host_local_acp(
         env: Any,
@@ -2747,7 +2871,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     async def run_codex_acp_launch_preflight(env: Any) -> None:
         prerequisites = plan.setdefault("runner_prerequisites", {})
         prerequisites["codex_acp_runtime_launch_preflight_stage"] = (
-            "after_agent_install_before_acp_connect"
+            "preinstalled_benchflow_layer_after_sandbox_setup_before_acp_connect"
+            if args.require_preinstalled_benchflow_agent_runtime
+            else "after_agent_install_before_acp_connect"
         )
         prerequisites["codex_acp_runtime_launch_preflight_status"] = "running"
         prerequisites["codex_acp_runtime_launch_preflight_raw_logs_read"] = False
@@ -2805,6 +2931,36 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     original_rollout_connect_acp = getattr(
         benchflow_rollout_module, "connect_acp", _MISSING
     )
+    rollout_planes_class = getattr(
+        benchflow_rollout_planes_module, "DefaultRolloutPlanes", None
+    )
+    original_create_environment = (
+        getattr(rollout_planes_class, "create_environment", None)
+        if rollout_planes_class is not None
+        else None
+    )
+
+    def create_environment_with_runtime_mount(self: Any, *call_args: Any, **call_kwargs: Any) -> Any:
+        if original_create_environment is None:
+            raise RuntimeError("BenchFlow rollout planes create_environment missing")
+        env = original_create_environment(self, *call_args, **call_kwargs)
+        prerequisites = plan.setdefault("runner_prerequisites", {})
+        environment = str(call_args[0]) if call_args else ""
+        if (
+            runtime_mounts
+            and environment == "docker"
+            and hasattr(env, "_mounts_json")
+        ):
+            existing_mounts = getattr(env, "_mounts_json", None) or []
+            setattr(env, "_mounts_json", [*existing_mounts, *runtime_mounts])
+            prerequisites["benchflow_agent_runtime_mount_injected"] = True
+            prerequisites["benchflow_agent_runtime_mount_read_only"] = True
+            prerequisites["benchflow_agent_runtime_mount_source_recorded"] = False
+        elif runtime_mounts:
+            prerequisites["benchflow_agent_runtime_mount_injected"] = False
+            prerequisites["benchflow_agent_runtime_mount_read_only"] = True
+            prerequisites["benchflow_agent_runtime_mount_source_recorded"] = False
+        return env
 
     async def install_agent_host_local_acp(self: Any) -> None:
         cfg = self._config
@@ -2930,9 +3086,19 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     elif args.route == "codex-goal-mode-baseline":
         controller_user = _build_codex_goal_mode_baseline_user()
 
-    pre_agent_hooks = [] if args.host_local_acp_launch else [ensure_codex_acp_runtime_deps]
+    pre_agent_hooks = (
+        []
+        if args.host_local_acp_launch
+        or args.require_preinstalled_benchflow_agent_runtime
+        else [ensure_codex_acp_runtime_deps]
+    )
     if args.route == "goal-harness-product-mode":
         pre_agent_hooks.append(seed_product_mode_case_state)
+
+    agent_env: dict[str, str] = {}
+    if runtime_mounts:
+        agent_env["PATH"] = BENCHFLOW_AGENT_RUNTIME_CONTAINER_PATH
+        agent_env["CODEX_ACP_RUNTIME_HOME"] = BENCHFLOW_AGENT_RUNTIME_MOUNT_TARGET
 
     rollout_config_kwargs = {
         "task_path": effective_task_path,
@@ -2949,12 +3115,16 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         "agent_idle_timeout": args.agent_idle_timeout,
         "include_task_skills": bool(args.include_task_skills),
         "pre_agent_hooks": pre_agent_hooks,
+        "agent_env": agent_env or None,
+        "skip_agent_install": bool(args.require_preinstalled_benchflow_agent_runtime),
     }
     config = RolloutConfig(
         **_filter_kwargs_for_signature(RolloutConfig, rollout_config_kwargs)
     )
     result_path: Path | None = None
     Rollout.install_agent = install_agent_with_launch_preflight
+    if runtime_mounts and rollout_planes_class is not None:
+        rollout_planes_class.create_environment = create_environment_with_runtime_mount
     if args.host_local_acp_launch:
         benchflow_acp_runtime.connect_acp = connect_host_local_acp
         if original_rollout_connect_acp is not _MISSING:
@@ -2966,6 +3136,12 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             _merge_final_result_round_reward(controller_trace, result_path)
     finally:
         Rollout.install_agent = original_install_agent
+        if (
+            runtime_mounts
+            and rollout_planes_class is not None
+            and original_create_environment is not None
+        ):
+            rollout_planes_class.create_environment = original_create_environment
         benchflow_acp_runtime.connect_acp = original_runtime_connect_acp
         if original_rollout_connect_acp is not _MISSING:
             benchflow_rollout_module.connect_acp = original_rollout_connect_acp
@@ -3549,6 +3725,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--benchflow-agent-runtime-dir",
+        default=None,
+        help=(
+            "Host-side BenchFlow agent runtime layer built by "
+            "scripts/skillsbench_agent_runtime_layer.py. The path is used only "
+            "for local readiness checks and is not written to public output."
+        ),
+    )
+    parser.add_argument(
+        "--require-preinstalled-benchflow-agent-runtime",
+        action="store_true",
+        help=(
+            "Fail fast before a full case run unless --benchflow-agent-runtime-dir "
+            "contains bin/node, bin/npm, and bin/codex-acp. Use this for "
+            "container-local Codex ACP routes so case containers do not spend "
+            "attempts on per-case Node/npm/agent runtime materialization."
+        ),
+    )
+    parser.add_argument(
         "--remote-command-file-bridge-ready",
         action="store_true",
         help=(
@@ -3604,6 +3799,29 @@ async def async_main(
         plan = build_plan(args)
     if args.plan_only:
         return {"ok": True, "plan_only": True, "launch_plan": plan}
+    runtime_layer = (
+        plan.get("benchflow_agent_runtime_layer")
+        if isinstance(plan.get("benchflow_agent_runtime_layer"), dict)
+        else {}
+    )
+    if (
+        getattr(args, "require_preinstalled_benchflow_agent_runtime", False)
+        and runtime_layer.get("ready") is not True
+    ):
+        prerequisites = plan.setdefault("runner_prerequisites", {})
+        if isinstance(prerequisites, dict):
+            prerequisites["preinstalled_benchflow_agent_runtime_required"] = True
+            prerequisites["benchflow_agent_runtime_layer_ready"] = False
+            prerequisites["benchflow_agent_runtime_layer_status"] = str(
+                runtime_layer.get("status") or "missing_runtime_files"
+            )
+            prerequisites["codex_acp_runtime_launch_preflight_status"] = "blocked"
+            prerequisites["codex_acp_runtime_launch_preflight_stage"] = (
+                "preinstalled_benchflow_layer_missing_before_benchflow_run"
+            )
+        raise SkillsBenchSetupPreflightBlocked(
+            "preinstalled BenchFlow agent runtime layer missing before full case run"
+        )
     setup_preflight = (
         plan.get("task_setup_preflight")
         if isinstance(plan.get("task_setup_preflight"), dict)

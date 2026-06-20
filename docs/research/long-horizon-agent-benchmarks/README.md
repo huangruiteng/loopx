@@ -65,6 +65,10 @@ work still belongs in the existing code, examples, and contract documents:
   SkillsBench, and ALE. It preserves the split-control work as fallback
   research, but moves near-term execution back to clean upstream-close
   benchmark checkouts with Codex CLI and containers on the same host.
+- `benchmark-active-case-status-20260620.md`: current cloud-host case status
+  queue after the agent-runtime refactor and app-server Goal pivot. It tracks
+  running, superseded, and next-rerun case state without copying raw task text,
+  logs, trajectories, verifier output, credentials, or remote host paths.
 - `benchmark-route-transition-retrospective-20260619.md`: retrospective and
   runbook for the local-Codex split-control to cloud-host Codex route pivot. It
   records why split-control was hard, which contracts/reducers remain useful,
