@@ -1593,6 +1593,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     agent_runtime_layer = _benchflow_agent_runtime_layer_contract(args)
     requires_preinstalled_runtime = bool(agent_runtime_layer.get("required"))
     is_app_server_goal_route = route == "codex-app-server-goal-baseline"
+    app_server_goal_bridge_ready = bool(
+        args.remote_command_file_bridge_ready
+        or args.remote_command_file_bridge_probe
+    )
     app_server_goal_worker_contract = (
         build_skillsbench_app_server_goal_worker_contract(
             dataset=args.dataset,
@@ -1745,6 +1749,14 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                         "runner_integration_ready"
                     )
                 )
+                if app_server_goal_worker_contract
+                else False
+            ),
+            "codex_app_server_goal_worker_remote_command_file_bridge_required": (
+                bool(app_server_goal_worker_contract)
+            ),
+            "codex_app_server_goal_worker_remote_command_file_bridge_ready": (
+                app_server_goal_bridge_ready
                 if app_server_goal_worker_contract
                 else False
             ),
@@ -3987,6 +3999,31 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 2
     if args.route == "codex-app-server-goal-baseline" and not args.plan_only:
+        bridge_ready = bool(
+            args.remote_command_file_bridge_ready
+            or args.remote_command_file_bridge_probe
+        )
+        if not bridge_ready:
+            payload = {
+                "ok": False,
+                "error_type": "SkillsBenchNativeGoalWorkerBridgePending",
+                "route": args.route,
+                "reason": (
+                    "codex-app-server-goal-baseline runs Codex on the host, but "
+                    "SkillsBench task files and edits live inside the BenchFlow "
+                    "sandbox. A bounded command/file bridge must be materialized "
+                    "before a host app-server Goal turn can operate on the "
+                    "scored workspace."
+                ),
+                "next_action": (
+                    "materialize and probe the SkillsBench remote command/file "
+                    "bridge, then wire the host app-server Goal worker into the "
+                    "BenchFlow ACP transport; do not fall back to codex-acp or "
+                    "a host cwd that cannot see the sandbox"
+                ),
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+            return 2
         payload = {
             "ok": False,
             "error_type": "SkillsBenchNativeGoalWorkerIntegrationPending",
@@ -3994,8 +4031,9 @@ def main(argv: list[str] | None = None) -> int:
             "reason": (
                 "codex-app-server-goal-baseline requires a BenchFlow worker "
                 "integration that launches host Codex app-server Goal turns via "
-                "thread/start, thread/goal/set/get, and turn/start; the current "
-                "runner must not fall back to codex-acp"
+                "thread/start, thread/goal/set/get, and turn/start while the "
+                "worker uses the ready command/file bridge for sandbox edits; "
+                "the current runner must not fall back to codex-acp"
             ),
             "next_action": (
                 "wire the SkillsBench host Codex app-server Goal worker into "

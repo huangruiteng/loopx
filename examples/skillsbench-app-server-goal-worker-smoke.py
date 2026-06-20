@@ -81,7 +81,15 @@ def assert_plan_prerequisites(plan: dict[str, Any]) -> None:
     assert prereq["codex_app_server_goal_worker_turn_start_required"] is True, prereq
     assert prereq["codex_app_server_goal_worker_goal_get_required"] is True, prereq
     assert (
+        prereq["codex_app_server_goal_worker_remote_command_file_bridge_required"]
+        is True
+    ), prereq
+    assert (
         prereq["codex_app_server_goal_worker_runner_integration_ready"] is False
+    ), prereq
+    assert (
+        prereq["codex_app_server_goal_worker_remote_command_file_bridge_ready"]
+        is False
     ), prereq
 
 
@@ -151,6 +159,37 @@ def test_launcher_plan_only_uses_native_worker_route() -> None:
     contract = plan["app_server_goal_worker_contract"]
     assert contract["route"] == ROUTE, contract
     assert contract["worker_plan"]["schema_version"] == "codex_app_server_goal_worker_v0", contract
+
+
+def test_launcher_plan_only_marks_bridge_ready_when_explicit() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-plan-") as tmp:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--route",
+                ROUTE,
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--remote-command-file-bridge-ready",
+                "--plan-only",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    payload = json.loads(result.stdout)
+    prereq = payload["launch_plan"]["runner_prerequisites"]
+    assert (
+        prereq["codex_app_server_goal_worker_remote_command_file_bridge_ready"]
+        is True
+    ), prereq
+    assert (
+        prereq["codex_app_server_goal_worker_runner_integration_ready"] is False
+    ), prereq
 
 
 def test_host_worker_contract_only_cli() -> None:
@@ -223,7 +262,7 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         assert "Private task instruction placeholder" not in public_json, payload
 
 
-def test_full_run_fails_closed_until_worker_is_wired() -> None:
+def test_full_run_fails_closed_until_bridge_is_materialized() -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -232,6 +271,28 @@ def test_full_run_fails_closed_until_worker_is_wired() -> None:
             "llm-prefix-cache-replay",
             "--route",
             ROUTE,
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 2, result
+    payload = json.loads(result.stderr)
+    assert payload["error_type"] == "SkillsBenchNativeGoalWorkerBridgePending", payload
+    assert "command/file bridge" in payload["reason"], payload
+
+
+def test_full_run_with_bridge_ready_still_fails_closed_until_transport_is_wired() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"),
+            "--task-id",
+            "llm-prefix-cache-replay",
+            "--route",
+            ROUTE,
+            "--remote-command-file-bridge-ready",
         ],
         cwd=REPO_ROOT,
         check=False,
@@ -249,7 +310,9 @@ if __name__ == "__main__":
     test_worker_contract_is_public_safe()
     test_skeleton_marks_app_server_goal_actor()
     test_launcher_plan_only_uses_native_worker_route()
+    test_launcher_plan_only_marks_bridge_ready_when_explicit()
     test_host_worker_contract_only_cli()
     test_host_worker_waits_for_completion_and_keeps_public_json_compact()
-    test_full_run_fails_closed_until_worker_is_wired()
+    test_full_run_fails_closed_until_bridge_is_materialized()
+    test_full_run_with_bridge_ready_still_fails_closed_until_transport_is_wired()
     print("skillsbench-app-server-goal-worker smoke ok")

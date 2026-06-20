@@ -708,10 +708,22 @@ python3 scripts/skillsbench_automation_loop.py \
 The plan must show
 `agent_execution_mode=host_codex_app_server_goal_worker`,
 `codex_app_server_goal_worker_turn_start_required=true`, and
-`codex_app_server_goal_worker_runner_integration_ready=false` until the
-BenchFlow worker integration is actually wired. A full launch of this route
-must fail closed rather than falling back to `codex-acp`. The host-side worker
-surface is:
+`codex_app_server_goal_worker_remote_command_file_bridge_required=true`.
+By default it should also show
+`codex_app_server_goal_worker_remote_command_file_bridge_ready=false` and
+`codex_app_server_goal_worker_runner_integration_ready=false`.
+
+There are two distinct gates for a real scored launch:
+
+1. Materialize a bounded command/file bridge so the host Codex app-server Goal
+   worker can operate on the BenchFlow sandbox where task files and edits live.
+   A host cwd that cannot see the sandbox is not a valid fallback.
+2. Wire that host worker through BenchFlow's ACP transport so official task
+   staging and verification still run through BenchFlow.
+
+A full launch of this route must fail closed rather than falling back to
+`codex-acp`, a slash-prefix `/goal` prompt, or a host-only workspace. The
+host-side worker surface is:
 
 ```bash
 python3 scripts/skillsbench_host_codex_goal_worker.py \
@@ -744,6 +756,14 @@ python3 scripts/skillsbench_host_codex_goal_worker.py \
 The compact worker JSON is safe to inspect for lifecycle debugging, but the
 response text file is private task execution material and must stay out of
 public docs, ledgers, rollout logs, and PRs.
+
+Use `--remote-command-file-bridge-ready` only after a public-safe bridge probe
+has passed. That flag updates only the plan's bridge readiness fields;
+`codex_app_server_goal_worker_runner_integration_ready` must remain `false`
+until the BenchFlow transport is actually wired. If the full route exits with
+`SkillsBenchNativeGoalWorkerIntegrationPending`, the next fix belongs in the
+host-worker-to-ACP transport, not in verifier timeout, Docker setup, or model
+behavior.
 
 Preview the public-safe prewarm plan:
 
