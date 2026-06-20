@@ -2789,48 +2789,51 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             cwd_result = await self._env.exec("pwd", timeout_sec=10)
             self._agent_cwd = (cwd_result.stdout or "").strip() or "/app"
             self._agent_cfg = None
+            planes = getattr(self, "_planes", None)
+            if planes is None:
+                raise RuntimeError("BenchFlow rollout planes unavailable")
             if cfg.sandbox_user:
                 prerequisites["host_local_acp_install_stage"] = "sandbox_user_setup"
-                self._agent_cwd = await benchflow_rollout_module.setup_sandbox_user(
+                self._agent_cwd = await planes.setup_sandbox_user(
                     self._env,
                     cfg.sandbox_user,
                     workspace=self._agent_cwd,
                     timeout_sec=cfg.sandbox_setup_timeout,
                 )
             prerequisites["host_local_acp_install_stage"] = "snapshot_build_config"
-            await benchflow_rollout_module._snapshot_build_config(
-                self._env, workspace=self._agent_cwd
-            )
+            await planes.snapshot_build_config(self._env, workspace=self._agent_cwd)
             prerequisites["host_local_acp_install_stage"] = "seed_verifier_workspace"
-            await benchflow_rollout_module._seed_verifier_workspace(
+            await planes.seed_verifier_workspace(
                 self._env, workspace=self._agent_cwd, sandbox_user=cfg.sandbox_user
             )
             prerequisites["host_local_acp_install_stage"] = "deploy_skills"
-            await benchflow_rollout_module.deploy_skills(
+            await planes.deploy_skills(
                 self._env,
                 getattr(self, "_effective_task_path", cfg.task_path),
-                cfg.skills_dir,
+                getattr(self, "_effective_skills_dir", cfg.skills_dir),
                 None,
                 cfg.sandbox_user,
                 self._agent_cwd,
-                self._task,
-                include_task_skills=getattr(
-                    cfg,
-                    "include_task_skills",
-                    bool(args.include_task_skills),
+                skills_sandbox_dir=getattr(
+                    self,
+                    "_effective_skills_sandbox_dir",
+                    getattr(cfg, "skills_sandbox_dir", "/app/skills"),
                 ),
             )
             if cfg.export_generated_skills_to:
                 prerequisites["host_local_acp_install_stage"] = (
                     "ensure_generated_skills_dir"
                 )
-                await benchflow_rollout_module._ensure_sandbox_dir(
+                ensure_sandbox_dir = getattr(
+                    benchflow_rollout_module, "_ensure_sandbox_dir", None
+                )
+                if ensure_sandbox_dir is None:
+                    raise RuntimeError("BenchFlow ensure_sandbox_dir unavailable")
+                await ensure_sandbox_dir(
                     self._env, cfg.generated_skills_root, cfg.sandbox_user
                 )
             prerequisites["host_local_acp_install_stage"] = "lockdown_paths"
-            await benchflow_rollout_module.lockdown_paths(
-                self._env, self._effective_locked
-            )
+            await planes.lockdown_paths(self._env, self._effective_locked)
         except Exception:
             prerequisites["host_local_acp_install_failed_stage"] = str(
                 prerequisites.get("host_local_acp_install_stage") or "unknown"
@@ -2995,6 +2998,34 @@ def reduce_result(
             if label not in existing_labels:
                 existing_labels.append(label)
         compact["failure_attribution_labels"] = existing_labels
+    elif (
+        compact.get("official_score_status") == "missing"
+        and runner_prerequisites.get("agent_execution_mode") == "host_local_acp"
+        and runner_prerequisites.get("host_local_acp_launch_status")
+        == "sandbox_installed"
+    ):
+        counters = compact.get("interaction_counters")
+        if isinstance(counters, dict):
+            event_count = counters.get("private_trajectory_event_count")
+            tool_count = counters.get("private_trajectory_tool_call_count")
+            summary_present = counters.get("private_trajectory_summary_present")
+            if (
+                summary_present is True
+                and event_count == 0
+                and tool_count == 0
+            ):
+                label = "skillsbench_host_local_acp_empty_trajectory_after_install"
+                compact["score_failure_attribution"] = label
+                compact.setdefault("first_blocker", label)
+                existing_labels = [
+                    item
+                    for item in compact.get("failure_attribution_labels", [])
+                    if isinstance(item, str)
+                ]
+                for item in (label, "skillsbench_runner_setup_error"):
+                    if item not in existing_labels:
+                        existing_labels.append(item)
+                compact["failure_attribution_labels"] = existing_labels
     if task_staging:
         compact["task_staging"] = task_staging
     discovery = plan.get("result_discovery")
