@@ -145,6 +145,7 @@ Projection, authority, write scope, and lease integrity.
 | P1 | IP-016 | Task Lease Claim | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
 | P1 | IP-019 | Side-Agent Scoped Continuation | Primary plus side agent | no interruption unless scope/review is ambiguous | side agent claims scoped todo, uses independent worktree, then self-merges small validated work or hands review to primary |
 | P1 | IP-020 | Todo Claim / Supersede / Successor Lifecycle | Agent plus controller | no interruption unless successor is a user todo or conflict needs decision | claim before delivery; supersede stale work; complete slices with successor or no-follow-up rationale |
+| P1 | IP-022 | Claimed Todo Visibility Lanes | Status/quota/frontstage | no interruption | keep scheduler candidates separate from claimed-work visibility lanes |
 
 ### Evidence Lifecycle
 
@@ -1130,6 +1131,79 @@ permission to ignore gates and boundaries.
 - `examples/todo-concurrent-write-lock-smoke.py`
 - future status/quota smoke that verifies first executable successor projection
   after `todo supersede` and `todo complete --next-agent-todo`.
+
+#### IP-022 Claimed Todo Visibility Lanes
+
+**Trigger**
+
+- status or quota summarizes a todo set with more open work than the small
+  scheduler top-N can show;
+- registered agents use `claimed_by`, especially side agents whose scoped work
+  may sit behind higher-priority primary or benchmark todos;
+- a dashboard, review packet, or heartbeat prompt needs to show ownership,
+  current-agent work, and monitor responsibilities without changing which
+  executable todo the scheduler selects.
+
+**Expected behavior**
+
+Todo projection has two jobs that should not collapse into one list:
+
+1. **Scheduling**: choose a narrow set of runnable candidates for the current
+   guard, capability check, and steering audit.
+2. **Visibility**: keep ownership, claimed work, and monitor lanes observable
+   for humans, dashboards, and scoped agents.
+
+Status and quota may still expose `first_open_items`,
+`first_executable_items`, and `executable_backlog_items` as compact scheduler
+surfaces. They should also project bounded visibility lanes:
+
+- `unclaimed_priority_open_items`: priority-ranked unclaimed work that an agent
+  may consider claiming;
+- `claimed_open_items`: claimed work that may be outside the scheduler top-N;
+- `claimed_advancement_open_items`: claimed executable delivery work;
+- `claimed_monitor_open_items`: claimed continuous-monitor work;
+- for agent-scoped quota payloads,
+  `current_agent_claimed_open_items`,
+  `current_agent_claimed_advancement_items`,
+  `current_agent_claimed_monitor_items`, and `claimed_by_others_items`.
+
+The default agent-facing lane cap should remain modest, currently 16 items per
+lane, with count fields showing when more work exists. Rich frontstage views
+that need more than this should use a paged or filtered projection rather than
+inflating every heartbeat/quota payload. Monitor lanes remain visibility
+context unless they record a material transition or blocker; they should not
+steal the advancement slot simply because they are claimed.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  T["parsed todo set"] --> S["scheduler lanes: first/open/executable candidates"]
+  T --> V["visibility lanes: claimed, unclaimed, monitor"]
+  S --> Q["quota/capability guard chooses runnable candidate set"]
+  Q --> A["agent steering audit chooses actual todo"]
+  V --> F["dashboard/frontstage/review packet shows ownership"]
+  V --> C{"agent identity present?"}
+  C -->|"yes"| M["current-agent claimed advancement + monitor lanes"]
+  C -->|"no"| G["global claimed/unclaimed ownership view"]
+  F --> H["human sees who owns what without changing scheduler result"]
+```
+
+**Bad smell**
+
+A side agent claims a productization todo, but status/quota only expose the
+first few priority-ranked benchmark todos. The agent then appears idle or
+unowned work appears available even though the control plane already knows its
+owner. The opposite bad smell is also harmful: a large claimed-work list is fed
+directly into the scheduler or heartbeat prompt, causing noisy routing and
+monitor work to crowd out the selected advancement lane.
+
+**Validation**
+
+- `docs/status-data-contract.md`
+- `examples/todo-first-open-summary-smoke.py`
+- PR #262 / commit `292a2c8`: additive status/quota visibility lanes with a
+  16-item agent-facing cap.
 
 ### Evidence Lifecycle
 
