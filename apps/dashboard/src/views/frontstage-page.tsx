@@ -1,5 +1,6 @@
 import {
   Activity,
+  BarChart3,
   Bot,
   CircleAlert,
   Clock3,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import showcaseCatalog from "../../../../docs/showcases/showcase-catalog.json";
 import { frontstageRoute } from "../router";
 import {
   GoalChannelProjection,
@@ -26,6 +28,38 @@ import { cn } from "../lib/utils";
 
 type BadgeTone = "neutral" | "success" | "warning" | "info" | "danger";
 type FrontstageSource = { kind: "demo"; label: string } | { kind: "url"; label: string };
+type NumberRange = { low?: number; high?: number };
+type ShowcaseEfficiencyCase = {
+  id: string;
+  title: string;
+  case_page?: string;
+  evidence_boundary?: string;
+  feature_points?: string[];
+  frontend_card?: {
+    primary_metric_hint?: string;
+  };
+  workload_signal?: {
+    whole_repository?: {
+      commit_count?: number;
+      files_touched?: number;
+    };
+    public_window?: {
+      calendar_days?: number;
+      active_commit_days?: number;
+    };
+    efficiency_model?: {
+      baseline?: string;
+      estimated_developer_days?: NumberRange;
+      single_engineer_calendar_compression?: NumberRange;
+      two_person_team_calendar_compression?: NumberRange;
+      claim_boundary?: string;
+    };
+  };
+};
+
+const selfIterationShowcase = (showcaseCatalog as { cases: ShowcaseEfficiencyCase[] }).cases.find(
+  (item) => item.id === "2026-06-19-goal-harness-self-iteration",
+);
 
 type ProjectionOption = {
   goalId: string;
@@ -103,6 +137,20 @@ function uniqueClaimOwners(projection: GoalChannelProjection) {
   );
 }
 
+function formatNumber(value: number | undefined, fallback = "n/a") {
+  if (value === undefined) {
+    return fallback;
+  }
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
+}
+
+function formatRange(range: NumberRange | undefined, suffix = "") {
+  if (!range || range.low === undefined || range.high === undefined) {
+    return "n/a";
+  }
+  return `${formatNumber(range.low)}-${formatNumber(range.high)}${suffix}`;
+}
+
 function TodoRow({ todo }: { todo: GoalChannelTodo }) {
   return (
     <div className="grid gap-3 border-b border-slate-200 px-3 py-3 last:border-b-0 md:grid-cols-[96px_minmax(0,1fr)_156px]">
@@ -166,6 +214,83 @@ function Panel({
       </div>
       {children}
     </section>
+  );
+}
+
+function EfficiencyEvidencePanel() {
+  const workload = selfIterationShowcase?.workload_signal;
+  const model = workload?.efficiency_model;
+  if (!selfIterationShowcase || !workload || !model) {
+    return null;
+  }
+
+  const metrics = [
+    {
+      label: "public Git facts",
+      value: `${formatNumber(workload.whole_repository?.commit_count)} commits`,
+      helper: `${formatNumber(workload.whole_repository?.files_touched)} files touched`,
+    },
+    {
+      label: "actual public window",
+      value: `${formatNumber(workload.public_window?.calendar_days)} days`,
+      helper: `${formatNumber(workload.public_window?.active_commit_days)} active commit days`,
+    },
+    {
+      label: "AI-assisted baseline",
+      value: formatRange(model.estimated_developer_days, " days"),
+      helper: model.baseline ?? "maturity-adjusted product process",
+    },
+    {
+      label: "single-engineer compression",
+      value: formatRange(model.single_engineer_calendar_compression, "x"),
+      helper: "directional range, not a precision metric",
+    },
+  ];
+  const featurePoints = selfIterationShowcase.feature_points?.slice(0, 4) ?? [];
+
+  return (
+    <Panel icon={BarChart3} title="Efficiency Evidence">
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,420px)]" data-testid="frontstage-efficiency-evidence">
+        <div className="min-w-0 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="success">commit-backed</Badge>
+            <Badge variant="info">maturity-adjusted</Badge>
+            <Badge variant="neutral">public-safe</Badge>
+          </div>
+          <h3 className="text-lg font-semibold leading-7 text-slate-950">{selfIterationShowcase.title}</h3>
+          <p className="text-sm leading-6 text-slate-600">
+            {selfIterationShowcase.frontend_card?.primary_metric_hint}
+          </p>
+          <p className="text-sm leading-6 text-slate-600">
+            The comparison converts public commits into product requirement clusters, discounts prototype-level work, and compares that conservative baseline with the actual public Git window.
+          </p>
+          <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium leading-5 text-slate-600">
+            {model.claim_boundary ?? selfIterationShowcase.evidence_boundary}
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+          {metrics.map((metric) => (
+            <div className="border-l-2 border-emerald-500 bg-emerald-50 px-3 py-2" key={metric.label}>
+              <div className="text-[11px] font-semibold uppercase tracking-normal text-emerald-800">{metric.label}</div>
+              <div className="mt-1 break-words text-xl font-semibold leading-7 text-slate-950">{metric.value}</div>
+              <div className="mt-0.5 break-words text-xs leading-5 text-slate-600">{metric.helper}</div>
+            </div>
+          ))}
+        </div>
+        {featurePoints.length ? (
+          <div className="border-t border-slate-200 pt-3 lg:col-span-2">
+            <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">requirement clusters</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {featurePoints.map((point) => (
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium leading-5 text-slate-700" key={point}>
+                  {point}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </Panel>
   );
 }
 
@@ -369,6 +494,8 @@ function FrontstageRoute({
               ))}
             </div>
           </div>
+
+          <EfficiencyEvidencePanel />
 
           <div className="grid gap-4 lg:grid-cols-3">
             <Panel icon={Users} title="Decision Frame">

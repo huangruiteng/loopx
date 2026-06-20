@@ -44,8 +44,11 @@ human gate is explicit, whether agent work is active, how many lanes are
 claimed, and whether recent evidence exists. The `Role Map` then separates the
 owner, agent lane, and claim-owner responsibilities so a new contributor can
 tell which part of the system is waiting, running, or coordinating side work.
-Both panels are derived from the read-only projection; they are not browser
-write authority.
+The `Efficiency Evidence` panel pulls the public-safe self-iteration case from
+the showcase catalog so the hosted frontstage can show commit-backed baseline,
+actual-window, compression, and evidence-boundary signals without exposing raw
+sessions. These panels are derived from the read-only projection or public-safe
+showcase metadata; they are not browser write authority.
 
 For live local control-plane inspection, open
 `/frontstage?statusUrl=http://127.0.0.1:8766/status.json`. The route reads
