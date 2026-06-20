@@ -279,14 +279,7 @@ async function captureFrontstage(page, url, label, requiredText = []) {
   const required = [
     "Goal Harness",
     "Frontstage channel",
-    "goal_channel_projection_v0",
     "Projection is read-only",
-    "Decision Frame",
-    "Quota Guard",
-    "Source Freshness",
-    "Always-on agent operations",
-    "CLAIMED LANES",
-    "EVIDENCE LOOP",
     "Efficiency Evidence",
     "AI-ASSISTED BASELINE",
     "SINGLE-ENGINEER COMPRESSION",
@@ -302,12 +295,6 @@ async function captureFrontstage(page, url, label, requiredText = []) {
     "Blocked P0 with safe P1/P2 rotation",
     "Goal Harness self-iteration loop",
     "Creator-operator long-running agent case",
-    "User Todo Lane",
-    "Agent Todo Lane",
-    "Run Timeline",
-    "Role Map",
-    "Active Claims",
-    "Truth Contract",
     "Boundary Warnings",
     ...requiredText,
   ];
@@ -357,22 +344,27 @@ async function main() {
     desktopPage.on("pageerror", (error) => pageErrors.push(error.message));
     try {
       await captureFrontstage(desktopPage, `${baseUrl}/frontstage`, "desktop-frontstage", [
-        "Demo Goal Channel",
+        "Goal Harness Showcase Frontstage",
+        "Always-on agent teams, governed by human judgment",
+        "public cases",
+        "story beats",
         "showcase mode",
         "Showcase mode ignores statusUrl",
-        "codex-main-control",
-        "codex-side-bypass",
-        "Render the productization frontstage fixture",
+        "Public Boundary",
+        "Ops live only",
+        "None in browser",
       ]);
       await captureFrontstage(
         desktopPage,
         `${baseUrl}/frontstage?statusUrl=/${fixtureName}&goalId=live-goal-a`,
         "desktop-frontstage-showcase-ignores-status-url",
         [
-          "Demo Goal Channel",
+          "Goal Harness Showcase Frontstage",
           "showcase mode",
           "Showcase mode ignores statusUrl",
           "statusUrl ignored",
+          "Public Boundary",
+          "Ops live only",
         ],
       );
       const publicModeText = await desktopPage.locator("body").innerText();
@@ -397,7 +389,20 @@ async function main() {
           "ops live",
           "live status feed",
           "Live Goal Channel",
+          "goal_channel_projection_v0",
+          "Always-on agent operations",
           "Render live statusUrl channel projection",
+          "Decision Frame",
+          "Quota Guard",
+          "Source Freshness",
+          "User Todo Lane",
+          "Agent Todo Lane",
+          "Run Timeline",
+          "Role Map",
+          "Active Claims",
+          "Truth Contract",
+          "CLAIMED LANES",
+          "EVIDENCE LOOP",
           "browser_smoke_public_fixture",
         ],
       );
@@ -408,9 +413,10 @@ async function main() {
         throw new Error(`Goal selector did not update URL: ${desktopPage.url()}`);
       }
       await captureFrontstage(desktopPage, `${baseUrl}/frontstage`, "desktop-frontstage-after-ops-reset", [
-        "Demo Goal Channel",
+        "Goal Harness Showcase Frontstage",
         "showcase mode",
         "Showcase mode ignores statusUrl",
+        "Public Boundary",
       ]);
       const resetText = await desktopPage.locator("body").innerText();
       const resetForbidden = [
@@ -437,12 +443,12 @@ async function main() {
     mobilePage.on("pageerror", (error) => pageErrors.push(`mobile: ${error.message}`));
     try {
       await captureFrontstage(mobilePage, `${baseUrl}/frontstage`, "mobile-frontstage", [
-        "Demo Goal Channel",
+        "Goal Harness Showcase Frontstage",
+        "Always-on agent teams, governed by human judgment",
         "showcase mode",
         "Showcase mode ignores statusUrl",
-        "codex-main-control",
-        "codex-side-bypass",
-        "Render the productization frontstage fixture",
+        "Public Boundary",
+        "Ops live only",
       ]);
     } finally {
       await mobilePage.close();

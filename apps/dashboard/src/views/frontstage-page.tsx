@@ -136,6 +136,13 @@ function countClaimedTodos(todos: GoalChannelTodo[]) {
   return todos.filter((todo) => Boolean(todo.claimed_by)).length;
 }
 
+function countShowcaseStoryBeats() {
+  return frontstageShowcases.reduce(
+    (total, item) => total + (item.frontend_card?.story_beats?.length ?? 0),
+    0,
+  );
+}
+
 function uniqueClaimOwners(projection: GoalChannelProjection) {
   return Array.from(
     new Set(
@@ -452,6 +459,30 @@ function ShowcaseCasePackPanel() {
   );
 }
 
+function PublicShowcaseBoundaryPanel() {
+  return (
+    <Panel icon={ShieldCheck} title="Public Boundary">
+      <div className="grid gap-3 p-4 md:grid-cols-3" data-testid="frontstage-public-showcase-contract">
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-normal text-emerald-800">primary source</div>
+          <div className="mt-2 text-sm font-semibold leading-6 text-slate-950">docs/showcases/showcase-catalog.json</div>
+          <p className="mt-1 text-xs leading-5 text-slate-600">Renderable public story data, evidence boundaries, and case-page links.</p>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">live feeds</div>
+          <div className="mt-2 text-sm font-semibold leading-6 text-slate-950">Ops live only</div>
+          <p className="mt-1 text-xs leading-5 text-slate-600">Local status URLs stay behind the explicit Ops live switch and are not the public showcase source.</p>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">write authority</div>
+          <div className="mt-2 text-sm font-semibold leading-6 text-slate-950">None in browser</div>
+          <p className="mt-1 text-xs leading-5 text-slate-600">The frontstage explains cases; Goal Harness CLI and append-only history remain the control plane.</p>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function FrontstageRoute({
   goalOptions,
   hasIgnoredStatusUrl,
@@ -490,28 +521,52 @@ function FrontstageRoute({
   const claimOwners = uniqueClaimOwners(projection);
   const claimOwnerPreview = claimOwners.slice(0, 2).join(", ");
   const isOpsMode = mode === "ops";
-  const operationSignals = [
-    {
-      label: "human gate",
-      value: projection.decision_frame.user_action_required ? "explicit" : "clear",
-      tone: projection.decision_frame.user_action_required ? "warning" : "success",
-    },
-    {
-      label: "agent work",
-      value: projection.decision_frame.agent_action_required ? "running" : "idle",
-      tone: projection.decision_frame.agent_action_required ? "info" : "neutral",
-    },
-    {
-      label: "claimed lanes",
-      value: `${claimedAgentTodos} / ${projection.agent_todos.length}`,
-      tone: claimedAgentTodos ? "info" : "neutral",
-    },
-    {
-      label: "evidence loop",
-      value: `${projection.recent_events.length} events`,
-      tone: projection.recent_events.length ? "success" : "neutral",
-    },
-  ] satisfies Array<{ label: string; value: string; tone: BadgeTone }>;
+  const storyBeatCount = countShowcaseStoryBeats();
+  const heroTitle = isOpsMode ? projection.display_name : "Goal Harness Showcase Frontstage";
+  const heroSubtitle = isOpsMode
+    ? "Always-on agent operations, with human judgment kept in the control plane."
+    : "Always-on agent teams, governed by human judgment.";
+  const heroBody = isOpsMode
+    ? projection.next_action
+    : "Explore public-safe cases rendered from the showcase catalog: gated decisions stay explicit, safe side paths keep moving, and evidence remains reviewable.";
+  const heroStats = isOpsMode
+    ? [
+        { label: "open user todos", value: String(openUserTodos) },
+        { label: "open agent todos", value: String(openAgentTodos) },
+      ]
+    : [
+        { label: "public cases", value: String(frontstageShowcases.length) },
+        { label: "story beats", value: String(storyBeatCount) },
+      ];
+  const operationSignals: Array<{ label: string; value: string; tone: BadgeTone }> = isOpsMode
+    ? [
+        {
+          label: "human gate",
+          value: projection.decision_frame.user_action_required ? "explicit" : "clear",
+          tone: projection.decision_frame.user_action_required ? "warning" : "success",
+        },
+        {
+          label: "agent work",
+          value: projection.decision_frame.agent_action_required ? "running" : "idle",
+          tone: projection.decision_frame.agent_action_required ? "info" : "neutral",
+        },
+        {
+          label: "claimed lanes",
+          value: `${claimedAgentTodos} / ${projection.agent_todos.length}`,
+          tone: claimedAgentTodos ? "info" : "neutral",
+        },
+        {
+          label: "evidence loop",
+          value: `${projection.recent_events.length} events`,
+          tone: projection.recent_events.length ? "success" : "neutral",
+        },
+      ]
+    : [
+        { label: "human judgment", value: "governed", tone: "success" },
+        { label: "agent teams", value: "always-on", tone: "info" },
+        { label: "public cases", value: String(frontstageShowcases.length), tone: "neutral" },
+        { label: "live status", value: "ops only", tone: "warning" },
+      ] satisfies Array<{ label: string; value: string; tone: BadgeTone }>;
   const roleSignals = [
     {
       label: "owner",
@@ -646,31 +701,31 @@ function FrontstageRoute({
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant="success">goal_channel_projection_v0</Badge>
-                  <Badge variant="neutral">{projection.mode}</Badge>
-                  <Badge variant="info">{projection.waiting_on}</Badge>
+                  <Badge variant={isOpsMode ? "success" : "info"}>
+                    {isOpsMode ? "goal_channel_projection_v0" : "showcase catalog"}
+                  </Badge>
+                  <Badge variant="neutral">{isOpsMode ? projection.mode : "public-safe"}</Badge>
+                  <Badge variant="info">{isOpsMode ? projection.waiting_on : "docs/showcases"}</Badge>
                   <Badge variant={isOpsMode ? "warning" : "success"}>{isOpsMode ? "ops live" : "showcase mode"}</Badge>
                   <Badge variant={isOpsMode && source.kind === "url" ? "success" : "neutral"}>
                     {isOpsMode && source.kind === "url" ? "url" : "demo"}
                   </Badge>
                 </div>
                 <h1 className="mt-3 text-3xl font-semibold tracking-normal text-slate-950">
-                  {projection.display_name}
+                  {heroTitle}
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-700">
-                  Always-on agent operations, with human judgment kept in the control plane.
+                  {heroSubtitle}
                 </p>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{projection.next_action}</p>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{heroBody}</p>
               </div>
               <div className="grid min-w-[220px] grid-cols-2 gap-2 text-center">
-                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="text-lg font-semibold">{openUserTodos}</div>
-                  <div className="text-[11px] font-medium text-slate-500">open user todos</div>
-                </div>
-                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="text-lg font-semibold">{openAgentTodos}</div>
-                  <div className="text-[11px] font-medium text-slate-500">open agent todos</div>
-                </div>
+                {heroStats.map((stat) => (
+                  <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2" key={stat.label}>
+                    <div className="text-lg font-semibold">{stat.value}</div>
+                    <div className="text-[11px] font-medium text-slate-500">{stat.label}</div>
+                  </div>
+                ))}
               </div>
             </div>
             <div className="mt-5 grid gap-2 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-4" data-testid="frontstage-operations-strip">
@@ -691,108 +746,120 @@ function FrontstageRoute({
 
           <ShowcaseCasePackPanel />
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Panel icon={Users} title="Decision Frame">
-              <div className="grid gap-2 p-4">
-                {boolBadge(projection.decision_frame.user_action_required, "user action", "no user action")}
-                {boolBadge(projection.decision_frame.agent_action_required, "agent action", "no agent action")}
-                {boolBadge(!projection.decision_frame.quiet_noop_allowed, "no quiet noop", "quiet noop ok")}
-              </div>
-            </Panel>
-            <Panel icon={ShieldCheck} title="Quota Guard">
-              <div className="space-y-2 p-4 text-sm leading-6">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-slate-500">state</span>
-                  <Badge variant={statusTone(stringifyScalar(projection.quota.state))}>{stringifyScalar(projection.quota.state)}</Badge>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-slate-500">slots</span>
-                  <span className="font-semibold">{quotaUsed}</span>
-                </div>
-                <p className="text-xs text-slate-500">{stringifyScalar(projection.quota.spend_policy)}</p>
-              </div>
-            </Panel>
-            <Panel icon={Clock3} title="Source Freshness">
-              <div className="space-y-2 p-4 text-xs leading-5 text-slate-600">
-                {Object.entries(projection.source_refs).map(([key, value]) => (
-                  <div className="grid gap-1 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5" key={key}>
-                    <span className="font-semibold text-slate-500">{key}</span>
-                    <span className="break-words font-medium text-slate-700">{stringifyScalar(value)}</span>
+          {isOpsMode ? (
+            <>
+              <div className="grid gap-4 lg:grid-cols-3">
+                <Panel icon={Users} title="Decision Frame">
+                  <div className="grid gap-2 p-4">
+                    {boolBadge(projection.decision_frame.user_action_required, "user action", "no user action")}
+                    {boolBadge(projection.decision_frame.agent_action_required, "agent action", "no agent action")}
+                    {boolBadge(!projection.decision_frame.quiet_noop_allowed, "no quiet noop", "quiet noop ok")}
                   </div>
-                ))}
+                </Panel>
+                <Panel icon={ShieldCheck} title="Quota Guard">
+                  <div className="space-y-2 p-4 text-sm leading-6">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">state</span>
+                      <Badge variant={statusTone(stringifyScalar(projection.quota.state))}>{stringifyScalar(projection.quota.state)}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">slots</span>
+                      <span className="font-semibold">{quotaUsed}</span>
+                    </div>
+                    <p className="text-xs text-slate-500">{stringifyScalar(projection.quota.spend_policy)}</p>
+                  </div>
+                </Panel>
+                <Panel icon={Clock3} title="Source Freshness">
+                  <div className="space-y-2 p-4 text-xs leading-5 text-slate-600">
+                    {Object.entries(projection.source_refs).map(([key, value]) => (
+                      <div className="grid gap-1 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5" key={key}>
+                        <span className="font-semibold text-slate-500">{key}</span>
+                        <span className="break-words font-medium text-slate-700">{stringifyScalar(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
               </div>
-            </Panel>
-          </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Panel icon={Users} title="User Todo Lane">
-              <div data-testid="frontstage-user-todos">
-                {projection.user_todos.map((todo) => (
-                  <TodoRow key={todo.todo_id ?? todo.title} todo={todo} />
-                ))}
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Panel icon={Users} title="User Todo Lane">
+                  <div data-testid="frontstage-user-todos">
+                    {projection.user_todos.map((todo) => (
+                      <TodoRow key={todo.todo_id ?? todo.title} todo={todo} />
+                    ))}
+                  </div>
+                </Panel>
+                <Panel icon={Bot} title="Agent Todo Lane">
+                  <div data-testid="frontstage-agent-todos">
+                    {projection.agent_todos.map((todo) => (
+                      <TodoRow key={todo.todo_id ?? todo.title} todo={todo} />
+                    ))}
+                  </div>
+                </Panel>
               </div>
-            </Panel>
-            <Panel icon={Bot} title="Agent Todo Lane">
-              <div data-testid="frontstage-agent-todos">
-                {projection.agent_todos.map((todo) => (
-                  <TodoRow key={todo.todo_id ?? todo.title} todo={todo} />
-                ))}
-              </div>
-            </Panel>
-          </div>
 
-          <Panel icon={Activity} title="Run Timeline">
-            <div className="divide-y divide-slate-200" data-testid="frontstage-timeline">
-              {projection.recent_events.map((event, index) => (
-                <div className="grid gap-3 px-4 py-3 md:grid-cols-[190px_180px_minmax(0,1fr)]" key={`${event.generated_at ?? "event"}-${index}`}>
-                  <div className="font-mono text-xs text-slate-500">{event.generated_at ?? "n/a"}</div>
-                  <Badge variant="neutral">{event.classification ?? "event"}</Badge>
-                  <div className="text-sm leading-6 text-slate-700">{event.summary ?? "compact event"}</div>
+              <Panel icon={Activity} title="Run Timeline">
+                <div className="divide-y divide-slate-200" data-testid="frontstage-timeline">
+                  {projection.recent_events.map((event, index) => (
+                    <div className="grid gap-3 px-4 py-3 md:grid-cols-[190px_180px_minmax(0,1fr)]" key={`${event.generated_at ?? "event"}-${index}`}>
+                      <div className="font-mono text-xs text-slate-500">{event.generated_at ?? "n/a"}</div>
+                      <Badge variant="neutral">{event.classification ?? "event"}</Badge>
+                      <div className="text-sm leading-6 text-slate-700">{event.summary ?? "compact event"}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </Panel>
+              </Panel>
+            </>
+          ) : (
+            <PublicShowcaseBoundaryPanel />
+          )}
         </section>
 
         <aside className="space-y-4">
-          <Panel icon={Users} title="Role Map">
-            <div className="space-y-3 p-4" data-testid="frontstage-role-map">
-              {roleSignals.map((signal) => (
-                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2" key={signal.label}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-normal text-slate-500">{signal.label}</span>
-                    <Badge variant={signal.tone}>{signal.value}</Badge>
+          {isOpsMode ? (
+            <Panel icon={Users} title="Role Map">
+              <div className="space-y-3 p-4" data-testid="frontstage-role-map">
+                {roleSignals.map((signal) => (
+                  <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2" key={signal.label}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-normal text-slate-500">{signal.label}</span>
+                      <Badge variant={signal.tone}>{signal.value}</Badge>
+                    </div>
+                    <div className="mt-2 break-words text-xs font-medium leading-5 text-slate-600">{signal.helper}</div>
                   </div>
-                  <div className="mt-2 break-words text-xs font-medium leading-5 text-slate-600">{signal.helper}</div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel icon={ListChecks} title="Active Claims">
-            <div className="divide-y divide-slate-200" data-testid="frontstage-active-claims">
-              {projection.active_leases.map((lease, index) => (
-                <div className="px-4 py-3" key={`${lease.todo_id ?? "claim"}-${index}`}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="info">{lease.owner_agent ?? "unknown"}</Badge>
-                    <Badge variant="neutral">{lease.status ?? "claim"}</Badge>
-                  </div>
-                  <div className="mt-2 break-all text-xs font-medium text-slate-500">{lease.todo_id}</div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel icon={ShieldCheck} title="Truth Contract">
-            <div className="space-y-3 p-4 text-sm leading-6">
-              <div className="flex flex-wrap gap-2">
-                {boolBadge(projection.truth_contract.event_ledger_is_source_of_truth, "ledger truth", "ledger missing")}
-                {boolBadge(!projection.truth_contract.projection_is_writable, "read-only", "writeable")}
+                ))}
               </div>
-              <p className="text-slate-600">{projection.truth_contract.recompute_rule}</p>
-              <p className="text-xs font-semibold text-slate-500">write authority: {projection.truth_contract.write_authority}</p>
-            </div>
-          </Panel>
+            </Panel>
+          ) : null}
+
+          {isOpsMode ? (
+            <Panel icon={ListChecks} title="Active Claims">
+              <div className="divide-y divide-slate-200" data-testid="frontstage-active-claims">
+                {projection.active_leases.map((lease, index) => (
+                  <div className="px-4 py-3" key={`${lease.todo_id ?? "claim"}-${index}`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="info">{lease.owner_agent ?? "unknown"}</Badge>
+                      <Badge variant="neutral">{lease.status ?? "claim"}</Badge>
+                    </div>
+                    <div className="mt-2 break-all text-xs font-medium text-slate-500">{lease.todo_id}</div>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          ) : null}
+
+          {isOpsMode ? (
+            <Panel icon={ShieldCheck} title="Truth Contract">
+              <div className="space-y-3 p-4 text-sm leading-6">
+                <div className="flex flex-wrap gap-2">
+                  {boolBadge(projection.truth_contract.event_ledger_is_source_of_truth, "ledger truth", "ledger missing")}
+                  {boolBadge(!projection.truth_contract.projection_is_writable, "read-only", "writeable")}
+                </div>
+                <p className="text-slate-600">{projection.truth_contract.recompute_rule}</p>
+                <p className="text-xs font-semibold text-slate-500">write authority: {projection.truth_contract.write_authority}</p>
+              </div>
+            </Panel>
+          ) : null}
 
           <Panel icon={ShieldCheck} title="Boundary Warnings">
             <div className="space-y-3 p-4" data-testid="frontstage-source-warnings">
