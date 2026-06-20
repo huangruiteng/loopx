@@ -607,7 +607,8 @@
         "Keep the compact controller counters in the ledger because they show the treatment actually exercised the outer loop.",
         "Do not use this single case to claim route-wide superiority; pair it with debug-trl-grpo and civ6 controls.",
         "Preserve the Docker-space preflight because runner setup was a live bottleneck immediately before this run.",
-        "Do not use this case as a positive blind-loop uplift asset: protocol v10 and the later max-5 rerun both completed both blind arms at official 0.0 with no reward feedback forwarded."
+        "Do not use this case as a positive blind-loop uplift asset: protocol v10 and the later max-5 rerun both completed both blind arms at official 0.0 with no reward feedback forwarded.",
+        "Treat the post-PR-353 native app-server Goal run as a route/runner observation: worker connection and public-safe controller trace are confirmed, but the missing public worker trace keeps it out of model-quality and uplift claims."
       ],
       "public_boundary": {
         "artifact_reference_policy": "refer to compact ledger ids, run groups, and public-safe controller counters only",
@@ -618,7 +619,8 @@
       "routing_guidance": {
         "blind_loop_repeat_policy": "treat protocol v10 and the max-5 rerun as no-uplift guards; repeat only after a concrete blind prompt/round-policy hypothesis",
         "next_action": "continue alternating Terminal-Bench and SkillsBench, using this as a reward-feedback positive control while mining or validating primary blind-loop positives elsewhere",
-        "repeat_policy": "repeat_only_after_stability_or_policy_hypothesis"
+        "repeat_policy": "repeat_only_after_stability_or_policy_hypothesis",
+        "native_goal_route_next_action": "repair or expose public worker trace collection, then rerun the native Goal baseline before using this route for quality comparisons"
       },
       "scores": {
         "baseline_official_score": 0,
@@ -673,7 +675,122 @@
         },
         "claim_boundary": "Legacy reward-feedback result is an ablation/positive-control asset only; primary no-reward recheck is 0.0->0.0."
       },
-      "current_protocol_claim_status": "legacy_reward_feedback_positive_primary_no_reward_no_uplift"
+      "current_protocol_claim_status": "legacy_reward_feedback_positive_primary_no_reward_no_uplift",
+      "native_goal_route_observations": {
+        "schema_version": "skillsbench_native_goal_route_observation_v0",
+        "run_group_id": "skillsbench-native-goal-post353-20260620T220003Z",
+        "arm_id": "skillsbench_codex_app_server_goal_baseline",
+        "mode": "skillsbench_codex_app_server_goal_baseline",
+        "native_goal_mode_invoked": true,
+        "goal_harness_controller_trace_present": true,
+        "goal_harness_controller_trace_public_safe": true,
+        "native_goal_worker_connected": true,
+        "native_goal_worker_trace_dir_present": false,
+        "native_goal_worker_public_trace_read": false,
+        "native_goal_worker_trace_count": 0,
+        "failure_class": "skillsbench_runner_error",
+        "failure_scope": "runner_or_setup",
+        "phase": "connected_no_trace_runner_error",
+        "claim_scope": "route_and_runner_observation_not_model_quality_evidence",
+        "boundary": {
+          "raw_logs_read": false,
+          "raw_task_text_read": false,
+          "trajectory_read": false,
+          "leaderboard_submission": false,
+          "compact_only": true
+        },
+        "run_id": "b7fdd71e481b",
+        "official_score": 0,
+        "official_passed": false,
+        "interpretation": "Native app-server Goal reached the host worker connection and produced a public-safe controller trace, but no public worker trace directory was observed. Treat this as a runner/observation repair blocker before drawing model-quality or treatment-uplift conclusions."
+      }
+    },
+    {
+      "analysis_id": "skillsbench-1.1__tictoc-unnecessary-abort-detection__native-goal-connected-no-trace-runner-error",
+      "arms": {
+        "baseline": {
+          "arm_id": "skillsbench_codex_app_server_goal_baseline",
+          "failure_class": "skillsbench_runner_error",
+          "failure_scope": "runner_or_setup",
+          "run_group_id": "skillsbench-native-goal-post353-20260620T220003Z",
+          "run_id": "a054a9322569"
+        },
+        "treatment": null
+      },
+      "benchmark_id": "skillsbench@1.1",
+      "case_id": "tictoc-unnecessary-abort-detection",
+      "classification": "native_goal_connected_no_trace_runner_error_asset",
+      "decision": "baseline_runner_or_setup_repair_required",
+      "evidence_status": "compact_native_goal_baseline_runner_error",
+      "capability_signal": "No model-quality signal yet: the native app-server Goal route connected, but the run is classified as runner_or_setup because public worker trace collection did not materialize.",
+      "control_plane_signal": "The useful signal is route observability. Compact evidence confirms native_goal_mode_invoked=true, host app-server worker connection, public-safe Goal Harness controller trace, and no raw task/log/trajectory read. The missing public worker trace keeps this as a runner/observation repair item.",
+      "native_goal_route_observations": {
+        "schema_version": "skillsbench_native_goal_route_observation_v0",
+        "run_group_id": "skillsbench-native-goal-post353-20260620T220003Z",
+        "arm_id": "skillsbench_codex_app_server_goal_baseline",
+        "mode": "skillsbench_codex_app_server_goal_baseline",
+        "native_goal_mode_invoked": true,
+        "goal_harness_controller_trace_present": true,
+        "goal_harness_controller_trace_public_safe": true,
+        "native_goal_worker_connected": true,
+        "native_goal_worker_trace_dir_present": false,
+        "native_goal_worker_public_trace_read": false,
+        "native_goal_worker_trace_count": 0,
+        "failure_class": "skillsbench_runner_error",
+        "failure_scope": "runner_or_setup",
+        "phase": "connected_no_trace_runner_error",
+        "claim_scope": "route_and_runner_observation_not_model_quality_evidence",
+        "boundary": {
+          "raw_logs_read": false,
+          "raw_task_text_read": false,
+          "trajectory_read": false,
+          "leaderboard_submission": false,
+          "compact_only": true
+        },
+        "run_id": "a054a9322569",
+        "official_score": 0,
+        "official_passed": false,
+        "interpretation": "Native app-server Goal reached the host worker connection and produced a public-safe controller trace, but no public worker trace directory was observed. Treat this as a runner/observation repair blocker before drawing model-quality or treatment-uplift conclusions."
+      },
+      "optimization_guidance": [
+        "Do not count this as uplift, no-uplift, regression, or model-quality evidence yet.",
+        "Use it to validate the native app-server Goal execution surface and to drive public worker trace collection repair.",
+        "After trace collection is repaired, rerun the same case or another selected SkillsBench case before comparing base/test behavior."
+      ],
+      "public_boundary": {
+        "artifact_reference_policy": "refer to compact ledger ids, run groups, and public-safe controller/worker counters only",
+        "raw_logs_copied": false,
+        "task_text_copied": false,
+        "trajectory_copied": false
+      },
+      "routing_guidance": {
+        "next_action": "repair native app-server Goal worker trace collection or classify why the worker produces no public trace directory, then rerun before using the route for quality comparisons",
+        "repeat_policy": "repeat_only_after_trace_collection_or_runner_error_attribution_changes"
+      },
+      "scores": {
+        "baseline_official_score": 0,
+        "treatment_official_score": null,
+        "official_score_delta": null,
+        "claimable_uplift": false
+      },
+      "stability_assessment": {
+        "main_confounds": [
+          "missing public worker trace means the run cannot yet distinguish solver behavior from runner/observation failure"
+        ],
+        "reason": "The compact result reached official BenchFlow result JSON and public-safe controller trace, but failure attribution remains skillsbench_runner_error with native worker connected and worker trace count 0.",
+        "stabilization_needed": [
+          "public worker trace directory materialization or explicit compact explanation for why it is absent",
+          "one rerun after trace/runner attribution repair"
+        ]
+      },
+      "trajectory_analysis": {
+        "baseline_observed_behavior": [
+          "Native app-server Goal mode was invoked and the host worker connection was observed through compact counters.",
+          "No public worker trace directory was observed, so behavior beyond connection is intentionally not inferred."
+        ],
+        "mechanism_hypothesis": "The bottleneck is native Goal runner/observation plumbing, not benchmark task solving.",
+        "treatment_observed_behavior": []
+      }
     },
     {
       "analysis_id": "skillsbench-1.1__dapt-intrusion-detection__reward-feedback-positive-current-protocol-no-uplift",
@@ -3213,7 +3330,7 @@
     "trajectory_recorded": false,
     "update_rule": "add one case analysis record after compact result ingest and benchmark-run-ledger update"
   },
-  "updated_at": "2026-06-18T12:27:07+08:00",
+  "updated_at": "2026-06-21T07:18:00+08:00",
   "terminal_bench_current_protocol_coverage": {
     "schema_version": "terminal_bench_current_protocol_coverage_v0",
     "source_ledger": "benchmark-run-ledger.json",

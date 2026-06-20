@@ -7,7 +7,7 @@ It is intentionally separate from `benchmark-run-ledger.md`. The run ledger
 records compact attempts and scores; this file records why a result matters.
 
 - schema_version: `benchmark_case_analysis_v0`
-- updated_at: `2026-06-18T12:49:19+08:00`
+- updated_at: `2026-06-21T07:18:00+08:00`
 - machine_source: `benchmark-case-analysis.json`
 - ledger-only migration audit:
   `benchmark-case-analysis-ledger-only-migration-audit-20260618.md`
@@ -37,6 +37,7 @@ evidence becomes useful.
 | `terminal-bench@2.0` | `pytorch-model-recovery` | exception attribution asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift_exception_research_required` |
 | `terminal-bench@2.0` | `train-fasttext` | single-arm managed-Codex failure asset | n/a | `0.0` | n/a | `single_arm_recorded` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | reward-feedback positive / blind-loop neutral asset | `0.0` | `0.0` | `0.0` | `reward_feedback_positive_primary_blind_loop_no_uplift` |
+| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | native Goal connected-no-trace runner-error asset | `0.0` | n/a | n/a | `baseline_runner_or_setup_repair_required` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | reward-feedback positive / blind-loop neutral asset | `0.0` | `0.0` | `0.0` | `reward_feedback_positive_primary_blind_loop_no_uplift` |
 | `skillsbench@1.1` | `paratransit-routing` | product-mode no-uplift / blind-loop positive asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
 | `skillsbench@1.1` | `debug-trl-grpo` | regression asset | `0.25` | `0.0` | `-0.25` | `paired_treatment_regressed` |
@@ -133,6 +134,12 @@ Interaction-count assessment:
   `/goal`, but `native_goal_mode_invoked` must stay false unless the run has
   interactive Codex CLI slash-command or goal-state evidence. ACP prompt text
   alone is not sufficient confirmation.
+- The post-PR-353 native app-server Goal canary pair now confirms a narrower
+  route fact: `native_goal_mode_invoked=true`, a host app-server worker
+  connection, and a public-safe controller trace can be observed through compact
+  counters. Both observed cases still classify as `skillsbench_runner_error`
+  with no public worker trace directory, so they are runner/observation repair
+  assets rather than model-quality or uplift evidence.
 - The treatment route is `goal_harness_automation_loop_treatment`, still with
   `goal_harness_inside_case=false`; Goal Harness is the outer automation loop,
   not an in-case solver skill. Current positive, neutral, and regression
@@ -759,6 +766,13 @@ Compact evidence:
   rounds `1:0,2:0,3:0,4:0,5:0`, `first_success_round=null`
 - max-5 blind-loop treatment: `goal-harness-blind-loop-treatment`, score `0.0`,
   rounds `1:0,2:0,3:0,4:0,5:0`, `first_success_round=null`
+- native app-server Goal canary run group:
+  `skillsbench-native-goal-post353-20260620T220003Z`
+- native Goal baseline run id: `b7fdd71e481b`
+- native Goal baseline score: `0.0`
+- native Goal baseline failure: `skillsbench_runner_error`
+- native Goal route counters: `native_goal_mode_invoked=true`,
+  worker connected, public worker trace count `0`
 
 Interpretation:
 
@@ -771,6 +785,13 @@ After that follow-up, the official verifier scored the case `1.0`.
 The same case does not improve when reward/pass/fail/verifier feedback is
 blinded: both the two-round blind recheck and the stricter max-5 rerun finished
 at `0.0` for both arms.
+
+The post-PR-353 native app-server Goal canary is a separate route observation:
+it confirms native Goal invocation, host-worker connection, and public-safe
+controller trace, but it still fails as `skillsbench_runner_error` and exposes
+no public worker trace directory. It should not be folded into the reward
+feedback or blind-loop claim table until worker trace collection or runner
+attribution is repaired.
 
 Why it matters:
 
@@ -785,6 +806,9 @@ Why it matters:
 - It shows that compact controller counters are enough to confirm the treatment
   surface actually ran, even without copying raw task text, logs, or
   trajectory.
+- It also gives the native Goal route a concrete repair target: public worker
+  trace collection must materialize before this route can support model-quality
+  comparisons.
 
 Follow-up guidance:
 
@@ -796,6 +820,49 @@ Follow-up guidance:
   protocol v10 and the max-5 rerun are no-uplift guards.
 - Do not generalize from one uplift case; compare future changes against the
   regression and no-uplift assets before making route-wide claims.
+- For native app-server Goal, repair or explain the missing public worker trace
+  directory before using the route as the default SkillsBench quality baseline.
+
+## Case: SkillsBench tictoc-unnecessary-abort-detection
+
+This is a native app-server Goal route/runner observation, not a model-quality
+case result yet.
+
+Compact evidence:
+
+- benchmark: `skillsbench@1.1`
+- baseline arm: `skillsbench_codex_app_server_goal_baseline`
+- run group: `skillsbench-native-goal-post353-20260620T220003Z`
+- baseline run id: `a054a9322569`
+- baseline score: `0.0`
+- baseline failure: `skillsbench_runner_error`
+- native Goal route counters: `native_goal_mode_invoked=true`,
+  worker connected, public-safe controller trace present, public worker trace
+  count `0`
+
+Interpretation:
+
+The compact result proves the host app-server Goal route can connect to the
+worker and record public-safe controller evidence without reading raw task text,
+raw logs, verifier output, or trajectory. The useful finding is still negative:
+the public worker trace directory was not observed, so the failure remains
+`runner_or_setup` and cannot be used to judge whether the agent solved the task.
+
+Why it matters:
+
+- It gives the native Goal SkillsBench route a second concrete canary beyond
+  `llm-prefix-cache-replay`.
+- It confirms route connection and controller trace observability, while
+  keeping the public/private boundary compact-only.
+- It blocks quality comparison until the missing worker trace or runner error is
+  repaired.
+
+Follow-up guidance:
+
+- Do not launch treatment or claim uplift/no-uplift from this row.
+- Repair public worker trace collection, or record a compact explanation for
+  why no worker trace is expected, then rerun a selected SkillsBench case.
+- Keep this as a runner/observation repair asset in the rotation ledger.
 
 ## Case: SkillsBench dapt-intrusion-detection
 

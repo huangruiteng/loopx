@@ -2627,7 +2627,7 @@
           "case_id": "llm-prefix-cache-replay",
           "latest_decision": {
             "baseline_failure_scope": "runner_or_setup",
-            "baseline_run_id": "07af93abd7ae",
+            "baseline_run_id": "b7fdd71e481b",
             "decision": "paired_baseline_runner_or_setup_repair_required",
             "failure_class": "skillsbench_runner_error",
             "official_score_delta": 0.0,
@@ -3834,6 +3834,46 @@
               "round_success_observed": false,
               "run_group_id": "skillsbench-llm-prefix-native-goal-keepalive-r3-20260621T194222Z",
               "run_id": "07af93abd7ae",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T220003Z/skillsbench-llm-prefix-cache-replay-native-goal-post353-r1/jobs/gh-skillsbench-llm-prefix-cache-replay-native-goal-post353-r1/llm-prefix-cache-replay__codex_app_server_goal/benchmark_run.compact.json"
+              },
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "llm-prefix-cache-replay",
+              "case_ids": [
+                "llm-prefix-cache-replay"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "skillsbench_runner_error",
+              "failure_labels": [
+                "skillsbench_runner_error"
+              ],
+              "failure_scope": "runner_or_setup",
+              "goal_harness_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_app_server_goal_baseline",
+              "leaderboard_evidence": false,
+              "max_rounds_budget": 5,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "Native app-server Goal route connected; controller trace public-safe; native worker connected but no public worker trace directory was observed, so classify as connected-no-trace runner-error phase rather than model-q...",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-21T07:11:23+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-native-goal-post353-20260620T220003Z",
+              "run_id": "b7fdd71e481b",
               "score_status": "failed",
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
@@ -6184,7 +6224,7 @@
           "case_id": "tictoc-unnecessary-abort-detection",
           "latest_decision": {
             "baseline_failure_scope": "runner_or_setup",
-            "baseline_run_id": "97f003b9f1c1",
+            "baseline_run_id": "a054a9322569",
             "decision": "paired_baseline_runner_or_setup_repair_required",
             "failure_class": "skillsbench_runner_error",
             "official_score_delta": 0.0,
@@ -6507,6 +6547,46 @@
                 "staged": true,
                 "task_skills_removed": true
               }
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T220003Z/skillsbench-tictoc-unnecessary-abort-detection-native-goal-post353-r1/jobs/gh-skillsbench-tictoc-unnecessary-abort-detection-native-goal-post353-r1/tictoc-unnecessary-abort-detection__codex_app_server_goal/benchmark_run.compact.json"
+              },
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "tictoc-unnecessary-abort-detection",
+              "case_ids": [
+                "tictoc-unnecessary-abort-detection"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "skillsbench_runner_error",
+              "failure_labels": [
+                "skillsbench_runner_error"
+              ],
+              "failure_scope": "runner_or_setup",
+              "goal_harness_inside_case": false,
+              "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_codex_app_server_goal_baseline",
+              "leaderboard_evidence": false,
+              "max_rounds_budget": 5,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "Native app-server Goal route connected; controller trace public-safe; native worker connected but no public worker trace directory was observed, so classify as connected-no-trace runner-error phase rather than model-q...",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-21T07:11:23+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-native-goal-post353-20260620T220003Z",
+              "run_id": "a054a9322569",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
             }
           ]
         },
@@ -6650,7 +6730,7 @@
           ]
         }
       },
-      "run_count": 118
+      "run_count": 120
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -10388,5 +10468,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-21T05:48:23+08:00"
+  "updated_at": "2026-06-21T07:11:23+08:00"
 }

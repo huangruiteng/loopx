@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-21T05:48:23+08:00`
+- updated_at: `2026-06-21T07:11:23+08:00`
 
 ## Case Decisions
 
@@ -22,7 +22,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `paired_baseline_setup_preflight_selection_required` | - | `5` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `paired_baseline_runner_or_setup_repair_required` | - | `9` |
 | `skillsbench@1.1` | `fix-build-agentops` | `baseline_runner_or_setup_repair_required` | - | `2` |
-| `skillsbench@1.1` | `llm-prefix-cache-replay` | `paired_baseline_runner_or_setup_repair_required` | - | `23` |
+| `skillsbench@1.1` | `llm-prefix-cache-replay` | `paired_baseline_runner_or_setup_repair_required` | - | `24` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `paired_no_score_uplift` | - | `4` |
 | `skillsbench@1.1` | `organize-messy-files` | `paired_baseline_solved_treatment_preserved` | - | `3` |
 | `skillsbench@1.1` | `paratransit-routing` | `paired_treatment_improved` | - | `9` |
@@ -31,7 +31,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `setup-fuzzing-py` | `baseline_runner_or_setup_repair_required` | - | `3` |
 | `skillsbench@1.1` | `software-dependency-audit` | `paired_no_score_uplift` | - | `6` |
 | `skillsbench@1.1` | `suricata-custom-exfil` | `paired_treatment_codex_acp_runtime_preflight_required` | - | `5` |
-| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `paired_baseline_runner_or_setup_repair_required` | - | `5` |
+| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `paired_baseline_runner_or_setup_repair_required` | - | `6` |
 | `skillsbench@1.1` | `travel-planning` | `baseline_failed_treatment_candidate` | - | `2` |
 | `swe-marathon` | `find-network-alignments` | `baseline_failed_treatment_candidate` | - | `1` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `single_arm_recorded` | - | `2` |
@@ -145,6 +145,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `skillsbench_codex_acp_blind_loop_baseline` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:missing` | `official_score_zero_case_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-llm-prefix-baseline-r1/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `skillsbench_goal_harness_blind_loop_treatment` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:missing` | `official_score_zero_case_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-llm-prefix-treatment-r1/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `skillsbench_codex_app_server_goal_baseline` | `` | `0.0` | `` | `` | `skillsbench_runner_error` | `cloud-ecs/parallel-benchmark-20260621T194222Z/skillsbench-llm-prefix-native-goal-keepalive-r3/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `llm-prefix-cache-replay` | `skillsbench_codex_app_server_goal_baseline` | `` | `0.0` | `` | `` | `skillsbench_runner_error` | `cloud-ecs/parallel-benchmark-20260620T220003Z/skillsbench-llm-prefix-cache-replay-native-goal-post353-r1/jobs/gh-skillsbench-llm-prefix-cache-replay-native-goal-post353-r1/llm-prefix-cache-replay__codex_app_server_goal/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `goal_harness_automation_loop_treatment` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `baseline` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-manufacturing-codebook-normalization-blind-baseline-v0/manufacturing-codebook-normalization__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
@@ -193,6 +194,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `skillsbench_goal_harness_blind_loop_treatment` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:missing` | `official_score_zero_case_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-tictoc-treatment-r2/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `skillsbench_codex_app_server_goal_baseline` | `` | `0.0` | `` | `` | `skillsbench_runner_error` | `cloud-ecs/parallel-benchmark-20260621T194222Z/skillsbench-tictoc-native-goal-keepalive-r2/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `baseline` | `` | `0.0` | `` | `` | `skillsbench_runner_error` | `cloud-ecs/parallel-benchmark-20260620T210604Z/skillsbench-tictoc-native-goal-r4/.../benchmark_run.compact.json` |
+| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `skillsbench_codex_app_server_goal_baseline` | `` | `0.0` | `` | `` | `skillsbench_runner_error` | `cloud-ecs/parallel-benchmark-20260620T220003Z/skillsbench-tictoc-unnecessary-abort-detection-native-goal-post353-r1/jobs/gh-skillsbench-tictoc-unnecessary-abort-detection-native-goal-post353-r1/tictoc-unnecessary-abort-detection__codex_app_server_goal/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `travel-planning` | `baseline` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-travel-planning-blind-baseline-20260616T1238CST/travel-planning__codex_acp_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `travel-planning` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `0.0` | `` | `1:missing` | `official_score_zero_case_failure` | `cloud-ecs/skillsbench-real-case/gh-skillsbench-travel-planning-container-acp-configfix-20260620T063851/benchmark_run.compact.json` |
 | `swe-marathon` | `find-network-alignments` | `swe_marathon_host_codex_app_server_goal_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/swe-marathon-find-network-alignments-host-app-server-goal-r6/harbor_job_result.compact.json` |
