@@ -18,21 +18,28 @@ function excludes(source: string, snippet: string, label: string) {
 const routerSource = readFileSync("src/router.tsx", "utf8");
 const frontstageSource = readFileSync("src/views/frontstage-page.tsx", "utf8");
 const dataSource = readFileSync("src/data/goal-channel-frontstage.ts", "utf8");
+const statusSource = readFileSync("src/data/status.ts", "utf8");
 const readmeSource = readFileSync("README.md", "utf8");
 const selectionSource = readFileSync("../../docs/dashboard-frontend-selection.md", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
 
 includes(routerSource, 'path: "/frontstage"', "frontstage route path");
 includes(routerSource, "component: FrontstagePage", "frontstage route component");
+includes(routerSource, "frontstageSearchSchema", "frontstage search schema");
 includes(packageSource, '"smoke:frontstage-browser"', "frontstage browser smoke script");
 includes(packageSource, '"smoke:frontstage-route"', "frontstage smoke script");
 
 includes(dataSource, 'schema_version: "goal_channel_projection_v0"', "goal channel schema");
+includes(dataSource, "goalChannelProjectionSchema", "goal channel zod schema");
 includes(dataSource, 'mode: "read_only"', "read-only mode");
 includes(dataSource, 'claimed_by: "codex-side-bypass"', "side-agent claim fixture");
 includes(dataSource, "raw_or_private_material_omitted", "source warning fixture");
+includes(statusSource, "goal_channel_projection: goalChannelProjectionSchema", "status projection parser");
 
 includes(frontstageSource, 'data-testid="goal-channel-frontstage-route"', "route test id");
+includes(frontstageSource, 'data-testid="frontstage-live-source-panel"', "live source panel");
+includes(frontstageSource, 'data-testid="frontstage-goal-select"', "goal selector");
+includes(frontstageSource, "parseStatusPayload", "status payload parser");
 includes(frontstageSource, 'data-testid="frontstage-user-todos"', "user todo lane");
 includes(frontstageSource, 'data-testid="frontstage-agent-todos"', "agent todo lane");
 includes(frontstageSource, 'data-testid="frontstage-active-claims"', "active claims lane");

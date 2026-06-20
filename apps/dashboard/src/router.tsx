@@ -18,6 +18,11 @@ const searchSchema = z.object({
   view: z.enum(["ops", "share"]).optional(),
 });
 
+const frontstageSearchSchema = z.object({
+  goalId: z.string().optional().default(""),
+  statusUrl: z.string().optional().default(""),
+});
+
 export const rootRoute = createRootRoute({
   component: () => <Outlet />,
 });
@@ -32,6 +37,7 @@ export const dashboardRoute = createRoute({
 export const frontstageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/frontstage",
+  validateSearch: (search) => frontstageSearchSchema.parse(search),
   component: FrontstagePage,
 });
 

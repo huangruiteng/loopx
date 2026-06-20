@@ -1,6 +1,8 @@
 import rawStatus from "../../../../examples/status.example.json";
 import { z } from "zod";
 
+import { goalChannelProjectionSchema } from "./goal-channel-frontstage";
+
 export const quotaSchema = z.object({
   compute: z.number().optional().default(1),
   window_hours: z.number().optional().default(24),
@@ -214,6 +216,7 @@ export const queueItemSchema = z.object({
   stale_latest_run_warning: staleLatestRunWarningSchema.optional().nullable(),
   dependency_blockers: dependencyBlockerSummarySchema.optional().nullable(),
   todo_state_file: z.string().optional().nullable(),
+  goal_channel_projection: goalChannelProjectionSchema.optional().nullable(),
 });
 
 export const humanRewardSchema = z.object({

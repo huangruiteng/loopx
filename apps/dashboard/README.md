@@ -38,6 +38,11 @@ contract lanes. Treat it as the product-path replacement for expanding the
 no-dependency static HTML renderer; the Python renderer remains the fallback
 demo/diagnostic surface.
 
+For live local control-plane inspection, open
+`/frontstage?statusUrl=http://127.0.0.1:8766/status.json`. The route reads
+`attention_queue.items[].goal_channel_projection` and stays read-only; if the
+feed is missing or has no projection, the bundled demo fixture remains visible.
+
 ## Run
 
 ```bash

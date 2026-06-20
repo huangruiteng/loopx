@@ -1,23 +1,37 @@
 import {
   Activity,
   Bot,
+  CircleAlert,
   Clock3,
   GitBranch,
   LayoutDashboard,
   ListChecks,
+  RefreshCw,
   ShieldCheck,
   Users,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
+import { frontstageRoute } from "../router";
 import {
   GoalChannelProjection,
   GoalChannelTodo,
   sampleGoalChannelProjection,
 } from "../data/goal-channel-frontstage";
+import { QueueItem, StatusPayload, formatStatusError, parseStatusPayload } from "../data/status";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Select } from "../components/ui/select";
 import { cn } from "../lib/utils";
 
 type BadgeTone = "neutral" | "success" | "warning" | "info" | "danger";
+type FrontstageSource = { kind: "demo"; label: string } | { kind: "url"; label: string };
+
+type ProjectionOption = {
+  goalId: string;
+  projection: GoalChannelProjection;
+  queueItem: QueueItem;
+};
 
 function boolBadge(value: boolean, trueLabel: string, falseLabel: string) {
   return (
@@ -56,6 +70,20 @@ function priorityTone(priority?: string): BadgeTone {
   return "neutral";
 }
 
+function stringifyScalar(value: string | number | boolean | null | undefined) {
+  if (value === null || value === undefined) {
+    return "n/a";
+  }
+  return String(value);
+}
+
+function warningMessage(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+  return value ?? "compact source warning";
+}
+
 function TodoRow({ todo }: { todo: GoalChannelTodo }) {
   return (
     <div className="grid gap-3 border-b border-slate-200 px-3 py-3 last:border-b-0 md:grid-cols-[96px_minmax(0,1fr)_156px]">
@@ -85,6 +113,19 @@ function TodoRow({ todo }: { todo: GoalChannelTodo }) {
   );
 }
 
+function projectionOptionsFromPayload(payload: StatusPayload): ProjectionOption[] {
+  return payload.attention_queue.items.flatMap((item) => {
+    if (!item.goal_channel_projection) {
+      return [];
+    }
+    return [{
+      goalId: item.goal_id,
+      projection: item.goal_channel_projection,
+      queueItem: item,
+    }];
+  });
+}
+
 function Panel({
   children,
   className,
@@ -109,8 +150,32 @@ function Panel({
   );
 }
 
-function FrontstageRoute({ projection }: { projection: GoalChannelProjection }) {
-  const quotaUsed = `${projection.quota.spent_slots ?? "0"} / ${projection.quota.allowed_slots ?? "?"}`;
+function FrontstageRoute({
+  goalOptions,
+  isLoading,
+  loadError,
+  onGoalChange,
+  onLoadStatusUrl,
+  onResetDemo,
+  projection,
+  selectedGoalId,
+  source,
+  statusUrl,
+  setStatusUrl,
+}: {
+  goalOptions: ProjectionOption[];
+  isLoading: boolean;
+  loadError: string | null;
+  onGoalChange: (goalId: string) => void;
+  onLoadStatusUrl: () => void;
+  onResetDemo: () => void;
+  projection: GoalChannelProjection;
+  selectedGoalId: string;
+  source: FrontstageSource;
+  statusUrl: string;
+  setStatusUrl: (value: string) => void;
+}) {
+  const quotaUsed = `${stringifyScalar(projection.quota.spent_slots)} / ${stringifyScalar(projection.quota.allowed_slots ?? "?")}`;
   return (
     <main
       className="min-h-screen bg-[#f7f7f4] px-4 py-4 text-slate-950 sm:px-5"
@@ -143,6 +208,59 @@ function FrontstageRoute({ projection }: { projection: GoalChannelProjection }) 
             <p>Projection is read-only. The append-only Goal Harness ledger remains the source of truth.</p>
             <p>Inspired by modern agent boards, but scoped to gates, todos, claims, quota, and evidence.</p>
           </div>
+          <div className="mt-5 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3" data-testid="frontstage-live-source-panel">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={source.kind === "url" ? "success" : "neutral"}>
+                {source.kind === "url" ? "live status feed" : "demo fixture"}
+              </Badge>
+              <span className="text-xs font-medium text-slate-500">{source.label}</span>
+            </div>
+            <input
+              aria-label="Status URL"
+              className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-slate-400"
+              data-testid="frontstage-status-url-input"
+              onChange={(event) => setStatusUrl(event.target.value)}
+              placeholder="/status.local.json"
+              value={statusUrl}
+            />
+            <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                data-testid="frontstage-load-status-url"
+                disabled={isLoading}
+                onClick={onLoadStatusUrl}
+                size="sm"
+                variant="primary"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Load
+              </Button>
+              <Button data-testid="frontstage-reset-demo" disabled={isLoading} onClick={onResetDemo} size="sm">
+                Demo
+              </Button>
+            </div>
+            {goalOptions.length ? (
+              <Select
+                aria-label="Goal channel"
+                className="w-full text-xs"
+                data-testid="frontstage-goal-select"
+                onChange={(event) => onGoalChange(event.target.value)}
+                value={selectedGoalId}
+              >
+                {goalOptions.map((option) => (
+                  <option key={option.goalId} value={option.goalId}>
+                    {option.projection.display_name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+            {loadError ? (
+              <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-xs leading-5 text-amber-950" data-testid="frontstage-load-error">
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{loadError}</span>
+              </div>
+            ) : null}
+          </div>
         </aside>
 
         <section className="space-y-4">
@@ -153,6 +271,7 @@ function FrontstageRoute({ projection }: { projection: GoalChannelProjection }) 
                   <Badge variant="success">goal_channel_projection_v0</Badge>
                   <Badge variant="neutral">{projection.mode}</Badge>
                   <Badge variant="info">{projection.waiting_on}</Badge>
+                  <Badge variant={source.kind === "url" ? "success" : "neutral"}>{source.kind}</Badge>
                 </div>
                 <h1 className="mt-3 text-3xl font-semibold tracking-normal text-slate-950">
                   {projection.display_name}
@@ -184,13 +303,13 @@ function FrontstageRoute({ projection }: { projection: GoalChannelProjection }) 
               <div className="space-y-2 p-4 text-sm leading-6">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-slate-500">state</span>
-                  <Badge variant={statusTone(projection.quota.state)}>{projection.quota.state}</Badge>
+                  <Badge variant={statusTone(stringifyScalar(projection.quota.state))}>{stringifyScalar(projection.quota.state)}</Badge>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-slate-500">slots</span>
                   <span className="font-semibold">{quotaUsed}</span>
                 </div>
-                <p className="text-xs text-slate-500">{projection.quota.spend_policy}</p>
+                <p className="text-xs text-slate-500">{stringifyScalar(projection.quota.spend_policy)}</p>
               </div>
             </Panel>
             <Panel icon={Clock3} title="Source Freshness">
@@ -198,7 +317,7 @@ function FrontstageRoute({ projection }: { projection: GoalChannelProjection }) 
                 {Object.entries(projection.source_refs).map(([key, value]) => (
                   <div className="grid grid-cols-[118px_minmax(0,1fr)] gap-2" key={key}>
                     <span className="font-semibold text-slate-500">{key}</span>
-                    <span className="break-words">{value ?? "n/a"}</span>
+                    <span className="break-words">{stringifyScalar(value)}</span>
                   </div>
                 ))}
               </div>
@@ -266,7 +385,7 @@ function FrontstageRoute({ projection }: { projection: GoalChannelProjection }) 
               {projection.source_warnings.map((warning, index) => (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-950" key={`${warning.kind}-${index}`}>
                   <div className="font-semibold">{warning.kind}</div>
-                  <p className="mt-1">{warning.message}</p>
+                  <p className="mt-1">{warningMessage(warning.message)}</p>
                 </div>
               ))}
             </div>
@@ -278,5 +397,105 @@ function FrontstageRoute({ projection }: { projection: GoalChannelProjection }) 
 }
 
 export function FrontstagePage() {
-  return <FrontstageRoute projection={sampleGoalChannelProjection} />;
+  const search = frontstageRoute.useSearch();
+  const navigate = frontstageRoute.useNavigate();
+  const [payload, setPayload] = useState<StatusPayload | null>(null);
+  const [source, setSource] = useState<FrontstageSource>({ kind: "demo", label: "bundled fixture" });
+  const [statusUrl, setStatusUrl] = useState(search.statusUrl);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const goalOptions = useMemo(
+    () => (payload ? projectionOptionsFromPayload(payload) : []),
+    [payload],
+  );
+  const selectedGoalId = goalOptions.some((option) => option.goalId === search.goalId)
+    ? search.goalId
+    : goalOptions[0]?.goalId ?? sampleGoalChannelProjection.goal_id;
+  const selectedProjection = goalOptions.find((option) => option.goalId === selectedGoalId)?.projection
+    ?? sampleGoalChannelProjection;
+
+  async function updateSearch(next: { goalId?: string; statusUrl?: string }) {
+    await navigate({
+      search: (current) => ({
+        ...current,
+        ...next,
+      }),
+    });
+  }
+
+  async function loadFromUrl(url: string, updateUrl = true) {
+    const trimmed = url.trim();
+    if (!trimmed) {
+      setLoadError("status URL is empty");
+      return;
+    }
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const response = await fetch(trimmed, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} while loading ${trimmed}`);
+      }
+      const nextPayload = parseStatusPayload(await response.json());
+      const nextOptions = projectionOptionsFromPayload(nextPayload);
+      setPayload(nextPayload);
+      setSource({ kind: "url", label: trimmed });
+      setStatusUrl(trimmed);
+      if (nextOptions.length === 0) {
+        setLoadError("status feed has no goal_channel_projection items; showing demo fixture");
+      }
+      if (updateUrl) {
+        await updateSearch({
+          goalId: nextOptions[0]?.goalId ?? "",
+          statusUrl: trimmed,
+        });
+      }
+    } catch (error) {
+      setLoadError(formatStatusError(error));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function resetToDemo() {
+    setPayload(null);
+    setSource({ kind: "demo", label: "bundled fixture" });
+    setStatusUrl("");
+    setLoadError(null);
+    void updateSearch({ goalId: "", statusUrl: "" });
+  }
+
+  function changeGoal(goalId: string) {
+    void updateSearch({ goalId });
+  }
+
+  useEffect(() => {
+    if (search.statusUrl) {
+      void loadFromUrl(search.statusUrl, false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!goalOptions.length || search.goalId === selectedGoalId) {
+      return;
+    }
+    void updateSearch({ goalId: selectedGoalId });
+  }, [goalOptions, search.goalId, selectedGoalId]);
+
+  return (
+    <FrontstageRoute
+      goalOptions={goalOptions}
+      isLoading={isLoading}
+      loadError={loadError}
+      onGoalChange={changeGoal}
+      onLoadStatusUrl={() => void loadFromUrl(statusUrl)}
+      onResetDemo={resetToDemo}
+      projection={selectedProjection}
+      selectedGoalId={selectedGoalId}
+      setStatusUrl={setStatusUrl}
+      source={source}
+      statusUrl={statusUrl}
+    />
+  );
 }

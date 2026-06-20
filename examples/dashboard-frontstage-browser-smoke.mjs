@@ -4,7 +4,7 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,8 +12,142 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dashboardDir = resolve(repoRoot, "apps/dashboard");
+const fixtureName = "status.frontstage.browser-smoke.json";
+const fixturePath = resolve(dashboardDir, "public", fixtureName);
 const visualOutputDir = resolve(repoRoot, "output/playwright/dashboard-frontstage-visual-acceptance");
 const port = Number(process.env.GOAL_HARNESS_DASHBOARD_FRONTSTAGE_SMOKE_PORT ?? "5197");
+
+function projectionFor(goalId, displayName, claimedBy, todoTitle) {
+  return {
+    schema_version: "goal_channel_projection_v0",
+    mode: "read_only",
+    goal_id: goalId,
+    display_name: displayName,
+    generated_at: "2026-06-20T09:00:00Z",
+    latest_status: "live_fixture_loaded",
+    waiting_on: "codex",
+    next_action: `${displayName} live next action`,
+    source_refs: {
+      status_generated_at: "2026-06-20T09:00:00Z",
+      event_ledger_source: "browser-smoke-fixture",
+    },
+    decision_frame: {
+      user_action_required: false,
+      agent_action_required: true,
+      quiet_noop_allowed: false,
+    },
+    quota: {
+      allowed_slots: 10,
+      spend_policy: "spend after validated live writeback",
+      spent_slots: 3,
+      state: "eligible",
+    },
+    user_todos: [],
+    agent_todos: [
+      {
+        todo_id: `${goalId}_todo`,
+        priority: "P1",
+        status: "open",
+        claimed_by: claimedBy,
+        task_class: "advancement_task",
+        title: todoTitle,
+      },
+    ],
+    open_gates: [],
+    active_leases: [
+      {
+        owner_agent: claimedBy,
+        status: "soft_claim",
+        todo_id: `${goalId}_todo`,
+      },
+    ],
+    artifacts: [
+      {
+        kind: "fixture",
+        label: "browser smoke statusUrl",
+      },
+    ],
+    recent_events: [
+      {
+        generated_at: "2026-06-20T09:00:00Z",
+        classification: "live_fixture_event",
+        summary: `${displayName} rendered from statusUrl`,
+      },
+    ],
+    source_warnings: [
+      {
+        kind: "browser_smoke_public_fixture",
+        message: "fixture contains compact public-safe fields only",
+      },
+    ],
+    truth_contract: {
+      event_ledger_is_source_of_truth: true,
+      projection_is_writable: false,
+      recompute_rule: "reload statusUrl and parse attention_queue.items[].goal_channel_projection",
+      write_authority: "none",
+    },
+  };
+}
+
+const statusFixture = {
+  ok: true,
+  registry: "./fixtures/registry.global.json",
+  runtime_root: "./fixtures/runtime",
+  goal_count: 2,
+  run_count: 2,
+  status_contract: {
+    schema_version: 2,
+    minimum_dashboard_schema_version: 2,
+    producer: "goal-harness status",
+    reload_hint: "scripts/macos-dashboard-launchagent.sh restart",
+  },
+  contract: {
+    ok: true,
+    summary: { errors: 0, warnings: 0, checks: 1 },
+    errors: [],
+    warnings: [],
+    checks: ["public-safe frontstage browser fixture"],
+  },
+  attention_queue: {
+    available: true,
+    item_count: 2,
+    needs_user_or_controller: 0,
+    needs_controller: 0,
+    needs_codex: 2,
+    watching_external_evidence: 0,
+    autonomous_backlog_candidates: null,
+    items: [
+      {
+        goal_id: "live-goal-a",
+        status: "frontstage_live_fixture",
+        waiting_on: "codex",
+        severity: "action",
+        recommended_action: "render live goal A",
+        source: "fixture",
+        goal_channel_projection: projectionFor(
+          "live-goal-a",
+          "Live Goal Channel",
+          "codex-side-bypass",
+          "Render live statusUrl channel projection.",
+        ),
+      },
+      {
+        goal_id: "live-goal-b",
+        status: "frontstage_live_fixture",
+        waiting_on: "codex",
+        severity: "watch",
+        recommended_action: "render live goal B",
+        source: "fixture",
+        goal_channel_projection: projectionFor(
+          "live-goal-b",
+          "Second Live Channel",
+          "codex-main-control",
+          "Keep second live channel selectable.",
+        ),
+      },
+    ],
+  },
+};
 
 function loadPlaywright() {
   const candidates = [
@@ -136,7 +270,7 @@ async function assertNoHorizontalOverflow(page, label) {
   }
 }
 
-async function captureFrontstage(page, url, label) {
+async function captureFrontstage(page, url, label, requiredText = []) {
   await page.goto(url, { waitUntil: "networkidle" });
   await page.waitForSelector('[data-testid="goal-channel-frontstage-route"]', { timeout: 10_000 });
 
@@ -144,7 +278,6 @@ async function captureFrontstage(page, url, label) {
   const required = [
     "Goal Harness",
     "Frontstage channel",
-    "Demo Goal Channel",
     "goal_channel_projection_v0",
     "Projection is read-only",
     "Decision Frame",
@@ -156,9 +289,7 @@ async function captureFrontstage(page, url, label) {
     "Active Claims",
     "Truth Contract",
     "Boundary Warnings",
-    "codex-main-control",
-    "codex-side-bypass",
-    "Render the productization frontstage fixture",
+    ...requiredText,
   ];
   const missing = required.filter((text) => !body.includes(text));
   if (missing.length) {
@@ -191,6 +322,7 @@ async function captureFrontstage(page, url, label) {
 
 async function main() {
   const { chromium } = loadPlaywright();
+  await writeFile(fixturePath, JSON.stringify(statusFixture, null, 2) + "\n", "utf-8");
   await mkdir(visualOutputDir, { recursive: true });
 
   const server = startDashboardServer();
@@ -204,7 +336,29 @@ async function main() {
     const desktopPage = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
     desktopPage.on("pageerror", (error) => pageErrors.push(error.message));
     try {
-      await captureFrontstage(desktopPage, `${baseUrl}/frontstage`, "desktop-frontstage");
+      await captureFrontstage(desktopPage, `${baseUrl}/frontstage`, "desktop-frontstage", [
+        "Demo Goal Channel",
+        "codex-main-control",
+        "codex-side-bypass",
+        "Render the productization frontstage fixture",
+      ]);
+      await captureFrontstage(
+        desktopPage,
+        `${baseUrl}/frontstage?statusUrl=/${fixtureName}&goalId=live-goal-a`,
+        "desktop-frontstage-live",
+        [
+          "live status feed",
+          "Live Goal Channel",
+          "Render live statusUrl channel projection",
+          "browser_smoke_public_fixture",
+        ],
+      );
+      await desktopPage.locator('[data-testid="frontstage-goal-select"]').selectOption("live-goal-b");
+      await desktopPage.waitForFunction(() => document.body.innerText.includes("Second Live Channel"));
+      const selectedUrl = new URL(desktopPage.url());
+      if (selectedUrl.searchParams.get("goalId") !== "live-goal-b") {
+        throw new Error(`Goal selector did not update URL: ${desktopPage.url()}`);
+      }
     } finally {
       await desktopPage.close();
     }
@@ -215,7 +369,12 @@ async function main() {
     });
     mobilePage.on("pageerror", (error) => pageErrors.push(`mobile: ${error.message}`));
     try {
-      await captureFrontstage(mobilePage, `${baseUrl}/frontstage`, "mobile-frontstage");
+      await captureFrontstage(mobilePage, `${baseUrl}/frontstage`, "mobile-frontstage", [
+        "Demo Goal Channel",
+        "codex-main-control",
+        "codex-side-bypass",
+        "Render the productization frontstage fixture",
+      ]);
     } finally {
       await mobilePage.close();
     }
@@ -230,6 +389,7 @@ async function main() {
       await browser.close();
     }
     server.kill("SIGTERM");
+    await rm(fixturePath, { force: true });
   }
 }
 

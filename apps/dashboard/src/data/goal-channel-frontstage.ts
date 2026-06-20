@@ -1,3 +1,75 @@
+import { z } from "zod";
+
+const scalarSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const scalarRecordSchema = z.record(z.string(), scalarSchema);
+
+export const goalChannelTodoSchema = z.object({
+  todo_id: z.string().optional(),
+  priority: z.string().optional(),
+  status: z.string(),
+  title: z.string(),
+  claimed_by: z.string().optional(),
+  task_class: z.string().optional(),
+  action_kind: z.string().optional(),
+});
+
+export const goalChannelGateSchema = z.object({
+  gate_id: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  blocks: z.array(z.string()).optional(),
+});
+
+export const goalChannelLeaseSchema = z.object({
+  todo_id: z.string().optional(),
+  owner_agent: z.string().optional(),
+  status: z.string().optional(),
+  lease_until: z.string().optional(),
+  write_scope: z.array(z.string()).optional(),
+});
+
+export const goalChannelEventSchema = z.object({
+  generated_at: z.string().optional(),
+  classification: z.string().optional(),
+  summary: z.string().optional(),
+});
+
+export const goalChannelSourceWarningSchema = z.object({
+  kind: z.string().optional().default("warning"),
+  message: z.union([z.string(), z.array(z.string())]).optional().default("compact source warning"),
+}).passthrough();
+
+export const goalChannelProjectionSchema = z.object({
+  schema_version: z.literal("goal_channel_projection_v0"),
+  mode: z.literal("read_only"),
+  goal_id: z.string(),
+  display_name: z.string(),
+  generated_at: z.string(),
+  latest_status: z.string(),
+  waiting_on: z.string(),
+  next_action: z.string(),
+  source_refs: z.record(z.string(), scalarSchema),
+  decision_frame: z.object({
+    user_action_required: z.boolean(),
+    agent_action_required: z.boolean(),
+    quiet_noop_allowed: z.boolean(),
+  }),
+  quota: scalarRecordSchema,
+  user_todos: z.array(goalChannelTodoSchema).default([]),
+  agent_todos: z.array(goalChannelTodoSchema).default([]),
+  open_gates: z.array(goalChannelGateSchema).default([]),
+  active_leases: z.array(goalChannelLeaseSchema).default([]),
+  artifacts: z.array(scalarRecordSchema).default([]),
+  recent_events: z.array(goalChannelEventSchema).default([]),
+  source_warnings: z.array(goalChannelSourceWarningSchema).default([]),
+  truth_contract: z.object({
+    event_ledger_is_source_of_truth: z.boolean(),
+    projection_is_writable: z.boolean(),
+    recompute_rule: z.string(),
+    write_authority: z.string(),
+  }),
+});
+
 export type GoalChannelTodo = {
   todo_id?: string;
   priority?: string;
@@ -38,20 +110,20 @@ export type GoalChannelProjection = {
   latest_status: string;
   waiting_on: string;
   next_action: string;
-  source_refs: Record<string, string | null>;
+  source_refs: Record<string, string | number | boolean | null>;
   decision_frame: {
     user_action_required: boolean;
     agent_action_required: boolean;
     quiet_noop_allowed: boolean;
   };
-  quota: Record<string, string>;
+  quota: Record<string, string | number | boolean | null>;
   user_todos: GoalChannelTodo[];
   agent_todos: GoalChannelTodo[];
   open_gates: GoalChannelGate[];
   active_leases: GoalChannelLease[];
-  artifacts: Array<Record<string, string>>;
+  artifacts: Array<Record<string, string | number | boolean | null>>;
   recent_events: GoalChannelEvent[];
-  source_warnings: Array<Record<string, string | string[]>>;
+  source_warnings: Array<Record<string, unknown> & { kind?: string; message?: string | string[] }>;
   truth_contract: {
     event_ledger_is_source_of_truth: boolean;
     projection_is_writable: boolean;
