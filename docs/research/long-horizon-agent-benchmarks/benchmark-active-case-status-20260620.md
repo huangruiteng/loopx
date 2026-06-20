@@ -31,6 +31,11 @@ Public boundary:
   GH todo/status transitions, route shape, failure attribution, and next debug
   questions without copying raw task text, logs, trajectories, verifier output,
   credentials, or private paths.
+- After each compact closeout, write public-safe failure attribution before
+  treating the case as done or rotating away. The first attribution artifact is
+  `benchmark-closeout-failure-attribution-20260620.md`; it separates native
+  app-server Goal zero-score closeouts from non-native ACP blind-loop
+  no-uplift evidence and names the next reducer/worker obligation.
 
 ## Active Cloud Batch
 
@@ -44,6 +49,17 @@ Batch id: `parallel-benchmark-20260620T131254Z`.
 | `swe-marathon` | `find-network-alignments` | host Codex app-server Goal through Harbor bridge | compact official score `0.0`; ledger upserted under `gh-swe-find-network-alignments-host-app-server-goal-r6-20260620`; `thread/goal/get` confirmed `active`; `turn/start` id present; raw transcript not recorded; bridge responses observed | completed: app-server route reached Harbor environment operation, agent execution, verifier, and job closeout; official verifier returned `0.0` | Treat as a real native Goal baseline result with `official_verifier_solution_failure`; next SWE-Marathon work should either run a second small case or compare a treatment under the same no-upload boundary. |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | BenchFlow ACP blind-loop baseline | compact official score `0.0`; ledger upserted under `gh-skillsbench-tictoc-cloud-pair-r2-20260620` | completed as r2; r1 duplicate rerun may continue as background validation | Treat as ACP-compatible baseline evidence: runner/verifier completed, but the selected case did not score. |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | Goal Harness blind-loop treatment | compact official score `0.0`; ledger upserted under `gh-skillsbench-tictoc-cloud-pair-r2-20260620` | completed as r2; r1 duplicate rerun may continue as background validation | Pair with the ACP baseline as `paired_no_score_uplift`; next SkillsBench work should rotate to another early case or implement a native app-server Goal worker surface. |
+
+Failure-attribution update:
+
+- `build-cython-ext` is now classified as
+  `official_zero_native_goal_regression_needs_phase_attribution`, because a
+  historical compact control for the same case scored `1.0`.
+- `find-network-alignments` is now classified as
+  `official_zero_native_goal_first_closeout_needs_solution_phase_counters`.
+- both SkillsBench pairs are classified as
+  `paired_zero_acp_blind_loop_non_native_goal_no_uplift`; the next primary
+  SkillsBench engineering slice is the native app-server Goal worker.
 
 ## Rerun Queue After App-Server Sync
 
@@ -75,3 +91,7 @@ or blocker.
 5. For closeout batches with ambiguous zero scores, update the rollout/debug
    layer before launching another rotation so future agents can inspect the GH
    state flow and runner phase boundary, not only the final score.
+6. For every completed case, add or update a failure-attribution row before
+   selecting the next rotation. A zero score with only
+   `official_verifier_solution_failure` is not precise enough to choose the next
+   case by itself.

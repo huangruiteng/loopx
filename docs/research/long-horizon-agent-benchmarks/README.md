@@ -74,6 +74,12 @@ work still belongs in the existing code, examples, and contract documents:
   outcomes, GH todo/status transitions, case routes, failure attribution, and
   next debug questions without copying raw task text, logs, trajectories,
   verifier output, credentials, or private paths.
+- `benchmark-closeout-failure-attribution-20260620.md`: public-safe
+  attribution layer for the Terminal-Bench `build-cython-ext`, SWE-Marathon
+  `find-network-alignments`, and two SkillsBench closeouts. It records what a
+  compact zero score does and does not prove, splits native app-server Goal
+  failures from non-native ACP blind-loop no-uplift, and makes the next
+  reducer/worker obligation explicit before another rotation.
 - `benchmark-route-transition-retrospective-20260619.md`: retrospective and
   runbook for the local-Codex split-control to cloud-host Codex route pivot. It
   records why split-control was hard, which contracts/reducers remain useful,

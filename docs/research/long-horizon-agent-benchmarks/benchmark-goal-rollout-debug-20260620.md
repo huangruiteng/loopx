@@ -24,6 +24,9 @@ Public boundary:
 Machine-readable companion:
 `benchmark-goal-rollout-debug-20260620.json`.
 
+Failure-attribution companion:
+`benchmark-closeout-failure-attribution-20260620.md`.
+
 ## Control-Plane Flow
 
 | Time | GH classification / todo | Meaning |
@@ -90,3 +93,8 @@ For each real benchmark case closeout, write one public-safe rollout row with:
 
 Raw trajectories remain private. Public trajectory summaries should be counters
 only, following `goal_harness/benchmark_trajectory.py`.
+
+The follow-up failure-attribution layer narrows these rows into concrete
+obligations: Terminal-Bench and SWE-Marathon need public-safe solution-phase
+counters, while SkillsBench should stop repeating ACP blind-loop pairs as the
+primary Goal evidence and implement a native app-server Goal worker.
