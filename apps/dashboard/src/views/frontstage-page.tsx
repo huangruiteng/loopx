@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   ListChecks,
   RefreshCw,
+  Search,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -141,6 +142,31 @@ function countShowcaseStoryBeats() {
     (total, item) => total + (item.frontend_card?.story_beats?.length ?? 0),
     0,
   );
+}
+
+function uniqueShowcaseDomains() {
+  return Array.from(
+    new Set(frontstageShowcases.map((item) => item.domain).filter((value): value is string => Boolean(value))),
+  ).sort();
+}
+
+function showcaseSearchText(item: ShowcaseFrontstageCase) {
+  return [
+    item.title,
+    item.headline,
+    item.domain,
+    item.status,
+    item.evidence_boundary,
+    ...(item.feature_points ?? []),
+    ...(item.pattern_tags ?? []),
+    ...(item.frontend_card?.badges ?? []),
+    item.frontend_card?.primary_metric_hint,
+    item.frontend_card?.visual_metaphor,
+    ...(item.frontend_card?.story_beats ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 function uniqueClaimOwners(projection: GoalChannelProjection) {
@@ -403,6 +429,16 @@ function ShowcaseMotionBoard() {
 }
 
 function ShowcaseCasePackPanel() {
+  const [query, setQuery] = useState("");
+  const [domain, setDomain] = useState("all");
+  const normalizedQuery = query.trim().toLowerCase();
+  const domains = uniqueShowcaseDomains();
+  const filteredCases = frontstageShowcases.filter((item) => {
+    const matchesDomain = domain === "all" || item.domain === domain;
+    const matchesQuery = !normalizedQuery || showcaseSearchText(item).includes(normalizedQuery);
+    return matchesDomain && matchesQuery;
+  });
+
   if (!frontstageShowcases.length) {
     return null;
   }
@@ -419,8 +455,43 @@ function ShowcaseCasePackPanel() {
           </div>
           <Badge variant="neutral">{frontstageShowcases.length} cases</Badge>
         </div>
+        <div
+          className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(220px,1fr)_auto]"
+          data-testid="frontstage-showcase-discovery"
+        >
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">Search public showcases</span>
+            <span className="relative mt-1 block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                aria-label="Search public showcases"
+                className="h-9 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-slate-400"
+                data-testid="frontstage-showcase-search"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search cases, patterns, evidence..."
+                value={query}
+              />
+            </span>
+          </label>
+          <div className="flex flex-wrap gap-2" data-testid="frontstage-showcase-domain-filter">
+            {["all", ...domains].map((value) => (
+              <Button
+                aria-pressed={domain === value}
+                key={value}
+                onClick={() => setDomain(value)}
+                size="sm"
+                variant={domain === value ? "primary" : "secondary"}
+              >
+                {value === "all" ? "All" : value}
+              </Button>
+            ))}
+          </div>
+          <div className="text-xs font-medium leading-5 text-slate-500 lg:col-span-2" data-testid="frontstage-showcase-result-count">
+            Showing {filteredCases.length} of {frontstageShowcases.length} public-safe cases from the catalog.
+          </div>
+        </div>
         <div className="grid gap-3 lg:grid-cols-2">
-          {frontstageShowcases.map((item) => {
+          {filteredCases.map((item) => {
             const badges = item.frontend_card?.badges?.slice(0, 4) ?? item.pattern_tags?.slice(0, 4) ?? [];
             return (
               <article className="rounded-md border border-slate-200 bg-slate-50 p-3" key={item.id}>
@@ -453,6 +524,11 @@ function ShowcaseCasePackPanel() {
               </article>
             );
           })}
+          {!filteredCases.length ? (
+            <div className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-6 text-sm font-medium leading-6 text-slate-500 lg:col-span-2">
+              No public showcase matched the current filters.
+            </div>
+          ) : null}
         </div>
       </div>
     </Panel>

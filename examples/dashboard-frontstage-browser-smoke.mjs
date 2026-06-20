@@ -350,10 +350,25 @@ async function main() {
         "story beats",
         "showcase mode",
         "Showcase mode ignores statusUrl",
+        "SEARCH PUBLIC SHOWCASES",
+        "Showing 4 of 4 public-safe cases",
         "Public Boundary",
         "Ops live only",
         "None in browser",
       ]);
+      await desktopPage.locator('[data-testid="frontstage-showcase-search"]').fill("self-iteration");
+      await desktopPage.waitForFunction(() => document.body.innerText.includes("Showing 1 of 4 public-safe cases"));
+      const filteredCaseText = await desktopPage.locator('[data-testid="frontstage-showcase-cases"]').innerText();
+      if (!filteredCaseText.includes("Goal Harness self-iteration loop")) {
+        throw new Error("Showcase search did not keep the self-iteration case visible");
+      }
+      if (filteredCaseText.includes("Blocked P0 with safe P1/P2 rotation")) {
+        throw new Error("Showcase search did not filter unrelated cases");
+      }
+      await desktopPage.locator('[data-testid="frontstage-showcase-search"]').fill("no-matching-showcase");
+      await desktopPage.waitForFunction(() => document.body.innerText.includes("No public showcase matched the current filters."));
+      await desktopPage.locator('[data-testid="frontstage-showcase-search"]').fill("");
+      await desktopPage.waitForFunction(() => document.body.innerText.includes("Showing 4 of 4 public-safe cases"));
       await captureFrontstage(
         desktopPage,
         `${baseUrl}/frontstage?statusUrl=/${fixtureName}&goalId=live-goal-a`,

@@ -79,7 +79,14 @@ includes(frontstageSource, "estimated_developer_days", "efficiency baseline rang
 includes(frontstageSource, "single_engineer_calendar_compression", "efficiency compression range");
 includes(frontstageSource, "maturity-adjusted", "maturity adjusted copy");
 includes(frontstageSource, 'data-testid="frontstage-showcase-cases"', "showcase case cards panel");
+includes(frontstageSource, 'data-testid="frontstage-showcase-discovery"', "showcase discovery controls");
+includes(frontstageSource, 'data-testid="frontstage-showcase-search"', "showcase catalog search control");
+includes(frontstageSource, 'data-testid="frontstage-showcase-domain-filter"', "showcase domain filter");
+includes(frontstageSource, 'data-testid="frontstage-showcase-result-count"', "showcase result count");
 includes(frontstageSource, "Showcase Cases", "showcase cases copy");
+includes(frontstageSource, "Search public showcases", "showcase search accessible label");
+includes(frontstageSource, "Showing {filteredCases.length} of {frontstageShowcases.length} public-safe cases", "showcase count copy");
+includes(frontstageSource, "No public showcase matched the current filters.", "showcase empty state");
 includes(frontstageSource, "frontstageShowcases", "catalog-driven showcase cases");
 includes(frontstageSource, 'data-testid="frontstage-showcase-motion"', "showcase motion panel");
 includes(frontstageSource, "Showcase Motion", "showcase motion copy");
@@ -104,6 +111,13 @@ includes(motionSource, "visual_metaphor", "motion board visual metaphor field");
 includes(motionSource, "story_beats", "motion board story beats field");
 excludes(motionSource, "projection", "motion board live projection dependency");
 excludes(motionSource, "payload", "motion board live payload dependency");
+
+const casePackSource = sourceBetween(frontstageSource, "function ShowcaseCasePackPanel", "function PublicShowcaseBoundaryPanel", "showcase case pack");
+includes(casePackSource, "showcaseSearchText", "case pack catalog search index");
+includes(casePackSource, "uniqueShowcaseDomains", "case pack catalog domain filter");
+includes(casePackSource, "filteredCases", "case pack filtered render list");
+excludes(casePackSource, "projection", "case pack live projection dependency");
+excludes(casePackSource, "payload", "case pack live payload dependency");
 
 includes(readmeSource, "/frontstage", "README frontstage route mention");
 includes(readmeSource, "operations strip", "README operations strip explanation");
