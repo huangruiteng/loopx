@@ -476,6 +476,7 @@ async function main() {
         [
           "ops live",
           "live status feed",
+          "Ops statusUrl accepts only relative or loopback sources.",
           "Live Goal Channel",
           "goal_channel_projection_v0",
           "Always-on agent operations",
@@ -537,6 +538,13 @@ async function main() {
       if (selectedUrl.searchParams.get("goalId") !== "live-goal-b") {
         throw new Error(`Goal selector did not update URL: ${desktopPage.url()}`);
       }
+      await desktopPage.locator('[data-testid="frontstage-status-url-input"]').fill("https://example.com/status.json");
+      await desktopPage.locator('[data-testid="frontstage-load-status-url"]').click();
+      const loadErrorText = await desktopPage.locator('[data-testid="frontstage-load-error"]').innerText();
+      if (!loadErrorText.includes("Ops statusUrl must be relative or loopback")) {
+        throw new Error(`External ops statusUrl was not rejected locally: ${loadErrorText}`);
+      }
+      await desktopPage.locator('[data-testid="frontstage-reset-demo"]').click();
       await captureFrontstage(desktopPage, `${baseUrl}/frontstage`, "desktop-frontstage-after-ops-reset", [
         "Goal Harness Showcase Frontstage",
         "showcase mode",

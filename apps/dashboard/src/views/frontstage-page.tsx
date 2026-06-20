@@ -131,6 +131,37 @@ function warningMessage(value: string | string[] | undefined) {
   return value ?? "compact source warning";
 }
 
+function isExplicitUrl(value: string) {
+  return /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(value) || value.startsWith("//");
+}
+
+function isLoopbackHostname(hostname: string) {
+  return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
+}
+
+function resolveOpsStatusUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { error: "status URL is empty" };
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed, window.location.href);
+  } catch {
+    return { error: "status URL is invalid" };
+  }
+
+  const isRelative = !isExplicitUrl(trimmed);
+  if (!isRelative && !isLoopbackHostname(parsed.hostname)) {
+    return {
+      error: "Ops statusUrl must be relative or loopback; use showcase mode for public links.",
+    };
+  }
+
+  return { url: trimmed };
+}
+
 function artifactDisplayValue(value: string | number | boolean | null | undefined) {
   const text = stringifyScalar(value);
   return text.length > 96 ? `${text.slice(0, 93)}...` : text;
@@ -1045,9 +1076,12 @@ function FrontstageRoute({
                   className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-slate-400"
                   data-testid="frontstage-status-url-input"
                   onChange={(event) => setStatusUrl(event.target.value)}
-                  placeholder="/status.local.json"
+                  placeholder="/status.local.json or http://127.0.0.1:8766/status.json"
                   value={statusUrl}
                 />
+                <div className="text-[11px] font-medium leading-5 text-slate-500">
+                  Ops statusUrl accepts only relative or loopback sources.
+                </div>
                 <div className="flex gap-2">
                   <Button
                     className="flex-1"
@@ -1435,22 +1469,24 @@ export function FrontstagePage() {
       return;
     }
     const trimmed = url.trim();
-    if (!trimmed) {
-      setLoadError("status URL is empty");
+    const resolvedStatusUrl = resolveOpsStatusUrl(trimmed);
+    if (resolvedStatusUrl.error || !resolvedStatusUrl.url) {
+      setLoadError(resolvedStatusUrl.error ?? "status URL is invalid");
       return;
     }
+    const loadUrl = resolvedStatusUrl.url;
     setIsLoading(true);
     setLoadError(null);
     try {
-      const response = await fetch(trimmed, { cache: "no-store" });
+      const response = await fetch(loadUrl, { cache: "no-store" });
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status} while loading ${trimmed}`);
+        throw new Error(`HTTP ${response.status} while loading ${loadUrl}`);
       }
       const nextPayload = parseStatusPayload(await response.json());
       const nextOptions = projectionOptionsFromPayload(nextPayload);
       setPayload(nextPayload);
-      setSource({ kind: "url", label: trimmed });
-      setStatusUrl(trimmed);
+      setSource({ kind: "url", label: loadUrl });
+      setStatusUrl(loadUrl);
       if (nextOptions.length === 0) {
         setLoadError("status feed has no goal_channel_projection items; showing demo fixture");
       }
@@ -1458,7 +1494,7 @@ export function FrontstagePage() {
         await updateSearch({
           goalId: nextOptions[0]?.goalId ?? "",
           mode: "ops",
-          statusUrl: trimmed,
+          statusUrl: loadUrl,
         });
       }
     } catch (error) {
