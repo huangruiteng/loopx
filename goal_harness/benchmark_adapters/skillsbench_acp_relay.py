@@ -69,6 +69,8 @@ class CodexExecConfig:
     approval_policy: str = "never"
     response_timeout_sec: float = 30.0
     worker_script: str | None = None
+    stream_heartbeat_interval_sec: float = 120.0
+    reasoning_effort: str | None = "high"
 
 
 class SkillsBenchLocalAcpRelay:
@@ -159,7 +161,12 @@ class SkillsBenchLocalAcpRelay:
         if not prompt_text:
             return _json_rpc_error(message_id, -32602, "prompt text missing")
         try:
-            response_text = self._run_codex(prompt_text, session=session)
+            response_text = self._run_codex(
+                prompt_text,
+                session=session,
+                session_id=session_id,
+                stdout=stdout,
+            )
         except TimeoutError:
             return _json_rpc_error(message_id, -32002, "local codex execution timeout")
         except RuntimeError as exc:
@@ -180,11 +187,23 @@ class SkillsBenchLocalAcpRelay:
         )
         return _json_rpc_result(message_id, {"stopReason": "end_turn"})
 
-    def _run_codex(self, prompt_text: str, *, session: dict[str, Any]) -> str:
+    def _run_codex(
+        self,
+        prompt_text: str,
+        *,
+        session: dict[str, Any],
+        session_id: str,
+        stdout: TextIO,
+    ) -> str:
         if self._config.dry_run_response is not None:
             return self._config.dry_run_response
         if self._config.app_server_goal_worker:
-            return self._run_app_server_goal_worker(prompt_text, session=session)
+            return self._run_app_server_goal_worker(
+                prompt_text,
+                session=session,
+                session_id=session_id,
+                stdout=stdout,
+            )
         cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
         with tempfile.TemporaryDirectory(prefix="gh-skillsbench-acp-") as tmp:
             output_path = Path(tmp) / "last-message.txt"
@@ -225,7 +244,12 @@ class SkillsBenchLocalAcpRelay:
             return response or "local codex returned an empty final message"
 
     def _run_app_server_goal_worker(
-        self, prompt_text: str, *, session: dict[str, Any]
+        self,
+        prompt_text: str,
+        *,
+        session: dict[str, Any],
+        session_id: str,
+        stdout: TextIO,
     ) -> str:
         cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
         with tempfile.TemporaryDirectory(prefix="gh-skillsbench-goal-worker-") as tmp:
@@ -266,20 +290,47 @@ class SkillsBenchLocalAcpRelay:
                 str(self._config.response_timeout_sec),
                 "--turn-timeout-sec",
                 str(self._config.timeout_sec),
+                "--reasoning-effort",
+                str(self._config.reasoning_effort or "high"),
                 "--runner-integration-ready",
             ]
             model = self._config.model or session.get("model")
             if model:
                 cmd.extend(["--model", str(model)])
             try:
-                proc = subprocess.run(
+                proc = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    timeout=self._config.timeout_sec + 60,
-                    check=False,
                 )
+                self._write_worker_heartbeat(
+                    stdout,
+                    session_id=session_id,
+                    text="host app-server goal worker started",
+                )
+                deadline = time.monotonic() + self._config.timeout_sec + 60
+                next_heartbeat = (
+                    time.monotonic()
+                    + max(1.0, self._config.stream_heartbeat_interval_sec)
+                )
+                while proc.poll() is None:
+                    now = time.monotonic()
+                    if now >= deadline:
+                        proc.kill()
+                        proc.communicate(timeout=2)
+                        raise TimeoutError
+                    if now >= next_heartbeat:
+                        self._write_worker_heartbeat(
+                            stdout,
+                            session_id=session_id,
+                            text="host app-server goal worker still running",
+                        )
+                        next_heartbeat = (
+                            now + max(1.0, self._config.stream_heartbeat_interval_sec)
+                        )
+                    time.sleep(0.2)
+                proc.communicate(timeout=5)
             except subprocess.TimeoutExpired as exc:
                 raise TimeoutError from exc
             if proc.returncode != 0:
@@ -289,6 +340,30 @@ class SkillsBenchLocalAcpRelay:
             except OSError as exc:
                 raise RuntimeError("host app-server goal worker response missing") from exc
             return response or "host app-server goal worker returned an empty final message"
+
+    def _write_worker_heartbeat(
+        self,
+        stdout: TextIO,
+        *,
+        session_id: str,
+        text: str,
+    ) -> None:
+        """Emit a public-safe ACP activity heartbeat while the host worker runs."""
+
+        self._write(
+            stdout,
+            {
+                "jsonrpc": "2.0",
+                "method": "session/update",
+                "params": {
+                    "sessionId": session_id,
+                    "update": {
+                        "sessionUpdate": "agent_thought_chunk",
+                        "content": {"type": "text", "text": text},
+                    },
+                },
+            },
+        )
 
     @staticmethod
     def _write(stdout: TextIO, message: dict[str, Any]) -> None:

@@ -47,6 +47,12 @@ for line in sys.stdin:
     elif method == "thread/goal/get":
         result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
     elif method == "turn/start":
+        if msg.get("params", {}).get("effort") != "high":
+            print(json.dumps({
+                "id": mid,
+                "error": {"code": -32602, "message": "missing high effort"},
+            }), flush=True)
+            continue
         result = {"turn": {"id": "turn-skillsbench", "status": "running"}}
         print(json.dumps({"id": mid, "result": result}), flush=True)
         print(json.dumps({
@@ -246,6 +252,7 @@ def test_host_worker_contract_only_cli() -> None:
     contract = payload["worker_contract"]
     assert contract["route"] == ROUTE, contract
     assert contract["worker_adapter"]["script"] == "scripts/skillsbench_host_codex_goal_worker.py", contract
+    assert contract["worker_adapter"]["reasoning_effort"] == "high", contract
 
 
 def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> None:
@@ -323,6 +330,115 @@ def test_acp_relay_delegates_to_app_server_goal_worker() -> None:
             timeout_sec=10,
         )
     assert probe["ready"] is True, probe
+
+
+def test_acp_relay_streams_public_keepalive_while_worker_runs() -> None:
+    fake_worker = """#!/usr/bin/env python3
+import argparse
+import json
+import time
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--response-text-file")
+parser.add_argument("--output-json")
+args, _ = parser.parse_known_args()
+time.sleep(0.25)
+Path(args.response_text_file).write_text("private delayed answer", encoding="utf-8")
+Path(args.output_json).write_text(json.dumps({"ok": True}), encoding="utf-8")
+"""
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-keepalive-") as tmp:
+        root = Path(tmp)
+        worker = root / "fake_worker.py"
+        work = root / "work"
+        worker.write_text(fake_worker, encoding="utf-8")
+        worker.chmod(0o755)
+        work.mkdir()
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "skillsbench_local_acp_relay.py"),
+                "--app-server-goal-worker",
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--worker-script",
+                str(worker),
+                "--timeout-sec",
+                "5",
+                "--stream-heartbeat-interval-sec",
+                "0.05",
+            ],
+            cwd=REPO_ROOT,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        assert proc.stdin is not None
+        assert proc.stdout is not None
+
+        def send(message: dict[str, Any]) -> None:
+            proc.stdin.write(json.dumps(message) + "\n")
+            proc.stdin.flush()
+
+        def read_response(request_id: int) -> dict[str, Any]:
+            while True:
+                line = proc.stdout.readline()
+                assert line, proc.stderr.read()
+                message = json.loads(line)
+                if message.get("id") == request_id and "method" not in message:
+                    return message
+
+        send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        read_response(1)
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {"cwd": str(work), "mcpServers": []},
+            }
+        )
+        session_id = read_response(2)["result"]["sessionId"]
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/set_model",
+                "params": {"sessionId": session_id, "modelId": "probe-model"},
+            }
+        )
+        read_response(3)
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": session_id,
+                    "prompt": [{"type": "text", "text": "private task placeholder"}],
+                },
+            }
+        )
+        keepalive_seen = False
+        final_response = None
+        for _ in range(20):
+            line = proc.stdout.readline()
+            assert line, proc.stderr.read()
+            message = json.loads(line)
+            if message.get("method") == "session/update":
+                update = message["params"]["update"]
+                if update.get("sessionUpdate") == "agent_thought_chunk":
+                    keepalive_seen = True
+                    assert "task placeholder" not in json.dumps(update), update
+            if message.get("id") == 4 and "method" not in message:
+                final_response = message
+                break
+        assert keepalive_seen
+        assert final_response is not None
+        assert final_response["result"]["stopReason"] == "end_turn"
+        proc.terminate()
+        proc.wait(timeout=2)
 
 
 def test_full_run_fails_closed_until_bridge_is_materialized() -> None:

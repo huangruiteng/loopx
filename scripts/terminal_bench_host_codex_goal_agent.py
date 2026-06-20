@@ -123,6 +123,7 @@ class HostCodexGoalAgent(BaseAgent):
         task_workdir: str = "/app",
         codex_bin: str = "codex",
         goal_surface: str = "tui",
+        reasoning_effort: str | None = "high",
         app_server_wait_for_completion: str | bool = True,
         app_server_response_timeout_sec: str | int | float = 30,
         startup_delay_sec: str | int | float = 5,
@@ -142,6 +143,7 @@ class HostCodexGoalAgent(BaseAgent):
         self.task_workdir = task_workdir
         self.codex_bin = codex_bin
         self.goal_surface = goal_surface
+        self.reasoning_effort = reasoning_effort
         self.app_server_wait_for_completion = _coerce_bool(app_server_wait_for_completion)
         self.app_server_response_timeout_sec = float(app_server_response_timeout_sec)
         self.startup_delay_sec = float(startup_delay_sec)
@@ -207,6 +209,7 @@ class HostCodexGoalAgent(BaseAgent):
                     objective="Complete the Terminal-Bench task using the task container.",
                     prompt=prompt,
                     model_name=self.model_name,
+                    reasoning_effort=self.reasoning_effort,
                     response_timeout_sec=self.app_server_response_timeout_sec,
                     wait_for_completion=self.app_server_wait_for_completion,
                     turn_timeout_sec=self.goal_timeout_sec,

@@ -626,8 +626,12 @@ def _host_local_acp_launch_command(args: argparse.Namespace) -> list[str]:
                 args.task_id,
                 "--approval-policy",
                 "never",
+                "--reasoning-effort",
+                args.app_server_reasoning_effort,
                 "--response-timeout-sec",
                 "30",
+                "--stream-heartbeat-interval-sec",
+                str(args.app_server_acp_heartbeat_interval_sec),
             ]
         )
     command.extend(
@@ -1617,6 +1621,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             task_id=task_id,
             cwd="<skillsbench-task-workspace>",
             model=args.model,
+            reasoning_effort=args.app_server_reasoning_effort,
             sandbox="workspace-write",
             approval_policy="never",
             no_upload=True,
@@ -3686,6 +3691,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--app-server-reasoning-effort",
+        default="high",
+        help=(
+            "Reasoning effort passed as turn/start effort for native "
+            "codex-app-server-goal-baseline runs. Formal benchmark runs "
+            "default to high."
+        ),
+    )
     parser.add_argument("--sandbox", default="docker")
     parser.add_argument("--sandbox-user", default="agent")
     parser.add_argument(
@@ -3729,6 +3743,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--outer-timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
     parser.add_argument("--sandbox-setup-timeout", type=int, default=DEFAULT_TIMEOUT_SEC)
     parser.add_argument("--agent-idle-timeout", type=int, default=900)
+    parser.add_argument(
+        "--app-server-acp-heartbeat-interval-sec",
+        type=float,
+        default=120.0,
+        help=(
+            "Public-safe ACP thought keepalive interval while a host "
+            "app-server Goal worker is active. Must stay below "
+            "--agent-idle-timeout for long-running native Goal cases."
+        ),
+    )
     parser.add_argument("--max-verifier-output-chars", type=int, default=0)
     parser.add_argument("--skillsbench-root", default=str(DEFAULT_SKILLSBENCH_ROOT))
     parser.add_argument(

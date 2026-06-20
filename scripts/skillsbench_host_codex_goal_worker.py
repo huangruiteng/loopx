@@ -44,6 +44,7 @@ def build_contract_payload(args: argparse.Namespace) -> dict[str, Any]:
         task_id=args.task_id,
         cwd="<skillsbench-task-workspace>",
         model=args.model,
+        reasoning_effort=args.reasoning_effort,
         codex_bin=args.codex_bin,
         sandbox=args.sandbox,
         approval_policy=args.approval_policy,
@@ -68,6 +69,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         objective=objective,
         prompt=prompt,
         model_name=args.model,
+        reasoning_effort=args.reasoning_effort,
         approval_policy=args.approval_policy,
         sandbox=args.sandbox,
         response_timeout_sec=args.response_timeout_sec,
@@ -120,6 +122,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--dataset", default=SKILLSBENCH_DEFAULT_DATASET)
     parser.add_argument("--task-id", default=SKILLSBENCH_DEFAULT_TASK)
     parser.add_argument("--model", default=SKILLSBENCH_DEFAULT_MODEL)
+    parser.add_argument(
+        "--reasoning-effort",
+        default="high",
+        help=(
+            "Codex app-server turn/start effort. Formal benchmark runs default "
+            "to high; smoke/debug runs may override this explicitly."
+        ),
+    )
     parser.add_argument("--codex-bin", default="codex")
     parser.add_argument("--sandbox", default="workspace-write")
     parser.add_argument("--approval-policy", default="never")

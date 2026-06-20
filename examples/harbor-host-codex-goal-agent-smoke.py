@@ -76,6 +76,7 @@ def main() -> int:
         assert agent.poll_interval_sec == 0.5
         assert agent.task_workdir == "/workspace"
         assert agent.goal_surface == "app_server"
+        assert agent.reasoning_effort == "high"
         assert agent.app_server_wait_for_completion is True
         assert agent.app_server_response_timeout_sec == 4.0
 

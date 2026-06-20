@@ -223,6 +223,7 @@ def start_codex_app_server_goal_turn(
     objective: str,
     prompt: str,
     model_name: str | None = None,
+    reasoning_effort: str | None = None,
     approval_policy: str = "never",
     sandbox: str = "danger-full-access",
     response_timeout_sec: float = 30.0,
@@ -336,6 +337,8 @@ def start_codex_app_server_goal_turn(
         }
         if model_name:
             turn_params["model"] = model_name
+        if reasoning_effort:
+            turn_params["effort"] = reasoning_effort
         turn_start = {
             "id": 5,
             "method": "turn/start",

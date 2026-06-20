@@ -62,10 +62,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--task-id", default="llm-prefix-cache-replay")
     parser.add_argument("--approval-policy", default="never")
     parser.add_argument(
+        "--reasoning-effort",
+        default="high",
+        help=(
+            "Codex app-server turn/start effort for --app-server-goal-worker. "
+            "Formal benchmark runs default to high."
+        ),
+    )
+    parser.add_argument(
         "--response-timeout-sec",
         type=float,
         default=30.0,
         help="Timeout for the worker to observe initial app-server response events.",
+    )
+    parser.add_argument(
+        "--stream-heartbeat-interval-sec",
+        type=float,
+        default=120.0,
+        help=(
+            "Interval for public-safe ACP thought keepalives while the host "
+            "app-server Goal worker is still executing."
+        ),
     )
     parser.add_argument(
         "--worker-script",
@@ -88,8 +105,10 @@ def main(argv: list[str] | None = None) -> int:
             dataset=args.dataset,
             task_id=args.task_id,
             approval_policy=args.approval_policy,
+            reasoning_effort=args.reasoning_effort,
             response_timeout_sec=args.response_timeout_sec,
             worker_script=args.worker_script,
+            stream_heartbeat_interval_sec=args.stream_heartbeat_interval_sec,
         )
     )
     return relay.serve()

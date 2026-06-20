@@ -33,6 +33,12 @@ for line in sys.stdin:
     elif method == "thread/goal/get":
         result = {"goal": {"threadId": "thread-smoke", "status": "active"}}
     elif method == "turn/start":
+        if msg.get("params", {}).get("effort") != "high":
+            print(json.dumps({
+                "id": mid,
+                "error": {"code": -32602, "message": "missing high effort"},
+            }), flush=True)
+            continue
         result = {"turn": {"id": "turn-smoke", "status": "running"}}
         print(json.dumps({"id": mid, "result": result}), flush=True)
         print(json.dumps({
@@ -80,6 +86,7 @@ def main() -> int:
             objective="Synthetic objective.",
             prompt="Synthetic prompt.",
             model_name="gpt-5.5",
+            reasoning_effort="high",
             response_timeout_sec=5,
         )
         try:
@@ -103,6 +110,7 @@ def main() -> int:
             objective="Synthetic objective.",
             prompt="Synthetic prompt.",
             model_name="gpt-5.5",
+            reasoning_effort="high",
             response_timeout_sec=5,
             wait_for_completion=True,
             turn_timeout_sec=5,

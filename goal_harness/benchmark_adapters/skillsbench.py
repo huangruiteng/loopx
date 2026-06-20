@@ -342,6 +342,7 @@ def build_skillsbench_app_server_goal_worker_contract(
     task_id: str = SKILLSBENCH_DEFAULT_TASK,
     cwd: str = "<skillsbench-task-workspace>",
     model: str = SKILLSBENCH_DEFAULT_MODEL,
+    reasoning_effort: str = "high",
     codex_bin: str = "codex",
     sandbox: str = "workspace-write",
     approval_policy: str = "never",
@@ -402,6 +403,7 @@ def build_skillsbench_app_server_goal_worker_contract(
         sandbox=sandbox,
         approval_policy=approval_policy,
         model=model,
+        effort=reasoning_effort,
     )
     ready = not blockers and compact_reducer_ready and no_upload and not submit_enabled
     if ready:
@@ -425,6 +427,10 @@ def build_skillsbench_app_server_goal_worker_contract(
             "label": "skillsbench_host_codex_app_server_goal_worker",
             "script": "scripts/skillsbench_host_codex_goal_worker.py",
             "codex_bin": _skillsbench_public_safe_label(codex_bin, limit=80) or "codex",
+            "reasoning_effort": _skillsbench_public_safe_label(
+                reasoning_effort, limit=40
+            )
+            or "high",
             "agent_execution_mode": "host_codex_app_server_goal_worker",
             "worker_surface": "codex_app_server",
             "native_goal_methods_required": list(worker_plan["methods"]),

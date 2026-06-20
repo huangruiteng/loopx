@@ -175,6 +175,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
         codex_bin: str = "codex",
         task_workdir: str = "/app",
         goal_surface: str = "tui",
+        reasoning_effort: str | None = "high",
         app_server_wait_for_completion: str | bool = True,
         app_server_response_timeout_sec: str | int | float = 30,
         startup_delay_sec: str | int | float = 5,
@@ -186,6 +187,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
         self.codex_bin = codex_bin
         self.task_workdir = task_workdir
         self.goal_surface = goal_surface
+        self.reasoning_effort = reasoning_effort
         self.app_server_wait_for_completion = _coerce_bool(app_server_wait_for_completion)
         self.app_server_response_timeout_sec = float(app_server_response_timeout_sec)
         self.startup_delay_sec = float(startup_delay_sec)
@@ -309,6 +311,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         objective="Complete the Harbor benchmark task using the task environment bridge.",
                         prompt=prompt,
                         model_name=self.model_name,
+                        reasoning_effort=self.reasoning_effort,
                         response_timeout_sec=self.app_server_response_timeout_sec,
                         wait_for_completion=self.app_server_wait_for_completion,
                         turn_timeout_sec=self.goal_timeout_sec,
