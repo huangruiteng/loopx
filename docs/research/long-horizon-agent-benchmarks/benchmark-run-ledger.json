@@ -6997,6 +6997,71 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
+            },
+            {
+              "agent_declared_done": false,
+              "arm_id": "codex-native-goal",
+              "artifact_refs": {
+                "compact_artifact_ref": "terminal-bench/build-cython-ext/pr335-r1/terminal_bench_official_result.compact.json"
+              },
+              "benchmark_id": "terminal-bench@2.0",
+              "case_id": "build-cython-ext",
+              "case_ids": [
+                "build-cython-ext"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "goal_harness_inside_case": false,
+              "job_name": "build-cython-ext-host-app-server-goal-20260620t181051z",
+              "leaderboard_evidence": false,
+              "mode": "terminal_bench_host_codex_app_server_goal",
+              "notes": "Terminal-Bench build-cython-ext native app-server Goal compact official result: score 1.0; public-safe compact only.",
+              "official_passed": true,
+              "official_score": 1.0,
+              "recorded_at": "2026-06-21T04:08:17+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "terminal-bench-build-cython-ext-app-server-pr335-r1",
+              "run_id": "84f5b6b69627",
+              "score_status": "passed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
+            },
+            {
+              "agent_declared_done": false,
+              "arm_id": "codex-native-goal-completion-aware",
+              "artifact_refs": {
+                "compact_artifact_ref": "terminal-bench/build-cython-ext/pr336-r2/terminal_bench_official_result.compact.json"
+              },
+              "benchmark_id": "terminal-bench@2.0",
+              "case_id": "build-cython-ext",
+              "case_ids": [
+                "build-cython-ext"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "goal_harness_inside_case": false,
+              "job_name": "build-cython-ext-host-app-server-goal-20260620t182136z",
+              "leaderboard_evidence": false,
+              "mode": "terminal_bench_host_codex_app_server_goal_completion_aware",
+              "notes": "Terminal-Bench build-cython-ext completion-aware app-server Goal compact official result: score 0.0; verifier-solution failure; public-safe compact only.",
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-21T04:08:18+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "terminal-bench-build-cython-ext-app-server-pr336-r2",
+              "run_id": "36cb8a6eabd8",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
             }
           ]
         },
@@ -10149,7 +10214,7 @@
           ]
         }
       },
-      "run_count": 82
+      "run_count": 84
     }
   },
   "schema_version": "benchmark_run_ledger_v0",
@@ -10160,5 +10225,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-21T02:50:45+08:00"
+  "updated_at": "2026-06-21T04:08:18+08:00"
 }
