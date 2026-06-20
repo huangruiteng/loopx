@@ -77,6 +77,9 @@ def main() -> int:
             raise AssertionError(local_only_payload)
         if (local_only_payload.get("summary") or {}).get("errors"):
             raise AssertionError(local_only_payload)
+        checks = "\n".join(str(item) for item in local_only_payload.get("checks") or [])
+        if "public boundary scan clean: 1 files" not in checks:
+            raise AssertionError(local_only_payload)
 
         (project / "public.md").write_text(PRIVATE_DOC_MARKER, encoding="utf-8")
         public_leak = run_cli(root, "--format", "json", "check", "--scan-root", str(project))

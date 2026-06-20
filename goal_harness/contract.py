@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -114,13 +115,23 @@ def iter_scan_files(scan_root: Path) -> list[Path]:
     if scan_root.is_file():
         return [scan_root]
     files: list[Path] = []
-    for path in scan_root.rglob("*"):
-        if any(part in DEFAULT_SKIP_DIRS or part.endswith(".egg-info") for part in path.parts):
-            continue
-        if path.name.endswith(".local.json"):
-            continue
-        if path.is_file() and path.suffix in DEFAULT_SCAN_SUFFIXES:
-            files.append(path)
+    root_parts = set(scan_root.parts)
+    if any(part in DEFAULT_SKIP_DIRS or part.endswith(".egg-info") for part in root_parts):
+        return files
+
+    for dir_path, dir_names, file_names in os.walk(scan_root):
+        dir_names[:] = [
+            name
+            for name in dir_names
+            if name not in DEFAULT_SKIP_DIRS and not name.endswith(".egg-info")
+        ]
+        current_dir = Path(dir_path)
+        for file_name in file_names:
+            path = current_dir / file_name
+            if path.name.endswith(".local.json"):
+                continue
+            if path.suffix in DEFAULT_SCAN_SUFFIXES:
+                files.append(path)
     return sorted(files)
 
 
