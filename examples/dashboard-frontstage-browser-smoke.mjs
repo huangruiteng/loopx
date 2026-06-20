@@ -289,6 +289,7 @@ async function captureFrontstage(page, url, label, requiredText = []) {
     "User Todo Lane",
     "Agent Todo Lane",
     "Run Timeline",
+    "Role Map",
     "Active Claims",
     "Truth Contract",
     "Boundary Warnings",

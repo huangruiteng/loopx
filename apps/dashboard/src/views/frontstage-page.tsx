@@ -92,6 +92,17 @@ function countClaimedTodos(todos: GoalChannelTodo[]) {
   return todos.filter((todo) => Boolean(todo.claimed_by)).length;
 }
 
+function uniqueClaimOwners(projection: GoalChannelProjection) {
+  return Array.from(
+    new Set(
+      [
+        ...projection.agent_todos.map((todo) => todo.claimed_by),
+        ...projection.active_leases.map((lease) => lease.owner_agent),
+      ].filter(Boolean),
+    ),
+  );
+}
+
 function TodoRow({ todo }: { todo: GoalChannelTodo }) {
   return (
     <div className="grid gap-3 border-b border-slate-200 px-3 py-3 last:border-b-0 md:grid-cols-[96px_minmax(0,1fr)_156px]">
@@ -187,6 +198,8 @@ function FrontstageRoute({
   const openUserTodos = countOpenTodos(projection.user_todos);
   const openAgentTodos = countOpenTodos(projection.agent_todos);
   const claimedAgentTodos = countClaimedTodos(projection.agent_todos);
+  const claimOwners = uniqueClaimOwners(projection);
+  const claimOwnerPreview = claimOwners.slice(0, 2).join(", ");
   const operationSignals = [
     {
       label: "human gate",
@@ -209,6 +222,26 @@ function FrontstageRoute({
       tone: projection.recent_events.length ? "success" : "neutral",
     },
   ] satisfies Array<{ label: string; value: string; tone: BadgeTone }>;
+  const roleSignals = [
+    {
+      label: "owner",
+      value: projection.decision_frame.user_action_required ? "decision visible" : "no gate",
+      helper: `${openUserTodos} open user todo${openUserTodos === 1 ? "" : "s"}`,
+      tone: projection.decision_frame.user_action_required ? "warning" : "success",
+    },
+    {
+      label: "agent lane",
+      value: projection.decision_frame.agent_action_required ? "active" : "idle",
+      helper: `${openAgentTodos} open agent todo${openAgentTodos === 1 ? "" : "s"}`,
+      tone: projection.decision_frame.agent_action_required ? "info" : "neutral",
+    },
+    {
+      label: "claim owners",
+      value: claimOwners.length ? `${claimOwners.length} visible` : "none",
+      helper: claimOwnerPreview || "no active claim owner",
+      tone: claimOwners.length ? "info" : "neutral",
+    },
+  ] satisfies Array<{ label: string; value: string; helper: string; tone: BadgeTone }>;
   return (
     <main
       className="min-h-screen bg-[#f7f7f4] px-4 py-4 text-slate-950 sm:px-5"
@@ -401,6 +434,20 @@ function FrontstageRoute({
         </section>
 
         <aside className="space-y-4">
+          <Panel icon={Users} title="Role Map">
+            <div className="space-y-3 p-4" data-testid="frontstage-role-map">
+              {roleSignals.map((signal) => (
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2" key={signal.label}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-normal text-slate-500">{signal.label}</span>
+                    <Badge variant={signal.tone}>{signal.value}</Badge>
+                  </div>
+                  <div className="mt-2 break-words text-xs font-medium leading-5 text-slate-600">{signal.helper}</div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
           <Panel icon={ListChecks} title="Active Claims">
             <div className="divide-y divide-slate-200" data-testid="frontstage-active-claims">
               {projection.active_leases.map((lease, index) => (

@@ -43,12 +43,15 @@ includes(frontstageSource, 'data-testid="frontstage-goal-select"', "goal selecto
 includes(frontstageSource, "parseStatusPayload", "status payload parser");
 includes(frontstageSource, 'data-testid="frontstage-user-todos"', "user todo lane");
 includes(frontstageSource, 'data-testid="frontstage-agent-todos"', "agent todo lane");
+includes(frontstageSource, 'data-testid="frontstage-role-map"', "role map lane");
 includes(frontstageSource, 'data-testid="frontstage-active-claims"', "active claims lane");
 includes(frontstageSource, 'data-testid="frontstage-timeline"', "timeline lane");
 includes(frontstageSource, "Frontstage channel", "frontstage channel copy");
 includes(frontstageSource, "Channel board", "channel board nav");
 includes(frontstageSource, "Always-on agent operations", "always-on operations copy");
 includes(frontstageSource, "human judgment kept in the control plane", "human judgment control-plane copy");
+includes(frontstageSource, "Role Map", "role map copy");
+includes(frontstageSource, "claim owners", "claim owner role signal");
 includes(frontstageSource, "claimed lanes", "claimed lane signal");
 includes(frontstageSource, "evidence loop", "evidence loop signal");
 includes(frontstageSource, "Projection is read-only", "read-only truth copy");
