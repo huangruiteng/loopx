@@ -818,9 +818,28 @@ Item fields:
   their automation/handoff scope. `todo_id` is first-class when written by the
   todo CLI; legacy Markdown without metadata still gets a parser-derived
   compatibility id from the current item text and section, and the first
-  lifecycle command materializes that id back into metadata. Optional future
-  fields such as `created_at`, lease TTLs, dependencies, or evidence links
-  should extend this item shape rather than inventing another todo surface.
+  lifecycle command materializes that id back into metadata.
+  The first open item is still available through `first_open_items` for older
+  heartbeats. Frontstage consumers should not treat that top-N scheduler view
+  as the whole backlog. Todo summaries may also project visibility lanes:
+  `unclaimed_priority_open_items` for priority-ranked unclaimed candidates,
+  `claimed_open_items` for claimed work that may be outside the top-N,
+  `claimed_advancement_open_items` for claimed executable delivery work, and
+  `claimed_monitor_open_items` for claimed continuous-monitor work. Agent-aware
+  quota/status projections may further include
+  `current_agent_claimed_open_items`,
+  `current_agent_claimed_advancement_items`,
+  `current_agent_claimed_monitor_items`, and `claimed_by_others_items`.
+  The scheduler can still select from a narrower executable candidate set; the
+  dashboard/frontstage uses these lanes to keep ownership visible. Visibility
+  lanes may be wider than scheduler lanes, but remain bounded; the default
+  agent-facing cap is 16 items per lane. Consumers should use the corresponding
+  counts to indicate when more claimed work exists than is expanded in the
+  current payload, and richer frontstage views should use a future
+  paged/filtered projection instead of forcing larger heartbeat payloads.
+  Optional future fields such as `created_at`, lease TTLs, dependencies, or
+  evidence links should extend this item shape rather than inventing another
+  todo surface.
 - Agent-scoped quota payloads may include
   `agent_todo_summary.claim_scope` with
   `schema_version=side_agent_claim_scope_v0`. For a side agent, the quota guard

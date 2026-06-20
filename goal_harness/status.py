@@ -333,6 +333,7 @@ MAX_STATUS_TODOS_PER_ROLE = 12
 MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = MAX_STATUS_TODOS_PER_ROLE
 MAX_PROJECT_ASSET_TODO_ITEMS = 3
 MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS = 8
+MAX_TODO_VISIBILITY_LANE_ITEMS = 16
 MAX_DEPENDENCY_BLOCKERS = 4
 MAX_AUTONOMOUS_BACKLOG_CANDIDATES = 6
 MAX_SUBAGENT_ACTIVITY_ITEMS = 5
@@ -3655,6 +3656,14 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
     return compact
 
 
+def todo_item_task_class(item: dict[str, Any]) -> str:
+    return normalize_todo_task_class(
+        item.get("task_class"),
+        text=str(item.get("text") or ""),
+        action_kind=item.get("action_kind"),
+    )
+
+
 def todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
     if item.get("done") is True:
         return False
@@ -3700,27 +3709,30 @@ def compact_todo_group(
     budgeted_items = [*open_items, *done_items]
     projected_open_items = sorted(open_items, key=todo_projection_sort_key)
     claimed_open_items = [item for item in projected_open_items if item.get("claimed_by")]
+    unclaimed_open_items = [item for item in projected_open_items if not item.get("claimed_by")]
     executable_items = [
         item
         for item in projected_open_items
         if todo_item_is_actionable_open(item)
-        if normalize_todo_task_class(
-            item.get("task_class"),
-            text=str(item.get("text") or ""),
-            action_kind=item.get("action_kind"),
-        )
-        == TODO_TASK_CLASS_ADVANCEMENT
+        if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
     ]
     monitor_items = [
         item
         for item in projected_open_items
         if todo_item_is_actionable_open(item)
-        if normalize_todo_task_class(
-            item.get("task_class"),
-            text=str(item.get("text") or ""),
-            action_kind=item.get("action_kind"),
-        )
-        == TODO_TASK_CLASS_MONITOR
+        if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
+    ]
+    claimed_advancement_items = [
+        item
+        for item in claimed_open_items
+        if todo_item_is_actionable_open(item)
+        if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+    ]
+    claimed_monitor_items = [
+        item
+        for item in claimed_open_items
+        if todo_item_is_actionable_open(item)
+        if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
     summary = {
         "schema_version": "todo_summary_v0",
@@ -3737,6 +3749,22 @@ def compact_todo_group(
         "monitor_open_items": [
             compact_todo_item(item) for item in monitor_items
         ],
+        "unclaimed_priority_open_items": [
+            compact_todo_item(item)
+            for item in unclaimed_open_items[:MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS]
+        ],
+        "claimed_open_items": [
+            compact_todo_item(item)
+            for item in claimed_open_items[:MAX_TODO_VISIBILITY_LANE_ITEMS]
+        ],
+        "claimed_advancement_open_items": [
+            compact_todo_item(item)
+            for item in claimed_advancement_items[:MAX_TODO_VISIBILITY_LANE_ITEMS]
+        ],
+        "claimed_monitor_open_items": [
+            compact_todo_item(item)
+            for item in claimed_monitor_items[:MAX_TODO_VISIBILITY_LANE_ITEMS]
+        ],
         "backlog_items": [
             compact_todo_item(item)
             for item in projected_open_items[:MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS]
@@ -3750,6 +3778,8 @@ def compact_todo_group(
     if claimed_open_items:
         summary["claimed_open_count"] = len(claimed_open_items)
         summary["unclaimed_open_count"] = len(open_items) - len(claimed_open_items)
+        summary["claimed_advancement_open_count"] = len(claimed_advancement_items)
+        summary["claimed_monitor_open_count"] = len(claimed_monitor_items)
     return summary
 
 
@@ -4302,12 +4332,14 @@ def open_todo_items(
     *,
     limit: int = MAX_PROJECT_ASSET_TODO_ITEMS,
     text_limit: int = 220,
+    source_keys: tuple[str, ...] = ("first_open_items", "items"),
 ) -> list[dict[str, Any]]:
     if not isinstance(todos, dict):
         return []
     result: list[dict[str, Any]] = []
     seen: set[tuple[Any, str]] = set()
-    for source_items in (todos.get("first_open_items"), todos.get("items")):
+    for source_key in source_keys:
+        source_items = todos.get(source_key)
         if not isinstance(source_items, list):
             continue
         for item in source_items:
@@ -4327,6 +4359,21 @@ def open_todo_items(
             if len(result) >= limit:
                 return sorted(result, key=todo_projection_sort_key)
     return sorted(result, key=todo_projection_sort_key)
+
+
+def todo_lane_items(
+    todos: dict[str, Any] | None,
+    lane: str,
+    *,
+    limit: int = MAX_STATUS_TODOS_PER_ROLE,
+    text_limit: int = 220,
+) -> list[dict[str, Any]]:
+    return open_todo_items(
+        todos,
+        limit=limit,
+        text_limit=text_limit,
+        source_keys=(lane,),
+    )
 
 
 def first_open_todo_text(todos: dict[str, Any] | None) -> str | None:
@@ -4368,15 +4415,29 @@ def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] |
             item
             for item in backlog_items
             if todo_item_is_actionable_open(item)
-            if normalize_todo_task_class(
-                item.get("task_class"),
-                text=str(item.get("text") or ""),
-                action_kind=item.get("action_kind"),
-            )
-            == TODO_TASK_CLASS_ADVANCEMENT
+            if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
         ]
         if executable_backlog_items:
             summary["executable_backlog_items"] = executable_backlog_items
+    for lane in (
+        "unclaimed_priority_open_items",
+        "claimed_open_items",
+        "claimed_advancement_open_items",
+        "claimed_monitor_open_items",
+    ):
+        lane_items = todo_lane_items(
+            todos,
+            lane,
+            limit=MAX_TODO_VISIBILITY_LANE_ITEMS,
+        )
+        if lane_items:
+            summary[lane] = lane_items
+    for count_key in (
+        "claimed_advancement_open_count",
+        "claimed_monitor_open_count",
+    ):
+        if todos.get(count_key) is not None:
+            summary[count_key] = todos.get(count_key)
     return summary
 
 

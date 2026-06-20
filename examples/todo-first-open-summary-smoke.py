@@ -36,6 +36,12 @@ BLOCKED_CORE_TODO = (
 FALLBACK_TODO = (
     "[P1] Continue one safe benchmark attribution cleanup while the primary mode is blocked."
 )
+FRONTSTAGE_CLAIMED_TODO = (
+    "[P1] Frontstage dashboard route MVP: render goal_channel_projection_v0 in apps/dashboard."
+)
+FRONTSTAGE_MONITOR_TODO = (
+    "[P2] Repository quality monitor: watch README and dashboard demo freshness."
+)
 
 
 def build_truncated_todo_group() -> dict:
@@ -165,6 +171,10 @@ def build_blocked_priority_fallback_status_payload() -> dict:
                     "id": GOAL_ID,
                     "registry_member": True,
                     "status": "active",
+                    "coordination": {
+                        "primary_agent": "codex-main-control",
+                        "registered_agents": ["codex-main-control", "codex-side-bypass"],
+                    },
                     "quota": {"compute": 1.0, "window_hours": 24},
                     "latest_runs": [],
                 }
@@ -192,6 +202,123 @@ def assert_blocked_priority_fallback_visible() -> None:
     assert "blocked_priority_fallback: notify_user=True" in markdown, markdown
     assert f"blocked_priority_item[1]: {BLOCKED_CORE_TODO}" in markdown, markdown
     assert f"blocked_priority_selected: {FALLBACK_TODO}" in markdown, markdown
+
+
+def assert_claimed_frontstage_lanes_visible() -> None:
+    many_unclaimed = [
+        {
+            "index": index,
+            "done": False,
+            "text": f"[P1] Unclaimed priority backlog item {index}.",
+            "task_class": "advancement_task",
+        }
+        for index in range(1, 14)
+    ]
+    agent_todos = compact_todo_group(
+        [
+            *many_unclaimed,
+            {
+                "index": 40,
+                "done": False,
+                "text": FRONTSTAGE_CLAIMED_TODO,
+                "task_class": "advancement_task",
+                "action_kind": "frontstage_dashboard_route_mvp",
+                "claimed_by": "codex-side-bypass",
+            },
+            {
+                "index": 41,
+                "done": False,
+                "text": FRONTSTAGE_MONITOR_TODO,
+                "task_class": "continuous_monitor",
+                "action_kind": "repository_quality_monitor",
+                "claimed_by": "codex-side-bypass",
+            },
+        ],
+        source_section="Agent Todo",
+        role="agent",
+    )
+    assert agent_todos is not None, agent_todos
+    assert all(item["index"] != 40 for item in agent_todos["first_open_items"]), agent_todos
+    assert all(item["index"] != 40 for item in agent_todos["backlog_items"]), agent_todos
+    assert [item["index"] for item in agent_todos["unclaimed_priority_open_items"]] == list(range(1, 9)), agent_todos
+    assert [item["index"] for item in agent_todos["claimed_open_items"]] == [40, 41], agent_todos
+    assert [item["index"] for item in agent_todos["claimed_advancement_open_items"]] == [40], agent_todos
+    assert [item["index"] for item in agent_todos["claimed_monitor_open_items"]] == [41], agent_todos
+    assert agent_todos["claimed_advancement_open_count"] == 1, agent_todos
+    assert agent_todos["claimed_monitor_open_count"] == 1, agent_todos
+
+    asset_summary = project_asset_todo_summary(agent_todos)
+    assert asset_summary is not None, agent_todos
+    assert [item["index"] for item in asset_summary["unclaimed_priority_open_items"]] == list(range(1, 9)), asset_summary
+    assert [item["index"] for item in asset_summary["claimed_open_items"]] == [40, 41], asset_summary
+    assert [item["index"] for item in asset_summary["claimed_advancement_open_items"]] == [40], asset_summary
+    assert [item["index"] for item in asset_summary["claimed_monitor_open_items"]] == [41], asset_summary
+
+    attention_item = {
+        "goal_id": GOAL_ID,
+        "status": "eligible_with_claimed_frontstage_backlog",
+        "waiting_on": "codex",
+        "severity": "action",
+        "source": "latest_run",
+        "recommended_action": "Use priority candidates for scheduling but keep claimed frontstage work visible.",
+        "coordination": {
+            "primary_agent": "codex-main-control",
+            "registered_agents": ["codex-main-control", "codex-side-bypass"],
+        },
+        "quota": {
+            "compute": 1.0,
+            "slot_minutes": 1,
+            "allowed_slots": 1440,
+            "spent_slots": 0,
+            "state": "eligible",
+            "reason": "eligible fixture",
+        },
+        "project_asset": {
+            "owner": "codex",
+            "next_action": "Use priority candidates for scheduling but keep claimed frontstage work visible.",
+            "stop_condition": "stop on fixture boundary",
+            "agent_todos": asset_summary,
+            "quota": {
+                "compute": 1.0,
+                "slot_minutes": 1,
+                "allowed_slots": 1440,
+                "spent_slots": 0,
+                "state": "eligible",
+                "reason": "eligible fixture",
+            },
+        },
+        "agent_todos": agent_todos,
+    }
+    status_payload = {
+        "ok": True,
+        "attention_queue": {"items": [attention_item]},
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": "active",
+                    "coordination": {
+                        "primary_agent": "codex-main-control",
+                        "registered_agents": ["codex-main-control", "codex-side-bypass"],
+                    },
+                    "quota": {"compute": 1.0, "window_hours": 24},
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+    decision = build_quota_should_run(status_payload, goal_id=GOAL_ID, agent_id="codex-side-bypass")
+    summary = decision["agent_todo_summary"]
+    assert [item["index"] for item in summary["unclaimed_priority_open_items"]] == list(range(1, 9)), summary
+    assert [item["index"] for item in summary["claimed_open_items"]] == [40, 41], summary
+    assert [item["index"] for item in summary["current_agent_claimed_open_items"]] == [40, 41], summary
+    assert [item["index"] for item in summary["current_agent_claimed_advancement_items"]] == [40], summary
+    assert [item["index"] for item in summary["current_agent_claimed_monitor_items"]] == [41], summary
+    assert summary["current_agent_claimed_advancement_count"] == 1, summary
+    assert summary["current_agent_claimed_monitor_count"] == 1, summary
+    assert summary["claim_scope"]["current_agent_claimed_open_count"] == 2, summary
+    assert decision["agent_identity"]["agent_id"] == "codex-side-bypass", decision
 
 
 def main() -> int:
@@ -282,6 +409,7 @@ def main() -> int:
     assert f"Agent 待办：{APPENDED_P0_TODO}" in packet["project_agent_handoff"], packet
     assert f"Agent 待办候选 2：{OPEN_TODO}" in packet["project_agent_handoff"], packet
     assert_blocked_priority_fallback_visible()
+    assert_claimed_frontstage_lanes_visible()
     print("todo-first-open-summary-smoke ok")
     return 0
 
