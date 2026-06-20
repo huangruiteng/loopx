@@ -13,6 +13,16 @@ The control plane should only depend on these adapter-neutral concepts:
   `process_started -> runner_accepted_args -> job_root_materialized -> trial_started -> worker_started -> result_written -> verifier_scored`.
 - Round rewards: per-round official scalar stored offline, with
   `first_success_round`, `best_reward_round`, and final-round fields.
+- Attempt accounting: `benchmark_attempt_accounting_v0` records launcher,
+  case, solver, verifier, and official-score attempts separately. Generic
+  failure classes are `runner_startup_failed`, `job_materialization_failed`,
+  `solver_failed`, `verifier_failed`, and `official_score_failed`.
+  Launcher/materialization failures must not count as case attempts.
+- Run permission policy: `run_permission_policy_v0` is the machine-readable
+  benchmark execution boundary for allowed local no-upload model/Docker/Harbor
+  actions, forbidden upload/leaderboard/public-claim/production-cloud actions,
+  timeout budget, and compact-only observation. Quota/status code should consume
+  this policy projection instead of inferring permission from narrative text.
 
 `process_started` alone must not count as entering a benchmark case. Case entry
 starts at `job_root_materialized` or later.
@@ -72,6 +82,11 @@ Completed slices:
 8. `benchmark_adapters.terminal_bench` for Terminal-Bench helper surfaces
    formerly kept in the legacy facade, including runner launch/materialization,
    access-packet, bridge-trace, and Harbor compact result reducers.
+9. `benchmark_core.run_permissions` for `run_permission_policy_v0` and the
+   compact quota projection used by `goal_boundary.run_permission_policy`.
+10. `benchmark_core.attempts` for `benchmark_attempt_accounting_v0` and the
+    shared failure taxonomy that keeps runner startup/materialization blockers
+    out of case-attempt accounting.
 
 Next slices:
 
@@ -80,3 +95,8 @@ Next slices:
 2. Split shared compact/result helper functions that are still only imported
    through the Terminal-Bench adapter into narrower `benchmark_core` modules
    when a second benchmark needs them.
+3. Adopt `run_permission_policy_v0` in each benchmark adapter's public launch
+   packet before relying on adapter-specific prose for authorization.
+4. Adopt `benchmark_attempt_accounting_v0` in Terminal-Bench, SkillsBench, and
+   ALE reducers so compact ledgers can compare startup, solver, verifier, and
+   official-score failures without benchmark-specific label drift.
