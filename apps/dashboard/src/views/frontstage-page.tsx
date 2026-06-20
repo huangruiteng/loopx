@@ -722,8 +722,12 @@ function ShowcaseStateFlowHero() {
             );
           })}
         </div>
-        <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full w-1/3 animate-pulse rounded-full bg-cyan-300" />
+        <div
+          aria-hidden="true"
+          className="frontstage-state-flow-track mt-3"
+          data-testid="frontstage-state-flow-track"
+        >
+          <span className="frontstage-state-flow-beam" data-testid="frontstage-state-flow-beam" />
         </div>
       </div>
     </div>
