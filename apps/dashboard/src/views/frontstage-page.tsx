@@ -4,6 +4,7 @@ import {
   Bot,
   CircleAlert,
   Clock3,
+  ExternalLink,
   GitBranch,
   LayoutDashboard,
   ListChecks,
@@ -167,6 +168,13 @@ function showcaseSearchText(item: ShowcaseFrontstageCase) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function showcaseCaseHref(casePage?: string) {
+  if (!casePage) {
+    return undefined;
+  }
+  return `https://github.com/huangruiteng/goal-harness/blob/main/${casePage}`;
 }
 
 function uniqueClaimOwners(projection: GoalChannelProjection) {
@@ -376,6 +384,7 @@ function ShowcaseMotionBoard() {
   }
   const activeStoryBeats = activeCase.frontend_card?.story_beats?.slice(0, 5) ?? [];
   const activeFeaturePoints = activeCase.feature_points?.slice(0, 3) ?? [];
+  const activeCaseHref = showcaseCaseHref(activeCase.case_page);
   const journeySegments = [
     {
       label: "human judgment",
@@ -472,6 +481,18 @@ function ShowcaseMotionBoard() {
                 <span className="font-semibold text-slate-950">Evidence boundary: </span>
                 {activeCase.evidence_boundary}
               </div>
+            ) : null}
+            {activeCaseHref ? (
+              <a
+                className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-950 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500"
+                data-testid="frontstage-showcase-spotlight-case-page"
+                href={activeCaseHref}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open selected case page
+              </a>
             ) : null}
           </div>
           <div className="grid gap-3">
@@ -615,6 +636,7 @@ function ShowcaseCasePackPanel() {
         <div className="grid gap-3 lg:grid-cols-2">
           {filteredCases.map((item) => {
             const badges = item.frontend_card?.badges?.slice(0, 4) ?? item.pattern_tags?.slice(0, 4) ?? [];
+            const caseHref = showcaseCaseHref(item.case_page);
             return (
               <article className="rounded-md border border-slate-200 bg-slate-50 p-3" key={item.id}>
                 <div className="flex flex-wrap items-center gap-2">
@@ -633,10 +655,10 @@ function ShowcaseCasePackPanel() {
                     {item.frontend_card.primary_metric_hint}
                   </div>
                 ) : null}
-                {item.case_page ? (
+                {caseHref ? (
                   <a
                     className="mt-3 inline-flex text-xs font-semibold text-slate-950 underline underline-offset-4"
-                    href={`https://github.com/huangruiteng/goal-harness/blob/main/${item.case_page}`}
+                    href={caseHref}
                     rel="noreferrer"
                     target="_blank"
                   >

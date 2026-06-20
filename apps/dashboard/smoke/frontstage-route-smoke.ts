@@ -76,6 +76,7 @@ includes(frontstageSource, "evidence loop", "evidence loop signal");
 includes(frontstageSource, 'data-testid="frontstage-efficiency-evidence"', "efficiency evidence panel");
 includes(frontstageSource, "Efficiency Evidence", "efficiency evidence copy");
 includes(frontstageSource, "showcaseCatalog", "showcase catalog import");
+includes(frontstageSource, "showcaseCaseHref", "central showcase case page link helper");
 includes(frontstageSource, "estimated_developer_days", "efficiency baseline range");
 includes(frontstageSource, "single_engineer_calendar_compression", "efficiency compression range");
 includes(frontstageSource, "maturity-adjusted", "maturity adjusted copy");
@@ -102,6 +103,8 @@ includes(frontstageSource, "Case-driven motion board", "case-driven motion board
 includes(frontstageSource, "Asynchronous agent rhythm", "showcase asynchronous rhythm copy");
 includes(frontstageSource, "Always-on agent teams can keep safe work moving", "showcase always-on agent copy");
 includes(frontstageSource, "Evidence boundary:", "showcase spotlight evidence boundary copy");
+includes(frontstageSource, 'data-testid="frontstage-showcase-spotlight-case-page"', "showcase spotlight case page link");
+includes(frontstageSource, "Open selected case page", "showcase spotlight case page copy");
 includes(frontstageSource, "docs/showcases/showcase-catalog.json", "showcase catalog source copy");
 includes(frontstageSource, "Open case page", "case page outbound link");
 includes(frontstageSource, "github.com/huangruiteng/goal-harness/blob/main", "public GitHub case page links");
