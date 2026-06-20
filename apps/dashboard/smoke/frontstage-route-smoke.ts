@@ -66,6 +66,9 @@ includes(frontstageSource, "maturity-adjusted", "maturity adjusted copy");
 includes(frontstageSource, 'data-testid="frontstage-showcase-cases"', "showcase case cards panel");
 includes(frontstageSource, "Showcase Cases", "showcase cases copy");
 includes(frontstageSource, "frontstageShowcases", "catalog-driven showcase cases");
+includes(frontstageSource, 'data-testid="frontstage-showcase-case-detail"', "showcase case detail panel");
+includes(frontstageSource, "Case details", "showcase detail copy");
+includes(frontstageSource, "story_beats", "catalog story beat field");
 includes(frontstageSource, "Open case page", "case page outbound link");
 includes(frontstageSource, "github.com/huangruiteng/goal-harness/blob/main", "public GitHub case page links");
 includes(frontstageSource, "Projection is read-only", "read-only truth copy");
@@ -84,6 +87,7 @@ includes(readmeSource, "operations strip", "README operations strip explanation"
 includes(readmeSource, "Role Map", "README role map explanation");
 includes(readmeSource, "Efficiency Evidence", "README efficiency evidence explanation");
 includes(readmeSource, "Showcase Cases", "README showcase cases explanation");
+includes(readmeSource, "detail beats", "README showcase detail explanation");
 includes(readmeSource, "read-only projection", "README read-only projection boundary");
 includes(readmeSource, "write authority", "README write authority boundary");
 includes(selectionSource, "Multica", "Multica benchmark note");

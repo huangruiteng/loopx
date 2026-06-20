@@ -322,6 +322,7 @@ function ShowcaseCasePackPanel() {
         <div className="grid gap-3 lg:grid-cols-2">
           {frontstageShowcases.map((item) => {
             const badges = item.frontend_card?.badges?.slice(0, 4) ?? item.pattern_tags?.slice(0, 4) ?? [];
+            const storyBeats = item.frontend_card?.story_beats?.slice(0, 3) ?? [];
             return (
               <article className="rounded-md border border-slate-200 bg-slate-50 p-3" key={item.id}>
                 <div className="flex flex-wrap items-center gap-2">
@@ -338,6 +339,16 @@ function ShowcaseCasePackPanel() {
                 {item.frontend_card?.primary_metric_hint ? (
                   <div className="mt-3 border-l-2 border-slate-300 pl-3 text-xs font-medium leading-5 text-slate-600">
                     {item.frontend_card.primary_metric_hint}
+                  </div>
+                ) : null}
+                {storyBeats.length ? (
+                  <div className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2" data-testid="frontstage-showcase-case-detail">
+                    <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">Case details</div>
+                    <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs font-medium leading-5 text-slate-700">
+                      {storyBeats.map((beat) => (
+                        <li key={beat}>{beat}</li>
+                      ))}
+                    </ol>
                   </div>
                 ) : null}
                 {item.case_page ? (
