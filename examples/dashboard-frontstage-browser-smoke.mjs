@@ -390,6 +390,12 @@ async function main() {
       if (!creatorSpotlightText.includes("Synthetic case spec only")) {
         throw new Error("Showcase spotlight did not expose the selected case evidence boundary");
       }
+      const spotlightCaseHref = await desktopPage
+        .locator('[data-testid="frontstage-showcase-spotlight-case-page"]')
+        .getAttribute("href");
+      if (!spotlightCaseHref?.includes("github.com/huangruiteng/goal-harness/blob/main/docs/showcases/")) {
+        throw new Error(`Showcase spotlight case link points outside public showcases: ${spotlightCaseHref}`);
+      }
       await desktopPage.locator('[data-testid="frontstage-showcase-search"]').fill("self-iteration");
       await desktopPage.waitForFunction(() => document.body.innerText.includes("Showing 1 of 4 public-safe cases"));
       const filteredCaseText = await desktopPage.locator('[data-testid="frontstage-showcase-cases"]').innerText();
