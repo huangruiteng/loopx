@@ -43,23 +43,27 @@ Batch id: `parallel-benchmark-20260620T131254Z`.
 
 | Benchmark | Case | Route / Arm | Compact Status | Current Status | Next Action |
 | --- | --- | --- | --- | --- | --- |
-| `terminal-bench@2.0` | `build-cython-ext` | host Codex app-server Goal | compact official metadata score `0.0`; ledger upserted under `gh-terminal-build-cython-ext-host-app-server-goal-r9-20260620`; `thread/goal/get` confirmed `active`; `turn/start` id present; raw transcript not recorded | completed: app-server route reached agent completion and official Terminal-Bench closeout, but official accuracy was `0.0` | Treat as a real native Goal baseline result, not a setup blocker; next Terminal-Bench work should rerun an early historical pass/control case or launch a treatment arm. |
+| `terminal-bench@2.0` | `build-cython-ext` | host Codex app-server Goal, marker/official-verifier gated | latest observe-only compact official score `1.0`; ledger upserted under `terminal-bench-build-cython-ext-app-server-observe-pr346-r1-20260621T203200Z`; earlier completion-aware r2 scored `0.0`; raw transcript not recorded | completed: the observe-only native Goal closeout recovered the historical pass-case result while preserving public compact boundaries | Treat as a pass-case route canary. Do not spend another primary slot retrying the same route; next Terminal-Bench work should launch a treatment arm or move to a different historical pass/control case. |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | BenchFlow ACP blind-loop baseline | compact official score `0.0`; ledger upserted under `gh-skillsbench-llm-prefix-cloud-pair-r1-20260620` | completed | Treat as no-uplift runtime-refactor sanity, not as native Codex Goal baseline evidence. |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | Goal Harness blind-loop treatment | compact official score `0.0`; ledger upserted under `gh-skillsbench-llm-prefix-cloud-pair-r1-20260620` | completed | Pair with the baseline row as `paired_no_score_uplift`; next SkillsBench work should either implement the app-server Goal surface or pick the next ACP-compatible canary explicitly as non-native-Goal evidence. |
 | `swe-marathon` | `find-network-alignments` | host Codex app-server Goal through Harbor bridge | compact official score `0.0`; ledger upserted under `gh-swe-find-network-alignments-host-app-server-goal-r6-20260620`; `thread/goal/get` confirmed `active`; `turn/start` id present; raw transcript not recorded; bridge responses observed | completed: app-server route reached Harbor environment operation, agent execution, verifier, and job closeout; official verifier returned `0.0` | Treat as a real native Goal baseline result with `official_verifier_solution_failure`; next SWE-Marathon work should either run a second small case or compare a treatment under the same no-upload boundary. |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | BenchFlow ACP blind-loop baseline | compact official score `0.0`; ledger upserted under `gh-skillsbench-tictoc-cloud-pair-r2-20260620` | completed as r2; r1 duplicate rerun may continue as background validation | Treat as ACP-compatible baseline evidence: runner/verifier completed, but the selected case did not score. |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | Goal Harness blind-loop treatment | compact official score `0.0`; ledger upserted under `gh-skillsbench-tictoc-cloud-pair-r2-20260620` | completed as r2; r1 duplicate rerun may continue as background validation | Pair with the ACP baseline as `paired_no_score_uplift`; next SkillsBench work should rotate to another early case or implement a native app-server Goal worker surface. |
+| `skillsbench@1.1` | `llm-prefix-cache-replay`, `tictoc-unnecessary-abort-detection` | native app-server Goal baseline | post-PR-353 compact pair ledgered under `skillsbench-native-goal-post353-20260620T220003Z`; both invoke native Goal and connect the host worker; public controller trace present; public worker trace count `0` | completed as route/runner observation: both rows classify as `skillsbench_runner_error`, not solver-quality evidence | Repair or explicitly classify missing public worker trace before using native Goal as the SkillsBench quality baseline; next SkillsBench slot should either fix worker trace or select a different canary with the repaired trace path. |
 
 Failure-attribution update:
 
-- `build-cython-ext` is now classified as
-  `official_zero_native_goal_regression_needs_phase_attribution`, because a
-  historical compact control for the same case scored `1.0`.
+- `build-cython-ext` is now a native Goal pass-case canary under the
+  observe-only app-server route: the latest compact closeout scored `1.0`,
+  while the earlier completion-aware rerun scored `0.0`. Treat the difference
+  as runner/route phase evidence, not as a task-difficulty blocker.
 - `find-network-alignments` is now classified as
   `official_zero_native_goal_first_closeout_needs_solution_phase_counters`.
 - both SkillsBench pairs are classified as
   `paired_zero_acp_blind_loop_non_native_goal_no_uplift`; the next primary
-  SkillsBench engineering slice is the native app-server Goal worker.
+  SkillsBench engineering slice is no longer "build the worker" but
+  "repair or explain public worker trace materialization" for the native
+  app-server Goal worker.
 
 ## Rerun Queue After App-Server Sync
 
@@ -69,9 +73,9 @@ or blocker.
 
 | Priority | Benchmark | Case | Reason To Rerun | Required Before Launch |
 | --- | --- | --- | --- | --- |
-| P0 | `terminal-bench@2.0` | `build-cython-ext` | route canary with historical pass and current native Goal baseline result `0.0` | completed baseline; next slot should be treatment or a different historical pass/control case, not another route-readiness retry. |
+| P0 | `terminal-bench@2.0` | `build-cython-ext` | route canary with historical pass and latest observe-only native Goal result `1.0` | route canary complete; next slot should be treatment or a different historical pass/control case, not another route-readiness retry. |
 | P0 | `swe-marathon` | `find-network-alignments` | first active SWE-Marathon cloud case completed at official score `0.0` | completed baseline; next slot should be a second small case or matching treatment arm. |
-| P0 | `skillsbench@1.1` | `llm-prefix-cache-replay` | runtime-refactor pair just completed at `0.0/0.0` | no immediate same-policy rerun; choose app-server surface implementation or a new canary. |
+| P0 | `skillsbench@1.1` | `llm-prefix-cache-replay` | runtime-refactor pair completed at `0.0/0.0`; native Goal post-PR-353 canary connected but produced no public worker trace | no immediate same-policy rerun; repair native worker trace or choose a new canary through the repaired trace path. |
 | P1 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | previously setup-blocked; useful verifier/runtime canary | compact closeout produced `0.0/0.0`; do not spend another primary slot here unless using it as a duplicate stability check. |
 | P1 | `terminal-bench@2.0` | `make-doom-for-mips` | timeout/continuation attribution candidate | timeout phase attribution and app-server route canary complete. |
 | P1 | `terminal-bench@2.0` | `mteb-retrieve` | environment setup blocker candidate | environment setup preflight proves the task reaches agent or writes a compact blocker. |
