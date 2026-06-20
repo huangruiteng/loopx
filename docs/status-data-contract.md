@@ -881,6 +881,15 @@ If the refresh command was run without `--recommended-action`, the compact
 `recommended_action` should be the first public-safe item from the refreshed
 active state's `## Next Action`, including wrapped continuation lines;
 otherwise it falls back to a generic refresh notice.
+
+When a refresh is scoped with `--agent-id`, the run records
+`progress_scope=agent_lane`. This is a side-lane note, not a project-level
+status transition: status/quota keep selecting the latest non-agent-lane run for
+the goal-level `status` and `recommended_action`, while exposing the side-lane
+note as `agent_lane_recommendation` on the attention item and project asset.
+Use this for side agents that want to record their own lane recommendation
+without replacing the primary controller's next action.
+
 For registered `connected`, `connected-read-only`, and `pre-tick-runnable`
 adapters, custom compact progress classifications that are not blocker, gate,
 or watch classifications also remain Codex-ready. This lets a controller record

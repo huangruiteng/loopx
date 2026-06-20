@@ -76,6 +76,7 @@ STATUS_NEUTRAL_CLASSIFICATIONS = {
     QUOTA_MONITOR_POLL_CLASSIFICATION,
     *PROMOTION_READINESS_CLASSIFICATIONS,
 }
+AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
 HANDOFF_READY_CLASSIFICATIONS = {
     "operator_gate_approved",
     "controller_opted_in_waiting_for_run",
@@ -5587,7 +5588,46 @@ def collect_global_registry_health(
 
 
 def is_status_neutral_run(run: dict[str, Any]) -> bool:
-    return str(run.get("classification") or "") in STATUS_NEUTRAL_CLASSIFICATIONS
+    return (
+        str(run.get("classification") or "") in STATUS_NEUTRAL_CLASSIFICATIONS
+        or str(run.get("progress_scope") or "") == AGENT_LANE_PROGRESS_SCOPE
+    )
+
+
+def latest_agent_lane_run(goal: dict[str, Any]) -> dict[str, Any] | None:
+    runs = goal.get("latest_runs")
+    if not isinstance(runs, list):
+        return None
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        if str(run.get("progress_scope") or "") == AGENT_LANE_PROGRESS_SCOPE:
+            return run
+    return None
+
+
+def compact_agent_lane_recommendation(run: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(run, dict):
+        return None
+    action = public_safe_compact_text(run.get("recommended_action"), limit=220)
+    if not action:
+        return None
+    compact: dict[str, Any] = {
+        "schema_version": "agent_lane_recommendation_v0",
+        "progress_scope": AGENT_LANE_PROGRESS_SCOPE,
+        "recommended_action": action,
+    }
+    for field in (
+        "agent_id",
+        "agent_lane",
+        "classification",
+        "generated_at",
+        "delivery_batch_scale",
+        "delivery_outcome",
+    ):
+        if run.get(field) is not None:
+            compact[field] = run.get(field)
+    return compact
 
 
 def latest_run(goal: dict[str, Any]) -> dict[str, Any] | None:
@@ -6097,6 +6137,11 @@ def build_attention_queue(
             if control_plane:
                 item["control_plane"] = control_plane
             goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
+            agent_lane_recommendation = compact_agent_lane_recommendation(
+                latest_agent_lane_run(goal)
+            )
+            if agent_lane_recommendation:
+                item["agent_lane_recommendation"] = agent_lane_recommendation
             subagent_activity = subagent_activity_for_goal(goal)
             interface_budget_cadence = interface_budget_cadence_for_runs(goal_latest_runs)
             projection_warning = active_state_projection_warning(goal, latest_run(goal))
@@ -6119,6 +6164,8 @@ def build_attention_queue(
             )
             if control_plane and isinstance(item.get("project_asset"), dict):
                 item["project_asset"]["control_plane"] = control_plane
+            if agent_lane_recommendation and isinstance(item.get("project_asset"), dict):
+                item["project_asset"]["agent_lane_recommendation"] = agent_lane_recommendation
             if projection_warning:
                 item["stale_latest_run_warning"] = projection_warning
                 if isinstance(item.get("project_asset"), dict):
@@ -7394,6 +7441,21 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
             asset_next_action = _markdown_scalar(project_asset.get("next_action") or "")
             if asset_next_action:
                 lines.append(f"    - asset_next_action: {asset_next_action}")
+            agent_lane_recommendation = (
+                project_asset.get("agent_lane_recommendation")
+                if isinstance(project_asset.get("agent_lane_recommendation"), dict)
+                else {}
+            )
+            if agent_lane_recommendation:
+                lane = _markdown_scalar(agent_lane_recommendation.get("agent_lane") or "")
+                agent = _markdown_scalar(agent_lane_recommendation.get("agent_id") or "")
+                recommendation = _markdown_scalar(
+                    agent_lane_recommendation.get("recommended_action") or ""
+                )
+                lines.append(
+                    "    - agent_lane_recommendation: "
+                    f"agent={agent} lane={lane} action={recommendation}"
+                )
             dreaming_lane_badge = (
                 project_asset.get("dreaming_lane_badge")
                 if isinstance(project_asset.get("dreaming_lane_badge"), dict)

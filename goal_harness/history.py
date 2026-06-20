@@ -19,6 +19,7 @@ from .registry import read_json, registry_goals
 STATUS_NEUTRAL_CLASSIFICATIONS = {
     "quota_slot_spent",
 }
+AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
 REGISTRY_ATTENTION_FIELDS = (
     "waiting_on",
     "attention_status",
@@ -637,6 +638,8 @@ def append_active_user_assisted_pilot(
 def latest_status_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
     for run in runs:
         if str(run.get("classification") or "") in STATUS_NEUTRAL_CLASSIFICATIONS:
+            continue
+        if str(run.get("progress_scope") or "") == AGENT_LANE_PROGRESS_SCOPE:
             continue
         return run
     return None

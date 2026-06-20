@@ -5218,6 +5218,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional explicit outcome-floor signal for this refresh run.",
     )
     refresh_state_parser.add_argument(
+        "--agent-id",
+        help=(
+            "Registered agent id for agent-lane state refreshes. When set, the "
+            "refresh is visible in run history but does not replace goal-level status."
+        ),
+    )
+    refresh_state_parser.add_argument(
+        "--agent-lane",
+        help="Public-safe lane label for --agent-id scoped refreshes, such as productization_frontstage.",
+    )
+    refresh_state_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print the refresh payload without appending.",
@@ -9437,6 +9448,8 @@ def main(argv: list[str] | None = None) -> int:
                 recommended_action=args.recommended_action,
                 delivery_batch_scale=args.delivery_batch_scale,
                 delivery_outcome=args.delivery_outcome,
+                agent_id=args.agent_id,
+                agent_lane=args.agent_lane,
                 dry_run=bool(args.dry_run),
                 sync_global=not bool(args.no_global_sync),
             )

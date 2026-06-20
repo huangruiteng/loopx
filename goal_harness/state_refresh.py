@@ -25,6 +25,7 @@ from .todo_contract import (
 
 DEFAULT_REFRESH_CLASSIFICATION = "state_refreshed"
 DEFAULT_REFRESH_ACTION = "inspect refreshed active goal state and continue the next bounded progress segment"
+AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
 RECOMMENDED_ACTION_SECTION_LINE_LIMIT = 16
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
 CHECKBOX_PREFIX_RE = re.compile(r"^\[(?P<mark>[ xX])\]\s+")
@@ -230,6 +231,8 @@ def build_state_refresh_record(
     registry_goal: dict[str, Any] | None,
     delivery_batch_scale: str | None = None,
     delivery_outcome: str | None = None,
+    agent_id: str | None = None,
+    agent_lane: str | None = None,
 ) -> dict[str, Any]:
     frontmatter = parse_frontmatter(state_text)
     next_action = extract_section_lines(state_text, "Next Action")
@@ -271,6 +274,10 @@ def build_state_refresh_record(
         record["delivery_batch_scale"] = delivery_batch_scale
     if delivery_outcome:
         record["delivery_outcome"] = delivery_outcome
+    if agent_id:
+        record["progress_scope"] = AGENT_LANE_PROGRESS_SCOPE
+        record["agent_id"] = agent_id
+        record["agent_lane"] = agent_lane or agent_id
     return record
 
 
@@ -285,6 +292,9 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
         f"- appended: `{payload.get('appended')}`",
         f"- goal_id: `{payload.get('goal_id')}`",
         f"- classification: `{payload.get('classification')}`",
+        f"- progress_scope: `{payload.get('progress_scope')}`",
+        f"- agent_id: `{payload.get('agent_id')}`",
+        f"- agent_lane: `{payload.get('agent_lane')}`",
         f"- delivery_batch_scale: `{payload.get('delivery_batch_scale')}`",
         f"- delivery_outcome: `{payload.get('delivery_outcome')}`",
         f"- generated_at: `{payload.get('generated_at')}`",
@@ -351,11 +361,21 @@ def refresh_state_run(
     recommended_action: str | None,
     delivery_batch_scale: str | None = None,
     delivery_outcome: str | None = None,
+    agent_id: str | None = None,
+    agent_lane: str | None = None,
     dry_run: bool,
     sync_global: bool = True,
 ) -> dict[str, Any]:
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     validate_public_safe_text("classification", classification)
+    normalized_agent_id = (agent_id or "").strip()
+    normalized_agent_lane = (agent_lane or "").strip()
+    if normalized_agent_id:
+        validate_public_safe_text("agent_id", normalized_agent_id)
+    if normalized_agent_lane:
+        validate_public_safe_text("agent_lane", normalized_agent_lane)
+    if normalized_agent_lane and not normalized_agent_id:
+        raise ValueError("--agent-lane requires --agent-id so the lane has an owner")
     if delivery_batch_scale and delivery_batch_scale not in DELIVERY_BATCH_SCALE_CHOICES:
         raise ValueError(
             "delivery_batch_scale must be one of: " + ", ".join(DELIVERY_BATCH_SCALE_CHOICES)
@@ -371,6 +391,21 @@ def refresh_state_run(
         project_override=project,
         state_file_override=state_file,
     )
+    if normalized_agent_id and registry_goal:
+        coordination = registry_goal.get("coordination") if isinstance(registry_goal.get("coordination"), dict) else {}
+        registered_raw = coordination.get("registered_agents") if isinstance(coordination, dict) else []
+        registered_agents = []
+        registered_values = registered_raw if isinstance(registered_raw, list) else []
+        for value in registered_values:
+            if isinstance(value, dict):
+                registered_agents.append(str(value.get("id") or ""))
+            else:
+                registered_agents.append(str(value or ""))
+        registered_agents = [value for value in registered_agents if value]
+        if registered_agents and normalized_agent_id not in registered_agents:
+            raise ValueError(
+                f"agent_id {normalized_agent_id!r} is not registered for goal {safe_goal_id!r}"
+            )
     if not resolved_state_file.exists():
         raise FileNotFoundError(f"state file does not exist: {resolved_state_file}")
     state_text = resolved_state_file.read_text(encoding="utf-8")
@@ -387,6 +422,8 @@ def refresh_state_run(
         registry_goal=registry_goal,
         delivery_batch_scale=delivery_batch_scale,
         delivery_outcome=normalized_delivery_outcome,
+        agent_id=normalized_agent_id or None,
+        agent_lane=normalized_agent_lane or None,
     )
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
@@ -405,6 +442,10 @@ def refresh_state_run(
         index_record["delivery_batch_scale"] = delivery_batch_scale
     if normalized_delivery_outcome:
         index_record["delivery_outcome"] = normalized_delivery_outcome
+    if normalized_agent_id:
+        index_record["progress_scope"] = AGENT_LANE_PROGRESS_SCOPE
+        index_record["agent_id"] = normalized_agent_id
+        index_record["agent_lane"] = normalized_agent_lane or normalized_agent_id
     payload = {
         "ok": True,
         "dry_run": dry_run,
@@ -414,6 +455,9 @@ def refresh_state_run(
         "project": str(resolved_project) if resolved_project else None,
         "goal_id": safe_goal_id,
         "classification": classification,
+        "progress_scope": record.get("progress_scope"),
+        "agent_id": record.get("agent_id"),
+        "agent_lane": record.get("agent_lane"),
         "recommended_action": action,
         "generated_at": generated_at,
         "health_check": record["health_check"],
