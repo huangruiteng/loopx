@@ -3822,6 +3822,464 @@ def test_skillsbench_main_failure_closeout_preserves_mutated_prerequisites() -> 
         }, compact
 
 
+def test_skillsbench_main_recovers_official_result_after_runner_exception() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-result-recovery-") as tmp:
+        jobs_dir = Path(tmp) / "jobs"
+        job_name = "skillsbench-result-recovery-fixture"
+        exception_message = "PRIVATE_EXCEPTION_DETAIL_SHOULD_NOT_ESCAPE"
+
+        original_ensure = skillsbench_loop.ensure_benchflow_runtime
+        original_run = skillsbench_loop.run_benchflow_case
+
+        def fake_ensure(_args: Any) -> None:
+            return None
+
+        async def fake_run(_args: Any, plan: dict[str, Any]) -> Path:
+            result_path = Path(plan["result_json"])
+            write_json(
+                result_path,
+                {
+                    "task_name": "tictoc-unnecessary-abort-detection",
+                    "rollout_name": "tictoc-unnecessary-abort-detection__codex_acp_blind_loop",
+                    "rewards": {"reward": 0.0},
+                    "agent": "codex-acp",
+                    "agent_name": "codex-acp",
+                    "model": "gpt-5.5",
+                    "n_tool_calls": 0,
+                    "n_prompts": 1,
+                    "error": "compact-safe official runner error",
+                    "error_category": "idle_timeout",
+                    "verifier_error": None,
+                    "partial_trajectory": False,
+                    "trajectory_source": "acp",
+                },
+            )
+            write_json(result_path.with_name("timing.json"), {"total": 2.0})
+            raise RuntimeError(exception_message)
+
+        skillsbench_loop.ensure_benchflow_runtime = fake_ensure
+        skillsbench_loop.run_benchflow_case = fake_run
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = skillsbench_automation_loop_main(
+                    [
+                        "--task-id",
+                        "tictoc-unnecessary-abort-detection",
+                        "--route",
+                        "codex-acp-blind-loop-baseline",
+                        "--jobs-dir",
+                        str(jobs_dir),
+                        "--job-name",
+                        job_name,
+                        "--rollout-name",
+                        "tictoc-unnecessary-abort-detection__codex_acp_blind_loop",
+                        "--run-group-id",
+                        "skillsbench-result-recovery-fixture",
+                    ]
+                )
+        finally:
+            skillsbench_loop.ensure_benchflow_runtime = original_ensure
+            skillsbench_loop.run_benchflow_case = original_run
+
+        assert rc == 0, stderr.getvalue()
+        assert stderr.getvalue() == "", stderr.getvalue()
+        payload = json.loads(stdout.getvalue())
+        assert payload["ok"] is True, payload
+        assert payload["recovered_after_runner_exception"] is True, payload
+        assert payload["runner_exception_type"] == "RuntimeError", payload
+        compact_path = Path(payload["compact_benchmark_run_json"])
+        compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["official_score_status"] == "completed", compact
+        assert compact["official_task_score"]["value"] == 0.0, compact
+        assert compact["runner_return_status"] == (
+            "official_result_recovered_after_runner_exception"
+        ), compact
+        assert compact["result_recovery"] == {
+            "exception_type": "RuntimeError",
+            "official_result_json_materialized": True,
+            "raw_exception_recorded": False,
+            "raw_logs_read": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_read": False,
+            "schema_version": "skillsbench_result_recovery_v0",
+            "status": "official_result_recovered_after_runner_exception",
+        }, compact
+        assert exception_message not in json.dumps(payload), payload
+        assert exception_message not in json.dumps(compact), compact
+
+
+def test_skillsbench_main_recovers_missing_reward_with_structured_prereq_blocker() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-missing-reward-prereq-") as tmp:
+        jobs_dir = Path(tmp) / "jobs"
+        job_name = "skillsbench-missing-reward-prereq-fixture"
+
+        original_ensure = skillsbench_loop.ensure_benchflow_runtime
+        original_run = skillsbench_loop.run_benchflow_case
+
+        def fake_ensure(_args: Any) -> None:
+            return None
+
+        async def fake_run(_args: Any, plan: dict[str, Any]) -> Path:
+            prerequisites = plan.setdefault("runner_prerequisites", {})
+            prerequisites.update(
+                {
+                    "agent_execution_mode": "host_local_acp",
+                    "host_local_acp_launch": True,
+                    "host_local_acp_launch_status": "sandbox_install_failed",
+                    "host_local_acp_install_stage": "deploy_skills",
+                    "host_local_acp_install_failed_stage": "deploy_skills",
+                    "container_codex_acp_install_skipped": True,
+                    "codex_acp_runtime_container_bootstrap": False,
+                    "codex_acp_runtime_dependency_preflight": False,
+                    "codex_acp_runtime_launch_preflight": True,
+                    "codex_acp_runtime_launch_preflight_status": "skipped",
+                    "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+                }
+            )
+            result_path = Path(plan["result_json"])
+            write_json(
+                result_path,
+                {
+                    "task_name": "tictoc-unnecessary-abort-detection",
+                    "rollout_name": "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                    "rewards": None,
+                    "agent": "codex-acp",
+                    "agent_name": "",
+                    "model": "gpt-5.5",
+                    "n_tool_calls": 0,
+                    "n_prompts": 1,
+                    "error": "compact-safe official runner error",
+                    "error_category": "setup",
+                    "verifier_error": None,
+                    "partial_trajectory": False,
+                },
+            )
+            write_json(result_path.with_name("timing.json"), {"total": 2.0})
+            raise RuntimeError("PRIVATE_EXCEPTION_DETAIL_SHOULD_NOT_ESCAPE")
+
+        skillsbench_loop.ensure_benchflow_runtime = fake_ensure
+        skillsbench_loop.run_benchflow_case = fake_run
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = skillsbench_automation_loop_main(
+                    [
+                        "--task-id",
+                        "tictoc-unnecessary-abort-detection",
+                        "--route",
+                        "goal-harness-blind-loop-treatment",
+                        "--jobs-dir",
+                        str(jobs_dir),
+                        "--job-name",
+                        job_name,
+                        "--rollout-name",
+                        "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                        "--run-group-id",
+                        "skillsbench-missing-reward-prereq-fixture",
+                    ]
+                )
+        finally:
+            skillsbench_loop.ensure_benchflow_runtime = original_ensure
+            skillsbench_loop.run_benchflow_case = original_run
+
+        assert rc == 0, stderr.getvalue()
+        payload = json.loads(stdout.getvalue())
+        compact = json.loads(
+            Path(payload["compact_benchmark_run_json"]).read_text(encoding="utf-8")
+        )
+        assert compact["official_score_status"] == "missing", compact
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_host_local_acp_sandbox_install_failed"
+        ), compact
+        assert compact["first_blocker"] == (
+            "skillsbench_host_local_acp_sandbox_install_failed"
+        ), compact
+        assert "skillsbench_runner_setup_error" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert compact["runner_prerequisites"]["host_local_acp_install_stage"] == (
+            "deploy_skills"
+        ), compact
+        assert compact["runner_prerequisites"][
+            "host_local_acp_install_failed_stage"
+        ] == "deploy_skills", compact
+        assert "PRIVATE_EXCEPTION_DETAIL_SHOULD_NOT_ESCAPE" not in json.dumps(
+            compact
+        ), compact
+
+
+def test_skillsbench_main_marks_empty_acp_trajectory_after_host_install() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-empty-acp-") as tmp:
+        jobs_dir = Path(tmp) / "jobs"
+        job_name = "skillsbench-empty-acp-fixture"
+
+        original_ensure = skillsbench_loop.ensure_benchflow_runtime
+        original_run = skillsbench_loop.run_benchflow_case
+
+        def fake_ensure(_args: Any) -> None:
+            return None
+
+        async def fake_run(_args: Any, plan: dict[str, Any]) -> Path:
+            prerequisites = plan.setdefault("runner_prerequisites", {})
+            prerequisites.update(
+                {
+                    "agent_execution_mode": "host_local_acp",
+                    "host_local_acp_launch": True,
+                    "host_local_acp_launch_status": "sandbox_installed",
+                    "host_local_acp_install_stage": "sandbox_installed",
+                    "container_codex_acp_install_skipped": True,
+                    "codex_acp_runtime_container_bootstrap": False,
+                    "codex_acp_runtime_dependency_preflight": False,
+                    "codex_acp_runtime_launch_preflight": True,
+                    "codex_acp_runtime_launch_preflight_status": "skipped",
+                    "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+                }
+            )
+            write_json(
+                Path(plan["controller_trace_json"]),
+                {
+                    "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+                    "route": "goal-harness-blind-loop-treatment",
+                    "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+                    "heartbeat_count": 1,
+                    "controller_action_decisions": 1,
+                    "initial_prompt_count": 1,
+                    "round_rewards": [
+                        {
+                            "agent_round": 1,
+                            "reward_present": False,
+                            "passed": False,
+                        }
+                    ],
+                    "official_success_observed": False,
+                    "raw_task_text_recorded": False,
+                    "raw_verifier_output_recorded": False,
+                    "raw_agent_trajectory_recorded": False,
+                    "acp_trajectory_summary": {
+                        "schema_version": "skillsbench_acp_trajectory_summary_v0",
+                        "private_trajectory_present": True,
+                        "raw_text_copied_to_public": False,
+                        "event_count": 0,
+                        "round_count": 0,
+                        "user_message_count": 0,
+                        "agent_message_count": 0,
+                        "tool_call_count": 0,
+                        "codex_acp_text_present": False,
+                        "codex_acp_text_bytes": 0,
+                    },
+                },
+            )
+            result_path = Path(plan["result_json"])
+            write_json(
+                result_path,
+                {
+                    "task_name": "tictoc-unnecessary-abort-detection",
+                    "rollout_name": "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                    "rewards": None,
+                    "agent": "codex-acp",
+                    "agent_name": "",
+                    "model": "gpt-5.5",
+                    "n_tool_calls": 0,
+                    "n_prompts": 1,
+                    "error": "compact-safe official runner error",
+                    "error_category": "setup",
+                    "verifier_error": None,
+                    "partial_trajectory": False,
+                },
+            )
+            write_json(result_path.with_name("timing.json"), {"total": 2.0})
+            raise RuntimeError("PRIVATE_EXCEPTION_DETAIL_SHOULD_NOT_ESCAPE")
+
+        skillsbench_loop.ensure_benchflow_runtime = fake_ensure
+        skillsbench_loop.run_benchflow_case = fake_run
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = skillsbench_automation_loop_main(
+                    [
+                        "--task-id",
+                        "tictoc-unnecessary-abort-detection",
+                        "--route",
+                        "goal-harness-blind-loop-treatment",
+                        "--jobs-dir",
+                        str(jobs_dir),
+                        "--job-name",
+                        job_name,
+                        "--rollout-name",
+                        "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                        "--run-group-id",
+                        "skillsbench-empty-acp-fixture",
+                    ]
+                )
+        finally:
+            skillsbench_loop.ensure_benchflow_runtime = original_ensure
+            skillsbench_loop.run_benchflow_case = original_run
+
+        assert rc == 0, stderr.getvalue()
+        payload = json.loads(stdout.getvalue())
+        compact = json.loads(
+            Path(payload["compact_benchmark_run_json"]).read_text(encoding="utf-8")
+        )
+        assert compact["official_score_status"] == "missing", compact
+        assert compact["runner_prerequisites"]["host_local_acp_launch_status"] == (
+            "sandbox_installed"
+        ), compact
+        assert compact["interaction_counters"]["private_trajectory_event_count"] == 0
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_host_local_acp_empty_trajectory_after_install"
+        ), compact
+        assert compact["first_blocker"] == (
+            "skillsbench_host_local_acp_empty_trajectory_after_install"
+        ), compact
+        assert "skillsbench_runner_setup_error" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert "PRIVATE_EXCEPTION_DETAIL_SHOULD_NOT_ESCAPE" not in json.dumps(
+            compact
+        ), compact
+
+
+def test_skillsbench_main_marks_agent_message_only_no_tool_calls() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-agent-message-only-") as tmp:
+        jobs_dir = Path(tmp) / "jobs"
+        job_name = "skillsbench-agent-message-only-fixture"
+
+        original_ensure = skillsbench_loop.ensure_benchflow_runtime
+        original_run = skillsbench_loop.run_benchflow_case
+
+        def fake_ensure(_args: Any) -> None:
+            return None
+
+        async def fake_run(_args: Any, plan: dict[str, Any]) -> Path:
+            prerequisites = plan.setdefault("runner_prerequisites", {})
+            prerequisites.update(
+                {
+                    "agent_execution_mode": "container_local_acp",
+                    "container_codex_acp_install_skipped": False,
+                    "codex_acp_runtime_container_bootstrap": True,
+                    "codex_acp_runtime_dependency_preflight": True,
+                    "codex_acp_runtime_launch_preflight": False,
+                    "codex_acp_runtime_launch_preflight_stage": (
+                        "after_agent_install_before_acp_connect"
+                    ),
+                    "codex_acp_runtime_launch_preflight_status": "pending",
+                    "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+                }
+            )
+            write_json(
+                Path(plan["controller_trace_json"]),
+                {
+                    "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+                    "route": "goal-harness-blind-loop-treatment",
+                    "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+                    "heartbeat_count": 2,
+                    "controller_action_decisions": 2,
+                    "initial_prompt_count": 1,
+                    "followup_prompt_count": 1,
+                    "round_rewards": [
+                        {
+                            "agent_round": 1,
+                            "reward_present": False,
+                            "passed": False,
+                        },
+                        {
+                            "agent_round": 2,
+                            "reward_present": False,
+                            "passed": False,
+                        },
+                    ],
+                    "official_success_observed": False,
+                    "raw_task_text_recorded": False,
+                    "raw_verifier_output_recorded": False,
+                    "raw_agent_trajectory_recorded": False,
+                    "acp_trajectory_summary": {
+                        "schema_version": "skillsbench_acp_trajectory_summary_v0",
+                        "private_trajectory_present": True,
+                        "raw_text_copied_to_public": False,
+                        "event_count": 4,
+                        "round_count": 2,
+                        "user_message_count": 2,
+                        "agent_message_count": 2,
+                        "tool_call_count": 0,
+                        "codex_acp_text_present": False,
+                        "codex_acp_text_bytes": 0,
+                    },
+                },
+            )
+            result_path = Path(plan["result_json"])
+            write_json(
+                result_path,
+                {
+                    "task_name": "tictoc-unnecessary-abort-detection",
+                    "rollout_name": "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                    "rewards": None,
+                    "agent": "codex-acp",
+                    "agent_name": "codex-acp",
+                    "model": "gpt-5.5",
+                    "n_tool_calls": 0,
+                    "n_prompts": 2,
+                    "error": "compact-safe official runner error",
+                    "error_category": "agent_behavior",
+                    "verifier_error": None,
+                    "partial_trajectory": False,
+                    "trajectory_source": "acp",
+                },
+            )
+            write_json(result_path.with_name("timing.json"), {"total": 2.0})
+            raise RuntimeError("PRIVATE_EXCEPTION_DETAIL_SHOULD_NOT_ESCAPE")
+
+        skillsbench_loop.ensure_benchflow_runtime = fake_ensure
+        skillsbench_loop.run_benchflow_case = fake_run
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = skillsbench_automation_loop_main(
+                    [
+                        "--task-id",
+                        "tictoc-unnecessary-abort-detection",
+                        "--route",
+                        "goal-harness-blind-loop-treatment",
+                        "--jobs-dir",
+                        str(jobs_dir),
+                        "--job-name",
+                        job_name,
+                        "--rollout-name",
+                        "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                        "--run-group-id",
+                        "skillsbench-agent-message-only-fixture",
+                    ]
+                )
+        finally:
+            skillsbench_loop.ensure_benchflow_runtime = original_ensure
+            skillsbench_loop.run_benchflow_case = original_run
+
+        assert rc == 0, stderr.getvalue()
+        payload = json.loads(stdout.getvalue())
+        compact = json.loads(
+            Path(payload["compact_benchmark_run_json"]).read_text(encoding="utf-8")
+        )
+        assert compact["official_score_status"] == "missing", compact
+        assert compact["interaction_counters"]["private_trajectory_event_count"] == 4
+        assert compact["interaction_counters"]["private_trajectory_tool_call_count"] == 0
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_acp_agent_message_only_no_tool_calls"
+        ), compact
+        assert compact["first_blocker"] == (
+            "skillsbench_acp_agent_message_only_no_tool_calls"
+        ), compact
+        assert "skillsbench_agent_behavior_gap" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert "PRIVATE_EXCEPTION_DETAIL_SHOULD_NOT_ESCAPE" not in json.dumps(
+            compact
+        ), compact
+
+
 def test_skillsbench_main_redirects_runner_output_to_private_log() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-private-runner-output-") as tmp:
         jobs_dir = Path(tmp) / "jobs"
@@ -4063,6 +4521,10 @@ if __name__ == "__main__":
     test_skillsbench_runner_failure_marks_pre_agent_install_stage()
     test_skillsbench_reduce_only_missing_result_records_closeout_exit_zero()
     test_skillsbench_main_failure_closeout_preserves_mutated_prerequisites()
+    test_skillsbench_main_recovers_official_result_after_runner_exception()
+    test_skillsbench_main_recovers_missing_reward_with_structured_prereq_blocker()
+    test_skillsbench_main_marks_empty_acp_trajectory_after_host_install()
+    test_skillsbench_main_marks_agent_message_only_no_tool_calls()
     test_skillsbench_main_redirects_runner_output_to_private_log()
     test_skillsbench_reduce_only_discovers_nested_official_result()
     test_skillsbench_reduce_only_preserves_round_reward_trace()
