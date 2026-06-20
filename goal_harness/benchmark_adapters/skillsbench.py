@@ -1800,6 +1800,37 @@ def _skillsbench_controller_trace_counters(
         "goal_harness_state_writes": count("goal_harness_state_writes"),
         "goal_harness_case_state_reads": count("goal_harness_case_state_reads"),
         "goal_harness_case_state_writes": count("goal_harness_case_state_writes"),
+        "native_goal_worker_route": controller_trace.get("native_goal_worker_route")
+        is True,
+        "native_goal_worker_connected": controller_trace.get(
+            "native_goal_worker_connected"
+        )
+        is True,
+        "native_goal_worker_trace_dir_present": controller_trace.get(
+            "native_goal_worker_trace_dir_present"
+        )
+        is True,
+        "native_goal_worker_public_trace_read": controller_trace.get(
+            "native_goal_worker_public_trace_read"
+        )
+        is True,
+        "native_goal_worker_raw_material_recorded": controller_trace.get(
+            "native_goal_worker_raw_material_recorded"
+        )
+        is True,
+        "native_goal_worker_connect_count": count("native_goal_worker_connect_count"),
+        "native_goal_worker_trace_count": count("native_goal_worker_trace_count"),
+        "native_goal_worker_ok_count": count("native_goal_worker_ok_count"),
+        "native_goal_worker_goal_get_count": count("native_goal_worker_goal_get_count"),
+        "native_goal_worker_turn_start_count": count(
+            "native_goal_worker_turn_start_count"
+        ),
+        "native_goal_worker_turn_completed_observed_count": count(
+            "native_goal_worker_turn_completed_observed_count"
+        ),
+        "native_goal_worker_assistant_message_present_count": count(
+            "native_goal_worker_assistant_message_present_count"
+        ),
         "heartbeat_count": count("heartbeat_count"),
         "raw_task_text_recorded": controller_trace.get("raw_task_text_recorded")
         is True,
@@ -2319,6 +2350,8 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "schema_version": "benchmark_run_v0",
         "source_runner": "official_skillsbench_benchflow_result",
         "benchmark_id": dataset,
+        "case_id": task_id,
+        "case_ids": [task_id],
         "job_name": job_name,
         "mode": contract["mode"],
         "route": route,
@@ -2474,6 +2507,46 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "goal_harness_cli_state_write_count": trajectory_summary.get(
                 "goal_harness_cli_state_write_count", 0
+            ),
+            "native_goal_worker_route": controller_counters.get(
+                "native_goal_worker_route", False
+            ),
+            "native_goal_worker_connected": controller_counters.get(
+                "native_goal_worker_connected", False
+            ),
+            "native_goal_worker_trace_dir_present": controller_counters.get(
+                "native_goal_worker_trace_dir_present", False
+            ),
+            "native_goal_worker_public_trace_read": controller_counters.get(
+                "native_goal_worker_public_trace_read", False
+            ),
+            "native_goal_worker_raw_material_recorded": controller_counters.get(
+                "native_goal_worker_raw_material_recorded", False
+            ),
+            "native_goal_worker_connect_count": controller_counters.get(
+                "native_goal_worker_connect_count", 0
+            ),
+            "native_goal_worker_trace_count": controller_counters.get(
+                "native_goal_worker_trace_count", 0
+            ),
+            "native_goal_worker_ok_count": controller_counters.get(
+                "native_goal_worker_ok_count", 0
+            ),
+            "native_goal_worker_goal_get_count": controller_counters.get(
+                "native_goal_worker_goal_get_count", 0
+            ),
+            "native_goal_worker_turn_start_count": controller_counters.get(
+                "native_goal_worker_turn_start_count", 0
+            ),
+            "native_goal_worker_turn_completed_observed_count": (
+                controller_counters.get(
+                    "native_goal_worker_turn_completed_observed_count", 0
+                )
+            ),
+            "native_goal_worker_assistant_message_present_count": (
+                controller_counters.get(
+                    "native_goal_worker_assistant_message_present_count", 0
+                )
             ),
             "goal_harness_case_state_path_count": trajectory_summary.get(
                 "goal_harness_case_state_path_count", 0

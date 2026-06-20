@@ -71,6 +71,7 @@ class CodexExecConfig:
     worker_script: str | None = None
     stream_heartbeat_interval_sec: float = 120.0
     reasoning_effort: str | None = "high"
+    worker_public_trace_dir: str | None = None
 
 
 class SkillsBenchLocalAcpRelay:
@@ -335,11 +336,106 @@ class SkillsBenchLocalAcpRelay:
                 raise TimeoutError from exc
             if proc.returncode != 0:
                 raise RuntimeError("host app-server goal worker failed")
+            self._publish_worker_trace(output_json)
             try:
                 response = response_path.read_text(encoding="utf-8").strip()
             except OSError as exc:
                 raise RuntimeError("host app-server goal worker response missing") from exc
             return response or "host app-server goal worker returned an empty final message"
+
+    def _publish_worker_trace(self, output_json: Path) -> None:
+        """Persist a public-safe app-server worker trace for the reducer.
+
+        The worker output is already compact, but this method still rewrites a
+        smaller allowlisted shape so the benchmark run directory never needs the
+        private response text or raw app-server stream.
+        """
+
+        if not self._config.worker_public_trace_dir:
+            return
+        try:
+            payload = json.loads(output_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+
+        def compact_dict(source: Any, allowed: tuple[str, ...]) -> dict[str, Any]:
+            if not isinstance(source, dict):
+                return {}
+            result: dict[str, Any] = {}
+            for key in allowed:
+                value = source.get(key)
+                if isinstance(value, (str, bool, int, float)) and not (
+                    isinstance(value, float) and (value != value)
+                ):
+                    result[key] = value
+            return result
+
+        worker_contract = payload.get("worker_contract")
+        if not isinstance(worker_contract, dict):
+            worker_contract = {}
+        trace = {
+            "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
+            "ok": payload.get("ok") is True,
+            "route": "codex-app-server-goal-baseline",
+            "benchmark_id": str(payload.get("benchmark_id") or ""),
+            "task_id": str(payload.get("task_id") or ""),
+            "worker_contract": compact_dict(
+                worker_contract,
+                (
+                    "schema_version",
+                    "route",
+                    "ready",
+                    "runner_integration_ready",
+                    "first_blocker",
+                ),
+            ),
+            "prompt": compact_dict(
+                payload.get("prompt"),
+                ("sha256", "chars", "raw_recorded"),
+            ),
+            "turn": compact_dict(
+                payload.get("turn"),
+                (
+                    "schema_version",
+                    "thread_id_present",
+                    "goal_get_present",
+                    "goal_status",
+                    "turn_id_present",
+                    "turn_status",
+                    "turn_completed_observed",
+                    "agent_message_delta_count",
+                    "agent_message_item_count",
+                    "item_completed_count",
+                    "assistant_message_present",
+                    "assistant_message_chars",
+                    "raw_transcript_recorded",
+                    "raw_assistant_message_recorded",
+                ),
+            ),
+            "private_response_text": compact_dict(
+                payload.get("private_response_text"),
+                ("written", "path_recorded", "raw_recorded_in_public_json"),
+            ),
+            "boundary": compact_dict(
+                payload.get("boundary"),
+                (
+                    "raw_task_text_recorded",
+                    "raw_logs_recorded",
+                    "raw_trajectory_recorded",
+                    "credential_values_recorded",
+                    "host_paths_recorded",
+                ),
+            ),
+        }
+        trace_dir = Path(self._config.worker_public_trace_dir).expanduser()
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        trace_path = trace_dir / f"worker-{uuid.uuid4().hex[:12]}.compact.json"
+        trace_path.write_text(
+            json.dumps(trace, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
     def _write_worker_heartbeat(
         self,

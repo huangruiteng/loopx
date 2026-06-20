@@ -168,6 +168,9 @@ def test_launcher_plan_only_uses_native_worker_route() -> None:
     contract = plan["app_server_goal_worker_contract"]
     assert contract["route"] == ROUTE, contract
     assert contract["worker_plan"]["schema_version"] == "codex_app_server_goal_worker_v0", contract
+    assert plan["app_server_goal_worker_trace_dir"].endswith(
+        "app_server_goal_worker_traces"
+    ), plan
 
 
 def test_launcher_plan_only_marks_bridge_ready_when_explicit() -> None:
@@ -351,6 +354,7 @@ Path(args.output_json).write_text(json.dumps({"ok": True}), encoding="utf-8")
         root = Path(tmp)
         worker = root / "fake_worker.py"
         work = root / "work"
+        trace_dir = root / "worker-traces"
         worker.write_text(fake_worker, encoding="utf-8")
         worker.chmod(0o755)
         work.mkdir()
@@ -367,6 +371,8 @@ Path(args.output_json).write_text(json.dumps({"ok": True}), encoding="utf-8")
                 "5",
                 "--stream-heartbeat-interval-sec",
                 "0.05",
+                "--worker-public-trace-dir",
+                str(trace_dir),
             ],
             cwd=REPO_ROOT,
             stdin=subprocess.PIPE,
@@ -437,6 +443,16 @@ Path(args.output_json).write_text(json.dumps({"ok": True}), encoding="utf-8")
         assert keepalive_seen
         assert final_response is not None
         assert final_response["result"]["stopReason"] == "end_turn"
+        trace_files = sorted(trace_dir.glob("*.compact.json"))
+        assert len(trace_files) == 1, trace_files
+        trace = json.loads(trace_files[0].read_text(encoding="utf-8"))
+        assert (
+            trace["schema_version"]
+            == "skillsbench_host_codex_goal_worker_public_trace_v0"
+        ), trace
+        assert trace["ok"] is True, trace
+        assert trace["private_response_text"].get("path_recorded") is not True, trace
+        assert "private delayed answer" not in json.dumps(trace), trace
         proc.terminate()
         proc.wait(timeout=2)
 

@@ -89,6 +89,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help="Optional path to skillsbench_host_codex_goal_worker.py.",
     )
+    parser.add_argument(
+        "--worker-public-trace-dir",
+        default=None,
+        help=(
+            "Optional directory for public-safe host app-server Goal worker "
+            "compact traces. Response text and raw app-server streams are not "
+            "written there."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -109,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
             response_timeout_sec=args.response_timeout_sec,
             worker_script=args.worker_script,
             stream_heartbeat_interval_sec=args.stream_heartbeat_interval_sec,
+            worker_public_trace_dir=args.worker_public_trace_dir,
         )
     )
     return relay.serve()

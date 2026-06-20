@@ -609,7 +609,10 @@ def inspect_skillsbench_worker_handshake(
     )
 
 
-def _host_local_acp_launch_command(args: argparse.Namespace) -> list[str]:
+def _host_local_acp_launch_command(
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+) -> list[str]:
     if args.local_acp_relay_command:
         return shlex.split(args.local_acp_relay_command)
     command = list(default_skillsbench_local_acp_relay_command())
@@ -617,6 +620,7 @@ def _host_local_acp_launch_command(args: argparse.Namespace) -> list[str]:
         index = command.index("--dry-run-response")
         del command[index : index + 2]
     if args.route == "codex-app-server-goal-baseline":
+        worker_trace_dir = str(plan.get("app_server_goal_worker_trace_dir") or "")
         command.extend(
             [
                 "--app-server-goal-worker",
@@ -634,6 +638,8 @@ def _host_local_acp_launch_command(args: argparse.Namespace) -> list[str]:
                 str(args.app_server_acp_heartbeat_interval_sec),
             ]
         )
+        if worker_trace_dir:
+            command.extend(["--worker-public-trace-dir", worker_trace_dir])
     command.extend(
         [
             "--codex-bin",
@@ -1603,6 +1609,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     result_path = jobs_dir / job_name / rollout_name / "result.json"
     compact_path = jobs_dir / job_name / rollout_name / "benchmark_run.compact.json"
     controller_trace_path = jobs_dir / job_name / "goal_harness_controller_trace.public.json"
+    app_server_goal_worker_trace_dir = (
+        jobs_dir / job_name / "app_server_goal_worker_traces"
+    )
     task_path = Path(args.skillsbench_root).expanduser() / "tasks" / task_id
     setup_preflight = skillsbench_task_setup_preflight(
         task_path=task_path,
@@ -1663,6 +1672,11 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "result_json": str(result_path),
         "compact_benchmark_run_json": str(compact_path),
         "controller_trace_json": str(controller_trace_path),
+        "app_server_goal_worker_trace_dir": (
+            str(app_server_goal_worker_trace_dir)
+            if is_app_server_goal_route
+            else ""
+        ),
         "ledger_path": str(Path(args.ledger_path).expanduser()),
         "task_setup_preflight": setup_preflight,
         "task_staging": {
@@ -2201,6 +2215,18 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
         "goal_harness_state_writes": 0,
         "goal_harness_case_state_reads": 0,
         "goal_harness_case_state_writes": 0,
+        "native_goal_worker_route": route == "codex-app-server-goal-baseline",
+        "native_goal_worker_connected": False,
+        "native_goal_worker_connect_count": 0,
+        "native_goal_worker_trace_dir_present": False,
+        "native_goal_worker_trace_count": 0,
+        "native_goal_worker_ok_count": 0,
+        "native_goal_worker_goal_get_count": 0,
+        "native_goal_worker_turn_start_count": 0,
+        "native_goal_worker_turn_completed_observed_count": 0,
+        "native_goal_worker_assistant_message_present_count": 0,
+        "native_goal_worker_public_trace_read": False,
+        "native_goal_worker_raw_material_recorded": False,
         "max_round_observed": -1,
         "last_decision": "not_started",
         "raw_task_text_recorded": False,
@@ -2235,6 +2261,83 @@ def _read_controller_trace(plan: dict[str, Any]) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _merge_app_server_goal_worker_trace_summary(
+    plan: dict[str, Any],
+    trace: dict[str, Any] | None,
+) -> None:
+    if not isinstance(trace, dict):
+        return
+    raw_trace_dir = plan.get("app_server_goal_worker_trace_dir")
+    if not isinstance(raw_trace_dir, str) or not raw_trace_dir.strip():
+        return
+    trace_dir = Path(raw_trace_dir)
+    files = sorted(trace_dir.glob("*.compact.json")) if trace_dir.exists() else []
+    worker_trace_count = 0
+    ok_count = 0
+    goal_get_count = 0
+    turn_start_count = 0
+    turn_completed_count = 0
+    assistant_message_count = 0
+    raw_material_recorded = False
+    for path in files:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if (
+            payload.get("schema_version")
+            != "skillsbench_host_codex_goal_worker_public_trace_v0"
+        ):
+            continue
+        worker_trace_count += 1
+        if payload.get("ok") is True:
+            ok_count += 1
+        turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
+        if turn.get("goal_get_present") is True:
+            goal_get_count += 1
+        if turn.get("turn_id_present") is True:
+            turn_start_count += 1
+        if turn.get("turn_completed_observed") is True:
+            turn_completed_count += 1
+        if turn.get("assistant_message_present") is True:
+            assistant_message_count += 1
+        boundary = (
+            payload.get("boundary")
+            if isinstance(payload.get("boundary"), dict)
+            else {}
+        )
+        raw_material_recorded = raw_material_recorded or any(
+            boundary.get(field) is True
+            for field in (
+                "raw_task_text_recorded",
+                "raw_logs_recorded",
+                "raw_trajectory_recorded",
+                "credential_values_recorded",
+                "host_paths_recorded",
+            )
+        )
+        raw_material_recorded = raw_material_recorded or (
+            turn.get("raw_transcript_recorded") is True
+            or turn.get("raw_assistant_message_recorded") is True
+        )
+    trace["native_goal_worker_route"] = plan.get("route") == "codex-app-server-goal-baseline"
+    trace["native_goal_worker_trace_dir_present"] = trace_dir.exists()
+    trace["native_goal_worker_trace_count"] = worker_trace_count
+    trace["native_goal_worker_ok_count"] = ok_count
+    trace["native_goal_worker_goal_get_count"] = goal_get_count
+    trace["native_goal_worker_turn_start_count"] = turn_start_count
+    trace["native_goal_worker_turn_completed_observed_count"] = turn_completed_count
+    trace["native_goal_worker_assistant_message_present_count"] = (
+        assistant_message_count
+    )
+    trace["native_goal_worker_public_trace_read"] = worker_trace_count > 0
+    trace["native_goal_worker_raw_material_recorded"] = raw_material_recorded
+    if worker_trace_count:
+        trace["last_decision"] = "host_app_server_goal_worker_trace_recorded"
 
 
 def _round_count_key(round_index: int) -> str:
@@ -2905,7 +3008,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     from benchflow.rollout import Rollout, RolloutConfig
     from benchflow.runtime import run as benchflow_run
 
-    host_local_acp_command = _host_local_acp_launch_command(args)
+    host_local_acp_command = _host_local_acp_launch_command(args, plan)
     runtime_mounts = (
         _benchflow_agent_runtime_mounts(args)
         if args.require_preinstalled_benchflow_agent_runtime
@@ -2961,6 +3064,17 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             if model:
                 await asyncio.wait_for(client.set_model(model), timeout=60)
             prerequisites["host_local_acp_launch_status"] = "connected"
+            if isinstance(controller_trace, dict):
+                controller_trace["native_goal_worker_route"] = (
+                    args.route == "codex-app-server-goal-baseline"
+                )
+                controller_trace["native_goal_worker_connect_count"] = int(
+                    controller_trace.get("native_goal_worker_connect_count") or 0
+                ) + 1
+                controller_trace["native_goal_worker_connected"] = True
+                controller_trace["last_decision"] = (
+                    "host_app_server_goal_worker_connected"
+                )
             return client, session, ACPSessionAdapter(client), agent_name
         except Exception:
             prerequisites["host_local_acp_launch_status"] = "failed"
@@ -3215,6 +3329,10 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         )
     elif args.route == "codex-goal-mode-baseline":
         controller_user = _build_codex_goal_mode_baseline_user()
+    elif args.route == "codex-app-server-goal-baseline":
+        controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
+        controller_trace["native_goal_worker_route"] = True
+        controller_trace["last_decision"] = "host_app_server_goal_worker_selected"
 
     pre_agent_hooks = (
         []
@@ -3282,6 +3400,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                 original_rollout_planes_connect_acp
             )
         _merge_acp_trajectory_summary(plan, controller_trace)
+        _merge_app_server_goal_worker_trace_summary(plan, controller_trace)
         _write_controller_trace(plan, controller_trace)
     if result_path is None:
         result_path = discover_benchflow_result_path(plan)
@@ -3304,6 +3423,7 @@ def reduce_result(
 
     controller_trace = _read_controller_trace(plan)
     _merge_acp_trajectory_summary(plan, controller_trace)
+    _merge_app_server_goal_worker_trace_summary(plan, controller_trace)
     _write_controller_trace(plan, controller_trace)
 
     benchmark_run = build_skillsbench_benchflow_result_benchmark_run(

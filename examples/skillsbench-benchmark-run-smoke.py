@@ -59,6 +59,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     _tail,
     _blind_loop_persistent_continuation_clause,
     _build_product_mode_user,
+    _merge_app_server_goal_worker_trace_summary,
     _merge_acp_trajectory_summary,
     _merge_final_result_round_reward,
     _round_result_declared_done,
@@ -879,14 +880,19 @@ def test_skillsbench_verifier_tail_disabled_at_zero() -> None:
     assert default_args.route == "goal-harness-blind-loop-treatment", default_args
 
 
-def write_official_skillsbench_result(root: Path, *, reward: float = 0.0) -> Path:
-    run_dir = root / "official" / "2026-06-15__00-00-00" / "sample-task__abc123"
+def write_official_skillsbench_result(
+    root: Path,
+    *,
+    reward: float = 0.0,
+    task_id: str = "sample-task",
+) -> Path:
+    run_dir = root / "official" / "2026-06-15__00-00-00" / f"{task_id}__abc123"
     result_path = run_dir / "result.json"
     write_json(
         result_path,
         {
-            "task_name": "sample-task",
-            "rollout_name": "sample-task__abc123",
+            "task_name": task_id,
+            "rollout_name": f"{task_id}__abc123",
             "rewards": {"reward": reward},
             "agent": "codex-acp",
             "agent_name": "codex-acp",
@@ -2882,6 +2888,81 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         compact_text = json.dumps(compact, sort_keys=True)
         assert "private_verifier_output" not in compact_text
         assert "TASK INSTRUCTION" not in compact_text
+
+        worker_trace_dir = root / "native-worker-traces"
+        worker_trace_dir.mkdir()
+        write_json(
+            worker_trace_dir / "worker-000001.compact.json",
+            {
+                "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
+                "ok": True,
+                "route": "codex-app-server-goal-baseline",
+                "benchmark_id": "skillsbench@1.1",
+                "task_id": "llm-prefix-cache-replay",
+                "turn": {
+                    "thread_id_present": True,
+                    "goal_get_present": True,
+                    "goal_status": "active",
+                    "turn_id_present": True,
+                    "turn_status": "completed",
+                    "turn_completed_observed": True,
+                    "assistant_message_present": True,
+                    "assistant_message_chars": 42,
+                    "raw_transcript_recorded": False,
+                    "raw_assistant_message_recorded": False,
+                },
+                "boundary": {
+                    "raw_task_text_recorded": False,
+                    "raw_logs_recorded": False,
+                    "raw_trajectory_recorded": False,
+                    "credential_values_recorded": False,
+                    "host_paths_recorded": False,
+                },
+            },
+        )
+        app_server_trace = {
+            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_connect_count": 1,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        _merge_app_server_goal_worker_trace_summary(
+            {
+                "route": "codex-app-server-goal-baseline",
+                "app_server_goal_worker_trace_dir": str(worker_trace_dir),
+            },
+            app_server_trace,
+        )
+        native_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                write_official_skillsbench_result(
+                    root / "native",
+                    reward=0.0,
+                    task_id="llm-prefix-cache-replay",
+                ),
+                route="codex-app-server-goal-baseline",
+                controller_trace=app_server_trace,
+            )
+        )
+        assert native_compact is not None
+        assert native_compact["case_id"] == "llm-prefix-cache-replay", native_compact
+        assert native_compact["case_ids"] == ["llm-prefix-cache-replay"], native_compact
+        assert native_compact["validation"]["goal_harness_controller_trace_present"] is True
+        assert native_compact["validation"]["failed_checks"] == [], native_compact
+        native_counters = native_compact["interaction_counters"]
+        assert native_counters["controller_trace_present"] is True, native_compact
+        assert native_counters["native_goal_worker_route"] is True, native_compact
+        assert native_counters["native_goal_worker_trace_count"] == 1, native_compact
+        assert native_counters["native_goal_worker_ok_count"] == 1, native_compact
+        assert native_counters["native_goal_worker_goal_get_count"] == 1, native_compact
+        assert native_counters["native_goal_worker_turn_start_count"] == 1, native_compact
+        assert native_counters["native_goal_worker_turn_completed_observed_count"] == 1, native_compact
+        assert native_counters["native_goal_worker_raw_material_recorded"] is False, native_compact
 
         baseline = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(

@@ -497,6 +497,11 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "controller_blind_loop",
         "controller_official_success_observed",
         "private_trajectory_summary_present",
+        "native_goal_worker_route",
+        "native_goal_worker_connected",
+        "native_goal_worker_trace_dir_present",
+        "native_goal_worker_public_trace_read",
+        "native_goal_worker_raw_material_recorded",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -546,6 +551,13 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "environment_setup_failure_before_worker_count",
         "pre_worker_agent_setup_failure_count",
         "codex_runtime_goal_tool_trial_count",
+        "native_goal_worker_connect_count",
+        "native_goal_worker_trace_count",
+        "native_goal_worker_ok_count",
+        "native_goal_worker_goal_get_count",
+        "native_goal_worker_turn_start_count",
+        "native_goal_worker_turn_completed_observed_count",
+        "native_goal_worker_assistant_message_present_count",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -1810,6 +1822,25 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         value = public_safe_compact_text(source.get(field), limit=120)
         if value:
             compact[field] = value
+    trials_source = source.get("trials") if isinstance(source.get("trials"), list) else []
+    first_trial = trials_source[0] if trials_source and isinstance(trials_source[0], dict) else {}
+    case_ids_source = (
+        source.get("case_ids") if isinstance(source.get("case_ids"), list) else []
+    )
+    case_id = (
+        public_safe_compact_text(source.get("case_id"), limit=120)
+        or public_safe_compact_text(source.get("task_id"), limit=120)
+        or public_safe_compact_text(first_trial.get("task_id"), limit=120)
+        or (
+            public_safe_compact_text(case_ids_source[0], limit=120)
+            if case_ids_source
+            else None
+        )
+    )
+    if case_id:
+        compact["case_id"] = case_id
+        case_ids = public_safe_compact_list(case_ids_source, limit=MAX_BENCHMARK_RUN_LIST_ITEMS)
+        compact["case_ids"] = case_ids or [case_id]
     for field in (
         "worker_mode",
         "trace_publicness",
@@ -1878,6 +1909,11 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "agent_declared_done",
         "official_feedback_blinded",
         "reward_feedback_forwarded",
+        "native_goal_worker_route",
+        "native_goal_worker_connected",
+        "native_goal_worker_trace_dir_present",
+        "native_goal_worker_public_trace_read",
+        "native_goal_worker_raw_material_recorded",
     ):
         if isinstance(source.get(field), bool):
             compact[field] = source.get(field)
@@ -1903,6 +1939,13 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "official_zero_observation_count",
         "planned_worker_goal_harness_cli_call_total",
         "required_worker_goal_harness_cli_call_total_min",
+        "native_goal_worker_connect_count",
+        "native_goal_worker_trace_count",
+        "native_goal_worker_ok_count",
+        "native_goal_worker_goal_get_count",
+        "native_goal_worker_turn_start_count",
+        "native_goal_worker_turn_completed_observed_count",
+        "native_goal_worker_assistant_message_present_count",
     ):
         if isinstance(source.get(field), int) and not isinstance(source.get(field), bool):
             compact[field] = source.get(field)
@@ -2275,13 +2318,15 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "worker_bridge_materialized_when_required",
             "worker_bridge_repeat_ready",
             "worker_startup_blocker_recorded",
+            "goal_harness_controller_trace_present",
+            "goal_harness_controller_trace_public_safe",
         ):
             if isinstance(validation.get(field), bool):
                 compact_validation[field] = validation[field]
         compact["validation"] = compact_validation
 
     trials: list[dict[str, Any]] = []
-    for trial in source.get("trials") or []:
+    for trial in trials_source or []:
         if not isinstance(trial, dict):
             continue
         compact_trial: dict[str, Any] = {}
