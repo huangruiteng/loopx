@@ -139,6 +139,23 @@ fallback command, and idle-guard requirement into a single dry-run packet. It
 does not run Codex, read transcripts, read session files, mutate a session, or
 spend quota.
 
+Current visible-session proof harness:
+
+```bash
+goal-harness codex-cli-visible-session-proof \
+  --project . \
+  --goal-id <goal-id> \
+  --agent-id <agent-id> \
+  --proof-fixture visible-proof.public.json
+```
+
+The proof fixture must be public-safe. It records booleans for user opt-in,
+quota guard, idle guard, turn visibility, interruptibility, private-data
+boundaries, and compact writeback planning. Passing this proof only means a
+future local driver may try that visible surface behind the same guards; it
+does not mean Goal Harness may read transcripts, read session files, mutate
+hidden session state, or bypass user gates.
+
 ### 3. Headless Fallback
 
 `codex exec` remains useful for scheduled or CI-like work, but it is not the
@@ -217,11 +234,14 @@ projects runnable candidates; it should not over-specify the model's local plan.
    `goal-harness codex-cli-local-driver-plan` as the dry-run command that
    composes quota, visible-driver, TUI bootstrap, explicit fallback, and
    idle-guard requirements.
-6. **Local driver executor**: prototype a scheduler that runs quota, checks
+6. **Visible-session proof harness**: validate public-safe observations with
+   `goal-harness codex-cli-visible-session-proof` before promoting
+   resume/remote-control into any same-session automation path.
+7. **Local driver executor**: prototype a scheduler that runs quota, checks
    session idle state, and either attaches visibly or falls back explicitly.
-7. **Validation harness**: add a public-safe fixture that proves the driver
+8. **Validation harness**: add a public-safe fixture that proves the driver
    never stores raw transcript text and never spends quota before writeback.
-8. **Claude Code follow-up**: port the same product contract only after the
+9. **Claude Code follow-up**: port the same product contract only after the
    Codex CLI path is credible.
 
 ## Success Criteria

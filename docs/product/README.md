@@ -18,7 +18,8 @@ runtime contract, benchmark route, or launch draft.
 - [Codex CLI automation driver audit](codex-cli-automation-driver.md): the
   current Codex CLI scheduler/session surface audit, with a conservative local
   driver planner that keeps TUI bootstrap primary, composes quota/idle/fallback
-  checks, and treats `codex exec` as an explicit fallback.
+  checks, validates visible-session proof fixtures, and treats `codex exec` as
+  an explicit fallback.
 - [Agent profile contract](agent-profile-contract.md): the registry-owned
   identity/scope contract for primary and side agents, including worktree and
   review handoff policy, while keeping todo ownership in `claimed_by` and future

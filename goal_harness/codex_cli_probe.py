@@ -172,6 +172,13 @@ def load_codex_cli_probe_fixture(path: Path) -> dict[str, str]:
     return {str(key): str(value) for key, value in outputs.items()}
 
 
+def load_codex_cli_visible_session_proof_fixture(path: Path) -> dict[str, Any]:
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError("Codex CLI visible session proof fixture must be a JSON object")
+    return data
+
+
 def run_codex_cli_session_probe(
     *,
     codex_bin: str = DEFAULT_CODEX_BIN,
@@ -224,6 +231,188 @@ def run_codex_cli_session_probe(
 
 def _shell_arg(value: str) -> str:
     return shlex.quote(value)
+
+
+def _nested_bool(payload: Mapping[str, Any], path: tuple[str, ...]) -> bool:
+    current: Any = payload
+    for key in path:
+        if not isinstance(current, Mapping):
+            return False
+        current = current.get(key)
+    return current is True
+
+
+def _nested_false(payload: Mapping[str, Any], path: tuple[str, ...]) -> bool:
+    current: Any = payload
+    for key in path:
+        if not isinstance(current, Mapping):
+            return False
+        current = current.get(key)
+    return current is False
+
+
+VISIBLE_SESSION_PROOF_REQUIRED_TRUE_CHECKS: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    ("user_opt_in", ("user_opt_in",), "user explicitly opted into this proof"),
+    ("quota_guard_passed", ("quota_guard", "passed"), "quota should-run allowed this proof path"),
+    ("idle_no_human_typing", ("idle_guard", "no_active_human_typing"), "idle guard saw no active human typing"),
+    ("idle_no_running_turn", ("idle_guard", "no_running_turn"), "idle guard saw no running Codex turn"),
+    ("idle_checked_before_prompt", ("idle_guard", "checked_before_prompt"), "idle guard ran before the visible prompt"),
+    ("visible_to_user", ("turn_visibility", "visible_to_user"), "the steering turn was visible to the user"),
+    ("visible_prompt_public_safe", ("turn_visibility", "prompt_public_safe"), "the visible prompt was public-safe"),
+    ("user_can_interrupt", ("interruptibility", "user_can_interrupt"), "the user can interrupt the turn"),
+    ("manual_takeover_available", ("interruptibility", "manual_takeover_available"), "manual takeover remains available"),
+    ("compact_writeback_planned", ("writeback", "compact_evidence_planned"), "compact evidence writeback is planned before quota spend"),
+)
+
+
+VISIBLE_SESSION_PROOF_REQUIRED_FALSE_CHECKS: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    ("no_raw_transcript_read", ("boundary", "reads_raw_transcripts"), "raw transcripts were not read"),
+    ("no_session_files_read", ("boundary", "reads_session_files"), "session files were not read"),
+    ("no_credentials_read", ("boundary", "reads_credentials"), "credentials were not read"),
+    ("no_hidden_session_mutation", ("boundary", "mutates_hidden_session_state"), "hidden session state was not mutated"),
+    ("no_quota_spend_before_writeback", ("boundary", "spends_quota_before_writeback"), "quota was not spent before writeback"),
+)
+
+
+def build_codex_cli_visible_session_proof(
+    *,
+    project: Path,
+    goal_id: str | None,
+    agent_id: str | None,
+    cli_bin: str,
+    proof_payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Validate a public-safe proof packet for visible Codex CLI steering.
+
+    This command intentionally does not run Codex or inspect local session
+    state. It validates whether a separately captured public-safe observation
+    is strong enough to treat resume/remote-control as a candidate for future
+    same-session automation.
+    """
+
+    resolved_project = str(project.expanduser())
+    resolved_goal_id = goal_id or default_goal_id(project)
+    if proof_payload is None:
+        return {
+            "ok": False,
+            "schema_version": "codex_cli_visible_session_proof_v0",
+            "project": resolved_project,
+            "goal_id": resolved_goal_id,
+            "agent_id": agent_id,
+            "decision": "proof_fixture_required",
+            "approved_for_same_session_automation": False,
+            "recommended_action": "capture a public-safe proof fixture; do not run same-session automation yet",
+            "required_fixture_shape": {
+                "user_opt_in": True,
+                "quota_guard": {"passed": True},
+                "idle_guard": {
+                    "no_active_human_typing": True,
+                    "no_running_turn": True,
+                    "checked_before_prompt": True,
+                },
+                "turn_visibility": {
+                    "visible_to_user": True,
+                    "prompt_public_safe": True,
+                },
+                "interruptibility": {
+                    "user_can_interrupt": True,
+                    "manual_takeover_available": True,
+                },
+                "boundary": {
+                    "reads_raw_transcripts": False,
+                    "reads_session_files": False,
+                    "reads_credentials": False,
+                    "mutates_hidden_session_state": False,
+                    "spends_quota_before_writeback": False,
+                },
+                "writeback": {"compact_evidence_planned": True},
+            },
+            "boundary": {
+                "fixture_only": True,
+                "runs_codex": False,
+                "reads_raw_transcripts": False,
+                "reads_credentials": False,
+                "reads_session_files": False,
+                "mutates_codex_session": False,
+                "spends_goal_harness_quota": False,
+            },
+            "checks": [],
+            "failures": ["missing_proof_fixture"],
+        }
+
+    checks: list[dict[str, Any]] = []
+    failures: list[str] = []
+    for key, path, description in VISIBLE_SESSION_PROOF_REQUIRED_TRUE_CHECKS:
+        passed = _nested_bool(proof_payload, path)
+        checks.append({"key": key, "required": True, "passed": passed, "description": description})
+        if not passed:
+            failures.append(key)
+    for key, path, description in VISIBLE_SESSION_PROOF_REQUIRED_FALSE_CHECKS:
+        passed = _nested_false(proof_payload, path)
+        checks.append({"key": key, "required": False, "passed": passed, "description": description})
+        if not passed:
+            failures.append(key)
+
+    observed_surface = str(proof_payload.get("observed_surface") or "unknown")
+    supported_surface = observed_surface in {
+        "visible_resume_prompt",
+        "remote_control_visible_prompt",
+        "same_tui_visible_attach",
+    }
+    if not supported_surface:
+        failures.append("unsupported_observed_surface")
+    checks.append(
+        {
+            "key": "supported_observed_surface",
+            "required": sorted(
+                [
+                    "remote_control_visible_prompt",
+                    "same_tui_visible_attach",
+                    "visible_resume_prompt",
+                ]
+            ),
+            "actual": observed_surface,
+            "passed": supported_surface,
+            "description": "observed surface is a visible Codex CLI steering path",
+        }
+    )
+
+    approved = not failures
+    if approved:
+        decision = "visible_session_proof_passed"
+        recommended_action = (
+            "allow a future opt-in driver spike to use this visible surface behind quota and idle guards"
+        )
+    else:
+        decision = "visible_session_proof_incomplete"
+        recommended_action = (
+            "keep TUI bootstrap primary and headless exec explicit; do not treat this as same-session automation"
+        )
+
+    return {
+        "ok": True,
+        "schema_version": "codex_cli_visible_session_proof_v0",
+        "project": resolved_project,
+        "goal_id": resolved_goal_id,
+        "agent_id": agent_id,
+        "cli_bin": cli_bin,
+        "source": "proof_fixture",
+        "observed_surface": observed_surface,
+        "decision": decision,
+        "approved_for_same_session_automation": approved,
+        "recommended_action": recommended_action,
+        "checks": checks,
+        "failures": failures,
+        "boundary": {
+            "fixture_only": True,
+            "runs_codex": False,
+            "reads_raw_transcripts": False,
+            "reads_credentials": False,
+            "reads_session_files": False,
+            "mutates_codex_session": False,
+            "spends_goal_harness_quota": False,
+        },
+    }
 
 
 def build_codex_cli_visible_driver_plan(
@@ -598,4 +787,53 @@ def render_codex_cli_local_driver_plan_markdown(payload: dict[str, Any]) -> str:
 ## Warnings
 
 {warning_lines}
+"""
+
+
+def render_codex_cli_visible_session_proof_markdown(payload: dict[str, Any]) -> str:
+    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    checks = payload.get("checks") if isinstance(payload.get("checks"), list) else []
+    failures = payload.get("failures") if isinstance(payload.get("failures"), list) else []
+    required_shape = payload.get("required_fixture_shape")
+    check_lines = "\n".join(
+        f"- [{'x' if check.get('passed') else ' '}] {check.get('key')}: {check.get('description')}"
+        for check in checks
+        if isinstance(check, dict)
+    )
+    if not check_lines:
+        check_lines = "- no proof fixture supplied"
+    failure_lines = "\n".join(f"- {failure}" for failure in failures) if failures else "- none"
+    required_shape_block = ""
+    if isinstance(required_shape, dict):
+        required_shape_block = f"""
+## Required Fixture Shape
+
+```json
+{json.dumps(required_shape, indent=2, ensure_ascii=False)}
+```
+"""
+    return f"""# Codex CLI Visible Session Proof
+
+- decision: `{payload.get("decision")}`
+- approved_for_same_session_automation: `{payload.get("approved_for_same_session_automation")}`
+- observed_surface: `{payload.get("observed_surface")}`
+- recommended_action: {payload.get("recommended_action")}
+
+## Checks
+
+{check_lines}
+
+## Failures
+
+{failure_lines}
+
+## Boundary
+
+- fixture_only: `{boundary.get("fixture_only")}`
+- runs_codex: `{boundary.get("runs_codex")}`
+- reads_raw_transcripts: `{boundary.get("reads_raw_transcripts")}`
+- reads_session_files: `{boundary.get("reads_session_files")}`
+- mutates_codex_session: `{boundary.get("mutates_codex_session")}`
+- spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+{required_shape_block}
 """

@@ -111,6 +111,22 @@ goal-harness codex-cli-local-driver-plan --project . --goal-id <goal-id> --agent
 This is still dry-run-only. It does not run Codex, read transcripts, read
 session files, mutate a session, or spend quota.
 
+When the driver plan says `resume [PROMPT]` or `remote-control` might support a
+visible same-session path, validate a public-safe proof fixture before treating
+that path as automation:
+
+```bash
+goal-harness codex-cli-visible-session-proof \
+  --project . \
+  --goal-id <goal-id> \
+  --agent-id <agent-id> \
+  --proof-fixture visible-proof.public.json
+```
+
+The fixture should contain only booleans and public-safe labels proving user
+opt-in, quota guard, idle guard, visible turn, interruptibility, no transcript
+or session-file reads, and compact writeback planning.
+
 If same-session steering is unavailable and the user explicitly accepts a
 headless fallback, generate the fallback handoff instead of pretending the open
 TUI is preserved:

@@ -28,9 +28,12 @@ from ..codex_cli_probe import (
     DEFAULT_TIMEOUT_SECONDS,
     build_codex_cli_local_driver_plan,
     build_codex_cli_visible_driver_plan,
+    build_codex_cli_visible_session_proof,
+    load_codex_cli_visible_session_proof_fixture,
     render_codex_cli_local_driver_plan_markdown,
     render_codex_cli_session_probe_markdown,
     render_codex_cli_visible_driver_plan_markdown,
+    render_codex_cli_visible_session_proof_markdown,
     run_codex_cli_session_probe,
 )
 
@@ -156,6 +159,26 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Public-safe JSON fixture with command_outputs, used instead of invoking Codex CLI.",
     )
 
+    codex_cli_visible_session_proof_parser = subparsers.add_parser(
+        "codex-cli-visible-session-proof",
+        help="Validate a public-safe proof fixture before treating Codex CLI resume or remote-control as same-session automation.",
+    )
+    codex_cli_visible_session_proof_parser.add_argument("--project", default=".", help="Project directory to start from.")
+    codex_cli_visible_session_proof_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
+    codex_cli_visible_session_proof_parser.add_argument(
+        "--agent-id",
+        help="Registered Goal Harness agent id to include in the proof packet.",
+    )
+    codex_cli_visible_session_proof_parser.add_argument(
+        "--cli-bin",
+        default="goal-harness",
+        help="Goal Harness CLI binary name embedded in proof metadata.",
+    )
+    codex_cli_visible_session_proof_parser.add_argument(
+        "--proof-fixture",
+        help="Public-safe JSON proof fixture. When omitted, prints the required fixture shape.",
+    )
+
     codex_cli_exec_parser = subparsers.add_parser(
         "codex-cli-exec-handoff",
         help="Generate an explicit one-shot codex exec fallback for Goal Harness onboarding.",
@@ -279,6 +302,26 @@ def handle_codex_cli_local_driver_plan_command(
         probe_payload=probe_payload,
     )
     print_payload(payload, args.format, render_codex_cli_local_driver_plan_markdown)
+    return 0 if payload.get("ok") else 1
+
+
+def handle_codex_cli_visible_session_proof_command(
+    args: argparse.Namespace,
+    print_payload: PrintPayload,
+) -> int:
+    proof_payload = (
+        load_codex_cli_visible_session_proof_fixture(Path(args.proof_fixture).expanduser())
+        if args.proof_fixture
+        else None
+    )
+    payload = build_codex_cli_visible_session_proof(
+        project=Path(args.project),
+        goal_id=args.goal_id,
+        agent_id=args.agent_id,
+        cli_bin=args.cli_bin,
+        proof_payload=proof_payload,
+    )
+    print_payload(payload, args.format, render_codex_cli_visible_session_proof_markdown)
     return 0 if payload.get("ok") else 1
 
 

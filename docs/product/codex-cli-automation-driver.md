@@ -105,6 +105,21 @@ Harness quota. It emits:
 - the idle-guard placeholder that must exist before any same-session attach is
   treated as production automation.
 
+A separate proof harness validates whether a resume or remote-control
+observation is strong enough to become a same-session automation candidate:
+
+```bash
+goal-harness codex-cli-visible-session-proof \
+  --project . \
+  --goal-id <goal> \
+  --agent-id <agent> \
+  --proof-fixture visible-proof.public.json
+```
+
+The fixture is public-safe and boolean-only: user opt-in, quota guard, idle
+guard, visibility, interruptibility, private-data boundary, and compact
+writeback planning. It does not run Codex or inspect session state.
+
 ## Next Build Slice
 
 Turn the dry-run planner into a real local driver only after the same-session
