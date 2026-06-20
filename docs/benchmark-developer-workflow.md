@@ -178,6 +178,26 @@ python3 scripts/benchmark_ecs_bootstrap.py \
   --pretty
 ```
 
+After the host is ready, decide the benchmark-specific agent runtime layer
+before launching an official case. The common rule is: agent runtime is
+preinstalled as a stable layer; the case container only runs the task and the
+benchmark scorer. Generate the public-safe profile plan:
+
+```bash
+python3 scripts/benchmark_agent_runtime_layer.py \
+  --benchmark all \
+  --workspace ~/goal-harness-bench \
+  --pretty
+```
+
+Terminal-Bench and SWE-Marathon are Harbor-family profiles. They share the
+`harbor_codex_cli_tools` layer mounted at `/opt/harbor-agent-tools`.
+SkillsBench is a BenchFlow-family profile. It needs a separate
+`benchflow_js_agent_runtime` layer for Node.js and `codex-acp`, mounted at
+`/opt/benchflow`. Treat verifier dependency prewarm as a separate oracle
+concern; the runtime layer is only about making the agent process start without
+per-case downloads.
+
 For Harbor-based SWE or Terminal-style runners, avoid downloading nvm, npm
 packages, or Codex inside every task container. Materialize a host-side
 preinstalled tools bundle and mount it read-only at Harbor's conventional
@@ -201,12 +221,32 @@ environment:
       read_only: true
 ```
 
+The Harbor bundle requires `codex` and `rg`. `curl` is intentionally optional:
+host-copied dynamic curl binaries can fail inside Ubuntu task images because of
+shared-library differences. Use the task image's curl, a static curl, or
+`--include-curl` only when a runner explicitly depends on it. Before an
+official attempt, run a container-local preflight equivalent to:
+
+```bash
+PATH=/opt/harbor-agent-tools/bin:$PATH \
+  command -v codex >/dev/null && codex --version >/dev/null && \
+  command -v rg >/dev/null && rg --version >/dev/null
+```
+
 Prefer Harbor's preinstalled Codex agent variant when available, for example
 `codex-api-key-no-search`, because it prefixes `/opt/harbor-agent-tools/bin`
 during both setup and execution. A plain `codex` agent may pass setup if it
 finds the bundle, but still fail execution if the runner shell resets PATH.
 If the task container cannot reach the model endpoint after this, classify that
 as agent egress/proxy readiness, not as nvm/npm dependency materialization.
+
+For SkillsBench, do not let every task container download Node.js from
+`nodejs.org` and then `npm install` the ACP agent. Prewarm a BenchFlow-family
+runtime layer once, mount it at `/opt/benchflow`, prefix
+`/opt/benchflow/bin:/opt/benchflow/js-agents/bin:/opt/benchflow/node/bin`, and
+run the `codex-acp` launch preflight before a real case. Until that preflight is
+green, classify SkillsBench as agent-runtime readiness blocked rather than
+spending more official attempts.
 
 The probe checks command presence, Docker server reachability, disk budget, and
 the standard workspace shape. It intentionally emits only command names,

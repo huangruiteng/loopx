@@ -4,7 +4,8 @@
 The bundle is intended to be mounted read-only into Harbor task containers at
 ``/opt/harbor-agent-tools``. Harbor's preinstalled Codex agent variants then
 find ``codex`` and ``rg`` on PATH without downloading nvm, npm packages, or
-Codex inside each benchmark container.
+Codex inside each benchmark container. ``curl`` is optional because dynamic
+host curl binaries are often not portable across task images.
 """
 
 from __future__ import annotations
@@ -112,6 +113,7 @@ def build_bundle(
     codex_native: Path | None,
     rg: Path | None,
     curl: Path | None,
+    include_curl: bool,
     verify: bool,
 ) -> dict[str, Any]:
     output = output.expanduser()
@@ -120,10 +122,11 @@ def build_bundle(
     for name, path in (
         ("codex_native", codex_native),
         ("rg", rg),
-        ("curl", curl),
     ):
         if path is None or not path.is_file():
             missing.append(name)
+    if include_curl and (curl is None or not curl.is_file()):
+        missing.append("curl")
 
     payload: dict[str, Any] = {
         "schema_version": "harbor_agent_tools_bundle_v0",
@@ -138,7 +141,10 @@ def build_bundle(
             "codex_native_found": codex_native is not None and codex_native.is_file(),
             "rg_found": rg is not None and rg.is_file(),
             "curl_found": curl is not None and curl.is_file(),
+            "include_curl": include_curl,
         },
+        "required_tools": ["codex", "rg"],
+        "optional_tools": ["curl"],
         "files": [],
         "verification": [],
         "boundary": {
@@ -154,10 +160,11 @@ def build_bundle(
 
     assert codex_native is not None
     assert rg is not None
-    assert curl is not None
     _copy_executable(codex_native, bin_dir / "codex-real")
     _copy_executable(rg, bin_dir / "rg")
-    _copy_executable(curl, bin_dir / "curl")
+    if include_curl:
+        assert curl is not None
+        _copy_executable(curl, bin_dir / "curl")
     _write_codex_wrapper(bin_dir / "codex")
 
     payload["files"] = sorted(path.name for path in bin_dir.iterdir() if path.is_file())
@@ -165,8 +172,9 @@ def build_bundle(
         payload["verification"] = [
             _probe_command(bin_dir, "codex"),
             _probe_command(bin_dir, "rg"),
-            _probe_command(bin_dir, "curl"),
         ]
+        if include_curl:
+            payload["verification"].append(_probe_command(bin_dir, "curl"))
         failed = [
             probe["command"]
             for probe in payload["verification"]
@@ -193,6 +201,15 @@ def main() -> int:
     parser.add_argument("--codex-native-bin")
     parser.add_argument("--rg-bin")
     parser.add_argument("--curl-bin")
+    parser.add_argument(
+        "--include-curl",
+        action="store_true",
+        help=(
+            "Also copy curl into the bundle. By default curl is optional "
+            "because host dynamic curl binaries are often not portable across "
+            "benchmark task images."
+        ),
+    )
     parser.add_argument("--no-verify", action="store_true")
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
@@ -204,6 +221,7 @@ def main() -> int:
         curl=Path(args.curl_bin).expanduser()
         if args.curl_bin
         else _which("curl"),
+        include_curl=args.include_curl,
         verify=not args.no_verify,
     )
     print(json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None))

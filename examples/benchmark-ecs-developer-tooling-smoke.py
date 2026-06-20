@@ -50,6 +50,38 @@ def main() -> int:
         assert bootstrap["boundary"]["raw_logs_read"] is False
         assert (tmp_path / "goal-harness-bench" / "sources").is_dir()
 
+        runtime_layer = run_json(
+            [
+                "scripts/benchmark_agent_runtime_layer.py",
+                "--benchmark",
+                "all",
+                "--workspace",
+                str(tmp_path / "goal-harness-bench"),
+            ]
+        )
+        assert (
+            runtime_layer["schema_version"]
+            == "benchmark_agent_runtime_layer_plan_v0"
+        )
+        assert runtime_layer["ready"] is True
+        assert runtime_layer["boundary"]["private_paths_recorded"] is False
+        runtime_profiles = {
+            profile["benchmark_id"]: profile
+            for profile in runtime_layer["profiles"]
+        }
+        assert (
+            runtime_profiles["terminal-bench"]["layer_id"]
+            == "harbor_codex_cli_tools"
+        )
+        assert (
+            runtime_profiles["swe-marathon"]["layer_id"]
+            == "harbor_codex_cli_tools"
+        )
+        assert (
+            runtime_profiles["skillsbench"]["layer_id"]
+            == "benchflow_js_agent_runtime"
+        )
+
         launch = run_json(
             [
                 "scripts/terminal_bench_no_upload_smoke.py",
