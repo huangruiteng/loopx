@@ -3822,6 +3822,94 @@ def test_skillsbench_main_failure_closeout_preserves_mutated_prerequisites() -> 
         }, compact
 
 
+def test_skillsbench_main_recovers_official_result_after_runner_exception() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-result-recovery-") as tmp:
+        jobs_dir = Path(tmp) / "jobs"
+        job_name = "skillsbench-result-recovery-fixture"
+        exception_message = "PRIVATE_EXCEPTION_DETAIL_SHOULD_NOT_ESCAPE"
+
+        original_ensure = skillsbench_loop.ensure_benchflow_runtime
+        original_run = skillsbench_loop.run_benchflow_case
+
+        def fake_ensure(_args: Any) -> None:
+            return None
+
+        async def fake_run(_args: Any, plan: dict[str, Any]) -> Path:
+            result_path = Path(plan["result_json"])
+            write_json(
+                result_path,
+                {
+                    "task_name": "tictoc-unnecessary-abort-detection",
+                    "rollout_name": "tictoc-unnecessary-abort-detection__codex_acp_blind_loop",
+                    "rewards": {"reward": 0.0},
+                    "agent": "codex-acp",
+                    "agent_name": "codex-acp",
+                    "model": "gpt-5.5",
+                    "n_tool_calls": 0,
+                    "n_prompts": 1,
+                    "error": "compact-safe official runner error",
+                    "error_category": "idle_timeout",
+                    "verifier_error": None,
+                    "partial_trajectory": False,
+                    "trajectory_source": "acp",
+                },
+            )
+            write_json(result_path.with_name("timing.json"), {"total": 2.0})
+            raise RuntimeError(exception_message)
+
+        skillsbench_loop.ensure_benchflow_runtime = fake_ensure
+        skillsbench_loop.run_benchflow_case = fake_run
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = skillsbench_automation_loop_main(
+                    [
+                        "--task-id",
+                        "tictoc-unnecessary-abort-detection",
+                        "--route",
+                        "codex-acp-blind-loop-baseline",
+                        "--jobs-dir",
+                        str(jobs_dir),
+                        "--job-name",
+                        job_name,
+                        "--rollout-name",
+                        "tictoc-unnecessary-abort-detection__codex_acp_blind_loop",
+                        "--run-group-id",
+                        "skillsbench-result-recovery-fixture",
+                    ]
+                )
+        finally:
+            skillsbench_loop.ensure_benchflow_runtime = original_ensure
+            skillsbench_loop.run_benchflow_case = original_run
+
+        assert rc == 0, stderr.getvalue()
+        assert stderr.getvalue() == "", stderr.getvalue()
+        payload = json.loads(stdout.getvalue())
+        assert payload["ok"] is True, payload
+        assert payload["recovered_after_runner_exception"] is True, payload
+        assert payload["runner_exception_type"] == "RuntimeError", payload
+        compact_path = Path(payload["compact_benchmark_run_json"])
+        compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["official_score_status"] == "completed", compact
+        assert compact["official_task_score"]["value"] == 0.0, compact
+        assert compact["runner_return_status"] == (
+            "official_result_recovered_after_runner_exception"
+        ), compact
+        assert compact["result_recovery"] == {
+            "exception_type": "RuntimeError",
+            "official_result_json_materialized": True,
+            "raw_exception_recorded": False,
+            "raw_logs_read": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_read": False,
+            "schema_version": "skillsbench_result_recovery_v0",
+            "status": "official_result_recovered_after_runner_exception",
+        }, compact
+        assert exception_message not in json.dumps(payload), payload
+        assert exception_message not in json.dumps(compact), compact
+
+
 def test_skillsbench_main_redirects_runner_output_to_private_log() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-private-runner-output-") as tmp:
         jobs_dir = Path(tmp) / "jobs"

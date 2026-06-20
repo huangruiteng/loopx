@@ -2981,6 +2981,62 @@ def reduce_result(
     return compact
 
 
+def reduce_official_result_after_runner_exception(
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+    exc: BaseException,
+) -> dict[str, Any] | None:
+    """Recover an official result that BenchFlow wrote before raising.
+
+    BenchFlow can raise for the rollout while still leaving a valid
+    ``result.json``/``timing.json`` behind. In that case the public benchmark
+    truth is the official result, not a synthetic "missing result" closeout.
+    This path still reads only the official compact result artifacts.
+    """
+
+    try:
+        result_path = discover_benchflow_result_path(plan)
+    except Exception:
+        return None
+    if not result_path.exists():
+        return None
+
+    compact = reduce_result(args, result_path, plan)
+    compact["runner_return_status"] = (
+        "official_result_recovered_after_runner_exception"
+    )
+    compact["result_recovery"] = {
+        "schema_version": "skillsbench_result_recovery_v0",
+        "status": "official_result_recovered_after_runner_exception",
+        "exception_type": type(exc).__name__,
+        "official_result_json_materialized": True,
+        "raw_exception_recorded": False,
+        "raw_logs_read": False,
+        "raw_task_text_read": False,
+        "raw_trajectory_read": False,
+    }
+    compact_path = Path(plan["compact_benchmark_run_json"])
+    compact_path.parent.mkdir(parents=True, exist_ok=True)
+    compact_path.write_text(
+        json.dumps(compact, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    ledger_update = update_ledger(args, compact, compact_path=compact_path)
+    append_history(args, compact_path)
+    return {
+        "ok": True,
+        "plan_only": False,
+        "recovered_after_runner_exception": True,
+        "runner_exception_type": type(exc).__name__,
+        "result_json": str(result_path),
+        "compact_benchmark_run_json": str(compact_path),
+        "result_discovery": plan.get("result_discovery"),
+        "official_task_score": compact.get("official_task_score"),
+        "score_failure_attribution": compact.get("score_failure_attribution"),
+        "ledger_update": ledger_update,
+    }
+
+
 def build_runner_failure_compact(
     args: argparse.Namespace,
     plan: dict[str, Any],
@@ -3555,6 +3611,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         payload = asyncio.run(async_main(args, plan=plan))
     except Exception as exc:
+        recovered_payload = reduce_official_result_after_runner_exception(
+            args, plan, exc
+        )
+        if recovered_payload is not None:
+            print(json.dumps(recovered_payload, indent=2, sort_keys=True))
+            return 0
         try:
             compact = build_runner_failure_compact(args, plan, exc)
             compact_path = Path(plan["compact_benchmark_run_json"])
