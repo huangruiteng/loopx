@@ -65,6 +65,11 @@ assertExists(resolve(siteDir, "status.frontstage-share.json"));
 assertExists(resolve(outDir, "README.md"));
 assertExists(resolve(outDir, "frontstage-share-manifest.json"));
 
+const routerSource = await readFile(resolve(repoRoot, "apps/dashboard/src/router.tsx"), "utf8");
+if (!routerSource.includes("basepath:") || !routerSource.includes("import.meta.env.BASE_URL")) {
+  throw new Error("dashboard router must derive basepath from Vite BASE_URL for GitHub Pages");
+}
+
 const status = JSON.parse(await readFile(resolve(siteDir, "status.frontstage-share.json"), "utf8"));
 if (status.attention_queue?.items?.[0]?.goal_channel_projection?.schema_version !== "goal_channel_projection_v0") {
   throw new Error("share fixture did not include goal_channel_projection_v0");
