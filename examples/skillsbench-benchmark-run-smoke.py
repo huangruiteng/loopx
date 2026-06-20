@@ -4162,8 +4162,11 @@ def test_skillsbench_main_marks_agent_message_only_no_tool_calls() -> None:
                     "container_codex_acp_install_skipped": False,
                     "codex_acp_runtime_container_bootstrap": True,
                     "codex_acp_runtime_dependency_preflight": True,
-                    "codex_acp_runtime_launch_preflight": True,
-                    "codex_acp_runtime_launch_preflight_status": "passed",
+                    "codex_acp_runtime_launch_preflight": False,
+                    "codex_acp_runtime_launch_preflight_stage": (
+                        "after_agent_install_before_acp_connect"
+                    ),
+                    "codex_acp_runtime_launch_preflight_status": "pending",
                     "codex_acp_runtime_launch_preflight_raw_logs_read": False,
                 }
             )
