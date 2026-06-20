@@ -15,10 +15,10 @@ Install and connect Goal Harness for this project end to end. Do not stop at a
 plan.
 
 If `goal-harness` is not on PATH:
-- clone https://github.com/huangruiteng/goal-harness to ~/goal-harness if it is
-  not already present;
-- run ~/goal-harness/scripts/install-local.sh;
-- export PATH="$HOME/.local/bin:$PATH".
+- install it without making me clone the repo:
+
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
 
 Then:
 1. Run `goal-harness doctor`.
@@ -74,9 +74,11 @@ paths, runtime roots, JSON payloads, or session files.
 First-run path:
 
 ```text
-Start Goal Harness for this repo. Install or repair it if needed, connect this
-project, show me the first user gate if one exists, then run the first safe
-agent todo only after quota says it should run.
+Start Goal Harness for this repo. If `goal-harness` is missing, install it with
+the official no-clone GitHub installer, then connect this project. Show me the
+current goal, concrete user gate if any, top todos, and next safe action before
+running longer work. Keep me in this Codex CLI TUI unless I explicitly accept a
+headless fallback.
 ```
 
 The first useful response should show the current goal id, concrete user gate
@@ -152,10 +154,29 @@ Maintainers can validate the public fresh-clone path with:
 python3 examples/fresh-clone-quickstart-smoke.py
 ```
 
-## Manual Install
+## No-Clone Install
 
-Install one shared local checkout manually when you want to drive setup without
-an agent:
+Install or update Goal Harness without cloning the repository:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
+goal-harness doctor
+```
+
+The installer downloads a GitHub archive, writes a stable local release snapshot
+under `~/.local/share/goal-harness/releases/`, installs the CLI wrapper under
+`~/.local/bin`, and installs the reusable Goal Harness skills under
+`~/.codex/skills`.
+
+This is the recommended install repair path for Codex CLI users because an
+agent can run it from inside the TUI without asking the user to clone this
+repository first.
+
+## Contributor Install
+
+Install one shared local checkout when you want to develop Goal Harness itself
+or test a live canary wrapper:
 
 ```bash
 git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
@@ -163,7 +184,7 @@ git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
 goal-harness doctor
 ```
 
-The installer creates:
+The checkout installer creates:
 
 - `~/.local/bin/goal-harness`, pointing at a stable local release snapshot;
 - `~/.local/bin/goal-harness-canary`, pointing at the live checkout;
@@ -183,7 +204,16 @@ checkout to the default local release.
 - the CLI wrappers under `~/.local/bin`;
 - the Goal Harness Codex skills under `~/.codex/skills`.
 
-Re-run the installer to update both surfaces from the current checkout:
+For a no-clone install, rerun the GitHub archive installer to refresh the
+release snapshot and skills:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
+goal-harness doctor
+```
+
+For a contributor checkout, re-run the installer to update both surfaces from
+the current checkout:
 
 ```bash
 cd ~/goal-harness

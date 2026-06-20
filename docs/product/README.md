@@ -15,6 +15,9 @@ runtime contract, benchmark route, or launch draft.
   Harness loop, later automation tries to steer the same visible session, and
   headless `codex exec` remains an explicit fallback rather than the default
   user experience.
+- [Codex CLI packaged install path](codex-cli-packaged-install.md): the
+  no-clone install/update/start route for Codex CLI users, with clone-plus-canary
+  reserved for contributors.
 - [Codex CLI automation driver audit](codex-cli-automation-driver.md): the
   current Codex CLI scheduler/session surface audit, with a conservative local
   driver planner that keeps TUI bootstrap primary, composes quota/idle/fallback

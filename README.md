@@ -150,8 +150,9 @@ the human/operator.
 
 ## Quick Start
 
-Requirements: Python 3.11+, Git, macOS or Linux shell. The Python package has
-no runtime dependencies outside the standard library.
+Requirements: Python 3.11+, `curl`, `tar`, macOS or Linux shell. Git is only
+needed for contributor clone/canary workflows. The Python package has no
+runtime dependencies outside the standard library.
 
 The recommended start is agent-first. For Codex CLI users, stay in the TUI and
 paste one message:
@@ -160,9 +161,11 @@ paste one message:
 2. Paste this message:
 
    ```text
-   Start Goal Harness for this repo. Install or repair it if needed, connect this
-   project, show me the first user gate if one exists, then run the first safe
-   agent todo only after quota says it should run.
+   Start Goal Harness for this repo. If `goal-harness` is missing, install it
+   with the official no-clone GitHub installer, then connect this project. Show
+   me the current goal, concrete user gate if any, top todos, and next safe
+   action before running longer work. Keep me in this Codex CLI TUI unless I
+   explicitly accept a headless fallback.
    ```
 
    The agent should install or repair Goal Harness, connect the repo, run the
@@ -189,11 +192,10 @@ the project repo:
 Install and connect Goal Harness for this project end to end. Do not stop at a
 plan.
 
-If `goal-harness` is not on PATH:
-- clone https://github.com/huangruiteng/goal-harness to ~/goal-harness if it is
-  not already present;
-- run ~/goal-harness/scripts/install-local.sh;
-- export PATH="$HOME/.local/bin:$PATH".
+If `goal-harness` is not on PATH, install it without making me clone the repo:
+
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
 
 Then:
 1. Run `goal-harness doctor`.
@@ -222,7 +224,16 @@ Success looks like this:
 - `goal-harness status` shows who should act next;
 - local runtime state is ignored, not committed.
 
-Manual install is still available when you want to drive the setup yourself:
+Manual no-clone install is still available when you want to drive the setup
+yourself:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
+goal-harness doctor
+```
+
+Clone-based install is for contributors who want the live canary wrapper:
 
 ```bash
 git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
@@ -356,6 +367,8 @@ contract.
 - [Documentation index](docs/README.md): stable docs grouped by audience.
 - [Architecture](docs/architecture.md): lifetime-goal invariant and core
   control-plane shape.
+- [Codex CLI packaged install](docs/product/codex-cli-packaged-install.md):
+  no-clone install/update/start path for Codex CLI users.
 - [Integration guide](docs/integration.md): how to connect a project to Goal
   Harness.
 - [Showcase catalog](docs/showcases/README.md): public-safe cases and future

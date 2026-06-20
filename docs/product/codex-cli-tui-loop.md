@@ -8,8 +8,9 @@ daemon instead of Codex." The target is:
 
 1. A user opens Codex CLI TUI inside a project repo.
 2. The user sends one short message.
-3. Codex discovers or installs Goal Harness, connects the repo, reads quota and
-   todo state, and enters the Goal Harness loop.
+3. Codex discovers or installs Goal Harness without requiring a manual repo
+   clone, connects the repo, reads quota and todo state, and enters the Goal
+   Harness loop.
 4. Later automation can steer the same visible session when safe, while the
    user can still watch, interrupt, review, or take over.
 
@@ -18,15 +19,18 @@ daemon instead of Codex." The target is:
 The best first-run experience is one TUI message:
 
 ```text
-Start Goal Harness for this repo. Install or repair it if needed, connect this
-project, show me the first user gate if one exists, then run the first safe
-agent todo only after quota says it should run.
+Start Goal Harness for this repo. If `goal-harness` is missing, install it with
+the official no-clone GitHub installer, then connect this project. Show me the
+current goal, concrete user gate if any, top todos, and next safe action before
+running longer work. Keep me in this Codex CLI TUI unless I explicitly accept a
+headless fallback.
 ```
 
 That message should be enough for a terminal agent to:
 
 - run `goal-harness doctor`;
-- install or repair the local CLI if it is missing;
+- install or repair the local CLI if it is missing, using the no-clone archive
+  installer before asking the user to clone the Goal Harness repo;
 - connect or bootstrap the repo;
 - read onboarding candidates and ask the user what to accept when required;
 - run `quota should-run`;
@@ -80,9 +84,10 @@ about internals:
 - top agent todo;
 - next safe action.
 
-Registry paths, runtime roots, JSON payloads, local-driver plans, and
-visible-session proof fixtures are follow-up diagnostics. They should not be
-required before a first-time user sees the current goal/gate/todo state.
+Registry paths, runtime roots, JSON payloads, local-driver plans,
+clone/canary setup, and visible-session proof fixtures are follow-up
+diagnostics. They should not be required before a first-time user sees the
+current goal/gate/todo state.
 
 ### 2. Session-Attached Automation
 
@@ -232,29 +237,32 @@ projects runnable candidates; it should not over-specify the model's local plan.
 
 1. **Bootstrap prompt**: ship a concise Codex CLI TUI paste message in README
    and getting-started docs.
-2. **Bootstrap command**: add a Goal Harness command that prints a tailored
+2. **No-clone install repair**: make the first-run agent path able to install
+   the CLI and reusable skills from a GitHub archive, while reserving
+   clone-plus-canary setup for contributors.
+3. **Bootstrap command**: add a Goal Harness command that prints a tailored
    Codex CLI bootstrap message for the current repo.
-3. **Session probe**: document whether current Codex CLI exposes a stable
+4. **Session probe**: document whether current Codex CLI exposes a stable
    session id, resume handle, or safe injection primitive. The current
    implementation is `goal-harness codex-cli-session-probe`; it separates
    `exec` fallback support, visible resume / remote-control spike surfaces, and
    true same-open-TUI visible injection.
-4. **Visible driver plan**: generate a dry-run plan with
+5. **Visible driver plan**: generate a dry-run plan with
    `goal-harness codex-cli-visible-driver-plan` so the next local driver knows
    whether to attempt visible attach, run a resume/remote-control proof, or
    fall back explicitly.
-5. **Local driver planner**: ship
+6. **Local driver planner**: ship
    `goal-harness codex-cli-local-driver-plan` as the dry-run command that
    composes quota, visible-driver, TUI bootstrap, explicit fallback, and
    idle-guard requirements.
-6. **Visible-session proof harness**: validate public-safe observations with
+7. **Visible-session proof harness**: validate public-safe observations with
    `goal-harness codex-cli-visible-session-proof` before promoting
    resume/remote-control into any same-session automation path.
-7. **Local driver executor**: prototype a scheduler that runs quota, checks
+8. **Local driver executor**: prototype a scheduler that runs quota, checks
    session idle state, and either attaches visibly or falls back explicitly.
-8. **Validation harness**: add a public-safe fixture that proves the driver
+9. **Validation harness**: add a public-safe fixture that proves the driver
    never stores raw transcript text and never spends quota before writeback.
-9. **Claude Code follow-up**: port the same product contract only after the
+10. **Claude Code follow-up**: port the same product contract only after the
    Codex CLI path is credible.
 
 ## Success Criteria
