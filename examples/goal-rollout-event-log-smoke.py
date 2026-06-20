@@ -58,9 +58,79 @@ def run_script(*args: str) -> dict:
     return json.loads(result.stdout)
 
 
+def run_goal_harness_cli(*args: str, allow_failure: bool = False) -> dict:
+    result = subprocess.run(
+        [sys.executable, "-m", "goal_harness.cli", *args],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0 and not allow_failure:
+        raise AssertionError(
+            f"goal_harness.cli failed rc={result.returncode}\n"
+            f"stdout={result.stdout}\nstderr={result.stderr}"
+        )
+    assert_public_safe_text(result.stdout)
+    return json.loads(result.stdout)
+
+
+def write_smoke_project(tmp_root: Path) -> tuple[Path, Path, Path, str]:
+    runtime_root = tmp_root / "runtime"
+    project = tmp_root / "project"
+    project.mkdir(parents=True)
+    goal_id = "rollout-log-smoke"
+    state_file = project / "ACTIVE_GOAL_STATE.md"
+    state_file.write_text(
+        """---
+status: smoke
+updated_at: 2026-06-21T00:00:00+08:00
+---
+
+# Rollout Log Smoke
+
+## Next Action
+
+- [P0] Exercise automatic rollout logging.
+
+## Agent Todo
+
+- [ ] [P0] Claim the smoke todo.
+  <!-- goal-harness:todo todo_id=todo_auto_rollout status=open task_class=advancement_task action_kind=smoke -->
+""",
+        encoding="utf-8",
+    )
+    registry_path = tmp_root / "registry.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "common_runtime_root": str(runtime_root),
+                "goals": [
+                    {
+                        "id": goal_id,
+                        "domain": "smoke",
+                        "status": "active-read-only",
+                        "repo": str(project),
+                        "state_file": "ACTIVE_GOAL_STATE.md",
+                        "coordination": {
+                            "primary_agent": "codex-main-control",
+                            "registered_agents": ["codex-main-control"],
+                        },
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return registry_path, runtime_root, project, goal_id
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="goal-harness-rollout-event-log-") as tmp:
-        runtime_root = Path(tmp) / "runtime"
+        tmp_root = Path(tmp)
+        runtime_root = tmp_root / "runtime"
         goal_id = "goal-harness-meta"
         log_path = rollout_event_log_path(runtime_root, goal_id)
         event = build_rollout_event(
@@ -168,6 +238,79 @@ def main() -> None:
             raise AssertionError("raw/private detail keys must be rejected")
 
         assert_public_safe_text(log_path.read_text(encoding="utf-8"))
+
+        registry_path, cli_runtime_root, project, cli_goal_id = write_smoke_project(tmp_root / "auto")
+        claim_payload = run_goal_harness_cli(
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(cli_runtime_root),
+            "--format",
+            "json",
+            "todo",
+            "claim",
+            "--goal-id",
+            cli_goal_id,
+            "--todo-id",
+            "todo_auto_rollout",
+            "--claimed-by",
+            "codex-main-control",
+        )
+        assert claim_payload["rollout_event"]["event_kind"] == "todo_claim", claim_payload
+
+        refresh_payload = run_goal_harness_cli(
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(cli_runtime_root),
+            "--format",
+            "json",
+            "refresh-state",
+            "--goal-id",
+            cli_goal_id,
+            "--classification",
+            "automatic_rollout_logging_smoke",
+            "--delivery-batch-scale",
+            "implementation",
+            "--delivery-outcome",
+            "outcome_progress",
+            "--agent-id",
+            "codex-main-control",
+            "--agent-lane",
+            "smoke",
+            "--no-global-sync",
+        )
+        assert refresh_payload["rollout_event"]["event_kind"] == "refresh_state", refresh_payload
+
+        should_run_payload = run_goal_harness_cli(
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(cli_runtime_root),
+            "--format",
+            "json",
+            "quota",
+            "should-run",
+            "--goal-id",
+            cli_goal_id,
+            "--agent-id",
+            "codex-main-control",
+            "--scan-root",
+            str(project),
+            "--limit",
+            "1",
+            allow_failure=True,
+        )
+        assert should_run_payload["rollout_event"]["event_kind"] == (
+            "quota_should_run"
+        ), should_run_payload
+        auto_events = load_rollout_events(rollout_event_log_path(cli_runtime_root, cli_goal_id))
+        auto_kinds = [event["event_kind"] for event in auto_events]
+        assert auto_kinds == ["todo_claim", "refresh_state", "quota_should_run"], auto_kinds
+        auto_log_text = rollout_event_log_path(cli_runtime_root, cli_goal_id).read_text(
+            encoding="utf-8"
+        )
+        assert_public_safe_text(auto_log_text)
 
 
 if __name__ == "__main__":

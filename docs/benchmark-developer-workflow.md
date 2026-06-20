@@ -136,7 +136,15 @@ you need to explain the lifecycle of a case or an agent workflow:
 - `codex_session_observed`: a private Codex session source exists, but raw
   session contents and file paths are not recorded.
 
-Append one compact event at important transitions:
+Core Goal Harness CLI lifecycle commands append compact events automatically:
+`todo` transitions, `refresh-state`, and `quota should-run` /
+`quota monitor-poll` / `quota spend-slot` / `quota void-slot` all write to the
+rollout event log when they run through the CLI. This makes the log closer to a
+Codex session ledger for Goal Harness itself: agents do not need to remember to
+record routine GH control-plane transitions by hand.
+
+Use the script for external benchmark transitions, backfills, or operator-side
+facts that happen outside those core CLI paths:
 
 ```bash
 python3 scripts/goal_rollout_event_log.py append \

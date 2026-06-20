@@ -206,6 +206,11 @@ from .registry import (
     render_registry_markdown,
     resolve_state_file,
 )
+from .rollout_event_log import (
+    append_rollout_event,
+    build_rollout_event,
+    rollout_event_log_path,
+)
 from .runtime import archive_runtime_goal, render_archive_runtime_markdown
 from .state_refresh import (
     DEFAULT_REFRESH_ACTION,
@@ -1798,6 +1803,66 @@ def fallback_global_registry(registry_path: Path, runtime_root_arg: str | None) 
 def explicit_global_registry(runtime_root_arg: str | None) -> Path:
     runtime_root = Path(runtime_root_arg).expanduser() if runtime_root_arg else DEFAULT_RUNTIME_ROOT
     return global_registry_path(runtime_root)
+
+
+def append_cli_rollout_event(
+    payload: dict[str, object],
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    event_kind: str,
+    agent_id: str | None = None,
+    todo_id: str | None = None,
+    status: str | None = None,
+    summary: str | None = None,
+    details: dict[str, object] | None = None,
+    allow_failed: bool = False,
+) -> dict[str, object]:
+    """Append a compact rollout event for core CLI lifecycle commands.
+
+    Rollout logging is intentionally best-effort so the diagnostic log cannot
+    turn a successful state transition into a failed CLI command. Failures are
+    surfaced in the command payload as compact metadata.
+    """
+
+    if not payload.get("ok") and not allow_failed:
+        return payload
+    goal_id = str(payload.get("goal_id") or "").strip()
+    if not goal_id:
+        return payload
+    try:
+        runtime_root_value = payload.get("runtime_root")
+        if runtime_root_value:
+            runtime_root = Path(str(runtime_root_value)).expanduser()
+        else:
+            registry = load_registry(registry_path)
+            runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+        event = build_rollout_event(
+            goal_id=goal_id,
+            event_kind=event_kind,
+            agent_id=agent_id or str(payload.get("agent_id") or "").strip() or None,
+            todo_id=todo_id or str(payload.get("todo_id") or "").strip() or None,
+            status=status,
+            classification=str(payload.get("classification") or "").strip() or None,
+            delivery_outcome=str(payload.get("delivery_outcome") or "").strip() or None,
+            summary=summary,
+            details=details,
+        )
+        appended = append_rollout_event(rollout_event_log_path(runtime_root, goal_id), event)
+        payload["rollout_event"] = {
+            "schema_version": appended["schema_version"],
+            "event_id": appended["event_id"],
+            "event_kind": appended["event_kind"],
+            "recorded_at": appended["recorded_at"],
+            "status": appended.get("status"),
+        }
+    except Exception as exc:
+        payload["rollout_event_log_error"] = {
+            "recorded": False,
+            "error_type": type(exc).__name__,
+            "message": "rollout event append failed; primary command payload remains authoritative",
+        }
+    return payload
 
 
 def resolve_heartbeat_active_state(
@@ -9464,6 +9529,28 @@ def main(argv: list[str] | None = None) -> int:
                 "dry_run": bool(args.dry_run),
                 "error": str(exc),
             }
+        if payload.get("ok") and payload.get("appended") and not payload.get("dry_run"):
+            append_cli_rollout_event(
+                payload,
+                registry_path=registry_path,
+                runtime_root_arg=args.runtime_root,
+                event_kind="refresh_state",
+                agent_id=args.agent_id,
+                status="appended",
+                summary=(
+                    "refresh-state appended compact control-plane state with "
+                    f"classification={payload.get('classification')}"
+                ),
+                details={
+                    "command": "refresh-state",
+                    "progress_scope": payload.get("progress_scope") or "",
+                    "agent_lane": payload.get("agent_lane") or "",
+                    "global_sync_wrote": bool(
+                        isinstance(payload.get("global_sync"), dict)
+                        and payload["global_sync"].get("wrote")
+                    ),
+                },
+            )
         print_payload(payload, args.format, render_state_refresh_markdown)
         return 0 if payload.get("ok") else 1
 
@@ -9884,6 +9971,36 @@ def main(argv: list[str] | None = None) -> int:
                 "todo": args.text or "",
                 "error": str(exc),
             }
+        todo_event_kinds = {
+            "add": "todo_add",
+            "claim": "todo_claim",
+            "update": "todo_update",
+            "complete": "todo_complete",
+            "supersede": "todo_supersede",
+            "archive-completed": "todo_archive_completed",
+        }
+        if payload.get("ok") and not payload.get("dry_run"):
+            append_cli_rollout_event(
+                payload,
+                registry_path=registry_path,
+                runtime_root_arg=args.runtime_root,
+                event_kind=todo_event_kinds.get(args.todo_command, "todo_update"),
+                agent_id=args.claimed_by,
+                todo_id=args.todo_id or str(payload.get("todo_id") or "").strip() or None,
+                status=str(payload.get("status") or args.todo_command or "").strip(),
+                summary=(
+                    f"todo {args.todo_command} recorded for "
+                    f"{payload.get('todo_id') or args.todo_id or 'unstructured todo'}"
+                ),
+                details={
+                    "command": "todo",
+                    "todo_command": args.todo_command,
+                    "role": payload.get("role") or args.role or "",
+                    "changed": bool(payload.get("changed")),
+                    "added": bool(payload.get("added")),
+                    "already_exists": bool(payload.get("already_exists")),
+                },
+            )
         print_payload(payload, args.format, render_todo_markdown)
         return 0 if payload.get("ok") else 1
 
@@ -9993,6 +10110,48 @@ def main(argv: list[str] | None = None) -> int:
                         }
                     ],
                 }
+        quota_event_kinds = {
+            "should-run": "quota_should_run",
+            "monitor-poll": "quota_monitor_poll",
+            "spend-slot": "quota_spend",
+            "void-slot": "quota_void",
+        }
+        should_log_quota = (
+            args.quota_command in quota_event_kinds
+            and (
+                args.quota_command == "should-run"
+                or (payload.get("ok") and bool(payload.get("appended")))
+            )
+        )
+        if should_log_quota:
+            append_cli_rollout_event(
+                payload,
+                registry_path=registry_path,
+                runtime_root_arg=args.runtime_root,
+                event_kind=quota_event_kinds[args.quota_command],
+                agent_id=args.agent_id,
+                status=str(
+                    payload.get("effective_action")
+                    or payload.get("decision")
+                    or payload.get("mode")
+                    or args.quota_command
+                ),
+                summary=(
+                    f"quota {args.quota_command} decision="
+                    f"{payload.get('decision') or payload.get('mode')} "
+                    f"state={payload.get('state') or ''}"
+                ),
+                details={
+                    "command": "quota",
+                    "quota_command": args.quota_command,
+                    "ok": bool(payload.get("ok")),
+                    "should_run": bool(payload.get("should_run")),
+                    "appended": bool(payload.get("appended")),
+                    "slots": payload.get("slots") or "",
+                    "source": payload.get("source") or "",
+                },
+                allow_failed=args.quota_command == "should-run",
+            )
         renderer = (
             render_quota_should_run_markdown
             if args.quota_command == "should-run"

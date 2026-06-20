@@ -20,10 +20,17 @@ ROLLOUT_EVENT_KINDS = {
     "compact_case_result",
     "failure_attribution",
     "pr_merge",
+    "quota_monitor_poll",
     "quota_should_run",
     "quota_spend",
+    "quota_void",
     "refresh_state",
+    "todo_add",
+    "todo_archive_completed",
     "todo_claim",
+    "todo_complete",
+    "todo_supersede",
+    "todo_update",
     "validation",
 }
 
