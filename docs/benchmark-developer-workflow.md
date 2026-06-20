@@ -143,6 +143,15 @@ rollout event log when they run through the CLI. This makes the log closer to a
 Codex session ledger for Goal Harness itself: agents do not need to remember to
 record routine GH control-plane transitions by hand.
 
+Compact benchmark history writes also append automatically when they are
+executed through the CLI. `goal-harness history append-benchmark-run
+--execute`, `goal-harness history append-benchmark-result --execute`, and the
+`goal-harness benchmark ... --execute` fixture/ingest path write
+`compact_case_result` or `compact_blocker` events derived only from the compact
+`benchmark_run_v0` / `benchmark_result_v0` payload. This is the default path for
+case-level observation: launch/poll scripts may keep their own private raw
+artifacts, but Goal Harness should observe the public-safe compact writeback.
+
 Use the script for external benchmark transitions, backfills, or operator-side
 facts that happen outside those core CLI paths:
 
