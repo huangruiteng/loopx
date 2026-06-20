@@ -357,6 +357,8 @@ async function main() {
     try {
       await captureFrontstage(desktopPage, `${baseUrl}/frontstage`, "desktop-frontstage", [
         "Demo Goal Channel",
+        "showcase mode",
+        "Showcase mode ignores statusUrl",
         "codex-main-control",
         "codex-side-bypass",
         "Render the productization frontstage fixture",
@@ -364,8 +366,30 @@ async function main() {
       await captureFrontstage(
         desktopPage,
         `${baseUrl}/frontstage?statusUrl=/${fixtureName}&goalId=live-goal-a`,
+        "desktop-frontstage-showcase-ignores-status-url",
+        [
+          "Demo Goal Channel",
+          "showcase mode",
+          "Showcase mode ignores statusUrl",
+          "statusUrl ignored",
+        ],
+      );
+      const publicModeText = await desktopPage.locator("body").innerText();
+      const publicModeForbidden = [
+        "Live Goal Channel",
+        "Second Live Channel",
+        "Render live statusUrl channel projection",
+      ];
+      const publicModePresent = publicModeForbidden.filter((text) => publicModeText.includes(text));
+      if (publicModePresent.length) {
+        throw new Error(`Showcase frontstage loaded live statusUrl text: ${publicModePresent.join(", ")}`);
+      }
+      await captureFrontstage(
+        desktopPage,
+        `${baseUrl}/frontstage?mode=ops&statusUrl=/${fixtureName}&goalId=live-goal-a`,
         "desktop-frontstage-live",
         [
+          "ops live",
           "live status feed",
           "Live Goal Channel",
           "Render live statusUrl channel projection",
@@ -377,6 +401,17 @@ async function main() {
       const selectedUrl = new URL(desktopPage.url());
       if (selectedUrl.searchParams.get("goalId") !== "live-goal-b") {
         throw new Error(`Goal selector did not update URL: ${desktopPage.url()}`);
+      }
+      await captureFrontstage(desktopPage, `${baseUrl}/frontstage`, "desktop-frontstage-after-ops-reset", [
+        "Demo Goal Channel",
+        "showcase mode",
+        "Showcase mode ignores statusUrl",
+      ]);
+      const resetText = await desktopPage.locator("body").innerText();
+      const resetForbidden = ["Live Goal Channel", "Second Live Channel", "Render live statusUrl channel projection"];
+      const resetPresent = resetForbidden.filter((text) => resetText.includes(text));
+      if (resetPresent.length) {
+        throw new Error(`Showcase frontstage retained prior ops live text: ${resetPresent.join(", ")}`);
       }
     } finally {
       await desktopPage.close();
@@ -390,6 +425,8 @@ async function main() {
     try {
       await captureFrontstage(mobilePage, `${baseUrl}/frontstage`, "mobile-frontstage", [
         "Demo Goal Channel",
+        "showcase mode",
+        "Showcase mode ignores statusUrl",
         "codex-main-control",
         "codex-side-bypass",
         "Render the productization frontstage fixture",

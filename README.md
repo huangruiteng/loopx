@@ -16,7 +16,7 @@ human decisions visible across many turns, so primary and side agents can keep
 working on safe lanes while gated work waits for the person.
 
 [Quick Start](#quick-start) · [Getting Started](docs/guides/getting-started.md) ·
-[Showcases](docs/showcases/README.md) · [Hosted Frontstage](https://huangruiteng.github.io/goal-harness/frontstage/?statusUrl=%2Fgoal-harness%2Fstatus.frontstage-share.json) ·
+[Showcases](docs/showcases/README.md) · [Hosted Frontstage](https://huangruiteng.github.io/goal-harness/frontstage/) ·
 [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
 [Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
 

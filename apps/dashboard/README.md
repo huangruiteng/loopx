@@ -53,10 +53,15 @@ public GitHub case pages for deeper reading. Operations lanes are derived from
 the read-only projection; showcase panels are derived only from public-safe
 showcase metadata. Neither surface is browser write authority.
 
-For live local control-plane inspection, open
-`/frontstage?statusUrl=http://127.0.0.1:8766/status.json`. The route reads
-`attention_queue.items[].goal_channel_projection` and stays read-only; if the
-feed is missing or has no projection, the bundled demo fixture remains visible.
+The default frontstage route is public showcase mode. It ignores `statusUrl`
+and renders only bundled showcase/demo material, so a copied or hosted URL does
+not accidentally project local registry state.
+
+For live local control-plane inspection, explicitly enter ops mode:
+`/frontstage?mode=ops&statusUrl=http://127.0.0.1:8766/status.json`. The route
+then reads `attention_queue.items[].goal_channel_projection` and stays
+read-only; if the feed is missing or has no projection, the bundled demo
+fixture remains visible. Do not use ops-mode URLs as public links.
 
 To create a public-safe static bundle for demos, Lark shares, or future GitHub
 Pages hosting, export the frontstage with the sanitized fixture:

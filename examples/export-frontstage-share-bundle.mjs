@@ -136,8 +136,7 @@ function buildStatusFixture(projection) {
 
 async function writeShareReadme(outDir, base) {
   const siteDir = resolve(outDir, "site");
-  const statusUrl = `${base}${statusFileName}`;
-  const frontstageUrl = `${base}frontstage/?statusUrl=${encodeURIComponent(statusUrl)}`;
+  const frontstageUrl = `${base}frontstage/`;
   const previewBlock = base === "/"
     ? `## Try It Locally
 
@@ -168,6 +167,8 @@ ${frontstageUrl}
 
 This directory is a generated, public-safe static bundle. It contains the
 dashboard build plus a sanitized \`goal_channel_projection_v0\` status fixture.
+The public entry opens frontstage showcase mode and does not load \`statusUrl\`
+by default.
 
 ${previewBlock}
 
@@ -286,7 +287,7 @@ async function main() {
     ok: true,
     out_dir: outDir,
     site_dir: siteDir,
-    frontstage_url: `${args.base}frontstage/?statusUrl=${encodeURIComponent(`${args.base}${statusFileName}`)}`,
+    frontstage_url: `${args.base}frontstage/`,
     status_fixture: `site/${statusFileName}`,
   }, null, 2));
 }

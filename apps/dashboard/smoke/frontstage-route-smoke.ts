@@ -34,6 +34,7 @@ const packageSource = readFileSync("package.json", "utf8");
 includes(routerSource, 'path: "/frontstage"', "frontstage route path");
 includes(routerSource, "component: FrontstagePage", "frontstage route component");
 includes(routerSource, "frontstageSearchSchema", "frontstage search schema");
+includes(routerSource, 'mode: z.enum(["showcase", "ops"]).optional().default("showcase")', "frontstage mode gate");
 includes(routerSource, "basepath:", "router basepath option");
 includes(routerSource, "import.meta.env.BASE_URL", "Vite base URL router source");
 includes(packageSource, '"smoke:frontstage-browser"', "frontstage browser smoke script");
@@ -48,6 +49,9 @@ includes(statusSource, "goal_channel_projection: goalChannelProjectionSchema", "
 
 includes(frontstageSource, 'data-testid="goal-channel-frontstage-route"', "route test id");
 includes(frontstageSource, 'data-testid="frontstage-live-source-panel"', "live source panel");
+includes(frontstageSource, 'data-testid="frontstage-public-boundary-note"', "public boundary note");
+includes(frontstageSource, "Showcase mode ignores statusUrl", "public mode statusUrl guard copy");
+includes(frontstageSource, 'if (!liveMode)', "live status feed requires ops mode");
 includes(frontstageSource, 'data-testid="frontstage-operations-strip"', "operations signal strip");
 includes(frontstageSource, 'data-testid="frontstage-goal-select"', "goal selector");
 includes(frontstageSource, "parseStatusPayload", "status payload parser");

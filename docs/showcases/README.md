@@ -45,7 +45,7 @@ future GitHub Pages showcase: Pages should publish this generated artifact, not
 live registry files or local status exports.
 Once repository Pages is enabled for GitHub Actions, the same generated bundle
 is available as the
-[hosted frontstage](https://huangruiteng.github.io/goal-harness/frontstage/?statusUrl=%2Fgoal-harness%2Fstatus.frontstage-share.json).
+[hosted frontstage](https://huangruiteng.github.io/goal-harness/frontstage/).
 
 ## Current Cases
 

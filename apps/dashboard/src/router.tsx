@@ -20,6 +20,7 @@ const searchSchema = z.object({
 
 const frontstageSearchSchema = z.object({
   goalId: z.string().optional().default(""),
+  mode: z.enum(["showcase", "ops"]).optional().default("showcase"),
   statusUrl: z.string().optional().default(""),
 });
 

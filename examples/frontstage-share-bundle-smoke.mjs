@@ -94,4 +94,12 @@ for (const [label, path] of Object.entries({
   assertNoLeak(await readFile(path, "utf8"), label);
 }
 
+const readmeText = await readFile(resolve(outDir, "README.md"), "utf8");
+if (readmeText.includes("?statusUrl=")) {
+  throw new Error("share bundle README must not publish a statusUrl-loaded frontstage link");
+}
+if (!readmeText.includes("frontstage/")) {
+  throw new Error("share bundle README must publish the frontstage showcase entry");
+}
+
 console.log("frontstage-share-bundle-smoke: ok");

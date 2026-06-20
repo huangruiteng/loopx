@@ -28,6 +28,7 @@ import { cn } from "../lib/utils";
 
 type BadgeTone = "neutral" | "success" | "warning" | "info" | "danger";
 type FrontstageSource = { kind: "demo"; label: string } | { kind: "url"; label: string };
+type FrontstageMode = "showcase" | "ops";
 type NumberRange = { low?: number; high?: number };
 type ShowcaseFrontstageCase = {
   id: string;
@@ -453,8 +454,11 @@ function ShowcaseCasePackPanel() {
 
 function FrontstageRoute({
   goalOptions,
+  hasIgnoredStatusUrl,
   isLoading,
   loadError,
+  mode,
+  onEnableOpsMode,
   onGoalChange,
   onLoadStatusUrl,
   onResetDemo,
@@ -465,8 +469,11 @@ function FrontstageRoute({
   setStatusUrl,
 }: {
   goalOptions: ProjectionOption[];
+  hasIgnoredStatusUrl: boolean;
   isLoading: boolean;
   loadError: string | null;
+  mode: FrontstageMode;
+  onEnableOpsMode: () => void;
   onGoalChange: (goalId: string) => void;
   onLoadStatusUrl: () => void;
   onResetDemo: () => void;
@@ -482,6 +489,7 @@ function FrontstageRoute({
   const claimedAgentTodos = countClaimedTodos(projection.agent_todos);
   const claimOwners = uniqueClaimOwners(projection);
   const claimOwnerPreview = claimOwners.slice(0, 2).join(", ");
+  const isOpsMode = mode === "ops";
   const operationSignals = [
     {
       label: "human gate",
@@ -558,50 +566,72 @@ function FrontstageRoute({
           </div>
           <div className="mt-5 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3" data-testid="frontstage-live-source-panel">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={source.kind === "url" ? "success" : "neutral"}>
-                {source.kind === "url" ? "live status feed" : "demo fixture"}
+              <Badge variant={isOpsMode ? "warning" : "success"}>
+                {isOpsMode ? "ops live" : "showcase mode"}
               </Badge>
-              <span className="text-xs font-medium text-slate-500">{source.label}</span>
+              <Badge variant={isOpsMode && source.kind === "url" ? "info" : "neutral"}>
+                {isOpsMode && source.kind === "url" ? "live status feed" : "showcase fixture"}
+              </Badge>
+              <span className="break-words text-xs font-medium text-slate-500">
+                {isOpsMode ? source.label : "docs/showcases"}
+              </span>
             </div>
-            <input
-              aria-label="Status URL"
-              className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-slate-400"
-              data-testid="frontstage-status-url-input"
-              onChange={(event) => setStatusUrl(event.target.value)}
-              placeholder="/status.local.json"
-              value={statusUrl}
-            />
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                data-testid="frontstage-load-status-url"
-                disabled={isLoading}
-                onClick={onLoadStatusUrl}
-                size="sm"
-                variant="primary"
+            {isOpsMode ? (
+              <>
+                <input
+                  aria-label="Status URL"
+                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-slate-400"
+                  data-testid="frontstage-status-url-input"
+                  onChange={(event) => setStatusUrl(event.target.value)}
+                  placeholder="/status.local.json"
+                  value={statusUrl}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    data-testid="frontstage-load-status-url"
+                    disabled={isLoading}
+                    onClick={onLoadStatusUrl}
+                    size="sm"
+                    variant="primary"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Load
+                  </Button>
+                  <Button data-testid="frontstage-reset-demo" disabled={isLoading} onClick={onResetDemo} size="sm">
+                    Demo
+                  </Button>
+                </div>
+                {goalOptions.length ? (
+                  <Select
+                    aria-label="Goal channel"
+                    className="w-full text-xs"
+                    data-testid="frontstage-goal-select"
+                    onChange={(event) => onGoalChange(event.target.value)}
+                    value={selectedGoalId}
+                  >
+                    {goalOptions.map((option) => (
+                      <option key={option.goalId} value={option.goalId}>
+                        {option.projection.display_name}
+                      </option>
+                    ))}
+                  </Select>
+                ) : null}
+              </>
+            ) : (
+              <div
+                className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-950"
+                data-testid="frontstage-public-boundary-note"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Load
-              </Button>
-              <Button data-testid="frontstage-reset-demo" disabled={isLoading} onClick={onResetDemo} size="sm">
-                Demo
-              </Button>
-            </div>
-            {goalOptions.length ? (
-              <Select
-                aria-label="Goal channel"
-                className="w-full text-xs"
-                data-testid="frontstage-goal-select"
-                onChange={(event) => onGoalChange(event.target.value)}
-                value={selectedGoalId}
-              >
-                {goalOptions.map((option) => (
-                  <option key={option.goalId} value={option.goalId}>
-                    {option.projection.display_name}
-                  </option>
-                ))}
-              </Select>
-            ) : null}
+                <p>
+                  Showcase mode ignores statusUrl and renders docs/showcases only. Use Ops live for local control-plane inspection.
+                </p>
+                {hasIgnoredStatusUrl ? <Badge variant="warning">statusUrl ignored</Badge> : null}
+                <Button data-testid="frontstage-enable-ops-live" onClick={onEnableOpsMode} size="sm">
+                  Ops live
+                </Button>
+              </div>
+            )}
             {loadError ? (
               <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-xs leading-5 text-amber-950" data-testid="frontstage-load-error">
                 <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -619,7 +649,10 @@ function FrontstageRoute({
                   <Badge variant="success">goal_channel_projection_v0</Badge>
                   <Badge variant="neutral">{projection.mode}</Badge>
                   <Badge variant="info">{projection.waiting_on}</Badge>
-                  <Badge variant={source.kind === "url" ? "success" : "neutral"}>{source.kind}</Badge>
+                  <Badge variant={isOpsMode ? "warning" : "success"}>{isOpsMode ? "ops live" : "showcase mode"}</Badge>
+                  <Badge variant={isOpsMode && source.kind === "url" ? "success" : "neutral"}>
+                    {isOpsMode && source.kind === "url" ? "url" : "demo"}
+                  </Badge>
                 </div>
                 <h1 className="mt-3 text-3xl font-semibold tracking-normal text-slate-950">
                   {projection.display_name}
@@ -785,18 +818,22 @@ export function FrontstagePage() {
   const [statusUrl, setStatusUrl] = useState(search.statusUrl);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const mode: FrontstageMode = search.mode === "ops" ? "ops" : "showcase";
+  const liveMode = mode === "ops";
+  const hasIgnoredStatusUrl = !liveMode && Boolean(search.statusUrl);
 
-  const goalOptions = useMemo(
+  const rawGoalOptions = useMemo(
     () => (payload ? projectionOptionsFromPayload(payload) : []),
     [payload],
   );
+  const goalOptions = liveMode ? rawGoalOptions : [];
   const selectedGoalId = goalOptions.some((option) => option.goalId === search.goalId)
     ? search.goalId
     : goalOptions[0]?.goalId ?? sampleGoalChannelProjection.goal_id;
   const selectedProjection = goalOptions.find((option) => option.goalId === selectedGoalId)?.projection
     ?? sampleGoalChannelProjection;
 
-  async function updateSearch(next: { goalId?: string; statusUrl?: string }) {
+  async function updateSearch(next: { goalId?: string; mode?: FrontstageMode; statusUrl?: string }) {
     await navigate({
       search: (current) => ({
         ...current,
@@ -806,6 +843,10 @@ export function FrontstagePage() {
   }
 
   async function loadFromUrl(url: string, updateUrl = true) {
+    if (!liveMode) {
+      setLoadError("statusUrl is ignored in showcase mode; switch to Ops live for local status feeds");
+      return;
+    }
     const trimmed = url.trim();
     if (!trimmed) {
       setLoadError("status URL is empty");
@@ -829,6 +870,7 @@ export function FrontstagePage() {
       if (updateUrl) {
         await updateSearch({
           goalId: nextOptions[0]?.goalId ?? "",
+          mode: "ops",
           statusUrl: trimmed,
         });
       }
@@ -844,18 +886,22 @@ export function FrontstagePage() {
     setSource({ kind: "demo", label: "bundled fixture" });
     setStatusUrl("");
     setLoadError(null);
-    void updateSearch({ goalId: "", statusUrl: "" });
+    void updateSearch({ goalId: "", mode: "showcase", statusUrl: "" });
   }
 
   function changeGoal(goalId: string) {
     void updateSearch({ goalId });
   }
 
+  function enableOpsMode() {
+    void updateSearch({ mode: "ops" });
+  }
+
   useEffect(() => {
-    if (search.statusUrl) {
+    if (liveMode && search.statusUrl) {
       void loadFromUrl(search.statusUrl, false);
     }
-  }, []);
+  }, [liveMode, search.statusUrl]);
 
   useEffect(() => {
     if (!goalOptions.length || search.goalId === selectedGoalId) {
@@ -867,8 +913,11 @@ export function FrontstagePage() {
   return (
     <FrontstageRoute
       goalOptions={goalOptions}
+      hasIgnoredStatusUrl={hasIgnoredStatusUrl}
       isLoading={isLoading}
       loadError={loadError}
+      mode={mode}
+      onEnableOpsMode={enableOpsMode}
       onGoalChange={changeGoal}
       onLoadStatusUrl={() => void loadFromUrl(statusUrl)}
       onResetDemo={resetToDemo}
