@@ -361,6 +361,11 @@ async function main() {
         "Ops live only",
         "None in browser",
       ]);
+      const stateFlowTrackCount = await desktopPage.locator('[data-testid="frontstage-state-flow-track"]').count();
+      const stateFlowBeamBox = await desktopPage.locator('[data-testid="frontstage-state-flow-beam"]').boundingBox();
+      if (stateFlowTrackCount !== 1 || !stateFlowBeamBox || stateFlowBeamBox.width < 20) {
+        throw new Error("Showcase state-flow animation rail did not render");
+      }
       const spotlight = desktopPage.locator('[data-testid="frontstage-showcase-spotlight"]');
       const initialSpotlightText = await spotlight.innerText();
       if (!initialSpotlightText.includes("Blocked P0 with safe P1/P2 rotation")) {

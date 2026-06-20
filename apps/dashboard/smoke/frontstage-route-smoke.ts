@@ -24,6 +24,7 @@ function sourceBetween(source: string, start: string, end: string, label: string
 
 const routerSource = readFileSync("src/router.tsx", "utf8");
 const frontstageSource = readFileSync("src/views/frontstage-page.tsx", "utf8");
+const stylesSource = readFileSync("src/styles.css", "utf8");
 const dataSource = readFileSync("src/data/goal-channel-frontstage.ts", "utf8");
 const statusSource = readFileSync("src/data/status.ts", "utf8");
 const catalogSource = readFileSync("../../docs/showcases/showcase-catalog.json", "utf8");
@@ -130,9 +131,15 @@ excludes(motionSource, "payload", "motion board live payload dependency");
 const stateFlowHeroSource = sourceBetween(frontstageSource, "function ShowcaseStateFlowHero", "function PublicShowcaseBoundaryPanel", "showcase state-flow hero");
 includes(stateFlowHeroSource, "showcaseStateFlow", "state-flow hero source");
 includes(stateFlowHeroSource, "animate-ping", "state-flow hero pulse");
-includes(stateFlowHeroSource, "animate-pulse", "state-flow hero rail pulse");
+includes(stateFlowHeroSource, 'data-testid="frontstage-state-flow-track"', "state-flow animated track");
+includes(stateFlowHeroSource, 'data-testid="frontstage-state-flow-beam"', "state-flow animated beam");
+includes(stateFlowHeroSource, 'aria-hidden="true"', "state-flow decorative motion hidden from assistive tech");
 excludes(stateFlowHeroSource, "projection", "state-flow hero live projection dependency");
 excludes(stateFlowHeroSource, "payload", "state-flow hero live payload dependency");
+includes(stylesSource, ".frontstage-state-flow-track", "state-flow track CSS");
+includes(stylesSource, ".frontstage-state-flow-beam", "state-flow beam CSS");
+includes(stylesSource, "@keyframes frontstage-flow-scan", "state-flow scan keyframes");
+includes(stylesSource, "@media (prefers-reduced-motion: reduce)", "state-flow reduced-motion fallback");
 
 const casePackSource = sourceBetween(frontstageSource, "function ShowcaseCasePackPanel", "function PublicShowcaseBoundaryPanel", "showcase case pack");
 includes(casePackSource, "showcaseSearchText", "case pack catalog search index");

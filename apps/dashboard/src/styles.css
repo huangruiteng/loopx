@@ -23,3 +23,62 @@ button,
 select {
   font: inherit;
 }
+
+.frontstage-state-flow-track {
+  position: relative;
+  height: 0.25rem;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.1);
+}
+
+.frontstage-state-flow-track::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(
+    90deg,
+    rgb(103 232 249 / 0.12),
+    rgb(52 211 153 / 0.34),
+    rgb(251 146 60 / 0.2),
+    rgb(103 232 249 / 0.12)
+  );
+  opacity: 0.72;
+}
+
+.frontstage-state-flow-beam {
+  position: absolute;
+  inset-block: 0;
+  left: -36%;
+  width: 36%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(103 232 249 / 0.15),
+    rgb(103 232 249),
+    rgb(52 211 153),
+    transparent
+  );
+  box-shadow: 0 0 18px rgb(103 232 249 / 0.45);
+  animation: frontstage-flow-scan 2.8s cubic-bezier(0.55, 0, 0.2, 1) infinite;
+}
+
+@keyframes frontstage-flow-scan {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(380%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frontstage-state-flow-beam {
+    animation: none;
+    left: 0;
+    width: 100%;
+    opacity: 0.55;
+  }
+}
