@@ -140,6 +140,7 @@ from .cli_commands import (
     handle_codex_cli_bootstrap_message_command,
     handle_codex_cli_exec_handoff_command,
     handle_codex_cli_local_driver_plan_command,
+    handle_codex_cli_local_scheduler_tick_command,
     handle_codex_cli_session_probe_command,
     handle_codex_cli_visible_driver_run_command,
     handle_codex_cli_visible_driver_plan_command,
@@ -5940,7 +5941,9 @@ def main(argv: list[str] | None = None) -> int:
             "codex-cli-bootstrap-message",
             "codex-cli-exec-handoff",
             "codex-cli-local-driver-plan",
+            "codex-cli-local-scheduler-tick",
             "codex-cli-session-probe",
+            "codex-cli-visible-driver-run",
             "codex-cli-visible-driver-plan",
             "codex-cli-visible-session-proof",
             "demo",
@@ -6027,6 +6030,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "codex-cli-visible-driver-run":
         return handle_codex_cli_visible_driver_run_command(args, print_payload)
+
+    if args.command == "codex-cli-local-scheduler-tick":
+        return handle_codex_cli_local_scheduler_tick_command(args, print_payload)
 
     if args.command == "codex-cli-visible-session-proof":
         return handle_codex_cli_visible_session_proof_command(args, print_payload)

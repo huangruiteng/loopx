@@ -786,6 +786,160 @@ def build_codex_cli_visible_driver_run_packet(
     }
 
 
+def _scheduler_label(goal_id: str, agent_id: str | None) -> str:
+    raw = f"{goal_id}-{agent_id or 'agent'}"
+    safe = "".join(ch.lower() if ch.isalnum() else "-" for ch in raw)
+    safe = "-".join(part for part in safe.split("-") if part)
+    return f"com.goal-harness.codex-cli.{safe}"
+
+
+def build_codex_cli_local_scheduler_tick(
+    *,
+    project: Path,
+    goal_id: str | None,
+    agent_id: str | None,
+    cli_bin: str,
+    codex_bin: str,
+    probe_payload: dict[str, Any],
+    proof_payload: dict[str, Any] | None = None,
+    allow_headless_fallback: bool = False,
+) -> dict[str, Any]:
+    """Build a local scheduler tick packet without executing Codex.
+
+    This is the first executor-facing spike: a local scheduler can run it as a
+    one-shot tick and either receive a candidate external command or a precise
+    blocker writeback command. The tick itself does not read Codex session
+    files, inspect transcripts, mutate sessions, launch Codex, or spend quota.
+    """
+
+    run_packet = build_codex_cli_visible_driver_run_packet(
+        project=project,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+        codex_bin=codex_bin,
+        probe_payload=probe_payload,
+        proof_payload=proof_payload,
+        allow_headless_fallback=allow_headless_fallback,
+    )
+    resolved_project = str(run_packet["project"])
+    resolved_goal_id = str(run_packet["goal_id"])
+    decision = str(run_packet.get("decision") or "tui_bootstrap_only")
+    agent_arg = f" --agent-id {_shell_arg(agent_id)}" if agent_id else ""
+    common_args = (
+        f"--project {_shell_arg(resolved_project)} "
+        f"--goal-id {_shell_arg(resolved_goal_id)}{agent_arg} "
+        f"--codex-bin {_shell_arg(codex_bin)}"
+    )
+    visible_driver_run_command = (
+        f"{_shell_arg(cli_bin)} codex-cli-visible-driver-run {common_args}"
+    )
+    scheduler_tick_command = (
+        f"{_shell_arg(cli_bin)} codex-cli-local-scheduler-tick {common_args}"
+    )
+
+    candidate_command = None
+    precise_blocker: dict[str, str] | None = None
+    if decision == "visible_session_turn_candidate":
+        scheduler_action = "external_visible_command_candidate"
+        candidate_command = run_packet.get("recommended_command")
+        next_safe_step = "external scheduler may run the visible command only after a fresh quota guard and idle guard"
+    elif decision == "headless_fallback_command_ready":
+        scheduler_action = "external_headless_fallback_candidate"
+        candidate_command = run_packet.get("recommended_command")
+        next_safe_step = "external scheduler may run the headless fallback only after explicit opt-in and a fresh quota guard"
+    elif decision == "visible_session_proof_required":
+        scheduler_action = "write_precise_blocker"
+        precise_blocker = {
+            "reason": "visible_session_proof_missing",
+            "message": (
+                "Codex CLI automation is blocked until a public-safe visible-session proof "
+                "shows user opt-in, quota guard, idle guard, visibility, interruptibility, "
+                "boundary safety, and compact writeback planning."
+            ),
+        }
+        next_safe_step = "write the blocker, keep TUI bootstrap primary, and do not run Codex from the scheduler"
+    elif decision == "headless_fallback_requires_explicit_opt_in":
+        scheduler_action = "write_precise_blocker"
+        precise_blocker = {
+            "reason": "headless_fallback_opt_in_missing",
+            "message": (
+                "Codex CLI automation is blocked from using headless codex exec until the user "
+                "or operator explicitly opts into the fallback for this goal."
+            ),
+        }
+        next_safe_step = "write the blocker and keep the one-message TUI bootstrap as the user-facing path"
+    else:
+        scheduler_action = "surface_tui_bootstrap"
+        next_safe_step = "surface the TUI bootstrap command; do not run Codex from the scheduler"
+
+    if precise_blocker:
+        recommended_action = f"{precise_blocker['reason']}: {precise_blocker['message']}"
+        blocker_writeback_command = (
+            f"{_shell_arg(cli_bin)} refresh-state --goal-id {_shell_arg(resolved_goal_id)} "
+            "--classification codex_cli_local_scheduler_blocked "
+            "--delivery-batch-scale single_surface --delivery-outcome outcome_gap"
+            f"{agent_arg} --agent-lane productization_codex_cli "
+            f"--recommended-action {_shell_arg(recommended_action)}"
+        )
+    else:
+        blocker_writeback_command = None
+
+    return {
+        "ok": True,
+        "schema_version": "codex_cli_local_scheduler_tick_v0",
+        "project": resolved_project,
+        "goal_id": resolved_goal_id,
+        "agent_id": agent_id,
+        "cli_bin": cli_bin,
+        "codex_bin": codex_bin,
+        "scheduler_phase": "tick_packet_no_execution",
+        "scheduler_action": scheduler_action,
+        "decision": decision,
+        "next_safe_step": next_safe_step,
+        "candidate_command": candidate_command,
+        "precise_blocker": precise_blocker,
+        "blocker_writeback_command": blocker_writeback_command,
+        "launchd": {
+            "label": _scheduler_label(resolved_goal_id, agent_id),
+            "one_shot_command": scheduler_tick_command,
+            "keep_alive": False,
+            "recommended_interval_seconds": 600,
+            "notes": [
+                "Run this tick as a one-shot or low-frequency launchd job.",
+                "The tick prints a candidate command or blocker command; it does not execute Codex.",
+                "Use external logging that excludes raw transcripts, session files, credentials, and private paths.",
+            ],
+        },
+        "commands": {
+            "visible_driver_run": visible_driver_run_command,
+            "scheduler_tick": scheduler_tick_command,
+            "candidate_codex_command": candidate_command,
+            "blocker_writeback": blocker_writeback_command,
+        },
+        "visible_driver_run_packet": {
+            "schema_version": run_packet.get("schema_version"),
+            "driver_mode": run_packet.get("driver_mode"),
+            "decision": run_packet.get("decision"),
+            "next_driver_action": run_packet.get("next_driver_action"),
+            "allow_headless_fallback": run_packet.get("allow_headless_fallback"),
+            "visible_session_proof": run_packet.get("visible_session_proof"),
+        },
+        "boundary": {
+            "tick_packet_only": True,
+            "runs_codex": False,
+            "reads_raw_transcripts": False,
+            "reads_credentials": False,
+            "reads_session_files": False,
+            "mutates_codex_session": False,
+            "spends_goal_harness_quota": False,
+            "writes_goal_harness_state": False,
+            "blocker_writeback_requires_external_execution": True,
+        },
+        "warnings": list(run_packet.get("warnings") or []),
+    }
+
+
 def render_codex_cli_session_probe_markdown(payload: dict[str, Any]) -> str:
     capabilities = payload.get("capabilities") or {}
     boundary = payload.get("boundary") or {}
@@ -983,6 +1137,59 @@ def render_codex_cli_visible_driver_run_packet_markdown(payload: dict[str, Any])
 - reads_session_files: `{boundary.get("reads_session_files")}`
 - mutates_codex_session: `{boundary.get("mutates_codex_session")}`
 - spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+
+## Warnings
+
+{warning_lines}
+"""
+
+
+def render_codex_cli_local_scheduler_tick_markdown(payload: dict[str, Any]) -> str:
+    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+    launchd = payload.get("launchd") if isinstance(payload.get("launchd"), dict) else {}
+    blocker = payload.get("precise_blocker") if isinstance(payload.get("precise_blocker"), dict) else None
+    warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
+    warning_lines = "\n".join(f"- {warning}" for warning in warnings) if warnings else "- none"
+    blocker_lines = "- none"
+    if blocker:
+        blocker_lines = f"- reason: `{blocker.get('reason')}`\n- message: {blocker.get('message')}"
+    return f"""# Codex CLI Local Scheduler Tick
+
+- scheduler_phase: `{payload.get("scheduler_phase")}`
+- scheduler_action: `{payload.get("scheduler_action")}`
+- decision: `{payload.get("decision")}`
+- next_safe_step: {payload.get("next_safe_step")}
+
+## Commands
+
+```bash
+{commands.get("visible_driver_run")}
+{commands.get("scheduler_tick")}
+{commands.get("candidate_codex_command") or "# no Codex command candidate"}
+{commands.get("blocker_writeback") or "# no blocker writeback command"}
+```
+
+## Precise Blocker
+
+{blocker_lines}
+
+## Launchd Shape
+
+- label: `{launchd.get("label")}`
+- keep_alive: `{launchd.get("keep_alive")}`
+- recommended_interval_seconds: `{launchd.get("recommended_interval_seconds")}`
+- one_shot_command: `{launchd.get("one_shot_command")}`
+
+## Boundary
+
+- tick_packet_only: `{boundary.get("tick_packet_only")}`
+- runs_codex: `{boundary.get("runs_codex")}`
+- reads_raw_transcripts: `{boundary.get("reads_raw_transcripts")}`
+- reads_session_files: `{boundary.get("reads_session_files")}`
+- mutates_codex_session: `{boundary.get("mutates_codex_session")}`
+- spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+- writes_goal_harness_state: `{boundary.get("writes_goal_harness_state")}`
 
 ## Warnings
 

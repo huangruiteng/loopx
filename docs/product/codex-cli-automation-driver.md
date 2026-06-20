@@ -140,9 +140,29 @@ Harness quota. It only chooses the next safe boundary:
   user opt-in, quota guard, idle guard, visibility, interruptibility, boundary,
   and compact writeback planning.
 
+The first local scheduler-facing spike wraps that packet as a one-shot tick:
+
+```bash
+goal-harness codex-cli-local-scheduler-tick --project . --goal-id <goal> --agent-id <agent>
+```
+
+This command is still no-execution by design. A launchd/cron/local-daemon
+wrapper can call it and receive one of two safe outputs:
+
+- a candidate external command, when visible-session proof or explicit headless
+  fallback opt-in is present;
+- a precise blocker writeback command, when proof or opt-in is missing.
+
+The tick itself does not run Codex, read transcripts, inspect session files,
+mutate sessions, write Goal Harness state, or spend quota. That boundary keeps
+the product path honest: first make the scheduler decision visible and
+reviewable, then implement the actual external executor only after the proof
+and opt-in contract is stable.
+
 ## Next Build Slice
 
-Turn the dry-run planner into a real local driver only after the same-session
+Turn the scheduler tick into a real local driver only after the same-session
 path has a visible, idle-guarded proof. Until then, the user-facing happy path
-stays simple: start in Codex CLI TUI with one Goal Harness message, and use
-headless `codex exec` only as an explicit opt-in fallback.
+stays simple: start in Codex CLI TUI with one Goal Harness message, let the
+local tick explain the next safe boundary, and use headless `codex exec` only
+as an explicit opt-in fallback.

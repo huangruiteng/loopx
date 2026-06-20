@@ -262,11 +262,16 @@ projects runnable candidates; it should not over-specify the model's local plan.
    `goal-harness codex-cli-visible-driver-run` as the no-execution packet that
    decides whether the next turn needs visible proof, TUI bootstrap, explicit
    headless opt-in, or a proven visible-session candidate.
-9. **Local driver executor**: prototype a scheduler that runs quota, checks
+9. **Local scheduler tick**: add
+   `goal-harness codex-cli-local-scheduler-tick` as the first executor-facing
+   one-shot packet. It emits either an external command candidate or a precise
+   blocker writeback command, but does not run Codex, read session files, or
+   write Goal Harness state itself.
+10. **Local driver executor**: prototype a scheduler that runs quota, checks
    session idle state, and either attaches visibly or falls back explicitly.
-10. **Validation harness**: add a public-safe fixture that proves the driver
+11. **Validation harness**: add a public-safe fixture that proves the driver
    never stores raw transcript text and never spends quota before writeback.
-11. **Claude Code follow-up**: port the same product contract only after the
+12. **Claude Code follow-up**: port the same product contract only after the
    Codex CLI path is credible.
 
 ## Success Criteria
