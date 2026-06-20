@@ -250,6 +250,24 @@ goal-harness todo complete \
 `--side-agent-self-merged` requires `--evidence`. Do not use it for runtime,
 benchmark, permission, production, destructive git, publication, public
 evidence-policy, or broad coordination changes that need primary review.
+After a validated self-merge, write back the real delivery outcome at the
+project level when the slice advanced the public product or case path. An
+agent-lane refresh with `--agent-id` is useful for side-lane notes, but it does
+not replace the goal-level latest run used by quota and dashboard routing. Do
+not append a follow-up goal-level `surface_only` sync after a validated
+`outcome_progress` slice; either skip the duplicate sync or mirror the product
+progress with:
+
+```bash
+goal-harness refresh-state \
+  --goal-id <goal-id> \
+  --classification <public-safe-progress-classification> \
+  --delivery-batch-scale multi_surface \
+  --delivery-outcome outcome_progress
+```
+
+This keeps validated side-agent product work from being misread as another
+surface-only heartbeat turn.
 When a self-merged side-agent slice has an obvious same-scope continuation, it
 may also atomically add that successor todo and claim it back to the same side
 agent:

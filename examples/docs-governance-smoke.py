@@ -50,8 +50,17 @@ def read(path: str) -> str:
     return (REPO_ROOT / path).read_text(encoding="utf-8")
 
 
+def compact(text: str) -> str:
+    return " ".join(text.split())
+
+
 def main() -> int:
     docs_index = read("docs/README.md")
+    project_agent_contract = read("docs/project-agent-todo-contract.md")
+    status_contract = read("docs/status-data-contract.md")
+    compact_project_agent_contract = compact(project_agent_contract)
+    compact_status_contract = compact(status_contract)
+
     for required in [
         "## Start Here",
         "## Stable Reference",
@@ -107,6 +116,18 @@ def main() -> int:
             or basename in combined_public_indexes
             or new_path.startswith("docs/archive/")
         ), new_path
+
+    for required in [
+        "Do not append a follow-up goal-level `surface_only` sync",
+        "--delivery-outcome outcome_progress",
+    ]:
+        assert required in compact_project_agent_contract, required
+
+    for required in [
+        "A later `surface_only` project-level sync will become the latest non-agent-lane run",
+        "agent_lane_recommendation",
+    ]:
+        assert required in compact_status_contract, required
 
     print("docs-governance-smoke ok")
     return 0

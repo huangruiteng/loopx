@@ -890,6 +890,13 @@ note as `agent_lane_recommendation` on the attention item and project asset.
 Use this for side agents that want to record their own lane recommendation
 without replacing the primary controller's next action.
 
+If a side-agent self-merged slice materially advanced the public product or
+case path, the controller or side agent should also write a project-level
+refresh with the matching `delivery_outcome=outcome_progress` (or skip the
+extra project-level sync entirely). A later `surface_only` project-level sync
+will become the latest non-agent-lane run, so quota may correctly ask for
+follow-through even though the side-lane note recorded real progress.
+
 For registered `connected`, `connected-read-only`, and `pre-tick-runnable`
 adapters, custom compact progress classifications that are not blocker, gate,
 or watch classifications also remain Codex-ready. This lets a controller record
