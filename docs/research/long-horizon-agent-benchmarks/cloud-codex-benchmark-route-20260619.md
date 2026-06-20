@@ -54,6 +54,15 @@ explicitly stress-tested; GSSAPI-backed paths can fail transiently under rapid
 or concurrent handshakes even when the ticket is still valid. On failure,
 prefer a short backoff plus a single retry before projecting a user gate.
 
+2026-06-20 live-run update: the cloud host route should treat disk placement
+and dependency materialization as first-class readiness. Moving Docker
+`data-root` is insufficient if containerd snapshots remain on the system disk;
+verify `/`, `/data`, `/var/lib/docker`, and `/var/lib/containerd` before
+declaring the host ready. Likewise, avoid `uvx --from git+https://...` in a
+repeated benchmark hot path on constrained egress. Pre-materialize runner
+sources and local virtualenvs, then classify any remaining Git-fetch stall as
+dependency readiness rather than benchmark score evidence.
+
 When the cloud host cannot fetch a public benchmark source directly, stage the
 source from the operator machine as a single archive rather than thousands of
 small files through `rsync`. From macOS, build that archive with
@@ -85,6 +94,12 @@ temporary run-work copy to use a local `path` source. Keep the upstream-clean
 benchmark checkout unmodified, record the dependency commit, and reduce the
 result to a compact readiness or blocker. This avoids turning network fetch
 failures into benchmark runner failures.
+
+Harbor-style runners also require the correct working directory. If a job
+config references `tasks/<name>` as a relative path, launch from the checkout
+that owns that `tasks/` tree. A failure to find `task.toml` under an unexpected
+home directory is a local launch-shape blocker, not an upstream benchmark
+issue.
 
 Assume the cloud host starts from a small tool surface. Use POSIX-ish `grep`,
 `find`, `git`, `python`, and runner commands in remote bootstrap snippets unless

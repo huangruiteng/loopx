@@ -141,6 +141,22 @@ truth. Record only the compact fact: ready, blocked, or needs operator setup.
 The concrete mirror URL, proxy port, shell history, raw logs, and local host
 paths stay outside public evidence.
 
+When the host has both a system disk and a data disk, move every large runner
+cache onto the data disk before calling the host ready. Docker `data-root`
+alone is not enough: containerd snapshot state can still fill the system disk
+while Docker reports the expected data-root. Verify both paths after setup:
+
+```bash
+docker info --format '{{.DockerRootDir}}'
+df -h / /data /var/lib/docker /var/lib/containerd
+```
+
+If `/var/lib/containerd` is already large on the system disk, stop Docker and
+containerd, copy it to the data disk, replace the original directory with a
+symlink or bind mount, then restart both services. Keep the pre-migration copy
+only until `docker images`, `docker ps`, and a tiny runner smoke prove the
+runtime still sees existing images.
+
 Recommended cloud host layout:
 
 ```text
@@ -200,6 +216,16 @@ the result as dependency readiness or a precise dependency-fetch blocker. Do
 not patch official scorer, task, prompt, or runner behavior merely to work
 around network fetch.
 
+Avoid putting `uvx --from git+https://...` or equivalent Git dependency fetches
+in the hot path of repeated benchmark case launches. A wrapper can return
+success while the detached runner is still stuck in dependency acquisition, so
+the public signal must include job-root/result materialization, not only
+process start. Prefer a pre-materialized runner checkout with a local virtual
+environment, or stage the dependency source from the operator machine and run
+from that checkout. If the process tree shows the runner blocked in Git fetch
+before job materialization, classify it as dependency-fetch readiness, not a
+benchmark score result.
+
 Remote bootstrap snippets should assume a small base image: use `grep`, `find`,
 `git`, `python`, and the benchmark runner itself unless the bootstrap probe has
 confirmed extra tools such as `rg`.
@@ -248,6 +274,23 @@ trajectories, credentials, or command argv. If a blocker repeats, improve the
 SOP or script in the same batch instead of preserving a private one-off shell
 fragment.
 
+For Harbor-backed Terminal-Bench launches on a cloud host, keep the operator
+loop explicit:
+
+1. Launch inside `tmux` with a lowercase job name and private runner log.
+2. Write `status.env` and a bounded public file list even on non-zero exit;
+   use `set +e` around the runner so the status file is not skipped.
+3. Treat wrapper exit code, process state, job root, job lock, and compact
+   result as separate facts. `rc=0` for the wrapper only means the wrapper
+   completed; it does not prove the benchmark case reached the agent.
+4. Validate that the task filter matches the selected dataset before spending
+   an agent attempt. A filter that matches zero tasks is a launch-shape
+   blocker, not model or benchmark performance.
+5. If `tasks/<name>` is passed as a relative path, run Harbor from the checkout
+   that actually contains that `tasks/` tree. A wrong current directory can
+   fail before Docker or Codex start and should be fixed locally, not reported
+   upstream.
+
 For SkillsBench, prove the verifier dependency substrate before claiming a
 no-upload task result. A timeout-looking failure can actually be a missing
 verifier launcher surface: the verifier may need minimal Python, pip, curl,
@@ -269,6 +312,13 @@ oracle run reaches reward `1.0` with verifier errors cleared. If the sanity run
 still times out after the dependency substrate is present, classify it as a
 real verifier timeout and consider a bounded timeout increase for that tier.
 
+SkillsBench runner exceptions need a second look before they become blockers.
+BenchFlow can sometimes write official `result.json`/`timing.json` before a
+later runner exception. In that case, reduce the official compact result and
+mark the runner exception as recovery metadata instead of losing the result.
+If no official result exists, close out with a compact runner-error blocker and
+do not infer verifier or model behavior from raw logs.
+
 Keep these boundaries:
 
 - do not modify official task truth, scorer, prompt, or leaderboard behavior;
@@ -277,6 +327,21 @@ Keep these boundaries:
 - record only compact fields such as dependency-prewarm ready/blocked, oracle
   sanity pass/fail, and the next blocker label
   `skillsbench_verifier_dependency_prewarm_required`.
+
+### Upstream Issue Escalation
+
+Open an upstream benchmark issue only after ruling out local route mistakes:
+wrong current directory, wrong config schema, missing data-root migration,
+missing runner dependency prewarm, stale Goal Harness tool copy, missing Codex
+auth, or a launcher that failed to write status. The issue should include a
+compact reproduction command shape, upstream commit, runner version, no-upload
+boundary, and sanitized blocker label. Do not paste raw task text, raw logs,
+trajectories, verifier output, credentials, private hostnames, or local paths.
+
+Good issue candidates are repeated upstream-close failures where the command
+schema and working directory match the README, dependencies are
+pre-materialized or publicly reachable, and the runner still fails before a
+compact result for reasons the benchmark maintainers own.
 
 ### SSH Session Hygiene
 
