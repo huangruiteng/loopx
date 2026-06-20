@@ -457,6 +457,119 @@ Path(args.output_json).write_text(json.dumps({"ok": True}), encoding="utf-8")
         proc.wait(timeout=2)
 
 
+def test_acp_relay_preserves_public_worker_trace_on_worker_failure() -> None:
+    fake_worker = """#!/usr/bin/env python3
+import argparse
+import json
+import sys
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--output-json")
+args, _ = parser.parse_known_args()
+Path(args.output_json).write_text(json.dumps({
+    "ok": False,
+    "benchmark_id": "skillsbench@1.1",
+    "task_id": "llm-prefix-cache-replay",
+    "turn": {
+        "thread_id_present": True,
+        "goal_get_present": True,
+        "turn_id_present": True,
+        "turn_completed_observed": False,
+        "assistant_message_present": False,
+        "raw_transcript_recorded": False,
+        "raw_assistant_message_recorded": False,
+    },
+    "boundary": {
+        "raw_task_text_recorded": False,
+        "raw_logs_recorded": False,
+        "raw_trajectory_recorded": False,
+        "credential_values_recorded": False,
+        "host_paths_recorded": False,
+    },
+}), encoding="utf-8")
+sys.exit(7)
+"""
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-failure-") as tmp:
+        root = Path(tmp)
+        worker = root / "fake_worker.py"
+        work = root / "work"
+        trace_dir = root / "worker-traces"
+        worker.write_text(fake_worker, encoding="utf-8")
+        worker.chmod(0o755)
+        work.mkdir()
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "skillsbench_local_acp_relay.py"),
+                "--app-server-goal-worker",
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--worker-script",
+                str(worker),
+                "--timeout-sec",
+                "5",
+                "--worker-public-trace-dir",
+                str(trace_dir),
+            ],
+            cwd=REPO_ROOT,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        assert proc.stdin is not None
+        assert proc.stdout is not None
+
+        def send(message: dict[str, Any]) -> None:
+            proc.stdin.write(json.dumps(message) + "\n")
+            proc.stdin.flush()
+
+        def read_response(request_id: int) -> dict[str, Any]:
+            while True:
+                line = proc.stdout.readline()
+                assert line, proc.stderr.read()
+                message = json.loads(line)
+                if message.get("id") == request_id and "method" not in message:
+                    return message
+
+        send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        read_response(1)
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {"cwd": str(work), "mcpServers": []},
+            }
+        )
+        session_id = read_response(2)["result"]["sessionId"]
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": session_id,
+                    "prompt": [{"type": "text", "text": "private task placeholder"}],
+                },
+            }
+        )
+        final_response = read_response(3)
+        assert final_response["error"]["message"] == "host app-server goal worker failed"
+        trace_files = sorted(trace_dir.glob("*.compact.json"))
+        assert len(trace_files) == 1, trace_files
+        trace = json.loads(trace_files[0].read_text(encoding="utf-8"))
+        assert trace["ok"] is False, trace
+        assert trace["turn"]["goal_get_present"] is True, trace
+        assert trace["turn"]["turn_completed_observed"] is False, trace
+        trace_text = json.dumps(trace, sort_keys=True)
+        assert "private task placeholder" not in trace_text
+        assert "response.txt" not in trace_text
+        proc.terminate()
+        proc.wait(timeout=2)
+
+
 def test_full_run_fails_closed_until_bridge_is_materialized() -> None:
     result = subprocess.run(
         [

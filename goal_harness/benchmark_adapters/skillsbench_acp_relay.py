@@ -320,6 +320,7 @@ class SkillsBenchLocalAcpRelay:
                     if now >= deadline:
                         proc.kill()
                         proc.communicate(timeout=2)
+                        self._publish_worker_trace(output_json)
                         raise TimeoutError
                     if now >= next_heartbeat:
                         self._write_worker_heartbeat(
@@ -333,8 +334,10 @@ class SkillsBenchLocalAcpRelay:
                     time.sleep(0.2)
                 proc.communicate(timeout=5)
             except subprocess.TimeoutExpired as exc:
+                self._publish_worker_trace(output_json)
                 raise TimeoutError from exc
             if proc.returncode != 0:
+                self._publish_worker_trace(output_json)
                 raise RuntimeError("host app-server goal worker failed")
             self._publish_worker_trace(output_json)
             try:
