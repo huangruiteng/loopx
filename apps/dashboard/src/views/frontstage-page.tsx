@@ -365,10 +365,17 @@ const showcaseMotionTones = [
 ];
 
 function ShowcaseMotionBoard() {
+  const [activeCaseId, setActiveCaseId] = useState(frontstageShowcases[0]?.id ?? "");
   if (!frontstageShowcases.length) {
     return null;
   }
 
+  const activeCase = frontstageShowcases.find((item) => item.id === activeCaseId) ?? frontstageShowcases[0];
+  if (!activeCase) {
+    return null;
+  }
+  const activeStoryBeats = activeCase.frontend_card?.story_beats?.slice(0, 5) ?? [];
+  const activeFeaturePoints = activeCase.feature_points?.slice(0, 3) ?? [];
   const journeySegments = [
     {
       label: "human judgment",
@@ -443,14 +450,65 @@ function ShowcaseMotionBoard() {
             ))}
           </div>
         </div>
+        <div
+          className="grid gap-4 rounded-md border border-slate-200 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)]"
+          data-testid="frontstage-showcase-spotlight"
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="info">{activeCase.status ?? "case"}</Badge>
+              {activeCase.domain ? <Badge variant="neutral">{activeCase.domain}</Badge> : null}
+              <Badge variant="success">public-safe</Badge>
+            </div>
+            <h3 className="mt-3 text-lg font-semibold leading-7 text-slate-950">{activeCase.title}</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{activeCase.headline}</p>
+            {activeCase.evidence_boundary ? (
+              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium leading-5 text-slate-600">
+                <span className="font-semibold text-slate-950">Evidence boundary: </span>
+                {activeCase.evidence_boundary}
+              </div>
+            ) : null}
+          </div>
+          <div className="grid gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">story beats</div>
+              <ol className="mt-2 space-y-2 text-xs font-medium leading-5 text-slate-700">
+                {activeStoryBeats.map((beat, index) => (
+                  <li className="flex gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5" key={beat}>
+                    <span className="font-mono text-slate-400">{String(index + 1).padStart(2, "0")}</span>
+                    <span>{beat}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+            {activeFeaturePoints.length ? (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">requirement signals</div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {activeFeaturePoints.map((point) => (
+                    <Badge key={point} variant="neutral">{point}</Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
         <div className="grid gap-3 xl:grid-cols-4">
           {frontstageShowcases.map((item, index) => {
             const tone = showcaseMotionTones[index % showcaseMotionTones.length];
             const beats = item.frontend_card?.story_beats?.slice(0, 4) ?? [];
             return (
-              <article
-                className={cn("rounded-md border p-3 shadow-sm transition duration-300 hover:-translate-y-0.5", tone.card)}
+              <button
+                aria-pressed={activeCase.id === item.id}
+                className={cn(
+                  "rounded-md border p-3 text-left shadow-sm transition duration-300 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-slate-500",
+                  tone.card,
+                  activeCase.id === item.id ? "ring-2 ring-slate-900" : "",
+                )}
+                data-testid="frontstage-showcase-motion-card"
                 key={item.id}
+                onClick={() => setActiveCaseId(item.id)}
+                type="button"
               >
                 <div className="flex items-start gap-3">
                   <div className={cn("relative mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold text-white", tone.dot)}>
@@ -478,7 +536,7 @@ function ShowcaseMotionBoard() {
                     ))}
                   </ol>
                 ) : null}
-              </article>
+              </button>
             );
           })}
         </div>

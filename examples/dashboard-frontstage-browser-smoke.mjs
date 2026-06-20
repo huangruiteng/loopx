@@ -358,6 +358,24 @@ async function main() {
         "Ops live only",
         "None in browser",
       ]);
+      const spotlight = desktopPage.locator('[data-testid="frontstage-showcase-spotlight"]');
+      const initialSpotlightText = await spotlight.innerText();
+      if (!initialSpotlightText.includes("Blocked P0 with safe P1/P2 rotation")) {
+        throw new Error("Showcase spotlight did not default to the first public case");
+      }
+      await desktopPage
+        .locator('[data-testid="frontstage-showcase-motion-card"]')
+        .filter({ hasText: "Creator-operator long-running agent case" })
+        .click();
+      await desktopPage.waitForFunction(() =>
+        document
+          .querySelector('[data-testid="frontstage-showcase-spotlight"]')
+          ?.textContent?.includes("Creator-operator long-running agent case"),
+      );
+      const creatorSpotlightText = await spotlight.innerText();
+      if (!creatorSpotlightText.includes("Synthetic case spec only")) {
+        throw new Error("Showcase spotlight did not expose the selected case evidence boundary");
+      }
       await desktopPage.locator('[data-testid="frontstage-showcase-search"]').fill("self-iteration");
       await desktopPage.waitForFunction(() => document.body.innerText.includes("Showing 1 of 4 public-safe cases"));
       const filteredCaseText = await desktopPage.locator('[data-testid="frontstage-showcase-cases"]').innerText();
