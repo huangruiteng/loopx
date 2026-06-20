@@ -29,14 +29,20 @@ import { cn } from "../lib/utils";
 type BadgeTone = "neutral" | "success" | "warning" | "info" | "danger";
 type FrontstageSource = { kind: "demo"; label: string } | { kind: "url"; label: string };
 type NumberRange = { low?: number; high?: number };
-type ShowcaseEfficiencyCase = {
+type ShowcaseFrontstageCase = {
   id: string;
   title: string;
+  status?: string;
+  headline?: string;
+  domain?: string;
   case_page?: string;
   evidence_boundary?: string;
   feature_points?: string[];
+  pattern_tags?: string[];
   frontend_card?: {
+    badges?: string[];
     primary_metric_hint?: string;
+    story_beats?: string[];
   };
   workload_signal?: {
     whole_repository?: {
@@ -57,9 +63,11 @@ type ShowcaseEfficiencyCase = {
   };
 };
 
-const selfIterationShowcase = (showcaseCatalog as { cases: ShowcaseEfficiencyCase[] }).cases.find(
+const showcaseCases = (showcaseCatalog as { cases: ShowcaseFrontstageCase[] }).cases;
+const selfIterationShowcase = showcaseCases.find(
   (item) => item.id === "2026-06-19-goal-harness-self-iteration",
 );
+const frontstageShowcases = showcaseCases.filter((item) => item.frontend_card);
 
 type ProjectionOption = {
   goalId: string;
@@ -294,6 +302,63 @@ function EfficiencyEvidencePanel() {
   );
 }
 
+function ShowcaseCasePackPanel() {
+  if (!frontstageShowcases.length) {
+    return null;
+  }
+
+  return (
+    <Panel icon={ListChecks} title="Showcase Cases">
+      <div className="space-y-3 p-4" data-testid="frontstage-showcase-cases">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-950">Public-safe case pack</h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+              Rendered from the showcase catalog so the hosted frontstage can tell the product story without scraping Markdown or exposing private sessions.
+            </p>
+          </div>
+          <Badge variant="neutral">{frontstageShowcases.length} cases</Badge>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {frontstageShowcases.map((item) => {
+            const badges = item.frontend_card?.badges?.slice(0, 4) ?? item.pattern_tags?.slice(0, 4) ?? [];
+            return (
+              <article className="rounded-md border border-slate-200 bg-slate-50 p-3" key={item.id}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="info">{item.status ?? "case"}</Badge>
+                  {item.domain ? <Badge variant="neutral">{item.domain}</Badge> : null}
+                </div>
+                <h4 className="mt-3 text-sm font-semibold leading-6 text-slate-950">{item.title}</h4>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{item.headline}</p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {badges.map((badge) => (
+                    <Badge key={badge} variant="neutral">{badge}</Badge>
+                  ))}
+                </div>
+                {item.frontend_card?.primary_metric_hint ? (
+                  <div className="mt-3 border-l-2 border-slate-300 pl-3 text-xs font-medium leading-5 text-slate-600">
+                    {item.frontend_card.primary_metric_hint}
+                  </div>
+                ) : null}
+                {item.case_page ? (
+                  <a
+                    className="mt-3 inline-flex text-xs font-semibold text-slate-950 underline underline-offset-4"
+                    href={`https://github.com/huangruiteng/goal-harness/blob/main/${item.case_page}`}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Open case page
+                  </a>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function FrontstageRoute({
   goalOptions,
   isLoading,
@@ -496,6 +561,8 @@ function FrontstageRoute({
           </div>
 
           <EfficiencyEvidencePanel />
+
+          <ShowcaseCasePackPanel />
 
           <div className="grid gap-4 lg:grid-cols-3">
             <Panel icon={Users} title="Decision Frame">

@@ -63,6 +63,11 @@ includes(frontstageSource, "showcaseCatalog", "showcase catalog import");
 includes(frontstageSource, "estimated_developer_days", "efficiency baseline range");
 includes(frontstageSource, "single_engineer_calendar_compression", "efficiency compression range");
 includes(frontstageSource, "maturity-adjusted", "maturity adjusted copy");
+includes(frontstageSource, 'data-testid="frontstage-showcase-cases"', "showcase case cards panel");
+includes(frontstageSource, "Showcase Cases", "showcase cases copy");
+includes(frontstageSource, "frontstageShowcases", "catalog-driven showcase cases");
+includes(frontstageSource, "Open case page", "case page outbound link");
+includes(frontstageSource, "github.com/huangruiteng/goal-harness/blob/main", "public GitHub case page links");
 includes(frontstageSource, "Projection is read-only", "read-only truth copy");
 includes(frontstageSource, "Inspired by modern agent boards", "product benchmark copy");
 excludes(frontstageSource, "<form", "write form");
@@ -71,11 +76,14 @@ excludes(frontstageSource, "onclick=", "inline click handler");
 
 includes(catalogSource, '"efficiency_model"', "showcase catalog efficiency model");
 includes(catalogSource, '"2026-06-19-goal-harness-self-iteration"', "self-iteration showcase case");
+includes(catalogSource, '"2026-06-17-blocked-p0-safe-rotation"', "blocked P0 showcase case");
+includes(catalogSource, '"2026-06-20-creator-operator-case-spec"', "creator operator showcase case");
 
 includes(readmeSource, "/frontstage", "README frontstage route mention");
 includes(readmeSource, "operations strip", "README operations strip explanation");
 includes(readmeSource, "Role Map", "README role map explanation");
 includes(readmeSource, "Efficiency Evidence", "README efficiency evidence explanation");
+includes(readmeSource, "Showcase Cases", "README showcase cases explanation");
 includes(readmeSource, "read-only projection", "README read-only projection boundary");
 includes(readmeSource, "write authority", "README write authority boundary");
 includes(selectionSource, "Multica", "Multica benchmark note");
