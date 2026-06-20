@@ -276,6 +276,29 @@ def main() -> int:
         assert claimed_fields["agent_todos"]["claimed_open_count"] == 1, claimed_fields
         assert claimed_fields["agent_todos"]["unclaimed_open_count"] == 0, claimed_fields
 
+        preserve_claim_payload = run_cli(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            metadata_payload["todo_id"],
+            "--note",
+            "Claim-preserving progress note.",
+        )
+        assert preserve_claim_payload["changed"] is True, preserve_claim_payload
+        assert preserve_claim_payload["claimed_by"] == "codex-main-control", preserve_claim_payload
+        preserved_claim_fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
+        preserved_claim_item = preserved_claim_fields["agent_todos"]["items"][0]
+        assert preserved_claim_item["claimed_by"] == "codex-main-control", preserved_claim_item
+        assert preserved_claim_item["task_class"] == "advancement_task", preserved_claim_item
+        assert preserved_claim_item["action_kind"] == "run_eval", preserved_claim_item
+        assert preserved_claim_item["required_capabilities"] == [
+            "shell",
+            "benchmark_runner",
+        ], preserved_claim_item
+
         conflicting_claim = run_cli_error(
             registry_path,
             "todo",

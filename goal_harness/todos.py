@@ -684,6 +684,7 @@ def apply_todo_update_to_lines(
         updates["updated_at"] = updated_at
         metadata_line = metadata_line_for_block(block, updates)
     metadata_updated = upsert_todo_metadata(lines, block, metadata_line)
+    effective_metadata = parse_todo_metadata_line(metadata_line or "") or {}
     return {
         "role": resolved_role,
         "section": section,
@@ -694,7 +695,7 @@ def apply_todo_update_to_lines(
         "text_changed": text_changed,
         "metadata_updated": metadata_updated,
         "changed": status_changed or text_changed or metadata_updated,
-        "claimed_by": normalize_todo_claimed_by(updates.get("claimed_by")),
+        "claimed_by": normalize_todo_claimed_by(effective_metadata.get("claimed_by")),
     }
 
 
