@@ -30,13 +30,14 @@ from .execution_profile import (
 from .frontstage import build_goal_channel_projection
 from .handoff_budget import handoff_budget_contract
 from .history import collect_history, load_registry
+from .history import STATUS_NEUTRAL_CLASSIFICATIONS as HISTORY_STATUS_NEUTRAL_CLASSIFICATIONS
 from .interface_budget import interface_budget_cadence_for_runs
 from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .paths import global_registry_path, resolve_runtime_root
 from .promotion_gate import build_promotion_gate
-from .quota import QUOTA_MONITOR_POLL_CLASSIFICATION, quota_status, quota_with_handoff_outcome_floor
+from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
 from .state_projection import active_state_next_action_entries, state_projection_gap_warning
 from .todo_contract import (
@@ -71,11 +72,7 @@ CODEX_READY_CLASSIFICATIONS = {
     "operator_gate_approved",
     "monitor_todo_repeat_dedupe_deployed",
 }
-STATUS_NEUTRAL_CLASSIFICATIONS = {
-    "quota_slot_spent",
-    QUOTA_MONITOR_POLL_CLASSIFICATION,
-    *PROMOTION_READINESS_CLASSIFICATIONS,
-}
+STATUS_NEUTRAL_CLASSIFICATIONS = HISTORY_STATUS_NEUTRAL_CLASSIFICATIONS
 STATUS_CONTROL_PLANE_CONTEXT_LIMIT = 20
 AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
 HANDOFF_READY_CLASSIFICATIONS = {
