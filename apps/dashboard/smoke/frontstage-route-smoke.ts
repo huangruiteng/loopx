@@ -69,6 +69,7 @@ includes(frontstageSource, "Always-on agent teams, governed by human judgment", 
 includes(frontstageSource, 'data-testid="frontstage-public-showcase-contract"', "public showcase contract panel");
 includes(frontstageSource, "Local status URLs stay behind explicit Ops live URLs", "ops-only live status copy");
 includes(frontstageSource, 'data-testid="frontstage-ops-entry-hint"', "explicit ops entry hint");
+includes(frontstageSource, "Use mode=ops with statusUrl.", "wrapped ops entry hint copy");
 excludes(frontstageSource, 'data-testid="frontstage-enable-ops-live"', "in-page ops live switch");
 includes(frontstageSource, "human judgment kept in the control plane", "human judgment control-plane copy");
 includes(frontstageSource, "Role Map", "role map copy");

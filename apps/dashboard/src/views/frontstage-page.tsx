@@ -1036,7 +1036,7 @@ function FrontstageRoute({
                 </p>
                 {hasIgnoredStatusUrl ? <Badge variant="warning">statusUrl ignored</Badge> : null}
                 <div className="text-[11px] font-semibold text-emerald-800" data-testid="frontstage-ops-entry-hint">
-                  Ops live requires ?mode=ops&amp;statusUrl=...
+                  Use mode=ops with statusUrl.
                 </div>
               </div>
             )}
