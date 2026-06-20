@@ -616,6 +616,20 @@ def _host_local_acp_launch_command(args: argparse.Namespace) -> list[str]:
     if "--dry-run-response" in command:
         index = command.index("--dry-run-response")
         del command[index : index + 2]
+    if args.route == "codex-app-server-goal-baseline":
+        command.extend(
+            [
+                "--app-server-goal-worker",
+                "--dataset",
+                args.dataset,
+                "--task-id",
+                args.task_id,
+                "--approval-policy",
+                "never",
+                "--response-timeout-sec",
+                "30",
+            ]
+        )
     command.extend(
         [
             "--codex-bin",
@@ -1608,7 +1622,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             no_upload=True,
             submit_enabled=False,
             compact_reducer_ready=True,
-            runner_integration_ready=False,
+            runner_integration_ready=bool(args.host_local_acp_launch),
         )
         if is_app_server_goal_route
         else None
@@ -2903,8 +2917,20 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         rollout_dir: Path,
         environment: str,
         agent_cwd: str,
-    ) -> tuple[Any, Any, str]:
-        del env, agent_launch, agent_env, sandbox_user, rollout_dir, environment
+        reasoning_effort: str | None = None,
+        mcp_servers: list[Any] | None = None,
+        **_ignored: Any,
+    ) -> tuple[Any, Any, Any, str]:
+        del (
+            env,
+            agent_launch,
+            agent_env,
+            sandbox_user,
+            rollout_dir,
+            environment,
+            reasoning_effort,
+        )
+        from benchflow.agents.protocol import ACPSessionAdapter
         from benchflow.acp.client import ACPClient
         from benchflow.acp.transport import StdioTransport
 
@@ -2921,7 +2947,8 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             await asyncio.wait_for(client.connect(), timeout=60)
             init_result = await asyncio.wait_for(client.initialize(), timeout=60)
             session = await asyncio.wait_for(
-                client.session_new(cwd=agent_cwd), timeout=60
+                client.session_new(cwd=agent_cwd, mcp_servers=mcp_servers),
+                timeout=60,
             )
             agent_name = (
                 init_result.agent_info.name if init_result.agent_info else agent
@@ -2929,7 +2956,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             if model:
                 await asyncio.wait_for(client.set_model(model), timeout=60)
             prerequisites["host_local_acp_launch_status"] = "connected"
-            return client, session, agent_name
+            return client, session, ACPSessionAdapter(client), agent_name
         except Exception:
             prerequisites["host_local_acp_launch_status"] = "failed"
             with contextlib.suppress(Exception):
@@ -3056,7 +3083,11 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     async def install_agent_host_local_acp(self: Any) -> None:
         cfg = self._config
         prerequisites = plan.setdefault("runner_prerequisites", {})
-        prerequisites["agent_execution_mode"] = "host_local_acp"
+        prerequisites["agent_execution_mode"] = (
+            "host_codex_app_server_goal_worker"
+            if args.route == "codex-app-server-goal-baseline"
+            else "host_local_acp"
+        )
         prerequisites["host_local_acp_launch"] = True
         prerequisites["host_local_acp_launch_status"] = "installing_sandbox"
         prerequisites["container_codex_acp_install_skipped"] = True
@@ -4003,6 +4034,7 @@ def main(argv: list[str] | None = None) -> int:
             args.remote_command_file_bridge_ready
             or args.remote_command_file_bridge_probe
         )
+        runner_integration_ready = bool(args.host_local_acp_launch)
         if not bridge_ready:
             payload = {
                 "ok": False,
@@ -4024,25 +4056,26 @@ def main(argv: list[str] | None = None) -> int:
             }
             print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
             return 2
-        payload = {
-            "ok": False,
-            "error_type": "SkillsBenchNativeGoalWorkerIntegrationPending",
-            "route": args.route,
-            "reason": (
-                "codex-app-server-goal-baseline requires a BenchFlow worker "
-                "integration that launches host Codex app-server Goal turns via "
-                "thread/start, thread/goal/set/get, and turn/start while the "
-                "worker uses the ready command/file bridge for sandbox edits; "
-                "the current runner must not fall back to codex-acp"
-            ),
-            "next_action": (
-                "wire the SkillsBench host Codex app-server Goal worker into "
-                "BenchFlow, then rerun the selected case with compact no-upload "
-                "proof"
-            ),
-        }
-        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
-        return 2
+        if runner_integration_ready:
+            args.host_local_acp_launch = True
+        else:
+            payload = {
+                "ok": False,
+                "error_type": "SkillsBenchNativeGoalWorkerIntegrationPending",
+                "route": args.route,
+                "reason": (
+                    "codex-app-server-goal-baseline requires --host-local-acp-launch "
+                    "so BenchFlow connects to the Goal Harness ACP relay that "
+                    "delegates prompts to the host Codex app-server Goal worker; "
+                    "the current runner must not fall back to codex-acp"
+                ),
+                "next_action": (
+                    "rerun with --remote-command-file-bridge-ready and "
+                    "--host-local-acp-launch after probing the command/file bridge"
+                ),
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+            return 2
     if args.local_codex_participant_ping:
         payload = materialize_local_codex_participant(
             codex_bin=args.local_codex_bin,

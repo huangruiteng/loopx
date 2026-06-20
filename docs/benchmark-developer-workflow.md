@@ -721,6 +721,30 @@ There are two distinct gates for a real scored launch:
 2. Wire that host worker through BenchFlow's ACP transport so official task
    staging and verification still run through BenchFlow.
 
+The second gate is implemented through the host-local ACP relay. In
+`codex-app-server-goal-baseline`, pass `--host-local-acp-launch` only after the
+bridge probe is green; the launcher then starts
+`scripts/skillsbench_local_acp_relay.py --app-server-goal-worker`, and the
+relay delegates each ACP `session/prompt` to
+`scripts/skillsbench_host_codex_goal_worker.py`. This preserves BenchFlow as
+the official task stager/verifier while Codex runs through native app-server
+Goal methods on the host:
+
+```bash
+python3 scripts/skillsbench_automation_loop.py \
+  --task-id llm-prefix-cache-replay \
+  --route codex-app-server-goal-baseline \
+  --remote-command-file-bridge-ready \
+  --host-local-acp-launch \
+  --plan-only
+```
+
+With both flags, the plan should show
+`codex_app_server_goal_worker_remote_command_file_bridge_ready=true` and
+`codex_app_server_goal_worker_runner_integration_ready=true`. Without
+`--host-local-acp-launch`, a real launch must still fail closed as
+`SkillsBenchNativeGoalWorkerIntegrationPending`.
+
 A full launch of this route must fail closed rather than falling back to
 `codex-acp`, a slash-prefix `/goal` prompt, or a host-only workspace. The
 host-side worker surface is:
@@ -760,7 +784,8 @@ public docs, ledgers, rollout logs, and PRs.
 Use `--remote-command-file-bridge-ready` only after a public-safe bridge probe
 has passed. That flag updates only the plan's bridge readiness fields;
 `codex_app_server_goal_worker_runner_integration_ready` must remain `false`
-until the BenchFlow transport is actually wired. If the full route exits with
+until the BenchFlow transport is requested through `--host-local-acp-launch`.
+If the full route exits with
 `SkillsBenchNativeGoalWorkerIntegrationPending`, the next fix belongs in the
 host-worker-to-ACP transport, not in verifier timeout, Docker setup, or model
 behavior.

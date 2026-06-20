@@ -21,6 +21,9 @@ from goal_harness.benchmark import (  # noqa: E402
     build_skillsbench_benchmark_run,
     skillsbench_route_contract,
 )
+from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
+    run_skillsbench_local_acp_relay_probe,
+)
 
 
 ROUTE = "codex-app-server-goal-baseline"
@@ -192,6 +195,38 @@ def test_launcher_plan_only_marks_bridge_ready_when_explicit() -> None:
     ), prereq
 
 
+def test_launcher_plan_only_marks_runner_ready_with_host_acp_launch() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-plan-") as tmp:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--route",
+                ROUTE,
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--remote-command-file-bridge-ready",
+                "--host-local-acp-launch",
+                "--plan-only",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    payload = json.loads(result.stdout)
+    prereq = payload["launch_plan"]["runner_prerequisites"]
+    assert (
+        prereq["codex_app_server_goal_worker_remote_command_file_bridge_ready"]
+        is True
+    ), prereq
+    assert (
+        prereq["codex_app_server_goal_worker_runner_integration_ready"] is True
+    ), prereq
+
+
 def test_host_worker_contract_only_cli() -> None:
     result = subprocess.run(
         [
@@ -262,6 +297,34 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         assert "Private task instruction placeholder" not in public_json, payload
 
 
+def test_acp_relay_delegates_to_app_server_goal_worker() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-acp-") as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        work = root / "work"
+        fake.write_text(FAKE_CODEX, encoding="utf-8")
+        fake.chmod(0o755)
+        work.mkdir()
+        command = [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "skillsbench_local_acp_relay.py"),
+            "--app-server-goal-worker",
+            "--task-id",
+            "llm-prefix-cache-replay",
+            "--codex-bin",
+            str(fake),
+            "--timeout-sec",
+            "5",
+            "--response-timeout-sec",
+            "5",
+        ]
+        probe = run_skillsbench_local_acp_relay_probe(
+            command,
+            timeout_sec=10,
+        )
+    assert probe["ready"] is True, probe
+
+
 def test_full_run_fails_closed_until_bridge_is_materialized() -> None:
     result = subprocess.run(
         [
@@ -283,7 +346,7 @@ def test_full_run_fails_closed_until_bridge_is_materialized() -> None:
     assert "command/file bridge" in payload["reason"], payload
 
 
-def test_full_run_with_bridge_ready_still_fails_closed_until_transport_is_wired() -> None:
+def test_full_run_with_bridge_ready_requires_host_acp_launch() -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -302,7 +365,7 @@ def test_full_run_with_bridge_ready_still_fails_closed_until_transport_is_wired(
     assert result.returncode == 2, result
     payload = json.loads(result.stderr)
     assert payload["error_type"] == "SkillsBenchNativeGoalWorkerIntegrationPending", payload
-    assert "codex-acp" in payload["reason"], payload
+    assert "--host-local-acp-launch" in payload["reason"], payload
 
 
 if __name__ == "__main__":
@@ -311,8 +374,10 @@ if __name__ == "__main__":
     test_skeleton_marks_app_server_goal_actor()
     test_launcher_plan_only_uses_native_worker_route()
     test_launcher_plan_only_marks_bridge_ready_when_explicit()
+    test_launcher_plan_only_marks_runner_ready_with_host_acp_launch()
     test_host_worker_contract_only_cli()
     test_host_worker_waits_for_completion_and_keeps_public_json_compact()
+    test_acp_relay_delegates_to_app_server_goal_worker()
     test_full_run_fails_closed_until_bridge_is_materialized()
-    test_full_run_with_bridge_ready_still_fails_closed_until_transport_is_wired()
+    test_full_run_with_bridge_ready_requires_host_acp_launch()
     print("skillsbench-app-server-goal-worker smoke ok")

@@ -50,6 +50,28 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Codex. Intended for handshake/preflight smokes."
         ),
     )
+    parser.add_argument(
+        "--app-server-goal-worker",
+        action="store_true",
+        help=(
+            "Delegate each ACP prompt to scripts/skillsbench_host_codex_goal_worker.py "
+            "instead of codex exec. This is the native Codex Goal baseline path."
+        ),
+    )
+    parser.add_argument("--dataset", default="skillsbench-v1.1")
+    parser.add_argument("--task-id", default="llm-prefix-cache-replay")
+    parser.add_argument("--approval-policy", default="never")
+    parser.add_argument(
+        "--response-timeout-sec",
+        type=float,
+        default=30.0,
+        help="Timeout for the worker to observe initial app-server response events.",
+    )
+    parser.add_argument(
+        "--worker-script",
+        default=None,
+        help="Optional path to skillsbench_host_codex_goal_worker.py.",
+    )
     return parser.parse_args(argv)
 
 
@@ -62,6 +84,12 @@ def main(argv: list[str] | None = None) -> int:
             model=args.model,
             timeout_sec=args.timeout_sec,
             dry_run_response=args.dry_run_response,
+            app_server_goal_worker=args.app_server_goal_worker,
+            dataset=args.dataset,
+            task_id=args.task_id,
+            approval_policy=args.approval_policy,
+            response_timeout_sec=args.response_timeout_sec,
+            worker_script=args.worker_script,
         )
     )
     return relay.serve()

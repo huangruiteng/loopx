@@ -63,6 +63,12 @@ class CodexExecConfig:
     model: str | None = None
     timeout_sec: int = 7200
     dry_run_response: str | None = None
+    app_server_goal_worker: bool = False
+    dataset: str = "skillsbench-v1.1"
+    task_id: str = "llm-prefix-cache-replay"
+    approval_policy: str = "never"
+    response_timeout_sec: float = 30.0
+    worker_script: str | None = None
 
 
 class SkillsBenchLocalAcpRelay:
@@ -177,6 +183,8 @@ class SkillsBenchLocalAcpRelay:
     def _run_codex(self, prompt_text: str, *, session: dict[str, Any]) -> str:
         if self._config.dry_run_response is not None:
             return self._config.dry_run_response
+        if self._config.app_server_goal_worker:
+            return self._run_app_server_goal_worker(prompt_text, session=session)
         cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
         with tempfile.TemporaryDirectory(prefix="gh-skillsbench-acp-") as tmp:
             output_path = Path(tmp) / "last-message.txt"
@@ -215,6 +223,72 @@ class SkillsBenchLocalAcpRelay:
             except OSError as exc:
                 raise RuntimeError("local codex final message missing") from exc
             return response or "local codex returned an empty final message"
+
+    def _run_app_server_goal_worker(
+        self, prompt_text: str, *, session: dict[str, Any]
+    ) -> str:
+        cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
+        with tempfile.TemporaryDirectory(prefix="gh-skillsbench-goal-worker-") as tmp:
+            tmp_path = Path(tmp)
+            prompt_path = tmp_path / "prompt.txt"
+            output_json = tmp_path / "worker.compact.json"
+            response_path = tmp_path / "response.txt"
+            prompt_path.write_text(prompt_text, encoding="utf-8")
+            worker_script = (
+                Path(self._config.worker_script).expanduser()
+                if self._config.worker_script
+                else Path(__file__).resolve().parents[2]
+                / "scripts"
+                / "skillsbench_host_codex_goal_worker.py"
+            )
+            cmd = [
+                sys.executable,
+                str(worker_script),
+                "--dataset",
+                self._config.dataset,
+                "--task-id",
+                self._config.task_id,
+                "--codex-bin",
+                self._config.codex_bin,
+                "--sandbox",
+                self._config.sandbox,
+                "--approval-policy",
+                self._config.approval_policy,
+                "--work-dir",
+                cwd,
+                "--prompt-file",
+                str(prompt_path),
+                "--output-json",
+                str(output_json),
+                "--response-text-file",
+                str(response_path),
+                "--response-timeout-sec",
+                str(self._config.response_timeout_sec),
+                "--turn-timeout-sec",
+                str(self._config.timeout_sec),
+                "--runner-integration-ready",
+            ]
+            model = self._config.model or session.get("model")
+            if model:
+                cmd.extend(["--model", str(model)])
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=self._config.timeout_sec + 60,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise TimeoutError from exc
+            if proc.returncode != 0:
+                raise RuntimeError("host app-server goal worker failed")
+            try:
+                response = response_path.read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise RuntimeError("host app-server goal worker response missing") from exc
+            return response or "host app-server goal worker returned an empty final message"
 
     @staticmethod
     def _write(stdout: TextIO, message: dict[str, Any]) -> None:
