@@ -47,10 +47,11 @@ tell which part of the system is waiting, running, or coordinating side work.
 The `Efficiency Evidence` panel pulls the public-safe self-iteration case from
 the showcase catalog so the hosted frontstage can show commit-backed baseline,
 actual-window, compression, and evidence-boundary signals without exposing raw
-sessions. The `Showcase Cases` panel renders the same catalog as compact case
-cards, linking back to public GitHub case pages for deeper reading. These
-panels are derived from the read-only projection or public-safe showcase
-metadata; they are not browser write authority.
+sessions. The `Showcase Motion` and `Showcase Cases` panels render the same
+catalog as animated narrative lanes and compact case cards, linking back to
+public GitHub case pages for deeper reading. Operations lanes are derived from
+the read-only projection; showcase panels are derived only from public-safe
+showcase metadata. Neither surface is browser write authority.
 
 For live local control-plane inspection, open
 `/frontstage?statusUrl=http://127.0.0.1:8766/status.json`. The route reads

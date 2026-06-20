@@ -43,6 +43,7 @@ type ShowcaseFrontstageCase = {
     badges?: string[];
     primary_metric_hint?: string;
     story_beats?: string[];
+    visual_metaphor?: string;
   };
   workload_signal?: {
     whole_repository?: {
@@ -297,6 +298,97 @@ function EfficiencyEvidencePanel() {
             </div>
           </div>
         ) : null}
+      </div>
+    </Panel>
+  );
+}
+
+const showcaseMotionTones = [
+  {
+    card: "border-emerald-200 bg-emerald-50",
+    dot: "border-emerald-300 bg-emerald-600",
+    ping: "bg-emerald-400",
+    line: "bg-emerald-300",
+  },
+  {
+    card: "border-sky-200 bg-sky-50",
+    dot: "border-sky-300 bg-sky-600",
+    ping: "bg-sky-400",
+    line: "bg-sky-300",
+  },
+  {
+    card: "border-amber-200 bg-amber-50",
+    dot: "border-amber-300 bg-amber-600",
+    ping: "bg-amber-400",
+    line: "bg-amber-300",
+  },
+  {
+    card: "border-rose-200 bg-rose-50",
+    dot: "border-rose-300 bg-rose-600",
+    ping: "bg-rose-400",
+    line: "bg-rose-300",
+  },
+];
+
+function ShowcaseMotionBoard() {
+  if (!frontstageShowcases.length) {
+    return null;
+  }
+
+  return (
+    <Panel icon={Activity} title="Showcase Motion">
+      <div className="space-y-4 p-4" data-testid="frontstage-showcase-motion">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-950">Case-driven motion board</h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+              Public cases become narrative lanes: gate, coordination, evidence, and outcome stay visible while the live status feed remains separate.
+            </p>
+          </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600">
+            <span className="text-slate-500">Case source</span>
+            <span className="ml-2 text-slate-950">docs/showcases/showcase-catalog.json</span>
+          </div>
+        </div>
+        <div className="grid gap-3 xl:grid-cols-4">
+          {frontstageShowcases.map((item, index) => {
+            const tone = showcaseMotionTones[index % showcaseMotionTones.length];
+            const beats = item.frontend_card?.story_beats?.slice(0, 4) ?? [];
+            return (
+              <article
+                className={cn("rounded-md border p-3 shadow-sm transition duration-300 hover:-translate-y-0.5", tone.card)}
+                key={item.id}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={cn("relative mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold text-white", tone.dot)}>
+                    <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-20", tone.ping)} />
+                    {String(index + 1).padStart(2, "0")}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+                      {item.domain ?? "showcase"}
+                    </div>
+                    <h4 className="mt-1 text-sm font-semibold leading-6 text-slate-950">{item.title}</h4>
+                  </div>
+                </div>
+                {item.frontend_card?.visual_metaphor ? (
+                  <p className="mt-3 text-xs font-medium leading-5 text-slate-600">{item.frontend_card.visual_metaphor}</p>
+                ) : null}
+                {beats.length ? (
+                  <ol className="relative mt-3 space-y-2 pl-4 text-xs font-medium leading-5 text-slate-700">
+                    <span className={cn("absolute bottom-2 left-[5px] top-2 w-px", tone.line)} />
+                    {beats.map((beat) => (
+                      <li className="relative pl-3" key={beat}>
+                        <span className={cn("absolute left-[-2px] top-2 h-2 w-2 rounded-full", tone.dot)} />
+                        {beat}
+                      </li>
+                    ))}
+                  </ol>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
       </div>
     </Panel>
   );
@@ -561,6 +653,8 @@ function FrontstageRoute({
           </div>
 
           <EfficiencyEvidencePanel />
+
+          <ShowcaseMotionBoard />
 
           <ShowcaseCasePackPanel />
 

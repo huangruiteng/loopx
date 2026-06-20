@@ -15,6 +15,13 @@ function excludes(source: string, snippet: string, label: string) {
   assert(!source.includes(snippet), `unexpected ${label}: ${snippet}`);
 }
 
+function sourceBetween(source: string, start: string, end: string, label: string) {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex);
+  assert(startIndex >= 0 && endIndex > startIndex, `missing ${label} source bounds`);
+  return source.slice(startIndex, endIndex);
+}
+
 const routerSource = readFileSync("src/router.tsx", "utf8");
 const frontstageSource = readFileSync("src/views/frontstage-page.tsx", "utf8");
 const dataSource = readFileSync("src/data/goal-channel-frontstage.ts", "utf8");
@@ -66,6 +73,10 @@ includes(frontstageSource, "maturity-adjusted", "maturity adjusted copy");
 includes(frontstageSource, 'data-testid="frontstage-showcase-cases"', "showcase case cards panel");
 includes(frontstageSource, "Showcase Cases", "showcase cases copy");
 includes(frontstageSource, "frontstageShowcases", "catalog-driven showcase cases");
+includes(frontstageSource, 'data-testid="frontstage-showcase-motion"', "showcase motion panel");
+includes(frontstageSource, "Showcase Motion", "showcase motion copy");
+includes(frontstageSource, "Case-driven motion board", "case-driven motion board copy");
+includes(frontstageSource, "docs/showcases/showcase-catalog.json", "showcase catalog source copy");
 includes(frontstageSource, "Open case page", "case page outbound link");
 includes(frontstageSource, "github.com/huangruiteng/goal-harness/blob/main", "public GitHub case page links");
 includes(frontstageSource, "Projection is read-only", "read-only truth copy");
@@ -79,10 +90,18 @@ includes(catalogSource, '"2026-06-19-goal-harness-self-iteration"', "self-iterat
 includes(catalogSource, '"2026-06-17-blocked-p0-safe-rotation"', "blocked P0 showcase case");
 includes(catalogSource, '"2026-06-20-creator-operator-case-spec"', "creator operator showcase case");
 
+const motionSource = sourceBetween(frontstageSource, "function ShowcaseMotionBoard", "function ShowcaseCasePackPanel", "showcase motion board");
+includes(motionSource, "frontstageShowcases", "motion board catalog source");
+includes(motionSource, "visual_metaphor", "motion board visual metaphor field");
+includes(motionSource, "story_beats", "motion board story beats field");
+excludes(motionSource, "projection", "motion board live projection dependency");
+excludes(motionSource, "payload", "motion board live payload dependency");
+
 includes(readmeSource, "/frontstage", "README frontstage route mention");
 includes(readmeSource, "operations strip", "README operations strip explanation");
 includes(readmeSource, "Role Map", "README role map explanation");
 includes(readmeSource, "Efficiency Evidence", "README efficiency evidence explanation");
+includes(readmeSource, "Showcase Motion", "README showcase motion explanation");
 includes(readmeSource, "Showcase Cases", "README showcase cases explanation");
 includes(readmeSource, "read-only projection", "README read-only projection boundary");
 includes(readmeSource, "write authority", "README write authority boundary");
