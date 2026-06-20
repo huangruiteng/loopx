@@ -15,6 +15,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from goal_harness.status import (  # noqa: E402
+    TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
+    TODO_PROJECTION_VIEW_SCHEMA_VERSION,
     project_asset_todo_projection_gap,
     project_asset_todo_summary,
 )
@@ -115,13 +117,16 @@ def main() -> int:
             "total_count": 0,
         }
     )
-    assert empty_summary == {
-        "schema_version": "todo_summary_v0",
-        "source_section": "project_asset",
-        "open": 0,
-        "done": 0,
-        "total": 0,
-    }, empty_summary
+    assert empty_summary["schema_version"] == "todo_summary_v0", empty_summary
+    assert empty_summary["source_section"] == "project_asset", empty_summary
+    assert empty_summary["open"] == 0, empty_summary
+    assert empty_summary["done"] == 0, empty_summary
+    assert empty_summary["total"] == 0, empty_summary
+    assert empty_summary["projection_view"]["schema_version"] == TODO_PROJECTION_VIEW_SCHEMA_VERSION, empty_summary
+    assert empty_summary["projection_view"]["view"] == "project_asset_overview", empty_summary
+    assert empty_summary["projection_view"]["truth"] == "derived", empty_summary
+    assert empty_summary["detail_pointer"]["schema_version"] == TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION, empty_summary
+    assert empty_summary["detail_pointer"]["full_list_included"] is False, empty_summary
     assert project_asset_todo_projection_gap(user_todos=empty_summary, agent_todos=empty_summary) is None
     gap = project_asset_todo_projection_gap(user_todos=None, agent_todos=empty_summary)
     assert gap and gap["missing_roles"] == ["user"], gap

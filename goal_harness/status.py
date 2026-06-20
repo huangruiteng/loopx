@@ -335,6 +335,8 @@ MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = MAX_STATUS_TODOS_PER_ROLE
 MAX_PROJECT_ASSET_TODO_ITEMS = 3
 MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS = 8
 MAX_TODO_VISIBILITY_LANE_ITEMS = 16
+TODO_PROJECTION_VIEW_SCHEMA_VERSION = "todo_projection_view_v0"
+TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION = "todo_projection_detail_pointer_v0"
 MAX_DEPENDENCY_BLOCKERS = 4
 MAX_AUTONOMOUS_BACKLOG_CANDIDATES = 6
 MAX_SUBAGENT_ACTIVITY_ITEMS = 5
@@ -4387,14 +4389,30 @@ def first_open_todo_text(todos: dict[str, Any] | None) -> str | None:
 def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(todos, dict):
         return None
+    open_count = todos.get("open_count", 0)
+    done_count = todos.get("done_count", 0)
+    total_count = todos.get("total_count", 0)
     summary: dict[str, Any] = {
         "schema_version": todos.get("schema_version") or "todo_summary_v0",
         "source_section": "project_asset",
-        "open": todos.get("open_count", 0),
-        "done": todos.get("done_count", 0),
-        "total": todos.get("total_count", 0),
+        "open": open_count,
+        "done": done_count,
+        "total": total_count,
+        "projection_view": {
+            "schema_version": TODO_PROJECTION_VIEW_SCHEMA_VERSION,
+            "view": "project_asset_overview",
+            "truth": "derived",
+            "canonical_source": "attention_queue.items[].agent_todos",
+            "item_limit": MAX_PROJECT_ASSET_TODO_ITEMS,
+        },
+        "detail_pointer": {
+            "schema_version": TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
+            "cold_path": "goal-harness status --format json",
+            "active_state_source": "registry goal state_file",
+            "full_list_included": False,
+        },
     }
-    open_items = open_todo_items(todos, limit=MAX_STATUS_TODOS_PER_ROLE)
+    open_items = open_todo_items(todos, limit=MAX_PROJECT_ASSET_TODO_ITEMS)
     claimed_open_count = sum(1 for item in open_items if item.get("claimed_by"))
     if claimed_open_count or todos.get("claimed_open_count"):
         summary["claimed_open_count"] = todos.get("claimed_open_count", claimed_open_count)
@@ -4409,27 +4427,23 @@ def project_asset_todo_summary(todos: dict[str, Any] | None) -> dict[str, Any] |
             summary["next_index"] = open_items[0].get("index")
         if open_items[0].get("claimed_by"):
             summary["next_claimed_by"] = open_items[0].get("claimed_by")
-    backlog_items = open_todo_items(todos, limit=MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS)
-    if backlog_items:
-        summary["backlog_items"] = backlog_items
-        executable_backlog_items = [
-            item
-            for item in backlog_items
-            if todo_item_is_actionable_open(item)
-            if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-        ]
-        if executable_backlog_items:
-            summary["executable_backlog_items"] = executable_backlog_items
-    for lane in (
-        "unclaimed_priority_open_items",
-        "claimed_open_items",
-        "claimed_advancement_open_items",
-        "claimed_monitor_open_items",
-    ):
+    executable_items = [
+        item
+        for item in open_todo_items(
+            todos,
+            limit=MAX_PROJECT_ASSET_TODO_ITEMS,
+            source_keys=("first_executable_items", "executable_backlog_items", "items"),
+        )
+        if todo_item_is_actionable_open(item)
+        if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+    ]
+    if executable_items:
+        summary["first_executable_items"] = executable_items[:MAX_PROJECT_ASSET_TODO_ITEMS]
+    for lane in ("gate_open_items", "current_agent_claimed_open_items"):
         lane_items = todo_lane_items(
             todos,
             lane,
-            limit=MAX_TODO_VISIBILITY_LANE_ITEMS,
+            limit=MAX_PROJECT_ASSET_TODO_ITEMS,
         )
         if lane_items:
             summary[lane] = lane_items

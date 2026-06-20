@@ -1459,6 +1459,36 @@ def _summarize_project_asset_todos(
     return summary
 
 
+def _is_canonical_attention_todo_summary(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if value.get("schema_version") == "todo_summary_v0":
+        return True
+    source_section = str(value.get("source_section") or "").strip().lower()
+    if source_section.startswith("raw "):
+        return False
+    return source_section in {"agent todo", "user todo"}
+
+
+def _select_todo_summary(
+    canonical_value: Any,
+    project_asset_value: Any,
+    *,
+    agent_identity: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    canonical_summary = _summarize_user_todos(
+        canonical_value,
+        agent_identity=agent_identity,
+    )
+    project_asset_summary = _summarize_project_asset_todos(
+        project_asset_value,
+        agent_identity=agent_identity,
+    )
+    if _is_canonical_attention_todo_summary(canonical_value):
+        return canonical_summary or project_asset_summary
+    return project_asset_summary or canonical_summary
+
+
 def _same_todo_identity(left: dict[str, Any], right: dict[str, Any]) -> bool:
     left_id = str(left.get("todo_id") or "").strip()
     right_id = str(right.get("todo_id") or "").strip()
@@ -4335,13 +4365,15 @@ def build_quota_should_run(
             reason = "status or contract health is not ok; skip automatic compute"
         project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
         agent_identity = _quota_agent_identity(item, agent_id=agent_id)
-        user_todo_summary = _summarize_project_asset_todos(
-            project_asset.get("user_todos") if project_asset else None
-        ) or _summarize_user_todos(item.get("user_todos"))
-        agent_todo_summary = _summarize_project_asset_todos(
+        user_todo_summary = _select_todo_summary(
+            item.get("user_todos"),
+            project_asset.get("user_todos") if project_asset else None,
+        )
+        agent_todo_summary = _select_todo_summary(
+            item.get("agent_todos"),
             project_asset.get("agent_todos") if project_asset else None,
             agent_identity=agent_identity,
-        ) or _summarize_user_todos(item.get("agent_todos"), agent_identity=agent_identity)
+        )
         outcome_floor_blocker_projected = (
             recovery_allowed
             and _outcome_floor_blocker_already_projected(agent_todo_summary)
