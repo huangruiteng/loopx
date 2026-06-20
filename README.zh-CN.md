@@ -94,9 +94,21 @@ Goal Harness 还在早期，最需要真实长期 agent 任务里的反馈：控
 - 可复现 bug、安装问题、功能建议：请优先提
   [GitHub Issue](https://github.com/huangruiteng/goal-harness/issues)。
 - 文档修正、showcase 补充、小型 public-safe 示例：欢迎直接开 PR。
-- 想快速交流、试用 onboarding、一起打磨 showcase：欢迎扫码加入飞书用户群。
+- 想快速交流、试用 onboarding、一起打磨 showcase：欢迎优先加入飞书用户群；
+  微信群作为备用入口，二维码可能过期，失效时请先走飞书或提 Issue 提醒更新。
 
-<img src="docs/assets/goal-harness-lark-user-group.png" alt="Goal Harness 飞书用户群二维码" width="220">
+<table>
+  <tr>
+    <td align="center" width="240">
+      <img src="docs/assets/goal-harness-lark-user-group.png" alt="Goal Harness 飞书用户群二维码" width="200"><br>
+      飞书用户群
+    </td>
+    <td align="center" width="240">
+      <img src="docs/assets/goal-harness-wechat-user-group.png" alt="Goal Harness 微信用户群二维码" width="200"><br>
+      微信用户群，可能过期
+    </td>
+  </tr>
+</table>
 
 ## 适合什么场景
 

@@ -96,10 +96,23 @@ heavy, and which user gates or handoffs still disappeared from view.
 - Use [GitHub Issues](https://github.com/huangruiteng/goal-harness/issues) for
   reproducible bugs, install problems, and feature requests.
 - Open PRs for docs fixes, showcase writeups, and small public-safe examples.
-- For Chinese-speaking early users, scan the Lark group QR code for fast
-  onboarding help, feedback loops, and showcase co-creation.
+- For Chinese-speaking early users, scan the Lark group first for fast
+  onboarding help, feedback loops, and showcase co-creation. A WeChat group QR
+  is available as a backup, but QR codes may expire; if one is stale, use Lark
+  or open an issue to ask for a refresh.
 
-<img src="docs/assets/goal-harness-lark-user-group.png" alt="Goal Harness Lark user group QR code" width="220">
+<table>
+  <tr>
+    <td align="center" width="240">
+      <img src="docs/assets/goal-harness-lark-user-group.png" alt="Goal Harness Lark user group QR code" width="200"><br>
+      Lark group
+    </td>
+    <td align="center" width="240">
+      <img src="docs/assets/goal-harness-wechat-user-group.png" alt="Goal Harness WeChat user group QR code" width="200"><br>
+      WeChat group, may expire
+    </td>
+  </tr>
+</table>
 
 ## Why It Matters
 
