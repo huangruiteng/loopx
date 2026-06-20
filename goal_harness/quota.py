@@ -1029,9 +1029,8 @@ def _capability_gate(
 
     available = _available_capabilities(available_capabilities)
     blocked: list[dict[str, Any]] = []
+    runnable: list[dict[str, Any]] = []
     saw_requirement = False
-    selected_item: dict[str, Any] | None = None
-    selected_required: list[str] = []
     for item in candidates:
         required = normalize_required_capabilities(item.get("required_capabilities"))
         if required:
@@ -1040,30 +1039,35 @@ def _capability_gate(
         if missing:
             blocked.append(_capability_candidate_item(item, missing=missing))
             continue
-        selected_item = item
-        selected_required = required
-        break
+        runnable.append(_capability_candidate_item(item, missing=[]))
 
     if not saw_requirement and not blocked:
         return None
-    if selected_item is not None:
-        selected_text = str(selected_item.get("text") or "").strip()
-        selected = _compact_todo_summary_item(selected_item, text=selected_text)
-        selected["required_capabilities"] = selected_required
+    if runnable:
+        runnable_required: list[str] = []
+        blocked_missing: list[str] = []
+        for item in runnable:
+            for capability in item.get("required_capabilities") or []:
+                if capability not in runnable_required:
+                    runnable_required.append(str(capability))
+        for item in blocked:
+            for capability in item.get("missing_capabilities") or []:
+                if capability not in blocked_missing:
+                    blocked_missing.append(str(capability))
         return {
             "schema_version": CAPABILITY_GATE_SCHEMA_VERSION,
             "source": source,
-            "required": selected_required,
+            "required": runnable_required,
             "available": available,
             "missing": [],
             "action": "run",
-            "selected_todo": selected,
+            "decision_owner": "agent",
+            "selection_policy": "agent_steering_audit_over_runnable_candidates",
+            "runnable_count": len(runnable),
+            "runnable_candidates": runnable,
             "blocked_candidates": blocked,
-            "reason": (
-                "selected executable todo capability requirements are satisfied"
-                if not blocked
-                else "higher-priority executable todo(s) are capability-blocked; selected first runnable fallback"
-            ),
+            "blocked_missing": blocked_missing,
+            "reason": "capability gate projected runnable candidate set; agent chooses the actual todo",
         }
 
     missing_all: list[str] = []
@@ -1083,6 +1087,10 @@ def _capability_gate(
         "available": available,
         "missing": missing_all,
         "action": action,
+        "decision_owner": "capability_gate",
+        "selection_policy": "no_runnable_candidate",
+        "runnable_count": 0,
+        "runnable_candidates": [],
         "blocked_candidates": blocked,
         "blocks_delivery": True,
         "reason": "all visible executable todo candidates require unavailable capabilities",
@@ -1790,14 +1798,16 @@ def _protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
         else {}
     )
     if capability_gate.get("action") == "run":
-        selected_capability_todo = (
-            capability_gate.get("selected_todo")
-            if isinstance(capability_gate.get("selected_todo"), dict)
-            else {}
+        runnable_candidates = (
+            capability_gate.get("runnable_candidates")
+            if isinstance(capability_gate.get("runnable_candidates"), list)
+            else []
         )
-        text = _protocol_action_label(selected_capability_todo.get("text"))
-        if text:
-            return text
+        if runnable_candidates:
+            return (
+                f"choose one of {len(runnable_candidates)} "
+                "capability-runnable todo(s) after steering audit"
+            )
     scoped_fallback = (
         payload.get("scoped_user_gate_fallback")
         if isinstance(payload.get("scoped_user_gate_fallback"), dict)
@@ -4300,14 +4310,7 @@ def build_quota_should_run(
             work_lane_contract=work_lane_contract,
         )
         if capability_gate:
-            if capability_gate.get("action") == "run":
-                selected_todo = (
-                    capability_gate.get("selected_todo")
-                    if isinstance(capability_gate.get("selected_todo"), dict)
-                    else {}
-                )
-                selected_recommended_action = selected_todo.get("text") or selected_recommended_action
-            elif capability_gate.get("action") in {"repair_bridge", "ask_owner", "skip"}:
+            if capability_gate.get("action") in {"repair_bridge", "ask_owner", "skip"}:
                 selected_recommended_action = (
                     capability_gate.get("owner_action")
                     or capability_gate.get("reason")
@@ -5675,17 +5678,15 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"required={capability_gate.get('required')} "
             f"missing={capability_gate.get('missing')}"
         )
-        selected_todo = (
-            capability_gate.get("selected_todo")
-            if isinstance(capability_gate.get("selected_todo"), dict)
-            else {}
+        if capability_gate.get("decision_owner"):
+            lines.append(f"- capability_gate_decision_owner: {capability_gate.get('decision_owner')}")
+        runnable_candidates = (
+            capability_gate.get("runnable_candidates")
+            if isinstance(capability_gate.get("runnable_candidates"), list)
+            else []
         )
-        if selected_todo.get("todo_id") or selected_todo.get("text"):
-            lines.append(
-                "- capability_gate_selected: "
-                f"todo_id={selected_todo.get('todo_id')} "
-                f"text={selected_todo.get('text')}"
-            )
+        if runnable_candidates:
+            lines.append(f"- capability_gate_runnable_candidates: `{len(runnable_candidates)}`")
         blocked_candidates = (
             capability_gate.get("blocked_candidates")
             if isinstance(capability_gate.get("blocked_candidates"), list)

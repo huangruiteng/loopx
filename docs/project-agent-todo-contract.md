@@ -337,13 +337,14 @@ goal-harness todo add \
 `status` projects `required_capabilities` on every visible todo. `quota
 should-run` then derives a read-only `capability_gate` from the visible
 executable queue, not from a single preselected todo. With multiple P0 or P1
-items, it scans the projected queue in order: if the first P0 is capability
-blocked but the second P0 can run, the second P0 is selected; only when the
-visible P0 candidates are blocked does it fall through to the first runnable
-P1/P2 candidate. Blocked higher-priority candidates remain visible in
-`capability_gate.blocked_candidates`. If no visible executable candidate can
-run, the gate returns `repair_bridge`, `ask_owner`, or `skip` according to the
-missing capability class.
+items, it scans the projected queue in order and exposes the candidate set:
+capability-satisfied todos appear in `capability_gate.runnable_candidates`,
+while blocked higher-priority candidates remain visible in
+`capability_gate.blocked_candidates`. The gate does not choose the final todo;
+the agent keeps decision authority and must pick from the runnable set during
+its steering audit. If no visible executable candidate can run, the gate returns
+`repair_bridge`, `ask_owner`, or `skip` according to the missing capability
+class.
 
 ## Execution Order
 

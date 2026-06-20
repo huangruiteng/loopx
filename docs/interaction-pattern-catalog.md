@@ -118,7 +118,7 @@ Hot-path execution decisions: deliver, fallback, recover, or stay quiet.
 | P0 | IP-001 | Bounded Delivery | Agent | no interruption | implement, validate, write back, spend once |
 | P0 | IP-002 | Blocked Priority With Safe Fallback | Agent plus user-visible notification | notify without requiring an answer | continue safe fallback after exposing blocked higher-priority work |
 | P0 | IP-003 | Scoped Gate With Safe Fallback | User plus agent | notify concrete scoped gate | execute non-dependent fallback; no gated action |
-| P0 | IP-021 | Per-Todo Capability Gate | CLI/controller plus agent | ask only when missing capability is owner-held | select first runnable executable todo; otherwise repair bridge or skip |
+| P0 | IP-021 | Per-Todo Capability Gate | CLI/controller plus agent | ask only when missing capability is owner-held | project runnable executable candidates; agent chooses one, otherwise repair bridge or skip |
 | P0 | IP-007 | Outcome Floor Recovery | Agent | usually no interruption | produce missing outcome-scale evidence or blocker only |
 | P1 | IP-008 | Monitor Quiet Skip | CLI/controller | no notification | append at most one no-spend poll, then stay quiet |
 
@@ -390,11 +390,12 @@ not a permission grant. `status` should project each todo's
 `required_capabilities`; `quota should-run` should derive a read-only
 `capability_gate` over the visible executable queue.
 
-The controller scans executable candidates in projection order. If the first P0
-requires `benchmark_runner` but the second P0 only needs shell/filesystem
-capability, the second P0 is selected before any P1 fallback. If every visible
-P0 is capability-blocked, the first runnable P1/P2 candidate may run, while the
-blocked higher-priority items remain visible in
+The controller scans executable candidates in projection order and classifies
+them, but it does not make the final todo choice. If the first P0 requires
+`benchmark_runner` but the second P0 only needs shell/filesystem capability,
+both the runnable P0 and any later runnable fallback are projected in
+`capability_gate.runnable_candidates`; the agent chooses the actual work item
+after its steering audit. Blocked higher-priority items remain visible in
 `capability_gate.blocked_candidates`.
 
 If no visible executable todo can run, the gate chooses:
@@ -416,14 +417,15 @@ preflight and accounting phases agree.
 flowchart TD
   Q["quota should-run"] --> E["visible executable todo queue"]
   E --> C{"candidate required_capabilities satisfied?"}
-  C -->|"yes"| R["select first runnable todo"]
+  C -->|"yes"| R["add to runnable_candidates"]
   C -->|"no, more candidates"| B["add to blocked_candidates"]
   B --> E
   C -->|"no candidates runnable"| M{"missing capability class"}
   M -->|"bridge"| P["repair_bridge"]
   M -->|"owner-held"| U["ask_owner with concrete capability ask"]
   M -->|"unsupported"| S["skip without spend"]
-  R --> V["validate selected work"]
+  R --> A["agent steering audit chooses one runnable todo"]
+  A --> V["validate chosen work"]
   V --> W["write back and spend-slot with same available capabilities"]
 ```
 

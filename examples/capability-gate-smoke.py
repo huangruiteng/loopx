@@ -128,9 +128,14 @@ def main() -> int:
     assert p0_fallback["should_run"] is True, p0_fallback
     assert p0_fallback["normal_delivery_allowed"] is True, p0_fallback
     assert p0_fallback["capability_gate"]["action"] == "run", p0_fallback
-    assert p0_fallback["capability_gate"]["selected_todo"]["todo_id"] == "todo_capability_2", p0_fallback
+    assert p0_fallback["capability_gate"]["decision_owner"] == "agent", p0_fallback
+    assert [
+        item["todo_id"]
+        for item in p0_fallback["capability_gate"]["runnable_candidates"]
+    ] == ["todo_capability_2", "todo_capability_5"], p0_fallback
     assert p0_fallback["capability_gate"]["blocked_candidates"][0]["todo_id"] == "todo_capability_1", p0_fallback
-    assert "Validate the public control-plane docs" in p0_fallback["recommended_action"], p0_fallback
+    assert "Run the benchmark runner once" in p0_fallback["recommended_action"], p0_fallback
+    assert "choose one of 2 capability-runnable todo(s)" in p0_fallback["protocol_action_packet"]["summary"], p0_fallback
 
     fallback = build_quota_should_run(
         status_payload([p0_benchmark, p0_network, p1_gpu, p1_docs]),
@@ -140,7 +145,9 @@ def main() -> int:
     assert fallback["should_run"] is True, fallback
     assert fallback["normal_delivery_allowed"] is True, fallback
     assert fallback["capability_gate"]["action"] == "run", fallback
-    assert fallback["capability_gate"]["selected_todo"]["todo_id"] == "todo_capability_5", fallback
+    assert [item["todo_id"] for item in fallback["capability_gate"]["runnable_candidates"]] == [
+        "todo_capability_5",
+    ], fallback
     assert [item["todo_id"] for item in fallback["capability_gate"]["blocked_candidates"]] == [
         "todo_capability_1",
         "todo_capability_3",
@@ -149,8 +156,8 @@ def main() -> int:
     assert fallback["capability_gate"]["blocked_candidates"][0]["missing_capabilities"] == ["benchmark_runner"], fallback
     assert fallback["capability_gate"]["blocked_candidates"][1]["missing_capabilities"] == ["network"], fallback
     assert fallback["capability_gate"]["blocked_candidates"][2]["missing_capabilities"] == ["gpu_runner"], fallback
-    assert "Refresh the public docs fallback" in fallback["recommended_action"], fallback
-    assert "Refresh the public docs fallback" in fallback["protocol_action_packet"]["summary"], fallback
+    assert "Run the benchmark runner once" in fallback["recommended_action"], fallback
+    assert "choose one of 1 capability-runnable todo(s)" in fallback["protocol_action_packet"]["summary"], fallback
 
     benchmark_ready = build_quota_should_run(
         status_payload([p0_benchmark, p0_validate, p1_docs]),
@@ -158,7 +165,10 @@ def main() -> int:
         available_capabilities=["shell", "filesystem_write", "benchmark_runner"],
     )
     assert benchmark_ready["capability_gate"]["action"] == "run", benchmark_ready
-    assert benchmark_ready["capability_gate"]["selected_todo"]["todo_id"] == "todo_capability_1", benchmark_ready
+    assert [
+        item["todo_id"]
+        for item in benchmark_ready["capability_gate"]["runnable_candidates"]
+    ] == ["todo_capability_1", "todo_capability_2", "todo_capability_5"], benchmark_ready
     assert benchmark_ready["capability_gate"]["blocked_candidates"] == [], benchmark_ready
 
     spend_preview = build_quota_slot_preview(
@@ -168,7 +178,7 @@ def main() -> int:
     )
     assert spend_preview["ok"] is True, spend_preview
     assert spend_preview["before"]["normal_delivery_allowed"] is True, spend_preview
-    assert spend_preview["before"]["capability_gate"]["selected_todo"]["todo_id"] == "todo_capability_1", spend_preview
+    assert spend_preview["before"]["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_capability_1", spend_preview
 
     bridge_missing = build_quota_should_run(
         status_payload([p0_benchmark]),

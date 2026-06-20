@@ -288,7 +288,11 @@ The resulting `capability_gate` is a read-only projection:
   "action": "run",
   "required": ["shell", "filesystem_write"],
   "missing": [],
-  "selected_todo": {"todo_id": "todo_docs"},
+  "decision_owner": "agent",
+  "selection_policy": "agent_steering_audit_over_runnable_candidates",
+  "runnable_candidates": [
+    {"todo_id": "todo_docs"}
+  ],
   "blocked_candidates": [
     {
       "todo_id": "todo_eval",
@@ -300,11 +304,13 @@ The resulting `capability_gate` is a read-only projection:
 ```
 
 Multiple P0/P1 items are handled as an ordered queue, not as a single selected
-todo. The guard scans visible executable candidates in projection order:
-another runnable P0 beats any P1 fallback; if all visible P0 candidates are
-blocked, the first runnable P1/P2 candidate may run while blocked
-higher-priority candidates stay visible in `blocked_candidates`. If every
-visible executable candidate is missing a capability, the gate returns
+todo. The guard scans visible executable candidates in projection order and
+projects which candidates are actually runnable in `runnable_candidates`; the
+agent then chooses which runnable item to advance during its steering audit. A
+runnable P0 remains visible before any P1 fallback, but Goal Harness does not
+turn that ordering into an automatic final choice. Blocked higher-priority
+candidates stay visible in `blocked_candidates`. If every visible executable
+candidate is missing a capability, the gate returns
 `action=repair_bridge` for repairable local bridges such as
 `benchmark_runner`/`external_evidence_poll`, `action=ask_owner` for owner-held
 capabilities such as `network`/`credentials`/`production_access`, or

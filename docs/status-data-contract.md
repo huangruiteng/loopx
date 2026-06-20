@@ -779,6 +779,15 @@ Item fields:
   primary action surface, while monitor items are supplemental context that
   should not consume the selected goal's advancement slot unless they record a
   material transition or blocker.
+- `capability_gate`: optional per-goal quota projection derived from visible
+  executable agent todos that declare `required_capabilities`. When
+  `action=run`, the gate projects `runnable_candidates` and
+  `blocked_candidates`; `decision_owner=agent` means the agent chooses the
+  actual todo from the runnable set during its steering audit. The gate must
+  not rewrite `recommended_action` into a single selected todo. When no visible
+  executable candidate is runnable, the gate owns the decision and returns
+  `repair_bridge`, `ask_owner`, or `skip` with concrete missing capability
+  details.
 - `project_asset.todo_projection_gap`: optional explicit gap object emitted
   when status cannot project `user_todos` and/or `agent_todos` for a connected
   project. This means "the first-screen todo state is unknown", not "there are
