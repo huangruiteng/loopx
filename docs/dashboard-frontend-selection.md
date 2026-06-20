@@ -77,6 +77,31 @@ The Python renderer remains the no-dependency diagnostic fallback. The product
 dashboard should be a Vite static build with owned shadcn-style components and
 typed data boundaries.
 
+## Two Frontstage Surfaces
+
+Goal Harness should keep two product surfaces separate even when they share the
+same React app, visual tokens, and small components.
+
+The **public showcase frontstage** is the homepage-style surface. It should be
+catalog-driven, polished, animated, and concise. Its data source is
+`docs/showcases/showcase-catalog.json` plus generated public-safe fixtures. It
+must not read live registry state, local status exports, internal project
+labels, raw task ids, raw benchmark material, screenshots from private tools,
+or machine-specific paths. This surface can be more aggressive visually because
+its job is to help new users feel the product value quickly.
+
+The **real control-plane frontstage** is the user/operator workspace. It should
+be denser, calmer, and more conservative: goal header, quota guard, user todo
+lane, agent todo lane, claims, gates, artifacts, source warnings, and run
+timeline. It may read live status only from relative or loopback URLs and stays
+read-only until a separate local write capability is explicitly enabled. This
+surface should optimize for correctness, scanability, and repeat use.
+
+Do not blur these surfaces for convenience. A hosted or copied public link
+should land in showcase mode. A live ops link should require an explicit
+`mode=ops` route and a safe local status source. Shared UI primitives are fine;
+shared live data defaults are not.
+
 ## Why This Stack
 
 Vite is a better fit than a server-first framework for the next milestone. Goal
