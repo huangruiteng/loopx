@@ -1211,16 +1211,204 @@ def _detached_process_state_from_pid_file(pid_file: Path) -> dict[str, Any]:
         return payload
     payload["pid"] = pid
     payload["pid_parse_ok"] = True
+    state, blocker = _pid_is_running(pid)
+    payload["process_state"] = state
+    if blocker:
+        payload["first_blocker"] = blocker
+    return payload
+
+def _pid_is_running(pid: int) -> tuple[str, str]:
+    """Cross-platform, read-only pid liveness check.
+
+    Returns ``(process_state, first_blocker)`` where ``process_state`` is one of
+    ``"running"`` / ``"ended"`` / ``"unknown"``. The probe never signals or
+    terminates the process: on Windows it queries state via
+    ``OpenProcess``/``GetExitCodeProcess`` (a bare ``os.kill(pid, 0)`` there
+    routes through ``TerminateProcess`` and would kill a live pid / raise
+    ``OSError`` for a dead one), and on POSIX it keeps the standard
+    ``os.kill(pid, 0)`` existence probe with its established outcomes. Known
+    limitation: a Windows process that exits with code 259 (STILL_ACTIVE) is
+    reported as ``running`` until its handle is gone.
+    """
+    if not isinstance(pid, int) or pid <= 0:
+        return "unknown", "pid_invalid"
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            STILL_ACTIVE = 259
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+            )
+            if not handle:
+                return "ended", ""
+            try:
+                code = wintypes.DWORD()
+                if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                    return "unknown", "pid_exit_code_query_failed"
+                if code.value == STILL_ACTIVE:
+                    return "running", ""
+                return "ended", ""
+            finally:
+                kernel32.CloseHandle(handle)
+        except Exception:
+            return "unknown", "pid_probe_failed"
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
-        payload["process_state"] = "ended"
+        return "ended", ""
     except PermissionError:
-        payload["process_state"] = "unknown"
-        payload["first_blocker"] = "pid_permission_denied"
+        return "unknown", "pid_permission_denied"
+    except OSError:
+        return "unknown", "pid_probe_failed"
+    return "running", ""
+
+TERMINAL_BENCH_LAUNCH_ARTIFACT_HANDLE_SCHEMA = "terminal_bench_launch_artifact_handle_v0"
+
+# What a memory-free poll of an observable handle may surface. Compact-only:
+# raw logs / artifact bodies / command lines / local paths stay out.
+_LAUNCH_ARTIFACT_HANDLE_DEFAULT_READ_BOUNDARY = {
+    "compact_only": True,
+    "may_read_process_state": True,
+    "may_read_artifact_refs": True,
+    "raw_logs_read": False,
+    "raw_artifact_bodies_read": False,
+    "command_line_read": False,
+    "local_paths_recorded": False,
+}
+
+
+def _launch_artifact_public_basename(value: Any) -> str | None:
+    """Reduce a path-ish value to a public-safe basename (no host path kept)."""
+    if not isinstance(value, str):
+        return None
+    name = Path(value.strip().replace("\\", "/")).name
+    if not name or name in {".", ".."}:
+        return None
+    return name[:120]
+
+
+def build_terminal_bench_launch_artifact_handle(
+    *,
+    run_basename: str,
+    job_name: str | None = None,
+    pid_file_basename: str = "worker_materialization_probe.pid.private",
+    artifact_ref_basenames: Iterable[str] | None = None,
+    read_boundary: dict[str, bool] | None = None,
+) -> dict[str, Any]:
+    """Build a compact, board-recordable observable handle for a launched job.
+
+    GH-C22: the handle bundles the launch identity (run/job basenames + the
+    pid-file basename) with the EXACT read-only command a fresh/forgetful
+    heartbeat may run to re-poll, plus compact artifact refs and read-boundary
+    flags. No host paths or raw bodies are recorded, so the handle is
+    public-safe and lets heartbeat observation work WITHOUT chat memory: a tick
+    reads the board handle and runs ``allowed_poll_command`` with the declared
+    argv shape.
+    """
+    refs: list[str] = []
+    for ref in artifact_ref_basenames or []:
+        basename = _launch_artifact_public_basename(ref)
+        if basename and basename not in refs:
+            refs.append(basename)
+    rb = (
+        dict(read_boundary)
+        if isinstance(read_boundary, dict)
+        else dict(_LAUNCH_ARTIFACT_HANDLE_DEFAULT_READ_BOUNDARY)
+    )
+    return {
+        "schema_version": TERMINAL_BENCH_LAUNCH_ARTIFACT_HANDLE_SCHEMA,
+        "benchmark_name": "terminal-bench",
+        "run_basename": _launch_artifact_public_basename(run_basename) or "run",
+        "job_name": _launch_artifact_public_basename(job_name) or "",
+        "pid_file_basename": (
+            _launch_artifact_public_basename(pid_file_basename)
+            or "worker_materialization_probe.pid.private"
+        ),
+        "artifact_refs": refs[:12],
+        "allowed_poll_command": (
+            "goal-harness benchmark poll-worker-materialization-probe"
+        ),
+        "poll_command_argv_shape": [
+            "--benchmark-name",
+            "terminal-bench",
+            "--jobs-dir",
+            "<jobs_dir>",
+            "--run-root",
+            "<run_root>",
+            "--job-name",
+            "<job_name>",
+        ],
+        "read_boundary": rb,
+        "raw_pid_file_path_recorded": False,
+        "local_paths_recorded": False,
+    }
+
+
+def observe_terminal_bench_launch_artifact_handle(
+    handle: dict[str, Any] | None,
+    *,
+    run_root: str | Path,
+) -> dict[str, Any]:
+    """Observe a launch-artifact handle by re-probing it under ``run_root``.
+
+    Reuses the cross-platform detached pid-file probe; never reads raw logs or
+    artifact bodies. Returns a compact, read-boundary-respecting observation a
+    heartbeat can act on without chat memory. ``run_root`` is read to probe but
+    is not recorded (only public basenames are surfaced).
+    """
+    handle = handle if isinstance(handle, dict) else {}
+    rb = (
+        handle.get("read_boundary")
+        if isinstance(handle.get("read_boundary"), dict)
+        else dict(_LAUNCH_ARTIFACT_HANDLE_DEFAULT_READ_BOUNDARY)
+    )
+    run_root_path = Path(run_root).expanduser()
+    pid_basename = (
+        _launch_artifact_public_basename(handle.get("pid_file_basename"))
+        or "worker_materialization_probe.pid.private"
+    )
+    observation: dict[str, Any] = {
+        "schema_version": TERMINAL_BENCH_LAUNCH_ARTIFACT_HANDLE_SCHEMA,
+        "run_basename": handle.get("run_basename") or run_root_path.name,
+        "job_name": handle.get("job_name") or "",
+    }
+    if rb.get("may_read_process_state", True):
+        pid_state = _detached_process_state_from_pid_file(
+            run_root_path / pid_basename
+        )
+        observation["pid"] = pid_state.get("pid")
+        observation["process_state"] = str(
+            pid_state.get("process_state") or "unknown"
+        )
+        observation["first_blocker"] = pid_state.get("first_blocker") or ""
     else:
-        payload["process_state"] = "running"
-    return payload
+        observation["process_state"] = "unknown"
+    if rb.get("may_read_artifact_refs", True):
+        refs = handle.get("artifact_refs")
+        clean_refs = [
+            basename
+            for ref in (refs if isinstance(refs, list) else [])
+            if (basename := _launch_artifact_public_basename(ref))
+        ]
+        observation["artifact_refs"] = clean_refs[:12]
+        observation["artifact_refs_present"] = [
+            basename
+            for basename in clean_refs
+            if (run_root_path / basename).exists()
+        ][:12]
+    observation["read_boundary"] = {
+        "compact_only": True,
+        "raw_logs_read": False,
+        "raw_artifact_bodies_read": False,
+        "command_line_read": False,
+        "local_paths_recorded": False,
+    }
+    return observation
+
 
 def _process_state_from_poll(process: subprocess.Popen[Any]) -> tuple[str, int | None]:
     returncode = process.poll()
@@ -2278,6 +2466,13 @@ def poll_terminal_bench_worker_materialization_probe(
         "compact_failure_class": post_launch.get("compact_failure_class"),
         "first_blocker": post_launch.get("first_blocker")
         or pid_state.get("first_blocker"),
+        "launch_artifact_handle": build_terminal_bench_launch_artifact_handle(
+            run_basename=run_root_path.name,
+            job_name=public_job_name or None,
+            artifact_ref_basenames=[
+                "worker_materialization_probe_poll.public.json",
+            ],
+        ),
         "boundary": {
             "no_upload": True,
             "submit_eligible": False,
