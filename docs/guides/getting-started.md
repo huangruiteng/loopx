@@ -68,7 +68,8 @@ Success looks like this:
 For Codex CLI users, the product target is even simpler: start in the Codex
 TUI, send one Goal Harness bootstrap message, and keep later automation visible
 and interruptible in that TUI whenever the CLI exposes a safe session-attachment
-primitive.
+primitive. The first-run path should not require you to understand registry
+paths, runtime roots, JSON payloads, or session files.
 
 First-run path:
 
@@ -78,16 +79,23 @@ project, show me the first user gate if one exists, then run the first safe
 agent todo only after quota says it should run.
 ```
 
-Once `goal-harness` is installed, generate a repo-specific paste message:
+The first useful response should show the current goal id, concrete user gate
+if one exists, top user todo if any, top agent todo, and next safe action before
+longer delivery work.
+
+Once `goal-harness` is installed, generate a stricter repo-specific paste
+message:
 
 ```bash
 goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
 ```
 
 Keep that as the preferred interactive path: the human watches and steers in
-Codex CLI TUI, while Goal Harness owns quota/status/todos/gates/writeback. To
-evaluate future same-session automation support without touching transcripts or
-session files, run:
+Codex CLI TUI, while Goal Harness owns quota/status/todos/gates/writeback.
+
+The commands below are optional automation checks after the one-message path
+works. To evaluate future same-session automation support without touching
+transcripts or session files, run:
 
 ```bash
 goal-harness codex-cli-session-probe

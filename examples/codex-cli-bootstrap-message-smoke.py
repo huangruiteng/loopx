@@ -25,6 +25,10 @@ MUST_HAVE = (
     "same Codex CLI TUI session",
     "hidden headless `codex exec`",
     "explicit fallback",
+    "current goal id",
+    "top user todo",
+    "top agent todo",
+    "next safe action",
     "goal-harness doctor",
     "goal-harness bootstrap",
     "quota should-run",
@@ -38,6 +42,7 @@ MUST_HAVE = (
     "refresh-state",
     "quota spend-slot",
     "--source controller",
+    "not first-run prerequisites",
 )
 
 
@@ -74,12 +79,19 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     product_contract = (REPO_ROOT / "docs/product/codex-cli-tui-loop.md").read_text(encoding="utf-8")
 
     for text in (readme, getting_started, product_contract):
-        assert "Codex CLI TUI" in text, text[:500]
+        assert "Codex CLI" in text and "TUI" in text, text[:500]
         assert "Start Goal Harness for this repo" in text, text[:500]
         assert "goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>" in text, text[:500]
 
     normalized_readme = " ".join(readme.split())
+    normalized_getting_started = " ".join(getting_started.split())
+    normalized_product_contract = " ".join(product_contract.split())
     assert "Headless `codex exec` is an explicit fallback" in normalized_readme, readme
+    assert "paste one message" in normalized_readme, readme
+    assert "show the current goal, user gate, top todos, and next safe action" in normalized_readme, readme
+    assert "first-run path should not require you to understand registry paths" in normalized_getting_started, getting_started
+    assert "optional automation checks after the one-message path works" in normalized_getting_started, getting_started
+    assert "first useful TUI response should be a control-plane snapshot" in normalized_product_contract, product_contract
     assert "goal-harness codex-cli-session-probe" in getting_started, getting_started
     assert "goal-harness codex-cli-exec-handoff --project . --goal-id <goal-id>" in getting_started, getting_started
 

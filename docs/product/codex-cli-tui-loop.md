@@ -71,6 +71,19 @@ repair/install Goal Harness if needed, connect the repo conservatively, run the
 quota/status guard, obey `interaction_contract`, preserve the visible TUI, and
 spend quota only after validated writeback.
 
+The first useful TUI response should be a control-plane snapshot, not a lecture
+about internals:
+
+- current goal id;
+- concrete user gate, or "none";
+- top user todo, or "none";
+- top agent todo;
+- next safe action.
+
+Registry paths, runtime roots, JSON payloads, local-driver plans, and
+visible-session proof fixtures are follow-up diagnostics. They should not be
+required before a first-time user sees the current goal/gate/todo state.
+
 ### 2. Session-Attached Automation
 
 This is the preferred automation target. A scheduler wakes up, runs

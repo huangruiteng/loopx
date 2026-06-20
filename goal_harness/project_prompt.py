@@ -332,6 +332,14 @@ Project: `{project}`
 Goal id: `{goal_id}`
 {agent_line}
 
+Success criteria for this first TUI turn:
+- I should not need to inspect registry paths, runtime roots, JSON payloads, or
+  hidden session files.
+- Before longer delivery work, show me the current goal id, concrete user gate
+  if any, top user todo if any, top agent todo, and next safe action.
+- If no user gate or user todo exists, say that explicitly and continue only
+  after the quota/status guard permits work.
+
 1. Ensure the Goal Harness CLI works:
 
 ```bash
@@ -361,7 +369,8 @@ Follow `interaction_contract` exactly:
 - If delivery is allowed, choose one runnable agent todo after a short steering
   audit, preferably a current-agent claimed advancement todo.
 
-4. Execute one bounded segment in this TUI-visible session. Validate the result.
+4. Report the current goal/gate/todo/next-action snapshot in this TUI, then
+execute one bounded segment in this TUI-visible session. Validate the result.
 Do not store raw Codex transcripts, credentials, private paths, raw logs, or
 production artifacts in public docs or Goal Harness state.
 
@@ -372,8 +381,9 @@ production artifacts in public docs or Goal Harness state.
 {quota_spend_command}
 ```
 
-End with the changed files, validation result, current gate/todo state, and the
-next safe action.
+End with changed files, validation result, current gate/todo state, and next
+safe action. Keep optional automation checks such as local-driver-plan or
+visible-session-proof as follow-up diagnostics, not first-run prerequisites.
 """
 
 
