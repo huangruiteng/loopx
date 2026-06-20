@@ -178,6 +178,36 @@ python3 scripts/benchmark_ecs_bootstrap.py \
   --pretty
 ```
 
+For Harbor-based SWE or Terminal-style runners, avoid downloading nvm, npm
+packages, or Codex inside every task container. Materialize a host-side
+preinstalled tools bundle and mount it read-only at Harbor's conventional
+agent-tools path:
+
+```bash
+python3 scripts/harbor_agent_tools_bundle.py \
+  --output ~/goal-harness-bench/harbor-agent-tools \
+  --pretty
+```
+
+Then add the mount to the Harbor job config or CLI launch:
+
+```yaml
+environment:
+  type: docker
+  mounts:
+    - type: bind
+      source: ~/goal-harness-bench/harbor-agent-tools
+      target: /opt/harbor-agent-tools
+      read_only: true
+```
+
+Prefer Harbor's preinstalled Codex agent variant when available, for example
+`codex-api-key-no-search`, because it prefixes `/opt/harbor-agent-tools/bin`
+during both setup and execution. A plain `codex` agent may pass setup if it
+finds the bundle, but still fail execution if the runner shell resets PATH.
+If the task container cannot reach the model endpoint after this, classify that
+as agent egress/proxy readiness, not as nvm/npm dependency materialization.
+
 The probe checks command presence, Docker server reachability, disk budget, and
 the standard workspace shape. It intentionally emits only command names,
 version first lines, booleans, counts, and the workspace basename.
