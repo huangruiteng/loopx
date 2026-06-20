@@ -21,20 +21,23 @@ in parallel.
 ## Public Repository Signal
 
 The workload signal is the whole public repository through fixed anchor commit
-`0510dda` (`Project outcome-floor blocker noop state`). The fixed anchor avoids
-letting this documentation update change its own evidence window.
+`86d6d9d` (`docs: sharpen always-on agent team hero copy`). The fixed anchor
+avoids letting this documentation update change its own evidence window.
 
 | Signal | Value |
 | --- | --- |
-| All public commits in the repository | 736 |
-| Unique files touched across public history | 547 |
-| Cumulative public insertions / deletions | 254763 / 48601 |
-| Public commits since 2026-06-18 00:00 +08:00 | 179 |
-| Recent unique files touched since 2026-06-18 | 189 |
-| Recent cumulative insertions / deletions | 41958 / 19641 |
-| Public commits on 2026-06-19 | 71 |
-| 2026-06-19 unique files touched | 114 |
-| 2026-06-19 cumulative insertions / deletions | 15181 / 957 |
+| All public commits in the repository | 801 |
+| Unique files touched across public history | 570 |
+| Cumulative public insertions / deletions | 265703 / 49895 |
+| Public commits since 2026-06-18 00:00 +08:00 | 244 |
+| Recent unique files touched since 2026-06-18 | 216 |
+| Recent cumulative insertions / deletions | 52898 / 20935 |
+| Public commits on 2026-06-19 | 74 |
+| 2026-06-19 unique files touched | 118 |
+| 2026-06-19 cumulative insertions / deletions | 16087 / 1082 |
+| Public evidence window | 2026-05-31 22:57 +08:00 to 2026-06-20 12:18 +08:00 |
+| Calendar elapsed in public Git window | 19.6 days |
+| Days with public commits | 16 |
 
 The repo-scale numbers show the environment Goal Harness had to manage:
 benchmark work, control-plane fixes, public docs, smoke coverage,
@@ -49,6 +52,60 @@ git rev-list --count HEAD
 git log --numstat --format=COMMIT:%H
 git log --reverse --oneline --since="2026-06-18T00:00:00+08:00"
 ```
+
+## Efficiency Evidence Model
+
+Commit volume is not itself an efficiency claim. The fair comparison is to
+translate the public repository state into product requirements, estimate what
+an ordinary AI-coding-assisted product process would schedule for each
+requirement, then compare that baseline with the public wall-clock evidence
+window.
+
+The baseline below already assumes competent AI coding help. It is not a
+"manual developer with no model" comparison. The assumed traditional process is:
+scope the requirement, write or review the contract, implement, add focused
+validation, document the behavior, review the diff, and merge or release it.
+Requirement clusters are discounted when the shipped state is only a prototype,
+design note, or partial adapter.
+
+| Product requirement cluster | Public evidence surface | Landing level | Conservative AI-coding-assisted baseline |
+| --- | --- | --- | --- |
+| Local control-plane kernel: bootstrap/connect, registry, status, history, check, review packet, todo CLI, public boundary scan | `goal_harness/`, README, status contracts, docs, smokes | shipped core | 11-16 developer-days |
+| Gate, quota, heartbeat, reward, blocker, and safe-fallback lifecycle | quota/status modules, heartbeat prompt docs, state interaction docs, regression smokes | shipped core with ongoing hardening | 10-15 developer-days |
+| Multi-agent ownership and side-agent delivery discipline | `claimed_by`, registered-agent checks, identity-aware heartbeat prompts, worktree guard, self-merge evidence flag | shipped coordination slice | 5-8 developer-days |
+| Benchmark and evaluation control contracts | Terminal-Bench, SkillsBench, ALE, Codex Goal worker contracts, reducers, readiness docs | partial product surface; not full leaderboard automation | 10-16 developer-days |
+| Dashboard, frontstage, and projection surfaces | dashboard app, status server, frontstage fixtures, showcase prototype, goal-channel projection | prototype to beta | 5-8 developer-days |
+| Public smokes, docs governance, and redaction discipline | `examples/`, showcase catalog checks, boundary checks, docs governance smoke | shipped support system | 8-12 developer-days |
+| Product positioning, onboarding, showcases, launch copy, naming, contributor tasks | README, Chinese README, showcases, product vision, outreach drafts | public docs and case surface | 5-8 developer-days |
+| Planning, dreaming, server/client product shape | planning lane docs, dreaming notes, server/client shape docs | design/prototype, deliberately low estimate | 2-4 developer-days |
+| Packaging, install, skills, contributor workflow | install scripts, global skill docs, contributor contracts | usable but still local-first | 3-5 developer-days |
+| **Total conservative baseline** | Whole public repo through `86d6d9d` | mixed maturity | **59-92 developer-days** |
+
+That baseline should be read as a range, not a precision metric. Several
+capabilities are deliberately not counted as high-cost production systems:
+frontstage is still a prototype, server/client shape is mostly product design,
+and benchmark adapters are public contracts plus partial routes rather than a
+finished hosted evaluation service.
+
+The public Git window is 19.6 calendar days, with 16 days containing public
+commits. Compared with a single AI-coding-assisted product engineer, the
+conservative requirement estimate suggests roughly **3.0x-4.7x calendar
+compression**. Compared with a small two-person AI-coding team, the claim
+should be weaker: roughly **1.8x-3.2x calendar compression**, depending on how
+much of the work could truly run in parallel after product review, validation,
+and merge sequencing.
+
+The stronger product claim is not the exact multiplier. It is that Goal
+Harness made the compression governable: multiple lanes moved in the same
+short window while the project still kept goals, gates, todos, ownership,
+evidence, boundary checks, and merge policy visible. Without that control
+plane, the same velocity would be much harder to review, hand off, or trust.
+
+This efficiency model is intentionally conservative and public-safe. It does
+not use private chat logs, local active-state bodies, raw agent sessions, or
+unpublished benchmark artifacts. Future versions can make it more rigorous by
+keeping the requirement clusters in a machine-readable fixture and asking two
+human reviewers to independently score landing level and baseline effort.
 
 ## Feature Chain
 

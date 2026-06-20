@@ -93,24 +93,40 @@ def main() -> int:
             assert demo_command is None, case
             workload = case.get("workload_signal")
             assert isinstance(workload, dict), case
-            assert workload.get("anchor_commit") == "0510dda", workload
+            assert workload.get("anchor_commit") == "86d6d9d", workload
             assert workload.get("scope") == "whole_public_repository", workload
             whole_repository = workload.get("whole_repository")
             assert isinstance(whole_repository, dict), workload
-            assert whole_repository.get("commit_count", 0) >= 700, whole_repository
-            assert whole_repository.get("files_touched", 0) >= 500, whole_repository
-            assert whole_repository.get("insertions", 0) >= 200000, whole_repository
+            assert whole_repository.get("commit_count", 0) >= 800, whole_repository
+            assert whole_repository.get("files_touched", 0) >= 570, whole_repository
+            assert whole_repository.get("insertions", 0) >= 260000, whole_repository
             assert whole_repository.get("deletions", 0) >= 40000, whole_repository
             recent_window = workload.get("recent_window")
             assert isinstance(recent_window, dict), workload
             assert recent_window.get("since") == "2026-06-18T00:00:00+08:00", recent_window
-            assert recent_window.get("commit_count", 0) >= 170, recent_window
-            assert recent_window.get("files_touched", 0) >= 180, recent_window
+            assert recent_window.get("commit_count", 0) >= 240, recent_window
+            assert recent_window.get("files_touched", 0) >= 210, recent_window
+            public_window = workload.get("public_window")
+            assert isinstance(public_window, dict), workload
+            assert public_window.get("calendar_days", 0) >= 19, public_window
+            assert public_window.get("active_commit_days", 0) >= 16, public_window
+            efficiency = workload.get("efficiency_model")
+            assert isinstance(efficiency, dict), workload
+            assert efficiency.get("baseline") == "AI-coding-assisted product process", efficiency
+            estimated_days = efficiency.get("estimated_developer_days")
+            assert isinstance(estimated_days, dict), efficiency
+            assert estimated_days.get("low", 0) >= 50, estimated_days
+            assert estimated_days.get("high", 0) >= estimated_days.get("low", 0), estimated_days
             assert "side_agent_scope" in case.get("pattern_tags", []), case
+            assert "efficiency_evidence_model" in case.get("pattern_tags", []), case
             page_text = read(page)
             for phrase in (
                 "Goal Harness was used to improve a fast-moving Goal Harness repository",
                 "The public repository history shows a connected long-horizon feature chain",
+                "Efficiency Evidence Model",
+                "The baseline below already assumes competent AI coding help",
+                "59-92 developer-days",
+                "3.0x-4.7x calendar",
                 "Benchmark and adapter maturation",
                 "Control-plane correctness",
                 "Planning and dreaming lanes",
@@ -125,7 +141,7 @@ def main() -> int:
     assert "showcases/README.md" in docs_index, "docs index must link showcases"
     assert "docs/showcases/README.md" in repo_readme, "README must link showcases"
     for phrase in (
-        "Long-running agent work, without losing the plot.",
+        "Always-on agent teams, governed by human judgment.",
         "## See It In Action",
         "docs/showcases/cases/0617-blocked-p0-safe-rotation.md",
         "docs/showcases/cases/0619-goal-harness-self-iteration.md",

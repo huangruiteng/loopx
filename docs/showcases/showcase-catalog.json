@@ -1,6 +1,6 @@
 {
   "schema_version": "goal_harness_showcase_catalog_v0",
-  "updated_at": "2026-06-19",
+  "updated_at": "2026-06-20",
   "redaction_policy": {
     "public_repo_may_include": [
       "sanitized domain labels",
@@ -131,7 +131,8 @@
         "todo_claim_ownership",
         "identity_aware_prompt",
         "self_merge_policy",
-        "evidence_writeback"
+        "evidence_writeback",
+        "efficiency_evidence_model"
       ],
       "headline": "A high-churn Goal Harness repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel.",
       "problem": "A long-running agent engineering repo needed to keep many public commits, benchmark routes, planning lanes, user gates, docs, smokes, and side-agent changes reviewable without relying on private chat memory.",
@@ -143,22 +144,44 @@
         "allow small validated side-agent self-merges while preserving primary review for risky work",
         "keep public showcases and smokes free of private chat, internal docs, raw trajectories, and raw benchmark evidence"
       ],
-      "user_value": "The operator can let a fast-moving multi-lane agent project continue across benchmark, product, docs, and side-agent work while keeping ownership, gates, validation, and follow-up visible in one shared control plane.",
+      "user_value": "The operator can let a fast-moving multi-lane agent project continue across benchmark, product, docs, and side-agent work while keeping ownership, gates, validation, follow-up, and conservative efficiency evidence visible in one shared control plane.",
       "workload_signal": {
-        "anchor_commit": "0510dda",
+        "anchor_commit": "86d6d9d",
         "scope": "whole_public_repository",
         "whole_repository": {
-          "commit_count": 736,
-          "files_touched": 547,
-          "insertions": 254763,
-          "deletions": 48601
+          "commit_count": 801,
+          "files_touched": 570,
+          "insertions": 265703,
+          "deletions": 49895
         },
         "recent_window": {
           "since": "2026-06-18T00:00:00+08:00",
-          "commit_count": 179,
-          "files_touched": 189,
-          "insertions": 41958,
-          "deletions": 19641
+          "commit_count": 244,
+          "files_touched": 216,
+          "insertions": 52898,
+          "deletions": 20935
+        },
+        "public_window": {
+          "from": "2026-05-31T22:57:55+08:00",
+          "to": "2026-06-20T12:18:42+08:00",
+          "calendar_days": 19.6,
+          "active_commit_days": 16
+        },
+        "efficiency_model": {
+          "baseline": "AI-coding-assisted product process",
+          "estimated_developer_days": {
+            "low": 59,
+            "high": 92
+          },
+          "single_engineer_calendar_compression": {
+            "low": 3.0,
+            "high": 4.7
+          },
+          "two_person_team_calendar_compression": {
+            "low": 1.8,
+            "high": 3.2
+          },
+          "claim_boundary": "directional, maturity-adjusted, public Git evidence only"
         },
         "main_surfaces": [
           "CLI",
@@ -167,9 +190,11 @@
           "heartbeat prompt",
           "dashboard/status server",
           "benchmark adapters",
+          "frontstage projection",
           "docs",
           "smokes",
-          "showcases"
+          "showcases",
+          "product positioning"
         ]
       },
       "feature_points": [
@@ -179,22 +204,25 @@
         "user/operator surfaces including diagnostics, dashboard framing, onboarding, quickstart, README, and showcases",
         "registered todo claim ownership and identity-aware scoped heartbeat prompts",
         "side-agent self-merge completion flag with evidence",
-        "public-boundary smokes and showcase catalog checks"
+        "public-boundary smokes and showcase catalog checks",
+        "conservative efficiency evidence model that converts commits into maturity-adjusted product requirement clusters"
       ],
       "evidence_boundary": "Public Git evidence only; no private thread text, local active-state bodies, internal document links, screenshots, raw benchmark material, credentials, or machine-specific paths.",
       "frontend_card": {
         "visual_metaphor": "many repo lanes flowing through one control plane, with a side-agent lane branching safely beside the primary benchmark lane",
-        "primary_metric_hint": "736 public repo commits and 179 recent commits stayed reviewable through one control plane",
+        "primary_metric_hint": "801 public commits mapped to a conservative 59-92 AI-assisted developer-day baseline over a 19.6-day public Git window",
         "badges": [
           "self-iteration",
           "commit-backed",
-          "side-agent"
+          "side-agent",
+          "efficiency-model"
         ],
         "story_beats": [
           "whole repo moves quickly across benchmark, runtime, docs, dashboard, planning, and smoke surfaces",
           "Goal Harness keeps durable goals, todos, gates, quota, evidence, and run history visible",
           "side-agent lane progresses beside the primary benchmark lane",
           "validated side changes can self-merge while risky work stays on primary review",
+          "public Git history is converted into conservative product requirement clusters",
           "public docs and smokes turn the experience into a reusable case"
         ]
       }
