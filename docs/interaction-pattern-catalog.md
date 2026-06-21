@@ -35,6 +35,8 @@ machine paths.
 ## Decision Scope Model
 
 User gates are not global booleans. The first-class model is a scoped decision:
+the machine-facing schema is
+[`decision_scope_v0`](reference/protocols/decision-scope-v0.md).
 
 - a **decision/gate** names the authority still needed, such as a private
   material read, resource spend, write boundary, production action, public

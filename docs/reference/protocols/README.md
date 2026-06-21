@@ -6,6 +6,7 @@ integration. Keep these docs implementation-oriented and smoke-testable.
 Current contracts:
 
 - [Action packet decision v0](protocol-action-packet-decision-v0.md)
+- [Decision Scope v0](decision-scope-v0.md)
 - [Host integration surface v0](host-integration-surface-v0.md)
 - [Session runtime to LoopX projection v0](session-runtime-loopx-projection-v0.md)
 - [Session runtime controlled writeback v0](session-runtime-controlled-writeback-v0.md)
