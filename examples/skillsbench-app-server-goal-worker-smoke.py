@@ -655,6 +655,102 @@ sys.exit(7)
         proc.wait(timeout=2)
 
 
+def test_acp_relay_materializes_public_failure_trace_without_worker_output() -> None:
+    fake_worker = """#!/usr/bin/env python3
+import sys
+
+sys.stderr.write("private startup failure detail")
+sys.exit(9)
+"""
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-no-output-") as tmp:
+        root = Path(tmp)
+        worker = root / "fake_worker.py"
+        work = root / "work"
+        trace_dir = root / "worker-traces"
+        worker.write_text(fake_worker, encoding="utf-8")
+        worker.chmod(0o755)
+        work.mkdir()
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "skillsbench_local_acp_relay.py"),
+                "--app-server-goal-worker",
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--worker-script",
+                str(worker),
+                "--timeout-sec",
+                "5",
+                "--worker-public-trace-dir",
+                str(trace_dir),
+            ],
+            cwd=REPO_ROOT,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        assert proc.stdin is not None
+        assert proc.stdout is not None
+
+        def send(message: dict[str, Any]) -> None:
+            proc.stdin.write(json.dumps(message) + "\n")
+            proc.stdin.flush()
+
+        def read_response(request_id: int) -> dict[str, Any]:
+            while True:
+                line = proc.stdout.readline()
+                assert line, proc.stderr.read()
+                message = json.loads(line)
+                if message.get("id") == request_id and "method" not in message:
+                    return message
+
+        send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        read_response(1)
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {"cwd": str(work), "mcpServers": []},
+            }
+        )
+        session_id = read_response(2)["result"]["sessionId"]
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": session_id,
+                    "prompt": [{"type": "text", "text": "private task placeholder"}],
+                },
+            }
+        )
+        final_response = read_response(3)
+        assert final_response["error"]["message"] == "host app-server goal worker failed"
+        traces = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in sorted(trace_dir.glob("*.compact.json"))
+        ]
+        failure_traces = [
+            item
+            for item in traces
+            if item.get("trace_kind") == "host_worker_process_failure"
+        ]
+        assert len(failure_traces) == 1, traces
+        trace = failure_traces[0]
+        assert trace["ok"] is False, trace
+        assert trace["worker_process"]["returncode"] == 9, trace
+        assert trace["worker_process"]["stderr_bytes"] > 0, trace
+        trace_text = json.dumps(trace, sort_keys=True)
+        assert "private startup failure detail" not in trace_text, trace
+        assert "private task placeholder" not in trace_text, trace
+        assert str(work) not in trace_text, trace
+        proc.terminate()
+        proc.wait(timeout=2)
+
+
 def test_full_run_fails_closed_until_bridge_is_materialized() -> None:
     result = subprocess.run(
         [
@@ -728,6 +824,7 @@ if __name__ == "__main__":
     test_acp_relay_materializes_lifecycle_trace_before_prompt()
     test_acp_relay_streams_public_keepalive_while_worker_runs()
     test_acp_relay_preserves_public_worker_trace_on_worker_failure()
+    test_acp_relay_materializes_public_failure_trace_without_worker_output()
     test_full_run_fails_closed_until_bridge_is_materialized()
     test_full_run_with_bridge_ready_requires_host_acp_launch()
     test_launcher_patches_rollout_planes_connect_acp()

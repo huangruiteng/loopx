@@ -323,8 +323,14 @@ class SkillsBenchLocalAcpRelay:
                     now = time.monotonic()
                     if now >= deadline:
                         proc.kill()
-                        proc.communicate(timeout=2)
-                        self._publish_worker_trace(output_json)
+                        stdout_text, stderr_text = proc.communicate(timeout=2)
+                        if not self._publish_worker_trace(output_json):
+                            self._publish_worker_failure_trace(
+                                stage="timeout",
+                                returncode=proc.returncode,
+                                stdout_text=stdout_text,
+                                stderr_text=stderr_text,
+                            )
                         raise TimeoutError
                     if now >= next_heartbeat:
                         self._write_worker_heartbeat(
@@ -336,12 +342,24 @@ class SkillsBenchLocalAcpRelay:
                             now + max(1.0, self._config.stream_heartbeat_interval_sec)
                         )
                     time.sleep(0.2)
-                proc.communicate(timeout=5)
+                stdout_text, stderr_text = proc.communicate(timeout=5)
             except subprocess.TimeoutExpired as exc:
-                self._publish_worker_trace(output_json)
+                if not self._publish_worker_trace(output_json):
+                    self._publish_worker_failure_trace(
+                        stage="communicate_timeout",
+                        returncode=proc.returncode,
+                        stdout_text="",
+                        stderr_text="",
+                    )
                 raise TimeoutError from exc
             if proc.returncode != 0:
-                self._publish_worker_trace(output_json)
+                if not self._publish_worker_trace(output_json):
+                    self._publish_worker_failure_trace(
+                        stage="worker_exit_nonzero_before_public_trace",
+                        returncode=proc.returncode,
+                        stdout_text=stdout_text,
+                        stderr_text=stderr_text,
+                    )
                 raise RuntimeError("host app-server goal worker failed")
             self._publish_worker_trace(output_json)
             try:
@@ -350,7 +368,7 @@ class SkillsBenchLocalAcpRelay:
                 raise RuntimeError("host app-server goal worker response missing") from exc
             return response or "host app-server goal worker returned an empty final message"
 
-    def _publish_worker_trace(self, output_json: Path) -> None:
+    def _publish_worker_trace(self, output_json: Path) -> bool:
         """Persist a public-safe app-server worker trace for the reducer.
 
         The worker output is already compact, but this method still rewrites a
@@ -359,13 +377,13 @@ class SkillsBenchLocalAcpRelay:
         """
 
         if not self._config.worker_public_trace_dir:
-            return
+            return False
         try:
             payload = json.loads(output_json.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return
+            return False
         if not isinstance(payload, dict):
-            return
+            return False
 
         def compact_dict(source: Any, allowed: tuple[str, ...]) -> dict[str, Any]:
             if not isinstance(source, dict):
@@ -435,6 +453,76 @@ class SkillsBenchLocalAcpRelay:
                     "host_paths_recorded",
                 ),
             ),
+        }
+        self._write_worker_public_trace(trace)
+        return True
+
+    def _publish_worker_failure_trace(
+        self,
+        *,
+        stage: str,
+        returncode: int | None,
+        stdout_text: str,
+        stderr_text: str,
+    ) -> None:
+        """Persist compact failure evidence when the host worker writes no trace."""
+
+        if not self._config.worker_public_trace_dir:
+            return
+        safe_stage = "".join(
+            ch if ch.isalnum() or ch == "_" else "_"
+            for ch in str(stage or "").strip().lower()
+        )
+        if not safe_stage:
+            safe_stage = "worker_failed_before_public_trace"
+        trace = {
+            "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
+            "ok": False,
+            "route": "codex-app-server-goal-baseline",
+            "trace_kind": "host_worker_process_failure",
+            "benchmark_id": self._config.dataset,
+            "task_id": self._config.task_id,
+            "worker_process": {
+                "schema_version": "skillsbench_host_worker_process_failure_v0",
+                "stage": safe_stage,
+                "returncode": returncode
+                if isinstance(returncode, int) and not isinstance(returncode, bool)
+                else None,
+                "stdout_bytes": len((stdout_text or "").encode("utf-8")),
+                "stderr_bytes": len((stderr_text or "").encode("utf-8")),
+                "raw_stdout_recorded": False,
+                "raw_stderr_recorded": False,
+                "host_paths_recorded": False,
+            },
+            "worker_contract": {
+                "schema_version": "skillsbench_app_server_goal_worker_contract_v0",
+                "route": "codex-app-server-goal-baseline",
+                "ready": False,
+                "runner_integration_ready": True,
+                "first_blocker": safe_stage,
+            },
+            "prompt": {"raw_recorded": False},
+            "turn": {
+                "thread_id_present": False,
+                "goal_get_present": False,
+                "turn_id_present": False,
+                "turn_completed_observed": False,
+                "assistant_message_present": False,
+                "raw_transcript_recorded": False,
+                "raw_assistant_message_recorded": False,
+            },
+            "private_response_text": {
+                "written": False,
+                "path_recorded": False,
+                "raw_recorded_in_public_json": False,
+            },
+            "boundary": {
+                "raw_task_text_recorded": False,
+                "raw_logs_recorded": False,
+                "raw_trajectory_recorded": False,
+                "credential_values_recorded": False,
+                "host_paths_recorded": False,
+            },
         }
         self._write_worker_public_trace(trace)
 
