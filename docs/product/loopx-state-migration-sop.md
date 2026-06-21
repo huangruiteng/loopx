@@ -31,7 +31,33 @@ registry. There is no default “migrate everything” behavior.
 loopx doctor
 ```
 
-2. Preview one goal migration.
+2. Create a local backup before the first execute.
+
+The migration is copy-first, but existing users should still keep a timestamped
+backup of the legacy registry, legacy runtime root, and any target LoopX state
+that may already exist.
+
+```bash
+backup_dir="$HOME/.codex/loopx-migration-backup-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$backup_dir"
+
+cp -a "$HOME/.codex/goal-harness" "$backup_dir/goal-harness-runtime"
+if [ -d "$HOME/.codex/loopx" ]; then
+  cp -a "$HOME/.codex/loopx" "$backup_dir/loopx-runtime-before-migration"
+fi
+```
+
+For a project-local migration, also back up the current project state before
+writing `.loopx/registry.json` or copied active-state files:
+
+```bash
+mkdir -p "$backup_dir/project-state"
+if [ -d .loopx ]; then cp -a .loopx "$backup_dir/project-state/.loopx"; fi
+if [ -d .codex ]; then cp -a .codex "$backup_dir/project-state/.codex"; fi
+if [ -d .local ]; then cp -a .local "$backup_dir/project-state/.local"; fi
+```
+
+3. Preview one goal migration.
 
 ```bash
 loopx --registry .loopx/registry.json migrate-state \
@@ -46,7 +72,7 @@ loopx --registry .loopx/registry.json migrate-state \
 The preview should show `dry_run=true`, the selected old goal id, and the
 migrated new goal id. It should not create `.loopx/registry.json`.
 
-3. Execute after the preview looks right.
+4. Execute after the preview looks right.
 
 ```bash
 loopx --registry .loopx/registry.json migrate-state \
@@ -64,7 +90,7 @@ Use `--copy-runtime` only when the old run history should remain visible to
 LoopX. For a clean rename validation lane, copying active state alone is often
 enough.
 
-4. For a machine with several existing projects, preview the full legacy
+5. For a machine with several existing projects, preview the full legacy
    registry before doing a batch migration.
 
 ```bash
@@ -96,7 +122,7 @@ This batch path is for the shared local control plane. When a repo becomes the
 active working checkout again, run the one-goal project-local migration from
 that repo so it also has its own `.loopx/registry.json`.
 
-5. Verify the migrated state.
+6. Verify the migrated state.
 
 ```bash
 loopx --registry .loopx/registry.json registry
@@ -107,7 +133,7 @@ loopx --registry .loopx/registry.json quota should-run \
 loopx --registry .loopx/registry.json check --scan-root .
 ```
 
-6. Update automations only after the migrated goal is visible.
+7. Update automations only after the migrated goal is visible.
 
 The heartbeat prompt should use the new goal id and the LoopX command:
 
@@ -120,6 +146,35 @@ LoopX CLI is source of truth.
 Do not keep an old automation id or prompt body around as a hidden
 compatibility path. If a Codex App heartbeat cannot be renamed in place, delete
 the old heartbeat and create a new `loopx` heartbeat.
+
+8. Roll back only by restoring the backup.
+
+If verification fails, do not hand-edit migrated JSON in place. Restore the
+backup, rerun a dry-run with narrower `--goal-id` / `--goal-id-map` /
+`--path-map` choices, then execute again only after the preview is clean.
+
+```bash
+# Global rollback.
+rm -rf "$HOME/.codex/loopx"
+if [ -d "$backup_dir/loopx-runtime-before-migration" ]; then
+  cp -a "$backup_dir/loopx-runtime-before-migration" "$HOME/.codex/loopx"
+fi
+
+# Project-local rollback from the project root.
+rm -rf .loopx .codex .local
+if [ -d "$backup_dir/project-state/.loopx" ]; then
+  cp -a "$backup_dir/project-state/.loopx" .loopx
+fi
+if [ -d "$backup_dir/project-state/.codex" ]; then
+  cp -a "$backup_dir/project-state/.codex" .codex
+fi
+if [ -d "$backup_dir/project-state/.local" ]; then
+  cp -a "$backup_dir/project-state/.local" .local
+fi
+```
+
+If the machine did not have a previous `~/.codex/loopx`, the global rollback
+leaves that target runtime absent. The next migration attempt will recreate it.
 
 ## Safety Rules
 
