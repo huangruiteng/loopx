@@ -264,6 +264,11 @@ the CLI flag `goal-harness todo add --required-capability benchmark_runner`.
 This is not a global agent profile and not a permission system. It is a
 per-todo execution preflight so the guard can distinguish "quota is available"
 from "this step can actually run in the current environment."
+Use `required_capabilities` for prerequisites, not for the capability the todo
+is intended to create. A todo that repairs, develops, materializes, or
+parity-checks a bridge capability should declare that output side with
+`target_capabilities`. Target capabilities are projected for visibility and
+repair-mode routing, but they are not hard execution gates.
 
 `quota should-run` compares the visible executable advancement queue with the
 current launcher capabilities. Basic local capabilities such as `shell`,
@@ -315,6 +320,13 @@ candidate is missing a capability, the gate returns
 `benchmark_runner`/`external_evidence_poll`, `action=ask_owner` for owner-held
 capabilities such as `network`/`credentials`/`production_access`, or
 `action=skip` for unsupported capability classes.
+
+When a missing repairable bridge is itself the target of the todo, for example
+`required_capabilities=shell` plus `target_capabilities=benchmark_runner`, the
+candidate remains in `runnable_candidates` with `capability_repair_mode=true`,
+`capability_action=repair_bridge`, and candidate-local
+`missing_target_capabilities`. This avoids a circular gate where a todo cannot
+develop `benchmark_runner` because it does not already have `benchmark_runner`.
 
 External-evidence waits have an additional CLI-level observation contract. When
 the selected goal is `state=waiting`, `waiting_on=external_evidence`, and its

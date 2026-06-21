@@ -206,6 +206,10 @@ def normalize_required_capabilities(value: Any) -> list[str]:
     return capabilities
 
 
+def normalize_target_capabilities(value: Any) -> list[str]:
+    return normalize_required_capabilities(value)
+
+
 def build_todo_id(
     *,
     role: Any,
@@ -294,6 +298,10 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             capabilities = normalize_required_capabilities(value)
             if capabilities:
                 metadata["required_capabilities"] = capabilities
+        elif key in {"target_capability", "target_capabilities"}:
+            capabilities = normalize_target_capabilities(value)
+            if capabilities:
+                metadata["target_capabilities"] = capabilities
         elif key == "claimed_by":
             claimed_by = normalize_todo_claimed_by(value)
             if claimed_by:
@@ -316,6 +324,7 @@ def format_todo_metadata_line(
     action_kind: str | None = None,
     required_write_scopes: Any = None,
     required_capabilities: Any = None,
+    target_capabilities: Any = None,
     claimed_by: str | None = None,
     note: str | None = None,
     evidence: str | None = None,
@@ -360,6 +369,14 @@ def format_todo_metadata_line(
         fields.append(
             "required_capabilities="
             f"{encode_metadata_value(','.join(normalized_capabilities))}"
+        )
+    normalized_target_capabilities = normalize_target_capabilities(target_capabilities)
+    if target_capabilities and not normalized_target_capabilities:
+        raise ValueError("target_capabilities must contain public-safe capability tokens")
+    if normalized_target_capabilities:
+        fields.append(
+            "target_capabilities="
+            f"{encode_metadata_value(','.join(normalized_target_capabilities))}"
         )
     normalized_claimed_by = normalize_todo_claimed_by(claimed_by)
     if claimed_by and not normalized_claimed_by:

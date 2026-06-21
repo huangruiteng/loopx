@@ -392,6 +392,12 @@ Capability is a per-todo execution preflight, not a global agent profile and
 not a permission grant. `status` should project each todo's
 `required_capabilities`; `quota should-run` should derive a read-only
 `capability_gate` over the visible executable queue.
+Do not declare a capability as required merely because the todo is meant to
+develop, repair, or parity-check that capability. Use `target_capabilities` for
+that output side of the work. For example, a product-path parity todo can
+declare `required_capabilities=shell` and `target_capabilities=benchmark_runner`:
+the gate may project it as runnable repair work even while the target bridge
+capability is absent.
 
 The controller scans executable candidates in projection order and classifies
 them, but it does not make the final todo choice. If the first P0 requires
@@ -400,12 +406,20 @@ both the runnable P0 and any later runnable fallback are projected in
 `capability_gate.runnable_candidates`; blocked higher-priority items remain
 visible in `capability_gate.blocked_candidates`. `recommended_action` remains
 routing context, not a chosen runnable todo.
+If the first P0 is not trying to run the benchmark but to repair or materialize
+the benchmark bridge itself, it should appear in `runnable_candidates` with
+`target_capabilities`, `capability_repair_mode=true`, and
+`capability_action=repair_bridge` instead of being hidden behind a lower-value
+fallback.
 
 When `capability_gate.action=run`, the decision contract is:
 
 - `decision_owner=agent`;
 - `selection_policy=agent_steering_audit_over_runnable_candidates`;
 - `runnable_candidates` is the allowed candidate set for this turn;
+- candidates with `capability_repair_mode=true` are allowed repair/development
+  work for a missing `target_capabilities` bridge, not direct execution through
+  that missing bridge;
 - `blocked_candidates` is the visible set of higher- or same-priority work
   that cannot currently run;
 - the agent must choose the actual todo from `runnable_candidates`, then

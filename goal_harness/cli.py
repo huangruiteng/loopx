@@ -5883,6 +5883,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     todo_parser.add_argument(
+        "--target-capability",
+        dest="target_capabilities",
+        action="append",
+        help=(
+            "For todo add/update, declare a capability this todo is building, "
+            "repairing, materializing, or parity-checking. This is not a hard "
+            "execution prerequisite."
+        ),
+    )
+    todo_parser.add_argument(
         "--claimed-by",
         help=(
             "For todo add/claim/update/complete, soft-claim the todo for a registered "
@@ -10271,6 +10281,7 @@ def main(argv: list[str] | None = None) -> int:
                     action_kind=args.action_kind,
                     required_write_scopes=args.required_write_scopes,
                     required_capabilities=args.required_capabilities,
+                    target_capabilities=args.target_capabilities,
                     claimed_by=args.claimed_by,
                     project=Path(args.project).expanduser() if args.project else None,
                     state_file=Path(args.state_file).expanduser() if args.state_file else None,
@@ -10295,6 +10306,7 @@ def main(argv: list[str] | None = None) -> int:
                         ("--action-kind", args.action_kind),
                         ("--required-write-scope", args.required_write_scopes),
                         ("--required-capability", args.required_capabilities),
+                        ("--target-capability", args.target_capabilities),
                         ("--next-agent-todo", args.next_agent_todo),
                         ("--next-user-todo", args.next_user_todo),
                         ("--next-claimed-by", args.next_claimed_by),
@@ -10336,10 +10348,11 @@ def main(argv: list[str] | None = None) -> int:
                     args.action_kind,
                     args.required_write_scopes,
                     args.required_capabilities,
+                    args.target_capabilities,
                     args.claimed_by,
                     args.clear_claim,
                 ]):
-                    raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --claimed-by, or --clear-claim")
+                    raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, or --clear-claim")
                 if args.next_claimed_by:
                     raise ValueError("todo update does not support --next-claimed-by")
                 if args.side_agent_self_merged:
@@ -10358,6 +10371,7 @@ def main(argv: list[str] | None = None) -> int:
                     action_kind=args.action_kind,
                     required_write_scopes=args.required_write_scopes,
                     required_capabilities=args.required_capabilities,
+                    target_capabilities=args.target_capabilities,
                     claimed_by=args.claimed_by,
                     clear_claim=bool(args.clear_claim),
                     project=Path(args.project).expanduser() if args.project else None,

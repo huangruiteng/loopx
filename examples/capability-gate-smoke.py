@@ -18,8 +18,16 @@ from goal_harness.quota import build_quota_should_run, build_quota_slot_preview 
 GOAL_ID = "capability-gate-goal"
 
 
-def todo(index: int, priority: str, text: str, capabilities: list[str]) -> dict[str, Any]:
-    return {
+def todo(
+    index: int,
+    priority: str,
+    text: str,
+    capabilities: list[str],
+    *,
+    action_kind: str | None = None,
+    target_capabilities: list[str] | None = None,
+) -> dict[str, Any]:
+    item = {
         "schema_version": "todo_item_v0",
         "todo_id": f"todo_capability_{index}",
         "role": "agent",
@@ -30,9 +38,12 @@ def todo(index: int, priority: str, text: str, capabilities: list[str]) -> dict[
         "text": text,
         "title": text.removeprefix(f"[{priority}] "),
         "task_class": "advancement_task",
-        "action_kind": "run_eval" if "benchmark" in text.lower() else "validate",
+        "action_kind": action_kind or ("run_eval" if "benchmark" in text.lower() else "validate"),
         "required_capabilities": capabilities,
     }
+    if target_capabilities:
+        item["target_capabilities"] = target_capabilities
+    return item
 
 
 def status_payload(items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -119,6 +130,14 @@ def main() -> int:
         "[P1] Refresh the public docs fallback and validate it.",
         ["shell", "filesystem_write"],
     )
+    p0_repair_benchmark_bridge = todo(
+        7,
+        "P0",
+        "[P0] Repair benchmark treatment product-path parity before claiming uplift.",
+        ["shell"],
+        action_kind="benchmark_treatment_product_path_parity",
+        target_capabilities=["benchmark_runner"],
+    )
 
     p0_fallback = build_quota_should_run(
         status_payload([p0_benchmark, p0_validate, p1_docs]),
@@ -158,6 +177,31 @@ def main() -> int:
     assert fallback["capability_gate"]["blocked_candidates"][2]["missing_capabilities"] == ["gpu_runner"], fallback
     assert "Run the benchmark runner once" in fallback["recommended_action"], fallback
     assert "choose one of 1 capability-runnable todo(s)" in fallback["protocol_action_packet"]["summary"], fallback
+
+    repair_candidate = build_quota_should_run(
+        status_payload([p0_repair_benchmark_bridge, p0_benchmark, p1_docs]),
+        goal_id=GOAL_ID,
+        available_capabilities=["shell", "filesystem_write"],
+    )
+    assert repair_candidate["should_run"] is True, repair_candidate
+    assert repair_candidate["normal_delivery_allowed"] is True, repair_candidate
+    assert repair_candidate["capability_gate"]["action"] == "run", repair_candidate
+    assert [
+        item["todo_id"]
+        for item in repair_candidate["capability_gate"]["runnable_candidates"]
+    ] == ["todo_capability_7", "todo_capability_5"], repair_candidate
+    bridge_candidate = repair_candidate["capability_gate"]["runnable_candidates"][0]
+    assert bridge_candidate["missing_capabilities"] == [], repair_candidate
+    assert bridge_candidate["target_capabilities"] == ["benchmark_runner"], repair_candidate
+    assert bridge_candidate["missing_target_capabilities"] == ["benchmark_runner"], repair_candidate
+    assert bridge_candidate["capability_action"] == "repair_bridge", repair_candidate
+    assert bridge_candidate["capability_repair_mode"] is True, repair_candidate
+    assert repair_candidate["capability_gate"]["repair_missing"] == ["benchmark_runner"], repair_candidate
+    assert repair_candidate["capability_gate"]["repair_candidate_count"] == 1, repair_candidate
+    assert [
+        item["todo_id"]
+        for item in repair_candidate["capability_gate"]["blocked_candidates"]
+    ] == ["todo_capability_1"], repair_candidate
 
     benchmark_ready = build_quota_should_run(
         status_payload([p0_benchmark, p0_validate, p1_docs]),

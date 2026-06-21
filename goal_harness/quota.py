@@ -37,6 +37,7 @@ from .todo_contract import (
     TODO_TASK_CLASS_USER_GATE,
     next_action_requires_advancement_text,
     normalize_required_capabilities,
+    normalize_target_capabilities,
     normalize_todo_claimed_by,
     normalize_required_write_scopes,
     normalize_todo_status,
@@ -962,6 +963,7 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "action_kind",
         "required_write_scopes",
         "required_capabilities",
+        "target_capabilities",
         "claimed_by",
     ):
         if item.get(key) is not None:
@@ -994,13 +996,27 @@ def _capability_missing_action(missing: list[str]) -> str:
     return "skip"
 
 
-def _capability_candidate_item(item: dict[str, Any], *, missing: list[str]) -> dict[str, Any]:
+def _capability_candidate_item(
+    item: dict[str, Any],
+    *,
+    missing: list[str],
+    missing_target_capabilities: list[str] | None = None,
+) -> dict[str, Any]:
     text = str(item.get("text") or "").strip()
     payload = _compact_todo_summary_item(item, text=text)
     required = normalize_required_capabilities(item.get("required_capabilities"))
+    targets = normalize_target_capabilities(item.get("target_capabilities"))
     payload["required_capabilities"] = required
+    if targets:
+        payload["target_capabilities"] = targets
     payload["missing_capabilities"] = missing
     payload["capability_action"] = _capability_missing_action(missing)
+    missing_targets = normalize_target_capabilities(missing_target_capabilities)
+    if missing_targets:
+        payload["missing_target_capabilities"] = missing_targets
+    if missing_targets and set(missing_targets) & CAPABILITY_REPAIR_BRIDGE_HINTS:
+        payload["capability_repair_mode"] = True
+        payload["capability_action"] = "repair_bridge"
     return payload
 
 
@@ -1038,23 +1054,37 @@ def _capability_gate(
     saw_requirement = False
     for item in candidates:
         required = normalize_required_capabilities(item.get("required_capabilities"))
-        if required:
+        targets = normalize_target_capabilities(item.get("target_capabilities"))
+        if required or targets:
             saw_requirement = True
-        missing = [capability for capability in required if capability not in available]
+        hard_required = [capability for capability in required if capability not in targets]
+        missing = [capability for capability in hard_required if capability not in available]
+        missing_targets = [capability for capability in targets if capability not in available]
         if missing:
             blocked.append(_capability_candidate_item(item, missing=missing))
             continue
-        runnable.append(_capability_candidate_item(item, missing=[]))
+        runnable.append(
+            _capability_candidate_item(
+                item,
+                missing=[],
+                missing_target_capabilities=missing_targets,
+            )
+        )
 
     if not saw_requirement and not blocked:
         return None
     if runnable:
         runnable_required: list[str] = []
         blocked_missing: list[str] = []
+        repair_missing: list[str] = []
         for item in runnable:
             for capability in item.get("required_capabilities") or []:
                 if capability not in runnable_required:
                     runnable_required.append(str(capability))
+            if item.get("capability_repair_mode") is True:
+                for capability in item.get("missing_target_capabilities") or []:
+                    if capability not in repair_missing:
+                        repair_missing.append(str(capability))
         for item in blocked:
             for capability in item.get("missing_capabilities") or []:
                 if capability not in blocked_missing:
@@ -1072,6 +1102,10 @@ def _capability_gate(
             "runnable_candidates": runnable,
             "blocked_candidates": blocked,
             "blocked_missing": blocked_missing,
+            "repair_missing": repair_missing,
+            "repair_candidate_count": sum(
+                1 for item in runnable if item.get("capability_repair_mode") is True
+            ),
             "reason": "capability gate projected runnable candidate set; agent chooses the actual todo",
         }
 

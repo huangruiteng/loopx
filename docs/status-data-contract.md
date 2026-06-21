@@ -796,10 +796,17 @@ Item fields:
   `action=run`, the gate projects `runnable_candidates` and
   `blocked_candidates`; `decision_owner=agent` means the agent chooses the
   actual todo from the runnable set during its steering audit. The gate must
-  not rewrite `recommended_action` into a single selected todo. When no visible
-  executable candidate is runnable, the gate owns the decision and returns
-  `repair_bridge`, `ask_owner`, or `skip` with concrete missing capability
-  details.
+  not rewrite `recommended_action` into a single selected todo.
+  `required_capabilities` means a prerequisite for directly executing that
+  todo, not the capability the todo is trying to build. A todo may separately
+  declare `target_capabilities` for capabilities it is developing, repairing,
+  materializing, or parity-checking. Target capabilities are not hard gates. If
+  a target bridge such as `benchmark_runner` is absent, the candidate may still
+  appear in `runnable_candidates` with `capability_repair_mode=true`,
+  `capability_action=repair_bridge`, and `missing_target_capabilities` on the
+  candidate. When no visible executable candidate is runnable, the gate owns
+  the decision and returns `repair_bridge`, `ask_owner`, or `skip` with
+  concrete missing capability details.
 - `project_asset.todo_projection_gap`: optional explicit gap object emitted
   when status cannot project `user_todos` and/or `agent_todos` for a connected
   project. This means "the first-screen todo state is unknown", not "there are

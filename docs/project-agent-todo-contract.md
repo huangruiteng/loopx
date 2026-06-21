@@ -327,9 +327,9 @@ the structured projection emitted by status/quota when available. Todo summaries
 carry `schema_version=todo_summary_v0`; individual items carry
 `schema_version=todo_item_v0`, `todo_id`, `role`, `status`, `priority`,
 `title`, `archive_state`, `source_section`, `index`, `text`, `task_class`, and
-optional `action_kind`, `claimed_by`, and `required_capabilities`. The `todo_id`
-is first-class when written by the CLI. `claimed_by` values are normalized
-public-safe agent ids and should correspond to
+optional `action_kind`, `claimed_by`, `required_capabilities`, and
+`target_capabilities`. The `todo_id` is first-class when written by the CLI.
+`claimed_by` values are normalized public-safe agent ids and should correspond to
 `coordination.registered_agents`. Legacy Markdown without metadata still gets a
 parser-derived compatibility id from local section/index/text, and the first
 lifecycle command will materialize that id back into metadata. Future lease
@@ -364,6 +364,22 @@ goal-harness todo add \
   --required-capability benchmark_runner
 ```
 
+Use `--target-capability` when the todo is meant to build, repair,
+materialize, or parity-check a capability rather than use that capability as a
+prerequisite. For example, a benchmark product-path parity todo can hard-require
+only shell while targeting the benchmark runner bridge:
+
+```bash
+goal-harness todo add \
+  --goal-id <goal-id> \
+  --role agent \
+  --text "<public-safe benchmark parity repair action>" \
+  --task-class advancement_task \
+  --action-kind benchmark_treatment_product_path_parity \
+  --required-capability shell \
+  --target-capability benchmark_runner
+```
+
 `status` projects `required_capabilities` on every visible todo. `quota
 should-run` then derives a read-only `capability_gate` from the visible
 executable queue, not from a single preselected todo. With multiple P0 or P1
@@ -375,6 +391,10 @@ the agent keeps decision authority and must pick from the runnable set during
 its steering audit. If no visible executable candidate can run, the gate returns
 `repair_bridge`, `ask_owner`, or `skip` according to the missing capability
 class.
+`target_capabilities` stay visible in runnable candidate payloads. If a target
+bridge is absent, the candidate is annotated with `capability_repair_mode=true`
+and `missing_target_capabilities`, but that target is not treated as a hard
+execution blocker.
 
 ## Execution Order
 

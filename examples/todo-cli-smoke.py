@@ -189,6 +189,8 @@ def main() -> int:
             "shell",
             "--required-capability",
             "benchmark_runner",
+            "--target-capability",
+            "benchmark_runner",
         )
         assert metadata_payload["added"] is False, metadata_payload
         assert metadata_payload["already_exists"] is True, metadata_payload
@@ -196,6 +198,7 @@ def main() -> int:
         assert metadata_payload["task_class"] == "advancement_task", metadata_payload
         assert metadata_payload["action_kind"] == "run_eval", metadata_payload
         assert metadata_payload["required_capabilities"] == ["shell", "benchmark_runner"], metadata_payload
+        assert metadata_payload["target_capabilities"] == ["benchmark_runner"], metadata_payload
         after_metadata = state_file.read_text(encoding="utf-8")
         assert after_metadata.count("- [ ] Summarize the read-only evidence after the user") == 1, after_metadata
         agent_block_start = after_metadata.index("- [ ] Summarize the read-only evidence after the user")
@@ -203,6 +206,7 @@ def main() -> int:
         assert after_metadata.index("checklist is done.", agent_block_start) < agent_metadata_start, after_metadata
         assert "status=open task_class=advancement_task action_kind=run_eval" in after_metadata
         assert "required_capabilities=shell%2Cbenchmark_runner" in after_metadata
+        assert "target_capabilities=benchmark_runner" in after_metadata
         fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
         assert fields["user_todos"]["items"][0]["text"] == USER_TODO, fields
         assert fields["user_todos"]["items"][0]["todo_id"].startswith("todo_"), fields
@@ -212,6 +216,9 @@ def main() -> int:
         assert fields["agent_todos"]["items"][0]["action_kind"] == "run_eval", fields
         assert fields["agent_todos"]["items"][0]["required_capabilities"] == [
             "shell",
+            "benchmark_runner",
+        ], fields
+        assert fields["agent_todos"]["items"][0]["target_capabilities"] == [
             "benchmark_runner",
         ], fields
         assert fields["user_todos"]["source_section"] == "User Todo / Owner Review Reading Queue", fields
@@ -296,6 +303,9 @@ def main() -> int:
         assert preserved_claim_item["action_kind"] == "run_eval", preserved_claim_item
         assert preserved_claim_item["required_capabilities"] == [
             "shell",
+            "benchmark_runner",
+        ], preserved_claim_item
+        assert preserved_claim_item["target_capabilities"] == [
             "benchmark_runner",
         ], preserved_claim_item
 
