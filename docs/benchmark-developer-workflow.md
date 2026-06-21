@@ -412,6 +412,41 @@ Harbor-family runs: the official environment result and the host completion
 marker are the scoring path, while app-server completion events are diagnostic
 only.
 
+For a matched SWE-Marathon Goal Harness treatment arm, keep the same task,
+model, timeout, environment, jobs directory shape, and no-upload boundary as the
+baseline, but add an explicit Goal Harness access packet to the host agent:
+
+```bash
+export PYTHONPATH=<goal-harness-checkout>/scripts:${PYTHONPATH:-}
+UV_LINK_MODE=copy uv run --no-default-groups harbor run \
+  --env docker \
+  --agent-import-path harbor_host_codex_goal_agent:HarborHostCodexGoalAgent \
+  --agent-kwarg goal_surface=app_server \
+  --agent-kwarg reasoning_effort=high \
+  --agent-kwarg app_server_wait_for_completion=true \
+  --agent-kwarg app_server_response_timeout_sec=90 \
+  --agent-kwarg goal_timeout_sec=<seconds> \
+  --agent-kwarg task_workdir=/app \
+  --agent-kwarg goal_harness_mode=codex_goal_harness \
+  --agent-kwarg goal_harness_access_packet_mode=compact \
+  --agent-kwarg goal_harness_cli_bridge_enabled=true \
+  --agent-kwarg goal_harness_goal_id=<goal-id> \
+  --agent-kwarg goal_harness_registry_arg=<registry.global.json> \
+  --agent-kwarg goal_harness_runtime_root_arg=<runtime-root> \
+  --agent-kwarg goal_harness_scan_path=<public-scan-path> \
+  --agent-kwarg goal_harness_classification=<public-classification> \
+  --jobs-dir <run-dir>/jobs \
+  --job-name <matched-treatment-job-name> \
+  -p <task-dir>
+```
+
+The treatment packet is intentionally lightweight: it gives the host Codex
+worker Goal Harness planning/checkpoint commands and boundary reminders, while
+the task solution still goes through `harbor-env-exec` and the official Harbor
+verifier remains authoritative. This is the right comparison against
+`codex_goal_mode_baseline`; it is not a submit/upload path and should still be
+reduced to compact public evidence before ledger ingestion.
+
 The Harbor bundle requires `codex` and `rg`. `curl` is intentionally optional:
 host-copied dynamic curl binaries can fail inside Ubuntu task images because of
 shared-library differences. Use the task image's curl, a static curl, or
