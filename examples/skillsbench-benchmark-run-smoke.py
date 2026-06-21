@@ -2992,7 +2992,9 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         )
         assert connected_no_trace_compact is not None
         no_trace_validation = connected_no_trace_compact["validation"]
-        assert no_trace_validation["failed_checks"] == [], connected_no_trace_compact
+        assert no_trace_validation["failed_checks"] == [
+            "native_goal_worker_public_trace_missing"
+        ], connected_no_trace_compact
         assert no_trace_validation["native_goal_worker_connected"] is True, connected_no_trace_compact
         assert no_trace_validation["native_goal_worker_trace_observed"] is False, connected_no_trace_compact
         assert no_trace_validation["native_goal_worker_trace_count"] == 0, connected_no_trace_compact
@@ -3000,6 +3002,51 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             no_trace_validation["native_goal_worker_trace_status"]
             == "worker_connected_trace_dir_missing"
         ), connected_no_trace_compact
+
+        empty_worker_trace_dir = root / "native-worker-empty-traces"
+        empty_worker_trace_dir.mkdir()
+        connected_empty_trace_dir = {
+            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_connect_count": 1,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        _merge_app_server_goal_worker_trace_summary(
+            {
+                "route": "codex-app-server-goal-baseline",
+                "app_server_goal_worker_trace_dir": str(empty_worker_trace_dir),
+            },
+            connected_empty_trace_dir,
+        )
+        empty_trace_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                write_official_skillsbench_result(
+                    root / "native-connected-empty-trace-dir",
+                    reward=0.0,
+                    task_id="llm-prefix-cache-replay",
+                ),
+                route="codex-app-server-goal-baseline",
+                controller_trace=connected_empty_trace_dir,
+            )
+        )
+        assert empty_trace_compact is not None
+        empty_trace_validation = empty_trace_compact["validation"]
+        assert empty_trace_validation["failed_checks"] == [
+            "native_goal_worker_public_trace_missing"
+        ], empty_trace_compact
+        assert empty_trace_validation["native_goal_worker_connected"] is True, empty_trace_compact
+        assert empty_trace_validation["native_goal_worker_trace_dir_present"] is True, empty_trace_compact
+        assert empty_trace_validation["native_goal_worker_trace_observed"] is False, empty_trace_compact
+        assert empty_trace_validation["native_goal_worker_trace_count"] == 0, empty_trace_compact
+        assert (
+            empty_trace_validation["native_goal_worker_trace_status"]
+            == "worker_connected_no_public_trace"
+        ), empty_trace_compact
 
         baseline = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(

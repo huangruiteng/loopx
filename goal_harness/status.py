@@ -2233,6 +2233,25 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             and isinstance(value, bool)
             and not value
         ][:MAX_BENCHMARK_RUN_LIST_ITEMS]
+        native_goal_worker_trace_missing = (
+            validation.get("native_goal_worker_route") is True
+            and validation.get("native_goal_worker_trace_observed") is not True
+            and public_safe_compact_text(
+                validation.get("native_goal_worker_trace_status"),
+                limit=140,
+            )
+            in {
+                "worker_connected_trace_dir_missing",
+                "worker_connected_no_public_trace",
+                "worker_route_selected_not_connected",
+            }
+        )
+        if (
+            native_goal_worker_trace_missing
+            and "native_goal_worker_public_trace_missing" not in failed
+            and len(failed) < MAX_BENCHMARK_RUN_LIST_ITEMS
+        ):
+            failed.append("native_goal_worker_public_trace_missing")
         compact_validation: dict[str, Any] = {
             "all_passed": not failed
             and all(
