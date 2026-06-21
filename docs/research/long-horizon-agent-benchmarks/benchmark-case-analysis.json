@@ -2627,7 +2627,7 @@
       "current_protocol_claim_status": "product_mode_no_uplift"
     },
     {
-      "analysis_id": "swe-marathon__zstd-decoder__product-path-verified-regression",
+      "analysis_id": "swe-marathon__zstd-decoder__timeout-confounded-product-path-negative",
       "arms": {
         "baseline": {
           "arm_id": "swe_marathon_host_codex_app_server_goal_baseline",
@@ -2653,17 +2653,18 @@
         }
       },
       "benchmark_id": "swe-marathon",
-      "capability_signal": "The native Codex app-server Goal baseline solved zstd-decoder at official score 1.0, while the prompt-driven Goal Harness treatment reached official scoring through a verified case-local GH lifecycle and scored 0.0. This is a product-path verified regression/negative-control asset, not a route-connectivity failure.",
+      "capability_signal": "The native Codex app-server Goal baseline solved zstd-decoder at official score 1.0, while the prompt-driven Goal Harness treatment reached official scoring through a verified case-local GH lifecycle and scored 0.0. The score delta is real, but its causal interpretation is timeout-confounded: baseline used an extended 3600s wall-clock budget and treatment hit the official 900s first-round timeout before any follow-up prompt.",
       "case_id": "zstd-decoder",
-      "classification": "product_path_verified_regression_asset",
-      "control_plane_signal": "This row validates that the treatment can exercise real case-local Goal Harness state and CLI calls inside the benchmark path: public compact evidence records goal_harness_inside_case=true, worker_bridge_status=verified, lifecycle/trace observed, and 12 GH CLI calls. The remaining problem is treatment behavior or timeout/solution quality, not missing GH installation.",
+      "classification": "timeout_confounded_product_path_negative_asset",
+      "control_plane_signal": "This row validates that the treatment can exercise real case-local Goal Harness state and CLI calls inside the benchmark path: public compact evidence records goal_harness_inside_case=true, worker_bridge_status=verified, lifecycle/trace observed, and 12 GH CLI calls. It does not yet prove a stable Goal Harness-caused regression because the baseline and treatment timeout envelopes differ.",
       "decision": "paired_treatment_regressed",
-      "evidence_status": "compact_pair_complete_product_path_verified",
+      "evidence_status": "compact_pair_complete_product_path_verified_timeout_confounded",
       "optimization_guidance": [
-        "Do not claim uplift from zstd-decoder; the verified treatment regressed from 1.0 to 0.0.",
+        "Do not claim uplift from zstd-decoder; the verified treatment scored 0.0 against a 1.0 baseline.",
+        "Do not claim a stable Goal Harness regression from this pair until timeout and continuation policy are matched or explicitly phase-attributed.",
         "Do not spend the next slot proving GH connectivity on this case again; product-path materialization is already verified.",
         "Before repeating the same treatment, add public-safe solution-phase or round-timeout counters that explain whether the failure came from incomplete continuation, bad solution edits, or verifier-facing behavior.",
-        "Use zstd-decoder as a SWE-Marathon negative-control guard when changing prompt-driven polling, stop policy, or case-local Goal Harness lifecycle wiring."
+        "Use zstd-decoder as a SWE-Marathon timeout-confounded negative guard when changing prompt-driven polling, stop policy, or case-local Goal Harness lifecycle wiring."
       ],
       "product_path_validation": {
         "baseline_goal_harness_inside_case": false,
@@ -2675,6 +2676,21 @@
         "treatment_worker_bridge_materialization_status": "verified",
         "treatment_worker_bridge_materialization_blocker": "none"
       },
+      "timeout_comparability": {
+        "baseline_actual_wall_time_seconds": 1071.022472,
+        "baseline_official_timeout_comparable": false,
+        "baseline_timeout_tier": "private_extended_timeout_agent_multiplier",
+        "baseline_wall_time_limit_seconds": 3600,
+        "treatment_actual_wall_time_seconds": 923.370177,
+        "treatment_followup_prompt_count": 0,
+        "treatment_max_round_observed": 1,
+        "treatment_max_rounds_budget": 5,
+        "treatment_official_timeout_comparable": true,
+        "treatment_timeout_tier": "official_default_agent_timeout_900s",
+        "treatment_turn_completed_observed": false,
+        "treatment_wall_time_limit_seconds": 900,
+        "timeout_causality_claim": "confounded_by_unequal_timeout_envelopes"
+      },
       "public_boundary": {
         "artifact_reference_policy": "refer to compact ledger ids and run groups only",
         "raw_logs_copied": false,
@@ -2683,8 +2699,8 @@
         "verifier_output_copied": false
       },
       "routing_guidance": {
-        "next_action": "add compact solution/timeout phase counters or run a second CPU/no-CUA SWE-Marathon pair before making treatment-value claims",
-        "repeat_policy": "repeat_only_after_prompt_polling_or_phase_attribution_change"
+        "next_action": "rerun zstd-decoder with matched baseline/treatment timeout envelopes or add compact solution/timeout phase counters before making treatment-value claims",
+        "repeat_policy": "repeat_only_after_matched_timeout_or_phase_attribution_change"
       },
       "scores": {
         "baseline_official_score": 1.0,
@@ -2693,13 +2709,15 @@
         "treatment_official_score": 0.0
       },
       "stability_assessment": {
-        "current_protocol_comparability": "medium_high",
+        "current_protocol_comparability": "low_for_causality_medium_for_product_path",
+        "gh_causality_claim": "not_established",
         "main_confounds": [
-          "baseline r2 changed official timeout policy, so strict wall-clock comparability still needs care",
+          "baseline r2 used a 3600s wall-clock limit and ran for 1071.022472s, while treatment used the official 900s limit and stopped at 923.370177s",
+          "treatment observed only one polling round, zero follow-up prompts, and no completed turn marker before timeout",
           "treatment has product-path lifecycle evidence but needs solution/timeout phase counters before attributing the 0.0 to a specific mechanism"
         ],
         "product_path_claim": "verified",
-        "solver_uplift_claim": "refuted_for_this_pair"
+        "solver_uplift_claim": "not_claimable_timeout_confounded_negative"
       }
     }
   ],

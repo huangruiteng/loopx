@@ -359,7 +359,10 @@ def test_case_analysis_json() -> None:
         for item in adaptive_setup["optimization_guidance"]
     ), adaptive_setup
     assert swe_zstd_regression["classification"] == (
-        "product_path_verified_regression_asset"
+        "timeout_confounded_product_path_negative_asset"
+    ), swe_zstd_regression
+    assert swe_zstd_regression["evidence_status"] == (
+        "compact_pair_complete_product_path_verified_timeout_confounded"
     ), swe_zstd_regression
     assert swe_zstd_regression["decision"] == "paired_treatment_regressed", (
         swe_zstd_regression
@@ -385,6 +388,24 @@ def test_case_analysis_json() -> None:
     assert swe_zstd_regression["arms"]["treatment"]["first_blocker"] == (
         "harbor_prompt_polling_round_timeout_before_completion"
     ), swe_zstd_regression
+    zstd_timeout = swe_zstd_regression["timeout_comparability"]
+    assert zstd_timeout["baseline_wall_time_limit_seconds"] == 3600, (
+        zstd_timeout
+    )
+    assert zstd_timeout["treatment_wall_time_limit_seconds"] == 900, (
+        zstd_timeout
+    )
+    assert zstd_timeout["baseline_official_timeout_comparable"] is False, (
+        zstd_timeout
+    )
+    assert zstd_timeout["treatment_official_timeout_comparable"] is True, (
+        zstd_timeout
+    )
+    assert zstd_timeout["treatment_max_round_observed"] == 1, zstd_timeout
+    assert zstd_timeout["treatment_followup_prompt_count"] == 0, zstd_timeout
+    assert zstd_timeout["timeout_causality_claim"] == (
+        "confounded_by_unequal_timeout_envelopes"
+    ), zstd_timeout
     zstd_product_path = swe_zstd_regression["product_path_validation"]
     assert zstd_product_path["treatment_goal_harness_inside_case"] is True, (
         zstd_product_path
@@ -1066,7 +1087,8 @@ def test_case_analysis_markdown() -> None:
     assert "dapt-intrusion-detection" in text, text
     assert "debug-trl-grpo" in text, text
     assert "zstd-decoder" in text, text
-    assert "product-path verified regression asset" in text, text
+    assert "timeout-confounded product-path negative asset" in text, text
+    assert "Product-path verification does not prove causal regression" in text, text
     assert "harbor_prompt_polling_round_timeout_before_completion" in text, text
     assert "make-doom-for-mips" in text, text
     assert "pytorch-model-recovery" in text, text
