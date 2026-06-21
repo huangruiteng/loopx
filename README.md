@@ -157,6 +157,26 @@ runtime dependencies outside the standard library.
 The easiest start is agent-first: ask the agent you already use to install,
 connect, diagnose, and show the next safe action before doing longer work.
 
+### Codex App
+
+Use this when you are working in Codex App or a Codex App heartbeat-capable
+thread. Paste from the project repo:
+
+```text
+Install and connect Goal Harness for this project end to end. Do not stop at a
+plan. If `goal-harness` is missing, install it with the official no-clone
+GitHub installer. Then run doctor, connect or bootstrap this repo, ensure local
+Goal Harness state is ignored, and report the goal id, current user gate, top
+agent todo, and next safe action before longer work.
+```
+
+For recurring Codex App automation, generate the heartbeat body after the
+project is connected:
+
+```bash
+goal-harness heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
+```
+
 ### Codex CLI
 
 Use this when you want the human-visible TUI to stay primary.
@@ -185,13 +205,18 @@ todos, and next safe action. If work is allowed, the same visible TUI turn can
 claim or choose one runnable agent todo and complete one bounded validated
 segment.
 
-After Goal Harness is installed, generate an exact TUI paste block:
+That one message is the install, connect, status check, and first loop
+bootstrap. You do not need to run a separate setup command first or paste a
+second prompt.
+
+Optional, after Goal Harness is already installed: generate an exact TUI paste
+block for another repo or teammate:
 
 ```bash
 goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
 ```
 
-For only the pasteable text:
+For only the pasteable text, use:
 
 ```bash
 goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
@@ -209,26 +234,6 @@ A successful connection looks like this for every surface:
 - the project has `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`;
 - `goal-harness status` shows who should act next;
 - local runtime state is ignored, not committed.
-
-### Codex App
-
-Use this when you are working in Codex App or a Codex App heartbeat-capable
-thread. Paste from the project repo:
-
-```text
-Install and connect Goal Harness for this project end to end. Do not stop at a
-plan. If `goal-harness` is missing, install it with the official no-clone
-GitHub installer. Then run doctor, connect or bootstrap this repo, ensure local
-Goal Harness state is ignored, and report the goal id, current user gate, top
-agent todo, and next safe action before longer work.
-```
-
-For recurring Codex App automation, generate the heartbeat body after the
-project is connected:
-
-```bash
-goal-harness heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
-```
 
 ### Other Agents And Manual Shell
 
