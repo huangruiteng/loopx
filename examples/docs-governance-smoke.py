@@ -128,7 +128,7 @@ def main() -> int:
         assert required in compact_project_agent_contract, required
 
     for required in [
-        "The best first-run experience is one TUI goal-mode message",
+        "The best first-run experience is one TUI setup message",
         "Session-Attached Automation",
         "Headless Disabled Boundary",
     ]:

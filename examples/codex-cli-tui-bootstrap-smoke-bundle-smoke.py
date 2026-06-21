@@ -155,14 +155,16 @@ def main() -> None:
             env=env,
             cwd=fresh_repo,
         ).stdout
-        assert message_only.startswith("/goal Advance `public-fresh-codex-cli-goal` from the registry-declared active state"), message_only
+        assert message_only.startswith("Install and connect Goal Harness for this repo"), message_only
+        assert not message_only.startswith("/goal "), message_only
         assert "# Codex CLI Goal Harness Bootstrap Message" not in message_only, message_only
         assert "Fresh Repo Install Repair" not in message_only, message_only
         assert "install-from-github.sh" in message_only, message_only
+        assert "/goal <thin task_body>" in message_only, message_only
         assert "quota should-run" in message_only, message_only
         assert "refresh-state --goal-id public-fresh-codex-cli-goal" in message_only, message_only
         assert "quota spend-slot" in message_only, message_only
-        assert "raw Codex transcripts/session files" in message_only, message_only
+        assert "raw Codex transcripts" in message_only, message_only
 
         markdown = run(
             [

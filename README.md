@@ -167,7 +167,9 @@ Install and connect Goal Harness for this project end to end. Do not stop at a
 plan. If `goal-harness` is missing, install it with the official no-clone
 GitHub installer. Then run doctor, connect or bootstrap this repo, ensure local
 Goal Harness state is ignored, and report the goal id, current user gate, top
-agent todo, and next safe action before longer work.
+agent todo, and next safe action before longer work. After the project is
+connected, set or refresh this thread's heartbeat automation from
+`goal-harness heartbeat-prompt --thin`.
 ```
 
 For recurring Codex App automation, generate the heartbeat body after the
@@ -188,28 +190,26 @@ cd /path/to/your-project
 codex
 ```
 
-2. In the TUI, paste one goal-mode message:
+2. In the TUI, paste one setup message:
 
 ```text
-/goal Start Goal Harness for this repo. Use Goal Harness as the control plane
-for this visible Codex CLI TUI goal. This `/goal` message is the Codex
-goal-setting envelope for this TUI session; do not continue under any previous
-goal. After that, install or repair `goal-harness` if needed, connect or
-bootstrap this project, run the Goal Harness checks, and show me the current
-goal, concrete user gate if any, top todos, and next safe action before running
-longer work. Keep me in this Codex CLI TUI and do not use hidden headless
-execution. Begin the Goal Harness loop now; do not stop after only explaining
-what Goal Harness is.
+Install and connect Goal Harness for this repo from this visible Codex CLI TUI.
+If `goal-harness` is missing, install it with the official no-clone GitHub
+installer; if it is already installed, reuse it. Bootstrap or connect this
+project, then generate the thin heartbeat prompt and set the current Codex CLI
+goal to `/goal <thin task_body>`. Show me the current goal, concrete user gate
+if any, top todos, and next safe action before longer work. Keep me in this TUI
+and do not use hidden headless execution.
 ```
 
 3. The first useful TUI response should show the current goal, user gate, top
-todos, and next safe action. If work is allowed, the same visible TUI turn can
-claim or choose one runnable agent todo and complete one bounded validated
-segment.
+todos, and next safe action. The setup turn should install or reuse the CLI,
+bootstrap/connect the project, and configure the thin `/goal` loop. Longer
+delivery belongs to that configured loop unless you explicitly ask for it in
+the setup turn.
 
-That one message is the install, connect, status check, and first loop
-bootstrap. You do not need to run a separate setup command first or paste a
-second prompt.
+That one message is the install, connect, status check, and loop activation.
+You do not need to run a separate setup command first or paste a second prompt.
 
 Hidden `codex exec` is not part of the default TUI bootstrap. Pilot packets,
 template generators, local drivers, idle detection, and same-session proof

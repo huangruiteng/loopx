@@ -18,35 +18,34 @@ daemon instead of Codex." The target is:
 
 ## Product Goal
 
-The best first-run experience is one TUI goal-mode message:
+The best first-run experience is one TUI setup message:
 
 ```text
-/goal Start Goal Harness for this repo. Use Goal Harness as the control plane
-for this visible Codex CLI TUI goal. This `/goal` message is the Codex
-goal-setting envelope for this TUI session; do not continue under any previous
-goal. After that, install or repair `goal-harness` if needed, connect or
-bootstrap this project, run the Goal Harness checks, and show me the current
-goal, concrete user gate if any, top todos, and next safe action before running
-longer work. Keep me in this Codex CLI TUI and do not use hidden headless
-execution. Begin the Goal Harness loop now; do not stop after only explaining
-what Goal Harness is.
+Install and connect Goal Harness for this repo from this visible Codex CLI TUI.
+If `goal-harness` is missing, install it with the official no-clone GitHub
+installer; if it is already installed, reuse it. Bootstrap or connect this
+project, then generate the thin heartbeat prompt and set the current Codex CLI
+goal to `/goal <thin task_body>`. Show me the current goal, concrete user gate
+if any, top todos, and next safe action before longer work. Keep me in this TUI
+and do not use hidden headless execution.
 ```
 
-That `/goal` text should be a Codex CLI-native rewrite of the App heartbeat
-automation prompt. It should keep the same loop discipline while using the TUI
-as the user's live control surface, with `heartbeat-prompt --thin` reserved
-as a drift check when the Goal Harness lifecycle contract changes. The message
-should be enough for a terminal agent to:
+That text should be a Codex CLI-native setup path for the same lifecycle App
+uses: setup first, then install the thin loop prompt into the surface. In Codex
+CLI the loop is `/goal <thin task_body>`; in Codex App the loop is heartbeat
+automation `<thin task_body>`. The message should be enough for a terminal
+agent to:
 
 - run `goal-harness doctor`;
 - install or repair the local CLI if it is missing, using the no-clone archive
   installer before asking the user to clone the Goal Harness repo;
 - connect or bootstrap the repo;
 - read onboarding candidates and ask the user what to accept when required;
-- run `quota should-run`;
-- claim an in-scope todo with its registered agent id;
-- execute one bounded, validated segment;
-- write back status and spend quota only after evidence exists.
+- generate `heartbeat-prompt --thin`;
+- set the current Codex CLI goal to `/goal <thin task_body>`;
+- run `quota should-run` for the first control-plane snapshot;
+- write back setup status without spending delivery quota unless delivery was
+  explicitly requested and validated.
 
 The user should not need to understand registry paths, runtime roots, active
 state files, quota JSON, or heartbeat prompts before seeing value.
@@ -67,11 +66,11 @@ and the user's live console.
 ### 1. TUI Bootstrap
 
 This is the first supported path. The user starts in Codex CLI TUI and pastes a
-single `/goal` Goal Harness bootstrap request. The agent performs install/connect,
-surfaces onboarding decisions, and starts a bounded Goal Harness turn in the
-same conversation. It should not stop after describing the product; once the
-quota/status guard permits work, the first TUI turn should perform one bounded,
-validated segment.
+single Goal Harness setup request. The agent performs install/connect,
+surfaces onboarding decisions, generates the thin heartbeat prompt, and sets the
+current Codex CLI goal to `/goal <thin task_body>`. It should not stop after
+describing the product, and it should not spend delivery quota for setup-only
+work.
 
 This mode preserves the TUI completely because the human explicitly starts the
 loop there.
@@ -82,10 +81,11 @@ Current prototype:
 goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
 ```
 
-Copy the generated message into Codex CLI TUI. It starts with `/goal` and tells
-the agent to repair/install Goal Harness if needed, connect the repo
-conservatively, run the quota/status guard, obey `interaction_contract`,
-preserve the visible TUI, and spend quota only after validated writeback.
+Copy the generated setup message into Codex CLI TUI. It tells the agent to
+repair/install Goal Harness if needed, connect the repo conservatively,
+generate the thin heartbeat body, set Codex CLI goal mode to `/goal <thin
+task_body>`, run the quota/status guard for the first snapshot, obey
+`interaction_contract`, and preserve the visible TUI.
 
 Transcript-free first-run smoke packet:
 
@@ -324,7 +324,7 @@ visible-session proof, and runtime-idle detector. `remote-control` or `resume
 [PROMPT]` can pass as a visible spike candidate, but they are not accepted as
 same-TUI automation unless the proof surface is `same_tui_visible_attach` and
 the idle detector passes. If either proof or idle evidence is missing, the
-packet returns a precise blocker and keeps the one-message TUI bootstrap as the
+packet returns a precise blocker and keeps the one-message setup bootstrap as the
 primary path.
 
 The first public-safe proof pilot is recorded in
@@ -342,8 +342,8 @@ turn is promoted.
 
 `codex exec` remains useful for scheduled or CI-like work, but it is not the
 primary product experience for interactive users. The default Codex CLI
-Goal Harness `/goal` path does not expose a headless fallback, even as an
-opt-in, so a first-run packet cannot accidentally move work into hidden
+Goal Harness setup-then-`/goal` path does not expose a headless fallback, even
+as an opt-in, so a first-run packet cannot accidentally move work into hidden
 execution.
 
 Compatibility boundary:
@@ -369,7 +369,7 @@ mutate a session, or spend quota.
 5. Choose among current-agent claimed advancement todos and runnable unclaimed
    candidates; monitor todos are context unless they produce a material event.
 6. Inject a visible steering prompt into the idle TUI session when proven, or
-   keep the one-message TUI bootstrap as the user-facing path.
+   keep the one-message setup bootstrap as the user-facing path.
 7. After validation, run `refresh-state` and `quota spend-slot --execute`.
 8. If validation fails, write a compact blocker instead of spending success
    prose.
@@ -411,7 +411,7 @@ projects runnable candidates; it should not over-specify the model's local plan.
 6. **Visible driver plan**: generate a dry-run plan with
    `goal-harness codex-cli-visible-driver-plan` so the next local driver knows
    whether to attempt visible attach, run a resume/remote-control proof, or
-   keep the one-message TUI bootstrap as the product path.
+   keep the one-message setup bootstrap as the product path.
 7. **Local driver planner**: ship
    `goal-harness codex-cli-local-driver-plan` as the dry-run command that
    composes quota, visible-driver, TUI bootstrap, headless-disabled boundary,

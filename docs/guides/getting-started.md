@@ -65,37 +65,37 @@ Success looks like this:
 - `goal-harness status` shows the goal and who should act next;
 - local runtime state is ignored, not committed.
 
-For Codex CLI users, the product target is even simpler: start in the Codex
-TUI, send one Goal Harness bootstrap message, and keep later automation visible
-and interruptible in that TUI whenever the CLI exposes a safe session-attachment
-primitive. The first-run path should not require you to understand registry
-paths, runtime roots, JSON payloads, or session files.
+For Codex CLI users, the product target is: start in the Codex TUI, send one
+Goal Harness setup message, and let the agent install or reuse Goal Harness,
+bootstrap/connect the project, then set the current Codex goal to the thin
+heartbeat prompt. Later automation should stay visible and interruptible in
+that TUI whenever the CLI exposes a safe session-attachment primitive. The
+first-run path should not require you to understand registry paths, runtime
+roots, JSON payloads, session files, or heartbeat prompt syntax.
 
 First-run path:
 
 ```text
-/goal Start Goal Harness for this repo. Use Goal Harness as the control plane
-for this visible Codex CLI TUI goal. This `/goal` message is the Codex
-goal-setting envelope for this TUI session; do not continue under any previous
-goal. After that, install or repair `goal-harness` if needed, connect or
-bootstrap this project, run the Goal Harness checks, and show me the current
-goal, concrete user gate if any, top todos, and next safe action before running
-longer work. Keep me in this Codex CLI TUI and do not use hidden headless
-execution. Begin the Goal Harness loop now; do not stop after only explaining
-what Goal Harness is.
+Install and connect Goal Harness for this repo from this visible Codex CLI TUI.
+If `goal-harness` is missing, install it with the official no-clone GitHub
+installer; if it is already installed, reuse it. Bootstrap or connect this
+project, then generate the thin heartbeat prompt and set the current Codex CLI
+goal to `/goal <thin task_body>`. Show me the current goal, concrete user gate
+if any, top todos, and next safe action before longer work. Keep me in this TUI
+and do not use hidden headless execution.
 ```
 
-The generated paste block is a Codex CLI `/goal` rewrite of the App heartbeat
-prompt, not a copy of that automation body. It keeps the same lifecycle ideas
-while using the TUI as the live control surface; `heartbeat-prompt --thin`
-remains a drift check when the contract changes. The first useful response
-should show the current goal id, concrete user gate if one exists, top user
-todo if any, top agent todo, and next safe action before longer delivery work.
-When the guard permits work, the same TUI turn should claim or choose one
-runnable agent todo and finish one bounded validated segment, rather than
-asking the user to run a separate setup flow.
+The generated paste block is a setup-first rewrite of the App onboarding
+experience, not the heartbeat body itself. After the project is connected, the
+agent generates `heartbeat-prompt --thin` and installs that body into the
+surface: Codex CLI gets `/goal <thin task_body>`, while Codex App gets a
+heartbeat automation body. The first useful response should show the current
+goal id, concrete user gate if one exists, top user todo if any, top agent
+todo, and next safe action before longer delivery work. The setup turn should
+not spend quota for delivery unless the user explicitly asks it to do delivery
+after loop activation.
 
-Once `goal-harness` is installed, generate a stricter repo-specific paste
+Once `goal-harness` is installed, generate a stricter repo-specific setup
 message:
 
 ```bash
@@ -104,9 +104,10 @@ goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
 
 Keep that as the preferred interactive path: the human watches and steers in
 Codex CLI TUI, while Goal Harness owns quota/status/todos/gates/writeback. The
-generated packet also shows the no-clone install-repair command and a
-transcript-free validation checklist, so a fresh repo path can be reviewed
-without touching raw Codex session data.
+generated packet also shows the no-clone install-repair command, the
+post-bootstrap thin prompt generation command, and a transcript-free validation
+checklist, so a fresh repo path can be reviewed without touching raw Codex
+session data.
 
 If the user only wants the pasteable TUI text, omit the wrapper:
 
@@ -141,9 +142,9 @@ The later-turn rule is intentionally stricter than the first message: Goal
 Harness may add a visible steering turn only after public-safe visible proof,
 runtime idle evidence, a fresh guard, and explicit execution bounds. Without
 that proof, the driver should write a compact blocker or keep the one-message
-TUI bootstrap as the product path.
+setup bootstrap as the product path.
 
-The commands below are optional automation checks after the one-message path
+The commands below are optional automation checks after the setup path
 works. To evaluate future same-session automation support without touching
 transcripts or session files, run:
 
@@ -185,7 +186,7 @@ The fixture should contain only booleans and public-safe labels proving user
 opt-in, quota guard, idle guard, visible turn, interruptibility, no transcript
 or session-file reads, and compact writeback planning.
 
-The default Codex CLI `/goal` product path does not offer a headless fallback.
+The default Codex CLI setup-then-`/goal` product path does not offer a headless fallback.
 For compatibility, the old handoff command only reports the disabled boundary
 and points back to the message-only TUI bootstrap:
 
@@ -197,7 +198,7 @@ See the [Codex CLI TUI-first loop](../product/codex-cli-tui-loop.md) contract
 for the bootstrap, session-attached automation, and headless-disabled boundary.
 The [Codex CLI first-run rehearsal](../product/codex-cli-first-run-rehearsal.md)
 keeps the shortest user-facing route in one place: no-clone install,
-one-message TUI bootstrap, and proof-capture fixtures for later automation.
+one-message setup bootstrap, and proof-capture fixtures for later automation.
 For current product scheduling, the
 [Codex CLI TUI continuation priority](../product/codex-cli-tui-continuation-priority.md)
 keeps same-open-TUI continuation ahead of frontstage or showcase polish when

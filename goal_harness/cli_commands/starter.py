@@ -185,7 +185,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
 
     codex_cli_bootstrap_parser = subparsers.add_parser(
         "codex-cli-bootstrap-message",
-        help="Generate a one-message Codex CLI TUI bootstrap prompt for a Goal Harness loop.",
+        help="Generate a one-message Codex CLI TUI setup prompt that installs/connects Goal Harness, then sets the thin /goal loop.",
     )
     codex_cli_bootstrap_parser.add_argument("--project", default=".", help="Project directory to start from.")
     codex_cli_bootstrap_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")

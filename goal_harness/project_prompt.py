@@ -14,7 +14,6 @@ DEFAULT_HANDOFF_ADAPTER_STATUS = "connected-read-only"
 DEFAULT_HANDOFF_NEXT_PROBE = "(omit --next-probe until a read-only pre-tick command exists)"
 SHARED_GLOBAL_REGISTRY = '"$HOME/.codex/goal-harness/registry.global.json"'
 NO_CLONE_INSTALL_URL = "https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh"
-CODEX_GOAL_OBJECTIVE_MAX_CHARS = 6000
 
 
 def shell_arg(value: str) -> str:
@@ -90,6 +89,22 @@ def render_heartbeat_prompt_command(
     scope_arg = f" --agent-scope {shell_arg(agent_scope)}" if agent_id else ""
     return (
         f"{shell_arg(cli_bin)} heartbeat-prompt --{shell_arg(body)} "
+        f"--goal-id {shell_arg(goal_id)}{agent_arg}{scope_arg}"
+    )
+
+
+def render_heartbeat_prompt_json_command(
+    goal_id: str,
+    *,
+    cli_bin: str = "goal-harness",
+    agent_id: str | None = None,
+    agent_scope: str = "Codex CLI /goal visible TUI loop",
+    body: str = "thin",
+) -> str:
+    agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
+    scope_arg = f" --agent-scope {shell_arg(agent_scope)}" if agent_id else ""
+    return (
+        f"{shell_arg(cli_bin)} --format json heartbeat-prompt --{shell_arg(body)} "
         f"--goal-id {shell_arg(goal_id)}{agent_arg}{scope_arg}"
     )
 
@@ -256,30 +271,39 @@ def build_codex_cli_bootstrap_message(
         cli_bin=cli_bin,
         agent_id=agent_id,
     )
+    heartbeat_prompt_json_command = render_heartbeat_prompt_json_command(
+        resolved_goal_id,
+        cli_bin=cli_bin,
+        agent_id=agent_id,
+    )
     install_repair_command = render_codex_cli_no_clone_preflight(cli_bin=cli_bin)
     refresh_command = f"{shell_arg(cli_bin)} refresh-state --goal-id {shell_arg(resolved_goal_id)}"
     first_run_validation_checklist = [
         "goal-harness doctor passed after no-clone install repair or existing install",
-        "repo connected conservatively or a concrete install/connect blocker was shown",
-        "quota/status guard checked with the registered agent id when available",
+        "repo bootstrap/connect completed conservatively or a concrete install/connect blocker was shown",
+        "thin heartbeat task_body generated from goal-harness heartbeat-prompt --thin, not hand-written",
+        "current loop surface configured from the thin task_body: Codex CLI /goal or Codex App automation",
+        "quota/status guard checked with the registered agent id when available after bootstrap/connect",
         "current goal, concrete user gate or none, top todos, and next safe action shown in the TUI",
-        "one bounded segment validated before refresh-state and quota spend-slot",
         "no raw Codex transcripts, session files, credentials, private paths, stdout, or stderr persisted",
     ]
-    message = render_codex_cli_goal_mode_bootstrap_text(
+    message = render_codex_cli_bootstrap_message_text(
         project=resolved_project,
         goal_id=resolved_goal_id,
         agent_id=agent_id,
         cli_preflight=install_repair_command,
         connect_command=connect_command,
+        heartbeat_prompt_json_command=heartbeat_prompt_json_command,
+        heartbeat_prompt_command=heartbeat_prompt_command,
         quota_guard_command=quota_guard_command,
         refresh_command=refresh_command,
         quota_spend_command=quota_spend_command,
+        first_run_validation_checklist=first_run_validation_checklist,
     )
     return {
         "ok": True,
-        "schema_version": "codex_cli_bootstrap_message_v0",
-        "invocation_mode": "codex_cli_goal_mode",
+        "schema_version": "codex_cli_bootstrap_message_v1",
+        "invocation_mode": "codex_cli_setup_then_goal_mode",
         "project": resolved_project,
         "goal_id": resolved_goal_id,
         "agent_id": agent_id,
@@ -287,12 +311,13 @@ def build_codex_cli_bootstrap_message(
         "install_repair_command": install_repair_command,
         "connect_command": connect_command,
         "heartbeat_prompt_command": heartbeat_prompt_command,
+        "heartbeat_prompt_json_command": heartbeat_prompt_json_command,
+        "codex_cli_goal_prefix": "/goal ",
+        "codex_app_loop_surface": "heartbeat automation task_body",
         "quota_guard_command": quota_guard_command,
         "refresh_command": refresh_command,
         "quota_spend_command": quota_spend_command,
         "first_run_validation_checklist": first_run_validation_checklist,
-        "goal_objective_max_chars": CODEX_GOAL_OBJECTIVE_MAX_CHARS,
-        "goal_objective_characters": len(message.removeprefix("/goal ").strip()),
         "message": message,
     }
 
@@ -334,9 +359,9 @@ def build_codex_cli_tui_bootstrap_smoke_bundle(
     }
     validation_checklist = [
         "archive installer works from a temporary GitHub-style tarball or existing install",
-        "message-only command prints only the TUI paste block, not the Markdown review packet",
-        "paste block includes no-clone install repair, heartbeat prompt load, quota guard, and bounded writeback commands",
-        "quota spend remains a post-validation command inside the paste block, not a smoke side effect",
+        "message-only command prints only the setup paste block, not the Markdown review packet",
+        "paste block includes no-clone install repair, project bootstrap/connect, thin heartbeat generation, loop activation, and quota guard",
+        "quota spend remains a later post-delivery command inside the paste block, not a setup or smoke side effect",
         "no raw Codex transcripts, session files, credentials, stdout, stderr, or private paths are read",
     ]
     return {
@@ -350,6 +375,7 @@ def build_codex_cli_tui_bootstrap_smoke_bundle(
         "review_packet_command": review_packet_command,
         "message_only_command": message_only_command,
         "heartbeat_prompt_command": bootstrap["heartbeat_prompt_command"],
+        "heartbeat_prompt_json_command": bootstrap["heartbeat_prompt_json_command"],
         "quota_guard_command": bootstrap["quota_guard_command"],
         "refresh_command": bootstrap["refresh_command"],
         "quota_spend_command": bootstrap["quota_spend_command"],
@@ -397,6 +423,7 @@ def build_codex_cli_exec_handoff(
         "session_probe_command": f"{shell_arg(cli_bin)} codex-cli-session-probe --codex-bin {shell_arg(codex_bin)}",
         "quota_guard_command": bootstrap["quota_guard_command"],
         "quota_spend_command": bootstrap["quota_spend_command"],
+        "heartbeat_prompt_json_command": bootstrap["heartbeat_prompt_json_command"],
         "message_only_command": message_only_command,
         "handoff_command": "",
         "boundary": {
@@ -419,6 +446,8 @@ def render_codex_cli_bootstrap_message_text(
     agent_id: str | None,
     cli_preflight: str,
     connect_command: str,
+    heartbeat_prompt_json_command: str,
+    heartbeat_prompt_command: str,
     quota_guard_command: str,
     refresh_command: str,
     quota_spend_command: str,
@@ -428,30 +457,37 @@ def render_codex_cli_bootstrap_message_text(
         "If this project has registered agents, inspect the registry and use the correct registered agent id before claiming todos."
     )
     checklist = "\n".join(f"- {item}" for item in first_run_validation_checklist)
-    return f"""Start the Goal Harness loop for this repo from this same Codex CLI TUI session.
+    return f"""Install and connect Goal Harness for this repo from this same Codex CLI TUI session.
 
-Goal: one-message TUI bootstrap. Keep this TUI as the visible place where I can
-watch, steer, review, and take over. Do not use hidden headless `codex exec`
-for this bootstrap loop.
+Goal: one-message setup, then loop activation. Keep this TUI as the visible
+place where I can watch, steer, review, and take over. Do not use hidden
+headless `codex exec` for this bootstrap path.
 
-After I paste this message, begin the Goal Harness loop automatically. Do not
-stop after explaining what Goal Harness is. Stop only for a concrete user gate,
-workspace guard, missing capability, missing installation primitive, or unsafe
-boundary.
+This first message is the setup/bootstrap instruction, not the reusable
+heartbeat prompt. Complete the setup in order: install or repair Goal Harness
+if needed; bootstrap/connect this project; then configure the current loop
+surface from the generated thin heartbeat prompt. For Codex CLI, set the
+current TUI goal to `/goal ` plus the thin `task_body`. For Codex App, set or
+refresh the heartbeat automation to that same thin `task_body`. If the current
+surface cannot be mutated from this session, show the exact pasteable `/goal`
+or automation body and report that as a concrete user gate; do not claim setup
+success.
 
 Project: `{project}`
 Goal id: `{goal_id}`
 {agent_line}
 
-Success criteria for this first TUI turn:
+Success criteria for this first setup turn:
 - I should not need to inspect registry paths, runtime roots, JSON payloads, or
   hidden session files.
-- Before longer delivery work, show me the current goal id, concrete user gate
-  if any, top user todo if any, top agent todo, and next safe action.
-- If no user gate or user todo exists, say that explicitly and continue only
-  after the quota/status guard permits work.
-- If the guard permits work, claim or choose one runnable agent todo and do one
-  bounded validated segment in this same visible TUI turn.
+- If Goal Harness is already installed and this repo is already connected,
+  reuse the existing install/state and do not reinstall or duplicate bootstrap.
+- Configure the loop target after bootstrap: Codex CLI `/goal <thin task_body>`
+  or Codex App heartbeat automation `<thin task_body>`.
+- Show me the current goal id, concrete user gate if any, top user todo if any,
+  top agent todo, and next safe action.
+- Do not do longer delivery work in the setup turn unless I explicitly ask; the
+  configured thin loop owns later quota/spend delivery turns.
 
 1. Ensure the Goal Harness CLI works. Prefer the no-clone GitHub archive
 installer; do not ask me to clone the Goal Harness repo just to try the first
@@ -470,7 +506,25 @@ run:
 If the connect output includes onboarding candidate todos, summarize them in
 this TUI and ask me which ones to accept before starting autonomous delivery.
 
-3. Before any delivery work, run the quota/status guard:
+3. Generate the thin loop prompt after bootstrap/connect, not before. Do not
+hand-write or copy an old heartbeat body:
+
+```bash
+{heartbeat_prompt_json_command}
+```
+
+Read `task_body` from the JSON result. Then configure the current surface:
+- Codex CLI TUI: set the current goal to `/goal ` followed by that `task_body`.
+- Codex App: set or update the heartbeat automation body to that `task_body`.
+
+For review, the Markdown form is:
+
+```bash
+{heartbeat_prompt_command}
+```
+
+4. After install/connect and loop activation, run the quota/status guard for
+the first control-plane snapshot:
 
 ```bash
 {quota_guard_command}
@@ -484,16 +538,19 @@ Follow `interaction_contract` exactly:
 - If delivery is allowed, choose one runnable agent todo after a short steering
   audit, preferably a current-agent claimed advancement todo.
 
-4. Report the current goal/gate/todo/next-action snapshot in this TUI, then
-execute one bounded segment in this TUI-visible session. Validate the result.
-Do not store raw Codex transcripts, credentials, private paths, raw logs, or
+5. Report the current goal/gate/todo/next-action snapshot in this TUI. Stop
+after setup unless I explicitly asked for delivery in this same turn. Do not
+store raw Codex transcripts, credentials, private paths, raw logs, or
 production artifacts in public docs or Goal Harness state.
 
-5. Before writeback, use this transcript-free validation checklist:
+6. Before writeback, use this transcript-free validation checklist:
 
 {checklist}
 
-6. After validated writeback, refresh state and spend quota once:
+7. After setup writeback, refresh state if needed. Do not spend quota for a
+setup-only turn. The configured thin loop spends only after a later validated
+delivery writeback. If I explicitly asked you to do delivery in this same turn
+and you completed a validated delivery segment, spend exactly once:
 
 ```bash
 {refresh_command}
@@ -507,55 +564,6 @@ explicit execution bounds. Keep optional automation checks such as
 local-driver-plan or visible-session-proof as follow-up diagnostics, not
 first-run prerequisites.
 """
-
-
-def render_codex_cli_goal_mode_bootstrap_text(
-    *,
-    project: str,
-    goal_id: str,
-    agent_id: str | None,
-    cli_preflight: str,
-    connect_command: str,
-    quota_guard_command: str,
-    refresh_command: str,
-    quota_spend_command: str,
-) -> str:
-    del cli_preflight
-    resolved_agent = agent_id or "the registry-selected agent"
-    claim_command = (
-        f"goal-harness todo claim --goal-id {goal_id} --todo-id <todo_id> --claimed-by {resolved_agent}"
-    )
-    goal_text = (
-        f"Advance `{goal_id}` from the registry-declared active state in this visible Codex CLI TUI. "
-        "This one-message /goal is the durable TUI heartbeat prompt: keep the user able to watch, steer, review, and take over; "
-        "do not use hidden headless codex exec for this bootstrap loop; do not read or store raw Codex transcripts/session files. "
-        "This `/goal` invocation is the Codex goal-setting envelope for the TUI session; do not continue under any previous Codex goal. "
-        "Use skills: `goal-harness-project`; if behavior is surprising, tiny, or contradictory, use `goal-harness-self-repair`. "
-        "Goal Harness CLI is source of truth. "
-        f"Project: `{project}`. Agent: `{resolved_agent}`; read role, primary agent, scope, write boundary, and workspace rules from registry/quota. "
-        "If this agent is side-agent or workspace_guard requires it, use an independent git worktree/branch before edits. "
-        f"Claim in-scope todo with `{claim_command}`; if claimed/outside scope, choose another or report none. Do not write scope into todo metadata. "
-        "At each continuation, first show: current goal id; concrete user gate or none; top user todo or none; top agent todo; next safe action. "
-        f"Ensure PATH has `$HOME/.local/bin`; if `goal-harness` is missing, install via {NO_CLONE_INSTALL_URL}; if the repo is not connected, bootstrap conservatively with `{connect_command}`. "
-        "Step order after the `/goal` envelope is active: install/repair CLI if needed; bootstrap/connect the project if needed; run `goal-harness doctor >/dev/null`; inspect registry/global quota truth, active state, status/run history, and repo state; then run "
-        f"`{quota_guard_command}`; follow `interaction_contract`. "
-        "If action_required=true or open_count>0, list concrete payload todo(s)/questions, never only owner gate; if missing, say `具体 user todo 未投影，需修复 Goal Harness 状态投影`; no delivery/spend. "
-        "If false/0, say `无用户待办/无需通知` or continue quietly. "
-        "If should_run=false, do only the permitted monitor/quiet path; monitor-only quiet skips stay active and no-spend. "
-        "If P0 is blocked but CLI contract permits safe work, continue verifiable P1/P2. "
-        "If should_run=true, do a bounded steering audit across P0/P1/P2, choose one in-scope todo, complete one coherent validated batch or a concrete blocker. "
-        "Plans/done must become Goal Harness todos, writeback, or no-follow-up rationale, not chat-only prose. After two no-progress turns, self-repair before another quiet no-op. "
-        f"After validated writeback, run `{refresh_command}` if needed, then spend exactly once with `{quota_spend_command}`. "
-        "Do not spend for quiet skips, preflight failures, blocker-push asks, pure dry-runs, self-cancel turns, or duplicate accounting. "
-        "No project-specific branches here. Do not consume the learning material queue unless explicitly asked. Stop for private material, credentials, destructive git, unauthorized production actions, unsafe ambiguity, or true goal completion."
-    )
-    if len(goal_text) > CODEX_GOAL_OBJECTIVE_MAX_CHARS:
-        raise ValueError(
-            "Codex CLI /goal bootstrap objective exceeds "
-            f"{CODEX_GOAL_OBJECTIVE_MAX_CHARS} characters"
-        )
-    return f"/goal {goal_text}"
-
 
 def render_prompt_text(
     *,
@@ -770,10 +778,11 @@ def render_codex_cli_bootstrap_message_markdown(payload: dict[str, Any]) -> str:
         f"- {item}" for item in payload.get("first_run_validation_checklist", [])
     )
     goal_mode_note = ""
-    if payload.get("invocation_mode") == "codex_cli_goal_mode":
+    if payload.get("invocation_mode") == "codex_cli_setup_then_goal_mode":
         goal_mode_note = (
-            "\nThe generated block starts with `/goal`, so Codex CLI goal mode "
-            "owns the visible loop objective and completion criteria.\n"
+            "\nThe generated block is a setup message, not the reusable heartbeat body. "
+            "After install/bootstrap, it tells the agent to set Codex CLI goal mode "
+            "to `/goal <thin task_body>` or Codex App automation to `<thin task_body>`.\n"
         )
     return f"""# Codex CLI Goal Harness Bootstrap Message
 
@@ -792,6 +801,17 @@ for a contributor clone:
 ```bash
 {payload.get("install_repair_command", "")}
 ```
+
+## Post-Bootstrap Thin Loop Prompt
+
+Generate the thin task body after the project is connected:
+
+```bash
+{payload.get("heartbeat_prompt_json_command", "")}
+```
+
+- Codex CLI TUI loop: set `/goal <task_body>`.
+- Codex App loop: set heartbeat automation body to `<task_body>`.
 
 ## Transcript-Free Validation Checklist
 
@@ -823,6 +843,7 @@ mutating a real Codex session.
 
 - review_packet: `{payload.get("review_packet_command")}`
 - heartbeat_prompt: `{payload.get("heartbeat_prompt_command")}`
+- heartbeat_prompt_json: `{payload.get("heartbeat_prompt_json_command")}`
 - quota_guard: `{payload.get("quota_guard_command")}`
 - refresh_state: `{payload.get("refresh_command")}`
 - quota_spend_after_validation: `{payload.get("quota_spend_command")}`
@@ -853,9 +874,10 @@ def render_codex_cli_exec_handoff_markdown(payload: dict[str, Any]) -> str:
     boundary = payload.get("boundary") or {}
     return f"""# Codex CLI Exec Handoff Disabled
 
-The default Codex CLI Goal Harness bootstrap is TUI-visible `/goal` mode.
-Headless `codex exec` handoff is disabled here to avoid accidental hidden
-execution. Use the message-only command below inside the visible Codex CLI TUI.
+The default Codex CLI Goal Harness bootstrap is visible setup, then thin
+`/goal <task_body>` activation. Headless `codex exec` handoff is disabled here
+to avoid accidental hidden execution. Use the message-only command below inside
+the visible Codex CLI TUI.
 
 ````bash
 {payload.get("message_only_command", "")}

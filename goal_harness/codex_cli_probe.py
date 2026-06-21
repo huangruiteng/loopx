@@ -134,7 +134,7 @@ def classify_codex_cli_session_surface(
         )
     if exec_supported and not (safe_injection_supported or remote_control_surface_detected or visible_resume_supported):
         warnings.append(
-            "Codex exec is available, but headless fallback is disabled for the default Goal Harness /goal bootstrap path."
+            "Codex exec is available, but headless fallback is disabled for the default Goal Harness setup-then-goal bootstrap path."
         )
     if not codex_cli_available:
         warnings.append("Codex CLI was not available on PATH; classification used missing-command evidence.")
@@ -1016,7 +1016,7 @@ def build_codex_cli_visible_driver_plan(
             "quota_guard": quota_guard_command,
             "tui_bootstrap_message": bootstrap_command,
             "explicit_headless_fallback": None,
-            "headless_fallback_disabled": "headless codex exec is disabled for the default Goal Harness /goal bootstrap path",
+            "headless_fallback_disabled": "headless codex exec is disabled for the default Goal Harness setup-then-goal bootstrap path",
         },
         "driver_steps": driver_steps,
         "boundary": {
@@ -1123,14 +1123,14 @@ def build_codex_cli_local_driver_plan(
             "visible_driver_plan": visible_driver_plan_command,
             "tui_bootstrap_message": bootstrap_command,
             "explicit_headless_fallback": None,
-            "headless_fallback_disabled": "headless codex exec is disabled for the default Goal Harness /goal bootstrap path",
+            "headless_fallback_disabled": "headless codex exec is disabled for the default Goal Harness setup-then-goal bootstrap path",
         },
         "driver_steps": [
             "run quota_guard and stop when user_channel.action_required=true",
             "run visible_driver_plan to classify TUI, resume, or remote-control mode",
             "verify idle_guard before any visible resume or remote-control prompt",
             "prefer one-message TUI bootstrap until visible attach is proven",
-            "do not offer headless codex exec from the default Goal Harness /goal bootstrap path",
+            "do not offer headless codex exec from the default Goal Harness setup-then-goal bootstrap path",
             "write back compact evidence or a precise blocker before quota spend",
         ],
         "idle_guard": {
@@ -1177,7 +1177,7 @@ def build_codex_cli_visible_driver_run_packet(
     The packet is deliberately not an executor. It converts the dry-run local
     driver plan and optional visible-session proof into the next safe command
     boundary for a local scheduler or human operator. Headless fallback remains
-    disabled for this default Goal Harness /goal bootstrap path.
+    disabled for this default Goal Harness setup-then-goal bootstrap path.
     """
 
     local_plan = build_codex_cli_local_driver_plan(
@@ -1226,14 +1226,14 @@ def build_codex_cli_visible_driver_run_packet(
         "run quota_guard and stop if user_channel.action_required=true",
         "stop or relocate if workspace_guard blocks the current checkout",
         "use a visible session only when proof_approved=true and an idle guard passes",
-        "do not use headless codex exec from the default Goal Harness /goal bootstrap path",
+        "do not use headless codex exec from the default Goal Harness setup-then-goal bootstrap path",
         "after the Codex turn, validate evidence or blocker before refresh-state",
         "spend quota exactly once after validated writeback, never for this packet alone",
     ]
     warnings = list(local_plan.get("warnings") or [])
     if allow_headless_fallback:
         warnings.append(
-            "allow_headless_fallback was ignored because headless fallback is disabled for the default Goal Harness /goal bootstrap path."
+            "allow_headless_fallback was ignored because headless fallback is disabled for the default Goal Harness setup-then-goal bootstrap path."
         )
 
     return {
@@ -1863,7 +1863,13 @@ def build_codex_cli_one_message_loop_pilot(
         "first_turn": {
             "user_action": "paste_bootstrap_message_into_codex_cli_tui",
             "autostarts_goal_harness_loop": True,
+            "setup_then_loop_activation": True,
             "preserve_tui": True,
+            "loop_activation": {
+                "source_command": bootstrap.get("heartbeat_prompt_json_command"),
+                "codex_cli": "/goal <thin task_body>",
+                "codex_app": "<thin task_body> heartbeat automation",
+            },
             "stop_only_for": [
                 "concrete_user_gate",
                 "workspace_guard",
@@ -1908,6 +1914,8 @@ def build_codex_cli_one_message_loop_pilot(
         },
         "bootstrap_message": {
             "schema_version": bootstrap.get("schema_version"),
+            "invocation_mode": bootstrap.get("invocation_mode"),
+            "heartbeat_prompt_json_command": bootstrap.get("heartbeat_prompt_json_command"),
             "quota_guard_command": bootstrap.get("quota_guard_command"),
             "refresh_command": bootstrap.get("refresh_command"),
             "quota_spend_command": bootstrap.get("quota_spend_command"),

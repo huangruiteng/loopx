@@ -146,12 +146,18 @@ def main() -> int:
     assert no_proof["start_surface"] == "codex_cli_tui_one_message", no_proof
     assert no_proof["pilot_decision"] == "first_message_then_visible_blocker_writeback", no_proof
     assert no_proof["first_turn"]["autostarts_goal_harness_loop"] is True, no_proof
+    assert no_proof["first_turn"]["setup_then_loop_activation"] is True, no_proof
+    assert no_proof["first_turn"]["loop_activation"]["codex_cli"] == "/goal <thin task_body>", no_proof
+    assert no_proof["first_turn"]["loop_activation"]["codex_app"] == "<thin task_body> heartbeat automation", no_proof
     assert no_proof["first_turn"]["preserve_tui"] is True, no_proof
     assert "workspace_guard" in no_proof["first_turn"]["stop_only_for"], no_proof
-    assert no_proof["first_turn"]["message"].startswith("/goal Advance `public-codex-cli-goal`"), no_proof
-    assert "visible Codex CLI TUI" in no_proof["first_turn"]["message"], no_proof
-    assert "do not use hidden headless codex exec" in no_proof["first_turn"]["message"], no_proof
+    assert no_proof["first_turn"]["message"].startswith("Install and connect Goal Harness for this repo"), no_proof
+    assert not no_proof["first_turn"]["message"].startswith("/goal "), no_proof
+    assert "Codex CLI TUI" in no_proof["first_turn"]["message"], no_proof
+    assert "headless `codex exec`" in no_proof["first_turn"]["message"], no_proof
     assert "runtime_idle_evidence" in no_proof["later_turn_contract"]["visible_steering_requires"], no_proof
+    assert no_proof["bootstrap_message"]["invocation_mode"] == "codex_cli_setup_then_goal_mode", no_proof
+    assert "heartbeat-prompt --thin" in no_proof["bootstrap_message"]["heartbeat_prompt_json_command"], no_proof
     assert no_proof["later_turn_contract"]["default_without_proof"] == "write_blocker_or_keep_tui_bootstrap_primary", no_proof
     assert no_proof["automation_bridge"]["command"] == "codex-cli-local-scheduler-exec", no_proof
     assert no_proof["automation_bridge"]["default_executes"] is False, no_proof

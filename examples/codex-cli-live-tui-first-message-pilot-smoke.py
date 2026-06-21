@@ -89,11 +89,13 @@ def assert_bootstrap_message_still_copy_first() -> None:
         "--message-only",
     )
     normalized = normalize(message)
-    assert "/goal Advance `public-live-tui-pilot-goal` from the registry-declared active state" in normalized, message
-    assert "visible Codex CLI TUI" in normalized, message
-    assert "durable TUI heartbeat prompt" in normalized, message
-    assert "raw Codex transcripts/session files" in normalized, message
-    assert "keep the user able to watch, steer, review, and take over" in normalized, message
+    assert message.startswith("Install and connect Goal Harness for this repo"), message
+    assert not message.startswith("/goal "), message
+    assert "Codex CLI TUI" in normalized, message
+    assert "setup/bootstrap instruction" in normalized, message
+    assert "/goal <thin task_body>" in normalized, message
+    assert "raw Codex transcripts" in normalized, message
+    assert "watch, steer, review, and take over" in normalized, message
 
 
 def main() -> int:
