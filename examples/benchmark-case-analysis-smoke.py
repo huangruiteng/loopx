@@ -113,6 +113,7 @@ def test_case_analysis_json() -> None:
     scan_success = by_case[("skillsbench@1.1", "3d-scan-calc")]
     bike_success = by_case[("skillsbench@1.1", "bike-rebalance")]
     adaptive_setup = by_case[("skillsbench@1.1", "adaptive-cruise-control")]
+    swe_zstd_regression = by_case[("swe-marathon", "zstd-decoder")]
 
     assert uplift["classification"] == (
         "baseline_solved_non_regression_asset"
@@ -357,6 +358,43 @@ def test_case_analysis_json() -> None:
         "--fail-fast-on-apt-risk" in item
         for item in adaptive_setup["optimization_guidance"]
     ), adaptive_setup
+    assert swe_zstd_regression["classification"] == (
+        "product_path_verified_regression_asset"
+    ), swe_zstd_regression
+    assert swe_zstd_regression["decision"] == "paired_treatment_regressed", (
+        swe_zstd_regression
+    )
+    assert swe_zstd_regression["scores"]["baseline_official_score"] == 1.0, (
+        swe_zstd_regression
+    )
+    assert swe_zstd_regression["scores"]["treatment_official_score"] == 0.0, (
+        swe_zstd_regression
+    )
+    assert swe_zstd_regression["scores"]["official_score_delta"] == -1.0, (
+        swe_zstd_regression
+    )
+    assert swe_zstd_regression["scores"]["claimable_uplift"] is False, (
+        swe_zstd_regression
+    )
+    assert swe_zstd_regression["arms"]["baseline"]["run_id"] == "9ae95dbf5ab4", (
+        swe_zstd_regression
+    )
+    assert swe_zstd_regression["arms"]["treatment"]["run_id"] == "1252c5786080", (
+        swe_zstd_regression
+    )
+    assert swe_zstd_regression["arms"]["treatment"]["first_blocker"] == (
+        "harbor_prompt_polling_round_timeout_before_completion"
+    ), swe_zstd_regression
+    zstd_product_path = swe_zstd_regression["product_path_validation"]
+    assert zstd_product_path["treatment_goal_harness_inside_case"] is True, (
+        zstd_product_path
+    )
+    assert zstd_product_path["treatment_goal_harness_cli_call_count"] == 12, (
+        zstd_product_path
+    )
+    assert zstd_product_path["treatment_worker_bridge_materialization_status"] == (
+        "verified"
+    ), zstd_product_path
     bike_blind_recheck = bike_success["blind_loop_recheck"]
     assert bike_blind_recheck["decision"] == (
         "paired_baseline_solved_treatment_preserved"
@@ -1027,6 +1065,9 @@ def test_case_analysis_markdown() -> None:
     assert "llm-prefix-cache-replay" in text, text
     assert "dapt-intrusion-detection" in text, text
     assert "debug-trl-grpo" in text, text
+    assert "zstd-decoder" in text, text
+    assert "product-path verified regression asset" in text, text
+    assert "harbor_prompt_polling_round_timeout_before_completion" in text, text
     assert "make-doom-for-mips" in text, text
     assert "pytorch-model-recovery" in text, text
     assert "agent_exception_score_failure" in text, text

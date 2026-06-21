@@ -6976,9 +6976,12 @@
         "zstd-decoder": {
           "case_id": "zstd-decoder",
           "latest_decision": {
+            "baseline_failure_scope": "passed",
             "baseline_run_id": "9ae95dbf5ab4",
-            "decision": "baseline_passed_not_current_treatment_priority",
-            "failure_scope": "passed"
+            "decision": "paired_treatment_regressed",
+            "official_score_delta": -1.0,
+            "treatment_failure_scope": "case_or_solution",
+            "treatment_run_id": "1252c5786080"
           },
           "runs": [
             {
@@ -7012,11 +7015,46 @@
               "status": "completed",
               "submit_eligible": false,
               "worker_bridge_status": "not_required"
+            },
+            {
+              "agent_declared_done": false,
+              "arm_id": "swe_marathon_goal_harness_prompt_polling_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/swe-marathon-zstd-decoder-gh-prompt-polling-pr433-20260621T110515Z/harbor_job_result.pr438.compact.json"
+              },
+              "benchmark_id": "swe-marathon",
+              "case_id": "zstd-decoder",
+              "case_ids": [
+                "zstd-decoder"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "goal_harness_inside_case": true,
+              "job_name": "swe-marathon-zstd-decoder-gh-prompt-polling-pr433-r1",
+              "leaderboard_evidence": false,
+              "mode": "codex_goal_harness",
+              "notes": "SWE-Marathon zstd-decoder prompt-driven Goal Harness treatment completed through case-local GH CLI lifecycle; official score 0.0, first blocker harbor_prompt_polling_round_timeout_before_completion; compact-only publi...",
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-21T19:59:10+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "swe-marathon-zstd-decoder-gh-prompt-polling-pr433-20260621T110515Z",
+              "run_id": "1252c5786080",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "worker_bridge_status": "verified"
             }
           ]
         }
       },
-      "run_count": 4
+      "run_count": 5
     },
     "terminal-bench-worker-materialization@v0": {
       "benchmark_id": "terminal-bench-worker-materialization@v0",
@@ -10766,5 +10804,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-21T14:59:11+08:00"
+  "updated_at": "2026-06-21T19:59:10+08:00"
 }
