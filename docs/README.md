@@ -62,6 +62,7 @@ incident report, or launch draft.
 
 - [Status data contract](status-data-contract.md)
 - [Interface budget contract](interface-budget-contract.md)
+- [Host integration surface v0](reference/protocols/host-integration-surface-v0.md)
 - [Reward gate direct-write contract](reward-gate-direct-write-contract.md)
 - [Worker bridge install contract](worker-bridge-install-contract.md)
 - [Dashboard reward write boundary](dashboard-reward-write-boundary.md)
