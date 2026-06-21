@@ -80,7 +80,8 @@ four questions:
 ### Phase 2: Controlled Writeback
 
 After the read-only projection proves useful, LoopX may map compact
-control events back to host metadata or events:
+control events back to host metadata or events. The stable boundary is
+[`session_runtime_controlled_writeback_v0`](reference/protocols/session-runtime-controlled-writeback-v0.md):
 
 - operator gate requested/resolved;
 - human reward or route judgment;
