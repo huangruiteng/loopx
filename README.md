@@ -154,105 +154,23 @@ Requirements: Python 3.11+, `curl`, `tar`, macOS or Linux shell. Git is only
 needed for contributor clone/canary workflows. The Python package has no
 runtime dependencies outside the standard library.
 
-The recommended start is agent-first. For Codex CLI users, stay in the TUI and
-paste one message:
+The recommended start is agent-first: ask the agent you already use to install,
+connect, diagnose, and show the next safe action before doing longer work.
 
-1. Open Codex CLI from your project repo.
-2. Paste this message:
+### Codex App
 
-   ```text
-   Start Goal Harness for this repo. If `goal-harness` is missing, install it
-   with the official no-clone GitHub installer, then connect this project. Show
-   me the current goal, concrete user gate if any, top todos, and next safe
-   action before running longer work. Keep me in this Codex CLI TUI unless I
-   explicitly accept a headless fallback. After I paste this, begin the Goal
-   Harness loop; do not stop after only explaining what Goal Harness is.
-   ```
-
-   The agent should install or repair Goal Harness, connect the repo, run the
-   quota/status guard, then show the current goal, user gate, top todos, and
-   next safe action before longer work. If the guard permits work, it should
-   claim or choose one runnable agent todo and complete one bounded validated
-   segment in the same visible TUI turn.
-
-3. After Goal Harness is installed, generate a tailored one-message bootstrap
-   when you want the stricter reusable prompt:
-
-   ```bash
-   goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
-   ```
-
-   The generated packet includes the exact TUI paste block, the no-clone
-   install-repair command, and a transcript-free validation checklist.
-   When you only need the text to paste into Codex CLI TUI, use:
-
-   ```bash
-   goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
-   ```
-
-This is the primary Codex CLI path: the user keeps the visible TUI for steering,
-review, and takeover; Goal Harness supplies goal state, todo ownership, quota,
-gates, writeback, and the next safe action. Headless `codex exec` is an explicit
-fallback, not the default experience. Local driver and visible-session proof
-commands are follow-up automation checks, not first-run requirements.
-Later automation must preserve that visible-control promise: a scheduler can
-return to the TUI only with public-safe visible proof, runtime idle evidence, a
-fresh guard, and explicit execution bounds.
-
-For contributors validating the full Codex CLI path without running Codex, use:
-
-```bash
-goal-harness codex-cli-one-message-loop-pilot --project . --goal-id <goal-id> --agent-id <agent-id>
-```
-
-It packages the first visible TUI message and the later scheduler/executor
-bridge into one dry-run packet.
-
-To review the next visible local-driver loop without touching a real Codex
-session, use:
-
-```bash
-goal-harness codex-cli-visible-local-driver-pilot --project . --goal-id <goal-id> --agent-id <agent-id>
-```
-
-Later-turn automation stays conservative: `codex-cli-runtime-idle-detector`
-must validate public-safe idle evidence before a visible resume or
-remote-control candidate can run. It can use a reproducible fixture or a
-local observation adapter that only checks coarse human-input idle seconds plus
-an explicit visible turn-state.
-
-For Codex App, Claude Code, Cursor, or another terminal agent, paste this from
-the project repo:
+Use this when you are working in Codex App or a Codex App heartbeat-capable
+thread. Paste from the project repo:
 
 ```text
 Install and connect Goal Harness for this project end to end. Do not stop at a
-plan.
-
-If `goal-harness` is not on PATH, install it without making me clone the repo:
-
-curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
-export PATH="$HOME/.local/bin:$PATH"
-
-Then:
-1. Run `goal-harness doctor`.
-2. Choose a stable goal id from this repo name unless I gave one explicitly.
-3. Read the project goal doc if present (`GOAL.md`, `README.md`, or the doc I
-   name); otherwise ask me for a one-sentence objective.
-4. Run `goal-harness connect` or `goal-harness bootstrap` for this repo with
-   that goal id, objective, domain, and goal doc.
-5. Explain the onboarding todo candidates and ask which ones I accept, edit,
-   or reject.
-6. Ensure `.goal-harness/` and `.codex/goals/` are ignored in this project.
-7. Run `goal-harness registry`, `goal-harness status`, and
-   `goal-harness check --scan-root .`.
-8. Report the goal id, created files, current user todo, current agent todo,
-   and next safe action.
-
-Do not commit `.goal-harness/`, `.codex/goals/`, live ACTIVE_GOAL_STATE files,
-runtime registries, raw logs, credentials, or private local paths.
+plan. If `goal-harness` is missing, install it with the official no-clone
+GitHub installer. Then run doctor, connect or bootstrap this repo, ensure local
+Goal Harness state is ignored, and report the goal id, current user gate, top
+agent todo, and next safe action before longer work.
 ```
 
-Success looks like this:
+Success looks like this for every surface:
 
 - `goal-harness doctor` passes;
 - the project has `.goal-harness/registry.json`;
@@ -260,8 +178,53 @@ Success looks like this:
 - `goal-harness status` shows who should act next;
 - local runtime state is ignored, not committed.
 
-Manual no-clone install is still available when you want to drive the setup
-yourself:
+For recurring Codex App automation, generate the heartbeat body after the
+project is connected:
+
+```bash
+goal-harness heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
+```
+
+### Codex CLI
+
+Use this when you want the human-visible TUI to stay primary. Open Codex CLI
+from your project repo and paste one message:
+
+```text
+Start Goal Harness for this repo. If `goal-harness` is missing, install it with
+the official no-clone GitHub installer, then connect this project. Show me the
+current goal, concrete user gate if any, top todos, and next safe action before
+running longer work. Keep me in this Codex CLI TUI unless I explicitly accept a
+headless fallback. After I paste this, begin the Goal Harness loop; do not stop
+after only explaining what Goal Harness is.
+```
+
+The first useful response should show the current goal, user gate, top todos,
+and next safe action. If the guard permits work, the same visible TUI turn can
+claim or choose one runnable agent todo and complete one bounded validated
+segment.
+
+After Goal Harness is installed, generate a stricter exact TUI paste block:
+
+```bash
+goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
+```
+
+For only the pasteable text:
+
+```bash
+goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
+```
+
+Headless `codex exec` is an explicit fallback, not the default experience.
+Pilot packets, local drivers, idle detection, and same-session proof details
+live in [Getting Started](docs/guides/getting-started.md) and the
+[Codex CLI TUI-first loop](docs/product/codex-cli-tui-loop.md).
+
+### Other Agents And Manual Shell
+
+For Claude Code, Cursor, another terminal agent, or a manual shell, use the
+same no-clone installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
@@ -269,15 +232,7 @@ export PATH="$HOME/.local/bin:$PATH"
 goal-harness doctor
 ```
 
-Clone-based install is for contributors who want the live canary wrapper:
-
-```bash
-git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
-~/goal-harness/scripts/install-local.sh
-goal-harness doctor
-```
-
-Then connect a project:
+Then ask the agent to connect or run the command yourself:
 
 ```bash
 cd /path/to/your-project
@@ -285,6 +240,14 @@ goal-harness bootstrap \
   --goal-id your-project-goal \
   --objective "Improve this project through bounded, verified goal segments." \
   --goal-doc GOAL.md
+```
+
+Clone-based install is only for contributors who want the live canary wrapper:
+
+```bash
+git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
+~/goal-harness/scripts/install-local.sh
+goal-harness doctor
 ```
 
 For the full install, diagnose, connect, heartbeat, dashboard, development, and
