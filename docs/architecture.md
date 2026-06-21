@@ -61,6 +61,12 @@ the same state is available through hook/MCP/server adapters:
 
 This keeps Goal Harness portable across Codex, local CLI loops, dashboards, and
 future agent hosts while avoiding a forked control plane per host.
+The v0 protocol contract is
+[`host-integration-surface-v0`](reference/protocols/host-integration-surface-v0.md):
+hook activation stays thin, lifecycle reads and todo/gate/lease writes map to
+CLI-equivalent operations, compact status projections exclude raw/private
+material, optional derived projections remain read-only, and CLI fallback
+remains available when an adapter is absent.
 
 ## Lifetime Goal Invariant
 
