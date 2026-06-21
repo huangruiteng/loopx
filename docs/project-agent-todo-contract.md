@@ -136,6 +136,11 @@ the side agent's current slice for this turn; it does not overwrite the
 goal-level `Next Action` owned by the primary/global route. `goal-harness status
 --agent-id <side-agent-id>` may attach the same derived field to matching status
 queue items for observation, while leaving the project-level route unchanged.
+When a candidate has `target_capabilities` and missing target bridge
+capabilities, quota may mark it `capability_repair_mode=true`; scoped
+next-action selection should prefer that repair-mode candidate over ordinary
+runnable work in the same claim/priority bucket so capability-building todos do
+not require fragile active-state reordering.
 
 ```bash
 goal-harness configure-goal \

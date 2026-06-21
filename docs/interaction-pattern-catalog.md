@@ -1234,8 +1234,9 @@ For agent-scoped execution payloads, quota may also expose a narrow
 runnable queue: prefer `capability_gate.runnable_candidates`, then
 `agent_todo_summary.first_executable_items`, then
 `agent_todo_summary.executable_backlog_items`; filter out other-agent claimed
-todos; select the first current-agent claimed todo before any unclaimed
-fallback. This object is an agent-lane pointer, not a goal-level route rewrite,
+todos; select current-agent claimed todos before unclaimed fallback, and within
+that claim bucket prefer `capability_repair_mode=true` before ordinary runnable
+work of the same priority. This object is an agent-lane pointer, not a goal-level route rewrite,
 so it must include `preserves_goal_next_action=true`. Status may attach the same
 object for `--agent-id` observation, but it must not replace the item
 `recommended_action`, `project_asset.next_action`, owner, or waiting lane.

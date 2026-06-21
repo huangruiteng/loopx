@@ -1076,6 +1076,67 @@ def assert_side_agent_next_action_projects_without_stealing_goal_next_action() -
     assert primary_action not in guard["agent_lane_next_action"]["text"], guard
 
 
+def assert_agent_lane_next_action_prefers_capability_repair_candidate() -> None:
+    ordinary_action = (
+        "[P0] Run the already-launched full-suite polling lane and record compact results."
+    )
+    repair_action = (
+        "[P0] Repair benchmark treatment product-path parity by building the "
+        "benchmark_runner bridge itself before claiming uplift."
+    )
+    guard = build_quota_should_run(
+        status_payload(
+            status="target_capabilities_gate_merged",
+            next_action=ordinary_action,
+            coordination={
+                "primary_agent": "codex-main-control",
+                "registered_agents": ["codex-main-control"],
+            },
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": ordinary_action,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "advancement_task",
+                    "claimed_by": "codex-main-control",
+                    "todo_id": "todo_full_suite",
+                },
+                {
+                    "index": 2,
+                    "text": repair_action,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "advancement_task",
+                    "claimed_by": "codex-main-control",
+                    "todo_id": "todo_bridge_repair",
+                    "required_capabilities": ["shell"],
+                    "target_capabilities": ["benchmark_runner"],
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+    )
+    capability_gate = guard["capability_gate"]
+    repair_candidates = [
+        item
+        for item in capability_gate["runnable_candidates"]
+        if item.get("capability_repair_mode") is True
+    ]
+    assert [item["todo_id"] for item in repair_candidates] == ["todo_bridge_repair"], guard
+    next_action = guard["agent_lane_next_action"]
+    assert next_action["todo_id"] == "todo_bridge_repair", guard
+    assert next_action["source"] == "capability_gate.runnable_candidates", next_action
+    assert next_action["selected_by"] == "current_agent_claimed_todo", next_action
+    assert next_action["capability_repair_mode"] is True, next_action
+    assert next_action["missing_target_capabilities"] == ["benchmark_runner"], next_action
+    markdown = render_quota_should_run_markdown(guard)
+    assert "agent_lane_next_action: todo_id=todo_bridge_repair" in markdown, markdown
+
+
 def main() -> int:
     assert_dependency_monitor_requires_advancement()
     assert_primary_status_stays_advancement_lane()
@@ -1099,6 +1160,7 @@ def main() -> int:
     assert_launched_external_observation_does_not_preempt_advancement_backlog()
     assert_launch_then_poll_todo_without_handle_routes_to_advancement()
     assert_side_agent_next_action_projects_without_stealing_goal_next_action()
+    assert_agent_lane_next_action_prefers_capability_repair_candidate()
     print("work-lane-contract-smoke ok")
     return 0
 

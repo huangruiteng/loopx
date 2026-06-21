@@ -1020,6 +1020,12 @@ field must therefore carry `preserves_goal_next_action=true` and must not be
 treated as a project-level status overwrite. `status --agent-id` may reuse the
 same quota-derived object as item/project-asset observation data; consumers must
 render it as an agent-lane pointer, not as `recommended_action` replacement.
+Within a candidate source, selection is ordered by current-agent claim first,
+then `capability_repair_mode=true`, then priority/index. A repair-mode item
+therefore stays visible as the suggested agent-lane slice even when an older
+ordinary runnable P0 todo appears earlier in the active state; otherwise a todo
+that exists to build the missing capability can be starved by work that depends
+on that capability becoming reliable.
 When the resolved `agent_identity.role` is `side-agent`, `quota should-run`
 also enforces the workspace boundary. If the guard is being run from the
 registered primary checkout, from a non-git directory, or from an unrelated git
