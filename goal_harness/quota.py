@@ -1861,8 +1861,15 @@ def _agent_lane_next_action(
         )
     )
 
+    def lane_candidate_sort_key(raw_item: dict[str, Any]) -> tuple[int, int, int, int]:
+        claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
+        claim_rank = 0 if claimed_by == agent_id else 1
+        repair_rank = 0 if raw_item.get("capability_repair_mode") is True else 1
+        return (claim_rank, repair_rank, _todo_priority_rank(raw_item), _todo_index_rank(raw_item))
+
     seen: set[tuple[str, str]] = set()
     for source, raw_items in candidate_sources:
+        source_candidates: list[dict[str, Any]] = []
         for raw_item in raw_items:
             if not isinstance(raw_item, dict):
                 continue
@@ -1876,16 +1883,28 @@ def _agent_lane_next_action(
             identity = (str(raw_item.get("todo_id") or ""), text)
             if identity in seen:
                 continue
-            seen.add(identity)
             claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
             if claimed_by and claimed_by != agent_id:
                 continue
+            seen.add(identity)
+            source_candidates.append(raw_item)
+        for raw_item in sorted(source_candidates, key=lane_candidate_sort_key):
+            text = _protocol_action_text(raw_item.get("text"), limit=500)
+            claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
             selected_by = (
                 "current_agent_claimed_todo"
                 if claimed_by == agent_id
                 else "unclaimed_todo"
             )
             payload = _compact_todo_summary_item(raw_item, text=text)
+            for key in (
+                "missing_capabilities",
+                "missing_target_capabilities",
+                "capability_action",
+                "capability_repair_mode",
+            ):
+                if raw_item.get(key) is not None:
+                    payload[key] = raw_item.get(key)
             payload.update(
                 {
                     "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
