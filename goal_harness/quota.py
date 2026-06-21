@@ -1946,6 +1946,23 @@ def _selected_recommended_action(
     return raw_action
 
 
+def _selected_action_with_agent_lane(
+    selected_action: Any,
+    *,
+    agent_lane_next_action: dict[str, Any] | None,
+) -> Any:
+    if not isinstance(agent_lane_next_action, dict):
+        return selected_action
+    if (
+        agent_lane_next_action.get("source") != "capability_gate.runnable_candidates"
+        or agent_lane_next_action.get("confidence") != "selected"
+        or agent_lane_next_action.get("selected_by") != "current_agent_claimed_todo"
+    ):
+        return selected_action
+    lane_text = str(agent_lane_next_action.get("text") or "").strip()
+    return lane_text or selected_action
+
+
 def _normalize_action_for_compare(value: Any) -> str:
     text = re.sub(r"\s+", " ", str(value or "")).strip().lower()
     text = re.sub(r"^(?:agent|user|owner|codex)\s*:\s*", "", text)
@@ -4916,6 +4933,10 @@ def build_quota_should_run(
             agent_identity=agent_identity,
             agent_todo_summary=agent_todo_summary,
             capability_gate=capability_gate,
+        )
+        selected_recommended_action = _selected_action_with_agent_lane(
+            selected_recommended_action,
+            agent_lane_next_action=agent_lane_next_action,
         )
         state_action_projection_warning = _state_action_projection_warning(
             item,

@@ -1127,6 +1127,7 @@ def assert_agent_lane_next_action_prefers_capability_repair_candidate() -> None:
         if item.get("capability_repair_mode") is True
     ]
     assert [item["todo_id"] for item in repair_candidates] == ["todo_bridge_repair"], guard
+    assert guard["recommended_action"] == repair_action, guard
     next_action = guard["agent_lane_next_action"]
     assert next_action["todo_id"] == "todo_bridge_repair", guard
     assert next_action["source"] == "capability_gate.runnable_candidates", next_action
