@@ -3389,6 +3389,20 @@ def main(argv: list[str] | None = None) -> int:
         ),
         help="Path to benchmark_case_analysis_v0 JSON.",
     )
+    benchmark_case_analysis_candidates_parser.add_argument(
+        "--include-proposed-records",
+        action="store_true",
+        help=(
+            "Include proposal-only benchmark_case_analysis_v0 record drafts. "
+            "This does not edit the case-analysis file."
+        ),
+    )
+    benchmark_case_analysis_candidates_parser.add_argument(
+        "--proposal-limit",
+        type=int,
+        default=None,
+        help="Maximum proposal records to include when --include-proposed-records is set.",
+    )
 
     agentissue_runner_flow_parser = benchmark_sub.add_parser(
         "agentissue-codex-runner-flow",
@@ -8828,6 +8842,8 @@ def main(argv: list[str] | None = None) -> int:
                 report = build_case_analysis_candidate_report(
                     ledger=ledger,
                     analysis=analysis,
+                    include_proposed_records=args.include_proposed_records,
+                    proposal_limit=args.proposal_limit,
                 )
                 payload = {
                     "ok": True,
