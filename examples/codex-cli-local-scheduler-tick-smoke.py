@@ -124,6 +124,7 @@ def assert_boundary(payload: dict[str, object]) -> None:
     assert boundary["spends_goal_harness_quota"] is False, payload
     assert boundary["writes_goal_harness_state"] is False, payload
     assert boundary["visible_candidate_requires_runtime_idle_detector"] is True, payload
+    assert boundary["headless_execution_disabled"] is True, payload
 
 
 def build_tick(
@@ -165,16 +166,18 @@ def main() -> int:
     assert "refresh-state" in proof_missing["blocker_writeback_command"], proof_missing
     assert proof_missing["candidate_command"] is None, proof_missing
 
-    opt_in_missing = build_tick(FALLBACK_HELP_FIXTURE)
-    assert_boundary(opt_in_missing)
-    assert opt_in_missing["scheduler_action"] == "write_precise_blocker", opt_in_missing
-    assert opt_in_missing["precise_blocker"]["reason"] == "headless_fallback_opt_in_missing", opt_in_missing
+    tui_only = build_tick(FALLBACK_HELP_FIXTURE)
+    assert_boundary(tui_only)
+    assert tui_only["scheduler_action"] == "surface_tui_bootstrap", tui_only
+    assert tui_only["candidate_command"] is None, tui_only
+    assert tui_only["blocker_writeback_command"] is None, tui_only
 
-    fallback_candidate = build_tick(FALLBACK_HELP_FIXTURE, allow_headless_fallback=True)
-    assert_boundary(fallback_candidate)
-    assert fallback_candidate["scheduler_action"] == "external_headless_fallback_candidate", fallback_candidate
-    assert "codex-cli-exec-handoff" in fallback_candidate["candidate_command"], fallback_candidate
-    assert fallback_candidate["blocker_writeback_command"] is None, fallback_candidate
+    fallback_ignored = build_tick(FALLBACK_HELP_FIXTURE, allow_headless_fallback=True)
+    assert_boundary(fallback_ignored)
+    assert fallback_ignored["scheduler_action"] == "surface_tui_bootstrap", fallback_ignored
+    assert fallback_ignored["candidate_command"] is None, fallback_ignored
+    assert fallback_ignored["blocker_writeback_command"] is None, fallback_ignored
+    assert any("allow_headless_fallback was ignored" in warning for warning in fallback_ignored["warnings"]), fallback_ignored
 
     visible_idle_missing = build_tick(REMOTE_RESUME_HELP_FIXTURE, proof_payload=VISIBLE_PROOF_FIXTURE)
     assert_boundary(visible_idle_missing)

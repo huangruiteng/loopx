@@ -119,12 +119,12 @@ def assert_installed_release(
         cwd=fresh_repo,
     ).stdout
     normalized_message = normalize(message)
-    assert "Start the Goal Harness loop" in normalized_message, message
+    assert "/goal Advance `public-no-clone-release-goal` from the registry-declared active state" in normalized_message, message
     assert "install-from-github.sh" in normalized_message, message
-    assert "same Codex CLI TUI session" in normalized_message, message
+    assert "visible Codex CLI TUI" in normalized_message, message
     assert "quota should-run" in normalized_message, message
     assert "quota spend-slot" in normalized_message, message
-    assert "no raw Codex transcripts" in normalized_message, message
+    assert "raw Codex transcripts/session files" in normalized_message, message
 
     bundle = json.loads(
         run(

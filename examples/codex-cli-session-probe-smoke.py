@@ -99,8 +99,9 @@ def assert_fallback_contract(payload: dict[str, object]) -> None:
     assert capabilities["remote_control_surface_detected"] is False, payload
     assert capabilities["same_tui_injection_detected"] is False, payload
     assert capabilities["safe_injection_supported"] is False, payload
-    assert payload["recommended_mode"] == "tui_bootstrap_then_explicit_headless_fallback", payload
-    assert payload["automation_action"] == "keep_tui_bootstrap_primary_and_require_explicit_fallback", payload
+    assert payload["recommended_mode"] == "tui_bootstrap_only", payload
+    assert payload["automation_action"] == "ask_user_to_start_inside_codex_cli_tui", payload
+    assert any("headless fallback is disabled" in warning for warning in payload["warnings"]), payload
     boundary = payload["boundary"]
     assert boundary["help_only_probe"] is True, payload
     assert boundary["reads_raw_transcripts"] is False, payload
@@ -136,7 +137,8 @@ def main() -> int:
     assert remote_plan["boundary"]["mutates_codex_session"] is False, remote_plan
     assert remote_plan["boundary"]["spends_goal_harness_quota"] is False, remote_plan
     assert "resume [PROMPT]" in " ".join(remote_plan["driver_steps"]), remote_plan
-    assert "goal-harness codex-cli-exec-handoff" in remote_plan["commands"]["explicit_headless_fallback"], remote_plan
+    assert remote_plan["commands"]["explicit_headless_fallback"] is None, remote_plan
+    assert "headless codex exec is disabled" in remote_plan["commands"]["headless_fallback_disabled"], remote_plan
 
     attach_payload = classify_codex_cli_session_surface(command_outputs=ATTACH_HELP_FIXTURE)
     assert attach_payload["capabilities"]["safe_injection_supported"] is True, attach_payload
@@ -168,7 +170,7 @@ def main() -> int:
 
         cli_markdown = run_cli("codex-cli-session-probe", "--fixture", str(fixture))
         assert "# Codex CLI Session Probe" in cli_markdown, cli_markdown
-        assert "recommended_mode: `tui_bootstrap_then_explicit_headless_fallback`" in cli_markdown, cli_markdown
+        assert "recommended_mode: `tui_bootstrap_only`" in cli_markdown, cli_markdown
         assert "same_tui_injection_detected: `False`" in cli_markdown, cli_markdown
 
         remote_fixture = Path(tmp) / "codex-remote-help.json"

@@ -114,7 +114,7 @@ def assert_boundary(payload: dict[str, object]) -> None:
     policy = payload["execution_policy"]
     assert policy["tui_bootstrap_primary"] is True, payload
     assert policy["same_session_attachment_requires_visible_proof"] is True, payload
-    assert policy["headless_fallback_requires_explicit_opt_in"] is True, payload
+    assert policy["headless_execution_disabled"] is True, payload
     assert policy["quota_guard_required"] is True, payload
     assert policy["idle_guard_required_before_visible_prompt"] is True, payload
     assert policy["spend_after_validated_writeback_only"] is True, payload
@@ -146,17 +146,18 @@ def main() -> int:
     assert proof_required["visible_session_proof"]["supplied"] is False, proof_required
     assert "codex-cli-visible-session-proof" in proof_required["recommended_command"], proof_required
 
-    fallback_blocked = build_packet(FALLBACK_HELP_FIXTURE)
-    assert_boundary(fallback_blocked)
-    assert fallback_blocked["decision"] == "headless_fallback_requires_explicit_opt_in", fallback_blocked
-    assert fallback_blocked["next_driver_action"] == "ask_user_before_headless_codex_exec", fallback_blocked
-    assert "codex-cli-bootstrap-message" in fallback_blocked["recommended_command"], fallback_blocked
+    tui_only = build_packet(FALLBACK_HELP_FIXTURE)
+    assert_boundary(tui_only)
+    assert tui_only["decision"] == "tui_bootstrap_only", tui_only
+    assert tui_only["next_driver_action"] == "ask_user_to_start_inside_codex_cli_tui", tui_only
+    assert "codex-cli-bootstrap-message" in tui_only["recommended_command"], tui_only
 
-    fallback_allowed = build_packet(FALLBACK_HELP_FIXTURE, allow_headless_fallback=True)
-    assert_boundary(fallback_allowed)
-    assert fallback_allowed["decision"] == "headless_fallback_command_ready", fallback_allowed
-    assert fallback_allowed["next_driver_action"] == "run_explicit_headless_fallback_after_quota_guard", fallback_allowed
-    assert "codex-cli-exec-handoff" in fallback_allowed["recommended_command"], fallback_allowed
+    fallback_ignored = build_packet(FALLBACK_HELP_FIXTURE, allow_headless_fallback=True)
+    assert_boundary(fallback_ignored)
+    assert fallback_ignored["decision"] == "tui_bootstrap_only", fallback_ignored
+    assert fallback_ignored["next_driver_action"] == "ask_user_to_start_inside_codex_cli_tui", fallback_ignored
+    assert "codex-cli-bootstrap-message" in fallback_ignored["recommended_command"], fallback_ignored
+    assert any("allow_headless_fallback was ignored" in warning for warning in fallback_ignored["warnings"]), fallback_ignored
 
     visible_candidate = build_packet(REMOTE_RESUME_HELP_FIXTURE, proof_payload=VISIBLE_PROOF_FIXTURE)
     assert_boundary(visible_candidate)

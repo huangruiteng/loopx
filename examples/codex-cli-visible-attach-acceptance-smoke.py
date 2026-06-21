@@ -201,9 +201,10 @@ def main() -> int:
     assert_public_safe_boundary(missing_idle)
 
     fallback = build(FALLBACK_HELP_FIXTURE)
-    assert fallback["decision"] == "explicit_headless_fallback_after_tui_bootstrap", fallback
+    assert fallback["decision"] == "tui_bootstrap_only", fallback
     assert fallback["accepted_for_same_tui_automation"] is False, fallback
     assert fallback["accepted_for_visible_later_turn"] is False, fallback
+    assert fallback["requirements"]["headless_execution_disabled"] is True, fallback
     assert_public_safe_boundary(fallback)
 
     with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-visible-attach-") as tmp:

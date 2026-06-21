@@ -89,11 +89,11 @@ def assert_bootstrap_message_still_copy_first() -> None:
         "--message-only",
     )
     normalized = normalize(message)
-    assert "Start the Goal Harness loop" in normalized, message
-    assert "same Codex CLI TUI session" in normalized, message
-    assert "begin the Goal Harness loop automatically" in normalized, message
-    assert "Do not store raw Codex transcripts" in normalized, message
-    assert "visible steering turns" in normalized, message
+    assert "/goal Advance `public-live-tui-pilot-goal` from the registry-declared active state" in normalized, message
+    assert "visible Codex CLI TUI" in normalized, message
+    assert "durable TUI heartbeat prompt" in normalized, message
+    assert "raw Codex transcripts/session files" in normalized, message
+    assert "keep the user able to watch, steer, review, and take over" in normalized, message
 
 
 def main() -> int:

@@ -25,6 +25,7 @@ def main() -> int:
         "goal-harness codex-cli-visible-driver-plan",
         "goal-harness codex-cli-exec-handoff",
         "TUI bootstrap primary",
+        "headless-disabled boundary",
         "idle guard",
         "validated writeback",
     ]

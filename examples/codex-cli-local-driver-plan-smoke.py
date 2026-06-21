@@ -94,12 +94,13 @@ def assert_common_contract(payload: dict[str, object]) -> None:
     assert "quota should-run --goal-id public-codex-cli-goal --agent-id codex-side-bypass" in commands["quota_guard"], payload
     assert "codex-cli-visible-driver-plan" in commands["visible_driver_plan"], payload
     assert "codex-cli-bootstrap-message" in commands["tui_bootstrap_message"], payload
-    assert "codex-cli-exec-handoff" in commands["explicit_headless_fallback"], payload
+    assert commands["explicit_headless_fallback"] is None, payload
+    assert "headless codex exec is disabled" in commands["headless_fallback_disabled"], payload
     assert payload["idle_guard"]["required"] is True, payload
     assert payload["idle_guard"]["implemented"] is False, payload
     policy = payload["execution_policy"]
     assert policy["tui_bootstrap_primary"] is True, payload
-    assert policy["headless_fallback_requires_user_opt_in"] is True, payload
+    assert policy["headless_execution_disabled"] is True, payload
     assert policy["same_session_attachment_requires_visible_proof"] is True, payload
     boundary = payload["boundary"]
     assert boundary["dry_run_plan_only"] is True, payload
@@ -125,8 +126,8 @@ def build_plan(command_outputs: dict[str, str]) -> dict[str, object]:
 def main() -> int:
     fallback_plan = build_plan(HELP_FIXTURE)
     assert_common_contract(fallback_plan)
-    assert fallback_plan["driver_mode"] == "explicit_headless_fallback_after_tui_bootstrap", fallback_plan
-    assert fallback_plan["decision"] == "keep_tui_primary_offer_explicit_exec_fallback", fallback_plan
+    assert fallback_plan["driver_mode"] == "tui_bootstrap_only", fallback_plan
+    assert fallback_plan["decision"] == "ask_user_to_start_from_tui", fallback_plan
 
     remote_plan = build_plan(REMOTE_RESUME_HELP_FIXTURE)
     assert_common_contract(remote_plan)
@@ -172,7 +173,7 @@ def main() -> int:
         )
         assert "# Codex CLI Local Driver Plan" in cli_markdown, cli_markdown
         assert "driver_phase: `dry_run_plan`" in cli_markdown, cli_markdown
-        assert "headless_fallback_requires_user_opt_in: `True`" in cli_markdown, cli_markdown
+        assert "headless_execution_disabled: `True`" in cli_markdown, cli_markdown
 
     print("codex-cli-local-driver-plan-smoke ok")
     return 0

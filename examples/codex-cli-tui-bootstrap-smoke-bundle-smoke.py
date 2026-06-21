@@ -124,7 +124,7 @@ def main() -> None:
         assert "--agent-id codex-side-bypass" in bundle["quota_guard_command"], bundle
         assert "refresh-state --goal-id public-fresh-codex-cli-goal" in bundle["refresh_command"], bundle
         assert "quota spend-slot" in bundle["quota_spend_command"], bundle
-        assert "--source controller --execute --agent-id codex-side-bypass" in bundle["quota_spend_command"], bundle
+        assert "--source heartbeat --execute --agent-id codex-side-bypass" in bundle["quota_spend_command"], bundle
         assert any("message-only command" in item for item in bundle["validation_checklist"]), bundle
         assert any("no raw Codex transcripts" in item for item in bundle["validation_checklist"]), bundle
 
@@ -155,14 +155,14 @@ def main() -> None:
             env=env,
             cwd=fresh_repo,
         ).stdout
-        assert message_only.startswith("Start the Goal Harness loop"), message_only
+        assert message_only.startswith("/goal Advance `public-fresh-codex-cli-goal` from the registry-declared active state"), message_only
         assert "# Codex CLI Goal Harness Bootstrap Message" not in message_only, message_only
         assert "Fresh Repo Install Repair" not in message_only, message_only
         assert "install-from-github.sh" in message_only, message_only
         assert "quota should-run" in message_only, message_only
         assert "refresh-state --goal-id public-fresh-codex-cli-goal" in message_only, message_only
         assert "quota spend-slot" in message_only, message_only
-        assert "no raw Codex transcripts" in message_only, message_only
+        assert "raw Codex transcripts/session files" in message_only, message_only
 
         markdown = run(
             [

@@ -88,12 +88,12 @@ def assert_cli_surfaces_align() -> None:
         "--message-only",
     )
     normalized = normalize(message)
-    assert "Start the Goal Harness loop" in normalized, message
+    assert "/goal Advance `public-codex-cli-goal` from the registry-declared active state" in normalized, message
     assert "install-from-github.sh" in normalized, message
-    assert "same Codex CLI TUI session" in normalized, message
+    assert "visible Codex CLI TUI" in normalized, message
     assert "quota should-run" in normalized, message
     assert "quota spend-slot" in normalized, message
-    assert "no raw Codex transcripts" in normalized, message
+    assert "raw Codex transcripts/session files" in normalized, message
 
     bundle = run_cli(
         "codex-cli-tui-bootstrap-smoke-bundle",

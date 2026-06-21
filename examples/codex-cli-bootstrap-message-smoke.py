@@ -21,59 +21,64 @@ GOAL_ID = "public-codex-cli-goal"
 AGENT_ID = "codex-side-bypass"
 
 MUST_HAVE = (
-    "one-message TUI bootstrap",
-    "same Codex CLI TUI session",
-    "begin the Goal Harness loop automatically",
-    "Do not stop after explaining what Goal Harness is",
-    "hidden headless `codex exec`",
-    "explicit fallback",
+    "one-message /goal",
+    "visible Codex CLI TUI",
+    "durable TUI heartbeat prompt",
+    "hidden headless codex exec",
+    "registry-declared active state",
+    "goal-harness-project",
+    "goal-harness-self-repair",
     "current goal id",
     "top user todo",
     "top agent todo",
     "next safe action",
-    "goal-harness doctor",
+    "todo claim",
     "goal-harness bootstrap",
     "quota should-run",
     "--agent-id codex-side-bypass",
     "interaction_contract",
-    "user_channel.action_required=true",
+    "action_required=true",
+    "open_count>0",
     "workspace_guard",
-    "independent worktree",
-    "runnable agent todo",
-    "one bounded validated segment",
-    "Do not store raw Codex transcripts",
-    "visible steering turns",
-    "runtime idle evidence",
+    "independent git worktree",
+    "bounded steering audit",
+    "coherent validated batch",
+    "concrete blocker",
+    "After two no-progress turns",
+    "raw Codex transcripts",
     "refresh-state",
     "quota spend-slot",
-    "--source controller",
-    "not first-run prerequisites",
-    "no-clone GitHub archive",
+    "--source heartbeat",
+    "No project-specific branches",
     "install-from-github.sh",
-    "transcript-free validation checklist",
-    "no raw Codex transcripts, session files, credentials, private paths, stdout, or stderr persisted",
 )
 
 
 def assert_message_contract(payload: dict[str, object]) -> None:
     assert payload["ok"] is True, payload
     assert payload["schema_version"] == "codex_cli_bootstrap_message_v0", payload
+    assert payload["invocation_mode"] == "codex_cli_goal_mode", payload
     assert payload["goal_id"] == GOAL_ID, payload
     assert payload["agent_id"] == AGENT_ID, payload
     assert "install-from-github.sh" in str(payload["install_repair_command"]), payload
+    assert "heartbeat-prompt --thin" in str(payload["heartbeat_prompt_command"]), payload
+    assert "--agent-scope 'Codex CLI /goal visible TUI loop'" in str(payload["heartbeat_prompt_command"]), payload
     checklist = payload["first_run_validation_checklist"]
     assert isinstance(checklist, list) and len(checklist) >= 5, payload
     assert any("quota/status guard checked" in item for item in checklist), payload
     assert any("no raw Codex transcripts" in item for item in checklist), payload
     message = str(payload["message"])
     normalized = " ".join(message.split())
+    assert message.startswith("/goal Advance `public-codex-cli-goal` from the registry-declared active state"), message
+    assert int(payload["goal_objective_characters"]) <= int(payload["goal_objective_max_chars"]), payload
     for phrase in MUST_HAVE:
         assert phrase in normalized, (phrase, message)
     assert normalized.index("quota should-run") < normalized.index("interaction_contract"), message
-    assert normalized.index("workspace_guard") < normalized.index("independent worktree"), message
+    assert normalized.index("workspace_guard") < normalized.index("independent git worktree"), message
     assert normalized.index("refresh-state") < normalized.index("quota spend-slot"), message
     assert "Headless fallback should never be the only way" not in message, message
-    assert "quota spend-slot --goal-id public-codex-cli-goal --slots 1 --source controller --execute --agent-id codex-side-bypass" in message, message
+    assert "quota spend-slot --goal-id public-codex-cli-goal" in message, message
+    assert "--source heartbeat --execute --agent-id codex-side-bypass" in message, message
 
 
 def run_cli(*extra_args: str) -> str:
@@ -100,9 +105,9 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     normalized_readme = " ".join(readme.split())
     normalized_getting_started = " ".join(getting_started.split())
     normalized_product_contract = " ".join(product_contract.split())
-    assert "Headless `codex exec` is an explicit fallback" in normalized_readme, readme
-    assert "paste one message" in normalized_readme, readme
-    assert "begin the Goal Harness loop" in normalized_readme, readme
+    assert "Hidden `codex exec` is not part of the default TUI bootstrap" in normalized_readme, readme
+    assert "paste one goal-mode message" in normalized_readme, readme
+    assert "Begin the Goal Harness loop" in normalized_readme, readme
     assert "exact TUI paste block" in normalized_readme, readme
     assert "show the current goal, user gate, top todos, and next safe action" in normalized_readme, readme
     assert "first-run path should not require you to understand registry paths" in normalized_getting_started, getting_started
@@ -113,6 +118,8 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     assert "first TUI turn should perform one bounded, validated segment" in normalized_product_contract, product_contract
     assert "goal-harness codex-cli-session-probe" in getting_started, getting_started
     assert "goal-harness codex-cli-exec-handoff --project . --goal-id <goal-id>" in getting_started, getting_started
+    assert "headless-disabled boundary" in normalized_getting_started, getting_started
+    assert "This command no longer prints a runnable `codex exec` handoff script" in product_contract, product_contract
 
 
 def main() -> int:
@@ -150,10 +157,12 @@ def main() -> int:
     )
     assert "# Codex CLI Goal Harness Bootstrap Message" in cli_markdown, cli_markdown
     assert "Copy the block below into Codex CLI TUI" in cli_markdown, cli_markdown
+    assert "starts with `/goal`" in cli_markdown, cli_markdown
+    assert "heartbeat-prompt --thin" in cli_markdown, cli_markdown
     assert "Fresh Repo Install Repair" in cli_markdown, cli_markdown
     assert "Transcript-Free Validation Checklist" in cli_markdown, cli_markdown
     assert "install-from-github.sh" in cli_markdown, cli_markdown
-    assert "one-message TUI bootstrap" in cli_markdown, cli_markdown
+    assert "one-message /goal" in cli_markdown, cli_markdown
 
     cli_message_only = run_cli(
         "codex-cli-bootstrap-message",
@@ -168,7 +177,7 @@ def main() -> int:
     assert cli_message_only == str(payload["message"]) + "\n", cli_message_only
     assert "# Codex CLI Goal Harness Bootstrap Message" not in cli_message_only, cli_message_only
     assert "Fresh Repo Install Repair" not in cli_message_only, cli_message_only
-    assert "Start the Goal Harness loop" in cli_message_only, cli_message_only
+    assert cli_message_only.startswith("/goal Advance `public-codex-cli-goal` from the registry-declared active state"), cli_message_only
 
     cli_copy_only = run_cli(
         "codex-cli-bootstrap-message",

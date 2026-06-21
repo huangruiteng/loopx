@@ -126,7 +126,7 @@ def assert_pilot_boundary(payload: dict[str, object]) -> None:
     assert boundary["mutates_codex_session"] is False, payload
     assert boundary["spends_goal_harness_quota"] is False, payload
     assert boundary["requires_user_visible_start"] is True, payload
-    assert boundary["headless_fallback_explicit_only"] is True, payload
+    assert boundary["headless_execution_disabled"] is True, payload
 
 
 def run_cli(*extra_args: str) -> str:
@@ -148,9 +148,9 @@ def main() -> int:
     assert no_proof["first_turn"]["autostarts_goal_harness_loop"] is True, no_proof
     assert no_proof["first_turn"]["preserve_tui"] is True, no_proof
     assert "workspace_guard" in no_proof["first_turn"]["stop_only_for"], no_proof
-    assert "Start the Goal Harness loop" in no_proof["first_turn"]["message"], no_proof
-    assert "begin the Goal Harness loop automatically" in no_proof["first_turn"]["message"], no_proof
-    assert "same Codex CLI TUI" in no_proof["first_turn"]["message"], no_proof
+    assert no_proof["first_turn"]["message"].startswith("/goal Advance `public-codex-cli-goal`"), no_proof
+    assert "visible Codex CLI TUI" in no_proof["first_turn"]["message"], no_proof
+    assert "do not use hidden headless codex exec" in no_proof["first_turn"]["message"], no_proof
     assert "runtime_idle_evidence" in no_proof["later_turn_contract"]["visible_steering_requires"], no_proof
     assert no_proof["later_turn_contract"]["default_without_proof"] == "write_blocker_or_keep_tui_bootstrap_primary", no_proof
     assert no_proof["automation_bridge"]["command"] == "codex-cli-local-scheduler-exec", no_proof

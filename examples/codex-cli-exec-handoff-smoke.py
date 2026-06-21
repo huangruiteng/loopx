@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test explicit Codex CLI exec fallback handoff generation."""
+"""Smoke-test the disabled Codex CLI exec handoff boundary."""
 
 from __future__ import annotations
 
@@ -35,22 +35,17 @@ def run_cli(*extra_args: str) -> str:
 def assert_handoff_contract(payload: dict[str, object]) -> None:
     assert payload["ok"] is True, payload
     assert payload["schema_version"] == "codex_cli_exec_handoff_v0", payload
-    assert payload["mode"] == "explicit_headless_fallback", payload
-    assert payload["primary_experience"] == "codex_cli_tui_bootstrap", payload
+    assert payload["mode"] == "headless_fallback_disabled_for_goal_mode_bootstrap", payload
+    assert payload["primary_experience"] == "codex_cli_tui_goal_bootstrap", payload
     assert payload["goal_id"] == GOAL_ID, payload
     assert payload["agent_id"] == AGENT_ID, payload
     command = str(payload["handoff_command"])
-    normalized = " ".join(command.split())
-    assert "cat <<'GOAL_HARNESS_CODEX_PROMPT' | codex exec" in command, command
-    assert "codex exec -" not in command, command
-    assert "Start the Goal Harness loop for this repo from this same Codex CLI TUI session." in command, command
-    assert "hidden headless `codex exec`" in command, command
-    assert "explicit fallback" in command, command
-    assert "quota should-run --goal-id public-codex-cli-goal --agent-id codex-side-bypass" in normalized, command
-    assert "workspace_guard" in command, command
-    assert "refresh-state" in command, command
-    assert "quota spend-slot --goal-id public-codex-cli-goal" in normalized, command
-    assert "GOAL_HARNESS_CODEX_PROMPT" in command, command
+    message_only = str(payload["message_only_command"])
+    assert command == "", payload
+    assert "codex exec" not in command, payload
+    assert "codex-cli-bootstrap-message" in message_only, payload
+    assert "--message-only" in message_only, payload
+    assert "disabled" in str(payload["disabled_reason"]).lower(), payload
     boundary = payload["boundary"]
     assert boundary["runs_codex"] is False, payload
     assert boundary["reads_raw_transcripts"] is False, payload
@@ -58,6 +53,8 @@ def assert_handoff_contract(payload: dict[str, object]) -> None:
     assert boundary["reads_session_files"] is False, payload
     assert boundary["mutates_codex_session"] is False, payload
     assert boundary["spends_goal_harness_quota"] is False, payload
+    assert boundary["headless_execution_disabled"] is True, payload
+    assert boundary["provides_executable_headless_command"] is False, payload
 
 
 def main() -> int:
@@ -94,10 +91,10 @@ def main() -> int:
         "--agent-id",
         AGENT_ID,
     )
-    assert "# Codex CLI Exec Handoff" in cli_markdown, cli_markdown
-    assert "explicit headless fallback" in cli_markdown, cli_markdown
-    assert "Prefer `goal-harness codex-cli-bootstrap-message`" in cli_markdown, cli_markdown
-    assert "cat <<'GOAL_HARNESS_CODEX_PROMPT' | codex exec" in cli_markdown, cli_markdown
+    assert "# Codex CLI Exec Handoff Disabled" in cli_markdown, cli_markdown
+    assert "Headless `codex exec` handoff is disabled" in cli_markdown, cli_markdown
+    assert "codex-cli-bootstrap-message" in cli_markdown, cli_markdown
+    assert "cat <<'GOAL_HARNESS_CODEX_PROMPT' | codex exec" not in cli_markdown, cli_markdown
 
     print("codex-cli-exec-handoff-smoke ok")
     return 0
