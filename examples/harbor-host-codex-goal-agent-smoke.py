@@ -520,6 +520,98 @@ def main() -> int:
         )
         assert explicit_timeout_agent.loopx_prompt_polling_round_timeout_sec == 120.0
 
+        class _FakeTurn:
+            thread_id = "thread_demo"
+            turn_id = "turn_demo"
+            goal_status = "active"
+            turn_status = "completed"
+            turn_completed_observed = True
+            assistant_message = ""
+            agent_message_delta_count = 0
+            agent_message_item_count = 0
+            item_completed_count = 0
+            notifications: list[str] = []
+            _responses = None
+
+            def terminate(self) -> None:
+                self.terminated = True
+
+        class _FakeContext:
+            metadata: dict = {}
+
+        original_start = module.start_codex_app_server_goal_turn
+        original_followup = module.start_codex_app_server_goal_followup_turn
+
+        def _fake_start(*args, **kwargs):
+            del args, kwargs
+            return _FakeTurn()
+
+        def _fake_followup(*args, **kwargs):
+            del args, kwargs
+            raise module.CodexAppServerGoalDriverError("synthetic follow-up failure")
+
+        module.start_codex_app_server_goal_turn = _fake_start
+        module.start_codex_app_server_goal_followup_turn = _fake_followup
+        try:
+            followup_failure_agent = module.HarborHostCodexGoalAgent(
+                logs_dir=Path(tmp) / "followup-failure-logs",
+                goal_surface="app_server",
+                goal_timeout_sec=60,
+                startup_delay_sec=0,
+                poll_interval_sec=0.01,
+                task_workdir="/workspace",
+                loopx_mode="codex_loopx",
+                loopx_access_packet_mode="compact",
+                loopx_cli_bridge_enabled=True,
+                loopx_experiment_protocol="max5_blind_loop_no_feedback",
+                loopx_max_rounds=2,
+            )
+            context = _FakeContext()
+            asyncio.run(
+                followup_failure_agent.run(
+                    "Synthetic Harbor instruction placeholder.",
+                    _FakeEnvironment(),
+                    context,
+                )
+            )
+        finally:
+            module.start_codex_app_server_goal_turn = original_start
+            module.start_codex_app_server_goal_followup_turn = original_followup
+
+        compact_paths = sorted(
+            (Path(tmp) / "followup-failure-logs").glob(
+                "host-codex-goal-*/app_server_goal_turn.compact.json"
+            )
+        )
+        assert compact_paths, "follow-up failure should still write compact closeout"
+        followup_compact = json.loads(compact_paths[-1].read_text(encoding="utf-8"))
+        assert followup_compact["first_blocker"] == (
+            "codex_app_server_goal_followup_turn_failed"
+        ), followup_compact
+        assert followup_compact["loopx_controller_trace_present"] is True
+        assert followup_compact["loopx_controller_trace"]["last_decision"] == (
+            "codex_app_server_goal_followup_turn_failed"
+        )
+        assert followup_compact["loopx_controller_trace"]["raw_error_recorded"] is False
+        assert followup_compact["loopx_case_closeout_summary"][
+            "result_kind"
+        ] == "runtime_exception_blocker"
+        assert followup_compact["loopx_case_closeout_summary"][
+            "status_observed"
+        ] is True
+        assert followup_compact["loopx_case_closeout_summary"][
+            "refresh_state_observed"
+        ] is True
+        assert followup_compact["loopx_case_closeout_summary"][
+            "quota_spend_observed"
+        ] is True
+        assert followup_compact["loopx_case_closeout_summary"][
+            "timeout_preserves_open_todo"
+        ] is False
+        assert context.metadata["first_blocker"] == (
+            "codex_app_server_goal_followup_turn_failed"
+        )
+
     print("harbor host Codex Goal agent smoke passed")
     return 0
 

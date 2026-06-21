@@ -1002,7 +1002,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
         marker = work_dir / "done.marker"
         prompt_path = work_dir / "prompt.txt"
         capture_path = work_dir / "tmux_capture.txt"
-        tmux_name = f"gh_harbor_goal_{run_id}"
+        tmux_name = f"loopx_harbor_goal_{run_id}"
         self._write_bridge_script(bridge, request_dir)
 
         loopx_access_packet = build_loopx_access_packet(
@@ -1506,6 +1506,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 current_round = 1
                 completion_marker_count = 0
                 timeout_blocker = ""
+                runtime_blocker = ""
                 try:
                     while current_round <= self.loopx_prompt_polling_rounds:
                         marker_seen_this_round = False
@@ -1581,25 +1582,42 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         controller_trace["last_decision"] = (
                             "send_prompt_polling_continuation"
                         )
-                        turn = await asyncio.to_thread(
-                            start_codex_app_server_goal_followup_turn,
-                            turn,
-                            work_dir=work_dir,
-                            prompt=continuation_prompt,
-                            model_name=self.model_name,
-                            reasoning_effort=self.reasoning_effort,
-                            response_timeout_sec=self.app_server_response_timeout_sec,
-                            wait_for_completion=False,
-                        )
+                        try:
+                            turn = await asyncio.to_thread(
+                                start_codex_app_server_goal_followup_turn,
+                                turn,
+                                work_dir=work_dir,
+                                prompt=continuation_prompt,
+                                model_name=self.model_name,
+                                reasoning_effort=self.reasoning_effort,
+                                response_timeout_sec=(
+                                    self.app_server_response_timeout_sec
+                                ),
+                                wait_for_completion=False,
+                            )
+                        except CodexAppServerGoalDriverError as exc:
+                            runtime_blocker = (
+                                "codex_app_server_goal_followup_turn_failed"
+                            )
+                            controller_trace["last_decision"] = runtime_blocker
+                            controller_trace["runtime_error_type"] = type(exc).__name__
+                            controller_trace["raw_error_recorded"] = False
+                            break
                         current_round = next_round
                     observe_codex_app_server_goal_turn(turn)
                     await self._serve_bridge_requests(environment, request_dir)
                     await run_case_scheduler_closeout(
                         result_kind=(
-                            "timeout_blocker" if timeout_blocker else "case_result"
+                            "runtime_exception_blocker"
+                            if runtime_blocker
+                            else (
+                                "timeout_blocker"
+                                if timeout_blocker
+                                else "case_result"
+                            )
                         )
                     )
-                    first_blocker = timeout_blocker
+                    first_blocker = runtime_blocker or timeout_blocker
                     write_compact(first_blocker)
                 finally:
                     turn.terminate()
@@ -1609,7 +1627,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     "bridge_request_count": self._served_request_count,
                     "goal_surface": "app_server",
                     "turn_completed_observed": bool(turn.turn_completed_observed),
-                    "first_blocker": timeout_blocker,
+                    "first_blocker": runtime_blocker or timeout_blocker,
                     "loopx_mode": self.loopx_mode,
                     "loopx_access_packet_injected": bool(
                         loopx_access_packet
