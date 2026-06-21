@@ -81,6 +81,22 @@ contract for local write affordances:
 }
 ```
 
+The dashboard frontstage ops route uses a TanStack Query-backed local status
+reader for `/frontstage?mode=ops&statusUrl=<relative-or-loopback>`. Showcase
+mode still ignores `statusUrl`; only explicit ops mode may fetch a status feed.
+The query layer validates `status_contract.schema_version` before trusting a
+loopback feed. If the feed is below the dashboard's expected schema version,
+the route shows stale-daemon repair copy using `status_contract.reload_hint`
+instead of silently rendering an old protocol.
+
+The same frontstage query layer projects `local_dashboard_api` as capabilities,
+not browser authority. It may show that reward dry-run or control-plane dry-run
+URLs are advertised, but write affordances stay disabled unless the feed is
+relative or loopback, the matching URL is present, and the corresponding
+`*_write_enabled` flag is true. The frontstage must remain read-only by default;
+any future write UI must still use preview-locked local APIs and keep CLI/event
+ledger state as the source of truth.
+
 The control-plane settings write path follows the same opt-in rule as reward
 append. By default `serve-status` validates dashboard setting drafts through
 `POST /control-plane/configure-goal/dry-run` but does not expose an apply

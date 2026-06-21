@@ -81,7 +81,12 @@ then reads `attention_queue.items[].goal_channel_projection` and stays
 read-only; if the feed is missing or has no projection, the bundled demo
 fixture remains visible. Ops-mode status sources are limited to relative or
 loopback URLs so public frontstage links do not silently pull external/private
-feeds. Do not use ops-mode URLs as public links.
+feeds. The ops feed is loaded through a TanStack Query-backed local data layer
+with schema-version freshness checks, stale-daemon repair copy, and a
+`local_dashboard_api` capability projection. It remains read-only by default:
+reward or control-plane write affordances require explicit loopback opt-in,
+advertised capability URLs, and preview-locked local APIs. Do not use ops-mode
+URLs as public links.
 
 To create a public-safe static bundle for demos, Lark shares, or future GitHub
 Pages hosting, export the frontstage with the sanitized fixture:

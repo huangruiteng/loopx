@@ -23,9 +23,11 @@ function sourceBetween(source: string, start: string, end: string, label: string
 }
 
 const routerSource = readFileSync("src/router.tsx", "utf8");
+const mainSource = readFileSync("src/main.tsx", "utf8");
 const frontstageSource = readFileSync("src/views/frontstage-page.tsx", "utf8");
 const stylesSource = readFileSync("src/styles.css", "utf8");
 const dataSource = readFileSync("src/data/goal-channel-frontstage.ts", "utf8");
+const localStatusQuerySource = readFileSync("src/data/local-status-query.ts", "utf8");
 const statusSource = readFileSync("src/data/status.ts", "utf8");
 const catalogSource = readFileSync("../../docs/showcases/showcase-catalog.json", "utf8");
 const privateTrapFixtureSource = readFileSync("../../examples/fixtures/frontstage-private-status-trap.public.json", "utf8");
@@ -46,6 +48,12 @@ includes(packageSource, '"smoke:frontstage-route"', "frontstage smoke script");
 includes(privateTrapFixtureSource, "GH_FAKE_PRIVATE_PLAN_SUMMARY_ALPHA", "fake-private status trap plan marker");
 includes(privateTrapFixtureSource, "GH_FAKE_LIVE_STATUS_FEED_BETA", "fake-private live status trap marker");
 includes(privateTrapFixtureSource, "GH_FAKE_PRIVATE_TODO_GAMMA", "fake-private todo trap marker");
+includes(packageSource, '"@tanstack/react-query"', "TanStack Query dependency");
+
+includes(mainSource, "QueryClientProvider", "TanStack Query provider");
+includes(mainSource, "new QueryClient", "query client construction");
+includes(mainSource, "refetchOnWindowFocus: false", "query focus refetch policy");
+includes(mainSource, "staleTime: 15_000", "query freshness window");
 
 includes(dataSource, 'schema_version: "goal_channel_projection_v0"', "goal channel schema");
 includes(dataSource, "goalChannelProjectionSchema", "goal channel zod schema");
@@ -53,6 +61,17 @@ includes(dataSource, 'mode: "read_only"', "read-only mode");
 includes(dataSource, 'claimed_by: "codex-side-bypass"', "side-agent claim fixture");
 includes(dataSource, "raw_or_private_material_omitted", "source warning fixture");
 includes(statusSource, "goal_channel_projection: goalChannelProjectionSchema", "status projection parser");
+includes(statusSource, "local_dashboard_api", "local dashboard API status parser");
+
+includes(localStatusQuerySource, "resolveFrontstageOpsStatusUrl", "frontstage status URL resolver");
+includes(localStatusQuerySource, "fetchFrontstageStatusPayload", "frontstage status query fetcher");
+includes(localStatusQuerySource, "parseStatusPayload", "status payload parser in query helper");
+includes(localStatusQuerySource, "statusContractFreshnessIssue", "status contract freshness helper");
+includes(localStatusQuerySource, "localDashboardApiCapabilities", "local dashboard API capability helper");
+includes(localStatusQuerySource, "expectedStatusContractSchemaVersion", "schema freshness gate");
+includes(localStatusQuerySource, "fallbackStatusContractReloadHint", "stale daemon repair hint");
+includes(localStatusQuerySource, "isLoopbackHostname", "loopback source guard");
+includes(localStatusQuerySource, "Ops statusUrl must be relative or loopback", "ops status URL guard copy");
 
 includes(frontstageSource, 'data-testid="goal-channel-frontstage-route"', "route test id");
 includes(frontstageSource, 'data-frontstage-surface={isOpsMode ? "ops-control-plane" : "showcase-homepage"}', "frontstage surface split marker");
@@ -61,12 +80,20 @@ includes(frontstageSource, 'data-testid="frontstage-live-source-panel"', "live s
 includes(frontstageSource, 'data-testid="frontstage-public-boundary-note"', "public boundary note");
 includes(frontstageSource, "Showcase mode ignores statusUrl", "public mode statusUrl guard copy");
 includes(frontstageSource, 'if (!liveMode)', "live status feed requires ops mode");
+includes(frontstageSource, "useQuery", "frontstage uses TanStack Query");
+includes(frontstageSource, 'queryKey: ["frontstage-ops-status"', "frontstage query key");
+includes(frontstageSource, "fetchFrontstageStatusPayload", "frontstage status query function");
+includes(frontstageSource, 'data-testid="frontstage-stale-daemon-repair"', "frontstage stale daemon repair panel");
+includes(frontstageSource, 'data-testid="frontstage-local-api-capabilities"', "frontstage local API capability panel");
+includes(frontstageSource, "local_dashboard_api:", "local dashboard API copy");
+includes(frontstageSource, "read-only default", "read-only default copy");
+includes(frontstageSource, "Write affordances require explicit loopback opt-in", "loopback opt-in copy");
+includes(frontstageSource, "TanStack Query", "TanStack Query copy");
 includes(frontstageSource, 'data-testid="frontstage-operations-strip"', "operations signal strip");
 includes(frontstageSource, 'data-testid="frontstage-goal-select"', "goal selector");
-includes(frontstageSource, "parseStatusPayload", "status payload parser");
-includes(frontstageSource, "resolveOpsStatusUrl", "ops status URL resolver");
-includes(frontstageSource, "isLoopbackHostname", "ops loopback source guard");
-includes(frontstageSource, "Ops statusUrl must be relative or loopback", "ops status URL guard copy");
+includes(frontstageSource, "resolveFrontstageOpsStatusUrl", "ops status URL resolver");
+includes(frontstageSource, "statusContractFreshnessIssue", "schema freshness gate");
+includes(frontstageSource, "localDashboardApiCapabilities", "local capability projection");
 includes(frontstageSource, "Ops statusUrl accepts only relative or loopback sources.", "ops source guard helper copy");
 includes(frontstageSource, 'data-testid="frontstage-user-todos"', "user todo lane");
 includes(frontstageSource, 'data-testid="frontstage-agent-todos"', "agent todo lane");

@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import showcaseCatalog from "../../../../docs/showcases/showcase-catalog.json";
@@ -22,7 +23,15 @@ import {
   GoalChannelTodo,
   sampleGoalChannelProjection,
 } from "../data/goal-channel-frontstage";
-import { QueueItem, StatusPayload, formatStatusError, parseStatusPayload } from "../data/status";
+import { QueueItem, StatusPayload, formatStatusError } from "../data/status";
+import {
+  LocalDashboardApiCapabilities,
+  StatusContractFreshnessIssue,
+  fetchFrontstageStatusPayload,
+  localDashboardApiCapabilities,
+  resolveFrontstageOpsStatusUrl,
+  statusContractFreshnessIssue,
+} from "../data/local-status-query";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Select } from "../components/ui/select";
@@ -129,37 +138,6 @@ function warningMessage(value: string | string[] | undefined) {
     return value.join(", ");
   }
   return value ?? "compact source warning";
-}
-
-function isExplicitUrl(value: string) {
-  return /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(value) || value.startsWith("//");
-}
-
-function isLoopbackHostname(hostname: string) {
-  return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
-}
-
-function resolveOpsStatusUrl(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return { error: "status URL is empty" };
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed, window.location.href);
-  } catch {
-    return { error: "status URL is invalid" };
-  }
-
-  const isRelative = !isExplicitUrl(trimmed);
-  if (!isRelative && !isLoopbackHostname(parsed.hostname)) {
-    return {
-      error: "Ops statusUrl must be relative or loopback; use showcase mode for public links.",
-    };
-  }
-
-  return { url: trimmed };
 }
 
 function artifactDisplayValue(value: string | number | boolean | null | undefined) {
@@ -992,6 +970,9 @@ function FrontstageRoute({
   onTodoLaneChange,
   onTodoQueryChange,
   projection,
+  freshnessIssue,
+  localApiCapabilities,
+  queryStateLabel,
   selectedGoalId,
   source,
   statusUrl,
@@ -1010,6 +991,9 @@ function FrontstageRoute({
   onTodoLaneChange: (value: TodoLaneFilter) => void;
   onTodoQueryChange: (value: string) => void;
   projection: GoalChannelProjection;
+  freshnessIssue: StatusContractFreshnessIssue | null;
+  localApiCapabilities: LocalDashboardApiCapabilities | null;
+  queryStateLabel: string;
   selectedGoalId: string;
   source: FrontstageSource;
   statusUrl: string;
@@ -1175,6 +1159,9 @@ function FrontstageRoute({
               <Badge variant={isOpsMode && source.kind === "url" ? "info" : "neutral"}>
                 {isOpsMode && source.kind === "url" ? "live status feed" : "bundled fixture"}
               </Badge>
+              <Badge variant={isOpsMode && source.kind === "url" ? "success" : "neutral"}>
+                {isOpsMode ? queryStateLabel : "static"}
+              </Badge>
               <span className="break-words text-xs font-medium text-slate-500">
                 {isOpsMode ? source.label : publicSourceLabel}
               </span>
@@ -1244,6 +1231,52 @@ function FrontstageRoute({
               <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-xs leading-5 text-amber-950" data-testid="frontstage-load-error">
                 <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>{loadError}</span>
+              </div>
+            ) : null}
+            {freshnessIssue ? (
+              <div
+                className="rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-xs leading-5 text-amber-950"
+                data-testid="frontstage-stale-daemon-repair"
+              >
+                <div className="flex flex-wrap items-center gap-2 font-semibold">
+                  <CircleAlert className="h-3.5 w-3.5" />
+                  status service contract stale
+                  <Badge variant="warning">schema v{freshnessIssue.schemaVersion}</Badge>
+                </div>
+                <p className="mt-1">
+                  Restart the local status daemon with <span className="font-mono">{freshnessIssue.reloadHint}</span>, then reload this ops feed.
+                </p>
+              </div>
+            ) : null}
+            {isOpsMode && localApiCapabilities ? (
+              <div
+                className="grid gap-2 rounded-md border border-slate-200 bg-white px-2 py-2 text-xs leading-5 text-slate-600"
+                data-testid="frontstage-local-api-capabilities"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="info">TanStack Query</Badge>
+                  <Badge variant={localApiCapabilities.readOnlyDefault ? "success" : "warning"}>
+                    {localApiCapabilities.readOnlyDefault ? "read-only default" : "write opt-in active"}
+                  </Badge>
+                  <Badge variant={localApiCapabilities.loopbackOnly ? "success" : "neutral"}>
+                    {localApiCapabilities.loopbackOnly ? "loopback source" : "relative source"}
+                  </Badge>
+                </div>
+                <div className="break-words">
+                  <span className="font-semibold text-slate-950">local_dashboard_api:</span>{" "}
+                  {localApiCapabilities.source}
+                </div>
+                <div className="grid gap-1">
+                  <span>
+                    reward dry-run {localApiCapabilities.rewardDryRunUrl ? "advertised" : "not advertised"};
+                    append {localApiCapabilities.rewardWriteEnabled ? "enabled by loopback opt-in" : "disabled"}
+                  </span>
+                  <span>
+                    control-plane dry-run {localApiCapabilities.controlPlaneDryRunUrl ? "advertised" : "not advertised"};
+                    apply {localApiCapabilities.controlPlaneWriteEnabled ? "enabled by loopback opt-in" : "disabled"}
+                  </span>
+                  <span>Write affordances require explicit loopback opt-in and preview-locked APIs.</span>
+                </div>
               </div>
             ) : null}
           </div>
@@ -1538,11 +1571,8 @@ function FrontstageRoute({
 export function FrontstagePage() {
   const search = frontstageRoute.useSearch();
   const navigate = frontstageRoute.useNavigate();
-  const [payload, setPayload] = useState<StatusPayload | null>(null);
-  const [source, setSource] = useState<FrontstageSource>({ kind: "demo", label: "bundled fixture" });
   const [statusUrl, setStatusUrl] = useState(search.statusUrl);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [manualLoadError, setManualLoadError] = useState<string | null>(null);
   const mode: FrontstageMode = search.mode === "ops"
     ? "ops"
     : search.mode === "developer"
@@ -1554,6 +1584,21 @@ export function FrontstagePage() {
   const todoQuery = search.todoQuery ?? "";
   const liveMode = mode === "ops";
   const hasIgnoredStatusUrl = !liveMode && Boolean(search.statusUrl);
+  const resolvedSearchStatusUrl = useMemo(
+    () => (liveMode && search.statusUrl
+      ? resolveFrontstageOpsStatusUrl(search.statusUrl, window.location.href)
+      : null),
+    [liveMode, search.statusUrl],
+  );
+  const statusQuery = useQuery({
+    enabled: Boolean(liveMode && resolvedSearchStatusUrl?.source),
+    queryFn: () => fetchFrontstageStatusPayload(resolvedSearchStatusUrl?.source?.url ?? ""),
+    queryKey: ["frontstage-ops-status", resolvedSearchStatusUrl?.source?.url ?? ""],
+  });
+  const payload: StatusPayload | null = liveMode ? statusQuery.data ?? null : null;
+  const source: FrontstageSource = liveMode && payload && resolvedSearchStatusUrl?.source
+    ? { kind: "url", label: resolvedSearchStatusUrl.source.url }
+    : { kind: "demo", label: "bundled fixture" };
 
   const rawGoalOptions = useMemo(
     () => (payload ? projectionOptionsFromPayload(payload) : []),
@@ -1565,6 +1610,29 @@ export function FrontstagePage() {
     : goalOptions[0]?.goalId ?? sampleGoalChannelProjection.goal_id;
   const selectedProjection = goalOptions.find((option) => option.goalId === selectedGoalId)?.projection
     ?? sampleGoalChannelProjection;
+  const freshnessIssue = payload && resolvedSearchStatusUrl?.source
+    ? statusContractFreshnessIssue(payload, resolvedSearchStatusUrl.source)
+    : null;
+  const localApiCapabilities = payload && resolvedSearchStatusUrl?.source
+    ? localDashboardApiCapabilities(payload, resolvedSearchStatusUrl.source)
+    : null;
+  const queryError = statusQuery.error ? formatStatusError(statusQuery.error) : null;
+  const projectionError = liveMode && statusQuery.isSuccess && rawGoalOptions.length === 0
+    ? "status feed has no goal_channel_projection items; showing demo fixture"
+    : null;
+  const loadError = manualLoadError
+    ?? resolvedSearchStatusUrl?.error
+    ?? queryError
+    ?? projectionError;
+  const queryStateLabel = !liveMode
+    ? "static"
+    : !resolvedSearchStatusUrl?.source
+      ? "query idle"
+    : statusQuery.isFetching
+      ? "query fetching"
+      : statusQuery.isStale
+        ? "query stale"
+        : "query fresh";
 
   async function updateSearch(next: {
     goalId?: string;
@@ -1581,52 +1649,32 @@ export function FrontstagePage() {
     });
   }
 
-  async function loadFromUrl(url: string, updateUrl = true) {
+  async function loadSelectedStatusUrl() {
     if (!liveMode) {
-      setLoadError("statusUrl is ignored in showcase mode; switch to Ops live for local status feeds");
+      setManualLoadError("statusUrl is ignored in showcase mode; switch to Ops live for local status feeds");
       return;
     }
-    const trimmed = url.trim();
-    const resolvedStatusUrl = resolveOpsStatusUrl(trimmed);
-    if (resolvedStatusUrl.error || !resolvedStatusUrl.url) {
-      setLoadError(resolvedStatusUrl.error ?? "status URL is invalid");
+    const resolvedStatusUrl = resolveFrontstageOpsStatusUrl(statusUrl, window.location.href);
+    if (resolvedStatusUrl.error || !resolvedStatusUrl.source) {
+      setManualLoadError(resolvedStatusUrl.error ?? "status URL is invalid");
       return;
     }
-    const loadUrl = resolvedStatusUrl.url;
-    setIsLoading(true);
-    setLoadError(null);
-    try {
-      const response = await fetch(loadUrl, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status} while loading ${loadUrl}`);
-      }
-      const nextPayload = parseStatusPayload(await response.json());
-      const nextOptions = projectionOptionsFromPayload(nextPayload);
-      setPayload(nextPayload);
-      setSource({ kind: "url", label: loadUrl });
-      setStatusUrl(loadUrl);
-      if (nextOptions.length === 0) {
-        setLoadError("status feed has no goal_channel_projection items; showing demo fixture");
-      }
-      if (updateUrl) {
-        await updateSearch({
-          goalId: nextOptions[0]?.goalId ?? "",
-          mode: "ops",
-          statusUrl: loadUrl,
-        });
-      }
-    } catch (error) {
-      setLoadError(formatStatusError(error));
-    } finally {
-      setIsLoading(false);
+    setManualLoadError(null);
+    setStatusUrl(resolvedStatusUrl.source.url);
+    if (search.statusUrl === resolvedStatusUrl.source.url) {
+      await statusQuery.refetch();
+      return;
     }
+    await updateSearch({
+      goalId: "",
+      mode: "ops",
+      statusUrl: resolvedStatusUrl.source.url,
+    });
   }
 
   function resetToDemo() {
-    setPayload(null);
-    setSource({ kind: "demo", label: "bundled fixture" });
     setStatusUrl("");
-    setLoadError(null);
+    setManualLoadError(null);
     void updateSearch({ goalId: "", mode: "showcase", statusUrl: "", todoLane: "all", todoQuery: "" });
   }
 
@@ -1643,10 +1691,8 @@ export function FrontstagePage() {
   }
 
   useEffect(() => {
-    if (liveMode && search.statusUrl) {
-      void loadFromUrl(search.statusUrl, false);
-    }
-  }, [liveMode, search.statusUrl]);
+    setStatusUrl(search.statusUrl);
+  }, [search.statusUrl]);
 
   useEffect(() => {
     if (!goalOptions.length || search.goalId === selectedGoalId) {
@@ -1659,15 +1705,18 @@ export function FrontstagePage() {
     <FrontstageRoute
       goalOptions={goalOptions}
       hasIgnoredStatusUrl={hasIgnoredStatusUrl}
-      isLoading={isLoading}
+      isLoading={statusQuery.isFetching}
       loadError={loadError}
       mode={mode}
       onGoalChange={changeGoal}
-      onLoadStatusUrl={() => void loadFromUrl(statusUrl)}
+      onLoadStatusUrl={() => void loadSelectedStatusUrl()}
       onResetDemo={resetToDemo}
       onTodoLaneChange={changeTodoLane}
       onTodoQueryChange={changeTodoQuery}
       projection={selectedProjection}
+      freshnessIssue={freshnessIssue}
+      localApiCapabilities={localApiCapabilities}
+      queryStateLabel={queryStateLabel}
       selectedGoalId={selectedGoalId}
       setStatusUrl={setStatusUrl}
       source={source}
