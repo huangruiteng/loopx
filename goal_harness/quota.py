@@ -140,6 +140,7 @@ CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
 SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "side_agent_workspace_guard_v0"
 AGENT_CLAIM_SCOPE_SCHEMA_VERSION = "agent_claim_scope_v0"
 SIDE_AGENT_CLAIM_SCOPE_SCHEMA_VERSION = AGENT_CLAIM_SCOPE_SCHEMA_VERSION
+AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION = "agent_lane_next_action_v0"
 DEFAULT_AVAILABLE_CAPABILITIES = (
     "shell",
     "filesystem_read",
@@ -1784,6 +1785,91 @@ def _first_executable_todo_text(agent_todo_summary: dict[str, Any] | None) -> st
         text = _protocol_action_text(item.get("text"), limit=320)
         if text:
             return text
+    return None
+
+
+def _agent_lane_next_action(
+    *,
+    agent_identity: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    capability_gate: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(agent_identity, dict):
+        return None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id or not isinstance(agent_todo_summary, dict):
+        return None
+
+    candidate_sources: list[tuple[str, list[Any]]] = []
+    if isinstance(capability_gate, dict) and capability_gate.get("action") == "run":
+        candidate_sources.append(
+            (
+                "capability_gate.runnable_candidates",
+                capability_gate.get("runnable_candidates")
+                if isinstance(capability_gate.get("runnable_candidates"), list)
+                else [],
+            )
+        )
+    candidate_sources.append(
+        (
+            "agent_todo_summary.first_executable_items",
+            agent_todo_summary.get("first_executable_items")
+            if isinstance(agent_todo_summary.get("first_executable_items"), list)
+            else [],
+        )
+    )
+    candidate_sources.append(
+        (
+            "agent_todo_summary.executable_backlog_items",
+            agent_todo_summary.get("executable_backlog_items")
+            if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
+            else [],
+        )
+    )
+
+    seen: set[tuple[str, str]] = set()
+    for source, raw_items in candidate_sources:
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            if not _todo_item_is_actionable_open(raw_item):
+                continue
+            if _todo_task_class(raw_item) != TODO_TASK_CLASS_ADVANCEMENT:
+                continue
+            text = _protocol_action_text(raw_item.get("text"), limit=500)
+            if not text:
+                continue
+            identity = (str(raw_item.get("todo_id") or ""), text)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
+            if claimed_by and claimed_by != agent_id:
+                continue
+            selected_by = (
+                "current_agent_claimed_todo"
+                if claimed_by == agent_id
+                else "unclaimed_todo"
+            )
+            payload = _compact_todo_summary_item(raw_item, text=text)
+            payload.update(
+                {
+                    "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
+                    "agent_id": agent_id,
+                    "primary_agent": normalize_todo_claimed_by(
+                        agent_identity.get("primary_agent")
+                    ),
+                    "source": source,
+                    "selected_by": selected_by,
+                    "confidence": (
+                        "selected"
+                        if selected_by == "current_agent_claimed_todo"
+                        else "candidate"
+                    ),
+                    "preserves_goal_next_action": True,
+                }
+            )
+            return payload
     return None
 
 
@@ -4773,6 +4859,11 @@ def build_quota_should_run(
                 or automation_prompt_upgrade.get("reason")
                 or selected_recommended_action
             )
+        agent_lane_next_action = _agent_lane_next_action(
+            agent_identity=agent_identity,
+            agent_todo_summary=agent_todo_summary,
+            capability_gate=capability_gate,
+        )
         state_action_projection_warning = _state_action_projection_warning(
             item,
             agent_todo_summary=agent_todo_summary,
@@ -4857,6 +4948,8 @@ def build_quota_should_run(
         }
         if agent_identity:
             payload["agent_identity"] = agent_identity
+        if agent_lane_next_action:
+            payload["agent_lane_next_action"] = agent_lane_next_action
         if workspace_guard:
             payload["workspace_guard"] = workspace_guard
         if automation_prompt_upgrade:
@@ -6141,6 +6234,20 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"role={agent_identity.get('role')} "
             f"primary_agent={agent_identity.get('primary_agent')}"
         )
+    agent_lane_next_action = (
+        payload.get("agent_lane_next_action")
+        if isinstance(payload.get("agent_lane_next_action"), dict)
+        else {}
+    )
+    if agent_lane_next_action:
+        lines.append(
+            "- agent_lane_next_action: "
+            f"todo_id={agent_lane_next_action.get('todo_id')} "
+            f"selected_by={agent_lane_next_action.get('selected_by')} "
+            f"confidence={agent_lane_next_action.get('confidence')}"
+        )
+        if agent_lane_next_action.get("text"):
+            lines.append(f"- agent_lane_next_action_text: {agent_lane_next_action.get('text')}")
     automation_prompt_upgrade = (
         payload.get("automation_prompt_upgrade")
         if isinstance(payload.get("automation_prompt_upgrade"), dict)

@@ -28,6 +28,7 @@ from goal_harness.status import (  # noqa: E402
     render_status_markdown,
 )
 from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from goal_harness.cli_commands.status import attach_agent_lane_next_actions  # noqa: E402
 from goal_harness.review_packet import build_review_packet  # noqa: E402
 from goal_harness.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
 
@@ -1314,6 +1315,120 @@ def assert_decision_freshness_summary_markdown() -> None:
     assert "`operator-gate`: kind=operator_gate state=rebase_required" in markdown, markdown
 
 
+def assert_status_agent_lane_next_action_projection() -> None:
+    goal_id = "agent-lane-status-fixture"
+    primary_action = "[P0] Continue the primary controller benchmark route."
+    side_action = (
+        "[P0] Codex CLI TUI continuation: prove the visible steering turn "
+        "without losing user takeover."
+    )
+    side_todo = {
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_side_tui",
+        "index": 2,
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "task_class": "advancement_task",
+        "action_kind": "codex_cli_tui_continuation",
+        "claimed_by": "codex-side-bypass",
+        "required_capabilities": ["shell", "filesystem_write"],
+        "text": side_action,
+    }
+    agent_todos = {
+        "schema_version": "todo_summary_v0",
+        "open_count": 2,
+        "done_count": 0,
+        "total_count": 2,
+        "first_open_items": [
+            {
+                "schema_version": "todo_item_v0",
+                "todo_id": "todo_primary_route",
+                "index": 1,
+                "role": "agent",
+                "status": "open",
+                "priority": "P0",
+                "task_class": "advancement_task",
+                "claimed_by": "codex-main-control",
+                "text": primary_action,
+            },
+            side_todo,
+        ],
+        "first_executable_items": [side_todo],
+    }
+    coordination = {
+        "primary_agent": "codex-main-control",
+        "registered_agents": ["codex-main-control", "codex-side-bypass"],
+    }
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "contract": {"ok": True, "summary": {"errors": 0, "warnings": 0, "checks": 0}},
+        "global_registry": {"available": False, "summary": {}},
+        "attention_queue": {
+            "available": True,
+            "item_count": 1,
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "status": "primary_route_active",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "recommended_action": primary_action,
+                    "source": "registry",
+                    "coordination": coordination,
+                    "quota": {
+                        "state": "eligible",
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                    "agent_todos": agent_todos,
+                    "project_asset": {
+                        "owner": "codex-main-control",
+                        "gate": "none",
+                        "stop_condition": "stop on unsafe workspace or user gate",
+                        "next_action": primary_action,
+                        "agent_todos": agent_todos,
+                    },
+                }
+            ],
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": goal_id,
+                    "registry_member": True,
+                    "status": "primary_route_active",
+                    "coordination": coordination,
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                }
+            ]
+        },
+    }
+    attach_agent_lane_next_actions(payload, agent_id="codex-side-bypass")
+    item = payload["attention_queue"]["items"][0]
+    next_action = item["agent_lane_next_action"]
+    assert next_action["schema_version"] == "agent_lane_next_action_v0", next_action
+    assert next_action["todo_id"] == "todo_side_tui", next_action
+    assert next_action["agent_id"] == "codex-side-bypass", next_action
+    assert next_action["preserves_goal_next_action"] is True, next_action
+    assert item["recommended_action"] == primary_action, item
+    assert item["project_asset"]["next_action"] == primary_action, item
+    markdown = render_status_markdown(payload)
+    assert "agent_lane_next_action: agent=codex-side-bypass todo_id=todo_side_tui" in markdown, markdown
+    assert side_action in markdown, markdown
+
+
 def assert_quota_should_run(payload: dict, *, expected: bool, state: str, waiting_on: str) -> dict:
     quota_payload = build_quota_should_run(payload, goal_id="planned-main-control")
     quota_markdown = render_quota_should_run_markdown(quota_payload)
@@ -2115,6 +2230,7 @@ def main() -> int:
     assert_project_asset_secret_scanner_boundaries()
     assert_promotion_readiness_full_scan_fallback()
     assert_promotion_readiness_warning_in_quota_guard()
+    assert_status_agent_lane_next_action_projection()
     print("status-markdown-smoke ok")
     return 0
 

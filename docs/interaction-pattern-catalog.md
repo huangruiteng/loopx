@@ -145,7 +145,7 @@ Projection, authority, write scope, and lease integrity.
 | P1 | IP-016 | Task Lease Claim | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
 | P1 | IP-019 | Side-Agent Scoped Continuation | Primary plus side agent | no interruption unless scope/review is ambiguous | side agent claims scoped todo, uses independent worktree, then self-merges small validated work or hands review to primary |
 | P1 | IP-020 | Todo Claim / Supersede / Successor Lifecycle | Agent plus controller | no interruption unless successor is a user todo or conflict needs decision | claim before delivery; supersede stale work; complete slices with successor or no-follow-up rationale |
-| P1 | IP-022 | Claimed Todo Visibility Lanes | Status/quota/frontstage | no interruption | keep scheduler candidates separate from claimed-work visibility lanes |
+| P1 | IP-022 | Claimed Todo Visibility And Agent-Lane Next Action | Status/quota/frontstage | no interruption | keep scheduler candidates separate from claimed-work visibility lanes and expose the current agent's slice |
 | P1 | IP-023 | Status Neutral Run Window | Status/quota/history | no interruption | ignore neutral run noise for state authority while retaining it as stall evidence |
 
 ### Evidence Lifecycle
@@ -1157,7 +1157,7 @@ permission to ignore gates and boundaries.
 - future status/quota smoke that verifies first executable successor projection
   after `todo supersede` and `todo complete --next-agent-todo`.
 
-#### IP-022 Claimed Todo Visibility Lanes
+#### IP-022 Claimed Todo Visibility And Agent-Lane Next Action
 
 **Trigger**
 
@@ -1214,6 +1214,18 @@ the current agent's own claimed advancement or genuinely unclaimed work.
 `claimed_by` remains a soft ownership signal, not a lock, lease, capability
 grant, or gate bypass.
 
+For agent-scoped execution payloads, quota may also expose a narrow
+`agent_lane_next_action` object with
+`schema_version=agent_lane_next_action_v0`. It is derived from the same scoped
+runnable queue: prefer `capability_gate.runnable_candidates`, then
+`agent_todo_summary.first_executable_items`, then
+`agent_todo_summary.executable_backlog_items`; filter out other-agent claimed
+todos; select the first current-agent claimed todo before any unclaimed
+fallback. This object is an agent-lane pointer, not a goal-level route rewrite,
+so it must include `preserves_goal_next_action=true`. Status may attach the same
+object for `--agent-id` observation, but it must not replace the item
+`recommended_action`, `project_asset.next_action`, owner, or waiting lane.
+
 **Visual Model**
 
 ```mermaid
@@ -1223,6 +1235,7 @@ flowchart TD
   B --> V["visibility lanes: claimed, unclaimed, monitor"]
   S --> Q["quota/capability guard chooses runnable candidate set"]
   Q --> A["agent steering audit chooses actual todo"]
+  Q --> N["agent_lane_next_action for --agent-id scoped turns"]
   V --> F["dashboard/frontstage/review packet shows ownership"]
   V --> C{"agent identity present?"}
   C -->|"yes"| M["current-agent claimed > unclaimed > other-agent claimed"]
@@ -1243,6 +1256,11 @@ monitor work to crowd out the selected advancement lane.
 
 - `docs/status-data-contract.md`
 - `examples/todo-first-open-summary-smoke.py`
+- `examples/work-lane-contract-smoke.py` for `agent_lane_next_action_v0`
+  preserving the primary/global `Next Action` while surfacing the side-agent
+  TUI slice.
+- `examples/status-markdown-smoke.py` for `status --agent-id` rendering the same
+  agent-lane pointer without replacing the project route.
 - PR #262 / commit `292a2c8`: additive status/quota visibility lanes with a
   16-item agent-facing cap.
 

@@ -129,7 +129,13 @@ todo summary is claim-aware: current-agent claimed todos are preferred, unclaime
 todos remain selectable, and primary/other-agent claimed todos are projected as
 blocked-claim context rather than as the side agent's next action. This reduces
 accidental collisions without writing scope into todo metadata or turning
-`claimed_by` into a lease.
+`claimed_by` into a lease. When a runnable current-agent or unclaimed
+advancement todo exists, quota may also expose
+`agent_lane_next_action.schema_version=agent_lane_next_action_v0`. That field is
+the side agent's current slice for this turn; it does not overwrite the
+goal-level `Next Action` owned by the primary/global route. `goal-harness status
+--agent-id <side-agent-id>` may attach the same derived field to matching status
+queue items for observation, while leaving the project-level route unchanged.
 
 ```bash
 goal-harness configure-goal \

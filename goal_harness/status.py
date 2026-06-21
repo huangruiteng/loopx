@@ -7815,6 +7815,23 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     "    - agent_lane_recommendation: "
                     f"agent={agent} lane={lane} action={recommendation}"
                 )
+            agent_lane_next_action = (
+                project_asset.get("agent_lane_next_action")
+                if isinstance(project_asset.get("agent_lane_next_action"), dict)
+                else item.get("agent_lane_next_action")
+                if isinstance(item.get("agent_lane_next_action"), dict)
+                else {}
+            )
+            if agent_lane_next_action:
+                agent = _markdown_scalar(agent_lane_next_action.get("agent_id") or "")
+                todo_id = _markdown_scalar(agent_lane_next_action.get("todo_id") or "")
+                selected_by = _markdown_scalar(agent_lane_next_action.get("selected_by") or "")
+                action = _markdown_scalar(agent_lane_next_action.get("text") or "")
+                lines.append(
+                    "    - agent_lane_next_action: "
+                    f"agent={agent} todo_id={todo_id} selected_by={selected_by} "
+                    f"action={action}"
+                )
             dreaming_lane_badge = (
                 project_asset.get("dreaming_lane_badge")
                 if isinstance(project_asset.get("dreaming_lane_badge"), dict)

@@ -1003,6 +1003,16 @@ when the subcommand supports it. A spend preview that drops the identity may
 correctly show `automation_prompt_upgrade_required` for an unscoped automation,
 but that is an accounting/projection mismatch for the scoped turn, not evidence
 that the earlier side-agent guard was invalid.
+For registered agent-scoped turns, `quota should-run --agent-id` may include
+`agent_lane_next_action.schema_version=agent_lane_next_action_v0`. This is a
+read-only derived pointer to the current agent's selected advancement slice,
+chosen from runnable capability candidates first and then the agent-scoped
+executable todo summary. It may point to a current-agent claimed todo even when
+the active state's global `Next Action` is still owned by the primary route; the
+field must therefore carry `preserves_goal_next_action=true` and must not be
+treated as a project-level status overwrite. `status --agent-id` may reuse the
+same quota-derived object as item/project-asset observation data; consumers must
+render it as an agent-lane pointer, not as `recommended_action` replacement.
 When the resolved `agent_identity.role` is `side-agent`, `quota should-run`
 also enforces the workspace boundary. If the guard is being run from the
 registered primary checkout, from a non-git directory, or from an unrelated git

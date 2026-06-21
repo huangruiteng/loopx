@@ -7,6 +7,7 @@ from pathlib import Path
 from ..contract import check_contract, render_contract_markdown
 from ..diagnose import collect_diagnosis, render_diagnosis_markdown
 from ..handoff_budget import build_handoff_interface_budget
+from ..quota import build_quota_should_run
 from ..review_packet import build_review_packet, render_review_packet_markdown
 from ..status import collect_status, render_status_markdown
 
@@ -55,6 +56,13 @@ def register_status_commands(
         help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
     )
     status_parser.add_argument("--limit", type=int, default=5)
+    status_parser.add_argument(
+        "--agent-id",
+        help=(
+            "Registered agent id for adding agent-lane next-action projection "
+            "to matching status queue items."
+        ),
+    )
 
     diagnose_parser = subparsers.add_parser(
         "diagnose",
@@ -201,6 +209,8 @@ def handle_status_command(
             scan_roots=_scan_roots(args),
             limit=max(0, args.limit),
         )
+        if args.agent_id:
+            attach_agent_lane_next_actions(payload, agent_id=args.agent_id)
     except Exception as exc:
         payload = {
             "ok": False,
@@ -227,6 +237,45 @@ def handle_status_command(
         }
     print_payload(payload, output_format(args), render_status_markdown)
     return 0 if payload.get("ok") else 1
+
+
+def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str) -> dict[str, object]:
+    safe_agent_id = str(agent_id or "").strip()
+    if not safe_agent_id:
+        return payload
+    queue = payload.get("attention_queue")
+    if not isinstance(queue, dict):
+        return payload
+    items = queue.get("items")
+    if not isinstance(items, list):
+        return payload
+    attached = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        goal_id = str(item.get("goal_id") or "").strip()
+        if not goal_id:
+            continue
+        try:
+            guard = build_quota_should_run(payload, goal_id=goal_id, agent_id=safe_agent_id)
+        except Exception:
+            continue
+        next_action = guard.get("agent_lane_next_action")
+        if not isinstance(next_action, dict):
+            continue
+        item["agent_lane_next_action"] = next_action
+        project_asset = item.get("project_asset")
+        if isinstance(project_asset, dict):
+            project_asset["agent_lane_next_action"] = next_action
+        attached += 1
+    if attached:
+        payload["agent_lane_next_action_projection"] = {
+            "schema_version": "agent_lane_next_action_projection_v0",
+            "agent_id": safe_agent_id,
+            "attached_count": attached,
+            "preserves_goal_next_action": True,
+        }
+    return payload
 
 
 def handle_diagnose_command(

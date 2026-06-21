@@ -28,6 +28,7 @@ def status_payload(
     user_todo_items: list[dict] | None = None,
     next_action: str = "Observe dependency state and then advance backlog if unchanged.",
     post_handoff_latest_run: dict | None = None,
+    coordination: dict | None = None,
 ) -> dict:
     if agent_todo_items is None:
         agent_todo_items = [
@@ -76,6 +77,8 @@ def status_payload(
             "handoff_status": "post_handoff_run_seen",
             "post_handoff_latest_run": post_handoff_latest_run,
         }
+    if coordination:
+        item["coordination"] = coordination
     if user_todo_items:
         item["user_todos"] = {
             "schema_version": "todo_summary_v0",
@@ -86,27 +89,28 @@ def status_payload(
             "first_open_items": user_todo_items,
             "items": user_todo_items,
         }
+    goal_history_item = {
+        "id": GOAL_ID,
+        "registry_member": True,
+        "status": status,
+        "adapter_kind": "harness_self_improvement",
+        "adapter_status": "connected-read-only",
+        "quota": {
+            "compute": 1.0,
+            "window_hours": 24,
+            "slot_minutes": 1,
+            "allowed_slots": 10,
+        },
+    }
+    if coordination:
+        goal_history_item["coordination"] = coordination
     return {
         "ok": True,
         "attention_queue": {
             "items": [item]
         },
         "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": status,
-                    "adapter_kind": "harness_self_improvement",
-                    "adapter_status": "connected-read-only",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 10,
-                    },
-                }
-            ]
+            "goals": [goal_history_item]
         },
     }
 
@@ -1002,6 +1006,76 @@ def assert_launch_then_poll_todo_without_handle_routes_to_advancement() -> None:
     assert first_items[0]["action_kind"] == "run_eval", guard
 
 
+def assert_side_agent_next_action_projects_without_stealing_goal_next_action() -> None:
+    primary_action = "[P0] Run the primary benchmark monitor owned by main control."
+    side_action = (
+        "[P0] Codex CLI TUI continuation: prove the same-open-TUI steering "
+        "slice without adding temporary runtime packet fields."
+    )
+    guard = build_quota_should_run(
+        status_payload(
+            status="primary_goal_route_active",
+            next_action=primary_action,
+            coordination={
+                "primary_agent": "codex-main-control",
+                "registered_agents": ["codex-main-control", "codex-side-bypass"],
+            },
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": primary_action,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "advancement_task",
+                    "claimed_by": "codex-main-control",
+                    "todo_id": "todo_primary",
+                },
+                {
+                    "index": 2,
+                    "text": side_action,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "advancement_task",
+                    "action_kind": "codex_cli_tui_continuation",
+                    "claimed_by": "codex-side-bypass",
+                    "todo_id": "todo_side_tui",
+                    "required_capabilities": ["shell", "filesystem_write"],
+                },
+                {
+                    "index": 3,
+                    "text": "[P1] Render the public showcase animation prototype.",
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                    "task_class": "advancement_task",
+                    "claimed_by": "codex-side-bypass",
+                    "todo_id": "todo_side_showcase",
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-side-bypass",
+    )
+    assert guard["recommended_action"] == side_action, guard
+    assert guard["agent_identity"]["agent_id"] == "codex-side-bypass", guard
+    next_action = guard["agent_lane_next_action"]
+    assert next_action["schema_version"] == "agent_lane_next_action_v0", next_action
+    assert next_action["agent_id"] == "codex-side-bypass", next_action
+    assert next_action["primary_agent"] == "codex-main-control", next_action
+    assert next_action["todo_id"] == "todo_side_tui", next_action
+    assert next_action["selected_by"] == "current_agent_claimed_todo", next_action
+    assert next_action["confidence"] == "selected", next_action
+    assert next_action["source"] == "capability_gate.runnable_candidates", next_action
+    assert next_action["preserves_goal_next_action"] is True, next_action
+    assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_side_tui", guard
+    markdown = render_quota_should_run_markdown(guard)
+    assert "agent_lane_next_action: todo_id=todo_side_tui" in markdown, markdown
+    assert side_action in markdown, markdown
+    assert primary_action not in guard["agent_lane_next_action"]["text"], guard
+
+
 def main() -> int:
     assert_dependency_monitor_requires_advancement()
     assert_primary_status_stays_advancement_lane()
@@ -1024,6 +1098,7 @@ def main() -> int:
     assert_behavior_regression_suite_routes_to_advancement()
     assert_launched_external_observation_does_not_preempt_advancement_backlog()
     assert_launch_then_poll_todo_without_handle_routes_to_advancement()
+    assert_side_agent_next_action_projects_without_stealing_goal_next_action()
     print("work-lane-contract-smoke ok")
     return 0
 
