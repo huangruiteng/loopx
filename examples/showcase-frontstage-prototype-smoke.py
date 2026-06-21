@@ -32,6 +32,8 @@ PRIVATE_MARKERS = tuple(
 def main() -> int:
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
     cases = catalog["cases"]
+    frontstage_cases = [case for case in cases if isinstance(case.get("frontend_card"), dict)]
+    appendix_cases = [case for case in cases if isinstance(case.get("appendix_surface"), dict)]
     with tempfile.TemporaryDirectory(prefix="loopx-showcase-frontstage-") as tmp:
         output = Path(tmp) / "frontstage.html"
         result = subprocess.run(
@@ -65,11 +67,21 @@ def main() -> int:
     ):
         assert required in html, required
 
-    statuses = {str(case["status"]) for case in cases}
+    assert [case["id"] for case in frontstage_cases] == [
+        "2026-06-17-blocked-p0-safe-rotation",
+        "2026-06-19-loopx-self-iteration",
+        "2026-06-19-dynamic-workflow-hardware-agent",
+    ], frontstage_cases
+    assert any(case["id"] == "2026-06-20-creator-operator-case-spec" for case in appendix_cases), appendix_cases
+
+    statuses = {str(case["status"]) for case in frontstage_cases}
     for status in statuses:
         assert f'data-status-filter="{status}"' in html, status
 
-    for case in cases:
+    for case in appendix_cases:
+        assert f'data-case-id="{case["id"]}"' not in html, case["id"]
+
+    for case in frontstage_cases:
         case_id = str(case["id"])
         assert f'data-case-id="{case_id}"' in html, case_id
         assert f'data-status="{case["status"]}"' in html, case_id

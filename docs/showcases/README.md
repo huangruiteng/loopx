@@ -65,14 +65,28 @@ the artifact with `python3 examples/showcase-animation-prototype-smoke.py`.
 
 ![Hosted LoopX frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
 
-## Current Cases
+## Canonical PoC Cards
 
 | Case | Pattern | Status | Public Surface |
 | --- | --- | --- | --- |
 | [0617 blocked P0 with safe P1/P2 rotation](cases/0617-blocked-p0-safe-rotation.md) | Blocked priority fallback, concrete user gate, quota discipline | Reproducible synthetic demo | `python3 examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` |
-| [0619 dynamic workflow for hardware-agent development](cases/0619-dynamic-workflow-hardware-agent.md) | Dynamic workflow, multi-agent convergence, shared control plane | Redacted stub pending contributor detail | Public-safe narrative only |
 | [0619 LoopX self-iteration loop](cases/0619-loopx-self-iteration.md) | Self-iteration, side-agent scope, evidence writeback | Public Git evidence case | Commit-backed narrative and workload signal |
+| [0619 dynamic workflow for hardware-agent development](cases/0619-dynamic-workflow-hardware-agent.md) | Dynamic workflow, multi-agent convergence, shared control plane | Redacted stub pending contributor detail | Public-safe narrative only |
+
+The catalog order above is the canonical frontstage order for the PoC. It keeps
+the public homepage focused on one reproducible control-plane proof, one
+commit-backed self-iteration case, and one contributor-facing redacted workflow
+stub that can expand when approved public details arrive.
+
+## Appendix Cases
+
+| Case | Pattern | Status | Public Surface |
+| --- | --- | --- | --- |
 | [0620 creator-operator long-running agent case](cases/0620-creator-operator-case-spec.md) | Creator-operator workflow, user gate, feedback capture, material library | Synthetic product case spec | [Fake-data storyboard](creator-ops-fake-data-storyboard.md), [feedback contract](creator-ops-feedback-boundary-contract.md) |
+
+Appendix cases are useful product direction, but they should not appear as
+frontstage top cards until there is real public evidence or an approved
+public-safe user story.
 
 ## Case Lifecycle
 

@@ -211,16 +211,17 @@ def render(catalog: dict[str, Any], *, output: Path | None) -> str:
     cases = catalog.get("cases")
     if not isinstance(cases, list):
         raise ValueError("showcase catalog must contain a cases list")
+    frontstage_cases = [case for case in cases if isinstance(case.get("frontend_card"), dict)]
     asset_href = repo_link("docs/assets/control-plane-board.svg", output=output)
-    case_cards = "\n".join(render_case(case, output=output) for case in cases)
-    case_count = len(cases)
-    status_filters = render_status_filters(cases)
+    case_cards = "\n".join(render_case(case, output=output) for case in frontstage_cases)
+    case_count = len(frontstage_cases)
+    status_filters = render_status_filters(frontstage_cases)
     schema_version = str(catalog.get("schema_version") or "")
     schema_label = schema_version.removeprefix("loopx_showcase_catalog_") or schema_version
     pattern_count = len(
         {
             tag
-            for case in cases
+            for case in frontstage_cases
             for tag in (case.get("pattern_tags") if isinstance(case.get("pattern_tags"), list) else [])
         }
     )
@@ -338,7 +339,7 @@ def render(catalog: dict[str, Any], *, output: Path | None) -> str:
       <img src="{esc(asset_href)}" alt="LoopX control-plane board">
     </section>
     <section class="metrics" aria-label="Catalog metrics">
-      <div><strong>{case_count}</strong><span>public-safe cases</span></div>
+      <div><strong>{case_count}</strong><span>frontstage cards</span></div>
       <div><strong>{pattern_count}</strong><span>pattern tags</span></div>
       <div title="{esc(schema_version)}"><strong>{esc(schema_label)}</strong><span>catalog schema</span></div>
     </section>

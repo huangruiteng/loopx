@@ -46,6 +46,12 @@ def main() -> int:
     assert "2026-06-17-blocked-p0-safe-rotation" in case_ids, case_ids
     assert "2026-06-19-dynamic-workflow-hardware-agent" in case_ids, case_ids
     assert "2026-06-19-loopx-self-iteration" in case_ids, case_ids
+    frontstage_ids = [case.get("id") for case in cases if isinstance(case.get("frontend_card"), dict)]
+    assert frontstage_ids[:3] == [
+        "2026-06-17-blocked-p0-safe-rotation",
+        "2026-06-19-loopx-self-iteration",
+        "2026-06-19-dynamic-workflow-hardware-agent",
+    ], frontstage_ids
 
     assert_public_safe(CATALOG)
     assert_public_safe(SHOWCASES)
@@ -61,9 +67,14 @@ def main() -> int:
         assert case.get("user_value"), case
         assert isinstance(case.get("pattern_tags"), list) and case["pattern_tags"], case
         frontend = case.get("frontend_card")
-        assert isinstance(frontend, dict), case
-        assert frontend.get("visual_metaphor"), case
-        assert isinstance(frontend.get("story_beats"), list) and len(frontend["story_beats"]) >= 3, case
+        appendix = case.get("appendix_surface")
+        assert isinstance(frontend, dict) or isinstance(appendix, dict), case
+        if isinstance(frontend, dict):
+            assert frontend.get("visual_metaphor"), case
+            assert isinstance(frontend.get("story_beats"), list) and len(frontend["story_beats"]) >= 3, case
+        else:
+            assert appendix.get("reason"), case
+            assert appendix.get("public_surface") == "appendix_only", case
 
         demo_command = case.get("demo_command")
         if case.get("status") == "reproducible_synthetic_demo":
@@ -77,6 +88,7 @@ def main() -> int:
             assert "No reproducible public demo is included yet" in page_text, case_id
         if case.get("status") == "public_safe_case_spec":
             assert demo_command is None, case
+            assert isinstance(appendix, dict), case
             storyboard = case.get("storyboard_path")
             assert isinstance(storyboard, str) and storyboard.startswith("docs/showcases/"), case
             storyboard_path = REPO_ROOT / storyboard
@@ -141,7 +153,9 @@ def main() -> int:
     assert "showcases/README.md" in docs_index, "docs index must link showcases"
     assert "docs/showcases/README.md" in repo_readme, "README must link showcases"
     for phrase in (
-        "Always-on agent teams, governed by human judgment.",
+        "Loop engineering for long-running AI agents.",
+        "## 3-Minute PoC Path",
+        "https://huangruiteng.github.io/loopx/frontstage/",
         "## See It In Action",
         "docs/showcases/cases/0617-blocked-p0-safe-rotation.md",
         "docs/showcases/cases/0619-loopx-self-iteration.md",

@@ -10,6 +10,24 @@ Demo URL:
 
 ![Hosted LoopX frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
 
+## 3-Minute Timestamped Version
+
+Use this when a PoC user, contributor, or maintainer has not seen LoopX before.
+
+| Time | Screen | Talk Track |
+| --- | --- | --- |
+| 0:00 | Hosted frontstage hero | "LoopX is loop engineering for long-running AI agents. It is not another executor; Codex, Claude Code, Cursor, or a TUI still do the work. LoopX keeps the loop state stable." |
+| 0:25 | Top-3 showcase cards | "The public story starts with cases, not a private ops dashboard. These cards come from `docs/showcases/` and are safe to share." |
+| 0:50 | Blocked P0 card | "A high-priority lane can wait for a human decision without freezing the whole goal. LoopX makes the gate concrete and lets safe fallback work continue." |
+| 1:25 | Self-iteration card | "LoopX used itself while this repo changed quickly: primary and side-agent lanes, todo claims, evidence writeback, validation, and self-merge policy stayed visible." |
+| 1:55 | Hardware-agent card | "This is intentionally modest: a redacted contributor workflow stub. It shows the multi-agent control-plane pattern without exposing private artifacts." |
+| 2:20 | Boundary / evidence panels | "The public value includes saying what is not shown: raw sessions, internal sources, local paths, credentials, and benchmark traces stay out." |
+| 2:40 | CTA / repo links | "For PoC users, the fastest next step is feedback: open a GitHub Issue for onboarding friction, propose a public-safe case, or send a PR. Lark/WeChat are secondary chat surfaces." |
+
+Close with one sentence:
+
+> "Your agents keep the loop moving; you keep the judgment."
+
 ## 30-Second Version
 
 LoopX is a control plane for long-running agent work. It does not

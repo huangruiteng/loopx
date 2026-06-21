@@ -6,6 +6,10 @@ This case describes a public-safe creator-operator workflow for a
 non-technical user who wants a long-running agent to help with content research
 and planning.
 
+This is an appendix case for product direction. It should not be treated as a
+frontstage top-card proof until a real user story or approved public evidence
+exists.
+
 The user is not trying to operate an agent framework. They want a controlled
 work loop that can keep a creative goal moving:
 

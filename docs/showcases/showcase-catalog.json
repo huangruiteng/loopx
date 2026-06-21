@@ -1,6 +1,6 @@
 {
   "schema_version": "loopx_showcase_catalog_v0",
-  "updated_at": "2026-06-20",
+  "updated_at": "2026-06-22",
   "redaction_policy": {
     "public_repo_may_include": [
       "sanitized domain labels",
@@ -63,52 +63,6 @@
           "LoopX projects the decision as a user todo",
           "agent continues safe fallback work",
           "state records blocker, fallback, validation, and spend policy"
-        ]
-      }
-    },
-    {
-      "id": "2026-06-19-dynamic-workflow-hardware-agent",
-      "date": "2026-06-19",
-      "title": "Dynamic workflow for hardware-agent development",
-      "status": "redacted_stub_pending_contributor_details",
-      "case_page": "docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md",
-      "demo_command": null,
-      "domain": "hardware-agent-development",
-      "audience": [
-        "agent-platform-developer",
-        "technical-lead",
-        "open-source-user"
-      ],
-      "pattern_tags": [
-        "dynamic_workflow",
-        "multi_agent_coordination",
-        "shared_control_plane",
-        "long_unattended_goal",
-        "convergence"
-      ],
-      "headline": "A fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate.",
-      "problem": "Specialized engineering work can require multiple agents to split work and converge without losing ownership or state.",
-      "loopx_behavior": [
-        "keep durable goal state outside any one chat thread",
-        "make ownership and review handoff explicit",
-        "project evidence and convergence state for the operator",
-        "leave domain-specific artifacts private until sanitized"
-      ],
-      "user_value": "The public claim is limited to the observed control-plane pattern: shared state helps long-running multi-agent work converge.",
-      "evidence_boundary": "Redacted stub; no raw chats, screenshots, proprietary design details, internal tool names, repositories, paths, task ids, or unpublished hardware artifacts.",
-      "frontend_card": {
-        "visual_metaphor": "multiple worker lanes converging through one shared control plane",
-        "primary_metric_hint": "convergence under a fuzzy goal",
-        "badges": [
-          "redacted",
-          "multi-agent",
-          "pending-demo"
-        ],
-        "story_beats": [
-          "fuzzy engineering goal needs multiple workers",
-          "LoopX provides shared state and ownership",
-          "work converges through evidence and primary review",
-          "public demo waits for safe abstraction"
         ]
       }
     },
@@ -228,6 +182,52 @@
       }
     },
     {
+      "id": "2026-06-19-dynamic-workflow-hardware-agent",
+      "date": "2026-06-19",
+      "title": "Dynamic workflow for hardware-agent development",
+      "status": "redacted_stub_pending_contributor_details",
+      "case_page": "docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md",
+      "demo_command": null,
+      "domain": "hardware-agent-development",
+      "audience": [
+        "agent-platform-developer",
+        "technical-lead",
+        "open-source-user"
+      ],
+      "pattern_tags": [
+        "dynamic_workflow",
+        "multi_agent_coordination",
+        "shared_control_plane",
+        "long_unattended_goal",
+        "convergence"
+      ],
+      "headline": "A fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate.",
+      "problem": "Specialized engineering work can require multiple agents to split work and converge without losing ownership or state.",
+      "loopx_behavior": [
+        "keep durable goal state outside any one chat thread",
+        "make ownership and review handoff explicit",
+        "project evidence and convergence state for the operator",
+        "leave domain-specific artifacts private until sanitized"
+      ],
+      "user_value": "The public claim is limited to the observed control-plane pattern: shared state helps long-running multi-agent work converge.",
+      "evidence_boundary": "Redacted stub; no raw chats, screenshots, proprietary design details, internal tool names, repositories, paths, task ids, or unpublished hardware artifacts.",
+      "frontend_card": {
+        "visual_metaphor": "multiple worker lanes converging through one shared control plane",
+        "primary_metric_hint": "convergence under a fuzzy goal",
+        "badges": [
+          "redacted",
+          "multi-agent",
+          "pending-demo"
+        ],
+        "story_beats": [
+          "fuzzy engineering goal needs multiple workers",
+          "LoopX provides shared state and ownership",
+          "work converges through evidence and primary review",
+          "public demo waits for safe abstraction"
+        ]
+      }
+    },
+    {
       "id": "2026-06-20-creator-operator-case-spec",
       "date": "2026-06-20",
       "title": "Creator-operator long-running agent case",
@@ -262,20 +262,12 @@
       ],
       "user_value": "A non-technical operator can see what changed, what is blocked, what can safely continue, and how feedback changes the plan without reading prompts, logs, or raw traces.",
       "evidence_boundary": "Synthetic case spec only; no real platform data, creator notes, screenshots, private drafts, raw browsing traces, local paths, credentials, or performance claims.",
-      "frontend_card": {
-        "visual_metaphor": "creator workspace with trend candidates, preference map, insight board, draft queue, material library, and a visible publishing gate",
-        "primary_metric_hint": "legibility: the user can distinguish safe research progress from publish-gated work",
-        "badges": [
-          "synthetic",
-          "creator-ops",
-          "user-gate"
-        ],
-        "story_beats": [
-          "creator-operator wants recurring trend research and content planning",
-          "agent proposes synthetic trend candidates and maps them to preference hints",
-          "LoopX keeps publishing gated while safe side work continues",
-          "user feedback becomes structured control-plane state",
-          "next run starts from visible goals, todos, boundaries, and feedback"
+      "appendix_surface": {
+        "reason": "Synthetic product-direction spec; keep as appendix until real public evidence or an approved public-safe user story exists.",
+        "public_surface": "appendix_only",
+        "links": [
+          "docs/showcases/creator-ops-fake-data-storyboard.md",
+          "docs/showcases/creator-ops-feedback-boundary-contract.md"
         ]
       }
     }
