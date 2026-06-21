@@ -30,7 +30,7 @@ import { cn } from "../lib/utils";
 
 type BadgeTone = "neutral" | "success" | "warning" | "info" | "danger";
 type FrontstageSource = { kind: "demo"; label: string } | { kind: "url"; label: string };
-type FrontstageMode = "showcase" | "ops";
+type FrontstageMode = "showcase" | "developer" | "ops";
 type TodoLaneFilter = "all" | "user" | "agent";
 type NumberRange = { low?: number; high?: number };
 type ShowcaseFrontstageCase = {
@@ -774,6 +774,33 @@ const showcaseStateFlow = [
   },
 ];
 
+const developerOnboardingSteps = [
+  {
+    icon: Activity,
+    label: "Start",
+    title: "Open the project and send one Goal Harness bootstrap message in Codex CLI.",
+    body: "The first response should name the goal, visible gate, current todo, and next safe action before work starts.",
+  },
+  {
+    icon: ShieldCheck,
+    label: "Guard",
+    title: "Run quota/status before edits, then fail closed on missing identity or wrong worktree.",
+    body: "Side agents move to an independent worktree; primary control stays protected from accidental edits.",
+  },
+  {
+    icon: ListChecks,
+    label: "Claim",
+    title: "Choose from runnable candidates, claim the todo, and keep user decisions explicit.",
+    body: "The agent chooses the actual work item; the control plane projects candidate lanes and human todo payloads.",
+  },
+  {
+    icon: GitBranch,
+    label: "Prove",
+    title: "Validate, write back progress, and spend quota only after a durable state transition.",
+    body: "Developer mode is read-only in the browser; Goal Harness CLI and append-only history remain the source of truth.",
+  },
+];
+
 function ShowcaseStateFlowHero() {
   return (
     <div
@@ -846,6 +873,54 @@ function PublicShowcaseBoundaryPanel() {
           <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">write authority</div>
           <div className="mt-2 text-sm font-semibold leading-6 text-slate-950">None in browser</div>
           <p className="mt-1 text-xs leading-5 text-slate-600">The frontstage explains cases; Goal Harness CLI and append-only history remain the control plane.</p>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function DeveloperOnboardingPanel() {
+  return (
+    <Panel icon={Bot} title="Developer Onboarding">
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_320px]" data-testid="frontstage-developer-onboarding">
+        <div className="grid gap-3">
+          {developerOnboardingSteps.map((step, index) => {
+            const Icon = step.icon;
+            return (
+              <article
+                className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 sm:grid-cols-[44px_minmax(0,1fr)]"
+                key={step.label}
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 shadow-sm">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="info">{index + 1}</Badge>
+                    <span className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">{step.label}</span>
+                  </div>
+                  <h3 className="mt-2 text-sm font-semibold leading-6 text-slate-950">{step.title}</h3>
+                  <p className="mt-1 text-xs font-medium leading-5 text-slate-600">{step.body}</p>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        <div className="rounded-md border border-slate-900 bg-slate-950 p-4 text-white shadow-sm">
+          <div className="text-[11px] font-semibold uppercase tracking-normal text-cyan-200">Quick checks</div>
+          <div className="mt-3 space-y-3">
+            {[
+              ["identity", "heartbeat uses --agent-id and scoped automation identity"],
+              ["health", "quota/status agree on user todos, runnable candidates, and gate state"],
+              ["workspace", "workspace_guard blocks side-agent edits in the primary checkout"],
+              ["handoff", "TUI steering stays visible while Goal Harness owns quota/status/writeback"],
+            ].map(([label, value]) => (
+              <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2" key={label}>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-300">{label}</div>
+                <div className="mt-1 text-xs font-semibold leading-5 text-white">{value}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </Panel>
@@ -949,19 +1024,36 @@ function FrontstageRoute({
   const claimOwners = uniqueClaimOwners(projection);
   const claimOwnerPreview = claimOwners.slice(0, 2).join(", ");
   const isOpsMode = mode === "ops";
+  const isDeveloperMode = mode === "developer";
+  const isShowcaseMode = mode === "showcase";
+  const publicModeLabel = isDeveloperMode ? "developer mode" : "showcase mode";
+  const publicSourceLabel = isDeveloperMode ? "developer guide" : "docs/showcases";
   const storyBeatCount = countShowcaseStoryBeats();
-  const heroTitle = isOpsMode ? projection.display_name : "Goal Harness Showcase Frontstage";
+  const heroTitle = isOpsMode
+    ? projection.display_name
+    : isDeveloperMode
+      ? "Developer Onboarding Frontstage"
+      : "Goal Harness Showcase Frontstage";
   const heroSubtitle = isOpsMode
     ? "Always-on agent operations, with human judgment kept in the control plane."
+    : isDeveloperMode
+      ? "Start the loop from one TUI message, then keep every gate visible."
     : "Async agent teams, governed by human judgment.";
   const heroBody = isOpsMode
     ? projection.next_action
+    : isDeveloperMode
+      ? "A contributor-facing path for install, status health, todo claims, workspace repairs, local server checks, and safe writeback."
     : "Public cases show the operating model: gates stay explicit, safe lanes keep moving, and evidence makes every handoff recoverable.";
   const heroStats = isOpsMode
     ? [
         { label: "open user todos", value: String(openUserTodos) },
         { label: "open agent todos", value: String(openAgentTodos) },
       ]
+    : isDeveloperMode
+      ? [
+          { label: "handoff steps", value: String(developerOnboardingSteps.length) },
+          { label: "browser writes", value: "0" },
+        ]
     : [
         { label: "public cases", value: String(frontstageShowcases.length) },
         { label: "story beats", value: String(storyBeatCount) },
@@ -989,6 +1081,13 @@ function FrontstageRoute({
           tone: projection.recent_events.length ? "success" : "neutral",
         },
       ]
+    : isDeveloperMode
+      ? [
+          { label: "start path", value: "one message", tone: "info" },
+          { label: "workspace guard", value: "fail closed", tone: "success" },
+          { label: "status health", value: "projected", tone: "success" },
+          { label: "live feeds", value: "ops only", tone: "warning" },
+        ]
     : [
         { label: "human judgment", value: "governed", tone: "success" },
         { label: "agent teams", value: "always-on", tone: "info" },
@@ -1052,6 +1151,10 @@ function FrontstageRoute({
               <Activity className="h-4 w-4" />
               Channel board
             </a>
+            <a className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium" href="/frontstage?mode=developer">
+              <Bot className="h-4 w-4" />
+              Developer path
+            </a>
           </div>
           <div className="mt-5 space-y-2 text-xs leading-5 text-slate-500">
             <p>Projection is read-only. The append-only Goal Harness ledger remains the source of truth.</p>
@@ -1060,13 +1163,13 @@ function FrontstageRoute({
           <div className="mt-5 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3" data-testid="frontstage-live-source-panel">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={isOpsMode ? "warning" : "success"}>
-                {isOpsMode ? "ops live" : "showcase mode"}
+                {isOpsMode ? "ops live" : publicModeLabel}
               </Badge>
               <Badge variant={isOpsMode && source.kind === "url" ? "info" : "neutral"}>
-                {isOpsMode && source.kind === "url" ? "live status feed" : "showcase fixture"}
+                {isOpsMode && source.kind === "url" ? "live status feed" : "bundled fixture"}
               </Badge>
               <span className="break-words text-xs font-medium text-slate-500">
-                {isOpsMode ? source.label : "docs/showcases"}
+                {isOpsMode ? source.label : publicSourceLabel}
               </span>
             </div>
             {isOpsMode ? (
@@ -1120,7 +1223,9 @@ function FrontstageRoute({
                 data-testid="frontstage-public-boundary-note"
               >
                 <p>
-                  Showcase mode ignores statusUrl and renders docs/showcases only. Use an explicit ops URL for local control-plane inspection.
+                  {isDeveloperMode
+                    ? "Developer mode ignores statusUrl and renders the public onboarding path only. Use an explicit ops URL for local control-plane inspection."
+                    : "Showcase mode ignores statusUrl and renders docs/showcases only. Use an explicit ops URL for local control-plane inspection."}
                 </p>
                 {hasIgnoredStatusUrl ? <Badge variant="warning">statusUrl ignored</Badge> : null}
                 <div className="text-[11px] font-semibold text-emerald-800" data-testid="frontstage-ops-entry-hint">
@@ -1143,11 +1248,11 @@ function FrontstageRoute({
               <div className="min-w-0">
                 <div className="flex flex-wrap gap-2">
                   <Badge variant={isOpsMode ? "success" : "info"}>
-                    {isOpsMode ? "goal_channel_projection_v0" : "showcase catalog"}
+                    {isOpsMode ? "goal_channel_projection_v0" : isDeveloperMode ? "developer frontstage" : "showcase catalog"}
                   </Badge>
                   <Badge variant="neutral">{isOpsMode ? projection.mode : "public-safe"}</Badge>
-                  <Badge variant="info">{isOpsMode ? projection.waiting_on : "docs/showcases"}</Badge>
-                  <Badge variant={isOpsMode ? "warning" : "success"}>{isOpsMode ? "ops live" : "showcase mode"}</Badge>
+                  <Badge variant="info">{isOpsMode ? projection.waiting_on : publicSourceLabel}</Badge>
+                  <Badge variant={isOpsMode ? "warning" : "success"}>{isOpsMode ? "ops live" : publicModeLabel}</Badge>
                   <Badge variant={isOpsMode && source.kind === "url" ? "success" : "neutral"}>
                     {isOpsMode && source.kind === "url" ? "url" : "demo"}
                   </Badge>
@@ -1169,8 +1274,8 @@ function FrontstageRoute({
                 ))}
               </div>
             </div>
-            {!isOpsMode ? <ShowcaseStateFlowHero /> : null}
-            {!isOpsMode ? <ShowcaseKineticCaseStrip /> : null}
+            {isShowcaseMode ? <ShowcaseStateFlowHero /> : null}
+            {isShowcaseMode ? <ShowcaseKineticCaseStrip /> : null}
             <div className="mt-5 grid gap-2 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-4" data-testid="frontstage-operations-strip">
               {operationSignals.map((signal) => (
                 <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3" key={signal.label}>
@@ -1183,11 +1288,13 @@ function FrontstageRoute({
             </div>
           </div>
 
-          <EfficiencyEvidencePanel />
+          {!isDeveloperMode ? <EfficiencyEvidencePanel /> : null}
 
-          <ShowcaseMotionBoard />
+          {!isDeveloperMode ? <ShowcaseMotionBoard /> : null}
 
-          <ShowcaseCasePackPanel />
+          {!isDeveloperMode ? <ShowcaseCasePackPanel /> : null}
+
+          {isDeveloperMode ? <DeveloperOnboardingPanel /> : null}
 
           {isOpsMode ? (
             <>
@@ -1429,7 +1536,11 @@ export function FrontstagePage() {
   const [statusUrl, setStatusUrl] = useState(search.statusUrl);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const mode: FrontstageMode = search.mode === "ops" ? "ops" : "showcase";
+  const mode: FrontstageMode = search.mode === "ops"
+    ? "ops"
+    : search.mode === "developer"
+      ? "developer"
+      : "showcase";
   const todoLane: TodoLaneFilter = search.todoLane === "user" || search.todoLane === "agent"
     ? search.todoLane
     : "all";

@@ -60,6 +60,13 @@ The default frontstage route is public showcase mode. It ignores `statusUrl`
 and renders only bundled showcase/demo material, so a copied or hosted URL does
 not accidentally project local registry state.
 
+For contributor onboarding, use `/frontstage?mode=developer`. This is still a
+public-safe read-only view: it shows the agent-first start path, quota/status
+health checks, side-agent worktree guard, todo claiming, local server checks,
+and writeback boundary without loading live registry data. It is meant to help
+new developers understand how to enter Goal Harness from Codex CLI or another
+agent TUI before they open the denser ops board.
+
 For live local control-plane inspection, explicitly enter ops mode:
 `/frontstage?mode=ops&statusUrl=http://127.0.0.1:8766/status.json`. The route
 then reads `attention_queue.items[].goal_channel_projection` and stays

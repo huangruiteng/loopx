@@ -360,6 +360,59 @@ async function captureFrontstage(page, url, label, requiredText = []) {
   });
 }
 
+async function captureDeveloperFrontstage(page, url, label) {
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.waitForSelector('[data-testid="goal-channel-frontstage-route"]', { timeout: 10_000 });
+  await page.waitForSelector('[data-testid="frontstage-developer-onboarding"]', { timeout: 10_000 });
+
+  const body = await page.locator("body").innerText();
+  const required = [
+    "Developer Onboarding Frontstage",
+    "Start the loop from one TUI message",
+    "developer mode",
+    "Developer mode ignores statusUrl",
+    "Developer Onboarding",
+    "Open the project and send one Goal Harness bootstrap message in Codex CLI.",
+    "workspace_guard blocks side-agent edits",
+    "quota/status agree on user todos",
+    "TUI steering stays visible",
+    "Public Boundary",
+    "None in browser",
+  ];
+  const missing = required.filter((text) => !body.includes(text));
+  if (missing.length) {
+    throw new Error(`Missing developer frontstage text: ${missing.join(", ")}`);
+  }
+
+  const forbidden = [
+    "Live Goal Channel",
+    "Second Live Channel",
+    "Render live statusUrl channel projection",
+    "FAKE_PRIVATE_STATUS_ALPHA",
+    "FAKE_INTERNAL_TABLE_BETA",
+    "FAKE_PRIVATE_TODO_GAMMA",
+    "FAKE_PRIVATE_EVENT_DELTA",
+    "[plugin:vite:oxc]",
+    "Transform failed",
+  ];
+  const present = forbidden.filter((text) => body.includes(text));
+  if (present.length) {
+    throw new Error(`Developer frontstage loaded live/debug text: ${present.join(", ")}`);
+  }
+
+  const forms = await page.locator("form").count();
+  if (forms !== 0) {
+    throw new Error(`Read-only developer frontstage should not render forms; found ${forms}`);
+  }
+
+  await assertNoHorizontalOverflow(page, label);
+  await page.screenshot({
+    path: resolve(visualOutputDir, `${label}.png`),
+    fullPage: true,
+    animations: "disabled",
+  });
+}
+
 async function main() {
   const { chromium } = loadPlaywright();
   await writeFile(fixturePath, JSON.stringify(statusFixture, null, 2) + "\n", "utf-8");
@@ -469,6 +522,11 @@ async function main() {
       if (publicModePresent.length) {
         throw new Error(`Showcase frontstage loaded live statusUrl text: ${publicModePresent.join(", ")}`);
       }
+      await captureDeveloperFrontstage(
+        desktopPage,
+        `${baseUrl}/frontstage?mode=developer&statusUrl=/${fixtureName}&goalId=live-goal-a`,
+        "desktop-frontstage-developer",
+      );
       await captureFrontstage(
         desktopPage,
         `${baseUrl}/frontstage?mode=ops&statusUrl=/${fixtureName}&goalId=live-goal-a`,
@@ -583,6 +641,11 @@ async function main() {
         "Public Boundary",
         "Ops live only",
       ]);
+      await captureDeveloperFrontstage(
+        mobilePage,
+        `${baseUrl}/frontstage?mode=developer&statusUrl=/${fixtureName}`,
+        "mobile-frontstage-developer",
+      );
     } finally {
       await mobilePage.close();
     }
