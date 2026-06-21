@@ -26,7 +26,7 @@ def _run_json(args: list[str]) -> dict:
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="gh-runtime-layer-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-runtime-layer-") as tmp:
         workspace = Path(tmp) / "loopx-bench"
         public = _run_json(
             [
@@ -121,6 +121,32 @@ def main() -> None:
         assert swe_host_goal["goal_surface"] == "app_server"
         assert swe_host_goal["fallback_goal_surface"] == "tui"
         assert "goal_surface=app_server" in swe_host_goal["recommended_harbor_args"]
+        assert swe_host_goal["pre_rename_agent_kwargs_allowed"] is False
+        assert swe_host_goal["recommended_goal_baseline_harbor_args"] == (
+            swe_host_goal["recommended_harbor_args"]
+        )
+        swe_treatment_args = swe_host_goal[
+            "recommended_loopx_prompt_polling_harbor_args"
+        ]
+        swe_treatment_text = " ".join(swe_treatment_args)
+        assert "goal_surface=app_server" in swe_treatment_args
+        assert "reasoning_effort=high" in swe_treatment_args
+        assert "loopx_mode=codex_loopx" in swe_treatment_args
+        assert "loopx_access_packet_mode=compact" in swe_treatment_args
+        assert "loopx_cli_bridge_enabled=true" in swe_treatment_args
+        assert (
+            "loopx_experiment_protocol=max5_blind_loop_no_feedback"
+            in swe_treatment_args
+        )
+        assert "loopx_prompt_polling_rounds=5" in swe_treatment_args
+        assert (
+            "loopx_prompt_polling_round_timeout_sec=<seconds>"
+            in swe_treatment_args
+        )
+        assert "loopx_case_id=<case-id>" in swe_treatment_args
+        assert "loopx_arm_id=loopx_prompt_polling_test" in swe_treatment_args
+        assert "goal_harness" not in swe_treatment_text
+        assert "goal-harness" not in swe_treatment_text
         assert "thread/goal/get" in swe_host_goal["preflight_gate"]
         assert "--mounts" in terminal_args, terminal_args
         assert "--agent-env" in terminal_args, terminal_args

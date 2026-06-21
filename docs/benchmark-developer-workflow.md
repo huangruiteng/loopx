@@ -499,8 +499,8 @@ UV_LINK_MODE=copy uv run --no-default-groups harbor run \
   -p <task-dir>
 ```
 
-The packet is intentionally lightweight: it gives the host Codex worker Goal
-Harness planning/checkpoint commands and boundary reminders, while the task
+The packet is intentionally lightweight: it gives the host Codex worker LoopX
+planning/checkpoint commands and boundary reminders, while the task
 solution still goes through `harbor-env-exec` and the official Harbor verifier
 remains authoritative. It is useful as route-safety evidence, but on its own it
 must be labeled `packet_only_observation`, not the prompt-driven test arm.
