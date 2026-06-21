@@ -359,10 +359,10 @@ def test_case_analysis_json() -> None:
         for item in adaptive_setup["optimization_guidance"]
     ), adaptive_setup
     assert swe_zstd_regression["classification"] == (
-        "timeout_confounded_product_path_negative_asset"
+        "extended_round_product_path_negative_asset"
     ), swe_zstd_regression
     assert swe_zstd_regression["evidence_status"] == (
-        "compact_pair_complete_product_path_verified_timeout_confounded"
+        "compact_pair_complete_product_path_verified_extended_round"
     ), swe_zstd_regression
     assert swe_zstd_regression["decision"] == "paired_treatment_regressed", (
         swe_zstd_regression
@@ -382,12 +382,12 @@ def test_case_analysis_json() -> None:
     assert swe_zstd_regression["arms"]["baseline"]["run_id"] == "9ae95dbf5ab4", (
         swe_zstd_regression
     )
-    assert swe_zstd_regression["arms"]["treatment"]["run_id"] == "1252c5786080", (
+    assert swe_zstd_regression["arms"]["treatment"]["run_id"] == "1e3c8703e24b", (
         swe_zstd_regression
     )
-    assert swe_zstd_regression["arms"]["treatment"]["first_blocker"] == (
-        "harbor_prompt_polling_round_timeout_before_completion"
-    ), swe_zstd_regression
+    assert swe_zstd_regression["arms"]["treatment"]["first_blocker"] == "none", (
+        swe_zstd_regression
+    )
     zstd_timeout = swe_zstd_regression["timeout_comparability"]
     assert zstd_timeout["baseline_wall_time_limit_seconds"] == 3600, (
         zstd_timeout
@@ -398,24 +398,39 @@ def test_case_analysis_json() -> None:
     assert zstd_timeout["baseline_official_timeout_comparable"] is False, (
         zstd_timeout
     )
-    assert zstd_timeout["treatment_official_timeout_comparable"] is True, (
+    assert zstd_timeout["treatment_official_timeout_comparable"] is False, (
         zstd_timeout
     )
-    assert zstd_timeout["treatment_max_round_observed"] == 1, zstd_timeout
-    assert zstd_timeout["treatment_followup_prompt_count"] == 0, zstd_timeout
+    assert zstd_timeout["treatment_max_round_observed"] == 5, zstd_timeout
+    assert zstd_timeout["treatment_followup_prompt_count"] == 4, zstd_timeout
     assert zstd_timeout["timeout_causality_claim"] == (
-        "confounded_by_unequal_timeout_envelopes"
+        "earlier_900s_one_round_timeout_confound_superseded_by_pr467_extended_round_negative"
     ), zstd_timeout
     zstd_product_path = swe_zstd_regression["product_path_validation"]
     assert zstd_product_path["treatment_loopx_inside_case"] is True, (
         zstd_product_path
     )
-    assert zstd_product_path["treatment_loopx_cli_call_count"] == 12, (
+    assert zstd_product_path["treatment_loopx_cli_call_count"] == 31, (
+        zstd_product_path
+    )
+    assert zstd_product_path["treatment_controller_max_round_observed"] == 5, (
+        zstd_product_path
+    )
+    assert zstd_product_path["treatment_controller_followup_prompt_count"] == 4, (
         zstd_product_path
     )
     assert zstd_product_path["treatment_worker_bridge_materialization_status"] == (
         "verified"
     ), zstd_product_path
+    zstd_superseded = swe_zstd_regression["superseded_observations"]
+    assert zstd_superseded[0]["run_id"] == "1252c5786080", zstd_superseded
+    assert zstd_superseded[0]["classification"] == (
+        "timeout_confounded_product_path_negative_asset"
+    ), zstd_superseded
+    assert zstd_superseded[1]["run_id"] == "e0a2cb412ee9", zstd_superseded
+    assert zstd_superseded[1]["classification"] == (
+        "worker_or_driver_blocker"
+    ), zstd_superseded
     bike_blind_recheck = bike_success["blind_loop_recheck"]
     assert bike_blind_recheck["decision"] == (
         "paired_baseline_solved_treatment_preserved"
@@ -1087,9 +1102,9 @@ def test_case_analysis_markdown() -> None:
     assert "dapt-intrusion-detection" in text, text
     assert "debug-trl-grpo" in text, text
     assert "zstd-decoder" in text, text
-    assert "timeout-confounded product-path negative asset" in text, text
+    assert "extended-round product-path negative asset" in text, text
     assert "Product-path verification does not prove causal regression" in text, text
-    assert "harbor_prompt_polling_round_timeout_before_completion" in text, text
+    assert "31 LoopX CLI calls" in text, text
     assert "make-doom-for-mips" in text, text
     assert "pytorch-model-recovery" in text, text
     assert "agent_exception_score_failure" in text, text

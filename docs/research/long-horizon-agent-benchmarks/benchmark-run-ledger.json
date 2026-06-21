@@ -6987,7 +6987,7 @@
             "decision": "paired_treatment_regressed",
             "official_score_delta": -1.0,
             "treatment_failure_scope": "case_or_solution",
-            "treatment_run_id": "e0a2cb412ee9"
+            "treatment_run_id": "1e3c8703e24b"
           },
           "runs": [
             {
@@ -7090,11 +7090,46 @@
               "status": "completed",
               "submit_eligible": false,
               "worker_bridge_status": "runtime_exception_before_checkpoint"
+            },
+            {
+              "agent_declared_done": false,
+              "arm_id": "swe_marathon_loopx_prompt_polling_treatment_10800_pr467",
+              "artifact_refs": {
+                "compact_artifact_ref": "run-history:swe-marathon-zstd-decoder-loopx-prompt-polling-10800-pr467-20260621T210633Z"
+              },
+              "benchmark_id": "swe-marathon",
+              "case_id": "zstd-decoder",
+              "case_ids": [
+                "zstd-decoder"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "swe-marathon-zstd-decoder-loopx-prompt-polling-10800-pr467-20260621T210633Z",
+              "leaderboard_evidence": false,
+              "loopx_inside_case": true,
+              "mode": "harbor_observed",
+              "notes": "PR #467 10800s prompt-polling rerun completed official scoring at 0.0 with strict LoopX treatment claim allowed: prompt-driven lifecycle and trace observed, 31 worker LoopX CLI calls, five controller rounds and four f...",
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-22T06:08:33+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "swe-marathon-zstd-decoder-loopx-prompt-polling-10800-pr467-20260621T210633Z",
+              "run_id": "1e3c8703e24b",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "worker_bridge_status": "verified"
             }
           ]
         }
       },
-      "run_count": 6
+      "run_count": 7
     },
     "terminal-bench-worker-materialization@v0": {
       "benchmark_id": "terminal-bench-worker-materialization@v0",
@@ -10844,5 +10879,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-22T02:36:18+08:00"
+  "updated_at": "2026-06-22T06:08:33+08:00"
 }

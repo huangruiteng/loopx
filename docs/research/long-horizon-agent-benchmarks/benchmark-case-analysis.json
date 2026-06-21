@@ -2627,7 +2627,7 @@
       "current_protocol_claim_status": "product_mode_no_uplift"
     },
     {
-      "analysis_id": "swe-marathon__zstd-decoder__timeout-confounded-product-path-negative",
+      "analysis_id": "swe-marathon__zstd-decoder__extended-round-product-path-negative",
       "arms": {
         "baseline": {
           "arm_id": "swe_marathon_host_codex_app_server_goal_baseline",
@@ -2639,37 +2639,40 @@
           "worker_bridge_status": "not_required"
         },
         "treatment": {
-          "arm_id": "swe_marathon_loopx_prompt_polling_treatment",
+          "arm_id": "swe_marathon_loopx_prompt_polling_treatment_10800_pr467",
           "failure_class": "official_verifier_solution_failure",
           "failure_scope": "case_or_solution",
-          "first_blocker": "harbor_prompt_polling_round_timeout_before_completion",
+          "first_blocker": "none",
           "loopx_inside_case": true,
-          "loopx_cli_call_count": 12,
+          "loopx_cli_call_count": 31,
           "loopx_lifecycle_observed": true,
           "loopx_trace_observed": true,
-          "run_group_id": "swe-marathon-zstd-decoder-gh-prompt-polling-pr433-20260621T110515Z",
-          "run_id": "1252c5786080",
+          "run_group_id": "swe-marathon-zstd-decoder-loopx-prompt-polling-10800-pr467-20260621T210633Z",
+          "run_id": "1e3c8703e24b",
           "worker_bridge_status": "verified"
         }
       },
       "benchmark_id": "swe-marathon",
-      "capability_signal": "The native Codex app-server Goal baseline solved zstd-decoder at official score 1.0, while the prompt-driven LoopX treatment reached official scoring through a verified case-local GH lifecycle and scored 0.0. The score delta is real, but its causal interpretation is timeout-confounded: baseline used an extended 3600s wall-clock budget and treatment hit the official 900s first-round timeout before any follow-up prompt.",
+      "capability_signal": "The native Codex app-server Goal baseline solved zstd-decoder at official score 1.0. After PR #467, the prompt-driven LoopX treatment also reached official scoring through a verified case-local lifecycle, five controller rounds, four follow-up prompts, and 31 worker LoopX CLI calls, but still scored 0.0. The score delta is real and no longer explained by the earlier one-round lifecycle/bridge blocker; public compact evidence still cannot identify the exact solution-level mistake without raw trajectory or stronger phase counters.",
       "case_id": "zstd-decoder",
-      "classification": "timeout_confounded_product_path_negative_asset",
-      "control_plane_signal": "This row validates that the treatment can exercise real case-local LoopX state and CLI calls inside the benchmark path: public compact evidence records loopx_inside_case=true, worker_bridge_status=verified, lifecycle/trace observed, and 12 GH CLI calls. It does not yet prove a stable LoopX-caused regression because the baseline and treatment timeout envelopes differ.",
+      "classification": "extended_round_product_path_negative_asset",
+      "control_plane_signal": "This row validates that the treatment can exercise real case-local LoopX state and CLI calls inside the benchmark path after the PR #467 repair: public compact evidence records loopx_inside_case=true, worker_bridge_status=verified, lifecycle/trace observed, and 31 LoopX CLI calls. It is negative outcome evidence for this route, but not a content-level root cause because raw logs, task text, trajectories, and verifier output remain outside the public boundary.",
       "decision": "paired_treatment_regressed",
-      "evidence_status": "compact_pair_complete_product_path_verified_timeout_confounded",
+      "evidence_status": "compact_pair_complete_product_path_verified_extended_round",
       "optimization_guidance": [
         "Do not claim uplift from zstd-decoder; the verified treatment scored 0.0 against a 1.0 baseline.",
-        "Do not claim a stable LoopX regression from this pair until timeout and continuation policy are matched or explicitly phase-attributed.",
-        "Do not spend the next slot proving GH connectivity on this case again; product-path materialization is already verified.",
-        "Before repeating the same treatment, add public-safe solution-phase or round-timeout counters that explain whether the failure came from incomplete continuation, bad solution edits, or verifier-facing behavior.",
-        "Use zstd-decoder as a SWE-Marathon timeout-confounded negative guard when changing prompt-driven polling, stop policy, or case-local LoopX lifecycle wiring."
+        "Do not spend the next slot proving LoopX connectivity on this case again; PR #467 verifies product-path materialization with five controller rounds and worker-side LoopX CLI use.",
+        "Do not overclaim a general LoopX-caused regression from this single case; the public compact trace shows official verifier failure but not the content-level solution error.",
+        "Before another same-case repeat, add public-safe edit/build/test/verify phase counters or an approved redacted trajectory summarizer.",
+        "Use zstd-decoder as an extended-round negative guard when changing SWE-Marathon prompt-driven polling, case-local LoopX lifecycle wiring, stop policy, or phase-counter instrumentation."
       ],
       "product_path_validation": {
         "baseline_loopx_inside_case": false,
         "treatment_loopx_inside_case": true,
-        "treatment_loopx_cli_call_count": 12,
+        "treatment_loopx_cli_call_count": 31,
+        "treatment_controller_followup_prompt_count": 4,
+        "treatment_controller_max_round_observed": 5,
+        "treatment_controller_completion_marker_observed_count": 5,
         "treatment_loopx_lifecycle_observed": true,
         "treatment_loopx_trace_observed": true,
         "treatment_strict_claim_allowed": true,
@@ -2681,16 +2684,32 @@
         "baseline_official_timeout_comparable": false,
         "baseline_timeout_tier": "private_extended_timeout_agent_multiplier",
         "baseline_wall_time_limit_seconds": 3600,
-        "treatment_actual_wall_time_seconds": 923.370177,
-        "treatment_followup_prompt_count": 0,
-        "treatment_max_round_observed": 1,
+        "treatment_actual_wall_time_seconds": 3265.878558,
+        "treatment_followup_prompt_count": 4,
+        "treatment_max_round_observed": 5,
         "treatment_max_rounds_budget": 5,
-        "treatment_official_timeout_comparable": true,
+        "treatment_official_timeout_comparable": false,
         "treatment_timeout_tier": "official_default_agent_timeout_900s",
         "treatment_turn_completed_observed": false,
         "treatment_wall_time_limit_seconds": 900,
-        "timeout_causality_claim": "confounded_by_unequal_timeout_envelopes"
+        "timeout_causality_claim": "earlier_900s_one_round_timeout_confound_superseded_by_pr467_extended_round_negative"
       },
+      "superseded_observations": [
+        {
+          "observation_id": "swe-marathon-zstd-decoder-gh-prompt-polling-pr433-20260621T110515Z",
+          "classification": "timeout_confounded_product_path_negative_asset",
+          "score": 0.0,
+          "run_id": "1252c5786080",
+          "lesson": "The initial prompt-driven treatment proved case-local lifecycle materialization, but stopped after one 900s round with zero follow-up prompts."
+        },
+        {
+          "observation_id": "swe-marathon-zstd-decoder-gh-prompt-polling-10800-20260621T204620",
+          "classification": "worker_or_driver_blocker",
+          "score": 0.0,
+          "run_id": "e0a2cb412ee9",
+          "lesson": "The first 10800s rerun removed the simple timeout question but failed strict treatment-claim validation before worker bridge checkpoint."
+        }
+      ],
       "public_boundary": {
         "artifact_reference_policy": "refer to compact ledger ids and run groups only",
         "raw_logs_copied": false,
@@ -2699,8 +2718,8 @@
         "verifier_output_copied": false
       },
       "routing_guidance": {
-        "next_action": "rerun zstd-decoder with matched baseline/treatment timeout envelopes or add compact solution/timeout phase counters before making treatment-value claims",
-        "repeat_policy": "repeat_only_after_matched_timeout_or_phase_attribution_change"
+        "next_action": "do not repeat zstd-decoder immediately; first add public-safe solution-phase counters or rotate through the SWE-Marathon CPU/no-CUA subset to learn whether this is case-specific",
+        "repeat_policy": "repeat_only_after_phase_counter_or_prompt_polling_policy_change"
       },
       "scores": {
         "baseline_official_score": 1.0,
@@ -2709,15 +2728,15 @@
         "treatment_official_score": 0.0
       },
       "stability_assessment": {
-        "current_protocol_comparability": "low_for_causality_medium_for_product_path",
-        "gh_causality_claim": "not_established",
+        "current_protocol_comparability": "medium_for_outcome_high_for_product_path",
+        "loopx_causality_claim": "not_established_from_public_trace",
         "main_confounds": [
-          "baseline r2 used a 3600s wall-clock limit and ran for 1071.022472s, while treatment used the official 900s limit and stopped at 923.370177s",
-          "treatment observed only one polling round, zero follow-up prompts, and no completed turn marker before timeout",
-          "treatment has product-path lifecycle evidence but needs solution/timeout phase counters before attributing the 0.0 to a specific mechanism"
+          "baseline and treatment still use different harness semantics, so the score delta is not a pure model-only comparison",
+          "the PR #467 treatment observed five controller rounds and five completion markers, but no controller turn-completed marker",
+          "public compact evidence does not include raw trajectory, task text, verifier output, or content-level edit/test attribution"
         ],
         "product_path_claim": "verified",
-        "solver_uplift_claim": "not_claimable_timeout_confounded_negative"
+        "solver_uplift_claim": "not_claimable_extended_round_negative"
       }
     }
   ],
@@ -3424,7 +3443,7 @@
     "trajectory_recorded": false,
     "update_rule": "add one case analysis record after compact result ingest and benchmark-run-ledger update"
   },
-  "updated_at": "2026-06-21T19:59:41+08:00",
+  "updated_at": "2026-06-22T06:08:33+08:00",
   "terminal_bench_current_protocol_coverage": {
     "schema_version": "terminal_bench_current_protocol_coverage_v0",
     "source_ledger": "benchmark-run-ledger.json",
