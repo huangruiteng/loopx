@@ -36,6 +36,7 @@ evidence becomes useful.
 | `terminal-bench@2.0` | `mteb-retrieve` | setup probe asset | `0.0` | `0.0` | `0.0` | `environment_setup_probe_materialized_with_exception_repeat_blocked` |
 | `terminal-bench@2.0` | `pytorch-model-recovery` | exception attribution asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift_exception_research_required` |
 | `terminal-bench@2.0` | `train-fasttext` | single-arm managed-Codex failure asset | n/a | `0.0` | n/a | `single_arm_recorded` |
+| `swe-marathon` | `zstd-decoder` | product-path verified regression asset | `1.0` | `0.0` | `-1.0` | `paired_treatment_regressed` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | reward-feedback positive / blind-loop neutral asset | `0.0` | `0.0` | `0.0` | `reward_feedback_positive_primary_blind_loop_no_uplift` |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | native Goal connected-no-trace runner-error asset | `0.0` | n/a | n/a | `baseline_runner_or_setup_repair_required` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | reward-feedback positive / blind-loop neutral asset | `0.0` | `0.0` | `0.0` | `reward_feedback_positive_primary_blind_loop_no_uplift` |
@@ -1731,6 +1732,45 @@ Follow-up guidance:
 - Keep `adaptive-cruise-control` plus `setup-fuzzing-py` as a two-case setup
   guard when changing SkillsBench runner bootstrap, staging, or Docker setup.
 
+## Case: SWE-Marathon zstd-decoder
+
+This is the first SWE-Marathon product-path verified regression asset. It is
+not an uplift row and not a GH-connectivity blocker.
+
+Compact evidence:
+
+- benchmark: `swe-marathon`
+- baseline arm: `swe_marathon_host_codex_app_server_goal_baseline`
+- baseline run id: `9ae95dbf5ab4`
+- baseline score: `1.0`
+- treatment arm: `swe_marathon_goal_harness_prompt_polling_treatment`
+- treatment run id: `1252c5786080`
+- treatment score: `0.0`
+- treatment failure: `official_verifier_solution_failure`
+- first blocker: `harbor_prompt_polling_round_timeout_before_completion`
+- product path: `goal_harness_inside_case=true`, worker bridge `verified`,
+  public GH lifecycle/trace observed, and 12 GH CLI calls
+
+Interpretation:
+
+The native app-server Goal baseline can solve this CPU/no-CUA SWE-Marathon case
+under the current runner. The prompt-driven Goal Harness treatment also
+exercised the intended case-local GH lifecycle and reached official scoring,
+but it regressed from `1.0` to `0.0`. That means the remaining issue is
+treatment behavior, stop/continuation policy, or solution-phase quality, not
+missing Goal Harness installation or a dead worker bridge.
+
+Follow-up guidance:
+
+- Do not claim treatment value from this pair.
+- Do not repeat the same case just to prove GH connectivity; that part is
+  already verified.
+- Before a same-case repeat, add compact solution/timeout phase counters that
+  distinguish incomplete continuation from wrong solution edits or verifier-
+  facing behavior.
+- Use this as a negative-control guard when changing SWE-Marathon prompt-driven
+  polling, case-local GH state, or stop policy.
+
 ## Cross-Case Lessons
 
 | Lesson | Evidence | Implication |
@@ -1756,6 +1796,7 @@ Follow-up guidance:
 | Compact counters can explain product-mode loss only at the mechanism layer. | `paratransit-routing` blind-loop treatment: score `1.0`, round `1`, `goal_harness_cli_call_count=0`, `last_decision=stop_after_blind_loop_official_success_observed_without_feedback`. Product-mode treatment: score `0.0`, round `1`, `goal_harness_cli_call_count=1` for `goal-harness which goal`, `goal_harness_state_reads=0`, `goal_harness_state_writes=0`, and `last_decision=stop_after_agent_declared_done`. | The loss is not from interaction count, reward leakage, protected-path editing, or runner setup. The likely mechanism is product-mode stop/goal-state semantics: the treatment declared done at `0.0` before any replan or substantive Goal Harness state use. For content-level root cause, add a stronger public-safe trajectory summarizer or request an explicit raw-trace gate. |
 | Apt-risk preflight should happen before full case execution. | A plan-only probe for `setup-fuzzing-py` now emits `skillsbench_task_setup_preflight` with `apt_setup_risk_detected=true` and no raw task text, raw logs, or raw trajectory reads. | Use `--fail-fast-on-apt-risk` or select a non-apt-risk task before launching blind-loop baseline/treatment pairs. |
 | Docker capacity and runtime-tools setup are runner readiness, not case quality. | `azure-bgp-oscillation-route-leak` moved from runtime apt/cache and Docker capacity failures to a complete baseline/treatment pair only after staged Codex ACP runtime-tools setup plus bounded dangling-layer cleanup. | Record setup/capacity repairs separately and do not count pre-materialization failures as case attempts. |
+| Product-path verification can still regress. | `zstd-decoder` baseline passed at `1.0`; the GH prompt-driven treatment reached official scoring with verified case-local GH lifecycle and 12 CLI calls, but scored `0.0`. | Separate "GH path exercised" from "treatment improved outcome"; add solution/timeout phase counters before repeating or claiming value. |
 
 ## Boundary
 

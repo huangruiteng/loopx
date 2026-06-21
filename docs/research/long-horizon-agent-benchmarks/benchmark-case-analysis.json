@@ -2625,6 +2625,82 @@
         "claim_boundary": "Blind-loop positive is preserved as a control asset only; current product-mode main-table recheck is 0.0->0.0."
       },
       "current_protocol_claim_status": "product_mode_no_uplift"
+    },
+    {
+      "analysis_id": "swe-marathon__zstd-decoder__product-path-verified-regression",
+      "arms": {
+        "baseline": {
+          "arm_id": "swe_marathon_host_codex_app_server_goal_baseline",
+          "failure_class": "none",
+          "failure_scope": "passed",
+          "goal_harness_inside_case": false,
+          "run_group_id": "swe-marathon-zstd-decoder-baseline-r2-20260621T062826Z",
+          "run_id": "9ae95dbf5ab4",
+          "worker_bridge_status": "not_required"
+        },
+        "treatment": {
+          "arm_id": "swe_marathon_goal_harness_prompt_polling_treatment",
+          "failure_class": "official_verifier_solution_failure",
+          "failure_scope": "case_or_solution",
+          "first_blocker": "harbor_prompt_polling_round_timeout_before_completion",
+          "goal_harness_inside_case": true,
+          "goal_harness_cli_call_count": 12,
+          "goal_harness_lifecycle_observed": true,
+          "goal_harness_trace_observed": true,
+          "run_group_id": "swe-marathon-zstd-decoder-gh-prompt-polling-pr433-20260621T110515Z",
+          "run_id": "1252c5786080",
+          "worker_bridge_status": "verified"
+        }
+      },
+      "benchmark_id": "swe-marathon",
+      "capability_signal": "The native Codex app-server Goal baseline solved zstd-decoder at official score 1.0, while the prompt-driven Goal Harness treatment reached official scoring through a verified case-local GH lifecycle and scored 0.0. This is a product-path verified regression/negative-control asset, not a route-connectivity failure.",
+      "case_id": "zstd-decoder",
+      "classification": "product_path_verified_regression_asset",
+      "control_plane_signal": "This row validates that the treatment can exercise real case-local Goal Harness state and CLI calls inside the benchmark path: public compact evidence records goal_harness_inside_case=true, worker_bridge_status=verified, lifecycle/trace observed, and 12 GH CLI calls. The remaining problem is treatment behavior or timeout/solution quality, not missing GH installation.",
+      "decision": "paired_treatment_regressed",
+      "evidence_status": "compact_pair_complete_product_path_verified",
+      "optimization_guidance": [
+        "Do not claim uplift from zstd-decoder; the verified treatment regressed from 1.0 to 0.0.",
+        "Do not spend the next slot proving GH connectivity on this case again; product-path materialization is already verified.",
+        "Before repeating the same treatment, add public-safe solution-phase or round-timeout counters that explain whether the failure came from incomplete continuation, bad solution edits, or verifier-facing behavior.",
+        "Use zstd-decoder as a SWE-Marathon negative-control guard when changing prompt-driven polling, stop policy, or case-local Goal Harness lifecycle wiring."
+      ],
+      "product_path_validation": {
+        "baseline_goal_harness_inside_case": false,
+        "treatment_goal_harness_inside_case": true,
+        "treatment_goal_harness_cli_call_count": 12,
+        "treatment_goal_harness_lifecycle_observed": true,
+        "treatment_goal_harness_trace_observed": true,
+        "treatment_strict_claim_allowed": true,
+        "treatment_worker_bridge_materialization_status": "verified",
+        "treatment_worker_bridge_materialization_blocker": "none"
+      },
+      "public_boundary": {
+        "artifact_reference_policy": "refer to compact ledger ids and run groups only",
+        "raw_logs_copied": false,
+        "raw_task_text_copied": false,
+        "trajectory_copied": false,
+        "verifier_output_copied": false
+      },
+      "routing_guidance": {
+        "next_action": "add compact solution/timeout phase counters or run a second CPU/no-CUA SWE-Marathon pair before making treatment-value claims",
+        "repeat_policy": "repeat_only_after_prompt_polling_or_phase_attribution_change"
+      },
+      "scores": {
+        "baseline_official_score": 1.0,
+        "claimable_uplift": false,
+        "official_score_delta": -1.0,
+        "treatment_official_score": 0.0
+      },
+      "stability_assessment": {
+        "current_protocol_comparability": "medium_high",
+        "main_confounds": [
+          "baseline r2 changed official timeout policy, so strict wall-clock comparability still needs care",
+          "treatment has product-path lifecycle evidence but needs solution/timeout phase counters before attributing the 0.0 to a specific mechanism"
+        ],
+        "product_path_claim": "verified",
+        "solver_uplift_claim": "refuted_for_this_pair"
+      }
     }
   ],
   "schema_version": "benchmark_case_analysis_v0",
@@ -3330,7 +3406,7 @@
     "trajectory_recorded": false,
     "update_rule": "add one case analysis record after compact result ingest and benchmark-run-ledger update"
   },
-  "updated_at": "2026-06-21T07:18:00+08:00",
+  "updated_at": "2026-06-21T19:59:41+08:00",
   "terminal_bench_current_protocol_coverage": {
     "schema_version": "terminal_bench_current_protocol_coverage_v0",
     "source_ledger": "benchmark-run-ledger.json",
