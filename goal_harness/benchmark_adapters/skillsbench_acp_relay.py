@@ -86,6 +86,7 @@ class SkillsBenchLocalAcpRelay:
     def __init__(self, config: CodexExecConfig):
         self._config = config
         self._sessions: dict[str, dict[str, Any]] = {}
+        self._published_lifecycle_stages: set[str] = set()
 
     def serve(self, stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> int:
         for line in stdin:
@@ -114,6 +115,7 @@ class SkillsBenchLocalAcpRelay:
                 return None
             return None
         if method == "initialize":
+            self._publish_worker_lifecycle_trace("initialize")
             return _json_rpc_result(
                 message_id,
                 {
@@ -140,6 +142,7 @@ class SkillsBenchLocalAcpRelay:
                 "model": None,
                 "cancelled": False,
             }
+            self._publish_worker_lifecycle_trace("session_new")
             return _json_rpc_result(message_id, {"sessionId": session_id})
         if method == "session/set_model":
             session = self._sessions.get(str(params.get("sessionId") or ""))
@@ -253,6 +256,7 @@ class SkillsBenchLocalAcpRelay:
         stdout: TextIO,
     ) -> str:
         cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
+        self._publish_worker_lifecycle_trace("prompt_received")
         with tempfile.TemporaryDirectory(prefix="gh-skillsbench-goal-worker-") as tmp:
             tmp_path = Path(tmp)
             prompt_path = tmp_path / "prompt.txt"
@@ -432,13 +436,87 @@ class SkillsBenchLocalAcpRelay:
                 ),
             ),
         }
-        trace_dir = Path(self._config.worker_public_trace_dir).expanduser()
-        trace_dir.mkdir(parents=True, exist_ok=True)
-        trace_path = trace_dir / f"worker-{uuid.uuid4().hex[:12]}.compact.json"
-        trace_path.write_text(
-            json.dumps(trace, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        self._write_worker_public_trace(trace)
+
+    def _publish_worker_lifecycle_trace(self, stage: str) -> None:
+        """Record public-safe relay lifecycle evidence before any prompt runs."""
+
+        if (
+            not self._config.app_server_goal_worker
+            or not self._config.worker_public_trace_dir
+        ):
+            return
+        safe_stage = "".join(
+            ch if ch.isalnum() or ch == "_" else "_"
+            for ch in str(stage or "").strip().lower()
         )
+        if not safe_stage:
+            safe_stage = "unknown"
+        if safe_stage in self._published_lifecycle_stages:
+            return
+        self._published_lifecycle_stages.add(safe_stage)
+        trace = {
+            "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
+            "ok": False,
+            "route": "codex-app-server-goal-baseline",
+            "trace_kind": "relay_lifecycle",
+            "benchmark_id": self._config.dataset,
+            "task_id": self._config.task_id,
+            "relay": {
+                "schema_version": "skillsbench_app_server_goal_worker_lifecycle_trace_v0",
+                "stage": safe_stage,
+                "app_server_goal_worker": True,
+                "worker_public_trace_configured": True,
+                "raw_prompt_recorded": False,
+                "raw_stdout_recorded": False,
+                "raw_stderr_recorded": False,
+                "host_paths_recorded": False,
+            },
+            "worker_contract": {
+                "schema_version": "skillsbench_app_server_goal_worker_contract_v0",
+                "route": "codex-app-server-goal-baseline",
+                "ready": False,
+                "runner_integration_ready": True,
+                "first_blocker": "relay_lifecycle_only_no_worker_turn_yet",
+            },
+            "prompt": {"raw_recorded": False},
+            "turn": {
+                "thread_id_present": False,
+                "goal_get_present": False,
+                "turn_id_present": False,
+                "turn_completed_observed": False,
+                "assistant_message_present": False,
+                "raw_transcript_recorded": False,
+                "raw_assistant_message_recorded": False,
+            },
+            "private_response_text": {
+                "written": False,
+                "path_recorded": False,
+                "raw_recorded_in_public_json": False,
+            },
+            "boundary": {
+                "raw_task_text_recorded": False,
+                "raw_logs_recorded": False,
+                "raw_trajectory_recorded": False,
+                "credential_values_recorded": False,
+                "host_paths_recorded": False,
+            },
+        }
+        self._write_worker_public_trace(trace)
+
+    def _write_worker_public_trace(self, trace: dict[str, Any]) -> None:
+        if not self._config.worker_public_trace_dir:
+            return
+        try:
+            trace_dir = Path(self._config.worker_public_trace_dir).expanduser()
+            trace_dir.mkdir(parents=True, exist_ok=True)
+            trace_path = trace_dir / f"worker-{uuid.uuid4().hex[:12]}.compact.json"
+            trace_path.write_text(
+                json.dumps(trace, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            return
 
     def _write_worker_heartbeat(
         self,

@@ -2275,6 +2275,8 @@ def _merge_app_server_goal_worker_trace_summary(
     trace_dir = Path(raw_trace_dir)
     files = sorted(trace_dir.glob("*.compact.json")) if trace_dir.exists() else []
     worker_trace_count = 0
+    lifecycle_trace_count = 0
+    prompt_received_count = 0
     ok_count = 0
     goal_get_count = 0
     turn_start_count = 0
@@ -2294,6 +2296,11 @@ def _merge_app_server_goal_worker_trace_summary(
         ):
             continue
         worker_trace_count += 1
+        relay = payload.get("relay") if isinstance(payload.get("relay"), dict) else {}
+        if payload.get("trace_kind") == "relay_lifecycle":
+            lifecycle_trace_count += 1
+            if relay.get("stage") == "prompt_received":
+                prompt_received_count += 1
         if payload.get("ok") is True:
             ok_count += 1
         turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
@@ -2327,6 +2334,8 @@ def _merge_app_server_goal_worker_trace_summary(
     trace["native_goal_worker_route"] = plan.get("route") == "codex-app-server-goal-baseline"
     trace["native_goal_worker_trace_dir_present"] = trace_dir.exists()
     trace["native_goal_worker_trace_count"] = worker_trace_count
+    trace["native_goal_worker_lifecycle_trace_count"] = lifecycle_trace_count
+    trace["native_goal_worker_prompt_received_count"] = prompt_received_count
     trace["native_goal_worker_ok_count"] = ok_count
     trace["native_goal_worker_goal_get_count"] = goal_get_count
     trace["native_goal_worker_turn_start_count"] = turn_start_count

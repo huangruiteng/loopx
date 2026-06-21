@@ -335,6 +335,75 @@ def test_acp_relay_delegates_to_app_server_goal_worker() -> None:
     assert probe["ready"] is True, probe
 
 
+def test_acp_relay_materializes_lifecycle_trace_before_prompt() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-lifecycle-") as tmp:
+        root = Path(tmp)
+        work = root / "work"
+        trace_dir = root / "worker-traces"
+        work.mkdir()
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "skillsbench_local_acp_relay.py"),
+                "--app-server-goal-worker",
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--timeout-sec",
+                "5",
+                "--worker-public-trace-dir",
+                str(trace_dir),
+            ],
+            cwd=REPO_ROOT,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        assert proc.stdin is not None
+        assert proc.stdout is not None
+
+        def send(message: dict[str, Any]) -> None:
+            proc.stdin.write(json.dumps(message) + "\n")
+            proc.stdin.flush()
+
+        def read_response(request_id: int) -> dict[str, Any]:
+            while True:
+                line = proc.stdout.readline()
+                assert line, proc.stderr.read()
+                message = json.loads(line)
+                if message.get("id") == request_id and "method" not in message:
+                    return message
+
+        send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        read_response(1)
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {"cwd": str(work), "mcpServers": []},
+            }
+        )
+        read_response(2)
+        trace_files = sorted(trace_dir.glob("*.compact.json"))
+        assert len(trace_files) >= 1, trace_files
+        lifecycle = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in trace_files
+        ]
+        stages = {
+            item.get("relay", {}).get("stage")
+            for item in lifecycle
+            if item.get("trace_kind") == "relay_lifecycle"
+        }
+        assert {"initialize", "session_new"} <= stages, lifecycle
+        trace_text = json.dumps(lifecycle, sort_keys=True)
+        assert str(work) not in trace_text, lifecycle
+        assert "raw_prompt_recorded\": true" not in trace_text, lifecycle
+        proc.terminate()
+        proc.wait(timeout=2)
+
+
 def test_acp_relay_streams_public_keepalive_while_worker_runs() -> None:
     fake_worker = """#!/usr/bin/env python3
 import argparse
@@ -444,8 +513,16 @@ Path(args.output_json).write_text(json.dumps({"ok": True}), encoding="utf-8")
         assert final_response is not None
         assert final_response["result"]["stopReason"] == "end_turn"
         trace_files = sorted(trace_dir.glob("*.compact.json"))
-        assert len(trace_files) == 1, trace_files
-        trace = json.loads(trace_files[0].read_text(encoding="utf-8"))
+        assert len(trace_files) >= 1, trace_files
+        traces = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in trace_files
+        ]
+        turn_traces = [
+            item for item in traces if item.get("trace_kind") != "relay_lifecycle"
+        ]
+        assert len(turn_traces) == 1, traces
+        trace = turn_traces[0]
         assert (
             trace["schema_version"]
             == "skillsbench_host_codex_goal_worker_public_trace_v0"
@@ -558,8 +635,16 @@ sys.exit(7)
         final_response = read_response(3)
         assert final_response["error"]["message"] == "host app-server goal worker failed"
         trace_files = sorted(trace_dir.glob("*.compact.json"))
-        assert len(trace_files) == 1, trace_files
-        trace = json.loads(trace_files[0].read_text(encoding="utf-8"))
+        assert len(trace_files) >= 1, trace_files
+        traces = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in trace_files
+        ]
+        turn_traces = [
+            item for item in traces if item.get("trace_kind") != "relay_lifecycle"
+        ]
+        assert len(turn_traces) == 1, traces
+        trace = turn_traces[0]
         assert trace["ok"] is False, trace
         assert trace["turn"]["goal_get_present"] is True, trace
         assert trace["turn"]["turn_completed_observed"] is False, trace
@@ -640,6 +725,9 @@ if __name__ == "__main__":
     test_host_worker_contract_only_cli()
     test_host_worker_waits_for_completion_and_keeps_public_json_compact()
     test_acp_relay_delegates_to_app_server_goal_worker()
+    test_acp_relay_materializes_lifecycle_trace_before_prompt()
+    test_acp_relay_streams_public_keepalive_while_worker_runs()
+    test_acp_relay_preserves_public_worker_trace_on_worker_failure()
     test_full_run_fails_closed_until_bridge_is_materialized()
     test_full_run_with_bridge_ready_requires_host_acp_launch()
     test_launcher_patches_rollout_planes_connect_acp()
