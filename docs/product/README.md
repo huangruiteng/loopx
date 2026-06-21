@@ -65,6 +65,10 @@ runtime contract, benchmark route, or launch draft.
 - [Non-technical operator status model](nontechnical-operator-status-model.md):
   first-screen card model for people who need to understand agent progress,
   blockers, next moves, and feedback paths without reading logs or CLI output.
+- [Frontstage two-surface strategy](frontstage-two-surface-strategy.md): route,
+  data-source, visual-freedom, validation, and roadmap boundaries between the
+  public showcase/homepage surface and the real local ops control-plane
+  surface.
 - [Reward-style replanning hints](reward-style-replanning.md): public-safe
   design for turning explicit reward, corrections, and steering feedback into
   compact candidate-ranking hints without raw chat, hidden profiling, or hard
