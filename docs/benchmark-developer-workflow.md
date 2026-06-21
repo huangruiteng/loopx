@@ -547,20 +547,29 @@ the worker starts. Harbor's host agent seeds
 `/app/.codex/goals/<benchmark-case-goal-id>/ACTIVE_GOAL_STATE.md`, installs a
 task-environment CLI at `/app/.local/bin/goal-harness`, seeds
 `todo_benchmark_case_main`, and writes public-safe lifecycle events to the
-case-local `rollout-event-log.jsonl`. The host controller must then run the
-case-local CLI as a scheduler lifecycle, not merely mention it in the prompt:
+case-local `rollout-event-log.jsonl`. The product-path treatment proof is
+prompt-driven: before planning or editing, the worker should call the
+case-local CLI through `harbor-env-exec` for `quota should-run` and
+`todo claim`/`todo update`. The controller may still run the same case-local CLI
+as deterministic preflight, scheduler, and closeout fallback:
 `check`, `quota should-run`, and `todo claim` before the first agent turn;
-`quota should-run` and `todo update` around each scheduled continuation; and
-`status`, `refresh-state`, and `quota spend-slot` during closeout. The generated
-prompt may still tell the worker to use the same case-local CLI through
-`harbor-env-exec`, but worker self-calls are optional supporting evidence rather
-than the only treatment proof. Compact evidence should include
+`quota should-run` and `todo update` around scheduled continuations; and
+`status`, `refresh-state`, and `quota spend-slot` during closeout. That
+scheduler route is not sufficient for a strict treatment claim by itself.
+Compact evidence must distinguish both surfaces:
+`goal_harness_prompt_driven_case_cli_call_count`,
+`goal_harness_prompt_driven_event_counts`,
+`goal_harness_prompt_driven_lifecycle_observed`, and
+`goal_harness_prompt_driven_trace.public.json` for worker self-calls, plus
 `goal_harness_case_scheduler_command_count`,
 `goal_harness_case_rollout_event_counts`, and
-`goal_harness_case_rollout_trace.public.json`. Global Goal Harness commands are
-optional context only; they must not select todos for the benchmark case. This
-keeps parallel cases isolated and prevents the main project goal or side-agent
-lane from leaking into benchmark treatment control.
+`goal_harness_case_rollout_trace.public.json` for controller fallback. If the
+prompt-driven lifecycle is absent, classify the run with
+`prompt_driven_goal_harness_lifecycle_absent` instead of claiming uplift.
+Global Goal Harness commands are optional context only; they must not select
+todos for the benchmark case. This keeps parallel cases isolated and prevents
+the main project goal or side-agent lane from leaking into benchmark treatment
+control.
 
 This is not a submit/upload path and should still be reduced to compact public
 evidence before ledger ingestion.

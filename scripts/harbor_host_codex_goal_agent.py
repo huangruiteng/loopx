@@ -190,6 +190,126 @@ def _compact_json_keys(text: str) -> dict[str, Any]:
     }
 
 
+def _case_goal_harness_action_from_command(
+    command: str,
+    *,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Classify a task-environment command without recording the raw command."""
+
+    cli = str(payload.get("case_cli_path") or BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH)
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return {
+            "case_goal_harness_cli_call": False,
+            "parse_error": True,
+            "raw_command_recorded": False,
+        }
+    if not parts or parts[0] != cli:
+        return {
+            "case_goal_harness_cli_call": False,
+            "raw_command_recorded": False,
+        }
+    args = parts[1:]
+    if len(args) >= 2 and args[0] == "--format":
+        args = args[2:]
+    command_name = args[0] if args else ""
+    subcommand = args[1] if len(args) > 1 else ""
+    action = command_name or "unknown"
+    if command_name == "quota":
+        action = (
+            "quota_should_run"
+            if subcommand == "should-run"
+            else "quota_spend"
+            if subcommand in {"spend", "spend-slot"}
+            else f"quota_{subcommand or 'unknown'}"
+        )
+    elif command_name == "todo":
+        action = (
+            "todo_claim"
+            if subcommand == "claim"
+            else "todo_update"
+            if subcommand == "update"
+            else f"todo_{subcommand or 'unknown'}"
+        )
+    elif command_name == "refresh-state":
+        action = "refresh_state"
+    return {
+        "case_goal_harness_cli_call": True,
+        "action": action,
+        "command_group": command_name or "unknown",
+        "subcommand": subcommand,
+        "raw_command_recorded": False,
+    }
+
+
+def _new_prompt_driven_case_trace(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": "harbor_prompt_driven_goal_harness_trace_v0",
+        "route": BENCHMARK_CASE_GOAL_HARNESS_PRODUCT_PATH_PRIMARY_ROUTE,
+        "case_goal_id": payload.get("benchmark_case_goal_id") or "",
+        "case_agent_id": payload.get("case_agent_id") or "",
+        "case_todo_id": payload.get("case_todo_id") or "",
+        "trace_publicness": "public_action_counts_only_no_raw_commands_no_raw_output",
+        "raw_commands_recorded": False,
+        "raw_output_recorded": False,
+        "commands": [],
+        "event_kind_counts": {},
+        "command_count": 0,
+        "lifecycle_observed": False,
+    }
+
+
+def _summarize_prompt_driven_case_trace(
+    payload: dict[str, Any],
+    commands: list[dict[str, Any]],
+) -> dict[str, Any]:
+    trace = _new_prompt_driven_case_trace(payload)
+    public_commands = [
+        {
+            key: command[key]
+            for key in (
+                "action",
+                "command_group",
+                "subcommand",
+                "return_code",
+                "ok",
+                "stdout_summary",
+                "stderr_present",
+                "raw_command_recorded",
+                "raw_output_recorded",
+            )
+            if key in command
+        }
+        for command in commands
+        if command.get("case_goal_harness_cli_call")
+    ]
+    counts: dict[str, int] = {}
+    for command in public_commands:
+        action = str(command.get("action") or "unknown")
+        counts[action] = counts.get(action, 0) + 1
+    lifecycle_observed = counts.get("quota_should_run", 0) > 0 and (
+        counts.get("todo_claim", 0) > 0 or counts.get("todo_update", 0) > 0
+    )
+    trace.update(
+        {
+            "commands": public_commands,
+            "event_kind_counts": dict(sorted(counts.items())),
+            "command_count": len(public_commands),
+            "lifecycle_observed": lifecycle_observed,
+            "required_event_kinds_observed": {
+                "quota_should_run": counts.get("quota_should_run", 0) > 0,
+                "todo_claim_or_update": (
+                    counts.get("todo_claim", 0) > 0
+                    or counts.get("todo_update", 0) > 0
+                ),
+            },
+        }
+    )
+    return trace
+
+
 def _case_cli_command(
     payload: dict[str, Any],
     *args: str,
@@ -307,8 +427,10 @@ def build_host_goal_prompt(
         "\n\nGoal Harness treatment access packet:\n"
         "After the bridge check and before substantive work, use the "
         "case-local Goal Harness CLI listed below to run quota should-run and "
-        "claim the case todo through the same task-environment bridge. Keep "
-        "case-local state isolated to the listed benchmark_case_goal_id.\n"
+        "claim the case todo through the same task-environment bridge. These "
+        "calls are part of the treatment proof, so do not replace them with a "
+        "mental note or a host-side shortcut. Keep case-local state isolated "
+        "to the listed benchmark_case_goal_id.\n"
         f"{access_packet}"
         if access_packet
         else ""
@@ -598,6 +720,8 @@ class HarborHostCodexGoalAgent(BaseAgent):
         self.startup_delay_sec = float(startup_delay_sec)
         self.poll_interval_sec = float(poll_interval_sec)
         self._served_request_count = 0
+        self._case_state_init_payload: dict[str, Any] = {}
+        self._prompt_driven_goal_harness_commands: list[dict[str, Any]] = []
 
     def version(self) -> str:
         return "0.5.0"
@@ -650,6 +774,23 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     cwd=cwd,
                     timeout_sec=timeout_sec,
                 )
+                case_command = _case_goal_harness_action_from_command(
+                    str(payload["command"]),
+                    payload=self._case_state_init_payload,
+                )
+                if case_command.get("case_goal_harness_cli_call"):
+                    case_command.update(
+                        {
+                            "return_code": int(result.return_code or 0),
+                            "ok": int(result.return_code or 0) == 0,
+                            "stdout_summary": _compact_json_keys(
+                                (result.stdout or "").strip()
+                            ),
+                            "stderr_present": bool((result.stderr or "").strip()),
+                            "raw_output_recorded": False,
+                        }
+                    )
+                    self._prompt_driven_goal_harness_commands.append(case_command)
                 response.write_text(
                     json.dumps(
                         {
@@ -690,6 +831,8 @@ class HarborHostCodexGoalAgent(BaseAgent):
         work_dir.mkdir(parents=True, exist_ok=True)
         request_dir.mkdir(parents=True, exist_ok=True)
         bin_dir.mkdir(parents=True, exist_ok=True)
+        self._case_state_init_payload = {}
+        self._prompt_driven_goal_harness_commands = []
 
         bridge = bin_dir / "harbor-env-exec"
         marker = work_dir / "done.marker"
@@ -748,6 +891,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 route=loop_route,
                 max_rounds=self.goal_harness_max_rounds,
             )
+            self._case_state_init_payload = dict(case_state_init_payload)
             init_result = await environment.exec(
                 command=str(case_state_init_payload["command"]),
                 cwd=self.task_workdir,
@@ -986,6 +1130,26 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 case_scheduler_command_count = len(
                     case_scheduler_trace.get("commands") or []
                 )
+                prompt_driven_trace = _summarize_prompt_driven_case_trace(
+                    case_state_init_payload,
+                    self._prompt_driven_goal_harness_commands,
+                )
+                current_treatment_claim = classify_goal_harness_treatment_claim(
+                    {
+                        "benchmark_loop_contract": loop_contract,
+                        "controller_trace_present": bool(controller_trace),
+                        "goal_harness_product_path_primary_route": (
+                            case_state_init_payload.get("product_path_primary_route")
+                            or ""
+                        ),
+                        "goal_harness_prompt_driven_loop_required": bool(
+                            case_state_init_payload.get("prompt_driven_route_required")
+                        ),
+                        "goal_harness_prompt_driven_lifecycle_observed": bool(
+                            prompt_driven_trace.get("lifecycle_observed")
+                        ),
+                    }
+                )
                 compact.update(
                     {
                         "goal_surface": "app_server",
@@ -1025,10 +1189,29 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         "goal_harness_case_rollout_event_counts": (
                             case_scheduler_trace.get("event_kind_counts") or {}
                         ),
+                        "goal_harness_prompt_driven_trace_present": bool(
+                            prompt_driven_trace.get("command_count")
+                        ),
+                        "goal_harness_prompt_driven_case_cli_call_count": (
+                            prompt_driven_trace.get("command_count") or 0
+                        ),
+                        "goal_harness_prompt_driven_event_counts": (
+                            prompt_driven_trace.get("event_kind_counts") or {}
+                        ),
+                        "goal_harness_prompt_driven_lifecycle_observed": bool(
+                            prompt_driven_trace.get("lifecycle_observed")
+                        ),
                         **case_state_init_compact,
-                        **treatment_claim,
+                        **current_treatment_claim,
                     }
                 )
+                if goal_harness_access_packet:
+                    (
+                        work_dir / "goal_harness_prompt_driven_trace.public.json"
+                    ).write_text(
+                        json.dumps(prompt_driven_trace, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
                 if controller_trace:
                     compact["goal_harness_controller_trace_present"] = True
                     compact["goal_harness_controller_trace"] = controller_trace

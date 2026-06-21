@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import py_compile
 import tempfile
 from pathlib import Path
@@ -103,6 +104,59 @@ def main() -> int:
     assert "route: goal-harness-prompt-polling-test" in polling_packet
     assert "strict_goal_harness_treatment_claim_allowed: false" in polling_packet
     assert "controller_trace_absent" in polling_packet
+    missing_prompt_lifecycle_claim = (
+        module.classify_goal_harness_treatment_claim(
+            {
+                "benchmark_loop_contract": {
+                    "protocol_id": "max5_blind_loop_no_feedback",
+                    "max_rounds_budget": 5,
+                    "official_feedback_forwarded": False,
+                    "blind_loop": True,
+                    "route": "goal-harness-prompt-polling-test",
+                },
+                "controller_trace_present": True,
+                "goal_harness_product_path_primary_route": (
+                    "prompt_driven_case_local_goal_harness_cli"
+                ),
+                "goal_harness_prompt_driven_loop_required": True,
+            }
+        )
+    )
+    assert (
+        missing_prompt_lifecycle_claim[
+            "strict_goal_harness_treatment_claim_allowed"
+        ]
+        is False
+    ), missing_prompt_lifecycle_claim
+    assert (
+        "prompt_driven_goal_harness_lifecycle_absent"
+        in missing_prompt_lifecycle_claim["goal_harness_treatment_claim_blocker"]
+    ), missing_prompt_lifecycle_claim
+    observed_prompt_lifecycle_claim = (
+        module.classify_goal_harness_treatment_claim(
+            {
+                "benchmark_loop_contract": {
+                    "protocol_id": "max5_blind_loop_no_feedback",
+                    "max_rounds_budget": 5,
+                    "official_feedback_forwarded": False,
+                    "blind_loop": True,
+                    "route": "goal-harness-prompt-polling-test",
+                },
+                "controller_trace_present": True,
+                "goal_harness_product_path_primary_route": (
+                    "prompt_driven_case_local_goal_harness_cli"
+                ),
+                "goal_harness_prompt_driven_loop_required": True,
+                "goal_harness_prompt_driven_lifecycle_observed": True,
+            }
+        )
+    )
+    assert (
+        observed_prompt_lifecycle_claim[
+            "strict_goal_harness_treatment_claim_allowed"
+        ]
+        is True
+    ), observed_prompt_lifecycle_claim
     init_payload = module.build_case_goal_state_init_payload(
         benchmark_id="swe-marathon",
         case_id="find-network-alignments",
@@ -235,6 +289,7 @@ def main() -> int:
     )
     assert "Goal Harness treatment access packet:" in treatment_prompt
     assert "case-local Goal Harness CLI" in treatment_prompt
+    assert "part of the treatment proof" in treatment_prompt
     assert "mode: codex_goal_harness" in treatment_prompt
 
     with tempfile.TemporaryDirectory(prefix="gh-harbor-host-agent-") as tmp:
@@ -258,6 +313,50 @@ def main() -> int:
             app_server_response_timeout_sec="4",
         )
         assert agent.name() == "harbor-host-codex-goal"
+        agent._case_state_init_payload = init_payload
+        for index, command in enumerate(
+            [
+                (
+                    "/app/.local/bin/goal-harness --format json quota "
+                    "should-run --goal-id "
+                    f"{init_payload['benchmark_case_goal_id']} "
+                    "--agent-id codex-benchmark-agent"
+                ),
+                (
+                    "/app/.local/bin/goal-harness --format json todo claim "
+                    "--goal-id "
+                    f"{init_payload['benchmark_case_goal_id']} "
+                    "--todo-id todo_benchmark_case_main "
+                    "--claimed-by codex-benchmark-agent"
+                ),
+            ]
+        ):
+            (request_dir / f"case-gh-{index}.request.json").write_text(
+                json.dumps(
+                    {
+                        "command": command,
+                        "cwd": "/workspace",
+                        "timeout_sec": 30,
+                    }
+                ),
+                encoding="utf-8",
+            )
+        asyncio.run(agent._serve_bridge_requests(_FakeEnvironment(), request_dir))
+        prompt_trace = module._summarize_prompt_driven_case_trace(
+            init_payload,
+            agent._prompt_driven_goal_harness_commands,
+        )
+        assert prompt_trace["route"] == (
+            "prompt_driven_case_local_goal_harness_cli"
+        ), prompt_trace
+        assert prompt_trace["command_count"] == 2, prompt_trace
+        assert prompt_trace["event_kind_counts"] == {
+            "quota_should_run": 1,
+            "todo_claim": 1,
+        }, prompt_trace
+        assert prompt_trace["lifecycle_observed"] is True, prompt_trace
+        assert prompt_trace["raw_commands_recorded"] is False, prompt_trace
+        assert prompt_trace["raw_output_recorded"] is False, prompt_trace
         assert agent.version() == "0.5.0"
         assert agent.goal_timeout_sec == 9.0
         assert agent.poll_interval_sec == 0.5

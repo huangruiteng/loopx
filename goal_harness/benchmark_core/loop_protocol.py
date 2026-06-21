@@ -274,6 +274,14 @@ def classify_goal_harness_treatment_claim(run: dict[str, Any]) -> dict[str, Any]
         or run.get("controller_trace_present")
         or round_count > 0
     )
+    prompt_driven_required = bool(
+        run.get("goal_harness_prompt_driven_loop_required")
+    ) or str(run.get("goal_harness_product_path_primary_route") or "") == (
+        "prompt_driven_case_local_goal_harness_cli"
+    )
+    prompt_driven_lifecycle_observed = bool(
+        run.get("goal_harness_prompt_driven_lifecycle_observed")
+    )
 
     blockers: list[str] = []
     if protocol_id != MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID:
@@ -286,6 +294,8 @@ def classify_goal_harness_treatment_claim(run: dict[str, Any]) -> dict[str, Any]
         blockers.append("blind_loop_not_confirmed")
     if not controller_trace_present:
         blockers.append("controller_trace_absent")
+    if prompt_driven_required and not prompt_driven_lifecycle_observed:
+        blockers.append("prompt_driven_goal_harness_lifecycle_absent")
     if route not in {
         GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE,
         GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
