@@ -209,22 +209,9 @@ That one message is the install, connect, status check, and first loop
 bootstrap. You do not need to run a separate setup command first or paste a
 second prompt.
 
-Optional, after Goal Harness is already installed: generate an exact TUI paste
-block for another repo or teammate:
-
-```bash
-goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
-```
-
-For only the pasteable text, use:
-
-```bash
-goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
-```
-
 Hidden `codex exec` is not part of the default TUI bootstrap. Pilot packets,
-local drivers, idle detection, and same-session proof details live in
-[Getting Started](docs/guides/getting-started.md) and the
+template generators, local drivers, idle detection, and same-session proof
+details live in [Getting Started](docs/guides/getting-started.md) and the
 [Codex CLI TUI-first loop](docs/product/codex-cli-tui-loop.md).
 
 A successful connection looks like this for every surface:

@@ -100,6 +100,7 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     for text in (readme, getting_started, product_contract):
         assert "Codex CLI" in text and "TUI" in text, text[:500]
         assert "Start Goal Harness for this repo" in text, text[:500]
+    for text in (getting_started, product_contract):
         assert "goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>" in text, text[:500]
 
     normalized_readme = " ".join(readme.split())
@@ -108,7 +109,9 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     assert "Hidden `codex exec` is not part of the default TUI bootstrap" in normalized_readme, readme
     assert "paste one goal-mode message" in normalized_readme, readme
     assert "Begin the Goal Harness loop" in normalized_readme, readme
-    assert "exact TUI paste block" in normalized_readme, readme
+    assert "You do not need to run a separate setup command first or paste a second prompt" in normalized_readme, readme
+    assert "template generators" in normalized_readme, readme
+    assert "goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>" not in readme, readme
     assert "show the current goal, user gate, top todos, and next safe action" in normalized_readme, readme
     assert "first-run path should not require you to understand registry paths" in normalized_getting_started, getting_started
     assert "finish one bounded validated segment" in normalized_getting_started, getting_started
