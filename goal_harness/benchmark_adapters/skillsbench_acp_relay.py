@@ -361,7 +361,16 @@ class SkillsBenchLocalAcpRelay:
                         stderr_text=stderr_text,
                     )
                 raise RuntimeError("host app-server goal worker failed")
-            self._publish_worker_trace(output_json)
+            trace_required = bool(self._config.worker_public_trace_dir)
+            trace_published = self._publish_worker_trace(output_json)
+            if trace_required and not trace_published:
+                self._publish_worker_failure_trace(
+                    stage="worker_exit_zero_before_public_trace",
+                    returncode=proc.returncode,
+                    stdout_text=stdout_text,
+                    stderr_text=stderr_text,
+                )
+                raise RuntimeError("host app-server goal worker public trace missing")
             try:
                 response = response_path.read_text(encoding="utf-8").strip()
             except OSError as exc:
