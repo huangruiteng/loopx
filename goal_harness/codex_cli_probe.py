@@ -2172,6 +2172,203 @@ def build_codex_cli_visible_local_driver_pilot(
     }
 
 
+def build_codex_cli_visible_first_response_capture_plan(
+    *,
+    project: Path,
+    goal_id: str | None,
+    agent_id: str | None,
+    cli_bin: str,
+    first_response_path: str = "public-first-response.json",
+    idle_path: str = "public-runtime-idle.json",
+) -> dict[str, Any]:
+    """Describe the safest public fixture capture path for visible TUI bootstrap.
+
+    This is deliberately a plan packet. It does not start Codex, read terminal
+    buffers, inspect session files, or write fixtures. A human-visible TUI run
+    supplies the observations, and the bounded visible adapter validates the
+    resulting public-safe JSON before any success claim or quota spend.
+    """
+
+    adapter = build_codex_cli_bounded_visible_pilot_adapter(
+        project=project,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+    )
+    resolved_project = str(adapter["project"])
+    resolved_goal_id = str(adapter["goal_id"])
+    agent_arg = f" --agent-id {_shell_arg(agent_id)}" if agent_id else ""
+    first_response_fixture = {
+        "observed_surface": "codex_cli_tui_visible_window",
+        "prompt_delivery": {
+            "manual_or_visible_delivery": True,
+            "prompt_public_safe": True,
+            "argv_prompt_used": False,
+        },
+        "first_response": {
+            "goal_id_visible": True,
+            "user_gate_or_none_visible": True,
+            "top_user_todo_or_none_visible": True,
+            "top_agent_todo_visible": True,
+            "next_safe_action_visible": True,
+            "bounded_segment_started_or_blocker_written": True,
+        },
+        "interruptibility": {
+            "user_can_interrupt": True,
+            "manual_takeover_available": True,
+        },
+        "writeback": {
+            "compact_evidence_planned": True,
+            "quota_spend_after_writeback_only": True,
+        },
+        "boundary": {
+            "reads_raw_transcripts": False,
+            "reads_session_files": False,
+            "reads_stdout_stderr": False,
+            "reads_credentials": False,
+            "mutates_hidden_session_state": False,
+            "spends_quota_before_writeback": False,
+        },
+    }
+    runtime_idle_fixture = {
+        "observed_surface": "codex_cli_tui_visible_window",
+        "idle_guard": {
+            "no_active_human_typing": True,
+            "no_running_turn": True,
+            "checked_before_prompt": True,
+        },
+        "turn_visibility": {"visible_to_user": True},
+        "interruptibility": {
+            "user_can_interrupt": True,
+            "manual_takeover_available": True,
+        },
+        "boundary": {
+            "reads_raw_transcripts": False,
+            "reads_session_files": False,
+            "reads_stdout_stderr": False,
+            "reads_credentials": False,
+            "mutates_hidden_session_state": False,
+        },
+    }
+    first_response_checklist = [
+        {
+            "key": key,
+            "required": True,
+            "description": description,
+            "path": ".".join(path),
+        }
+        for key, path, description in FIRST_RESPONSE_REQUIRED_TRUE_CHECKS
+    ] + [
+        {
+            "key": key,
+            "required": False,
+            "description": description,
+            "path": ".".join(path),
+        }
+        for key, path, description in FIRST_RESPONSE_REQUIRED_FALSE_CHECKS
+    ]
+    runtime_idle_checklist = [
+        {
+            "key": key,
+            "required": True,
+            "description": description,
+            "path": ".".join(path),
+        }
+        for key, path, description in RUNTIME_IDLE_REQUIRED_TRUE_CHECKS
+    ] + [
+        {
+            "key": key,
+            "required": False,
+            "description": description,
+            "path": ".".join(path),
+        }
+        for key, path, description in RUNTIME_IDLE_REQUIRED_FALSE_CHECKS
+    ]
+    capture_steps = [
+        "Run quota should-run for the goal and stop if a concrete user gate blocks this path.",
+        "Open Codex CLI TUI yourself in the project repo; do not pass the bootstrap message as argv.",
+        "Paste the generated Goal Harness bootstrap message into the visible TUI.",
+        "Observe only whether the first response exposes the required public-safe fields; do not copy raw text.",
+        f"Write those booleans to {first_response_path}.",
+        "After the first response or blocker is visible, confirm the TUI is idle and the user is not typing.",
+        f"Write those idle booleans to {idle_path}.",
+        "Run the bounded visible pilot adapter with both fixtures before claiming success or spending quota.",
+    ]
+    stop_conditions = [
+        "the first response contains private paths, internal project names, credentials, or raw logs",
+        "the bootstrap message would have to be passed as argv",
+        "the user is typing or Codex is already running a visible turn",
+        "the response does not show goal/todo/gate/next-action status clearly enough to fill the fixture",
+        "any required boundary boolean would be false",
+    ]
+    commands = {
+        "quota_guard": (
+            f"{_shell_arg(cli_bin)} --format json quota should-run "
+            f"--goal-id {_shell_arg(resolved_goal_id)}{agent_arg}"
+        ),
+        "bootstrap_message": (
+            f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "
+            f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}"
+            f"{agent_arg} --message-only"
+        ),
+        "runtime_idle_detector": (
+            f"{_shell_arg(cli_bin)} codex-cli-runtime-idle-detector "
+            f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}"
+            f"{agent_arg} --idle-fixture {_shell_arg(idle_path)}"
+        ),
+        "bounded_visible_pilot_adapter": (
+            f"{_shell_arg(cli_bin)} codex-cli-bounded-visible-pilot-adapter "
+            f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}"
+            f"{agent_arg} --first-response-fixture {_shell_arg(first_response_path)} "
+            f"--idle-fixture {_shell_arg(idle_path)}"
+        ),
+        "capture_plan": (
+            f"{_shell_arg(cli_bin)} codex-cli-visible-first-response-capture-plan "
+            f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}"
+            f"{agent_arg} --first-response-path {_shell_arg(first_response_path)} "
+            f"--idle-path {_shell_arg(idle_path)}"
+        ),
+    }
+    return {
+        "ok": True,
+        "schema_version": "codex_cli_visible_first_response_capture_plan_v0",
+        "project": resolved_project,
+        "goal_id": resolved_goal_id,
+        "agent_id": agent_id,
+        "cli_bin": cli_bin,
+        "decision": "manual_visible_capture_plan_ready",
+        "start_surface": "codex_cli_tui_manual_paste",
+        "next_safe_step": "paste the bootstrap message into a visible Codex CLI TUI and record only public-safe fixture booleans",
+        "output_artifacts": {
+            "first_response_fixture": first_response_path,
+            "runtime_idle_fixture": idle_path,
+        },
+        "capture_steps": capture_steps,
+        "stop_conditions": stop_conditions,
+        "first_response_checklist": first_response_checklist,
+        "runtime_idle_checklist": runtime_idle_checklist,
+        "sample_first_response_fixture": first_response_fixture,
+        "sample_runtime_idle_fixture": runtime_idle_fixture,
+        "commands": commands,
+        "adapter_decision_without_fixtures": adapter.get("decision"),
+        "boundary": {
+            "capture_plan_only": True,
+            "runs_codex": False,
+            "reads_raw_transcripts": False,
+            "reads_session_files": False,
+            "reads_stdout_stderr": False,
+            "reads_credentials": False,
+            "mutates_codex_session": False,
+            "writes_goal_harness_state": False,
+            "spends_goal_harness_quota": False,
+            "requires_visible_delivery": True,
+            "manual_paste_primary": True,
+            "argv_prompt_rejected": True,
+            "success_claim_requires_bounded_adapter": True,
+        },
+    }
+
+
 def build_codex_cli_bounded_visible_pilot_adapter(
     *,
     project: Path,
@@ -3002,6 +3199,75 @@ def render_codex_cli_bounded_visible_pilot_adapter_markdown(payload: dict[str, A
 - argv_prompt_rejected: `{boundary.get("argv_prompt_rejected")}`
 - success_claim_requires_first_response_and_idle: `{boundary.get("success_claim_requires_first_response_and_idle")}`
 {required_shapes}
+"""
+
+
+def render_codex_cli_visible_first_response_capture_plan_markdown(
+    payload: dict[str, Any],
+) -> str:
+    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+    artifacts = (
+        payload.get("output_artifacts")
+        if isinstance(payload.get("output_artifacts"), dict)
+        else {}
+    )
+    steps = payload.get("capture_steps") if isinstance(payload.get("capture_steps"), list) else []
+    stops = payload.get("stop_conditions") if isinstance(payload.get("stop_conditions"), list) else []
+    first_response_fixture = payload.get("sample_first_response_fixture")
+    runtime_idle_fixture = payload.get("sample_runtime_idle_fixture")
+    step_lines = "\n".join(f"{index}. {step}" for index, step in enumerate(steps, start=1))
+    stop_lines = "\n".join(f"- {stop}" for stop in stops) if stops else "- none"
+    return f"""# Codex CLI Visible First-Response Capture Plan
+
+- decision: `{payload.get("decision")}`
+- start_surface: `{payload.get("start_surface")}`
+- first_response_fixture: `{artifacts.get("first_response_fixture")}`
+- runtime_idle_fixture: `{artifacts.get("runtime_idle_fixture")}`
+- next_safe_step: {payload.get("next_safe_step")}
+
+## Commands
+
+```bash
+{commands.get("quota_guard")}
+{commands.get("bootstrap_message")}
+{commands.get("bounded_visible_pilot_adapter")}
+{commands.get("runtime_idle_detector")}
+```
+
+## Capture Steps
+
+{step_lines}
+
+## Stop Conditions
+
+{stop_lines}
+
+## Sample First-Response Fixture
+
+```json
+{json.dumps(first_response_fixture, indent=2, ensure_ascii=False)}
+```
+
+## Sample Runtime Idle Fixture
+
+```json
+{json.dumps(runtime_idle_fixture, indent=2, ensure_ascii=False)}
+```
+
+## Boundary
+
+- capture_plan_only: `{boundary.get("capture_plan_only")}`
+- runs_codex: `{boundary.get("runs_codex")}`
+- reads_raw_transcripts: `{boundary.get("reads_raw_transcripts")}`
+- reads_session_files: `{boundary.get("reads_session_files")}`
+- reads_stdout_stderr: `{boundary.get("reads_stdout_stderr")}`
+- mutates_codex_session: `{boundary.get("mutates_codex_session")}`
+- writes_goal_harness_state: `{boundary.get("writes_goal_harness_state")}`
+- spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+- manual_paste_primary: `{boundary.get("manual_paste_primary")}`
+- argv_prompt_rejected: `{boundary.get("argv_prompt_rejected")}`
+- success_claim_requires_bounded_adapter: `{boundary.get("success_claim_requires_bounded_adapter")}`
 """
 
 

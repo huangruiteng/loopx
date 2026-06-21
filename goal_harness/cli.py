@@ -145,6 +145,7 @@ from .cli_commands import (
     handle_codex_cli_bounded_visible_pilot_adapter_command,
     handle_codex_cli_bootstrap_message_command,
     handle_codex_cli_exec_handoff_command,
+    handle_codex_cli_visible_first_response_capture_plan_command,
     handle_codex_cli_local_driver_plan_command,
     handle_codex_cli_local_scheduler_exec_command,
     handle_codex_cli_local_scheduler_tick_command,
@@ -6017,6 +6018,7 @@ def main(argv: list[str] | None = None) -> int:
             "codex-cli-bootstrap-message",
             "codex-cli-bounded-visible-pilot-adapter",
             "codex-cli-exec-handoff",
+            "codex-cli-visible-first-response-capture-plan",
             "codex-cli-local-driver-plan",
             "codex-cli-local-scheduler-exec",
             "codex-cli-local-scheduler-tick",
@@ -6109,6 +6111,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "codex-cli-bounded-visible-pilot-adapter":
         return handle_codex_cli_bounded_visible_pilot_adapter_command(args, print_payload)
+
+    if args.command == "codex-cli-visible-first-response-capture-plan":
+        return handle_codex_cli_visible_first_response_capture_plan_command(args, print_payload)
 
     if args.command == "codex-cli-visible-attach-acceptance":
         return handle_codex_cli_visible_attach_acceptance_command(args, print_payload)

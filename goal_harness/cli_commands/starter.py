@@ -32,6 +32,7 @@ from ..codex_cli_probe import (
     DEFAULT_TIMEOUT_SECONDS,
     build_codex_cli_bounded_visible_pilot_adapter,
     build_codex_cli_one_message_loop_pilot,
+    build_codex_cli_visible_first_response_capture_plan,
     build_codex_cli_visible_local_driver_pilot,
     build_codex_cli_visible_attach_acceptance,
     build_codex_cli_local_scheduler_executor,
@@ -47,6 +48,7 @@ from ..codex_cli_probe import (
     load_codex_cli_runtime_idle_fixture,
     render_codex_cli_bounded_visible_pilot_adapter_markdown,
     render_codex_cli_one_message_loop_pilot_markdown,
+    render_codex_cli_visible_first_response_capture_plan_markdown,
     render_codex_cli_visible_local_driver_pilot_markdown,
     render_codex_cli_visible_attach_acceptance_markdown,
     render_codex_cli_local_scheduler_executor_markdown,
@@ -336,6 +338,39 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Public-safe JSON fixture proving the first visible TUI response shape.",
     )
     _add_runtime_idle_observation_arguments(codex_cli_bounded_visible_parser)
+
+    codex_cli_first_response_capture_parser = subparsers.add_parser(
+        "codex-cli-visible-first-response-capture-plan",
+        help="Plan the public-safe manual visible capture of Codex CLI first-response and idle fixtures.",
+    )
+    codex_cli_first_response_capture_parser.add_argument(
+        "--project",
+        default=".",
+        help="Project directory to start from.",
+    )
+    codex_cli_first_response_capture_parser.add_argument(
+        "--goal-id",
+        help="Goal id. Defaults to <project-name>-goal.",
+    )
+    codex_cli_first_response_capture_parser.add_argument(
+        "--agent-id",
+        help="Registered Goal Harness agent id to include in generated commands.",
+    )
+    codex_cli_first_response_capture_parser.add_argument(
+        "--cli-bin",
+        default="goal-harness",
+        help="Goal Harness CLI binary name embedded in generated commands.",
+    )
+    codex_cli_first_response_capture_parser.add_argument(
+        "--first-response-path",
+        default="public-first-response.json",
+        help="Public-safe first-response fixture path used in generated commands.",
+    )
+    codex_cli_first_response_capture_parser.add_argument(
+        "--idle-path",
+        default="public-runtime-idle.json",
+        help="Public-safe runtime idle fixture path used in generated commands.",
+    )
 
     codex_cli_visible_attach_acceptance_parser = subparsers.add_parser(
         "codex-cli-visible-attach-acceptance",
@@ -869,6 +904,22 @@ def handle_codex_cli_bounded_visible_pilot_adapter_command(
         idle_payload=idle_payload,
     )
     print_payload(payload, args.format, render_codex_cli_bounded_visible_pilot_adapter_markdown)
+    return 0 if payload.get("ok") else 1
+
+
+def handle_codex_cli_visible_first_response_capture_plan_command(
+    args: argparse.Namespace,
+    print_payload: PrintPayload,
+) -> int:
+    payload = build_codex_cli_visible_first_response_capture_plan(
+        project=Path(args.project),
+        goal_id=args.goal_id,
+        agent_id=args.agent_id,
+        cli_bin=args.cli_bin,
+        first_response_path=args.first_response_path,
+        idle_path=args.idle_path,
+    )
+    print_payload(payload, args.format, render_codex_cli_visible_first_response_capture_plan_markdown)
     return 0 if payload.get("ok") else 1
 
 
