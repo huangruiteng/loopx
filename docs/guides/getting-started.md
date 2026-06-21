@@ -75,12 +75,14 @@ First-run path:
 
 ```text
 /goal Start Goal Harness for this repo. Use Goal Harness as the control plane
-for this visible Codex CLI TUI goal. If `goal-harness` is missing, install it
-with the official no-clone GitHub installer, then connect this project. Show me
-the current goal, concrete user gate if any, top todos, and next safe action
-before running longer work. Keep me in this Codex CLI TUI and do not use hidden
-headless execution. Begin the Goal Harness loop now; do not stop after only
-explaining what Goal Harness is.
+for this visible Codex CLI TUI goal. This `/goal` message is the Codex
+goal-setting envelope for this TUI session; do not continue under any previous
+goal. After that, install or repair `goal-harness` if needed, connect or
+bootstrap this project, run the Goal Harness checks, and show me the current
+goal, concrete user gate if any, top todos, and next safe action before running
+longer work. Keep me in this Codex CLI TUI and do not use hidden headless
+execution. Begin the Goal Harness loop now; do not stop after only explaining
+what Goal Harness is.
 ```
 
 The generated paste block is a Codex CLI `/goal` rewrite of the App heartbeat

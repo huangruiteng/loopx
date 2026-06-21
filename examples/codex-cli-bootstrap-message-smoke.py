@@ -26,6 +26,7 @@ MUST_HAVE = (
     "durable TUI heartbeat prompt",
     "hidden headless codex exec",
     "registry-declared active state",
+    "Codex goal-setting envelope",
     "goal-harness-project",
     "goal-harness-self-repair",
     "current goal id",
@@ -108,12 +109,15 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     normalized_product_contract = " ".join(product_contract.split())
     assert "Hidden `codex exec` is not part of the default TUI bootstrap" in normalized_readme, readme
     assert "paste one goal-mode message" in normalized_readme, readme
+    assert "This `/goal` message is the Codex goal-setting envelope" in normalized_readme, readme
+    assert "do not continue under any previous goal" in normalized_readme, readme
     assert "Begin the Goal Harness loop" in normalized_readme, readme
     assert "You do not need to run a separate setup command first or paste a second prompt" in normalized_readme, readme
     assert "template generators" in normalized_readme, readme
     assert "goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>" not in readme, readme
     assert "show the current goal, user gate, top todos, and next safe action" in normalized_readme, readme
     assert "first-run path should not require you to understand registry paths" in normalized_getting_started, getting_started
+    assert "connect or bootstrap this project, run the Goal Harness checks" in normalized_getting_started, getting_started
     assert "finish one bounded validated segment" in normalized_getting_started, getting_started
     assert "transcript-free validation checklist" in normalized_getting_started, getting_started
     assert "optional automation checks after the one-message path works" in normalized_getting_started, getting_started
