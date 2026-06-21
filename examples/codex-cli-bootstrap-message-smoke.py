@@ -154,6 +154,33 @@ def main() -> int:
     assert "Transcript-Free Validation Checklist" in cli_markdown, cli_markdown
     assert "install-from-github.sh" in cli_markdown, cli_markdown
     assert "one-message TUI bootstrap" in cli_markdown, cli_markdown
+
+    cli_message_only = run_cli(
+        "codex-cli-bootstrap-message",
+        "--project",
+        str(PROJECT),
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--message-only",
+    )
+    assert cli_message_only == str(payload["message"]) + "\n", cli_message_only
+    assert "# Codex CLI Goal Harness Bootstrap Message" not in cli_message_only, cli_message_only
+    assert "Fresh Repo Install Repair" not in cli_message_only, cli_message_only
+    assert "Start the Goal Harness loop" in cli_message_only, cli_message_only
+
+    cli_copy_only = run_cli(
+        "codex-cli-bootstrap-message",
+        "--project",
+        str(PROJECT),
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--copy-only",
+    )
+    assert cli_copy_only == cli_message_only, cli_copy_only
     assert_docs_surface_codex_cli_quickstart()
 
     print("codex-cli-bootstrap-message-smoke ok")

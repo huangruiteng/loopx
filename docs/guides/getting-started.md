@@ -101,6 +101,12 @@ generated packet also shows the no-clone install-repair command and a
 transcript-free validation checklist, so a fresh repo path can be reviewed
 without touching raw Codex session data.
 
+If the user only wants the pasteable TUI text, omit the wrapper:
+
+```bash
+goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
+```
+
 To review the whole one-message loop contract without running Codex, generate a
 pilot packet:
 

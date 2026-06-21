@@ -184,6 +184,11 @@ paste one message:
 
    The generated packet includes the exact TUI paste block, the no-clone
    install-repair command, and a transcript-free validation checklist.
+   When you only need the text to paste into Codex CLI TUI, use:
+
+   ```bash
+   goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
+   ```
 
 This is the primary Codex CLI path: the user keeps the visible TUI for steering,
 review, and takeover; Goal Harness supplies goal state, todo ownership, quota,

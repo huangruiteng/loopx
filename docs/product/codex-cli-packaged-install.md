@@ -50,6 +50,8 @@ This keeps the product hierarchy clear:
 - install repair: no manual clone required;
 - generated bootstrap packet: exact TUI paste block, no-clone repair command,
   and transcript-free validation checklist;
+- copy-only mode: `codex-cli-bootstrap-message --message-only` prints just the
+  pasteable TUI block, while the default output remains the review packet;
 - recurring automation: separate driver work;
 - contributor development: clone plus canary remains available.
 

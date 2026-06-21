@@ -189,6 +189,13 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
         default="goal-harness",
         help="Goal Harness CLI binary name embedded in generated commands.",
     )
+    codex_cli_bootstrap_parser.add_argument(
+        "--message-only",
+        "--copy-only",
+        dest="message_only",
+        action="store_true",
+        help="Print only the Codex CLI TUI paste message, without the Markdown review packet.",
+    )
 
     codex_cli_one_message_loop_parser = subparsers.add_parser(
         "codex-cli-one-message-loop-pilot",
@@ -675,6 +682,9 @@ def handle_codex_cli_bootstrap_message_command(
         agent_id=args.agent_id,
         cli_bin=args.cli_bin,
     )
+    if bool(getattr(args, "message_only", False)):
+        print(str(payload.get("message") or ""))
+        return 0
     print_payload(payload, args.format, render_codex_cli_bootstrap_message_markdown)
     return 0
 
