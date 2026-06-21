@@ -1,57 +1,59 @@
 # LoopX
 
-**Always-on agent teams, governed by human judgment.**
+**Loop engineering for long-running AI agents.**
 
-**Gate-aware human-in-the-loop control plane**
+**Turn static goals into dynamic, human-in-the-loop agent loops.**
 
-**Dynamic goal control plane for long-running agents**
+**让复杂目标持续流转：人把控判断，agent 接力执行，状态不漂移。**
 
-**让多个 agent 昼夜接力，把人的判断留在控制面。**
+LoopX is a local control plane for loop engineering. It helps Codex,
+Claude Code, Cursor, and other agent runtimes keep working on goals that span
+hours, days, handoffs, and changing human feedback.
 
-LoopX 把目标、用户决策、agent todo、认领关系、scope、safe fallback、
-run history 和 quota 放进同一层状态：该等人的地方明确等人，不该空等的
-安全侧路继续推进。
+LoopX turns a one-shot prompt or static goal into a dynamic, reviewable loop
+state: goals, gates, todos, claims, scopes, evidence, run history, quota, and
+human decisions stay in one compact layer. User gates stay explicit; safe
+fallback lanes keep moving; every automatic turn has a boundary, validation
+surface, and writeback trail.
 
-LoopX is a local control plane for long-running AI agent projects. It
-turns a static agent goal into a dynamic, reviewable state layer: goals, gates,
-todos, claims, scopes, run history, quota, evidence, and human decisions stay
-visible across many turns, so primary and side agents can keep working on safe
-lanes while gated work waits for the person.
+LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地方明确等人，
+不该空等的安全侧路继续推进，下一轮 agent 总能读到目标、边界、证据和交接。
 
 [Quick Start](#quick-start) · [Getting Started](docs/guides/getting-started.md) ·
 [Showcases](docs/showcases/README.md) · [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
 [Community](#community--feedback) · [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
 [Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
 
-> Your agents keep the night shift. You keep the judgment.
+> Keep the loop moving. Keep the judgment human.
 
 ## What Is It?
 
 LoopX does not replace Codex, Claude Code, Cursor, or another agent
-runtime. It sits above them and gives humans and agents a shared state layer for
-long-running work.
+runtime. It sits above them as a loop-engineering control plane: the runtime
+executes bounded agent loops, while LoopX preserves the dynamic goal state those
+loops need to keep working without losing the plot.
 
-Short answer: LoopX is not replacing Codex goal mode. Codex goal,
-Codex App automation, and CLI scripts can trigger executor loops; LoopX
-preserves the dynamic goal state those loops need to keep working across
-turns.
+Short answer: LoopX is not another executor. Codex goal, Codex App
+automation, CLI scripts, cron jobs, or a human-visible TUI can trigger the next
+executor loop; LoopX keeps the goal, gate, evidence, quota, and handoff contract
+stable across those turns.
 
 | Layer | Role |
 | --- | --- |
-| Codex / Claude Code / Cursor | Execute an agent loop: read, write, run commands, and respond. |
-| Codex goal / automation / CLI scripts | Trigger or schedule the next executor loop. |
-| LoopX | Preserve the dynamic goal state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
+| Codex / Claude Code / Cursor | Execute a bounded agent loop: read, write, run commands, and respond. |
+| Goal mode / automation / CLI scripts / TUI | Trigger or schedule the next executor loop. |
+| LoopX | Preserve the dynamic loop state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
 
-The product promise is not "more todo lists." It is a better
-human-in-the-loop control surface: keep human judgment at high-value decision
-points, keep safe fallback work moving when one lane is gated, and stop compute
-spend when a turn cannot produce a verified transition.
+The product promise is not "more todo lists." It is a practical foundation for
+loop engineering: keep human judgment at high-value decision points, keep safe
+fallback work moving when one lane is gated, and stop compute spend when a turn
+cannot produce a verified transition.
 
-Put differently: LoopX lets a user's agent team keep working across
-tools, turns, and off-hours without losing the goal boundary. The technical
-contract underneath that promise is explicit: agent identity, todo ownership,
-scope, capability gates, quota, evidence writeback, and public/private
-boundaries stay visible to the next turn.
+Put differently: LoopX lets a user's agent team keep working across tools,
+turns, and off-hours without turning the project into a pile of hidden scripts
+and stale prompts. The technical contract underneath that promise is explicit:
+agent identity, todo ownership, scope, capability gates, quota, evidence
+writeback, and public/private boundaries stay visible to the next turn.
 
 ![LoopX control-plane board](docs/assets/control-plane-board.svg)
 
@@ -90,10 +92,16 @@ content.
   </tr>
 </table>
 
-## Why It Matters
+## Why Loop Engineering Needs A Control Plane
 
 Short agent tasks usually fail because the model makes a bad local choice.
-Long-running agent work fails differently: state drifts.
+Long-running loops fail differently: state drifts.
+
+Loop engineering often begins with a timer, a long prompt, a shell script, or a
+visible TUI session. That can prove the idea, but it is not enough for real
+work. Once the goal changes, the user gives feedback, an owner gate appears, or
+multiple agents touch the same repo, the loop needs shared state instead of
+chat memory.
 
 After several runs, several projects, or several handoffs, the hard questions
 become:
@@ -107,8 +115,9 @@ become:
   private-data, or publication boundaries?
 - How does human feedback survive into the next run?
 
-LoopX makes those questions machine-readable enough for agents and
-legible enough for operators.
+LoopX makes those questions machine-readable enough for agents and legible
+enough for operators, so a loop can run longer without becoming less
+accountable.
 
 ## What You Get
 
