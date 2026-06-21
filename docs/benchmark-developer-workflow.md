@@ -785,6 +785,18 @@ The compact worker JSON is safe to inspect for lifecycle debugging, but the
 response text file is private task execution material and must stay out of
 public docs, ledgers, rollout logs, and PRs.
 
+For the host-local ACP relay, materialize public trace as early as the relay
+lifecycle, not only after a completed worker turn. The relay should write
+compact `relay_lifecycle` traces for `initialize`, `session_new`, and
+`prompt_received` when `--worker-public-trace-dir` is configured. These traces
+are pure observation: they record stage names and boundary booleans only, never
+task text, ACP payloads, stdout/stderr, session ids, response text, or host
+paths. Reducers must not treat lifecycle-only traces as solver evidence. A
+status such as `worker_connected_no_prompt_trace` or
+`worker_prompt_received_no_turn_trace` remains a failed native-worker evidence
+check; it only narrows attribution from "trace directory missing" to "BenchFlow
+connected but did not reach a countable Goal worker turn."
+
 Use `--remote-command-file-bridge-ready` only after a public-safe bridge probe
 has passed. That flag updates only the plan's bridge readiness fields;
 `codex_app_server_goal_worker_runner_integration_ready` must remain `false`

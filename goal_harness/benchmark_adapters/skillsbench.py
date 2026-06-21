@@ -1820,6 +1820,12 @@ def _skillsbench_controller_trace_counters(
         is True,
         "native_goal_worker_connect_count": count("native_goal_worker_connect_count"),
         "native_goal_worker_trace_count": count("native_goal_worker_trace_count"),
+        "native_goal_worker_lifecycle_trace_count": count(
+            "native_goal_worker_lifecycle_trace_count"
+        ),
+        "native_goal_worker_prompt_received_count": count(
+            "native_goal_worker_prompt_received_count"
+        ),
         "native_goal_worker_ok_count": count("native_goal_worker_ok_count"),
         "native_goal_worker_goal_get_count": count("native_goal_worker_goal_get_count"),
         "native_goal_worker_turn_start_count": count(
@@ -1925,7 +1931,35 @@ def _skillsbench_native_goal_worker_trace_status(
         and trace_count > 0
         and counters.get("native_goal_worker_public_trace_read") is True
     ):
-        return "public_trace_observed"
+        turn_start_count = counters.get("native_goal_worker_turn_start_count")
+        goal_get_count = counters.get("native_goal_worker_goal_get_count")
+        assistant_message_count = counters.get(
+            "native_goal_worker_assistant_message_present_count"
+        )
+        if any(
+            isinstance(value, int) and not isinstance(value, bool) and value > 0
+            for value in (turn_start_count, goal_get_count, assistant_message_count)
+        ):
+            return "public_trace_observed"
+        prompt_received_count = counters.get(
+            "native_goal_worker_prompt_received_count"
+        )
+        if (
+            isinstance(prompt_received_count, int)
+            and not isinstance(prompt_received_count, bool)
+            and prompt_received_count > 0
+        ):
+            return "worker_prompt_received_no_turn_trace"
+        lifecycle_trace_count = counters.get(
+            "native_goal_worker_lifecycle_trace_count"
+        )
+        if (
+            isinstance(lifecycle_trace_count, int)
+            and not isinstance(lifecycle_trace_count, bool)
+            and lifecycle_trace_count > 0
+        ):
+            return "worker_connected_no_prompt_trace"
+        return "worker_connected_no_turn_trace"
     if counters.get("native_goal_worker_connected") is True:
         if counters.get("native_goal_worker_trace_dir_present") is not True:
             return "worker_connected_trace_dir_missing"
@@ -2561,6 +2595,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "native_goal_worker_trace_count": controller_counters.get(
                 "native_goal_worker_trace_count", 0
             ),
+            "native_goal_worker_lifecycle_trace_count": controller_counters.get(
+                "native_goal_worker_lifecycle_trace_count", 0
+            ),
+            "native_goal_worker_prompt_received_count": controller_counters.get(
+                "native_goal_worker_prompt_received_count", 0
+            ),
             "native_goal_worker_ok_count": controller_counters.get(
                 "native_goal_worker_ok_count", 0
             ),
@@ -2659,6 +2699,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "native_goal_worker_trace_observed": native_goal_worker_trace_observed,
             "native_goal_worker_trace_count": native_goal_worker_trace_count,
+            "native_goal_worker_lifecycle_trace_count": controller_counters.get(
+                "native_goal_worker_lifecycle_trace_count", 0
+            ),
+            "native_goal_worker_prompt_received_count": controller_counters.get(
+                "native_goal_worker_prompt_received_count", 0
+            ),
             "native_goal_worker_trace_status": native_goal_worker_trace_status,
         },
         "authorization": {

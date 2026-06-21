@@ -558,6 +558,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "codex_runtime_goal_tool_trial_count",
         "native_goal_worker_connect_count",
         "native_goal_worker_trace_count",
+        "native_goal_worker_lifecycle_trace_count",
+        "native_goal_worker_prompt_received_count",
         "native_goal_worker_ok_count",
         "native_goal_worker_goal_get_count",
         "native_goal_worker_turn_start_count",
@@ -1946,6 +1948,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "required_worker_goal_harness_cli_call_total_min",
         "native_goal_worker_connect_count",
         "native_goal_worker_trace_count",
+        "native_goal_worker_lifecycle_trace_count",
+        "native_goal_worker_prompt_received_count",
         "native_goal_worker_ok_count",
         "native_goal_worker_goal_get_count",
         "native_goal_worker_turn_start_count",
@@ -2235,7 +2239,6 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         ][:MAX_BENCHMARK_RUN_LIST_ITEMS]
         native_goal_worker_trace_missing = (
             validation.get("native_goal_worker_route") is True
-            and validation.get("native_goal_worker_trace_observed") is not True
             and public_safe_compact_text(
                 validation.get("native_goal_worker_trace_status"),
                 limit=140,
@@ -2243,6 +2246,9 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             in {
                 "worker_connected_trace_dir_missing",
                 "worker_connected_no_public_trace",
+                "worker_connected_no_prompt_trace",
+                "worker_prompt_received_no_turn_trace",
+                "worker_connected_no_turn_trace",
                 "worker_route_selected_not_connected",
             }
         )
@@ -2272,7 +2278,11 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             text = public_safe_compact_text(validation.get(field), limit=140)
             if text:
                 compact_validation[field] = text
-        for field in ("native_goal_worker_trace_count",):
+        for field in (
+            "native_goal_worker_trace_count",
+            "native_goal_worker_lifecycle_trace_count",
+            "native_goal_worker_prompt_received_count",
+        ):
             value = validation.get(field)
             if isinstance(value, int) and not isinstance(value, bool):
                 compact_validation[field] = value

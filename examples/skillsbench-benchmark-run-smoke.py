@@ -3003,6 +3003,90 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             == "worker_connected_trace_dir_missing"
         ), connected_no_trace_compact
 
+        lifecycle_trace_dir = root / "native-worker-lifecycle-traces"
+        lifecycle_trace_dir.mkdir()
+        write_json(
+            lifecycle_trace_dir / "worker-lifecycle.compact.json",
+            {
+                "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
+                "ok": False,
+                "route": "codex-app-server-goal-baseline",
+                "trace_kind": "relay_lifecycle",
+                "benchmark_id": "skillsbench@1.1",
+                "task_id": "llm-prefix-cache-replay",
+                "relay": {
+                    "schema_version": "skillsbench_app_server_goal_worker_lifecycle_trace_v0",
+                    "stage": "session_new",
+                    "app_server_goal_worker": True,
+                    "worker_public_trace_configured": True,
+                    "raw_prompt_recorded": False,
+                    "raw_stdout_recorded": False,
+                    "raw_stderr_recorded": False,
+                    "host_paths_recorded": False,
+                },
+                "turn": {
+                    "thread_id_present": False,
+                    "goal_get_present": False,
+                    "turn_id_present": False,
+                    "turn_completed_observed": False,
+                    "assistant_message_present": False,
+                    "raw_transcript_recorded": False,
+                    "raw_assistant_message_recorded": False,
+                },
+                "boundary": {
+                    "raw_task_text_recorded": False,
+                    "raw_logs_recorded": False,
+                    "raw_trajectory_recorded": False,
+                    "credential_values_recorded": False,
+                    "host_paths_recorded": False,
+                },
+            },
+        )
+        connected_lifecycle_trace = {
+            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_connect_count": 1,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        _merge_app_server_goal_worker_trace_summary(
+            {
+                "route": "codex-app-server-goal-baseline",
+                "app_server_goal_worker_trace_dir": str(lifecycle_trace_dir),
+            },
+            connected_lifecycle_trace,
+        )
+        lifecycle_trace_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                write_official_skillsbench_result(
+                    root / "native-connected-lifecycle-trace",
+                    reward=0.0,
+                    task_id="llm-prefix-cache-replay",
+                ),
+                route="codex-app-server-goal-baseline",
+                controller_trace=connected_lifecycle_trace,
+            )
+        )
+        assert lifecycle_trace_compact is not None
+        lifecycle_validation = lifecycle_trace_compact["validation"]
+        assert lifecycle_validation["failed_checks"] == [
+            "native_goal_worker_public_trace_missing"
+        ], lifecycle_trace_compact
+        assert lifecycle_validation["native_goal_worker_trace_observed"] is True, lifecycle_trace_compact
+        assert lifecycle_validation["native_goal_worker_trace_count"] == 1, lifecycle_trace_compact
+        assert lifecycle_validation["native_goal_worker_lifecycle_trace_count"] == 1, lifecycle_trace_compact
+        assert (
+            lifecycle_validation["native_goal_worker_trace_status"]
+            == "worker_connected_no_prompt_trace"
+        ), lifecycle_trace_compact
+        lifecycle_counters = lifecycle_trace_compact["interaction_counters"]
+        assert lifecycle_counters["native_goal_worker_lifecycle_trace_count"] == 1, lifecycle_trace_compact
+        assert lifecycle_counters["native_goal_worker_turn_start_count"] == 0, lifecycle_trace_compact
+
         empty_worker_trace_dir = root / "native-worker-empty-traces"
         empty_worker_trace_dir.mkdir()
         connected_empty_trace_dir = {
