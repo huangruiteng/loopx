@@ -322,6 +322,17 @@ the idle detector passes. If either proof or idle evidence is missing, the
 packet returns a precise blocker and keeps the one-message TUI bootstrap as the
 primary path.
 
+The packet also emits a product-level `continuation_outcome` so schedulers and
+agents do not have to infer intent from low-level probe details:
+
+- `same_tui_continuation_proven`: same-TUI visible attach proof and runtime
+  idle evidence both passed.
+- `same_tui_continuation_blocked`: the current Codex CLI probe does not expose
+  a safe same-open-TUI attach/inject primitive. Manual TUI paste remains
+  primary; `codex exec` remains explicit opt-in fallback.
+- `same_tui_continuation_gated`: a same-TUI primitive is visible in help, but
+  public-safe proof or runtime-idle evidence is still missing.
+
 The first public-safe proof pilot is recorded in
 [Codex CLI Visible Attach Proof Pilot](codex-cli-visible-attach-proof-pilot.md):
 current `resume` / `remote-control` evidence is promising, but still blocked

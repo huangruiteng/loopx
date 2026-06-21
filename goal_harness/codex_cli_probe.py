@@ -788,6 +788,13 @@ def build_codex_cli_visible_attach_acceptance(
     idle_approved = idle_detector.get("approved_for_visible_later_turn") is True
     observed_surface = str(proof.get("observed_surface") or "unknown")
     driver_mode = str(local_plan.get("driver_mode") or "tui_bootstrap_only")
+    capabilities = (
+        probe_payload.get("capabilities")
+        if isinstance(probe_payload.get("capabilities"), dict)
+        else {}
+    )
+    same_tui_injection_detected = bool(capabilities.get("same_tui_injection_detected"))
+    safe_injection_supported = bool(capabilities.get("safe_injection_supported"))
     same_tui_proof = proof_approved and observed_surface == "same_tui_visible_attach"
     accepted_same_tui = same_tui_proof and idle_approved
     visible_later_turn_candidate = proof_approved and idle_approved
@@ -842,6 +849,22 @@ def build_codex_cli_visible_attach_acceptance(
         blockers.append("codex_cli_attach_surface_not_exposed_by_probe")
         next_safe_step = "ask the user to start in Codex CLI TUI and paste the bootstrap message"
 
+    if accepted_same_tui:
+        continuation_outcome = "same_tui_continuation_proven"
+        continuation_reason = "same-TUI visible attach proof and runtime idle evidence passed"
+    elif not same_tui_injection_detected or not safe_injection_supported:
+        continuation_outcome = "same_tui_continuation_blocked"
+        continuation_reason = (
+            "current Codex CLI probe did not expose a safe same-open-TUI "
+            "attach/inject primitive"
+        )
+    else:
+        continuation_outcome = "same_tui_continuation_gated"
+        continuation_reason = (
+            "same-TUI primitive is visible in help, but public-safe proof and "
+            "runtime idle evidence are not both accepted"
+        )
+
     commands = (
         local_plan.get("commands")
         if isinstance(local_plan.get("commands"), dict)
@@ -856,6 +879,8 @@ def build_codex_cli_visible_attach_acceptance(
         "cli_bin": cli_bin,
         "codex_bin": codex_bin,
         "decision": decision,
+        "continuation_outcome": continuation_outcome,
+        "continuation_reason": continuation_reason,
         "acceptance_action": acceptance_action,
         "accepted_for_same_tui_automation": accepted_same_tui,
         "accepted_for_visible_later_turn": visible_later_turn_candidate,
@@ -870,6 +895,14 @@ def build_codex_cli_visible_attach_acceptance(
             "same_tui_surface_required_for_same_tui_acceptance": True,
             "fresh_quota_guard_required_before_execution": True,
             "explicit_headless_fallback_opt_in_required": True,
+        },
+        "fallback_contract": {
+            "manual_tui_paste_remains_primary": (
+                continuation_outcome != "same_tui_continuation_proven"
+            ),
+            "visible_resume_or_remote_control_requires_proof": True,
+            "headless_codex_exec_requires_explicit_opt_in": True,
+            "never_read_raw_transcripts_or_session_files": True,
         },
         "probe": {
             "schema_version": probe_payload.get("schema_version"),
@@ -3386,6 +3419,11 @@ def render_codex_cli_visible_attach_acceptance_markdown(payload: dict[str, Any])
         if isinstance(payload.get("runtime_idle_detector"), dict)
         else {}
     )
+    fallback = (
+        payload.get("fallback_contract")
+        if isinstance(payload.get("fallback_contract"), dict)
+        else {}
+    )
     blockers = payload.get("blockers") if isinstance(payload.get("blockers"), list) else []
     blocker_lines = "\n".join(f"- {blocker}" for blocker in blockers) if blockers else "- none"
     warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
@@ -3393,6 +3431,8 @@ def render_codex_cli_visible_attach_acceptance_markdown(payload: dict[str, Any])
     return f"""# Codex CLI Visible Attach Acceptance
 
 - decision: `{payload.get("decision")}`
+- continuation_outcome: `{payload.get("continuation_outcome")}`
+- continuation_reason: {payload.get("continuation_reason")}
 - accepted_for_same_tui_automation: `{payload.get("accepted_for_same_tui_automation")}`
 - accepted_for_visible_later_turn: `{payload.get("accepted_for_visible_later_turn")}`
 - observed_surface: `{payload.get("observed_surface")}`
@@ -3411,6 +3451,13 @@ def render_codex_cli_visible_attach_acceptance_markdown(payload: dict[str, Any])
 ## Blockers
 
 {blocker_lines}
+
+## Fallback Contract
+
+- manual_tui_paste_remains_primary: `{fallback.get("manual_tui_paste_remains_primary")}`
+- visible_resume_or_remote_control_requires_proof: `{fallback.get("visible_resume_or_remote_control_requires_proof")}`
+- headless_codex_exec_requires_explicit_opt_in: `{fallback.get("headless_codex_exec_requires_explicit_opt_in")}`
+- never_read_raw_transcripts_or_session_files: `{fallback.get("never_read_raw_transcripts_or_session_files")}`
 
 ## Commands
 

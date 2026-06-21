@@ -22,10 +22,16 @@ available help-only evidence does not prove a safe same-TUI attach primitive.
 The acceptance packet returns:
 
 - `decision`: `visible_session_proof_required`
+- `continuation_outcome`: `same_tui_continuation_blocked`
 - `accepted_for_same_tui_automation`: `False`
 - `accepted_for_visible_later_turn`: `False`
 - `driver_mode`: `visible_resume_or_remote_control_spike`
 - blocker: `visible_session_proof_missing`
+
+The important product distinction is that `resume` / `remote-control` may
+still become a visible continuation route, but they do not prove same-open-TUI
+injection. Until a safe same-TUI attach/inject primitive is proven, the machine
+outcome is blocked, not merely "unknown".
 
 ## Boundary
 

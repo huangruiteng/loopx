@@ -165,7 +165,9 @@ def main() -> int:
     remote_without_proof = build(REMOTE_RESUME_HELP_FIXTURE)
     assert remote_without_proof["ok"] is True, remote_without_proof
     assert remote_without_proof["decision"] == "visible_session_proof_required", remote_without_proof
+    assert remote_without_proof["continuation_outcome"] == "same_tui_continuation_blocked", remote_without_proof
     assert remote_without_proof["accepted_for_same_tui_automation"] is False, remote_without_proof
+    assert remote_without_proof["fallback_contract"]["manual_tui_paste_remains_primary"] is True, remote_without_proof
     assert "visible_session_proof_missing" in remote_without_proof["blockers"], remote_without_proof
     assert_public_safe_boundary(remote_without_proof)
 
@@ -175,6 +177,7 @@ def main() -> int:
         idle={**PASSING_IDLE_FIXTURE, "observed_surface": "remote_control_visible_prompt"},
     )
     assert remote_spike["decision"] == "visible_surface_spike_passed_not_same_tui", remote_spike
+    assert remote_spike["continuation_outcome"] == "same_tui_continuation_blocked", remote_spike
     assert remote_spike["accepted_for_visible_later_turn"] is True, remote_spike
     assert remote_spike["accepted_for_same_tui_automation"] is False, remote_spike
     assert "same_tui_visible_attach_not_proven" in remote_spike["blockers"], remote_spike
@@ -186,7 +189,9 @@ def main() -> int:
         idle=PASSING_IDLE_FIXTURE,
     )
     assert same_tui_accepted["decision"] == "same_tui_visible_attach_accepted", same_tui_accepted
+    assert same_tui_accepted["continuation_outcome"] == "same_tui_continuation_proven", same_tui_accepted
     assert same_tui_accepted["accepted_for_same_tui_automation"] is True, same_tui_accepted
+    assert same_tui_accepted["fallback_contract"]["manual_tui_paste_remains_primary"] is False, same_tui_accepted
     assert same_tui_accepted["accepted_for_visible_later_turn"] is True, same_tui_accepted
     assert same_tui_accepted["blockers"] == [], same_tui_accepted
     assert_public_safe_boundary(same_tui_accepted)
@@ -196,12 +201,14 @@ def main() -> int:
         proof=proof_fixture("same_tui_visible_attach"),
     )
     assert missing_idle["decision"] == "runtime_idle_evidence_required", missing_idle
+    assert missing_idle["continuation_outcome"] == "same_tui_continuation_gated", missing_idle
     assert missing_idle["accepted_for_same_tui_automation"] is False, missing_idle
     assert "missing_runtime_idle_evidence" in missing_idle["blockers"], missing_idle
     assert_public_safe_boundary(missing_idle)
 
     fallback = build(FALLBACK_HELP_FIXTURE)
     assert fallback["decision"] == "explicit_headless_fallback_after_tui_bootstrap", fallback
+    assert fallback["continuation_outcome"] == "same_tui_continuation_blocked", fallback
     assert fallback["accepted_for_same_tui_automation"] is False, fallback
     assert fallback["accepted_for_visible_later_turn"] is False, fallback
     assert_public_safe_boundary(fallback)
@@ -235,6 +242,7 @@ def main() -> int:
             )
         )
         assert cli_json["decision"] == "same_tui_visible_attach_accepted", cli_json
+        assert cli_json["continuation_outcome"] == "same_tui_continuation_proven", cli_json
         assert cli_json["accepted_for_same_tui_automation"] is True, cli_json
 
         cli_markdown = run_cli(
@@ -254,6 +262,8 @@ def main() -> int:
         )
         assert "# Codex CLI Visible Attach Acceptance" in cli_markdown, cli_markdown
         assert "accepted_for_same_tui_automation: `True`" in cli_markdown, cli_markdown
+        assert "continuation_outcome: `same_tui_continuation_proven`" in cli_markdown, cli_markdown
+        assert "manual_tui_paste_remains_primary: `False`" in cli_markdown, cli_markdown
         assert "same_tui_visible_attach_accepted" in cli_markdown, cli_markdown
 
     print("codex-cli-visible-attach-acceptance-smoke ok")
