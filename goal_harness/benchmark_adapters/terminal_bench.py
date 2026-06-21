@@ -348,6 +348,12 @@ TERMINAL_BENCH_EXTRA_PROBE_PATHS = (
 )
 TERMINAL_BENCH_COUNTER_TRACE_FILE = "goal-harness-counter-trace.jsonl"
 TERMINAL_BENCH_WORKER_BENCHMARK_RUN_FILE = "goal-harness-worker-benchmark-run.json"
+TERMINAL_BENCH_PROMPT_DRIVEN_TRACE_FILE = (
+    "goal_harness_prompt_driven_trace.public.json"
+)
+TERMINAL_BENCH_APP_SERVER_GOAL_TURN_COMPACT_FILE = (
+    "app_server_goal_turn.compact.json"
+)
 TERMINAL_BENCH_DEFAULT_AGENT_TIMEOUT_SECONDS = 900.0
 TERMINAL_BENCH_TRUE_LONG_TASK_BAR_SECONDS = 1800.0
 TERMINAL_BENCH_PREFERRED_HOURS_SCALE_BAR_SECONDS = 3600.0
@@ -4059,6 +4065,142 @@ def _counter_trace_interaction_counters(
     )
     return counters
 
+def _compact_numeric_int_map(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, int] = {}
+    for key, raw in value.items():
+        text = _compact_trace_event_text(key)
+        if (
+            text
+            and isinstance(raw, int)
+            and not isinstance(raw, bool)
+            and raw >= 0
+        ):
+            compact[text] = compact.get(text, 0) + raw
+    return compact
+
+def _non_negative_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return 0
+
+def _terminal_bench_prompt_driven_goal_harness_observation(
+    job_path: Path,
+) -> dict[str, Any]:
+    """Load public-safe prompt-driven Goal Harness lifecycle evidence."""
+
+    run_root = (
+        job_path.parent.parent
+        if job_path.parent.name == "jobs" and job_path.parent.parent.exists()
+        else job_path.parent
+    )
+    trace_paths: list[Path] = []
+    compact_paths: list[Path] = []
+    seen_paths: set[Path] = set()
+    for path in sorted(job_path.rglob(TERMINAL_BENCH_PROMPT_DRIVEN_TRACE_FILE)):
+        if path.is_file() and path not in seen_paths:
+            trace_paths.append(path)
+            seen_paths.add(path)
+    direct_trace = run_root / TERMINAL_BENCH_PROMPT_DRIVEN_TRACE_FILE
+    if direct_trace.is_file() and direct_trace not in seen_paths:
+        trace_paths.append(direct_trace)
+        seen_paths.add(direct_trace)
+    seen_paths.clear()
+    for path in sorted(job_path.rglob(TERMINAL_BENCH_APP_SERVER_GOAL_TURN_COMPACT_FILE)):
+        if path.is_file() and path not in seen_paths:
+            compact_paths.append(path)
+            seen_paths.add(path)
+    direct_compact = run_root / TERMINAL_BENCH_APP_SERVER_GOAL_TURN_COMPACT_FILE
+    if direct_compact.is_file() and direct_compact not in seen_paths:
+        compact_paths.append(direct_compact)
+        seen_paths.add(direct_compact)
+
+    trace_event_counts: dict[str, int] = {}
+    compact_event_counts: dict[str, int] = {}
+    trace_command_total = 0
+    compact_command_total = 0
+    lifecycle_observed = False
+    first_blocker = "none"
+    treatment_claim_blocker = "none"
+    strict_claim_allowed = False
+    for path in trace_paths:
+        payload = _load_json_object(path)
+        counts = _compact_numeric_int_map(payload.get("event_kind_counts"))
+        _merge_numeric_counts(trace_event_counts, counts)
+        trace_command_total += max(
+            _non_negative_int(payload.get("command_count")),
+            sum(counts.values()),
+        )
+        lifecycle_observed = lifecycle_observed or payload.get(
+            "lifecycle_observed"
+        ) is True
+    for path in compact_paths:
+        payload = _load_json_object(path)
+        counts = _compact_numeric_int_map(
+            payload.get("goal_harness_prompt_driven_event_counts")
+        )
+        _merge_numeric_counts(compact_event_counts, counts)
+        compact_command_total += max(
+            _non_negative_int(
+                payload.get("goal_harness_prompt_driven_case_cli_call_count")
+            ),
+            sum(counts.values()),
+        )
+        lifecycle_observed = lifecycle_observed or payload.get(
+            "goal_harness_prompt_driven_lifecycle_observed"
+        ) is True
+        blocker = _public_safe_benchmark_label(payload.get("first_blocker"))
+        if blocker and blocker != "none" and first_blocker == "none":
+            first_blocker = blocker
+        claim_blocker = _public_safe_benchmark_label(
+            payload.get("goal_harness_treatment_claim_blocker")
+        )
+        if (
+            claim_blocker
+            and claim_blocker != "none"
+            and treatment_claim_blocker == "none"
+        ):
+            treatment_claim_blocker = claim_blocker
+        strict_claim_allowed = strict_claim_allowed or payload.get(
+            "strict_goal_harness_treatment_claim_allowed"
+        ) is True
+
+    event_counts = trace_event_counts if trace_event_counts else compact_event_counts
+    command_count = max(
+        trace_command_total,
+        compact_command_total,
+        sum(event_counts.values()),
+    )
+    if command_count and not event_counts:
+        event_counts = {"prompt_driven_cli_call": command_count}
+    read_commands = {"status", "quota_should_run", "todo_list", "history", "check"}
+    write_commands = {
+        "append_benchmark_run",
+        "todo_claim",
+        "todo_update",
+        "refresh_state",
+        "quota_spend",
+        "spend_slot",
+    }
+    return {
+        "trace_file_count": len(trace_paths),
+        "compact_file_count": len(compact_paths),
+        "trace_observed": bool(command_count),
+        "lifecycle_observed": lifecycle_observed,
+        "command_count": command_count,
+        "event_counts": event_counts,
+        "state_read_count": sum(
+            count for command, count in event_counts.items() if command in read_commands
+        ),
+        "state_write_count": sum(
+            count for command, count in event_counts.items() if command in write_commands
+        ),
+        "first_blocker": first_blocker,
+        "strict_goal_harness_treatment_claim_allowed": strict_claim_allowed,
+        "goal_harness_treatment_claim_blocker": treatment_claim_blocker,
+    }
+
 def _total_from_counter_map(value: Any) -> int:
     if not isinstance(value, dict):
         return 0
@@ -4106,6 +4248,12 @@ def _terminal_bench_overhead_attribution_counters(
     codex_goal_tool_calls = interaction_counters.get("codex_runtime_goal_tool_calls")
     cli_call_total = _total_from_counter_map(cli_calls)
     codex_goal_tool_call_total = _total_from_counter_map(codex_goal_tool_calls)
+    prompt_driven_cli_call_total = _non_negative_int(
+        interaction_counters.get("prompt_driven_goal_harness_cli_call_total")
+    )
+    prompt_driven_trace_observed = (
+        interaction_counters.get("prompt_driven_goal_harness_trace_observed") is True
+    )
     required_cli_call_total = 0
     optional_cli_call_total = 0
     if isinstance(cli_calls, dict):
@@ -4126,6 +4274,11 @@ def _terminal_bench_overhead_attribution_counters(
         attribution_granularity = "coarse_worker_bridge_event_counts"
         worker_step_counter_status = (
             "worker_cli_counter_trace_present_no_phase_breakdown"
+        )
+    elif prompt_driven_trace_observed:
+        attribution_granularity = "prompt_driven_case_local_cli_counts"
+        worker_step_counter_status = (
+            "runner_loaded_prompt_driven_case_local_cli_trace"
         )
     elif codex_goal_tool_call_total:
         attribution_granularity = "codex_runtime_goal_tool_counts_only"
@@ -4166,6 +4319,9 @@ def _terminal_bench_overhead_attribution_counters(
         "trial_count": len(trials),
         "errored_trial_count": errored_trial_count,
         "worker_bridge_event_count": len(trace_rows),
+        "goal_harness_prompt_driven_case_cli_call_count": (
+            prompt_driven_cli_call_total
+        ),
         "worker_counter_trace_trial_count": worker_counter_trace_trial_count,
         "worker_benchmark_run_file_count": worker_benchmark_run_file_count,
         "worker_benchmark_run_schema_ok_count": worker_benchmark_run_schema_ok_count,
@@ -4651,6 +4807,84 @@ def build_terminal_bench_harbor_result_benchmark_run(
         ),
         codex_runtime_goal_tool_calls=codex_runtime_goal_tool_calls,
     )
+    prompt_driven_goal_harness = (
+        _terminal_bench_prompt_driven_goal_harness_observation(job_path)
+    )
+    prompt_driven_cli_total = _non_negative_int(
+        prompt_driven_goal_harness.get("command_count")
+    )
+    prompt_driven_trace_observed = bool(
+        prompt_driven_goal_harness.get("trace_observed")
+    )
+    prompt_driven_lifecycle_observed = bool(
+        prompt_driven_goal_harness.get("lifecycle_observed")
+    )
+    if prompt_driven_cli_total:
+        prompt_driven_calls = (
+            prompt_driven_goal_harness.get("event_counts")
+            if isinstance(prompt_driven_goal_harness.get("event_counts"), dict)
+            else {}
+        )
+        if interaction_counters is None:
+            interaction_counters = build_terminal_bench_goal_harness_interaction_counters(
+                prompt_policy_injected=not baseline_without_goal_harness,
+                harness_skill_or_packet_injected=not baseline_without_goal_harness,
+                goal_harness_cli_calls=prompt_driven_calls,
+                goal_harness_state_reads=_non_negative_int(
+                    prompt_driven_goal_harness.get("state_read_count")
+                ),
+                goal_harness_state_writes=_non_negative_int(
+                    prompt_driven_goal_harness.get("state_write_count")
+                ),
+                case_result_writeback=(
+                    "prompt_driven_goal_harness_lifecycle_observed"
+                    if prompt_driven_lifecycle_observed
+                    else "prompt_driven_goal_harness_cli_calls_only"
+                ),
+                counter_trust_level=(
+                    "runner_loaded_prompt_driven_case_local_cli_trace"
+                ),
+            )
+        else:
+            calls = interaction_counters.get("goal_harness_cli_calls")
+            if not isinstance(calls, dict):
+                calls = {}
+            calls = dict(calls)
+            calls.pop("total", None)
+            _merge_numeric_counts(calls, prompt_driven_calls)
+            calls["total"] = sum(
+                value
+                for value in calls.values()
+                if isinstance(value, int) and not isinstance(value, bool)
+            )
+            interaction_counters["goal_harness_cli_calls"] = calls
+            interaction_counters["goal_harness_state_reads"] = _non_negative_int(
+                interaction_counters.get("goal_harness_state_reads")
+            ) + _non_negative_int(prompt_driven_goal_harness.get("state_read_count"))
+            interaction_counters["goal_harness_state_writes"] = _non_negative_int(
+                interaction_counters.get("goal_harness_state_writes")
+            ) + _non_negative_int(prompt_driven_goal_harness.get("state_write_count"))
+            interaction_counters["case_result_writeback"] = (
+                "prompt_driven_goal_harness_lifecycle_observed"
+                if prompt_driven_lifecycle_observed
+                else interaction_counters.get("case_result_writeback")
+                or "prompt_driven_goal_harness_cli_calls_only"
+            )
+            trust = str(interaction_counters.get("counter_trust_level") or "")
+            interaction_counters["counter_trust_level"] = (
+                f"{trust}+prompt_driven_case_local_cli_trace"
+                if trust
+                else "runner_loaded_prompt_driven_case_local_cli_trace"
+            )
+        interaction_counters["prompt_driven_goal_harness_trace_observed"] = (
+            prompt_driven_trace_observed
+        )
+        interaction_counters["prompt_driven_goal_harness_lifecycle_observed"] = (
+            prompt_driven_lifecycle_observed
+        )
+        interaction_counters["prompt_driven_goal_harness_cli_call_total"] = (
+            prompt_driven_cli_total
+        )
     worker_cli_total = 0
     if interaction_counters:
         interaction_counters["worker_counter_trace_trial_count"] = (
@@ -4763,14 +4997,20 @@ def build_terminal_bench_harbor_result_benchmark_run(
         interaction_counters["worker_submit_eligible_mismatch_reason"] = (
             worker_submit_eligible_mismatch_reason
         )
+    worker_bridge_trace_observed = bool(trace_rows) or prompt_driven_trace_observed
+    prompt_driven_bridge_verified = bool(
+        prompt_driven_lifecycle_observed
+        and prompt_driven_cli_total >= required_worker_cli_call_min
+    )
     worker_bridge_verified = bool(
-        trace_rows and worker_cli_total >= required_worker_cli_call_min
+        (trace_rows and worker_cli_total >= required_worker_cli_call_min)
+        or prompt_driven_bridge_verified
     )
     worker_bridge_failure_attribution = "none"
     if not worker_bridge_required:
         worker_bridge_materialization_status = "not_required"
         worker_bridge_materialization_blocker = "none"
-    elif not trace_rows and worker_benchmark_run_file_count == 0:
+    elif not worker_bridge_trace_observed and worker_benchmark_run_file_count == 0:
         if environment_setup_failure_before_worker_count:
             worker_bridge_materialization_status = (
                 "environment_setup_failed_before_worker"
@@ -4797,6 +5037,15 @@ def build_terminal_bench_harbor_result_benchmark_run(
             worker_bridge_materialization_status = "not_materialized"
             worker_bridge_materialization_blocker = "worker_bridge_not_materialized"
         worker_bridge_failure_attribution = worker_bridge_materialization_blocker
+    elif prompt_driven_trace_observed and not prompt_driven_lifecycle_observed:
+        worker_bridge_materialization_status = "prompt_driven_lifecycle_incomplete"
+        worker_bridge_materialization_blocker = (
+            "prompt_driven_goal_harness_lifecycle_absent"
+        )
+        worker_bridge_failure_attribution = worker_bridge_materialization_blocker
+    elif prompt_driven_bridge_verified:
+        worker_bridge_materialization_status = "verified"
+        worker_bridge_materialization_blocker = "none"
     elif trace_rows and worker_benchmark_run_file_count == 0:
         worker_bridge_materialization_status = "trace_without_writeback"
         worker_bridge_materialization_blocker = "worker_bridge_writeback_missing"
@@ -4959,12 +5208,17 @@ def build_terminal_bench_harbor_result_benchmark_run(
         ),
         "runner_completed_or_exception_recorded": bool(job_result.get("finished_at"))
         or bool(agent_timeout_observed),
-        "worker_counter_trace_loaded": (not worker_bridge_required) or bool(trace_rows),
+        "worker_counter_trace_loaded": (
+            (not worker_bridge_required) or worker_bridge_trace_observed
+        ),
         "worker_benchmark_run_file_present": (
-            (not worker_bridge_required) or worker_benchmark_run_written
+            (not worker_bridge_required)
+            or worker_benchmark_run_written
+            or prompt_driven_lifecycle_observed
         ),
         "worker_benchmark_run_schema_ok": (
             (not worker_bridge_required)
+            or prompt_driven_lifecycle_observed
             or (
                 worker_benchmark_run_file_count > 0
                 and worker_benchmark_run_schema_ok_count == worker_benchmark_run_file_count
@@ -5015,6 +5269,10 @@ def build_terminal_bench_harbor_result_benchmark_run(
         "trial:agent/goal-harness-counter-trace.jsonl",
         "trial:agent/goal-harness-worker-benchmark-run.json",
         "trial:agent/goal-harness-worker-setup-diagnostic.json",
+        "trial:agent/goal_harness_prompt_driven_trace.public.json",
+        "trial:agent/app_server_goal_turn.compact.json",
+        "run:goal_harness_prompt_driven_trace.public.json",
+        "run:app_server_goal_turn.compact.json",
         "trial:verifier/reward.txt",
         "trial:artifacts/manifest.json",
     ]
@@ -5064,6 +5322,42 @@ def build_terminal_bench_harbor_result_benchmark_run(
         if official_score is not None
         else {"kind": "harbor_verifier_reward_missing"}
     )
+    prompt_driven_claim_blocker = "none"
+    if not prompt_driven_lifecycle_observed and worker_bridge_required:
+        raw_claim_blocker = prompt_driven_goal_harness.get(
+            "goal_harness_treatment_claim_blocker"
+        )
+        prompt_driven_claim_blocker = (
+            raw_claim_blocker if isinstance(raw_claim_blocker, str) else ""
+        ) or "prompt_driven_goal_harness_lifecycle_absent"
+        if prompt_driven_claim_blocker in {"", "none"}:
+            prompt_driven_claim_blocker = (
+                "prompt_driven_goal_harness_lifecycle_absent"
+            )
+    prompt_driven_evidence_tier = "not_applicable"
+    if worker_bridge_required:
+        prompt_driven_evidence_tier = (
+            "prompt_driven_case_local_goal_harness_cli_lifecycle"
+            if prompt_driven_lifecycle_observed
+            else "prompt_driven_case_local_goal_harness_cli_not_observed"
+        )
+    strict_goal_harness_treatment_claim_allowed = bool(
+        prompt_driven_lifecycle_observed
+        or prompt_driven_goal_harness.get(
+            "strict_goal_harness_treatment_claim_allowed"
+        )
+        is True
+    )
+    raw_prompt_driven_first_blocker = prompt_driven_goal_harness.get(
+        "first_blocker"
+    )
+    prompt_driven_first_blocker = (
+        raw_prompt_driven_first_blocker
+        if isinstance(raw_prompt_driven_first_blocker, str)
+        else ""
+    )
+    if prompt_driven_first_blocker in {"", "none"}:
+        prompt_driven_first_blocker = ""
     payload = {
         "schema_version": "benchmark_run_v0",
         "source_runner": payload_source_runner,
@@ -5129,7 +5423,34 @@ def build_terminal_bench_harbor_result_benchmark_run(
         "goal_harness_worker_cli_bridge_available": bool(
             worker_bridge_required
         ),
-        "goal_harness_worker_cli_bridge_trace_observed": bool(trace_rows),
+        "goal_harness_worker_cli_bridge_trace_observed": (
+            worker_bridge_trace_observed
+        ),
+        "goal_harness_prompt_driven_trace_observed": (
+            prompt_driven_trace_observed
+        ),
+        "goal_harness_prompt_driven_lifecycle_observed": (
+            prompt_driven_lifecycle_observed
+        ),
+        "goal_harness_prompt_driven_case_cli_call_count": (
+            prompt_driven_cli_total
+        ),
+        "goal_harness_prompt_driven_event_counts": (
+            prompt_driven_goal_harness.get("event_counts")
+            if isinstance(prompt_driven_goal_harness.get("event_counts"), dict)
+            else {}
+        ),
+        "goal_harness_prompt_driven_trace_file_count": _non_negative_int(
+            prompt_driven_goal_harness.get("trace_file_count")
+        ),
+        "goal_harness_prompt_driven_compact_file_count": _non_negative_int(
+            prompt_driven_goal_harness.get("compact_file_count")
+        ),
+        "strict_goal_harness_treatment_claim_allowed": (
+            strict_goal_harness_treatment_claim_allowed
+        ),
+        "goal_harness_treatment_claim_blocker": prompt_driven_claim_blocker,
+        "goal_harness_treatment_evidence_tier": prompt_driven_evidence_tier,
         "worker_goal_harness_cli_call_total": worker_cli_total,
         "worker_counter_trace_trial_count": worker_counter_trace_trial_count,
         "worker_benchmark_run_file_count": worker_benchmark_run_file_count,
@@ -5162,6 +5483,8 @@ def build_terminal_bench_harbor_result_benchmark_run(
         "worker_bridge_failure_attribution": worker_bridge_failure_attribution,
         "first_blocker": worker_bridge_materialization_blocker
         if worker_bridge_materialization_blocker != "none"
+        else prompt_driven_first_blocker
+        if prompt_driven_first_blocker
         else None,
         "repeat_blocked_by": repeat_blocked_by,
         "pre_worker_startup_blocker": (
@@ -5262,6 +5585,15 @@ def build_terminal_bench_harbor_result_benchmark_run(
                 else "compare observed runner result against Goal Harness treatment under the same no-upload boundary"
             ),
             "worker_bridge_verified": worker_bridge_verified,
+            "prompt_driven_goal_harness_trace_observed": (
+                prompt_driven_trace_observed
+            ),
+            "prompt_driven_goal_harness_lifecycle_observed": (
+                prompt_driven_lifecycle_observed
+            ),
+            "goal_harness_prompt_driven_case_cli_call_count": (
+                prompt_driven_cli_total
+            ),
             "worker_materialization_probe_only": worker_materialization_probe_only,
             "worker_materialization_probe_contract_present": (
                 worker_materialization_probe_contract_present
@@ -5278,6 +5610,7 @@ def build_terminal_bench_harbor_result_benchmark_run(
             "worker_bridge_materialization_status": worker_bridge_materialization_status,
             "worker_bridge_materialization_blocker": worker_bridge_materialization_blocker,
             "worker_bridge_failure_attribution": worker_bridge_failure_attribution,
+            "prompt_driven_first_blocker": prompt_driven_first_blocker or "none",
             "repeat_blocked_by": repeat_blocked_by,
             "pre_worker_startup_blocker": (
                 worker_bridge_materialization_blocker

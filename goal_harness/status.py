@@ -768,6 +768,7 @@ def _compact_benchmark_overhead_attribution_counters(value: Any) -> dict[str, An
         "trial_count",
         "errored_trial_count",
         "worker_bridge_event_count",
+        "goal_harness_prompt_driven_case_cli_call_count",
         "worker_counter_trace_trial_count",
         "worker_benchmark_run_file_count",
         "worker_benchmark_run_schema_ok_count",
@@ -1624,6 +1625,7 @@ def _compact_worker_bridge_outcome(value: Any) -> dict[str, Any]:
         "worker_bridge_materialization_status",
         "worker_bridge_materialization_blocker",
         "worker_bridge_failure_attribution",
+        "prompt_driven_first_blocker",
         "repeat_blocked_by",
         "pre_worker_startup_blocker",
     ):
@@ -1632,6 +1634,8 @@ def _compact_worker_bridge_outcome(value: Any) -> dict[str, Any]:
             compact[field] = text
     for field in (
         "worker_bridge_verified",
+        "prompt_driven_goal_harness_trace_observed",
+        "prompt_driven_goal_harness_lifecycle_observed",
         "counter_trace_present",
         "runner_return_completed",
         "official_score_completed",
@@ -1647,6 +1651,7 @@ def _compact_worker_bridge_outcome(value: Any) -> dict[str, Any]:
             compact[field] = value[field]
     for field in (
         "worker_goal_harness_cli_call_total",
+        "goal_harness_prompt_driven_case_cli_call_count",
         "required_worker_goal_harness_cli_call_total_min",
         "worker_self_validation_official_score_mismatch_count",
         "worker_validation_scope_ambiguous_official_score_failure_count",
@@ -1904,6 +1909,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "goal_harness_cli_bridge_trace_observed",
         "goal_harness_worker_cli_bridge_available",
         "goal_harness_worker_cli_bridge_trace_observed",
+        "goal_harness_prompt_driven_trace_observed",
+        "goal_harness_prompt_driven_lifecycle_observed",
         "assisted_collaboration_claim_allowed",
         "official_score_claim_allowed",
         "bridge_connectivity_claim_allowed",
@@ -1932,6 +1939,9 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     for field in (
         "runner_goal_harness_cli_call_total",
         "worker_goal_harness_cli_call_total",
+        "goal_harness_prompt_driven_case_cli_call_count",
+        "goal_harness_prompt_driven_trace_file_count",
+        "goal_harness_prompt_driven_compact_file_count",
         "worker_counter_trace_trial_count",
         "worker_benchmark_run_file_count",
         "worker_benchmark_run_schema_ok_count",
@@ -1965,6 +1975,10 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     ):
         if isinstance(source.get(field), int) and not isinstance(source.get(field), bool):
             compact[field] = source.get(field)
+    for field in ("goal_harness_prompt_driven_event_counts",):
+        calls = _compact_numeric_map(source.get(field))
+        if calls:
+            compact[field] = calls
     loop_contract = source.get("benchmark_loop_contract")
     if isinstance(loop_contract, dict):
         compact_loop_contract: dict[str, Any] = {}
