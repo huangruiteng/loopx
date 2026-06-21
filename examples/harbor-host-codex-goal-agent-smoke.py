@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import py_compile
 import tempfile
@@ -150,6 +151,80 @@ def main() -> int:
     assert init_compact["goal_harness_product_path_primary_route"] == "prompt_driven_case_local_goal_harness_cli", init_compact
     assert init_compact["goal_harness_prompt_driven_route_required"] is True, init_compact
     assert init_compact["case_goal_state_raw_output_recorded"] is False, init_compact
+    assert (
+        module._case_cli_command(
+            init_payload,
+            "quota",
+            "should-run",
+            "--goal-id",
+            init_payload["benchmark_case_goal_id"],
+        ).startswith("/app/.local/bin/goal-harness --format json quota should-run")
+    )
+
+    class _FakeExecResult:
+        def __init__(self, stdout: str = "", return_code: int = 0) -> None:
+            self.stdout = stdout
+            self.stderr = ""
+            self.return_code = return_code
+
+    class _FakeEnvironment:
+        def __init__(self) -> None:
+            self.commands: list[str] = []
+
+        async def exec(self, command: str, cwd: str | None = None, timeout_sec: int = 0):
+            self.commands.append(command)
+            if command.startswith("cat "):
+                return _FakeExecResult(
+                    "\n".join(
+                        [
+                            '{"event_kind":"install"}',
+                            '{"event_kind":"quota_should_run"}',
+                            '{"event_kind":"todo_claim"}',
+                        ]
+                    )
+                    + "\n"
+                )
+            return _FakeExecResult(
+                '{"ok":true,"goal_id":"demo","should_run":true,'
+                '"raw_logs_recorded":false}'
+            )
+
+    async def _exercise_case_scheduler() -> dict:
+        fake_environment = _FakeEnvironment()
+        trace = module._new_case_scheduler_trace(init_payload)
+        ok = await module._run_case_goal_harness_cli(
+            fake_environment,
+            payload=init_payload,
+            trace=trace,
+            action="case_quota_should_run_before_agent",
+            args=[
+                "quota",
+                "should-run",
+                "--goal-id",
+                init_payload["benchmark_case_goal_id"],
+                "--agent-id",
+                init_payload["case_agent_id"],
+            ],
+            cwd="/workspace",
+        )
+        assert ok is True, trace
+        await module._collect_case_rollout_event_counts(
+            fake_environment,
+            payload=init_payload,
+            trace=trace,
+            cwd="/workspace",
+        )
+        return trace
+
+    scheduler_trace = asyncio.run(_exercise_case_scheduler())
+    assert scheduler_trace["route"] == "cli_scheduler_case_local_goal_harness_cli", scheduler_trace
+    assert scheduler_trace["commands"][0]["stdout_summary"]["should_run"] is True, scheduler_trace
+    assert scheduler_trace["event_kind_counts"] == {
+        "install": 1,
+        "quota_should_run": 1,
+        "todo_claim": 1,
+    }, scheduler_trace
+    assert scheduler_trace["raw_logs_recorded"] is False, scheduler_trace
 
     treatment_prompt = module.build_host_goal_prompt(
         instruction="Synthetic Harbor instruction placeholder.",

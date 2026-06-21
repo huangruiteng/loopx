@@ -39,6 +39,7 @@ from goal_harness.benchmark_case_state import (
     BENCHMARK_CASE_GOAL_HARNESS_AGENT_ID,
     BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH,
     BENCHMARK_CASE_GOAL_HARNESS_PRODUCT_PATH_PRIMARY_ROUTE,
+    BENCHMARK_CASE_GOAL_HARNESS_SCHEDULER_ROUTE,
     BENCHMARK_CASE_GOAL_HARNESS_TODO_ID,
     benchmark_case_goal_harness_event_log_path,
     benchmark_case_goal_harness_install_payload,
@@ -157,6 +158,137 @@ def _coerce_bool(value: str | bool) -> bool:
     if isinstance(value, bool):
         return value
     return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _compact_json_keys(text: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(text)
+    except Exception:
+        return {"json_parse_ok": False}
+    if not isinstance(payload, dict):
+        return {"json_parse_ok": True, "json_type": type(payload).__name__}
+    allowed = {
+        "ok",
+        "goal_id",
+        "agent_id",
+        "todo_id",
+        "decision",
+        "should_run",
+        "status",
+        "claimed_by",
+        "spent",
+        "refreshed",
+        "raw_logs_recorded",
+        "raw_task_text_recorded",
+        "raw_verifier_output_recorded",
+        "raw_agent_trajectory_recorded",
+        "local_paths_recorded",
+    }
+    return {
+        "json_parse_ok": True,
+        **{key: payload[key] for key in sorted(allowed & set(payload))},
+    }
+
+
+def _case_cli_command(
+    payload: dict[str, Any],
+    *args: str,
+) -> str:
+    cli = str(payload.get("case_cli_path") or BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH)
+    return " ".join([shlex.quote(cli), "--format", "json", *map(shlex.quote, args)])
+
+
+def _new_case_scheduler_trace(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": "harbor_case_goal_harness_cli_scheduler_trace_v0",
+        "enabled": True,
+        "route": BENCHMARK_CASE_GOAL_HARNESS_SCHEDULER_ROUTE,
+        "case_goal_id": payload.get("benchmark_case_goal_id") or "",
+        "case_agent_id": payload.get("case_agent_id") or "",
+        "case_todo_id": payload.get("case_todo_id") or "",
+        "case_cli_path": payload.get("case_cli_path") or "",
+        "case_rollout_event_log_path": (
+            payload.get("case_rollout_event_log_path") or ""
+        ),
+        "raw_logs_recorded": False,
+        "raw_task_text_recorded": False,
+        "raw_verifier_output_recorded": False,
+        "raw_agent_trajectory_recorded": False,
+        "local_paths_recorded": False,
+        "commands": [],
+        "event_kind_counts": {},
+    }
+
+
+async def _run_case_goal_harness_cli(
+    environment: BaseEnvironment,
+    *,
+    payload: dict[str, Any],
+    trace: dict[str, Any],
+    action: str,
+    args: list[str],
+    cwd: str,
+    timeout_sec: int = 30,
+) -> bool:
+    try:
+        result = await environment.exec(
+            command=_case_cli_command(payload, *args),
+            cwd=cwd,
+            timeout_sec=timeout_sec,
+        )
+        return_code = int(getattr(result, "return_code", 1) or 0)
+        stdout = getattr(result, "stdout", "") or ""
+        stderr = getattr(result, "stderr", "") or ""
+        compact = {
+            "action": action,
+            "return_code": return_code,
+            "ok": return_code == 0,
+            "stdout_summary": _compact_json_keys(stdout.strip()),
+            "stderr_present": bool(stderr.strip()),
+            "raw_output_recorded": False,
+        }
+    except Exception as exc:  # pragma: no cover - benchmark-host failure path.
+        compact = {
+            "action": action,
+            "return_code": 125,
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "raw_output_recorded": False,
+        }
+    trace.setdefault("commands", []).append(compact)
+    return bool(compact.get("ok"))
+
+
+async def _collect_case_rollout_event_counts(
+    environment: BaseEnvironment,
+    *,
+    payload: dict[str, Any],
+    trace: dict[str, Any],
+    cwd: str,
+) -> None:
+    event_log = str(payload.get("case_rollout_event_log_path") or "")
+    if not event_log:
+        return
+    result = await environment.exec(
+        command=f"cat {shlex.quote(event_log)} 2>/dev/null || true",
+        cwd=cwd,
+        timeout_sec=10,
+    )
+    counts: dict[str, int] = {}
+    total = 0
+    for line in (getattr(result, "stdout", "") or "").splitlines():
+        try:
+            event = json.loads(line)
+        except Exception:
+            continue
+        kind = str(event.get("event_kind") or "unknown")
+        counts[kind] = counts.get(kind, 0) + 1
+        total += 1
+    trace["event_kind_counts"] = dict(sorted(counts.items()))
+    trace["event_count"] = total
+    trace["event_log_read_return_code"] = int(
+        getattr(result, "return_code", 0) or 0
+    )
 
 
 def build_host_goal_prompt(
@@ -573,6 +705,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
             status="not_required",
             initialized_before_agent=False,
         )
+        case_scheduler_trace: dict[str, Any] = {}
         loop_contract: dict[str, Any] = {}
         treatment_claim: dict[str, Any] = {}
         if goal_harness_access_packet:
@@ -643,6 +776,101 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     **case_state_init_compact,
                 }
                 return
+            if self.goal_harness_cli_bridge_enabled:
+                case_scheduler_trace = _new_case_scheduler_trace(
+                    case_state_init_payload
+                )
+                case_goal_id = str(
+                    case_state_init_payload.get("benchmark_case_goal_id") or ""
+                )
+                case_agent_id = str(
+                    case_state_init_payload.get("case_agent_id") or ""
+                )
+                case_todo_id = str(case_state_init_payload.get("case_todo_id") or "")
+                pre_agent_specs = [
+                    ("case_cli_check", ["check"]),
+                    (
+                        "case_quota_should_run_before_agent",
+                        [
+                            "quota",
+                            "should-run",
+                            "--goal-id",
+                            case_goal_id,
+                            "--agent-id",
+                            case_agent_id,
+                        ],
+                    ),
+                    (
+                        "case_todo_claim_before_agent",
+                        [
+                            "todo",
+                            "claim",
+                            "--goal-id",
+                            case_goal_id,
+                            "--todo-id",
+                            case_todo_id,
+                            "--claimed-by",
+                            case_agent_id,
+                        ],
+                    ),
+                ]
+                pre_agent_ok = True
+                for action, args in pre_agent_specs:
+                    pre_agent_ok = (
+                        await _run_case_goal_harness_cli(
+                            environment,
+                            payload=case_state_init_payload,
+                            trace=case_scheduler_trace,
+                            action=action,
+                            args=args,
+                            cwd=self.task_workdir,
+                        )
+                        and pre_agent_ok
+                    )
+                await _collect_case_rollout_event_counts(
+                    environment,
+                    payload=case_state_init_payload,
+                    trace=case_scheduler_trace,
+                    cwd=self.task_workdir,
+                )
+                case_scheduler_trace["pre_agent_lifecycle_ok"] = pre_agent_ok
+                (work_dir / "goal_harness_case_rollout_trace.public.json").write_text(
+                    json.dumps(case_scheduler_trace, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                if not pre_agent_ok:
+                    blocker_payload = {
+                        "schema_version": "harbor_host_codex_goal_agent_v0",
+                        "goal_surface": self.goal_surface,
+                        "ok": False,
+                        "first_blocker": (
+                            "harbor_case_goal_harness_scheduler_preflight_failed"
+                        ),
+                        "raw_output_recorded": False,
+                        "goal_harness_mode": self.goal_harness_mode,
+                        "goal_harness_access_packet_injected": True,
+                        "goal_harness_case_scheduler_trace_present": True,
+                        "goal_harness_case_scheduler_pre_agent_ok": False,
+                        "benchmark_loop_contract": loop_contract,
+                        "benchmark_case_lifecycle_contract": case_lifecycle_contract,
+                        **case_state_init_compact,
+                    }
+                    (work_dir / "app_server_goal_turn.compact.json").write_text(
+                        json.dumps(blocker_payload, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
+                    context.metadata = {
+                        "goal_harness_agent": self.name(),
+                        "completion_marker_observed": False,
+                        "first_blocker": (
+                            "harbor_case_goal_harness_scheduler_preflight_failed"
+                        ),
+                        "goal_harness_mode": self.goal_harness_mode,
+                        "goal_harness_access_packet_injected": True,
+                        "goal_harness_case_scheduler_trace_present": True,
+                        **case_state_init_compact,
+                    }
+                    return
             treatment_claim = classify_goal_harness_treatment_claim(
                 {"benchmark_loop_contract": loop_contract}
             )
@@ -740,6 +968,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
 
             def write_compact(first_blocker: str = "") -> None:
                 compact = compact_turn_metadata(turn)
+                case_scheduler_command_count = len(
+                    case_scheduler_trace.get("commands") or []
+                )
                 compact.update(
                     {
                         "goal_surface": "app_server",
@@ -761,6 +992,21 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         ),
                         "benchmark_loop_contract": loop_contract,
                         "benchmark_case_lifecycle_contract": case_lifecycle_contract,
+                        "goal_harness_case_scheduler_trace_present": bool(
+                            case_scheduler_trace
+                        ),
+                        "goal_harness_case_scheduler_route": (
+                            case_scheduler_trace.get("route") or ""
+                        ),
+                        "goal_harness_case_scheduler_pre_agent_ok": bool(
+                            case_scheduler_trace.get("pre_agent_lifecycle_ok")
+                        ),
+                        "goal_harness_case_scheduler_command_count": (
+                            case_scheduler_command_count
+                        ),
+                        "goal_harness_case_rollout_event_counts": (
+                            case_scheduler_trace.get("event_kind_counts") or {}
+                        ),
                         **case_state_init_compact,
                         **treatment_claim,
                     }
@@ -772,9 +1018,113 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         json.dumps(controller_trace, sort_keys=True) + "\n",
                         encoding="utf-8",
                     )
+                if case_scheduler_trace:
+                    (work_dir / "goal_harness_case_rollout_trace.public.json").write_text(
+                        json.dumps(case_scheduler_trace, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
                 (work_dir / "app_server_goal_turn.compact.json").write_text(
                     json.dumps(compact, sort_keys=True) + "\n",
                     encoding="utf-8",
+                )
+
+            async def run_case_scheduler_round(
+                *,
+                round_index: int,
+                stage: str,
+            ) -> None:
+                if not case_scheduler_trace or not case_state_init_payload:
+                    return
+                case_goal_id = str(
+                    case_state_init_payload.get("benchmark_case_goal_id") or ""
+                )
+                case_agent_id = str(
+                    case_state_init_payload.get("case_agent_id") or ""
+                )
+                case_todo_id = str(case_state_init_payload.get("case_todo_id") or "")
+                await _run_case_goal_harness_cli(
+                    environment,
+                    payload=case_state_init_payload,
+                    trace=case_scheduler_trace,
+                    action=f"{stage}_round_{round_index}_quota_should_run",
+                    args=[
+                        "quota",
+                        "should-run",
+                        "--goal-id",
+                        case_goal_id,
+                        "--agent-id",
+                        case_agent_id,
+                    ],
+                    cwd=self.task_workdir,
+                )
+                await _run_case_goal_harness_cli(
+                    environment,
+                    payload=case_state_init_payload,
+                    trace=case_scheduler_trace,
+                    action=f"{stage}_round_{round_index}_todo_update",
+                    args=[
+                        "todo",
+                        "update",
+                        "--goal-id",
+                        case_goal_id,
+                        "--todo-id",
+                        case_todo_id,
+                        "--claimed-by",
+                        case_agent_id,
+                    ],
+                    cwd=self.task_workdir,
+                )
+                await _collect_case_rollout_event_counts(
+                    environment,
+                    payload=case_state_init_payload,
+                    trace=case_scheduler_trace,
+                    cwd=self.task_workdir,
+                )
+
+            async def run_case_scheduler_closeout(*, result_kind: str) -> None:
+                if not case_scheduler_trace or not case_state_init_payload:
+                    return
+                case_goal_id = str(
+                    case_state_init_payload.get("benchmark_case_goal_id") or ""
+                )
+                case_agent_id = str(
+                    case_state_init_payload.get("case_agent_id") or ""
+                )
+                closeout_specs = [
+                    (
+                        f"{result_kind}_status",
+                        ["status", "--goal-id", case_goal_id, "--limit", "5"],
+                    ),
+                    (
+                        f"{result_kind}_refresh_state",
+                        ["refresh-state", "--goal-id", case_goal_id],
+                    ),
+                    (
+                        f"{result_kind}_quota_spend",
+                        [
+                            "quota",
+                            "spend-slot",
+                            "--goal-id",
+                            case_goal_id,
+                            "--agent-id",
+                            case_agent_id,
+                        ],
+                    ),
+                ]
+                for action, args in closeout_specs:
+                    await _run_case_goal_harness_cli(
+                        environment,
+                        payload=case_state_init_payload,
+                        trace=case_scheduler_trace,
+                        action=action,
+                        args=args,
+                        cwd=self.task_workdir,
+                    )
+                await _collect_case_rollout_event_counts(
+                    environment,
+                    payload=case_state_init_payload,
+                    trace=case_scheduler_trace,
+                    cwd=self.task_workdir,
                 )
 
             if prompt_polling_enabled:
@@ -801,6 +1151,10 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         )
                         controller_trace["completion_marker_observed_count"] = (
                             completion_marker_count
+                        )
+                        await run_case_scheduler_round(
+                            round_index=current_round,
+                            stage="post_turn",
                         )
                         if time.time() >= deadline and not (
                             marker_seen_this_round or turn.turn_completed_observed
@@ -859,6 +1213,11 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         current_round = next_round
                     observe_codex_app_server_goal_turn(turn)
                     await self._serve_bridge_requests(environment, request_dir)
+                    await run_case_scheduler_closeout(
+                        result_kind=(
+                            "timeout_blocker" if timeout_blocker else "case_result"
+                        )
+                    )
                     first_blocker = timeout_blocker
                     write_compact(first_blocker)
                 finally:
@@ -893,6 +1252,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
                             turn,
                             timeout_sec=min(2.0, self.poll_interval_sec),
                         )
+                        await run_case_scheduler_closeout(
+                            result_kind="completion_marker"
+                        )
                         write_compact()
                         turn.terminate()
                         context.metadata = {
@@ -913,6 +1275,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         return
                     await asyncio.sleep(self.poll_interval_sec)
                 observe_codex_app_server_goal_turn(turn)
+                await run_case_scheduler_closeout(result_kind="timeout_blocker")
                 write_compact("harbor_completion_marker_missing_before_timeout")
             finally:
                 turn.terminate()
