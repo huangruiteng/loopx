@@ -55,6 +55,9 @@ def main() -> None:
         for case in payload["case_rollouts"]
     }
     assert ("terminal-bench@2.0", "build-cython-ext") in cases, cases
+    assert ("terminal-bench@2.0", "multi-source-data-merger") in cases, cases
+    assert ("terminal-bench@2.0", "nginx-request-logging") in cases, cases
+    assert ("skillsbench@1.1", "react-performance-debugging") in cases, cases
     assert ("skillsbench@1.1", "llm-prefix-cache-replay") in cases, cases
     assert ("skillsbench@1.1", "tictoc-unnecessary-abort-detection") in cases, cases
     assert ("swe-marathon", "find-network-alignments") in cases, cases
@@ -65,6 +68,18 @@ def main() -> None:
     assert cases[("swe-marathon", "find-network-alignments")][
         "native_codex_goal_evidence"
     ] is True
+    assert cases[("terminal-bench@2.0", "nginx-request-logging")][
+        "official_passed"
+    ] is True
+    assert cases[("terminal-bench@2.0", "multi-source-data-merger")][
+        "failure_class"
+    ] == "official_verifier_solution_failure"
+    assert cases[("skillsbench@1.1", "react-performance-debugging")][
+        "native_codex_goal_evidence"
+    ] is True
+    assert cases[("skillsbench@1.1", "react-performance-debugging")][
+        "failure_scope"
+    ] == "runner_or_route"
     assert cases[("skillsbench@1.1", "llm-prefix-cache-replay")][
         "native_codex_goal_evidence"
     ] is False

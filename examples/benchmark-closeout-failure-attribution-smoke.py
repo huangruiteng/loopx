@@ -63,7 +63,11 @@ def main() -> None:
     }
     expected = {
         ("terminal-bench@2.0", "build-cython-ext"),
+        ("terminal-bench@2.0", "multi-source-data-merger"),
+        ("terminal-bench@2.0", "nginx-request-logging"),
         ("swe-marathon", "find-network-alignments"),
+        ("swe-marathon", "rust-c-compiler"),
+        ("skillsbench@1.1", "react-performance-debugging"),
         ("skillsbench@1.1", "llm-prefix-cache-replay"),
         ("skillsbench@1.1", "tictoc-unnecessary-abort-detection"),
     }
@@ -84,6 +88,30 @@ def main() -> None:
         == "official_zero_native_goal_first_closeout_needs_solution_phase_counters"
     )
 
+    terminal_pass = cases[("terminal-bench@2.0", "nginx-request-logging")]
+    assert terminal_pass["native_codex_goal_evidence"] is True
+    assert terminal_pass["official_passed"] is True
+    assert (
+        terminal_pass["refined_attribution"]
+        == "native_goal_route_sanity_pass_current_protocol_control"
+    )
+
+    terminal_zero = cases[("terminal-bench@2.0", "multi-source-data-merger")]
+    assert terminal_zero["native_codex_goal_evidence"] is True
+    assert terminal_zero["official_passed"] is False
+    assert (
+        terminal_zero["refined_attribution"]
+        == "official_zero_current_app_server_goal_baseline_needs_phase_or_treatment_comparison"
+    )
+
+    skills_native = cases[("skillsbench@1.1", "react-performance-debugging")]
+    assert skills_native["native_codex_goal_evidence"] is True
+    assert skills_native["ledger_failure_class"] == "skillsbench_runner_error"
+    assert (
+        skills_native["refined_attribution"]
+        == "native_goal_worker_connected_trace_dir_missing_not_solver_quality_evidence"
+    )
+
     for key in [
         ("skillsbench@1.1", "llm-prefix-cache-replay"),
         ("skillsbench@1.1", "tictoc-unnecessary-abort-detection"),
@@ -97,7 +125,7 @@ def main() -> None:
         assert "native SkillsBench app-server Goal worker" in case["next_obligation"]
 
     decisions = {entry["route"]: entry for entry in payload["route_decisions"]}
-    assert decisions["skillsbench"]["decision"] == "build_native_app_server_goal_worker"
+    assert decisions["skillsbench"]["decision"] == "repair_native_app_server_goal_worker_trace"
 
     rendered = json.dumps(payload, sort_keys=True) + "\n" + ATTRIBUTION_MD.read_text(
         encoding="utf-8"

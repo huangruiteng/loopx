@@ -1,6 +1,6 @@
 {
   "schema_version": "benchmark_closeout_failure_attribution_v0",
-  "generated_at": "2026-06-21T08:54:16+08:00",
+  "generated_at": "2026-06-21T09:18:31+08:00",
   "scope": "public_safe_failure_attribution_for_20260620_cloud_benchmark_closeouts",
   "public_boundary": {
     "raw_task_text_copied": false,
@@ -53,6 +53,57 @@
       "next_obligation": "Add or inspect public-safe Terminal-Bench phase counters, then compare against the historical passing control before launching more build-cython-ext treatment or declaring case difficulty."
     },
     {
+      "benchmark_id": "terminal-bench@2.0",
+      "case_id": "multi-source-data-merger",
+      "run_ids": {
+        "current_baseline": "terminal-bench-multi-source-data-merger-app-server-goal-20260620T235333Z"
+      },
+      "route": "host_codex_app_server_goal_observation",
+      "native_codex_goal_evidence": true,
+      "official_score": 0.0,
+      "official_passed": false,
+      "ledger_failure_class": "official_verifier_solution_failure",
+      "ledger_failure_scope": "case_or_solution",
+      "refined_attribution": "official_zero_current_app_server_goal_baseline_needs_phase_or_treatment_comparison",
+      "not_a_setup_blocker_because": [
+        "app-server Goal route reached official Terminal-Bench closeout",
+        "official result reducer wrote a compact result",
+        "ledger upsert completed",
+        "raw transcript, task text, trajectories, and verifier output were not recorded publicly"
+      ],
+      "remaining_unknowns": [
+        "whether the zero is case-specific, phase-specific, or route-specific",
+        "whether a matched treatment arm would recover the case",
+        "whether another current-route pass/control case should be compared first"
+      ],
+      "next_obligation": "Compare against current-protocol passing rows and launch either a matched treatment arm or an alternate pass/control case before making route-quality claims."
+    },
+    {
+      "benchmark_id": "terminal-bench@2.0",
+      "case_id": "nginx-request-logging",
+      "run_ids": {
+        "current_baseline": "terminal-bench-nginx-request-logging-app-server-goal-20260621T001123Z"
+      },
+      "route": "host_codex_app_server_goal_observation",
+      "native_codex_goal_evidence": true,
+      "official_score": 1.0,
+      "official_passed": true,
+      "ledger_failure_class": "none",
+      "ledger_failure_scope": "none",
+      "refined_attribution": "native_goal_route_sanity_pass_current_protocol_control",
+      "not_a_setup_blocker_because": [
+        "app-server Goal route reached official Terminal-Bench closeout",
+        "official result reducer wrote a compact result",
+        "official score passed",
+        "raw transcript, task text, trajectories, and verifier output were not recorded publicly"
+      ],
+      "remaining_unknowns": [
+        "whether the same route helps harder or treatment-selected cases",
+        "whether this pass should become a recurring regression guard"
+      ],
+      "next_obligation": "Use as route sanity evidence; do not rerun the same observation unless a future regression needs a fast pass/control guard."
+    },
+    {
       "benchmark_id": "swe-marathon",
       "case_id": "find-network-alignments",
       "run_ids": {
@@ -103,6 +154,31 @@
         "whether Harbor can preserve public-safe edit/test/verify phase counters without raw diffs or logs"
       ],
       "next_obligation": "Stop treating rust-c-compiler as an environment blocker; add public-safe SWE-Marathon solution-phase counters or run a matched treatment/alternate small case under the same no-upload boundary."
+    },
+    {
+      "benchmark_id": "skillsbench@1.1",
+      "case_id": "react-performance-debugging",
+      "run_ids": {
+        "current_baseline": "skillsbench-react-performance-native-goal-20260620T235333Z"
+      },
+      "route": "skillsbench_codex_app_server_goal_baseline",
+      "native_codex_goal_evidence": true,
+      "official_score": 0.0,
+      "official_passed": false,
+      "ledger_failure_class": "skillsbench_runner_error",
+      "ledger_failure_scope": "runner_or_route",
+      "refined_attribution": "native_goal_worker_connected_trace_dir_missing_not_solver_quality_evidence",
+      "not_a_setup_blocker_because": [
+        "BenchFlow runner produced a compact official result",
+        "the native app-server Goal route connected the host worker",
+        "public controller trace remained compact and public-safe"
+      ],
+      "remaining_unknowns": [
+        "why the worker connected but did not materialize a public worker trace directory",
+        "why no worker turn-start or turn-complete evidence was observed",
+        "whether the runner error is caused by launcher wiring, trace-path wiring, or worker lifecycle"
+      ],
+      "next_obligation": "Repair the native worker public trace materialization path before using this or any new SkillsBench native Goal row as solver-quality baseline evidence."
     },
     {
       "benchmark_id": "skillsbench@1.1",
@@ -171,7 +247,7 @@
     {
       "route": "terminal_bench",
       "decision": "do_not_rotate_blindly",
-      "reason": "The route is native Goal and reached official closeout, but the current zero conflicts with a historical passing control."
+      "reason": "The route is native Goal and reached official closeout; current rows include both a pass control and a zero-score case that needs phase or treatment comparison."
     },
     {
       "route": "swe_marathon",
@@ -180,8 +256,8 @@
     },
     {
       "route": "skillsbench",
-      "decision": "build_native_app_server_goal_worker",
-      "reason": "Current compact pairs are ACP blind-loop evidence, not the intended Codex Goal baseline."
+      "decision": "repair_native_app_server_goal_worker_trace",
+      "reason": "The native worker now connects, but public worker turn trace is still missing; ACP blind-loop evidence remains separate from solver-quality native Goal evidence."
     }
   ]
 }

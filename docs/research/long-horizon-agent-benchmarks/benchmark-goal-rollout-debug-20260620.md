@@ -46,6 +46,9 @@ next case" or "which phase failed".
 | Benchmark | Case | Route | Official Result | Rollout Read |
 | --- | --- | --- | --- | --- |
 | `terminal-bench@2.0` | `build-cython-ext` | host Codex app-server Goal | `0.0`, `official_verifier_solution_failure` | Native Goal route reached official Terminal-Bench closeout. Historical compact control `53729101fea3` passed this case with score `1.0`, so the current zero is not enough to call the case impossible. The missing evidence is public-safe solution-phase attribution. |
+| `terminal-bench@2.0` | `multi-source-data-merger` | host Codex app-server Goal observation | `0.0`, `official_verifier_solution_failure` | Current app-server Goal route reached official closeout and wrote compact result. Treat this as a current-route baseline observation for a historical pass/control case, not a setup blocker or paired treatment claim. The next useful signal is phase attribution or a matched treatment/alternate pass-control comparison. |
+| `terminal-bench@2.0` | `nginx-request-logging` | host Codex app-server Goal observation | `1.0`, official pass | Current app-server Goal route reached official closeout and passed without recording raw transcript. This is the route sanity control for the batch: app-server Goal can complete at least one Terminal-Bench pass/control case, so the `multi-source-data-merger` zero should be treated as case- or phase-specific until compared. |
+| `skillsbench@1.1` | `react-performance-debugging` | native app-server Goal baseline | `0.0`, `skillsbench_runner_error` | Native worker connection was observed, but the public trace shows no worker trace directory, no turn-start, and no turn-complete evidence. This is route/runner evidence, not solver-quality baseline evidence; the next engineering question is why the host worker connects but does not materialize public worker turn trace. |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | BenchFlow ACP blind-loop baseline/treatment | `0.0/0.0`, `paired_no_score_uplift` | Runner and verifier reached official score after runtime-layer refactor, but this is not native app-server Goal evidence. Treat it as setup/verifier progress and weak-policy no-uplift evidence. |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | BenchFlow ACP blind-loop baseline/treatment | `0.0/0.0`, `paired_no_score_uplift` | Setup/prewarm no longer blocks the case. It is currently a stability canary, not a proof that Goal Harness improves SkillsBench task outcome. |
 | `swe-marathon` | `find-network-alignments` | Harbor host Codex app-server Goal | `0.0`, `official_verifier_solution_failure` | First native Goal SWE-Marathon cloud closeout. Harbor reached environment operation, agent execution, verifier, and job closeout; the next missing signal is whether the zero came from timeout/incomplete edit or wrong solution. |
@@ -54,12 +57,15 @@ next case" or "which phase failed".
 ## Cross-Case Findings
 
 1. Terminal-Bench and SWE-Marathon are now real app-server Goal baseline
-   closeouts. SWE-Marathon has two zero-score native Goal closeouts, and
-   `rust-c-compiler` r2 proves the earlier setup blocker is no longer the
-   current bottleneck.
-2. SkillsBench still lacks a native app-server Goal worker. Its latest rows
-   prove runner/verifier readiness but should not be over-claimed as Codex
-   Goal baseline evidence.
+   closeouts. Terminal-Bench has a current-route pass control
+   (`nginx-request-logging`) and a current-route zero
+   (`multi-source-data-merger`), while SWE-Marathon has two zero-score native
+   Goal closeouts; `rust-c-compiler` r2 proves the earlier setup blocker is no
+   longer the current bottleneck.
+2. SkillsBench has moved from "native worker missing" to "native worker
+   connects but does not materialize public worker turn trace". Its ACP rows
+   still prove runner/verifier readiness, while the native row remains
+   route/runner evidence rather than solver-quality evidence.
 3. `official_verifier_solution_failure` is too broad for ongoing debugging.
    It should eventually split into public-safe sublabels such as
    `official_verifier_completed_zero_score`,
@@ -74,8 +80,9 @@ next case" or "which phase failed".
 - Terminal-Bench: can the reducer expose public-safe app-server/agent phase
   counters, especially timeout versus complete-but-wrong, without copying raw
   trial fields?
-- SkillsBench: should the next implementation slice be a native app-server
-  Goal worker instead of more ACP blind-loop repeats?
+- SkillsBench: why does the native app-server Goal worker connect but fail to
+  materialize a public worker trace directory and turn-start/turn-complete
+  counters?
 - SWE-Marathon: can Harbor expose compact edit/test/verify phase counters so
   `official_verifier_solution_failure` is not the only post-closeout label?
 - Goal Harness: should active-case status and run ledger both link to this
@@ -99,5 +106,6 @@ only, following `goal_harness/benchmark_trajectory.py`.
 
 The follow-up failure-attribution layer narrows these rows into concrete
 obligations: Terminal-Bench and SWE-Marathon need public-safe solution-phase
-counters, while SkillsBench should stop repeating ACP blind-loop pairs as the
-primary Goal evidence and implement a native app-server Goal worker.
+counters, while SkillsBench should repair native worker public trace
+materialization before using more native app-server Goal rows as quality
+baselines.

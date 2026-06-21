@@ -1,6 +1,6 @@
 {
   "schema_version": "benchmark_goal_rollout_debug_v0",
-  "generated_at": "2026-06-21T08:54:16+08:00",
+  "generated_at": "2026-06-21T09:18:31+08:00",
   "scope": "public_safe_rollout_metadata_for_20260620_cloud_goal_closeouts",
   "public_boundary": {
     "raw_task_text_copied": false,
@@ -82,6 +82,84 @@
         "Can a public-safe terminal/goal phase summary be derived without copying raw trial fields?",
         "Did app-server Goal get enough task-visible time compared with the historical passing run?",
         "Should the next Terminal-Bench step be a historical pass/control rerun before treatment?"
+      ]
+    },
+    {
+      "benchmark_id": "terminal-bench@2.0",
+      "case_id": "multi-source-data-merger",
+      "current_run_id": "terminal-bench-multi-source-data-merger-app-server-goal-20260620T235333Z",
+      "route": "host_codex_app_server_goal_observation",
+      "arm_id": "terminal_bench_host_codex_app_server_goal_observation",
+      "native_codex_goal_evidence": true,
+      "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T235333Z/terminal-bench-multi-source-data-merger-app-server-r1/terminal_bench_official_result.compact.json",
+      "official_score": 0.0,
+      "official_passed": false,
+      "failure_class": "official_verifier_solution_failure",
+      "failure_scope": "case_or_solution",
+      "rollout_stages": [
+        "remote_cloud_host_selected",
+        "codex_app_server_goal_started",
+        "terminal_bench_runner_reached_official_closeout",
+        "official_result_reducer_wrote_compact_result",
+        "ledger_upserted"
+      ],
+      "debug_read": "Current app-server Goal route reached official scoring and failed. Treat this as a current-route baseline observation, not a setup blocker or paired treatment claim.",
+      "next_debug_questions": [
+        "Is the zero case-specific, phase-specific, or route-specific?",
+        "Should the next Terminal-Bench step be a matched treatment arm or a different historical pass/control case?",
+        "Can public-safe phase counters distinguish incomplete solution from wrong solution?"
+      ]
+    },
+    {
+      "benchmark_id": "terminal-bench@2.0",
+      "case_id": "nginx-request-logging",
+      "current_run_id": "terminal-bench-nginx-request-logging-app-server-goal-20260621T001123Z",
+      "route": "host_codex_app_server_goal_observation",
+      "arm_id": "terminal_bench_host_codex_app_server_goal_observation",
+      "native_codex_goal_evidence": true,
+      "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T235333Z/terminal-bench-nginx-request-logging-app-server-r1/terminal_bench_official_result.compact.json",
+      "official_score": 1.0,
+      "official_passed": true,
+      "failure_class": "none",
+      "failure_scope": "none",
+      "rollout_stages": [
+        "remote_cloud_host_selected",
+        "codex_app_server_goal_started",
+        "terminal_bench_runner_reached_official_closeout",
+        "official_result_reducer_wrote_compact_result",
+        "ledger_upserted"
+      ],
+      "debug_read": "This is the current-route pass control for the batch. It proves the app-server Goal route can complete at least one Terminal-Bench pass/control case without public raw transcript capture.",
+      "next_debug_questions": [
+        "Should this pass become a recurring route regression guard?",
+        "Which treatment or unresolved pass/control case should follow instead of another identical observation?",
+        "Which phase counters are useful for comparing against zero-score Terminal-Bench rows?"
+      ]
+    },
+    {
+      "benchmark_id": "skillsbench@1.1",
+      "case_id": "react-performance-debugging",
+      "current_run_id": "skillsbench-react-performance-native-goal-20260620T235333Z",
+      "route": "skillsbench_codex_app_server_goal_baseline",
+      "arm_id": "skillsbench_codex_app_server_goal_baseline",
+      "native_codex_goal_evidence": true,
+      "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T235333Z/skillsbench-react-performance-native-goal-r1/jobs/gh-skillsbench-react-performance-native-goal-r1/react-performance-debugging__codex_app_server_goal/benchmark_run.compact.json",
+      "official_score": 0.0,
+      "official_passed": false,
+      "failure_class": "skillsbench_runner_error",
+      "failure_scope": "runner_or_route",
+      "rollout_stages": [
+        "native_app_server_goal_route_selected",
+        "host_worker_connection_observed",
+        "public_controller_trace_written",
+        "official_verifier_completed_zero",
+        "worker_public_trace_missing"
+      ],
+      "debug_read": "The native worker connected, but no public worker trace directory, turn-start, or turn-complete evidence materialized. This is route/runner evidence, not solver-quality baseline evidence.",
+      "next_debug_questions": [
+        "Why does worker connection not create the public worker trace directory?",
+        "Is trace-path wiring or worker lifecycle terminating before turn/start?",
+        "Can the launcher fail closed before scoring when native worker trace is missing?"
       ]
     },
     {
@@ -208,10 +286,10 @@
     }
   ],
   "cross_case_findings": [
-    "The cloud host and app-server Goal route are now proven for Terminal-Bench and SWE-Marathon; SWE-Marathon now has two native Goal zero-score closeouts, and rust-c-compiler r2 clears the previous setup blocker.",
-    "SkillsBench closeouts are runner/verifier progress, not native Codex Goal evidence, because the current route is ACP/blind-loop.",
+    "The cloud host and app-server Goal route are now proven for Terminal-Bench and SWE-Marathon; Terminal-Bench has both a current-route pass control and a current-route zero, SWE-Marathon has two native Goal zero-score closeouts, and rust-c-compiler r2 clears the previous setup blocker.",
+    "SkillsBench now has native worker connection evidence, but public worker turn trace is still missing; ACP/blind-loop rows remain separate runner/verifier evidence.",
     "The current failure taxonomy is too coarse: official_verifier_solution_failure should be split from agent timeout, incomplete solution, and verifier dependency failures when compact evidence supports it.",
     "A dedicated rollout layer is needed between raw private trajectories and the public benchmark ledger: ledger says what closed; rollout says how the case moved through control-plane and runner phases."
   ],
-  "recommended_next_step": "Before launching another rotation, add a durable public-safe rollout/traj debug artifact and use it to decide which case needs phase-counter reducers, native SkillsBench Goal support, or treatment comparison."
+  "recommended_next_step": "Before launching another SkillsBench native Goal case, repair public worker trace materialization. Terminal-Bench should rotate to treatment or an unresolved pass/control case, and SWE-Marathon should add solution-phase counters or run a matched treatment/alternate small case."
 }
