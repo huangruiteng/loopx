@@ -1,5 +1,7 @@
 # LoopX
 
+<img align="right" src="docs/assets/loopx-logo.png" alt="LoopX loop engineering logo" width="148">
+
 **面向长程 AI Agent 的 Loop Engineering 基础设施。**
 
 **把静态 goal 变成动态、人类在环、可持续接力的 agent loop。**
