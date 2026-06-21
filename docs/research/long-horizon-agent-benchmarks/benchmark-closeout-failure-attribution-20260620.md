@@ -39,6 +39,7 @@ solution, a weak worker policy, or a bad canary.
 | --- | --- | --- | --- | --- | --- |
 | `terminal-bench@2.0` | `build-cython-ext` | host Codex app-server Goal | `0.0`, `official_verifier_solution_failure`; historical compact control `53729101fea3` scored `1.0` | `official_zero_native_goal_regression_needs_phase_attribution` | Add public-safe Terminal-Bench phase counters and compare against the historical passing control before launching more treatment on this case. |
 | `swe-marathon` | `find-network-alignments` | Harbor host Codex app-server Goal | `0.0`, `official_verifier_solution_failure` | `official_zero_native_goal_first_closeout_needs_solution_phase_counters` | Teach the Harbor/SWE-Marathon reducer to preserve public-safe edit/test/verify phase counters before treating this as model-capability evidence. |
+| `swe-marathon` | `rust-c-compiler` | Harbor host Codex app-server Goal, prewarmed/larger-budget r2 | `0.0`, `official_verifier_solution_failure`; setup, agent execution, official verifier, and job closeout completed | `official_zero_native_goal_second_closeout_setup_cleared_needs_solution_phase_counters` | Stop treating this case as an environment blocker; add public-safe edit/test/verify counters or run a matched treatment/alternate small SWE case before making model-quality claims. |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | BenchFlow ACP blind-loop baseline/treatment | `0.0/0.0`, `paired_no_score_uplift` | `paired_zero_acp_blind_loop_non_native_goal_no_uplift` | Stop using more ACP blind-loop repeats as primary Codex Goal evidence; implement a native SkillsBench app-server Goal worker first. |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | BenchFlow ACP blind-loop baseline/treatment | `0.0/0.0`, `paired_no_score_uplift` | `paired_zero_acp_blind_loop_non_native_goal_no_uplift` | Keep as a stability canary only until the native SkillsBench app-server Goal worker exists. |
 
@@ -46,8 +47,9 @@ solution, a weak worker policy, or a bad canary.
 
 Terminal-Bench and SWE-Marathon have crossed the important infrastructure
 line: app-server Goal can start, run, reach verifier, and produce compact
-official closeouts. Their current failures are no longer setup blockers.
-The next missing piece is solution-phase attribution.
+official closeouts. `rust-c-compiler` r2 also clears the previous SWE-Marathon
+setup blocker. These current failures are no longer setup blockers; the next
+missing piece is solution-phase attribution.
 
 SkillsBench is different. The two latest cases prove that setup, prewarm, ACP
 rounds, and official scoring can complete. They do not prove native Codex Goal

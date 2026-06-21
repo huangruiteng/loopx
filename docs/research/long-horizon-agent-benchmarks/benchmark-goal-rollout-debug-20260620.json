@@ -1,6 +1,6 @@
 {
   "schema_version": "benchmark_goal_rollout_debug_v0",
-  "generated_at": "2026-06-21T00:18:00+08:00",
+  "generated_at": "2026-06-21T08:54:16+08:00",
   "scope": "public_safe_rollout_metadata_for_20260620_cloud_goal_closeouts",
   "public_boundary": {
     "raw_task_text_copied": false,
@@ -178,10 +178,37 @@
         "Can Harbor expose public-safe phase counters for edit/test/verify without raw diffs?",
         "Should the next SWE-Marathon step be a second small case or a matched treatment arm?"
       ]
+    },
+    {
+      "benchmark_id": "swe-marathon",
+      "case_id": "rust-c-compiler",
+      "current_run_id": "f94b97e3a750",
+      "route": "harbor_host_codex_app_server_goal_prewarmed_rerun",
+      "arm_id": "swe_marathon_host_codex_app_server_goal_prewarmed_rerun",
+      "native_codex_goal_evidence": true,
+      "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T235333Z/swe-marathon-rust-c-compiler-app-server-r2/harbor_job_result.compact.json",
+      "official_score": 0.0,
+      "official_passed": false,
+      "failure_class": "official_verifier_solution_failure",
+      "failure_scope": "case_or_solution",
+      "rollout_stages": [
+        "prewarmed_larger_budget_route_selected",
+        "codex_app_server_goal_started",
+        "harbor_environment_operation_reached",
+        "agent_execution_reached",
+        "official_verifier_completed_zero",
+        "ledger_upserted"
+      ],
+      "debug_read": "This r2 run supersedes the earlier setup blocker. The case now proves SWE-Marathon setup, agent execution, verifier, and compact closeout under the native Goal route, but still needs solution-phase attribution before quality conclusions.",
+      "next_debug_questions": [
+        "Was the solution incomplete because of timeout or because the model made a wrong edit?",
+        "Can Harbor expose public-safe edit/test/verify counters without raw diffs or logs?",
+        "Should the next SWE-Marathon step be a matched treatment arm or a different small control case?"
+      ]
     }
   ],
   "cross_case_findings": [
-    "The cloud host and app-server Goal route are now proven for Terminal-Bench and SWE-Marathon, but both native Goal baselines currently score zero.",
+    "The cloud host and app-server Goal route are now proven for Terminal-Bench and SWE-Marathon; SWE-Marathon now has two native Goal zero-score closeouts, and rust-c-compiler r2 clears the previous setup blocker.",
     "SkillsBench closeouts are runner/verifier progress, not native Codex Goal evidence, because the current route is ACP/blind-loop.",
     "The current failure taxonomy is too coarse: official_verifier_solution_failure should be split from agent timeout, incomplete solution, and verifier dependency failures when compact evidence supports it.",
     "A dedicated rollout layer is needed between raw private trajectories and the public benchmark ledger: ledger says what closed; rollout says how the case moved through control-plane and runner phases."

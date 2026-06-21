@@ -1,6 +1,6 @@
 {
   "schema_version": "benchmark_closeout_failure_attribution_v0",
-  "generated_at": "2026-06-21T01:05:00+08:00",
+  "generated_at": "2026-06-21T08:54:16+08:00",
   "scope": "public_safe_failure_attribution_for_20260620_cloud_benchmark_closeouts",
   "public_boundary": {
     "raw_task_text_copied": false,
@@ -79,6 +79,32 @@
       "next_obligation": "Teach the SWE-Marathon reducer to preserve public-safe edit/test/verify phase counters before treating this as a model-capability conclusion."
     },
     {
+      "benchmark_id": "swe-marathon",
+      "case_id": "rust-c-compiler",
+      "run_ids": {
+        "current_baseline": "f94b97e3a750"
+      },
+      "route": "harbor_host_codex_app_server_goal_prewarmed_rerun",
+      "native_codex_goal_evidence": true,
+      "official_score": 0.0,
+      "official_passed": false,
+      "ledger_failure_class": "official_verifier_solution_failure",
+      "ledger_failure_scope": "case_or_solution",
+      "refined_attribution": "official_zero_native_goal_second_closeout_setup_cleared_needs_solution_phase_counters",
+      "not_a_setup_blocker_because": [
+        "the earlier environment/image setup blocker was superseded by r2",
+        "the prewarmed/larger-budget route reached setup, agent execution, official verifier, and job closeout",
+        "the compact result and ledger upsert completed",
+        "raw logs, task text, trajectories, and private paths were not read"
+      ],
+      "remaining_unknowns": [
+        "whether the zero came from timeout, incomplete edit, wrong edit, or missing validation loop",
+        "whether the case needs a matched treatment arm or a different small SWE control first",
+        "whether Harbor can preserve public-safe edit/test/verify phase counters without raw diffs or logs"
+      ],
+      "next_obligation": "Stop treating rust-c-compiler as an environment blocker; add public-safe SWE-Marathon solution-phase counters or run a matched treatment/alternate small case under the same no-upload boundary."
+    },
+    {
       "benchmark_id": "skillsbench@1.1",
       "case_id": "llm-prefix-cache-replay",
       "run_ids": {
@@ -150,7 +176,7 @@
     {
       "route": "swe_marathon",
       "decision": "keep_native_goal_route_but_add_phase_counters",
-      "reason": "The first closeout is real, but zero-score attribution is still too coarse for treatment decisions."
+      "reason": "Two closeouts are now real, and rust-c-compiler r2 clears the previous setup blocker, but zero-score attribution is still too coarse for treatment decisions."
     },
     {
       "route": "skillsbench",

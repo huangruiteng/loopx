@@ -49,11 +49,14 @@ next case" or "which phase failed".
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | BenchFlow ACP blind-loop baseline/treatment | `0.0/0.0`, `paired_no_score_uplift` | Runner and verifier reached official score after runtime-layer refactor, but this is not native app-server Goal evidence. Treat it as setup/verifier progress and weak-policy no-uplift evidence. |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | BenchFlow ACP blind-loop baseline/treatment | `0.0/0.0`, `paired_no_score_uplift` | Setup/prewarm no longer blocks the case. It is currently a stability canary, not a proof that Goal Harness improves SkillsBench task outcome. |
 | `swe-marathon` | `find-network-alignments` | Harbor host Codex app-server Goal | `0.0`, `official_verifier_solution_failure` | First native Goal SWE-Marathon cloud closeout. Harbor reached environment operation, agent execution, verifier, and job closeout; the next missing signal is whether the zero came from timeout/incomplete edit or wrong solution. |
+| `swe-marathon` | `rust-c-compiler` | Harbor host Codex app-server Goal, prewarmed/larger-budget r2 | `0.0`, `official_verifier_solution_failure` | Second native Goal SWE-Marathon closeout. The previous setup blocker is superseded: setup, agent execution, official verifier, and job closeout completed. The remaining gap is solution-phase attribution, not Docker capacity. |
 
 ## Cross-Case Findings
 
 1. Terminal-Bench and SWE-Marathon are now real app-server Goal baseline
-   closeouts. Their failures are case/solution failures, not setup blockers.
+   closeouts. SWE-Marathon has two zero-score native Goal closeouts, and
+   `rust-c-compiler` r2 proves the earlier setup blocker is no longer the
+   current bottleneck.
 2. SkillsBench still lacks a native app-server Goal worker. Its latest rows
    prove runner/verifier readiness but should not be over-claimed as Codex
    Goal baseline evidence.

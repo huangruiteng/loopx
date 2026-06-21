@@ -6775,7 +6775,7 @@
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
-      "case_count": 1,
+      "case_count": 2,
       "cases": {
         "find-network-alignments": {
           "case_id": "find-network-alignments",
@@ -6822,9 +6822,53 @@
               "worker_bridge_status": "not_required"
             }
           ]
+        },
+        "rust-c-compiler": {
+          "case_id": "rust-c-compiler",
+          "latest_decision": {
+            "decision": "single_arm_recorded",
+            "latest_run_id": "f94b97e3a750"
+          },
+          "runs": [
+            {
+              "agent_declared_done": false,
+              "arm_id": "swe_marathon_host_codex_app_server_goal_prewarmed_rerun",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T235333Z/swe-marathon-rust-c-compiler-app-server-r2/harbor_job_result.compact.json"
+              },
+              "benchmark_id": "swe-marathon",
+              "case_id": "rust-c-compiler",
+              "case_ids": [
+                "rust-c-compiler"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "goal_harness_inside_case": false,
+              "job_name": "swe-marathon-rust-c-compiler-app-server-r2",
+              "leaderboard_evidence": false,
+              "mode": "swe_marathon_host_codex_app_server_goal_prewarmed_rerun",
+              "notes": "SWE-Marathon rust-c-compiler app-server Goal r2 completed after prewarmed/larger-budget setup; setup, agent execution, and verifier completed; official score 0.0 attributed to official_verifier_solution_failure; raw l...",
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-21T08:54:16+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "swe-marathon-rust-c-compiler-app-server-r2-20260621T004146Z",
+              "run_id": "f94b97e3a750",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "worker_bridge_status": "not_required"
+            }
+          ]
         }
       },
-      "run_count": 1
+      "run_count": 2
     },
     "terminal-bench-worker-materialization@v0": {
       "benchmark_id": "terminal-bench-worker-materialization@v0",
@@ -10574,5 +10618,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-21T08:34:13+08:00"
+  "updated_at": "2026-06-21T08:54:16+08:00"
 }
