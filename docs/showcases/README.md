@@ -18,6 +18,9 @@ The machine-readable catalog lives in
 surfaces should consume that file instead of scraping prose.
 The first frontend surface contract lives in
 [frontend-surface.md](frontend-surface.md).
+Seed-user feedback and case candidates should follow the
+[PoC feedback and case report loop](poc-feedback-case-report-loop.md) before
+they become catalog entries or Frontstage cards.
 
 The first static visual asset is the public-safe
 [control-plane board](../assets/control-plane-board.svg), which shows a user
@@ -92,11 +95,15 @@ public-safe user story.
 
 1. **Captured**: a real project shows a durable behavior pattern. Keep raw
    screenshots, private chats, and internal links outside this repo.
-2. **Sanitized**: write a public-safe case card with the domain generalized,
+2. **Reported**: reduce the feedback into the
+   [case report shape](poc-feedback-case-report-loop.md#case-report-shape):
+   domain, loop length, hard part, LoopX behavior, human decision, evidence,
+   and private boundary.
+3. **Sanitized**: write a public-safe case card with the domain generalized,
    the evidence boundary explicit, and no private source material.
-3. **Reproducible**: add a small synthetic demo or smoke that proves the
+4. **Reproducible**: add a small synthetic demo or smoke that proves the
    reusable LoopX behavior without depending on private artifacts.
-4. **Frontend-ready**: add or update the catalog fields needed for a visual
+5. **Frontend-ready**: add or update the catalog fields needed for a visual
    website card, such as story beats, pattern tags, and suggested visual
    layout.
 
