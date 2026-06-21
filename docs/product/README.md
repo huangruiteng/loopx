@@ -22,6 +22,10 @@ runtime contract, benchmark route, or launch draft.
   fresh-user route that connects no-clone install, one-message TUI bootstrap,
   and proof-capture fixtures while keeping later same-TUI automation optional
   until visible proof passes.
+- [Codex CLI live TUI first-message pilot](codex-cli-live-tui-first-message-pilot.md):
+  the first real TUI launch attempt for the generated start message, recording
+  why manual paste remains primary until a bounded visible completion proof
+  exists.
 - [Codex CLI no-clone release verification](codex-cli-no-clone-release-verification.md):
   the compact release note and smoke contract that prove the packaged installer,
   fresh-project bootstrap message, bootstrap bundle, and proof fixtures stay

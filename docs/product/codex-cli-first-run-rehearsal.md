@@ -99,6 +99,18 @@ does not prove same-open-TUI automation. Until a same-TUI attach proof is
 accepted, the product path remains one-message TUI bootstrap plus explicit
 fallbacks.
 
+## Live TUI Pilot Note
+
+The first real [live TUI first-message pilot](codex-cli-live-tui-first-message-pilot.md)
+confirmed that the generated message can launch Codex CLI through
+`codex [PROMPT]`, but it did not prove that the Goal Harness loop started
+successfully. The process stayed active, no bounded first-response marker was
+available, and passing the message as argv would leak project-specific prompt
+text through the process command line in real repos.
+
+So the reliable first-run route remains manual paste into the visible Codex CLI
+TUI. Automated live launch needs a bounded visible completion proof first.
+
 ## Boundary
 
 This first-run route must not:
