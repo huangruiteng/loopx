@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from goal_harness.quota import (  # noqa: E402
     build_quota_plan,
+    build_quota_monitor_poll_event,
     build_quota_should_run,
     build_quota_slot_spend_event,
     build_quota_slot_void_event,
@@ -31,6 +32,9 @@ from goal_harness.quota import (  # noqa: E402
     render_quota_should_run_markdown,
     void_quota_slot,
 )
+
+
+SCOPED_AGENT_ID = "codex-side-bypass"
 
 
 def goal(
@@ -263,7 +267,7 @@ def append_quota_slot_spend_fixture(
         )
 
 
-def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
+def write_cli_fixture(root: Path, *, scoped_agents: bool = False) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     registry_path = project / ".goal-harness" / "registry.json"
@@ -291,29 +295,33 @@ def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
             f"- continue {goal_id}\n",
             encoding="utf-8",
         )
-        registry_goals.append(
-            {
-                "id": goal_id,
-                "domain": "quota-fixture",
-                "status": "active",
-                "repo": str(project),
-                "state_file": state_file,
-                "adapter": {
-                    "kind": "read_only_project_map_v0",
-                    "status": "connected-read-only",
-                },
-                "authority_sources": [],
-                "quota": {
-                    key: value
-                    for key, value in {
-                        "compute": compute,
-                        "window_hours": 24,
-                        "allowed_slots": allowed_slots,
-                    }.items()
-                    if value is not None
-                },
+        goal_record = {
+            "id": goal_id,
+            "domain": "quota-fixture",
+            "status": "active",
+            "repo": str(project),
+            "state_file": state_file,
+            "adapter": {
+                "kind": "read_only_project_map_v0",
+                "status": "connected-read-only",
+            },
+            "authority_sources": [],
+            "quota": {
+                key: value
+                for key, value in {
+                    "compute": compute,
+                    "window_hours": 24,
+                    "allowed_slots": allowed_slots,
+                }.items()
+                if value is not None
+            },
+        }
+        if scoped_agents:
+            goal_record["coordination"] = {
+                "registered_agents": ["codex-main-control", SCOPED_AGENT_ID],
+                "primary_agent": SCOPED_AGENT_ID,
             }
-        )
+        registry_goals.append(goal_record)
         runs_dir = runtime / "goals" / goal_id / "runs"
         runs_dir.mkdir(parents=True, exist_ok=True)
         json_path = runs_dir / "20260101T000000-run.json"
@@ -481,7 +489,7 @@ def run_cli_slot_preview(root: Path) -> tuple[dict, dict]:
 
 
 def run_cli_slot_spend_execute(root: Path) -> tuple[dict, dict, str, str]:
-    registry_path, runtime, project = write_cli_fixture(root)
+    registry_path, runtime, project = write_cli_fixture(root, scoped_agents=True)
     registry_before = registry_path.read_text(encoding="utf-8")
     base_args = [
         sys.executable,
@@ -506,6 +514,8 @@ def run_cli_slot_spend_execute(root: Path) -> tuple[dict, dict, str, str]:
             "--source",
             "heartbeat",
             "--execute",
+            "--agent-id",
+            SCOPED_AGENT_ID,
             "--scan-path",
             str(project),
         ],
@@ -520,6 +530,8 @@ def run_cli_slot_spend_execute(root: Path) -> tuple[dict, dict, str, str]:
             "should-run",
             "--goal-id",
             "near-limit-half",
+            "--agent-id",
+            SCOPED_AGENT_ID,
             "--scan-path",
             str(project),
         ],
@@ -537,7 +549,7 @@ def run_cli_slot_spend_execute(root: Path) -> tuple[dict, dict, str, str]:
 
 
 def run_cli_slot_void_execute(root: Path) -> tuple[dict, dict, dict, str, str]:
-    registry_path, runtime, project = write_cli_fixture(root)
+    registry_path, runtime, project = write_cli_fixture(root, scoped_agents=True)
     registry_before = registry_path.read_text(encoding="utf-8")
     base_args = [
         sys.executable,
@@ -562,6 +574,8 @@ def run_cli_slot_void_execute(root: Path) -> tuple[dict, dict, dict, str, str]:
             "--source",
             "heartbeat",
             "--execute",
+            "--agent-id",
+            SCOPED_AGENT_ID,
             "--scan-path",
             str(project),
         ],
@@ -584,6 +598,8 @@ def run_cli_slot_void_execute(root: Path) -> tuple[dict, dict, dict, str, str]:
             "--reason-summary",
             "duplicate heartbeat spend",
             "--execute",
+            "--agent-id",
+            SCOPED_AGENT_ID,
             "--scan-path",
             str(project),
         ],
@@ -598,6 +614,8 @@ def run_cli_slot_void_execute(root: Path) -> tuple[dict, dict, dict, str, str]:
             "should-run",
             "--goal-id",
             "near-limit-half",
+            "--agent-id",
+            SCOPED_AGENT_ID,
             "--scan-path",
             str(project),
         ],
@@ -1762,12 +1780,14 @@ def assert_slot_spend_execute(payload: dict, next_should_run: dict, registry_bef
     assert payload["appended"] is True, payload
     assert payload["registry_mutated"] is False, payload
     assert payload["classification"] == "quota_slot_spent", payload
+    assert payload["agent_id"] == SCOPED_AGENT_ID, payload
     assert payload["source"] == "heartbeat", payload
     assert registry_after == registry_before
     assert '"spent_slots"' not in registry_after
     assert json_path.exists(), payload
     assert index_path.exists(), payload
     assert quota_event["event_type"] == "quota_slot_spent", payload
+    assert quota_event["agent_id"] == SCOPED_AGENT_ID, payload
     assert quota_event["slots"] == 1, payload
     assert before["should_run"] is True, payload
     assert before["state"] == "eligible", payload
@@ -1779,12 +1799,14 @@ def assert_slot_spend_execute(payload: dict, next_should_run: dict, registry_bef
 
     record = json.loads(json_path.read_text(encoding="utf-8"))
     assert record["classification"] == "quota_slot_spent", record
+    assert record["agent_id"] == SCOPED_AGENT_ID, record
     assert record["quota_event"] == quota_event, record
     forbidden = {"human_reward", "operator_gate", "write_control", "private_evidence", "agent_command"}
     assert forbidden.isdisjoint(record), record
     assert forbidden.isdisjoint(record["quota_event"]), record
     index_lines = index_path.read_text(encoding="utf-8").splitlines()
     assert any('"classification": "quota_slot_spent"' in line for line in index_lines), index_lines
+    assert any(f'"agent_id": "{SCOPED_AGENT_ID}"' in line for line in index_lines), index_lines
 
     assert next_should_run["goal_id"] == "near-limit-half", next_should_run
     assert next_should_run["should_run"] is False, next_should_run
@@ -1811,11 +1833,13 @@ def assert_slot_void_execute(
     assert void_payload["appended"] is True, void_payload
     assert void_payload["registry_mutated"] is False, void_payload
     assert void_payload["classification"] == "quota_slot_voided", void_payload
+    assert void_payload["agent_id"] == SCOPED_AGENT_ID, void_payload
     assert void_payload["source"] == "heartbeat", void_payload
     assert registry_after == registry_before
     assert json_path.exists(), void_payload
     assert index_path.exists(), void_payload
     assert quota_event["event_type"] == "quota_slot_voided", void_payload
+    assert quota_event["agent_id"] == SCOPED_AGENT_ID, void_payload
     assert quota_event["slots"] == 1, void_payload
     assert quota_event["voided_run_generated_at"] == spend_payload["generated_at"], void_payload
     assert "duplicate heartbeat spend" in quota_event["reason_summary"], void_payload
@@ -1823,6 +1847,7 @@ def assert_slot_void_execute(
 
     record = json.loads(json_path.read_text(encoding="utf-8"))
     assert record["classification"] == "quota_slot_voided", record
+    assert record["agent_id"] == SCOPED_AGENT_ID, record
     assert record["quota_event"] == quota_event, record
     forbidden = {"human_reward", "operator_gate", "write_control", "private_evidence", "agent_command"}
     assert forbidden.isdisjoint(record), record
@@ -1830,6 +1855,7 @@ def assert_slot_void_execute(
     index_lines = index_path.read_text(encoding="utf-8").splitlines()
     assert any('"classification": "quota_slot_spent"' in line for line in index_lines), index_lines
     assert any('"classification": "quota_slot_voided"' in line for line in index_lines), index_lines
+    assert any(f'"agent_id": "{SCOPED_AGENT_ID}"' in line for line in index_lines), index_lines
 
     assert next_should_run["goal_id"] == "near-limit-half", next_should_run
     assert next_should_run["should_run"] is True, next_should_run
@@ -1888,6 +1914,33 @@ def assert_quota_void_event_net_ledger() -> None:
         assert after["void_event_count"] == 1, after
 
 
+def assert_monitor_poll_event_carries_agent_id() -> None:
+    event = build_quota_monitor_poll_event(
+        {
+            "goal_id": "scoped-monitor-goal",
+            "should_run": True,
+            "effective_action": "monitor_quiet_skip",
+            "recommended_action": "stay quiet until material transition",
+            "reason": "unchanged monitor target",
+            "heartbeat_recommendation": {
+                "recommended_mode": "monitor_quiet_until_material_transition",
+                "reason": "unchanged monitor target",
+            },
+            "agent_identity": {
+                "agent_id": SCOPED_AGENT_ID,
+                "registered": True,
+                "role": "side-agent",
+                "primary_agent": "codex-main-control",
+                "registered_agents": ["codex-main-control", SCOPED_AGENT_ID],
+            },
+        },
+        source="heartbeat",
+    )
+
+    assert event["agent_id"] == SCOPED_AGENT_ID, event
+    assert event["monitor_event"]["agent_id"] == SCOPED_AGENT_ID, event
+
+
 def main() -> int:
     assert_default_quota_is_duty_cycle()
     assert_rolling_window_ledger_expires_old_spends()
@@ -1914,6 +1967,7 @@ def main() -> int:
     assert_decision_freshness_warning_in_should_run()
     assert_safe_bypass_slot_preview(status_payload)
     assert_quota_void_event_net_ledger()
+    assert_monitor_poll_event_carries_agent_id()
     assert_slot_preview(build_quota_slot_preview(status_payload, goal_id="near-limit-half", slots=1))
     with tempfile.TemporaryDirectory(prefix="goal-harness-quota-plan-smoke-") as tmp:
         cli_plan, cli_markdown = run_cli_quota_plan(Path(tmp))

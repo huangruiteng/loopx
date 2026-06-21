@@ -5298,6 +5298,15 @@ def _compact_quota_decision(decision: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _quota_decision_agent_id(decision: dict[str, Any]) -> str | None:
+    agent_identity = (
+        decision.get("agent_identity")
+        if isinstance(decision.get("agent_identity"), dict)
+        else {}
+    )
+    return normalize_todo_claimed_by(agent_identity.get("agent_id"))
+
+
 def _work_lane_reason_codes(work_lane_contract: dict[str, Any]) -> set[str]:
     reason_codes = work_lane_contract.get("reason_codes")
     if not isinstance(reason_codes, list):
@@ -5370,8 +5379,9 @@ def build_quota_monitor_poll_event(
             or before.get("reason")
             or "monitor-only poll had no material transition"
         )
+    safe_agent_id = _quota_decision_agent_id(before)
 
-    return {
+    record = {
         "generated_at": generated_at or _now_local(),
         "goal_id": before.get("goal_id"),
         "classification": QUOTA_MONITOR_POLL_CLASSIFICATION,
@@ -5390,6 +5400,10 @@ def build_quota_monitor_poll_event(
             "before": _compact_quota_decision(before),
         },
     }
+    if safe_agent_id:
+        record["agent_id"] = safe_agent_id
+        record["monitor_event"]["agent_id"] = safe_agent_id
+    return record
 
 
 def build_quota_slot_spend_event(
@@ -5405,6 +5419,7 @@ def build_quota_slot_spend_event(
         raise ValueError(f"quota slot spend source must be one of: {', '.join(sorted(VALID_SLOT_SPEND_SOURCES))}")
     before = preview.get("before") if isinstance(preview.get("before"), dict) else {}
     after = preview.get("after") if isinstance(preview.get("after"), dict) else {}
+    safe_agent_id = _quota_decision_agent_id(before)
     slots = max(1, _int_number(preview.get("slots"), default=1))
     before_compact = _compact_quota_decision(before)
     after_compact = _compact_quota_decision(after)
@@ -5451,7 +5466,7 @@ def build_quota_slot_spend_event(
             "capability bridge repair, or latest validated delivery-completion quota should-run decision"
         )
 
-    return {
+    record = {
         "generated_at": generated_at or _now_local(),
         "goal_id": preview.get("goal_id"),
         "classification": QUOTA_SLOT_SPENT_CLASSIFICATION,
@@ -5513,6 +5528,10 @@ def build_quota_slot_spend_event(
             "after": after_compact,
         },
     }
+    if safe_agent_id:
+        record["agent_id"] = safe_agent_id
+        record["quota_event"]["agent_id"] = safe_agent_id
+    return record
 
 
 def _load_goal_run_index_records(runtime_root: Path, goal_id: str) -> list[dict[str, Any]]:
@@ -5561,9 +5580,10 @@ def record_quota_monitor_poll(
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
     reason_summary: str | None = None,
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
-    before = build_quota_should_run(status_payload, goal_id=safe_goal_id)
+    before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=agent_id)
     if before.get("effective_action") != "monitor_quiet_skip" and not _allows_no_spend_external_monitor_poll(before):
         return {
             "ok": False,
@@ -5605,6 +5625,8 @@ def record_quota_monitor_poll(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
+    if record.get("agent_id"):
+        index_record["agent_id"] = record["agent_id"]
 
     after_status = deepcopy(status_payload)
     if execute:
@@ -5623,7 +5645,7 @@ def record_quota_monitor_poll(
         recent_runs = run_history.get("recent_runs") if isinstance(run_history.get("recent_runs"), list) else []
         run_history["recent_runs"] = [index_record, *recent_runs]
 
-    after = build_quota_should_run(after_status, goal_id=safe_goal_id)
+    after = build_quota_should_run(after_status, goal_id=safe_goal_id, agent_id=agent_id)
     return {
         "ok": True,
         "mode": "monitor-poll",
@@ -5634,6 +5656,7 @@ def record_quota_monitor_poll(
         "source": record["monitor_event"]["source"],
         "classification": QUOTA_MONITOR_POLL_CLASSIFICATION,
         "generated_at": generated_at,
+        "agent_id": record.get("agent_id"),
         "monitor_event": record["monitor_event"],
         "health_check": record["health_check"],
         "delivery_outcome": record["delivery_outcome"],
@@ -5674,6 +5697,7 @@ def build_quota_slot_void_preview(
     *,
     goal_id: str,
     voided_run_generated_at: str,
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     safe_voided_at = str(voided_run_generated_at or "").strip()
@@ -5706,7 +5730,7 @@ def build_quota_slot_void_preview(
         }
     target_run, target_event = target
     slots = max(1, _int_number(target_event.get("slots"), default=1))
-    before = build_quota_should_run(status_payload, goal_id=safe_goal_id)
+    before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=agent_id)
     before_quota = before.get("quota") if isinstance(before.get("quota"), dict) else {}
     after = deepcopy(before)
     after_quota = deepcopy(before_quota)
@@ -5754,7 +5778,8 @@ def build_quota_slot_void_event(
     safe_reason = str(reason_summary or "").strip() or "void duplicate or invalid quota slot spend event"
     before = preview.get("before") if isinstance(preview.get("before"), dict) else {}
     after = preview.get("after") if isinstance(preview.get("after"), dict) else {}
-    return {
+    safe_agent_id = _quota_decision_agent_id(before)
+    record = {
         "generated_at": generated_at or _now_local(),
         "goal_id": preview.get("goal_id"),
         "classification": QUOTA_SLOT_VOIDED_CLASSIFICATION,
@@ -5771,6 +5796,10 @@ def build_quota_slot_void_event(
             "after": _compact_quota_decision(after) if after else {},
         },
     }
+    if safe_agent_id:
+        record["agent_id"] = safe_agent_id
+        record["quota_event"]["agent_id"] = safe_agent_id
+    return record
 
 
 def void_quota_slot(
@@ -5781,12 +5810,14 @@ def void_quota_slot(
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
     reason_summary: str | None = None,
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     preview = build_quota_slot_void_preview(
         status_payload,
         goal_id=safe_goal_id,
         voided_run_generated_at=voided_run_generated_at,
+        agent_id=agent_id,
     )
     if not preview.get("ok"):
         return preview
@@ -5815,6 +5846,8 @@ def void_quota_slot(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
+    if record.get("agent_id"):
+        index_record["agent_id"] = record["agent_id"]
     payload = {
         **preview,
         "dry_run": not execute,
@@ -5823,6 +5856,7 @@ def void_quota_slot(
         "source": record["quota_event"]["source"],
         "classification": QUOTA_SLOT_VOIDED_CLASSIFICATION,
         "generated_at": generated_at,
+        "agent_id": record.get("agent_id"),
         "quota_event": record["quota_event"],
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
@@ -5882,6 +5916,8 @@ def spend_quota_slot(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
+    if record.get("agent_id"):
+        index_record["agent_id"] = record["agent_id"]
 
     payload = {
         **preview,
@@ -5891,6 +5927,7 @@ def spend_quota_slot(
         "source": record["quota_event"]["source"],
         "classification": QUOTA_SLOT_SPENT_CLASSIFICATION,
         "generated_at": generated_at,
+        "agent_id": record.get("agent_id"),
         "quota_event": record["quota_event"],
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
@@ -6016,6 +6053,7 @@ def render_quota_slot_preview_markdown(payload: dict[str, Any]) -> str:
         f"- dry_run: `{payload.get('dry_run')}`",
         f"- goal_id: `{payload.get('goal_id')}`",
         f"- classification: `{payload.get('classification') or QUOTA_SLOT_SPENT_CLASSIFICATION}`",
+        f"- agent_id: `{payload.get('agent_id') or ''}`",
         f"- slots: `{payload.get('slots')}`",
         f"- appended: `{payload.get('appended')}`",
         f"- registry_mutated: `{payload.get('registry_mutated')}`",
@@ -6057,6 +6095,7 @@ def render_quota_monitor_poll_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- goal_id: `{payload.get('goal_id')}`",
         f"- classification: `{payload.get('classification')}`",
+        f"- agent_id: `{payload.get('agent_id') or event.get('agent_id') or ''}`",
         f"- source: `{event.get('source')}`",
         f"- effective_action: `{before.get('effective_action')}`",
         f"- should_run: `{before.get('should_run')}`",

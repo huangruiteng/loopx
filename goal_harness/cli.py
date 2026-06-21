@@ -5944,7 +5944,11 @@ def main(argv: list[str] | None = None) -> int:
     quota_parser.add_argument("--goal-id", help="Goal id to check. Required for `quota should-run`, `quota monitor-poll`, `quota spend-slot`, and `quota void-slot`.")
     quota_parser.add_argument(
         "--agent-id",
-        help="Registered agent id for `quota should-run`; suppresses identity-upgrade warnings for current prompts.",
+        help=(
+            "Registered agent id for `quota should-run` and scoped quota accounting "
+            "commands; suppresses identity-upgrade warnings and records the identity "
+            "on appended monitor/spend/void events."
+        ),
     )
     quota_parser.add_argument(
         "--available-capability",
@@ -10505,6 +10509,7 @@ def main(argv: list[str] | None = None) -> int:
                     execute=bool(args.execute),
                     source=args.source,
                     reason_summary=args.reason_summary,
+                    agent_id=args.agent_id,
                 )
             elif args.quota_command == "spend-slot":
                 if not args.goal_id:
@@ -10534,6 +10539,7 @@ def main(argv: list[str] | None = None) -> int:
                     execute=bool(args.execute),
                     source=args.source,
                     reason_summary=args.reason_summary,
+                    agent_id=args.agent_id,
                 )
             else:
                 payload = build_quota_plan(status_payload, mode=args.quota_command)
