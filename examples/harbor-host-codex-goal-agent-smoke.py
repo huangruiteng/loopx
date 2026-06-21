@@ -470,6 +470,24 @@ def main() -> int:
         assert treatment_agent.loopx_benchmark_id == "swe-marathon"
         assert treatment_agent.loopx_case_id == "current-case"
         assert treatment_agent.loopx_arm_id == "codex_loopx_treatment"
+        legacy_prefix = "goal_" + "harness_"
+        try:
+            module.HarborHostCodexGoalAgent(
+                logs_dir=Path(tmp) / "legacy-treatment-logs",
+                goal_surface="app_server",
+                **{
+                    legacy_prefix + "mode": "codex_" + legacy_prefix.rstrip("_"),
+                    legacy_prefix + "access_packet_mode": "compact",
+                    legacy_prefix + "cli_bridge_enabled": "true",
+                },
+            )
+        except ValueError as exc:
+            message = str(exc)
+            assert "legacy_pre_rename_kwargs_unsupported" in message, message
+            assert "use loopx_* kwargs before worker start" in message, message
+            assert "count=3" in message, message
+        else:
+            raise AssertionError("legacy benchmark kwargs must fail closed")
         polling_agent = module.HarborHostCodexGoalAgent(
             logs_dir=Path(tmp) / "polling-logs",
             goal_surface="app_server",

@@ -162,6 +162,25 @@ def _coerce_bool(value: str | bool) -> bool:
     return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
+LEGACY_PRE_RENAME_KWARG_PREFIX = "goal_" + "harness_"
+
+
+def _reject_pre_rename_kwargs(kwargs: dict[str, Any]) -> None:
+    """Fail closed when a launcher still sends pre-rename benchmark kwargs."""
+
+    legacy_keys = sorted(
+        key for key in kwargs if key.startswith(LEGACY_PRE_RENAME_KWARG_PREFIX)
+    )
+    if not legacy_keys:
+        return
+    first_key = legacy_keys[0]
+    raise ValueError(
+        "legacy_pre_rename_kwargs_unsupported: "
+        f"use loopx_* kwargs before worker start; first_key={first_key}; "
+        f"count={len(legacy_keys)}"
+    )
+
+
 def _compact_todo_summary(value: Any, *, todo_id: str = "") -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -815,6 +834,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
         poll_interval_sec: str | int | float = 5,
         **kwargs: Any,
     ) -> None:
+        _reject_pre_rename_kwargs(kwargs)
         super().__init__(logs_dir=logs_dir, model_name=model_name, **kwargs)
         self.goal_timeout_sec = float(goal_timeout_sec)
         self.codex_bin = codex_bin
