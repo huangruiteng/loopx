@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 
 import { DashboardPage } from "./views/dashboard-page";
+import { FrontstageDeveloperPage } from "./views/frontstage-developer-page";
 import { FrontstagePage } from "./views/frontstage-page";
 
 const searchSchema = z.object({
@@ -44,7 +45,13 @@ export const frontstageRoute = createRoute({
   component: FrontstagePage,
 });
 
-const routeTree = rootRoute.addChildren([dashboardRoute, frontstageRoute]);
+export const frontstageDeveloperRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/frontstage/developer",
+  component: FrontstageDeveloperPage,
+});
+
+const routeTree = rootRoute.addChildren([dashboardRoute, frontstageRoute, frontstageDeveloperRoute]);
 
 function routerBasepathFromViteBase(baseUrl: string) {
   if (!baseUrl || baseUrl === "/" || baseUrl === "./") {

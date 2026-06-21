@@ -36,6 +36,12 @@ gate, top user todo, top agent todo, quota or guard judgment, and recent
 evidence. `?view=ops` remains the detailed workbench for debugging status
 contracts, reward previews, and individual queue items.
 
+`/frontstage/developer` is a read-only contributor cockpit. It belongs to the
+frontstage developer-extension lane rather than the public homepage or live ops
+surface: it renders static public contracts, projection diffing, fixture rules,
+smoke checklists, and component examples so contributors can add projections
+without mining the large dashboard page.
+
 Compatibility aliases such as `view=share` may exist only as routing bridges.
 They do not define a third product surface.
 

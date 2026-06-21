@@ -75,6 +75,13 @@ and writeback boundary without loading live registry data. It is meant to help
 new developers understand how to enter Goal Harness from Codex CLI or another
 agent TUI before they open the denser ops board.
 
+The developer extension cockpit lives at `/frontstage/developer`. It is a
+read-only contributor workbench for status-contract exploration, projection
+diffing, fixture generation rules, smoke-run checklists, and component examples
+so new projection work does not require reverse-engineering the large
+dashboard page. It uses static public contracts and fixtures only; live status
+feeds, registry files, and browser write APIs stay out of this route.
+
 For live local control-plane inspection, explicitly enter ops mode:
 `/frontstage?mode=ops&statusUrl=http://127.0.0.1:8766/status.json`. The route
 then reads `attention_queue.items[].goal_channel_projection` and stays

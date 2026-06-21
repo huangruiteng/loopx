@@ -44,6 +44,7 @@ def main() -> int:
         "showcase mode ignores `statusUrl`",
         "frontstage-private-status-trap.public.json",
         "`GH_FAKE_*` markers",
+        "`/frontstage/developer` is a read-only contributor cockpit",
         "Phase 1, public showcase polish",
         "Phase 2, local ops data layer",
         "Phase 3, controlled local write affordances",
@@ -70,6 +71,7 @@ def main() -> int:
         "Neither surface is browser write authority",
         "frontstage-private-status-trap.public.json",
         "synthetic `GH_FAKE_*` trap markers",
+        "developer extension cockpit lives at `/frontstage/developer`",
     ]:
         assert_contains(compact_dashboard_readme, existing_contract)
 

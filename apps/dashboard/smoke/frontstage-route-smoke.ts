@@ -24,6 +24,7 @@ function sourceBetween(source: string, start: string, end: string, label: string
 
 const routerSource = readFileSync("src/router.tsx", "utf8");
 const mainSource = readFileSync("src/main.tsx", "utf8");
+const frontstageDeveloperSource = readFileSync("src/views/frontstage-developer-page.tsx", "utf8");
 const frontstageSource = readFileSync("src/views/frontstage-page.tsx", "utf8");
 const stylesSource = readFileSync("src/styles.css", "utf8");
 const dataSource = readFileSync("src/data/goal-channel-frontstage.ts", "utf8");
@@ -37,6 +38,9 @@ const packageSource = readFileSync("package.json", "utf8");
 
 includes(routerSource, 'path: "/frontstage"', "frontstage route path");
 includes(routerSource, "component: FrontstagePage", "frontstage route component");
+includes(routerSource, 'path: "/frontstage/developer"', "frontstage developer route path");
+includes(routerSource, "component: FrontstageDeveloperPage", "frontstage developer route component");
+includes(routerSource, "frontstageDeveloperRoute", "frontstage developer route export");
 includes(routerSource, "frontstageSearchSchema", "frontstage search schema");
 includes(routerSource, 'mode: z.enum(["showcase", "developer", "ops"]).optional().default("showcase")', "frontstage mode gate");
 includes(routerSource, 'todoLane: z.enum(["all", "user", "agent"]).optional().default("all")', "frontstage todo lane filter search param");
@@ -112,6 +116,7 @@ includes(frontstageSource, 'data-testid="frontstage-artifacts"', "artifacts lane
 includes(frontstageSource, 'data-testid="frontstage-timeline"', "timeline lane");
 includes(frontstageSource, "Frontstage channel", "frontstage channel copy");
 includes(frontstageSource, "Channel board", "channel board nav");
+includes(frontstageSource, "Developer cockpit", "developer cockpit nav");
 includes(frontstageSource, "Always-on agent operations", "always-on operations copy");
 includes(frontstageSource, "Goal Harness Showcase Frontstage", "showcase-first hero title");
 includes(frontstageSource, "Async agent teams, governed by human judgment", "showcase-first hero copy");
@@ -243,5 +248,28 @@ includes(readmeSource, "read-only projection", "README read-only projection boun
 includes(readmeSource, "write authority", "README write authority boundary");
 includes(selectionSource, "Multica", "Multica benchmark note");
 includes(selectionSource, "agent board", "agent board benchmark note");
+
+includes(frontstageDeveloperSource, 'data-testid="frontstage-developer-cockpit"', "developer cockpit route test id");
+includes(frontstageDeveloperSource, "Goal Harness Projection Developer Cockpit", "developer cockpit title");
+includes(frontstageDeveloperSource, "Status Contract Explorer", "status contract explorer panel");
+includes(frontstageDeveloperSource, 'data-testid="developer-contract-explorer"', "developer contract explorer test id");
+includes(frontstageDeveloperSource, "Projection Diffing", "projection diffing panel");
+includes(frontstageDeveloperSource, 'data-testid="developer-projection-diffing"', "projection diffing test id");
+includes(frontstageDeveloperSource, "Fixture Generation", "fixture generation panel");
+includes(frontstageDeveloperSource, 'data-testid="developer-fixture-generation"', "fixture generation test id");
+includes(frontstageDeveloperSource, "Smoke Checklist", "smoke checklist panel");
+includes(frontstageDeveloperSource, 'data-testid="developer-smoke-checklist"', "smoke checklist test id");
+includes(frontstageDeveloperSource, "Component Examples", "component examples panel");
+includes(frontstageDeveloperSource, 'data-testid="developer-component-examples"', "component examples test id");
+includes(frontstageDeveloperSource, "Extension Boundary", "extension boundary panel");
+includes(frontstageDeveloperSource, 'data-testid="developer-extension-boundary"', "extension boundary test id");
+includes(frontstageDeveloperSource, "apps/dashboard/src/data/status.ts", "status parser source pointer");
+includes(frontstageDeveloperSource, "apps/dashboard/src/data/goal-channel-frontstage.ts", "projection source pointer");
+includes(frontstageDeveloperSource, "examples/status.example.json", "fixture source pointer");
+includes(frontstageDeveloperSource, "goal-harness check --scan-path apps/dashboard", "boundary check command");
+includes(frontstageDeveloperSource, "reverse-engineering the large operator page", "developer cockpit purpose");
+includes(frontstageDeveloperSource, "live status feeds, registry files, and browser write APIs stay outside", "developer cockpit boundary");
+excludes(frontstageDeveloperSource, "<form", "developer cockpit write form");
+excludes(frontstageDeveloperSource, "method=", "developer cockpit form method");
 
 console.log("frontstage-route smoke ok");

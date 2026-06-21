@@ -329,12 +329,12 @@ async function assertNoHorizontalOverflow(page, label) {
   }
 }
 
-async function captureFrontstage(page, url, label, requiredText = []) {
+async function captureFrontstage(page, url, label, requiredText = [], options = {}) {
   await page.goto(url, { waitUntil: "networkidle" });
-  await page.waitForSelector('[data-testid="goal-channel-frontstage-route"]', { timeout: 10_000 });
+  await page.waitForSelector(options.rootSelector ?? '[data-testid="goal-channel-frontstage-route"]', { timeout: 10_000 });
 
   const body = await page.locator("body").innerText();
-  const required = [
+  const frontstageRequired = [
     "Goal Harness",
     "Frontstage channel",
     "Projection is read-only",
@@ -354,8 +354,10 @@ async function captureFrontstage(page, url, label, requiredText = []) {
     "Goal Harness self-iteration loop",
     "Creator-operator long-running agent case",
     "Boundary Warnings",
-    ...requiredText,
   ];
+  const required = options.includeFrontstageRequired === false
+    ? requiredText
+    : [...frontstageRequired, ...requiredText];
   const missing = required.filter((text) => !body.includes(text));
   if (missing.length) {
     throw new Error(`Missing frontstage text: ${missing.join(", ")}`);
@@ -594,6 +596,30 @@ async function main() {
           throw new Error(`Explicit ops mode did not render fake-private status trap marker: ${marker}`);
         }
       }
+      await captureFrontstage(
+        desktopPage,
+        `${baseUrl}/frontstage/developer`,
+        "desktop-frontstage-developer-cockpit",
+        [
+          "Goal Harness Projection Developer Cockpit",
+          "Status Contract Explorer",
+          "Projection Diffing",
+          "Fixture Generation",
+          "Smoke Checklist",
+          "Component Examples",
+          "Extension Boundary",
+          "apps/dashboard/src/data/status.ts",
+          "apps/dashboard/src/data/goal-channel-frontstage.ts",
+          "examples/status.example.json",
+          "goal-harness check --scan-path apps/dashboard",
+          "read-only contributor workbench",
+          "live status feeds, registry files, and browser write APIs stay outside",
+        ],
+        {
+          includeFrontstageRequired: false,
+          rootSelector: '[data-testid="frontstage-developer-cockpit"]',
+        },
+      );
       await captureFrontstage(
         desktopPage,
         `${baseUrl}/frontstage?mode=ops&statusUrl=/${fixtureName}&goalId=live-goal-a`,

@@ -1142,9 +1142,9 @@ function FrontstageRoute({
               <Activity className="h-4 w-4" />
               Channel board
             </a>
-            <a className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium" href="/frontstage?mode=developer">
-              <Bot className="h-4 w-4" />
-              Developer path
+            <a className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium" href="/frontstage/developer">
+              <ExternalLink className="h-4 w-4" />
+              Developer cockpit
             </a>
           </div>
           <div className="mt-5 space-y-2 text-xs leading-5 text-slate-500">
