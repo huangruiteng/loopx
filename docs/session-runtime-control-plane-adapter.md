@@ -46,8 +46,8 @@ event, tool call, artifact, approval, or outcome ids, but it must not copy full
 transcripts, credentials, raw logs, private traces, or sandbox internals into
 LoopX state.
 
-This avoids a second event store. If the host says a session completed and Goal
-Harness says a goal is still blocked, the projection must explain the
+This avoids a second event store. If the host says a session completed and
+LoopX says a goal is still blocked, the projection must explain the
 reconcile rule: missing gate, missing validation, failed outcome, stale
 artifact, or human decision not yet recorded.
 
@@ -150,8 +150,8 @@ summaries, then returns:
 - `attention_item`: a compact dashboard/status item with source pointers;
 - `work_lane_contract`: `user_gate`, `advancement_task`, `blocker`, or
   `monitor`;
-- `reconcile_rule`: the rule that host logs remain raw facts while Goal
-  Harness stores only compact control projection.
+- `reconcile_rule`: the rule that host logs remain raw facts while LoopX stores
+  only compact control projection.
 
 Run:
 

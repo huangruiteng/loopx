@@ -14,14 +14,13 @@ incident report, or launch draft.
 - [Product vision](product/vision.md): long-term product direction and the
   creator-operator medium-term case.
 - [Codex CLI TUI-first loop](product/codex-cli-tui-loop.md): first-class
-  Codex CLI onboarding target where one visible TUI message starts Goal
-  Harness, with session-attached automation as the preferred follow-up.
+  Codex CLI onboarding target where one visible TUI message starts LoopX, with
+  session-attached automation as the preferred follow-up.
 - [Codex CLI first-run rehearsal](product/codex-cli-first-run-rehearsal.md):
   shortest public route from no-clone install to one-message TUI bootstrap and
   proof-capture fixtures.
 - [Architecture](architecture.md): core concepts and control-plane shape.
-- [Integration guide](integration.md): how to connect a project to Goal
-  Harness.
+- [Integration guide](integration.md): how to connect a project to LoopX.
 - [Showcases](showcases/README.md): public-safe cases, reproducible demos, and
   frontend-ready case metadata.
 - [Benchmark developer workflow](benchmark-developer-workflow.md): how to run,
@@ -61,6 +60,7 @@ incident report, or launch draft.
 ### Contracts
 
 - [Status data contract](status-data-contract.md)
+- [Session runtime to LoopX projection v0](reference/protocols/session-runtime-loopx-projection-v0.md)
 - [Interface budget contract](interface-budget-contract.md)
 - [Host integration surface v0](reference/protocols/host-integration-surface-v0.md)
 - [Reward gate direct-write contract](reward-gate-direct-write-contract.md)
