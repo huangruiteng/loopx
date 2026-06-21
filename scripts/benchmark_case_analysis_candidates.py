@@ -42,6 +42,20 @@ def parse_args() -> argparse.Namespace:
         default="json",
         help="Output format.",
     )
+    parser.add_argument(
+        "--include-proposed-records",
+        action="store_true",
+        help=(
+            "Include proposal-only benchmark_case_analysis_v0 record drafts. "
+            "This does not edit the case-analysis file."
+        ),
+    )
+    parser.add_argument(
+        "--proposal-limit",
+        type=int,
+        default=None,
+        help="Maximum proposal records to include when --include-proposed-records is set.",
+    )
     return parser.parse_args()
 
 
@@ -50,6 +64,8 @@ def main() -> int:
     report = build_case_analysis_candidate_report(
         ledger=load_json(args.ledger),
         analysis=load_json(args.analysis),
+        include_proposed_records=args.include_proposed_records,
+        proposal_limit=args.proposal_limit,
     )
     if args.format == "markdown":
         sys.stdout.write(render_case_analysis_candidate_report_markdown(report))

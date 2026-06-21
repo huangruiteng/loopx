@@ -16,7 +16,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from goal_harness.benchmark_case_analysis import (  # noqa: E402
     BENCHMARK_CASE_ANALYSIS_CANDIDATE_REPORT_SCHEMA_VERSION,
+    BENCHMARK_CASE_ANALYSIS_UPSERT_PROPOSAL_SCHEMA_VERSION,
     build_case_analysis_candidate_report,
+    build_case_analysis_upsert_proposals,
     render_case_analysis_candidate_report_markdown,
 )
 
@@ -113,6 +115,40 @@ def test_candidate_report_from_fixture() -> None:
     assert_public_safe(render_case_analysis_candidate_report_markdown(report))
 
 
+def test_proposed_records_from_fixture() -> None:
+    proposals = build_case_analysis_upsert_proposals(
+        ledger=fixture_ledger(),
+        analysis=fixture_analysis(),
+    )
+    assert len(proposals) == 2, proposals
+    first = proposals[0]
+    assert first["schema_version"] == (
+        BENCHMARK_CASE_ANALYSIS_UPSERT_PROPOSAL_SCHEMA_VERSION
+    ), first
+    assert first["proposal_status"] == "proposal_only_not_applied", first
+    assert first["case_id"] == "new-no-uplift", first
+    assert first["classification"] == "no_uplift_candidate_proposal", first
+    assert first["source_boundary"]["proposal_only"] is True, first
+    assert first["source_boundary"]["raw_logs_recorded"] is False, first
+    assert first["source_boundary"]["raw_task_text_recorded"] is False, first
+    assert first["source_boundary"]["trajectory_recorded"] is False, first
+    assert_public_safe(json.dumps(proposals, ensure_ascii=False))
+
+    report = build_case_analysis_candidate_report(
+        ledger=fixture_ledger(),
+        analysis=fixture_analysis(),
+        include_proposed_records=True,
+        proposal_limit=1,
+    )
+    assert report["candidate_count"] == 2, report
+    assert report["proposed_record_count"] == 1, report
+    assert len(report["proposed_records"]) == 1, report
+    assert "Proposed Case-Analysis Records" in (
+        render_case_analysis_candidate_report_markdown(report)
+    )
+    assert_public_safe(render_case_analysis_candidate_report_markdown(report))
+
+
 def test_candidate_cli_on_fixture() -> None:
     with tempfile.TemporaryDirectory(prefix="case-analysis-candidates-") as tmp:
         root = Path(tmp)
@@ -149,6 +185,27 @@ def test_candidate_cli_on_fixture() -> None:
         assert "new-no-uplift" in markdown, markdown
         assert "existing-case" not in markdown, markdown
         assert_public_safe(markdown)
+        proposals_output = subprocess.check_output(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "benchmark_case_analysis_candidates.py"),
+                "--ledger",
+                str(ledger_path),
+                "--analysis",
+                str(analysis_path),
+                "--include-proposed-records",
+                "--proposal-limit",
+                "1",
+            ],
+            text=True,
+        )
+        proposal_report = json.loads(proposals_output)
+        assert proposal_report["candidate_count"] == 2, proposal_report
+        assert proposal_report["proposed_record_count"] == 1, proposal_report
+        assert proposal_report["proposed_records"][0]["proposal_status"] == (
+            "proposal_only_not_applied"
+        ), proposal_report
+        assert_public_safe(proposals_output)
 
 
 def test_goal_harness_benchmark_cli_on_fixture() -> None:
@@ -180,6 +237,32 @@ def test_goal_harness_benchmark_cli_on_fixture() -> None:
         assert payload["read_boundary"]["task_text_read"] is False, payload
         assert payload["read_boundary"]["trajectory_read"] is False, payload
         assert_public_safe(output)
+        proposals_output = subprocess.check_output(
+            [
+                str(REPO_ROOT / "scripts" / "goal-harness"),
+                "--format",
+                "json",
+                "benchmark",
+                "case-analysis-candidates",
+                "--run-ledger-path",
+                str(ledger_path),
+                "--case-analysis-path",
+                str(analysis_path),
+                "--include-proposed-records",
+                "--proposal-limit",
+                "1",
+            ],
+            text=True,
+        )
+        proposals_payload = json.loads(proposals_output)
+        assert proposals_payload["ok"] is True, proposals_payload
+        assert proposals_payload["report"]["proposed_record_count"] == 1, (
+            proposals_payload
+        )
+        assert proposals_payload["report"]["proposed_records"][0][
+            "proposal_status"
+        ] == "proposal_only_not_applied", proposals_payload
+        assert_public_safe(proposals_output)
         markdown = subprocess.check_output(
             [
                 str(REPO_ROOT / "scripts" / "goal-harness"),
@@ -216,10 +299,31 @@ def test_default_assets_have_public_safe_candidates() -> None:
         and candidate["trajectory_recorded"] is False
         for candidate in report["candidates"]
     ), report
+    proposal_output = subprocess.check_output(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "benchmark_case_analysis_candidates.py"),
+            "--include-proposed-records",
+            "--proposal-limit",
+            "3",
+        ],
+        text=True,
+    )
+    assert_public_safe(proposal_output)
+    proposal_report = json.loads(proposal_output)
+    assert proposal_report["proposed_record_count"] == 3, proposal_report
+    assert all(
+        record["source_boundary"]["raw_logs_recorded"] is False
+        and record["source_boundary"]["raw_task_text_recorded"] is False
+        and record["source_boundary"]["trajectory_recorded"] is False
+        and record["source_boundary"]["proposal_only"] is True
+        for record in proposal_report["proposed_records"]
+    ), proposal_report
 
 
 def main() -> None:
     test_candidate_report_from_fixture()
+    test_proposed_records_from_fixture()
     test_candidate_cli_on_fixture()
     test_goal_harness_benchmark_cli_on_fixture()
     test_default_assets_have_public_safe_candidates()
