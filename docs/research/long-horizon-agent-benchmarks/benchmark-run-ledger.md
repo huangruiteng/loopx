@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-21T19:59:10+08:00`
+- updated_at: `2026-06-22T02:36:18+08:00`
 
 ## Case Decisions
 
@@ -35,7 +35,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `travel-planning` | `baseline_failed_treatment_candidate` | - | `2` |
 | `swe-marathon` | `find-network-alignments` | `baseline_failed_treatment_candidate` | - | `1` |
 | `swe-marathon` | `rust-c-compiler` | `single_arm_recorded` | - | `2` |
-| `swe-marathon` | `zstd-decoder` | `paired_treatment_regressed` | - | `2` |
+| `swe-marathon` | `zstd-decoder` | `paired_treatment_regressed` | `case_exception_research` | `3` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `single_arm_recorded` | - | `2` |
 | `terminal-bench@2.0` | `build-cython-ext` | `baseline_passed_not_current_treatment_priority` | - | `11` |
 | `terminal-bench@2.0` | `cobol-modernization` | `paired_baseline_solved_treatment_preserved` | - | `2` |
@@ -61,16 +61,17 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 | Priority | Benchmark | Case | Arm | Repair Class | Failure | Repair Profile | Next Action |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `P0` | `terminal-bench@2.0` | `mteb-retrieve` | `codex_loopx_treatment` | `benchmark_environment_setup_contract` | `environment_setup_failed_before_worker` | benchmark_environment_setup_contract | repair or preflight the benchmark environment setup layer before rerunning this case; the failure occurred before Codex/worker startup, so require compact environment setup read... |
 | `P0` | `terminal-bench@2.0` | `mteb-retrieve` | `codex_goal_mode_baseline` | `benchmark_environment_setup_contract` | `environment_setup_failed_before_worker` | benchmark_environment_setup_contract | repair or preflight the benchmark environment setup layer before rerunning this case; the failure occurred before Codex/worker startup, so require compact environment setup read... |
+| `P0` | `terminal-bench@2.0` | `mteb-retrieve` | `codex_loopx_treatment` | `benchmark_environment_setup_contract` | `environment_setup_failed_before_worker` | benchmark_environment_setup_contract | repair or preflight the benchmark environment setup layer before rerunning this case; the failure occurred before Codex/worker startup, so require compact environment setup read... |
 | `P0` | `terminal-bench@2.0` | `nginx-request-logging` | `hardened_codex_worker_materialization_probe` | `runner_codex_cli_materialization` | `codex_cli_not_on_path` | runner_codex_cli_materialization | materialize an existing Codex CLI on the worker PATH or provide an equivalent launcher before rerunning; require a compact setup diagnostic that proves the Codex preflight reach... |
 | `P0` | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_goal_mode_baseline` | `skillsbench_codex_acp_runtime_preflight` | `skillsbench_codex_acp_binary_missing` | required_preflight=codex_acp_runtime_dependency_preflight,codex_acp_runtime_launch_preflight,skillsbench_compact_failure_class | prove the Codex ACP runtime can start inside the SkillsBench sandbox before rerunning or launching treatment; require compact dependency and launch preflight evidence instead of... |
 | `P0` | `skillsbench@1.1` | `setup-fuzzing-py` | `codex_goal_mode_baseline` | `skillsbench_codex_acp_runtime_preflight` | `skillsbench_codex_acp_runtime_libssl_missing` | required_preflight=codex_acp_runtime_dependency_preflight,codex_acp_runtime_launch_preflight,skillsbench_compact_failure_class | prove the Codex ACP runtime can start inside the SkillsBench sandbox before rerunning or launching treatment; require compact dependency and launch preflight evidence instead of... |
 | `P0` | `skillsbench@1.1` | `suricata-custom-exfil` | `codex_loopx_treatment` | `skillsbench_codex_acp_runtime_preflight` | `skillsbench_codex_acp_jsonrpc_internal_error` | required_preflight=codex_acp_runtime_dependency_preflight,codex_acp_runtime_launch_preflight,skillsbench_compact_failure_class | prove the Codex ACP runtime can start inside the SkillsBench sandbox before rerunning or launching treatment; require compact dependency and launch preflight evidence instead of... |
 | `P0` | `terminal-bench@2.0` | `make-doom-for-mips` | `codex_loopx_treatment` | `verifier_attribution_required` | `score_failure_unattributed` |  | collect finer compact failure attribution before launching treatment |
 | `P0` | `terminal-bench@2.0` | `install-windows-3.11` | `codex_loopx_treatment` | `worker_verifier_alignment` | `worker_validation_scope_ambiguous_official_score_failure` |  | align worker self-validation with verifier-facing compact evidence before repeating |
-| `P1` | `terminal-bench@2.0` | `pytorch-model-recovery` | `codex_loopx_treatment` | `case_exception_research` | `agent_exception_before_solution_completion` |  | inspect compact exception attribution and form a case-level intervention hypothesis |
+| `P1` | `swe-marathon` | `zstd-decoder` | `swe_marathon_loopx_prompt_polling_treatment_10800` | `case_exception_research` | `agent_exception_before_solution_completion` |  | inspect compact exception attribution and form a case-level intervention hypothesis |
 | `P1` | `terminal-bench@2.0` | `pytorch-model-recovery` | `codex_goal_mode_baseline` | `case_exception_research` | `agent_exception_before_solution_completion` |  | inspect compact exception attribution and form a case-level intervention hypothesis |
+| `P1` | `terminal-bench@2.0` | `pytorch-model-recovery` | `codex_loopx_treatment` | `case_exception_research` | `agent_exception_before_solution_completion` |  | inspect compact exception attribution and form a case-level intervention hypothesis |
 | `P1` | `terminal-bench@2.0` | `make-doom-for-mips` | `codex_goal_mode_baseline` | `case_timeout_research` | `agent_timeout_before_solution_completion` |  | inspect compact timeout context and decide whether the run needs a private long-horizon timeout tier |
 | `P1` | `skillsbench@1.1` | `dapt-intrusion-detection` | `skillsbench_codex_acp_blind_loop_baseline` | `skillsbench_setup_preflight_selection` | `skillsbench_docker_apt_setup_risk_preflight_blocked` | skillsbench_setup_preflight_selection | select a non-apt-risk SkillsBench task for the next full baseline/treatment pair or repair the Docker apt setup route before rerunning this task |
 
@@ -206,6 +207,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `swe-marathon` | `rust-c-compiler` | `swe_marathon_host_codex_loopx_packet_only_observation` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `cloud-ecs/swe-marathon-rust-c-compiler-treatment-20260621T060729Z/jobs/swe-marathon-rust-c-compiler-gh-treatment-r1/harbor_job_result.compact.json` |
 | `swe-marathon` | `zstd-decoder` | `swe_marathon_host_codex_app_server_goal_baseline` | `` | `1.0` | `` | `` | `none` | `cloud-ecs/swe-marathon-zstd-decoder-baseline-r2-20260621T062826Z/jobs/swe-marathon-zstd-decoder-app-server-baseline-r2/harbor_job_result.compact.json` |
 | `swe-marathon` | `zstd-decoder` | `swe_marathon_loopx_prompt_polling_treatment` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `cloud-ecs/swe-marathon-zstd-decoder-gh-prompt-polling-pr433-20260621T110515Z/harbor_job_result.pr438.compact.json` |
+| `swe-marathon` | `zstd-decoder` | `swe_marathon_loopx_prompt_polling_treatment_10800` | `` | `0.0` | `` | `` | `agent_exception_before_solution_completion` | `cloud-ecs/swe-marathon-zstd-decoder-gh-prompt-polling-10800-20260621T204620/harbor_job_result.compact.json` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `hardened_codex_worker_materialization_runtime_probe` | `` | `missing` | `` | `` | `not_applicable_worker_materialization_probe` | `.local/private-benchmark-jobs/terminal-bench-nginx-hardened-worker-materialization-runtime-probe-20260616T113050CST/jobs/terminal_bench_nginx_request_logging_hardened_worker_materialization_runtime_probe_20260616T113050CST/result.json` |
 | `terminal-bench-worker-materialization@v0` | `nginx-request-logging` | `hardened_codex_worker_materialization_runtime_probe` | `` | `missing` | `` | `` | `not_applicable_worker_materialization_probe` | `` |
 | `terminal-bench@2.0` | `build-cython-ext` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `codex_model_access_unsupported_for_account` | `.local/private-benchmark-jobs/terminal-bench-build-cython-ext-goal-mode-baseline-20260614T175604CST/jobs/terminal_bench_2_0_build_cython_ext_codex_goal_mode_baseline_real_no_upload_20260614T175604CST/result.json` |
