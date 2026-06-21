@@ -154,8 +154,8 @@ def main() -> int:
     assert "docs/showcases/README.md" in repo_readme, "README must link showcases"
     for phrase in (
         "Loop engineering for long-running AI agents.",
-        "## 3-Minute PoC Path",
         "https://huangruiteng.github.io/loopx/frontstage/",
+        "docs/outreach/frontstage-demo-script.md",
         "## See It In Action",
         "docs/showcases/cases/0617-blocked-p0-safe-rotation.md",
         "docs/showcases/cases/0619-loopx-self-iteration.md",

@@ -19,25 +19,10 @@ loop 状态：目标、用户决策、agent todo、认领关系、scope、证据
 [English](README.md) · [快速开始](#快速开始) · [Showcases](docs/showcases/README.md) ·
 [用户群与反馈](#用户群与反馈) · [产品愿景](docs/product/vision.md) · [架构](docs/architecture.md)
 
-## 3 分钟 PoC 路径
-
-先打开 [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/)。
-这是公开 showcase 页面，不是控制面后台：它用三张主案例卡先讲清楚 LoopX 的
-loop-engineering 价值，再让用户进入 CLI、文档或反馈。
-
-| 时间 | 展示 | 传达什么 |
-| --- | --- | --- |
-| 0:00 | Frontstage 首屏和 canonical top-3 cases | LoopX 不是另一个 executor，而是治理长期 agent loop 的控制面。 |
-| 1:00 | Blocked P0 demo 和 safe fallback lane | 需要人判断的地方明确停下，安全侧路仍可继续。 |
-| 2:00 | Self-iteration 与 hardware-agent cards | 同一控制面可以覆盖公开 Git 证据和脱敏贡献者工作流。 |
-| 2:40 | GitHub Issue / PR 作为主反馈入口 | PoC 早期最需要 onboarding 摩擦、真实 case 和 public-safe 示例反馈。 |
-
-完整讲解用 [3 分钟 demo script](docs/outreach/frontstage-demo-script.md)。
-最小可复现行为证明：
-
-```bash
-python3 examples/showcase-0617-blocked-p0-safe-rotation-smoke.py
-```
+第一次看 LoopX？先打开
+[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) 看公开
+案例，或直接跳到 [快速开始](#快速开始)。[3 分钟 demo script](docs/outreach/frontstage-demo-script.md)
+只给演示者做 timed walkthrough 用。
 
 ## 它是什么
 

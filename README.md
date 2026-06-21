@@ -28,27 +28,11 @@ LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地
 
 > Keep the loop moving. Keep the judgment human.
 
-## 3-Minute PoC Path
-
-Open the [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/)
-first. It is the public showcase surface, not an ops dashboard: three case
-cards explain the loop-engineering pattern before a new user reads any CLI
-output.
-
-| Minute | Show | Why It Matters |
-| --- | --- | --- |
-| 0:00 | The frontstage hero and canonical top-3 cases | LoopX is about governed agent loops, not another executor. |
-| 1:00 | The blocked-P0 demo and safe fallback lane | User judgment can stay explicit while safe work continues. |
-| 2:00 | The self-iteration and hardware-agent cards | The same control plane scales from public Git evidence to redacted contributor workflows. |
-| 2:40 | GitHub Issues / PRs as the primary feedback path | Early PoC users can report onboarding friction and propose public-safe cases immediately. |
-
-For a timed walkthrough, use the
-[3-minute demo script](docs/outreach/frontstage-demo-script.md). To reproduce
-the smallest behavior proof locally:
-
-```bash
-python3 examples/showcase-0617-blocked-p0-safe-rotation-smoke.py
-```
+New here? Start with the
+[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) for a
+visual tour, or jump straight to [Quick Start](#quick-start). The
+[3-minute demo script](docs/outreach/frontstage-demo-script.md) is for
+presenters who need a timed walkthrough.
 
 ## What Is It?
 
