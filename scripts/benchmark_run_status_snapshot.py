@@ -21,6 +21,9 @@ from goal_harness.rollout_event_log import (  # noqa: E402
     build_rollout_event,
     rollout_event_log_path,
 )
+from goal_harness.benchmark_core import (  # noqa: E402
+    build_benchmark_observable_handle_policy,
+)
 
 
 DEFAULT_COMPACT_KEYS = (
@@ -38,6 +41,12 @@ DEFAULT_COMPACT_KEYS = (
     "official_task_score",
     "score_failure_attribution",
     "first_blocker",
+    "ready_for_compact_result_ingest",
+    "ready_for_compact_failure_marker",
+    "compact_failure_class",
+    "failure_class",
+    "terminal_closeout",
+    "external_handle_terminal",
     "runner_return_status",
     "accuracy",
     "n_resolved",
@@ -155,6 +164,7 @@ def snapshot_run(
             _capture_summary(path, run_dir, patterns, now)
             for path in sorted(run_dir.glob("**/tmux_capture.txt"))[:max_captures]
         ]
+    item["observable_handle_policy"] = build_benchmark_observable_handle_policy(item)
     return item
 
 
@@ -229,6 +239,31 @@ def _snapshot_rollout_details(payload: dict[str, Any]) -> dict[str, Any]:
         "capture_file_count": sum(
             len(run.get("capture_files") or []) for run in existing
         ),
+        "terminal_closeout_count": sum(
+            1
+            for run in existing
+            if isinstance(run.get("observable_handle_policy"), dict)
+            and run["observable_handle_policy"].get("terminal_closeout") is True
+        ),
+        "cleanup_required_count": sum(
+            1
+            for run in existing
+            if isinstance(run.get("observable_handle_policy"), dict)
+            and run["observable_handle_policy"].get("cleanup_required") is True
+        ),
+        "monitor_poll_allowed_count": sum(
+            1
+            for run in existing
+            if isinstance(run.get("observable_handle_policy"), dict)
+            and run["observable_handle_policy"].get("monitor_poll_allowed") is True
+        ),
+        "blocker_required_count": sum(
+            1
+            for run in existing
+            if isinstance(run.get("observable_handle_policy"), dict)
+            and run["observable_handle_policy"].get("blocker_required_before_rerun")
+            is True
+        ),
     }
 
 
@@ -264,7 +299,8 @@ def append_status_rollout_event(
         summary=(
             "benchmark status snapshot recorded: "
             f"runs={details['run_count']} existing={details['exists_count']} "
-            f"alive={details['pid_alive_count']} compacts={details['compact_result_count']}"
+            f"alive={details['pid_alive_count']} compacts={details['compact_result_count']} "
+            f"cleanup={details['cleanup_required_count']}"
         ),
         details=details,
     )

@@ -41,6 +41,10 @@ from .io import (
     optional_float,
     optional_positive_int,
 )
+from .observable_handles import (
+    BENCHMARK_OBSERVABLE_HANDLE_POLICY_SCHEMA_VERSION,
+    build_benchmark_observable_handle_policy,
+)
 from .parity import (
     CODEX_APP_PARITY_REQUIRED_CLI_CALLS,
     CODEX_APP_PARITY_POSTHOC_CHECK_SCHEMA_VERSION,
@@ -76,6 +80,7 @@ __all__ = [
     "BENCHMARK_ATTEMPT_ACCOUNTING_SCHEMA_VERSION",
     "BENCHMARK_CANONICAL_LIFECYCLE_SCHEMA_VERSION",
     "BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION",
+    "BENCHMARK_OBSERVABLE_HANDLE_POLICY_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_LAUNCH_PLAN_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_RUNNER_BATCH_SCHEMA_VERSION",
@@ -86,6 +91,7 @@ __all__ = [
     "BenchmarkLifecyclePhase",
     "BenchmarkRequest",
     "build_benchmark_attempt_accounting",
+    "build_benchmark_observable_handle_policy",
     "build_run_permission_policy",
     "build_benchmark_candidate_source_boundary",
     "build_codex_app_parity_posthoc_check",

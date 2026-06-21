@@ -30,6 +30,13 @@ def main() -> int:
         run = root / "terminal-case-r1"
         work = run / "host-agent-work" / "host-codex-goal-abc"
         work.mkdir(parents=True)
+        running_run = root / "skills-case-running-r1"
+        running_run.mkdir()
+        (running_run / "status.env").write_text("running\n", encoding="utf-8")
+        (running_run / "pid.private").write_text(str(os.getpid()), encoding="utf-8")
+        failure_run = root / "swe-case-terminal-failure-r1"
+        failure_run.mkdir()
+        (failure_run / "status.env").write_text("rc=1\n", encoding="utf-8")
         requests = work / "requests"
         requests.mkdir()
         (requests / "abc.request.json").write_text("{}", encoding="utf-8")
@@ -67,6 +74,22 @@ def main() -> int:
             ),
             encoding="utf-8",
         )
+        (failure_run / "materialization.compact.json").write_text(
+            json.dumps(
+                {
+                    "compact_benchmark_run": {
+                        "benchmark_id": "swe-marathon",
+                        "case_id": "swe-case",
+                        "ready_for_compact_failure_marker": True,
+                        "compact_failure_class": (
+                            "detached_worker_ended_without_trial_result"
+                        ),
+                        "external_handle_terminal": True,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
 
         proc = subprocess.run(
             [
@@ -76,6 +99,10 @@ def main() -> int:
                 str(root),
                 "--label",
                 "terminal-case-r1",
+                "--label",
+                "skills-case-running-r1",
+                "--label",
+                "swe-case-terminal-failure-r1",
                 "--pattern",
                 "Working",
                 "--pretty",
@@ -90,6 +117,8 @@ def main() -> int:
         assert payload["boundary"]["local_paths_recorded"] is False
         assert payload["run_root_recorded"] is False
         item = payload["runs"][0]
+        running_item = payload["runs"][1]
+        failure_item = payload["runs"][2]
         assert item["status"] == "rc=0"
         assert item["run_dir_recorded"] is False
         assert item["pid_alive"] is True
@@ -109,6 +138,30 @@ def main() -> int:
         assert item["bridge_request_dirs"][0]["request_count"] == 1
         assert item["bridge_request_dirs"][0]["response_count"] == 1
         assert item["capture_files"][0]["patterns"]["Working"] is True
+        closeout_policy = item["observable_handle_policy"]
+        assert closeout_policy["schema_version"] == (
+            "benchmark_observable_handle_policy_v0"
+        )
+        assert closeout_policy["one_shot_expected"] is True
+        assert closeout_policy["keep_alive_allowed"] is False
+        assert closeout_policy["duplicate_rerun_allowed"] is False
+        assert closeout_policy["terminal_closeout"] is True
+        assert closeout_policy["compact_result_closeout"] is True
+        assert closeout_policy["cleanup_required"] is True
+        assert closeout_policy["disable_scheduler_label_required"] is True
+        assert closeout_policy["unload_launchd_label_required"] is True
+        assert closeout_policy["monitor_poll_allowed"] is False
+        assert closeout_policy["boundary"]["local_paths_recorded"] is False
+        running_policy = running_item["observable_handle_policy"]
+        assert running_policy["terminal_closeout"] is False
+        assert running_policy["cleanup_required"] is False
+        assert running_policy["monitor_poll_allowed"] is True
+        assert running_policy["next_action"] == "poll_observable_handle"
+        failure_policy = failure_item["observable_handle_policy"]
+        assert failure_policy["terminal_closeout"] is True
+        assert failure_policy["compact_failure_closeout"] is True
+        assert failure_policy["cleanup_required"] is True
+        assert failure_policy["blocker_required_before_rerun"] is False
         assert "secret raw transcript" not in proc.stdout
         assert str(root) not in proc.stdout
 
@@ -121,6 +174,10 @@ def main() -> int:
                 str(root),
                 "--label",
                 "terminal-case-r1",
+                "--label",
+                "skills-case-running-r1",
+                "--label",
+                "swe-case-terminal-failure-r1",
                 "--pattern",
                 "Working",
                 "--record-rollout-event",
@@ -149,9 +206,13 @@ def main() -> int:
         event = events[0]
         assert event["event_kind"] == "benchmark_status", event
         assert event["status"] == "running", event
-        assert event["details"]["run_count"] == 1, event
-        assert event["details"]["pid_alive_count"] == 1, event
-        assert event["details"]["compact_result_count"] == 2, event
+        assert event["details"]["run_count"] == 3, event
+        assert event["details"]["pid_alive_count"] == 2, event
+        assert event["details"]["compact_result_count"] == 3, event
+        assert event["details"]["terminal_closeout_count"] == 2, event
+        assert event["details"]["cleanup_required_count"] == 2, event
+        assert event["details"]["monitor_poll_allowed_count"] == 1, event
+        assert event["details"]["blocker_required_count"] == 0, event
         assert event["boundary"]["raw_logs_recorded"] is False, event
         assert event["boundary"]["absolute_paths_recorded"] is False, event
 

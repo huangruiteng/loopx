@@ -127,6 +127,21 @@ does not emit task text, trajectories, raw logs, or capture content. With
 event to the rollout log so the control plane can see that a poll happened
 without seeing host paths or capture text.
 
+For local `launchd` or similar scheduler jobs, treat benchmark case launches as
+one-shot observable runs. Do not use `KeepAlive` to rerun a case label
+automatically: a successful compact closeout or a terminal compact failure must
+unload/disable the scheduler label before any rerun is considered. The snapshot
+adds an `observable_handle_policy` per run with these public-safe decisions:
+
+- `monitor_poll_allowed=true`: keep observing the pid/job handle.
+- `cleanup_required=true`: unload/disable the one-shot label, then ingest the
+  compact closeout or write the precise blocker named by `next_action`.
+- `blocker_required_before_rerun=true`: the observable handle ended or vanished
+  without a compact closeout; write that blocker before any rerun.
+
+This keeps reruns explicit and countable while preserving enough handle state
+for another developer or heartbeat to resume polling without chat memory.
+
 ### Goal Rollout Event Log
 
 Each benchmark case should leave a compact Goal Harness rollout trail, separate

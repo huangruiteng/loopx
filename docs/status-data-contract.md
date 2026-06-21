@@ -2114,6 +2114,16 @@ Project adapters may add compact public-safe fields such as `health_check`,
 Raw logs, prompts, private metrics, workspace paths, and internal document
 links belong in private run payloads, not in compact index records.
 
+Benchmark status snapshots may include
+`runs[].observable_handle_policy` with
+`schema_version=benchmark_observable_handle_policy_v0`. This is an additive,
+public-safe lifecycle projection for one-shot benchmark schedulers. Consumers
+may use it to decide whether a run should continue polling, unload/disable a
+local `launchd` label, or write a precise missing-handle blocker before any
+rerun. It must be derived from compact artifacts, pid liveness, and run labels
+only; it must not expose raw logs, task text, trajectories, scheduler payloads,
+or local paths.
+
 ## Boundary
 
 The JSON export is safe to feed to a local dashboard only if the registry ids,
