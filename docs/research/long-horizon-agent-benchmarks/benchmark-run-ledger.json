@@ -10116,6 +10116,37 @@
               "status": "completed",
               "submit_eligible": false,
               "worker_bridge_status": "not_required"
+            },
+            {
+              "agent_declared_done": false,
+              "arm_id": "codex_app_server_goal_observation",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T235333Z/terminal-bench-nginx-request-logging-app-server-r1/terminal_bench_official_result.compact.json"
+              },
+              "benchmark_id": "terminal-bench@2.0",
+              "case_id": "nginx-request-logging",
+              "case_ids": [
+                "nginx-request-logging"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "goal_harness_inside_case": false,
+              "job_name": "nginx-request-logging-host-app-server-goal-20260621t001123z",
+              "leaderboard_evidence": false,
+              "mode": "terminal_bench_host_codex_app_server_goal",
+              "notes": "Terminal-Bench nginx-request-logging cloud app-server Goal observation; compact result only; no raw task/log/trajectory read.",
+              "official_passed": true,
+              "official_score": 1.0,
+              "recorded_at": "2026-06-21T08:14:52+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "terminal-bench-nginx-request-logging-app-server-goal-20260621T001123Z",
+              "run_id": "249574f7cbde",
+              "score_status": "passed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false
             }
           ]
         },
@@ -10491,7 +10522,7 @@
           ]
         }
       },
-      "run_count": 86
+      "run_count": 87
     }
   },
   "schema_version": "benchmark_run_ledger_v0",
@@ -10502,5 +10533,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-21T08:03:15+08:00"
+  "updated_at": "2026-06-21T08:14:52+08:00"
 }

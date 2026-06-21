@@ -44,6 +44,7 @@ Latest batch id: `parallel-benchmark-20260620T235333Z`.
 | Benchmark | Case | Route / Arm | Compact Status | Current Status | Next Action |
 | --- | --- | --- | --- | --- | --- |
 | `terminal-bench@2.0` | `multi-source-data-merger` | host Codex app-server Goal baseline observation | compact official score `0.0`; ledger upserted under `terminal-bench-multi-source-data-merger-app-server-goal-20260620T235333Z` as `codex_app_server_goal_observation`; raw transcript not recorded | completed: the cloud app-server Goal rerun reached official scoring and failed verification | Treat as a current-route baseline observation for this historical pass/control case, not a paired comparison. Do not infer runner breakage from score alone; compare against the previous current-protocol pass rows before selecting a treatment or alternate pass-control case. |
+| `terminal-bench@2.0` | `nginx-request-logging` | host Codex app-server Goal alternate pass/control observation | compact official score `1.0`; ledger upserted under `terminal-bench-nginx-request-logging-app-server-goal-20260621T001123Z` as `codex_app_server_goal_observation`; raw transcript not recorded | completed: the cloud app-server Goal route reached official scoring and passed | Treat as a route sanity pass: current app-server Goal can solve at least one historical pass/control case. Next Terminal-Bench work should avoid another identical observation-only pass and instead choose treatment or a case with unresolved route/debug value. |
 | `skillsbench@1.1` | `react-performance-debugging` | native app-server Goal baseline, high reasoning | compact result pending | running: no public compact closeout yet in the latest snapshot | Poll to compact result or precise blocker; if it closes at zero, inspect public worker-trace materialization before treating it as solver-quality evidence. |
 | `swe-marathon` | `rust-c-compiler` | host Codex app-server Goal completion-aware | compact blocker `swe_marathon_environment_or_image_setup_failure`; no agent execution or verifier result present; compact signals include docker-build, network, and resource labels only | blocked before agent execution | Productize or rerun through a setup/prewarm gate before counting this as an agent-quality result. Keep the exact exception text private and record only compact setup signals. |
 | `terminal-bench@2.0` | `build-cython-ext` | host Codex app-server Goal, marker/official-verifier gated | latest observe-only compact official score `1.0`; ledger upserted under `terminal-bench-build-cython-ext-app-server-observe-pr346-r1-20260621T203200Z`; earlier completion-aware r2 scored `0.0`; raw transcript not recorded | completed: the observe-only native Goal closeout recovered the historical pass-case result while preserving public compact boundaries | Treat as a pass-case route canary. Do not spend another primary slot retrying the same route; next Terminal-Bench work should launch a treatment arm or move to a different historical pass/control case. |
@@ -64,6 +65,11 @@ Failure-attribution update:
   reached official scoring but returned `0.0` with
   `official_verifier_solution_failure`. This is a current-route baseline
   failure for a historical pass/control case, not a setup blocker.
+- `nginx-request-logging` under the same cloud app-server Goal route reached
+  official scoring and passed at `1.0`. This is current route evidence that
+  app-server Goal can complete at least one Terminal-Bench pass/control case;
+  `multi-source-data-merger` should be treated as case-specific or phase-
+  specific until a paired treatment/alternate route explains it.
 - `find-network-alignments` is now classified as
   `official_zero_native_goal_first_closeout_needs_solution_phase_counters`.
 - `rust-c-compiler` is blocked before agent execution by compact
@@ -85,6 +91,7 @@ or blocker.
 | --- | --- | --- | --- | --- |
 | P0 | `terminal-bench@2.0` | `build-cython-ext` | route canary with historical pass and latest observe-only native Goal result `1.0` | route canary complete; next slot should be treatment or a different historical pass/control case, not another route-readiness retry. |
 | P0 | `terminal-bench@2.0` | `multi-source-data-merger` | latest cloud app-server Goal baseline reached official scoring but failed at `0.0` | compare with previous current-protocol pass rows; next slot should be treatment or alternate pass/control rather than another identical baseline retry. |
+| P0 | `terminal-bench@2.0` | `nginx-request-logging` | latest cloud app-server Goal observation reached official score `1.0` | complete for route sanity; do not rerun immediately unless a future regression needs a fast pass/control guard. |
 | P0 | `swe-marathon` | `find-network-alignments` | first active SWE-Marathon cloud case completed at official score `0.0` | completed baseline; next slot should be a second small case or matching treatment arm. |
 | P0 | `swe-marathon` | `rust-c-compiler` | official README example and CPU-oriented case, but latest run blocked before agent execution | repair/prewarm Harbor environment or image setup first; rerun only after setup gate reaches agent execution. |
 | P0 | `skillsbench@1.1` | `llm-prefix-cache-replay` | runtime-refactor pair completed at `0.0/0.0`; native Goal post-PR-353 canary connected but produced no public worker trace | no immediate same-policy rerun; repair native worker trace or choose a new canary through the repaired trace path. |
@@ -93,7 +100,7 @@ or blocker.
 | P1 | `terminal-bench@2.0` | `make-doom-for-mips` | timeout/continuation attribution candidate | timeout phase attribution and app-server route canary complete. |
 | P1 | `terminal-bench@2.0` | `mteb-retrieve` | environment setup blocker candidate | environment setup preflight proves the task reaches agent or writes a compact blocker. |
 | P1 | `skillsbench@1.1` | `travel-planning` | recent cloud case completed at `0.0`; good low-risk sanity/control case | decide whether the next run is ACP control or native Goal route experiment. |
-| P2 | `terminal-bench@2.0` | `multi-source-data-merger`, `nginx-request-logging`, `large-scale-text-editing` | historical pass/non-regression controls | rerun only after the app-server route needs pass-case controls. |
+| P2 | `terminal-bench@2.0` | `large-scale-text-editing` | historical pass/non-regression control | rerun only after the app-server route needs another pass-case control. |
 
 ## Update Rule
 

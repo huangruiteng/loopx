@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-21T08:03:15+08:00`
+- updated_at: `2026-06-21T08:14:52+08:00`
 
 ## Case Decisions
 
@@ -48,7 +48,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `terminal-bench@2.0` | `merge-diff-arc-agi-task` | `baseline_passed_not_current_treatment_priority` | - | `1` |
 | `terminal-bench@2.0` | `mteb-retrieve` | `paired_baseline_environment_setup_repair_required` | - | `4` |
 | `terminal-bench@2.0` | `multi-source-data-merger` | `paired_baseline_solved_treatment_preserved` | - | `19` |
-| `terminal-bench@2.0` | `nginx-request-logging` | `paired_baseline_solved_treatment_preserved` | - | `7` |
+| `terminal-bench@2.0` | `nginx-request-logging` | `paired_baseline_solved_treatment_preserved` | - | `8` |
 | `terminal-bench@2.0` | `path-tracing` | `baseline_passed_not_current_treatment_priority` | - | `2` |
 | `terminal-bench@2.0` | `pytorch-model-recovery` | `paired_no_score_uplift_exception_research_required` | `case_exception_research` | `3` |
 | `terminal-bench@2.0` | `regex-log` | `paired_baseline_solved_treatment_preserved` | - | `2` |
@@ -276,6 +276,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `terminal-bench@2.0` | `nginx-request-logging` | `hardened_codex_worker_materialization_probe` | `` | `0.0` | `` | `` | `codex_cli_not_on_path` | `.local/private-benchmark-jobs/terminal-bench-nginx-hardened-worker-materialization-probe-20260616T111726CST/jobs/terminal_bench_nginx_request_logging_hardened_worker_materialization_probe_20260616T111726CST/result.json` |
 | `terminal-bench@2.0` | `nginx-request-logging` | `hardened_codex_worker_materialization_runtime_probe` | `` | `0.0` | `` | `` | `pre_worker_startup_blocker_recorded` | `.local/private-benchmark-jobs/terminal-bench-nginx-hardened-worker-materialization-runtime-probe-20260616T113050CST/jobs/terminal_bench_nginx_request_logging_hardened_worker_materialization_runtime_probe_20260616T113050CST/result.json` |
 | `terminal-bench@2.0` | `nginx-request-logging` | `hardened_codex_baseline` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-nginx-hardened-baseline-rerun-20260616T115916CST/jobs/terminal_bench_nginx_request_logging_hardened_baseline_real_no_upload_20260616T115916CST/result.json` |
+| `terminal-bench@2.0` | `nginx-request-logging` | `codex_app_server_goal_observation` | `` | `1.0` | `` | `` | `none` | `cloud-ecs/parallel-benchmark-20260620T235333Z/terminal-bench-nginx-request-logging-app-server-r1/terminal_bench_official_result.compact.json` |
 | `terminal-bench@2.0` | `path-tracing` | `codex_goal_mode_baseline` | `` | `missing` | `` | `` | `score_missing` | `.local/private-benchmark-jobs/terminal-bench-path-tracing-goal-mode-baseline-20260614T200518CST/baseline/.local/private-benchmark-jobs/terminal-bench-path-tracing-goal-mode-baseline-20260614T200518CST/baseline/jobs/terminal_bench_2_0_path_tracing_codex_goal_mode_baseline_real_no_upload_20260614T200518CST/result.json` |
 | `terminal-bench@2.0` | `path-tracing` | `codex_goal_mode_baseline` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-path-tracing-goal-mode-baseline-20260614T201017CST/baseline/jobs/terminal_bench_2_0_path_tracing_codex_goal_mode_baseline_real_no_upload_20260614T201017CST/result.json` |
 | `terminal-bench@2.0` | `pytorch-model-recovery` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `agent_exception_before_solution_completion` | `.local/private-benchmark-jobs/terminal-bench-pytorch-model-recovery-paired-repair-20260614T0659Z/baseline.benchmark-run.public.json` |
