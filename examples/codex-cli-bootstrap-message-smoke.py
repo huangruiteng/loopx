@@ -48,6 +48,10 @@ MUST_HAVE = (
     "quota spend-slot",
     "--source controller",
     "not first-run prerequisites",
+    "no-clone GitHub archive",
+    "install-from-github.sh",
+    "transcript-free validation checklist",
+    "no raw Codex transcripts, session files, credentials, private paths, stdout, or stderr persisted",
 )
 
 
@@ -56,6 +60,11 @@ def assert_message_contract(payload: dict[str, object]) -> None:
     assert payload["schema_version"] == "codex_cli_bootstrap_message_v0", payload
     assert payload["goal_id"] == GOAL_ID, payload
     assert payload["agent_id"] == AGENT_ID, payload
+    assert "install-from-github.sh" in str(payload["install_repair_command"]), payload
+    checklist = payload["first_run_validation_checklist"]
+    assert isinstance(checklist, list) and len(checklist) >= 5, payload
+    assert any("quota/status guard checked" in item for item in checklist), payload
+    assert any("no raw Codex transcripts" in item for item in checklist), payload
     message = str(payload["message"])
     normalized = " ".join(message.split())
     for phrase in MUST_HAVE:
@@ -94,9 +103,11 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     assert "Headless `codex exec` is an explicit fallback" in normalized_readme, readme
     assert "paste one message" in normalized_readme, readme
     assert "begin the Goal Harness loop" in normalized_readme, readme
+    assert "exact TUI paste block" in normalized_readme, readme
     assert "show the current goal, user gate, top todos, and next safe action" in normalized_readme, readme
     assert "first-run path should not require you to understand registry paths" in normalized_getting_started, getting_started
     assert "finish one bounded validated segment" in normalized_getting_started, getting_started
+    assert "transcript-free validation checklist" in normalized_getting_started, getting_started
     assert "optional automation checks after the one-message path works" in normalized_getting_started, getting_started
     assert "first useful TUI response should be a control-plane snapshot" in normalized_product_contract, product_contract
     assert "first TUI turn should perform one bounded, validated segment" in normalized_product_contract, product_contract
@@ -139,6 +150,9 @@ def main() -> int:
     )
     assert "# Codex CLI Goal Harness Bootstrap Message" in cli_markdown, cli_markdown
     assert "Copy the block below into Codex CLI TUI" in cli_markdown, cli_markdown
+    assert "Fresh Repo Install Repair" in cli_markdown, cli_markdown
+    assert "Transcript-Free Validation Checklist" in cli_markdown, cli_markdown
+    assert "install-from-github.sh" in cli_markdown, cli_markdown
     assert "one-message TUI bootstrap" in cli_markdown, cli_markdown
     assert_docs_surface_codex_cli_quickstart()
 

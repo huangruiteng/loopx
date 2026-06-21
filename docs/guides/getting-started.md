@@ -96,7 +96,10 @@ goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
 ```
 
 Keep that as the preferred interactive path: the human watches and steers in
-Codex CLI TUI, while Goal Harness owns quota/status/todos/gates/writeback.
+Codex CLI TUI, while Goal Harness owns quota/status/todos/gates/writeback. The
+generated packet also shows the no-clone install-repair command and a
+transcript-free validation checklist, so a fresh repo path can be reviewed
+without touching raw Codex session data.
 
 To review the whole one-message loop contract without running Codex, generate a
 pilot packet:

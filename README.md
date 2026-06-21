@@ -182,6 +182,9 @@ paste one message:
    goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
    ```
 
+   The generated packet includes the exact TUI paste block, the no-clone
+   install-repair command, and a transcript-free validation checklist.
+
 This is the primary Codex CLI path: the user keeps the visible TUI for steering,
 review, and takeover; Goal Harness supplies goal state, todo ownership, quota,
 gates, writeback, and the next safe action. Headless `codex exec` is an explicit

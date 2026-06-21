@@ -13,6 +13,7 @@ DEFAULT_HANDOFF_ADAPTER_KIND = "read_only_project_map_v0"
 DEFAULT_HANDOFF_ADAPTER_STATUS = "connected-read-only"
 DEFAULT_HANDOFF_NEXT_PROBE = "(omit --next-probe until a read-only pre-tick command exists)"
 SHARED_GLOBAL_REGISTRY = '"$HOME/.codex/goal-harness/registry.global.json"'
+NO_CLONE_INSTALL_URL = "https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh"
 
 
 def shell_arg(value: str) -> str:
@@ -29,6 +30,21 @@ if ! command -v {cli_bin_arg} >/dev/null 2>&1; then
     export PATH="$HOME/.local/bin:$PATH"
   else
     echo "goal-harness is not on PATH; clone the Goal Harness repo and run scripts/install-local.sh" >&2
+    exit 1
+  fi
+fi
+{cli_bin_arg} doctor >/dev/null"""
+
+
+def render_codex_cli_no_clone_preflight(*, cli_bin: str = "goal-harness") -> str:
+    cli_bin_arg = shell_arg(cli_bin)
+    return f"""export PATH="$HOME/.local/bin:$PATH"
+if ! command -v {cli_bin_arg} >/dev/null 2>&1; then
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL {NO_CLONE_INSTALL_URL} | bash
+    export PATH="$HOME/.local/bin:$PATH"
+  else
+    echo "goal-harness is not on PATH and curl is unavailable; install curl or use a contributor clone with scripts/install-local.sh" >&2
     exit 1
   fi
 fi
@@ -218,16 +234,26 @@ def build_codex_cli_bootstrap_message(
         cli_bin=cli_bin,
         agent_id=agent_id,
     )
+    install_repair_command = render_codex_cli_no_clone_preflight(cli_bin=cli_bin)
     refresh_command = f"{shell_arg(cli_bin)} refresh-state --goal-id {shell_arg(resolved_goal_id)}"
+    first_run_validation_checklist = [
+        "goal-harness doctor passed after no-clone install repair or existing install",
+        "repo connected conservatively or a concrete install/connect blocker was shown",
+        "quota/status guard checked with the registered agent id when available",
+        "current goal, concrete user gate or none, top todos, and next safe action shown in the TUI",
+        "one bounded segment validated before refresh-state and quota spend-slot",
+        "no raw Codex transcripts, session files, credentials, private paths, stdout, or stderr persisted",
+    ]
     message = render_codex_cli_bootstrap_message_text(
         project=resolved_project,
         goal_id=resolved_goal_id,
         agent_id=agent_id,
-        cli_preflight=render_cli_preflight(cli_bin=cli_bin),
+        cli_preflight=install_repair_command,
         connect_command=connect_command,
         quota_guard_command=quota_guard_command,
         refresh_command=refresh_command,
         quota_spend_command=quota_spend_command,
+        first_run_validation_checklist=first_run_validation_checklist,
     )
     return {
         "ok": True,
@@ -236,10 +262,12 @@ def build_codex_cli_bootstrap_message(
         "goal_id": resolved_goal_id,
         "agent_id": agent_id,
         "cli_bin": cli_bin,
+        "install_repair_command": install_repair_command,
         "connect_command": connect_command,
         "quota_guard_command": quota_guard_command,
         "refresh_command": refresh_command,
         "quota_spend_command": quota_spend_command,
+        "first_run_validation_checklist": first_run_validation_checklist,
         "message": message,
     }
 
@@ -317,10 +345,12 @@ def render_codex_cli_bootstrap_message_text(
     quota_guard_command: str,
     refresh_command: str,
     quota_spend_command: str,
+    first_run_validation_checklist: list[str],
 ) -> str:
     agent_line = f"Use registered Goal Harness agent id `{agent_id}` when claiming or spending." if agent_id else (
         "If this project has registered agents, inspect the registry and use the correct registered agent id before claiming todos."
     )
+    checklist = "\n".join(f"- {item}" for item in first_run_validation_checklist)
     return f"""Start the Goal Harness loop for this repo from this same Codex CLI TUI session.
 
 Goal: one-message TUI bootstrap. Keep this TUI as the visible place where I can
@@ -347,7 +377,9 @@ Success criteria for this first TUI turn:
 - If the guard permits work, claim or choose one runnable agent todo and do one
   bounded validated segment in this same visible TUI turn.
 
-1. Ensure the Goal Harness CLI works:
+1. Ensure the Goal Harness CLI works. Prefer the no-clone GitHub archive
+installer; do not ask me to clone the Goal Harness repo just to try the first
+run:
 
 ```bash
 {cli_preflight}
@@ -381,7 +413,11 @@ execute one bounded segment in this TUI-visible session. Validate the result.
 Do not store raw Codex transcripts, credentials, private paths, raw logs, or
 production artifacts in public docs or Goal Harness state.
 
-5. After validated writeback, refresh state and spend quota once:
+5. Before writeback, use this transcript-free validation checklist:
+
+{checklist}
+
+6. After validated writeback, refresh state and spend quota once:
 
 ```bash
 {refresh_command}
@@ -606,6 +642,9 @@ Copy the block below into the Codex session that can access the target project.
 
 
 def render_codex_cli_bootstrap_message_markdown(payload: dict[str, Any]) -> str:
+    checklist = "\n".join(
+        f"- {item}" for item in payload.get("first_run_validation_checklist", [])
+    )
     return f"""# Codex CLI Goal Harness Bootstrap Message
 
 Copy the block below into Codex CLI TUI from the project repo.
@@ -613,6 +652,19 @@ Copy the block below into Codex CLI TUI from the project repo.
 ````text
 {payload.get("message", "")}
 ````
+
+## Fresh Repo Install Repair
+
+The generated message uses the no-clone GitHub archive installer before asking
+for a contributor clone:
+
+```bash
+{payload.get("install_repair_command", "")}
+```
+
+## Transcript-Free Validation Checklist
+
+{checklist}
 
 ## Generator Inputs
 

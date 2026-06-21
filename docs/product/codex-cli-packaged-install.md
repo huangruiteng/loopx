@@ -48,6 +48,8 @@ This keeps the product hierarchy clear:
 
 - first run: one visible TUI message;
 - install repair: no manual clone required;
+- generated bootstrap packet: exact TUI paste block, no-clone repair command,
+  and transcript-free validation checklist;
 - recurring automation: separate driver work;
 - contributor development: clone plus canary remains available.
 
