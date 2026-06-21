@@ -1,5 +1,7 @@
 # LoopX
 
+<img align="right" src="docs/assets/loopx-logo.png" alt="LoopX loop engineering logo" width="148">
+
 **Loop engineering for long-running AI agents.**
 
 **Turn static goals into dynamic, human-in-the-loop agent loops.**
