@@ -521,7 +521,9 @@ worker may resume.
 The first implementation should be read-mostly: expose an optional compact
 `task_graph_projection_v0` from status or review packets, backed by existing
 todo ids, gate ids, run ids, and lease ids. Writes should continue through the
-existing lifecycle commands until a server-backed lease/graph API exists.
+existing lifecycle commands until a server-backed lease/graph API exists. The
+initial protocol and public fixture live in
+[`docs/reference/protocols/task-graph-projection-v0.md`](reference/protocols/task-graph-projection-v0.md).
 
 Old user decisions need freshness checks. A reward, steering note, or approval
 from seven days ago can remain valuable, but a worker should apply it only after

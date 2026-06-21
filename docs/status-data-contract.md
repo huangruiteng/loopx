@@ -48,6 +48,16 @@ truth contract. It is not a write API. Dashboards may render it as a channel
 card or timeline, but project truth still comes from the registry, active
 state, quota guard, and append-only run history.
 
+Rows may also include an optional `task_graph_projection` object with
+`schema_version=task_graph_projection_v0`. This is a compact graph-shaped view
+over existing todos, gates, leases, run ids, and event-ledger state. It is
+read-only and exists only to show dependency, validation, repair, and handoff
+relationships that are hard to scan in a flat todo list. It must not introduce a
+second scheduler, graph write API, hidden lease store, or alternate task truth.
+The protocol is defined in
+[`docs/reference/protocols/task-graph-projection-v0.md`](reference/protocols/task-graph-projection-v0.md);
+consumers should ignore the field when absent.
+
 Loopback status exports include `status_contract.schema_version`. The dashboard
 uses that small protocol marker to detect when `127.0.0.1:8766` is still served
 by an older daemon or release snapshot after the checkout has moved forward. If

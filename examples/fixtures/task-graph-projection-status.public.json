@@ -1,0 +1,142 @@
+{
+  "fixture": "task_graph_projection_status_public_v0",
+  "ok": true,
+  "status_contract": {
+    "schema_version": 2,
+    "minimum_dashboard_schema_version": 2,
+    "producer": "goal-harness status"
+  },
+  "attention_queue": {
+    "available": true,
+    "item_count": 1,
+    "items": [
+      {
+        "goal_id": "goal-harness-meta",
+        "status": "active",
+        "waiting_on": "codex",
+        "severity": "action",
+        "recommended_action": "Review task graph projection shape before implementation.",
+        "task_graph_projection": {
+          "schema_version": "task_graph_projection_v0",
+          "mode": "read_only",
+          "goal_id": "goal-harness-meta",
+          "generated_at": "2026-06-21T12:00:00Z",
+          "derived_from": {
+            "source_of_truth": [
+              "event_ledger",
+              "active_goal_state",
+              "todos",
+              "gates",
+              "leases",
+              "run_history"
+            ],
+            "status_item_goal_id": "goal-harness-meta",
+            "active_state_updated_at": "2026-06-21T11:55:00Z",
+            "run_history_window": "compact_latest_runs"
+          },
+          "truth_contract": {
+            "event_ledger_is_source_of_truth": true,
+            "projection_is_writable": false,
+            "write_api": false,
+            "recompute_rule": "Recompute from status, active state, gates, leases, and run history after each lifecycle event."
+          },
+          "nodes": [
+            {
+              "node_id": "node_operator_gate_clear",
+              "kind": "gate",
+              "title": "Owner gate already clear for public fixture design.",
+              "state": "done",
+              "refs": {
+                "gate_ids": [
+                  "gate_public_fixture_design"
+                ],
+                "run_ids": [
+                  "run_operator_gate_approved"
+                ]
+              }
+            },
+            {
+              "node_id": "node_design_contract",
+              "kind": "deliverable",
+              "title": "Define task_graph_projection_v0 as a read-only derived contract.",
+              "state": "open",
+              "refs": {
+                "todo_ids": [
+                  "todo_8e138e5a1cc1"
+                ]
+              },
+              "owner_agent": "codex-side-bypass"
+            },
+            {
+              "node_id": "node_fixture_validation",
+              "kind": "validation",
+              "title": "Validate one public status fixture before runtime implementation.",
+              "state": "ready",
+              "refs": {
+                "todo_ids": [
+                  "todo_8e138e5a1cc1"
+                ],
+                "run_ids": [
+                  "run_task_graph_fixture_smoke"
+                ]
+              }
+            },
+            {
+              "node_id": "node_primary_review_handoff",
+              "kind": "handoff",
+              "title": "Primary agent reviews runtime implementation only after fixture contract is stable.",
+              "state": "waiting",
+              "refs": {
+                "lease_ids": [
+                  "lease_codex_main_control"
+                ],
+                "review_packet_ids": [
+                  "review_packet_task_graph_projection_v0"
+                ]
+              },
+              "owner_agent": "codex-main-control"
+            }
+          ],
+          "edges": [
+            {
+              "edge_id": "edge_gate_allows_design",
+              "from_node_id": "node_operator_gate_clear",
+              "to_node_id": "node_design_contract",
+              "relation": "blocks",
+              "reason": "If the owner gate were open, the design contract would wait.",
+              "refs": {
+                "gate_ids": [
+                  "gate_public_fixture_design"
+                ]
+              }
+            },
+            {
+              "edge_id": "edge_design_validated_by_fixture",
+              "from_node_id": "node_fixture_validation",
+              "to_node_id": "node_design_contract",
+              "relation": "validates",
+              "reason": "The smoke fixture proves the compact graph shape before implementation.",
+              "refs": {
+                "run_ids": [
+                  "run_task_graph_fixture_smoke"
+                ]
+              }
+            },
+            {
+              "edge_id": "edge_fixture_hands_off_to_primary",
+              "from_node_id": "node_fixture_validation",
+              "to_node_id": "node_primary_review_handoff",
+              "relation": "hands_off_to",
+              "reason": "Runtime implementation should wait until the design fixture is reviewed or merged.",
+              "refs": {
+                "review_packet_ids": [
+                  "review_packet_task_graph_projection_v0"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
