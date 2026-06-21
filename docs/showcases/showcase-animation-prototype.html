@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en"
+  data-source-storyboard="docs/showcases/showcase-animation-storyboard.json"
+  data-source-catalog="docs/showcases/showcase-catalog.json"
+  data-duration-seconds="30">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goal Harness Showcase Animation Prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #15171c;
+      --muted: #596272;
+      --line: #d8dee8;
+      --paper: #ffffff;
+      --soft: #f4f7fb;
+      --green: #087f5b;
+      --blue: #2454c6;
+      --amber: #a66000;
+      --red: #b42318;
+      --shadow: 0 24px 60px rgba(18, 24, 38, 0.14);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #f7f9fc;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 32px 0 44px;
+      display: grid;
+      grid-template-columns: minmax(280px, 0.88fr) minmax(480px, 1.12fr);
+      gap: 28px;
+      align-items: center;
+    }
+    .intro h1 {
+      margin: 0 0 16px;
+      font-size: 48px;
+      line-height: 1.04;
+      letter-spacing: 0;
+    }
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    .intro p {
+      max-width: 620px;
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 18px;
+    }
+    .source-box {
+      display: grid;
+      gap: 10px;
+      max-width: 560px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      border-radius: 8px;
+      box-shadow: 0 10px 28px rgba(18, 24, 38, 0.08);
+    }
+    .source-box span {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .source-box code {
+      display: block;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f8fafc;
+      color: #253044;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .stage {
+      position: relative;
+      min-height: 620px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(36, 84, 198, 0.08), transparent 42%),
+        linear-gradient(315deg, rgba(8, 127, 91, 0.08), transparent 44%),
+        var(--paper);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: 24px;
+      border: 1px dashed rgba(89, 98, 114, 0.28);
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    .stage__header {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+    .stage__header span {
+      display: inline-flex;
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: #eaf7f1;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .stage__header strong {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      text-align: right;
+    }
+    .timeline {
+      position: relative;
+      z-index: 3;
+      height: 12px;
+      margin: 0 0 18px;
+      border-radius: 999px;
+      background: #e8edf5;
+      overflow: hidden;
+    }
+    .timeline::after {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 12%;
+      border-radius: 999px;
+      background: var(--blue);
+      animation: progress 30s linear infinite;
+    }
+    .timeline__segment {
+      position: absolute;
+      inset: 0 auto 0 var(--start);
+      width: var(--width);
+      border-left: 1px solid rgba(255, 255, 255, 0.92);
+      border-right: 1px solid rgba(255, 255, 255, 0.92);
+    }
+    .scene-stack {
+      position: relative;
+      z-index: 2;
+      min-height: 490px;
+    }
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      align-content: center;
+      gap: 16px;
+      padding: 28px;
+      border: 1px solid rgba(216, 222, 232, 0.94);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.92);
+      opacity: 0;
+      box-shadow: 0 12px 34px rgba(18, 24, 38, 0.08);
+    }
+    .scene__meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .scene h2 {
+      max-width: 740px;
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+    .visual {
+      max-width: 720px;
+      margin: 0;
+      color: #303947;
+      font-size: 18px;
+      font-weight: 650;
+    }
+    .motion-note {
+      max-width: 720px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .case-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+      margin-top: 4px;
+    }
+    .case-card {
+      display: grid;
+      gap: 8px;
+      min-height: 142px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+    .case-card strong {
+      font-size: 15px;
+      line-height: 1.25;
+    }
+    .case-card span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .case-card small {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-self: end;
+    }
+    .case-card small span {
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #edf2ff;
+      color: var(--blue);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .case-card--system small span {
+      background: #eaf7f1;
+      color: var(--green);
+    }
+    @keyframes progress {
+      0% { width: 0%; }
+      100% { width: 100%; }
+    }
+    
+    .scene--opening-control-plane { animation: scene-opening-control-plane 30s linear infinite; }
+    @keyframes scene-opening-control-plane {
+      0%, 0.0000% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      2.3333%, 11.0000% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      13.3333%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+    }
+            
+
+    .scene--gate-visible-safe-lane-moves { animation: scene-gate-visible-safe-lane-moves 30s linear infinite; }
+    @keyframes scene-gate-visible-safe-lane-moves {
+      0%, 13.3000% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      15.6667%, 27.6667% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      30.0000%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+    }
+            
+
+    .scene--multi-agent-shared-state { animation: scene-multi-agent-shared-state 30s linear infinite; }
+    @keyframes scene-multi-agent-shared-state {
+      0%, 29.9667% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      32.3333%, 44.3333% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      46.6667%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+    }
+            
+
+    .scene--self-iteration-efficiency-evidence { animation: scene-self-iteration-efficiency-evidence 30s linear infinite; }
+    @keyframes scene-self-iteration-efficiency-evidence {
+      0%, 46.6333% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      49.0000%, 67.6667% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      70.0000%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+    }
+            
+
+    .scene--creator-operator-safe-production-loop { animation: scene-creator-operator-safe-production-loop 30s linear infinite; }
+    @keyframes scene-creator-operator-safe-production-loop {
+      0%, 69.9667% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      72.3333%, 87.6667% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      90.0000%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+    }
+            
+
+    .scene--boundary-close { animation: scene-boundary-close 30s linear infinite; }
+    @keyframes scene-boundary-close {
+      0%, 89.9667% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      92.3333%, 97.6667% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      100.0000%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+    }
+            
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: 1fr;
+        align-items: start;
+      }
+      .intro h1 { font-size: 38px; }
+      .stage { min-height: 680px; }
+      .scene-stack { min-height: 548px; }
+      .scene h2 { font-size: 28px; }
+    }
+    @media (max-width: 560px) {
+      main {
+        width: min(100% - 20px, 1180px);
+        padding-top: 18px;
+      }
+      .stage {
+        min-height: 760px;
+        padding: 14px;
+      }
+      .scene-stack { min-height: 640px; }
+      .scene { padding: 18px; }
+      .stage__header {
+        display: grid;
+      }
+      .stage__header strong {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="intro" aria-label="Prototype overview">
+      <p class="eyebrow">Goal Harness public showcase animation</p>
+      <h1>From AI assist to async agent work.</h1>
+      <p>A human sets gates and evidence; agent lanes keep safe work moving across turns.</p>
+      <div class="source-box">
+        <span>Prototype source boundary</span>
+        <code>docs/showcases/showcase-animation-storyboard.json</code>
+        <code>docs/showcases/showcase-catalog.json</code>
+        <span>Remotion Agent Skills / HyperFrames</span>
+      </div>
+    </section>
+    <section class="stage" aria-label="30 second storyboard prototype">
+      <div class="stage__header">
+        <span>30s loop</span>
+        <strong>Public catalog demo. No live registry, local status export, transcript, or private active state.</strong>
+      </div>
+      <div class="timeline" aria-label="Scene timeline">
+        
+          <span class="timeline__segment"
+            data-scene-id="opening-control-plane"
+            style="--start:0.0000%; --width:13.3333%;"></span>
+            
+
+          <span class="timeline__segment"
+            data-scene-id="gate-visible-safe-lane-moves"
+            style="--start:13.3333%; --width:16.6667%;"></span>
+            
+
+          <span class="timeline__segment"
+            data-scene-id="multi-agent-shared-state"
+            style="--start:30.0000%; --width:16.6667%;"></span>
+            
+
+          <span class="timeline__segment"
+            data-scene-id="self-iteration-efficiency-evidence"
+            style="--start:46.6667%; --width:23.3333%;"></span>
+            
+
+          <span class="timeline__segment"
+            data-scene-id="creator-operator-safe-production-loop"
+            style="--start:70.0000%; --width:20.0000%;"></span>
+            
+
+          <span class="timeline__segment"
+            data-scene-id="boundary-close"
+            style="--start:90.0000%; --width:10.0000%;"></span>
+            
+      </div>
+      <div class="scene-stack">
+        
+      <article class="scene scene--opening-control-plane"
+        data-scene-id="opening-control-plane"
+        data-start-seconds="0"
+        data-end-seconds="4"
+        data-source-case-ids="">
+        <div class="scene__meta">
+          <span>00-04s</span>
+          <span>Scene 1</span>
+        </div>
+        <h2>One shared control plane for long-running agent work.</h2>
+        <p class="visual">dark canvas with a single shared goal state node; agent lanes orbit into view</p>
+        <p class="motion-note">fade in the goal node, then pulse two safe lanes without implying live ops data</p>
+        <div class="case-strip">
+          
+            <div class="case-card case-card--system" data-source-case-id="catalog-boundary">
+              <strong>Catalog-backed control plane</strong>
+              <span>The prototype reads the public storyboard and catalog only.</span>
+              <small><span>public-boundary</span><span>no-live-status</span></small>
+            </div>
+    
+        </div>
+      </article>
+    
+
+      <article class="scene scene--gate-visible-safe-lane-moves"
+        data-scene-id="gate-visible-safe-lane-moves"
+        data-start-seconds="4"
+        data-end-seconds="9"
+        data-source-case-ids="2026-06-17-blocked-p0-safe-rotation">
+        <div class="scene__meta">
+          <span>04-09s</span>
+          <span>Scene 2</span>
+        </div>
+        <h2>A user gate stays visible. Safe side work still moves.</h2>
+        <p class="visual">a gated P0 lane pauses while a safe side lane advances with a validation marker</p>
+        <p class="motion-note">keep the blocked lane still; animate only the safe lane and evidence writeback</p>
+        <div class="case-strip">
+          
+            <div class="case-card" data-source-case-id="2026-06-17-blocked-p0-safe-rotation">
+              <strong>Blocked P0 with safe P1/P2 rotation</strong>
+              <span>A gated P0 lane should not stall a whole long-running goal when safe fallback work exists.</span>
+              <small><span>reproducible</span><span>user-gate</span><span>fallback</span></small>
+            </div>
+            
+        </div>
+      </article>
+    
+
+      <article class="scene scene--multi-agent-shared-state"
+        data-scene-id="multi-agent-shared-state"
+        data-start-seconds="9"
+        data-end-seconds="14"
+        data-source-case-ids="2026-06-19-dynamic-workflow-hardware-agent">
+        <div class="scene__meta">
+          <span>09-14s</span>
+          <span>Scene 3</span>
+        </div>
+        <h2>Multiple agents can share one project memory without guessing each other&#x27;s state.</h2>
+        <p class="visual">primary and side-agent lanes claim separate todos against one catalog-backed board</p>
+        <p class="motion-note">show claims and handoff lines as lightweight beams into shared state</p>
+        <div class="case-strip">
+          
+            <div class="case-card" data-source-case-id="2026-06-19-dynamic-workflow-hardware-agent">
+              <strong>Dynamic workflow for hardware-agent development</strong>
+              <span>A fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate.</span>
+              <small><span>redacted</span><span>multi-agent</span><span>pending-demo</span></small>
+            </div>
+            
+        </div>
+      </article>
+    
+
+      <article class="scene scene--self-iteration-efficiency-evidence"
+        data-scene-id="self-iteration-efficiency-evidence"
+        data-start-seconds="14"
+        data-end-seconds="21"
+        data-source-case-ids="2026-06-19-goal-harness-self-iteration">
+        <div class="scene__meta">
+          <span>14-21s</span>
+          <span>Scene 4</span>
+        </div>
+        <h2>Async side work turns repo history into recoverable product momentum.</h2>
+        <p class="visual">repo-scale requirement clusters compress into validated commits, docs, smokes, and frontstage surfaces</p>
+        <p class="motion-note">avoid raw commit firehoses; use compact clusters and conservative evidence labels</p>
+        <div class="case-strip">
+          
+            <div class="case-card" data-source-case-id="2026-06-19-goal-harness-self-iteration">
+              <strong>Goal Harness self-iteration loop</strong>
+              <span>A high-churn Goal Harness repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel.</span>
+              <small><span>self-iteration</span><span>commit-backed</span><span>side-agent</span></small>
+            </div>
+            
+        </div>
+      </article>
+    
+
+      <article class="scene scene--creator-operator-safe-production-loop"
+        data-scene-id="creator-operator-safe-production-loop"
+        data-start-seconds="21"
+        data-end-seconds="27"
+        data-source-case-ids="2026-06-20-creator-operator-case-spec">
+        <div class="scene__meta">
+          <span>21-27s</span>
+          <span>Scene 5</span>
+        </div>
+        <h2>The agent can keep researching while human judgment guards what ships.</h2>
+        <p class="visual">research, preference memory, and draft material move while publishing remains gated</p>
+        <p class="motion-note">animate safe research cards; leave publish decision locked until the final frame</p>
+        <div class="case-strip">
+          
+            <div class="case-card" data-source-case-id="2026-06-20-creator-operator-case-spec">
+              <strong>Creator-operator long-running agent case</strong>
+              <span>A creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated.</span>
+              <small><span>synthetic</span><span>creator-ops</span><span>user-gate</span></small>
+            </div>
+            
+        </div>
+      </article>
+    
+
+      <article class="scene scene--boundary-close"
+        data-scene-id="boundary-close"
+        data-start-seconds="27"
+        data-end-seconds="30"
+        data-source-case-ids="">
+        <div class="scene__meta">
+          <span>27-30s</span>
+          <span>Scene 6</span>
+        </div>
+        <h2>Public demos read the showcase catalog, not private control-plane state.</h2>
+        <p class="visual">public showcase catalog badge replaces the live status feed</p>
+        <p class="motion-note">close on the catalog badge and a clean public/private boundary line</p>
+        <div class="case-strip">
+          
+            <div class="case-card case-card--system" data-source-case-id="catalog-boundary">
+              <strong>Catalog-backed control plane</strong>
+              <span>The prototype reads the public storyboard and catalog only.</span>
+              <small><span>public-boundary</span><span>no-live-status</span></small>
+            </div>
+    
+        </div>
+      </article>
+    
+      </div>
+    </section>
+  </main>
+</body>
+</html>

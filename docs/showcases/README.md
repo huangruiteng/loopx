@@ -57,6 +57,11 @@ For animated outreach assets, start from the
 and the
 [public storyboard artifact](showcase-animation-storyboard.json). Keep
 `showcase-catalog.json` as the only case data source.
+Generate the first catalog-backed animation prototype with
+`python3 examples/showcase-animation-prototype.py --output /tmp/goal-harness-showcase-animation.html`
+or open the committed
+[showcase-animation-prototype.html](showcase-animation-prototype.html). Validate
+the artifact with `python3 examples/showcase-animation-prototype-smoke.py`.
 
 ![Hosted Goal Harness frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
 
