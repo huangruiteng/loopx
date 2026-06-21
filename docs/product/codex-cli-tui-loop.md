@@ -200,6 +200,26 @@ session files, does not mutate hidden Codex state, and does not spend Goal
 Harness quota. This keeps the first executable bridge narrow enough to test
 without turning the user's TUI into an opaque background daemon.
 
+Current visible local-driver pilot:
+
+```bash
+goal-harness codex-cli-visible-local-driver-pilot --project . --goal-id <goal-id> --agent-id <agent-id>
+```
+
+This command still does not run Codex. It binds the first one-message TUI start
+to later scheduler ticks and makes the returning-user contract explicit:
+
+- later turns must remain visible to the user;
+- the user must be able to interrupt or take over;
+- a public-safe visible proof is required before resume, remote-control, or
+  same-TUI prompt candidates can run;
+- every later tick needs quota guard and idle guard;
+- candidate execution still requires `--guard-checked` plus an allowed command
+  prefix;
+- blocker writeback still requires `--guard-checked`;
+- the pilot never reads transcripts, session files, credentials, stdout, or
+  stderr, and never spends quota by itself.
+
 Current visible-session proof harness:
 
 ```bash
@@ -317,12 +337,16 @@ projects runnable candidates; it should not over-specify the model's local plan.
    `goal-harness codex-cli-local-scheduler-exec` as the explicit opt-in bridge
    that can run one tick result only after guard confirmation and, for
    candidates, an allowed command prefix.
-12. **Visible local driver**: prototype the scheduler loop that runs quota,
-   checks session idle state, and either attaches visibly or falls back
-   explicitly.
-13. **Validation harness**: add a public-safe fixture that proves the driver
+12. **Visible local driver pilot**: ship
+   `goal-harness codex-cli-visible-local-driver-pilot` to bind the one-message
+   TUI start, scheduler executor, visible proof, idle guard, and no-transcript
+   boundary into one public-safe packet.
+13. **Runtime idle detector**: prototype the actual local idle check that can
+   observe no active human typing and no running turn without reading
+   transcripts or hidden session files.
+14. **Validation harness**: add a public-safe fixture that proves the driver
    never stores raw transcript text and never spends quota before writeback.
-14. **Claude Code follow-up**: port the same product contract only after the
+15. **Claude Code follow-up**: port the same product contract only after the
    Codex CLI path is credible.
 
 ## Success Criteria

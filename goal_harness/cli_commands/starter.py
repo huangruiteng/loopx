@@ -28,6 +28,7 @@ from ..codex_cli_probe import (
     DEFAULT_EXECUTOR_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
     build_codex_cli_one_message_loop_pilot,
+    build_codex_cli_visible_local_driver_pilot,
     build_codex_cli_local_scheduler_executor,
     build_codex_cli_local_scheduler_tick,
     build_codex_cli_local_driver_plan,
@@ -36,6 +37,7 @@ from ..codex_cli_probe import (
     build_codex_cli_visible_session_proof,
     load_codex_cli_visible_session_proof_fixture,
     render_codex_cli_one_message_loop_pilot_markdown,
+    render_codex_cli_visible_local_driver_pilot_markdown,
     render_codex_cli_local_scheduler_executor_markdown,
     render_codex_cli_local_scheduler_tick_markdown,
     render_codex_cli_local_driver_plan_markdown,
@@ -121,6 +123,46 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Optional public-safe visible-session proof fixture. Without it, same-session automation remains blocked.",
     )
     codex_cli_one_message_loop_parser.add_argument(
+        "--allow-headless-fallback",
+        action="store_true",
+        help="Explicitly mark user/operator opt-in for a headless codex exec fallback candidate.",
+    )
+
+    codex_cli_visible_local_driver_parser = subparsers.add_parser(
+        "codex-cli-visible-local-driver-pilot",
+        help="Compose the one-message TUI start and later scheduler bridge into a visible local driver pilot packet.",
+    )
+    codex_cli_visible_local_driver_parser.add_argument("--project", default=".", help="Project directory to start from.")
+    codex_cli_visible_local_driver_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
+    codex_cli_visible_local_driver_parser.add_argument(
+        "--agent-id",
+        help="Registered Goal Harness agent id to include in quota/claim instructions.",
+    )
+    codex_cli_visible_local_driver_parser.add_argument(
+        "--cli-bin",
+        default="goal-harness",
+        help="Goal Harness CLI binary name embedded in generated commands.",
+    )
+    codex_cli_visible_local_driver_parser.add_argument(
+        "--codex-bin",
+        default=DEFAULT_CODEX_BIN,
+        help="Codex CLI executable to probe and reference in bridge commands.",
+    )
+    codex_cli_visible_local_driver_parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help="Per-command timeout for help-only Codex CLI probes.",
+    )
+    codex_cli_visible_local_driver_parser.add_argument(
+        "--fixture",
+        help="Public-safe JSON fixture with command_outputs, used instead of invoking Codex CLI.",
+    )
+    codex_cli_visible_local_driver_parser.add_argument(
+        "--proof-fixture",
+        help="Optional public-safe visible-session proof fixture. Without it, later visible turns remain blocked.",
+    )
+    codex_cli_visible_local_driver_parser.add_argument(
         "--allow-headless-fallback",
         action="store_true",
         help="Explicitly mark user/operator opt-in for a headless codex exec fallback candidate.",
@@ -471,6 +513,34 @@ def handle_codex_cli_one_message_loop_pilot_command(
         allow_headless_fallback=bool(args.allow_headless_fallback),
     )
     print_payload(payload, args.format, render_codex_cli_one_message_loop_pilot_markdown)
+    return 0 if payload.get("ok") else 1
+
+
+def handle_codex_cli_visible_local_driver_pilot_command(
+    args: argparse.Namespace,
+    print_payload: PrintPayload,
+) -> int:
+    probe_payload = run_codex_cli_session_probe(
+        codex_bin=args.codex_bin,
+        timeout_seconds=args.timeout_seconds,
+        fixture=Path(args.fixture).expanduser() if args.fixture else None,
+    )
+    proof_payload = (
+        load_codex_cli_visible_session_proof_fixture(Path(args.proof_fixture).expanduser())
+        if args.proof_fixture
+        else None
+    )
+    payload = build_codex_cli_visible_local_driver_pilot(
+        project=Path(args.project),
+        goal_id=args.goal_id,
+        agent_id=args.agent_id,
+        cli_bin=args.cli_bin,
+        codex_bin=args.codex_bin,
+        probe_payload=probe_payload,
+        proof_payload=proof_payload,
+        allow_headless_fallback=bool(args.allow_headless_fallback),
+    )
+    print_payload(payload, args.format, render_codex_cli_visible_local_driver_pilot_markdown)
     return 0 if payload.get("ok") else 1
 
 

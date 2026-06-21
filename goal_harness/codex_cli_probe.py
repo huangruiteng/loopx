@@ -1321,6 +1321,171 @@ def build_codex_cli_one_message_loop_pilot(
     }
 
 
+def build_codex_cli_visible_local_driver_pilot(
+    *,
+    project: Path,
+    goal_id: str | None,
+    agent_id: str | None,
+    cli_bin: str,
+    codex_bin: str,
+    probe_payload: dict[str, Any],
+    proof_payload: dict[str, Any] | None = None,
+    allow_headless_fallback: bool = False,
+) -> dict[str, Any]:
+    """Prototype the visible local driver loop without executing Codex.
+
+    This composes the first visible TUI bootstrap, a no-execution scheduler
+    wrapper, and the public-safe proof boundary a returning user would need
+    before Goal Harness can steer later visible turns.
+    """
+
+    one_message = build_codex_cli_one_message_loop_pilot(
+        project=project,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+        codex_bin=codex_bin,
+        probe_payload=probe_payload,
+        proof_payload=proof_payload,
+        allow_headless_fallback=allow_headless_fallback,
+    )
+    scheduler_executor = (
+        one_message.get("scheduler_executor")
+        if isinstance(one_message.get("scheduler_executor"), dict)
+        else {}
+    )
+    scheduler_tick = (
+        scheduler_executor.get("scheduler_tick")
+        if isinstance(scheduler_executor.get("scheduler_tick"), dict)
+        else {}
+    )
+    execution = (
+        scheduler_executor.get("execution")
+        if isinstance(scheduler_executor.get("execution"), dict)
+        else {}
+    )
+    resolved_project = str(one_message["project"])
+    resolved_goal_id = str(one_message["goal_id"])
+    scheduler_action = str(scheduler_executor.get("scheduler_action") or "")
+    proof = (
+        scheduler_tick.get("visible_session_proof")
+        if isinstance(scheduler_tick.get("visible_session_proof"), dict)
+        else {}
+    )
+    proof_approved = bool(proof.get("approved") is True)
+
+    if proof_approved and scheduler_action == "external_visible_command_candidate":
+        loop_decision = "visible_candidate_ready_for_guarded_execution"
+        next_driver_action = "run_scheduler_exec_candidate_after_fresh_guard_and_prefix"
+    elif scheduler_action == "write_precise_blocker":
+        loop_decision = "visible_loop_blocker_writeback_ready"
+        next_driver_action = "write_precise_blocker_after_fresh_guard"
+    elif scheduler_action == "surface_tui_bootstrap":
+        loop_decision = "surface_tui_bootstrap_only"
+        next_driver_action = "keep_first_message_tui_path_visible"
+    else:
+        loop_decision = "review_scheduler_packet_before_execution"
+        next_driver_action = "inspect_scheduler_executor_packet"
+
+    commands = one_message.get("commands") if isinstance(one_message.get("commands"), dict) else {}
+    scheduler_commands = (
+        scheduler_executor.get("commands")
+        if isinstance(scheduler_executor.get("commands"), dict)
+        else {}
+    )
+    visible_loop_steps = [
+        "start from the visible Codex CLI TUI with the one-message bootstrap",
+        "run quota should-run with the registered agent id before each scheduler tick",
+        "stop on interaction_contract.user_channel.action_required=true and show the concrete user todo",
+        "require idle guard before any visible resume, remote-control, or same-TUI prompt",
+        "run codex-cli-local-scheduler-exec as dry-run unless guard and explicit execution flags are present",
+        "for a visible candidate, require guard_checked plus an allowed candidate command prefix",
+        "for a blocker, write compact Goal Harness state only after guard_checked",
+        "never read raw transcripts, session files, credentials, stdout, or stderr for this pilot",
+    ]
+
+    return {
+        "ok": True,
+        "schema_version": "codex_cli_visible_local_driver_pilot_v0",
+        "project": resolved_project,
+        "goal_id": resolved_goal_id,
+        "agent_id": agent_id,
+        "cli_bin": cli_bin,
+        "codex_bin": codex_bin,
+        "pilot_phase": "visible_local_driver_loop_no_execution",
+        "start_surface": "codex_cli_tui_one_message",
+        "loop_decision": loop_decision,
+        "next_driver_action": next_driver_action,
+        "one_message_pilot": {
+            "schema_version": one_message.get("schema_version"),
+            "pilot_decision": one_message.get("pilot_decision"),
+            "start_surface": one_message.get("start_surface"),
+            "followup_mode": one_message.get("followup_mode"),
+        },
+        "scheduler_executor": {
+            "schema_version": scheduler_executor.get("schema_version"),
+            "scheduler_action": scheduler_action,
+            "decision": scheduler_executor.get("decision"),
+            "executor_reason": execution.get("reason"),
+            "executed": execution.get("executed"),
+        },
+        "visible_session_proof": {
+            "supplied": bool(proof.get("supplied")),
+            "approved": proof_approved,
+            "decision": proof.get("decision"),
+            "failures": proof.get("failures") or [],
+        },
+        "idle_guard_contract": {
+            "required_before_visible_prompt": True,
+            "fixture_keys": [
+                "idle_guard.no_active_human_typing",
+                "idle_guard.no_running_turn",
+                "idle_guard.checked_before_prompt",
+                "turn_visibility.visible_to_user",
+                "interruptibility.user_can_interrupt",
+                "interruptibility.manual_takeover_available",
+            ],
+            "current_pilot_implements_runtime_idle_detection": False,
+            "public_safe_fixture_supported": True,
+        },
+        "visible_loop_steps": visible_loop_steps,
+        "commands": {
+            "bootstrap_message": commands.get("bootstrap_message"),
+            "scheduler_exec_dry_run": commands.get("scheduler_exec_dry_run"),
+            "scheduler_exec_candidate_template": commands.get("scheduler_exec_candidate_template"),
+            "scheduler_exec_blocker_template": commands.get("scheduler_exec_blocker_template"),
+            "scheduler_tick": scheduler_commands.get("scheduler_tick"),
+            "candidate_command": scheduler_commands.get("candidate_command"),
+            "blocker_writeback": scheduler_commands.get("blocker_writeback"),
+        },
+        "execution_policy": {
+            "tui_bootstrap_primary": True,
+            "later_turns_visible_to_user": True,
+            "user_can_interrupt_or_take_over": True,
+            "same_session_attachment_requires_visible_proof": True,
+            "headless_fallback_requires_explicit_opt_in": True,
+            "quota_guard_required_each_tick": True,
+            "spend_after_validated_writeback_only": True,
+        },
+        "boundary": {
+            "pilot_packet_only": True,
+            "runs_codex": False,
+            "runs_scheduler_result": False,
+            "reads_raw_transcripts": False,
+            "reads_credentials": False,
+            "reads_session_files": False,
+            "reads_stdout_stderr": False,
+            "mutates_codex_session": False,
+            "writes_goal_harness_state": False,
+            "spends_goal_harness_quota": False,
+            "requires_fresh_guard_before_execution": True,
+            "candidate_execution_requires_guard_and_prefix": True,
+            "blocker_writeback_requires_guard_checked": True,
+        },
+        "warnings": list(one_message.get("warnings") or []),
+    }
+
+
 def render_codex_cli_session_probe_markdown(payload: dict[str, Any]) -> str:
     capabilities = payload.get("capabilities") or {}
     boundary = payload.get("boundary") or {}
@@ -1697,6 +1862,91 @@ The first response should show:
 - requires_user_visible_start: `{boundary.get("requires_user_visible_start")}`
 - headless_fallback_explicit_only: `{boundary.get("headless_fallback_explicit_only")}`
 - candidate_execution_requires_guard_and_prefix: `{boundary.get("candidate_execution_requires_guard_and_prefix")}`
+
+## Warnings
+
+{warning_lines}
+"""
+
+
+def render_codex_cli_visible_local_driver_pilot_markdown(payload: dict[str, Any]) -> str:
+    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+    proof = payload.get("visible_session_proof") if isinstance(payload.get("visible_session_proof"), dict) else {}
+    idle_guard = payload.get("idle_guard_contract") if isinstance(payload.get("idle_guard_contract"), dict) else {}
+    scheduler = payload.get("scheduler_executor") if isinstance(payload.get("scheduler_executor"), dict) else {}
+    policy = payload.get("execution_policy") if isinstance(payload.get("execution_policy"), dict) else {}
+    steps = payload.get("visible_loop_steps") if isinstance(payload.get("visible_loop_steps"), list) else []
+    warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
+    step_lines = "\n".join(f"{index}. {step}" for index, step in enumerate(steps, start=1))
+    fixture_keys = idle_guard.get("fixture_keys") if isinstance(idle_guard.get("fixture_keys"), list) else []
+    fixture_key_lines = "\n".join(f"- {key}" for key in fixture_keys)
+    warning_lines = "\n".join(f"- {warning}" for warning in warnings) if warnings else "- none"
+    return f"""# Codex CLI Visible Local Driver Pilot
+
+- pilot_phase: `{payload.get("pilot_phase")}`
+- start_surface: `{payload.get("start_surface")}`
+- loop_decision: `{payload.get("loop_decision")}`
+- next_driver_action: `{payload.get("next_driver_action")}`
+
+## Scheduler Executor
+
+- scheduler_action: `{scheduler.get("scheduler_action")}`
+- decision: `{scheduler.get("decision")}`
+- executor_reason: `{scheduler.get("executor_reason")}`
+- executed: `{scheduler.get("executed")}`
+
+## Visible Session Proof
+
+- supplied: `{proof.get("supplied")}`
+- approved: `{proof.get("approved")}`
+- decision: `{proof.get("decision")}`
+- failures: `{proof.get("failures")}`
+
+## Idle Guard Contract
+
+- required_before_visible_prompt: `{idle_guard.get("required_before_visible_prompt")}`
+- current_pilot_implements_runtime_idle_detection: `{idle_guard.get("current_pilot_implements_runtime_idle_detection")}`
+- public_safe_fixture_supported: `{idle_guard.get("public_safe_fixture_supported")}`
+
+{fixture_key_lines}
+
+## Visible Loop Steps
+
+{step_lines}
+
+## Commands
+
+```bash
+{commands.get("bootstrap_message")}
+{commands.get("scheduler_exec_dry_run")}
+{commands.get("scheduler_exec_candidate_template")}
+{commands.get("scheduler_exec_blocker_template")}
+```
+
+## Execution Policy
+
+- tui_bootstrap_primary: `{policy.get("tui_bootstrap_primary")}`
+- later_turns_visible_to_user: `{policy.get("later_turns_visible_to_user")}`
+- user_can_interrupt_or_take_over: `{policy.get("user_can_interrupt_or_take_over")}`
+- same_session_attachment_requires_visible_proof: `{policy.get("same_session_attachment_requires_visible_proof")}`
+- headless_fallback_requires_explicit_opt_in: `{policy.get("headless_fallback_requires_explicit_opt_in")}`
+- quota_guard_required_each_tick: `{policy.get("quota_guard_required_each_tick")}`
+- spend_after_validated_writeback_only: `{policy.get("spend_after_validated_writeback_only")}`
+
+## Boundary
+
+- pilot_packet_only: `{boundary.get("pilot_packet_only")}`
+- runs_codex: `{boundary.get("runs_codex")}`
+- runs_scheduler_result: `{boundary.get("runs_scheduler_result")}`
+- reads_raw_transcripts: `{boundary.get("reads_raw_transcripts")}`
+- reads_session_files: `{boundary.get("reads_session_files")}`
+- reads_stdout_stderr: `{boundary.get("reads_stdout_stderr")}`
+- mutates_codex_session: `{boundary.get("mutates_codex_session")}`
+- writes_goal_harness_state: `{boundary.get("writes_goal_harness_state")}`
+- spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+- candidate_execution_requires_guard_and_prefix: `{boundary.get("candidate_execution_requires_guard_and_prefix")}`
+- blocker_writeback_requires_guard_checked: `{boundary.get("blocker_writeback_requires_guard_checked")}`
 
 ## Warnings
 

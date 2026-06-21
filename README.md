@@ -194,6 +194,13 @@ goal-harness codex-cli-one-message-loop-pilot --project . --goal-id <goal-id> --
 It packages the first visible TUI message and the later scheduler/executor
 bridge into one dry-run packet.
 
+To review the next visible local-driver loop without touching a real Codex
+session, use:
+
+```bash
+goal-harness codex-cli-visible-local-driver-pilot --project . --goal-id <goal-id> --agent-id <agent-id>
+```
+
 For Codex App, Claude Code, Cursor, or another terminal agent, paste this from
 the project repo:
 

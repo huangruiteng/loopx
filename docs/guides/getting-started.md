@@ -107,6 +107,17 @@ The pilot ties the first TUI paste message to the later
 operators/contributors validating the path, not a prerequisite for first-time
 users.
 
+To review the returning-user local-driver loop without touching a real Codex
+session, generate the visible local-driver pilot packet:
+
+```bash
+goal-harness codex-cli-visible-local-driver-pilot --project . --goal-id <goal-id> --agent-id <agent-id>
+```
+
+This keeps the first-message TUI start primary, then models later scheduler
+ticks, visible proof, idle guard, guarded execution, blocker writeback, and
+no-transcript boundaries as public-safe metadata.
+
 The commands below are optional automation checks after the one-message path
 works. To evaluate future same-session automation support without touching
 transcripts or session files, run:
