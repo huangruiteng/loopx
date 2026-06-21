@@ -147,6 +147,7 @@ Projection, authority, write scope, and lease integrity.
 | P1 | IP-020 | Todo Claim / Supersede / Successor Lifecycle | Agent plus controller | no interruption unless successor is a user todo or conflict needs decision | claim before delivery; supersede stale work; complete slices with successor or no-follow-up rationale |
 | P1 | IP-022 | Claimed Todo Visibility And Agent-Lane Next Action | Status/quota/frontstage | no interruption | keep scheduler candidates separate from claimed-work visibility lanes and expose the current agent's slice |
 | P1 | IP-023 | Status Neutral Run Window | Status/quota/history | no interruption | ignore neutral run noise for state authority while retaining it as stall evidence |
+| P1 | IP-025 | Experimental Diagnostic Sidecar Boundary | Runtime/protocol owners | no interruption unless an opt-in proof asks for user action | keep proof/debug verdicts as sidecar diagnostics until a product-general schema is validated |
 
 ### Evidence Lifecycle
 
@@ -1333,6 +1334,82 @@ the control plane.
 - `skills/goal-harness-self-repair/references/repair-patterns.md`
 - future regression where the latest N runs are neutral and the N+1 run is the
   authoritative state transition.
+
+#### IP-025 Experimental Diagnostic Sidecar Boundary
+
+**Trigger**
+
+- a route-specific proof or debug tool emits verdict fields, such as Codex CLI
+  visible attach decisions, runtime-idle blockers, continuation outcomes, or
+  fallback contracts;
+- an implementation proposes copying those verdicts into a stable hot-path
+  agent packet, status schema, dashboard contract, or `protocol_action_packet_v0`;
+- the verdict semantics still depend on one experimental surface, a human
+  observation, a fixture-only proof, or a temporary product question.
+
+**Expected behavior**
+
+Experimental proof/debug verdicts are sidecar diagnostics first. They may be
+public-safe, structured, versioned, and useful, but they do not become stable
+agent-facing packet fields until the abstraction is product-general and
+validated across the surfaces that will consume it.
+
+The stable hot path should keep expressing generic control-plane obligations:
+user action, agent action, work lane, gate state, quiet-noop allowance, spend
+policy, and compact action label. Route-specific proof fields stay in the
+sidecar that owns their evidence. For the current Codex CLI/TUI path, verdicts
+such as `visible_session_proof_required`,
+`runtime_idle_evidence_required`, `same_tui_visible_attach_accepted`,
+`accepted_for_same_tui_automation`, `continuation_outcome`, and
+`fallback_contract` belong in the visible attach/proof or observation packet,
+not in `protocol_action_packet_v0` or the routine quota/status packet shape.
+
+Promotion from sidecar to stable schema needs an explicit schema decision:
+
+- the field name is not tied to one route's debug wording;
+- at least one non-Codex-CLI or future-runtime consumer can use the same
+  abstraction without reinterpretation;
+- public/private boundaries and no-transcript/no-session-file constraints are
+  documented;
+- failure modes are represented as generic obligations or blockers, not as
+  product-spike labels;
+- smoke tests prove both the sidecar verdict and the stable packet remain
+  compatible.
+
+The Codex CLI/TUI consequence is narrow but important: a manual
+same-open-TUI observation can prove that the first bootstrap continuation stayed
+visible, while scheduled same-TUI attach remains blocked by proof/idle
+requirements. That distinction is valid evidence, but it should not force every
+agent heartbeat or dashboard row to learn Codex-specific verdict fields.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  P["experimental proof or debug packet"] --> V["route-specific verdict fields"]
+  V --> S{"product-general abstraction validated?"}
+  S -->|"no"| D["keep as sidecar diagnostic; link from docs/status when useful"]
+  S -->|"yes"| R["write schema decision and compatibility smoke"]
+  R --> H["promote generic field into stable hot-path packet"]
+  D --> C["stable packet keeps generic user/agent/gate/spend obligations"]
+  H --> C
+```
+
+**Bad smell**
+
+A proof spike adds `same_tui_visible_attach_accepted` or
+`visible_session_proof_required` directly to a generic runtime packet, and
+future agents start treating a Codex CLI debug verdict as a universal routing
+field. The opposite bad smell is losing the proof entirely: the diagnostic
+sidecar is public-safe and useful, but no doc or smoke says why it stayed out of
+the stable schema.
+
+**Validation**
+
+- `docs/reference/protocols/protocol-action-packet-decision-v0.md`
+- `docs/product/codex-cli-same-open-tui-continuation-observation.md`
+- `examples/interaction-pattern-catalog-smoke.py`
+- `examples/codex-cli-visible-attach-acceptance-smoke.py`
 
 ### Evidence Lifecycle
 
