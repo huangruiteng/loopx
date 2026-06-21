@@ -151,6 +151,15 @@ const statusFixture = {
     producer: "goal-harness status",
     reload_hint: "scripts/macos-dashboard-launchagent.sh restart",
   },
+  local_dashboard_api: {
+    source: "serve-status",
+    reward_dry_run_url: "/reward/dry-run",
+    reward_append_url: null,
+    reward_write_enabled: false,
+    configure_goal_dry_run_url: "/control-plane/configure-goal/dry-run",
+    configure_goal_apply_url: null,
+    control_plane_write_enabled: false,
+  },
   contract: {
     ok: true,
     summary: { errors: 0, warnings: 0, checks: 1 },
@@ -592,6 +601,12 @@ async function main() {
         [
           "ops live",
           "live status feed",
+          "TanStack Query",
+          "read-only default",
+          "local_dashboard_api: serve-status",
+          "reward dry-run advertised; append disabled",
+          "control-plane dry-run advertised; apply disabled",
+          "Write affordances require explicit loopback opt-in",
           "Ops statusUrl accepts only relative or loopback sources.",
           "Live Goal Channel",
           "goal_channel_projection_v0",
