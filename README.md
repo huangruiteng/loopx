@@ -154,41 +154,21 @@ Requirements: Python 3.11+, `curl`, `tar`, macOS or Linux shell. Git is only
 needed for contributor clone/canary workflows. The Python package has no
 runtime dependencies outside the standard library.
 
-The recommended start is agent-first: ask the agent you already use to install,
+The easiest start is agent-first: ask the agent you already use to install,
 connect, diagnose, and show the next safe action before doing longer work.
-
-### Codex App
-
-Use this when you are working in Codex App or a Codex App heartbeat-capable
-thread. Paste from the project repo:
-
-```text
-Install and connect Goal Harness for this project end to end. Do not stop at a
-plan. If `goal-harness` is missing, install it with the official no-clone
-GitHub installer. Then run doctor, connect or bootstrap this repo, ensure local
-Goal Harness state is ignored, and report the goal id, current user gate, top
-agent todo, and next safe action before longer work.
-```
-
-Success looks like this for every surface:
-
-- `goal-harness doctor` passes;
-- the project has `.goal-harness/registry.json`;
-- the project has `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`;
-- `goal-harness status` shows who should act next;
-- local runtime state is ignored, not committed.
-
-For recurring Codex App automation, generate the heartbeat body after the
-project is connected:
-
-```bash
-goal-harness heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
-```
 
 ### Codex CLI
 
-Use this when you want the human-visible TUI to stay primary. Open Codex CLI
-from your project repo and paste one goal-mode message:
+Use this when you want the human-visible TUI to stay primary.
+
+1. Open Codex CLI from your project repo:
+
+```bash
+cd /path/to/your-project
+codex
+```
+
+2. In the TUI, paste one goal-mode message:
 
 ```text
 /goal Start Goal Harness for this repo. Use Goal Harness as the control plane
@@ -200,16 +180,12 @@ headless execution. Begin the Goal Harness loop now; do not stop after only
 explaining what Goal Harness is.
 ```
 
-The `/goal` message gives Codex CLI goal mode the durable loop objective and
-completion criteria. The text is a Codex CLI rewrite of the Goal Harness
-heartbeat prompt: it keeps the App automation lifecycle ideas, but speaks in
-the visible TUI's style and uses `heartbeat-prompt --thin` only as a drift
-check. The first useful response should show the current goal, user gate, top
-todos, and next safe action. If the guard permits work, the same visible TUI
-turn can claim or choose one runnable agent todo and complete one bounded
-validated segment.
+3. The first useful TUI response should show the current goal, user gate, top
+todos, and next safe action. If work is allowed, the same visible TUI turn can
+claim or choose one runnable agent todo and complete one bounded validated
+segment.
 
-After Goal Harness is installed, generate a stricter exact TUI paste block:
+After Goal Harness is installed, generate an exact TUI paste block:
 
 ```bash
 goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
@@ -225,6 +201,34 @@ Hidden `codex exec` is not part of the default TUI bootstrap. Pilot packets,
 local drivers, idle detection, and same-session proof details live in
 [Getting Started](docs/guides/getting-started.md) and the
 [Codex CLI TUI-first loop](docs/product/codex-cli-tui-loop.md).
+
+A successful connection looks like this for every surface:
+
+- `goal-harness doctor` passes;
+- the project has `.goal-harness/registry.json`;
+- the project has `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`;
+- `goal-harness status` shows who should act next;
+- local runtime state is ignored, not committed.
+
+### Codex App
+
+Use this when you are working in Codex App or a Codex App heartbeat-capable
+thread. Paste from the project repo:
+
+```text
+Install and connect Goal Harness for this project end to end. Do not stop at a
+plan. If `goal-harness` is missing, install it with the official no-clone
+GitHub installer. Then run doctor, connect or bootstrap this repo, ensure local
+Goal Harness state is ignored, and report the goal id, current user gate, top
+agent todo, and next safe action before longer work.
+```
+
+For recurring Codex App automation, generate the heartbeat body after the
+project is connected:
+
+```bash
+goal-harness heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
+```
 
 ### Other Agents And Manual Shell
 
