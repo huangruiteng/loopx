@@ -50,6 +50,41 @@ def main() -> int:
     assert "/data/goal-harness-bench" not in prompt
     assert "/root/goal-harness-bench" not in prompt
 
+    disabled_packet = module.build_goal_harness_access_packet(
+        mode="codex_goal_mode_baseline",
+        packet_mode="none",
+    )
+    assert disabled_packet == ""
+
+    treatment_packet = module.build_goal_harness_access_packet(
+        mode="codex_goal_harness",
+        packet_mode="compact",
+        goal_id="goal-harness-meta",
+        cli_bridge_enabled="true",
+        command_prefix="goal-harness",
+        registry_arg="/tmp/gh/registry.global.json",
+        runtime_root_arg="/tmp/gh/runtime",
+        scan_path="/workspace/goal_harness/benchmark.py",
+        classification="swe_marathon_rust_c_compiler_treatment",
+    )
+    assert "Goal Harness Access Packet V0" in treatment_packet
+    assert "benchmark_family: harbor" in treatment_packet
+    assert "mode: codex_goal_harness" in treatment_packet
+    assert "goal_harness_cli_bridge_available: true" in treatment_packet
+    assert "goal_harness_command_check:" in treatment_packet
+    assert "quota should-run" in treatment_packet
+    assert "do_not_upload_or_submit_to_leaderboard: true" in treatment_packet
+
+    treatment_prompt = module.build_host_goal_prompt(
+        instruction="Synthetic Harbor instruction placeholder.",
+        bridge_command=Path("/tmp/gh-harbor/bin/harbor-env-exec"),
+        marker_path=Path("/tmp/gh-harbor/done.marker"),
+        task_workdir="/workspace",
+        goal_harness_access_packet=treatment_packet,
+    )
+    assert "Goal Harness treatment access packet:" in treatment_prompt
+    assert "mode: codex_goal_harness" in treatment_prompt
+
     with tempfile.TemporaryDirectory(prefix="gh-harbor-host-agent-") as tmp:
         request_dir = Path(tmp) / "requests"
         request_dir.mkdir()
@@ -71,7 +106,7 @@ def main() -> int:
             app_server_response_timeout_sec="4",
         )
         assert agent.name() == "harbor-host-codex-goal"
-        assert agent.version() == "0.3.0"
+        assert agent.version() == "0.4.0"
         assert agent.goal_timeout_sec == 9.0
         assert agent.poll_interval_sec == 0.5
         assert agent.task_workdir == "/workspace"
@@ -79,6 +114,8 @@ def main() -> int:
         assert agent.reasoning_effort == "high"
         assert agent.app_server_wait_for_completion is False
         assert agent.app_server_response_timeout_sec == 4.0
+        assert agent.goal_harness_mode == "codex_goal_mode_baseline"
+        assert agent.goal_harness_access_packet_mode == "none"
 
         no_wait_agent = module.HarborHostCodexGoalAgent(
             logs_dir=Path(tmp) / "no-wait-logs",
@@ -86,6 +123,17 @@ def main() -> int:
             app_server_wait_for_completion="false",
         )
         assert no_wait_agent.app_server_wait_for_completion is False
+
+        treatment_agent = module.HarborHostCodexGoalAgent(
+            logs_dir=Path(tmp) / "treatment-logs",
+            goal_surface="app_server",
+            goal_harness_mode="codex_goal_harness",
+            goal_harness_access_packet_mode="compact",
+            goal_harness_cli_bridge_enabled="true",
+        )
+        assert treatment_agent.goal_harness_mode == "codex_goal_harness"
+        assert treatment_agent.goal_harness_access_packet_mode == "compact"
+        assert treatment_agent.goal_harness_cli_bridge_enabled is True
 
     print("harbor host Codex Goal agent smoke passed")
     return 0

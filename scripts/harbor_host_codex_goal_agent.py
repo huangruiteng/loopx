@@ -139,10 +139,17 @@ def build_host_goal_prompt(
     bridge_command: Path,
     marker_path: Path,
     task_workdir: str = "/app",
+    goal_harness_access_packet: str = "",
 ) -> str:
     bridge = shlex.quote(str(bridge_command))
     marker_cmd = f"touch {shlex.quote(str(marker_path))}"
     task_workdir_arg = shlex.quote(task_workdir)
+    access_packet = goal_harness_access_packet.strip()
+    access_packet_section = (
+        f"\n\nGoal Harness treatment access packet:\n{access_packet}"
+        if access_packet
+        else ""
+    )
     return f"""
 You are solving a Harbor benchmark task using native Codex Goal mode on the host.
 
@@ -156,11 +163,76 @@ Do not modify tests. Complete the task inside the Harbor environment only.
 
 Task instruction:
 {instruction}
+{access_packet_section}
 
 When and only when the task is complete, run this exact host command so the
 harness can observe completion:
 {marker_cmd}
 """.strip()
+
+
+def build_goal_harness_access_packet(
+    *,
+    mode: str,
+    packet_mode: str = "compact",
+    goal_id: str = "goal-harness-meta",
+    cli_bridge_enabled: str | bool = False,
+    command_prefix: str = "goal-harness",
+    registry_arg: str = "",
+    runtime_root_arg: str = "",
+    scan_path: str = "",
+    classification: str = "swe_marathon_codex_goal_harness_treatment",
+) -> str:
+    """Build a public-safe Goal Harness access packet for Harbor/SWE tasks."""
+
+    if mode != "codex_goal_harness" or packet_mode == "none":
+        return ""
+
+    cli_enabled = _coerce_bool(cli_bridge_enabled)
+    base = command_prefix
+    if registry_arg:
+        base += f" --registry {shlex.quote(registry_arg)}"
+    if runtime_root_arg:
+        base += f" --runtime-root {shlex.quote(runtime_root_arg)}"
+    base += " --format json"
+    goal_id_arg = shlex.quote(goal_id)
+    scan_path_arg = shlex.quote(scan_path) if scan_path else "<public-scan-path>"
+
+    lines = [
+        "Goal Harness Access Packet V0",
+        "benchmark_family: harbor",
+        f"mode: {mode}",
+        f"packet_mode: {packet_mode}",
+        f"goal_id: {goal_id}",
+        f"classification: {classification}",
+        f"goal_harness_cli_bridge_available: {str(cli_enabled).lower()}",
+        "runner_side_official_verifier_remains_authoritative: true",
+        "do_not_modify_tests: true",
+        "do_not_upload_or_submit_to_leaderboard: true",
+        "do_not_record_raw_task_text_logs_trajectories_or_credentials: true",
+        "use_goal_harness_for_planning_checkpoints_and_boundary_awareness_only: true",
+        "task_environment_commands_still_must_use_harbor_env_exec_bridge: true",
+    ]
+    if cli_enabled:
+        lines.extend(
+            [
+                f"goal_harness_command_check: {base} check --scan-path {scan_path_arg}",
+                f"goal_harness_command_status: {base} status --limit 5",
+                f"goal_harness_command_quota_should_run: {base} quota should-run --goal-id {goal_id_arg}",
+                f"goal_harness_command_history: {base} history --goal-id {goal_id_arg} --limit 5",
+                "before_long_actions_call_goal_harness_check_once: true",
+                "before_final_marker_review_goal_harness_status_or_history_once: true",
+                "goal_harness_cli_calls_are_observational_unless_an_explicit_write_command_is_provided: true",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "goal_harness_interface_surface: prompt_packet_only",
+                "worker_receives_no_goal_harness_cli_templates: true",
+            ]
+        )
+    return "\n".join(lines)
 
 
 class HarborHostCodexGoalAgent(BaseAgent):
@@ -179,6 +251,17 @@ class HarborHostCodexGoalAgent(BaseAgent):
         reasoning_effort: str | None = "high",
         app_server_wait_for_completion: str | bool = False,
         app_server_response_timeout_sec: str | int | float = 30,
+        goal_harness_mode: str = "codex_goal_mode_baseline",
+        goal_harness_goal_id: str = "goal-harness-meta",
+        goal_harness_access_packet_mode: str = "none",
+        goal_harness_cli_bridge_enabled: str | bool = False,
+        goal_harness_command_prefix: str = "goal-harness",
+        goal_harness_registry_arg: str = "",
+        goal_harness_runtime_root_arg: str = "",
+        goal_harness_scan_path: str = "",
+        goal_harness_classification: str = (
+            "swe_marathon_codex_goal_harness_treatment"
+        ),
         startup_delay_sec: str | int | float = 5,
         poll_interval_sec: str | int | float = 5,
         **kwargs: Any,
@@ -191,12 +274,23 @@ class HarborHostCodexGoalAgent(BaseAgent):
         self.reasoning_effort = reasoning_effort
         self.app_server_wait_for_completion = _coerce_bool(app_server_wait_for_completion)
         self.app_server_response_timeout_sec = float(app_server_response_timeout_sec)
+        self.goal_harness_mode = goal_harness_mode
+        self.goal_harness_goal_id = goal_harness_goal_id
+        self.goal_harness_access_packet_mode = goal_harness_access_packet_mode
+        self.goal_harness_cli_bridge_enabled = _coerce_bool(
+            goal_harness_cli_bridge_enabled
+        )
+        self.goal_harness_command_prefix = goal_harness_command_prefix
+        self.goal_harness_registry_arg = goal_harness_registry_arg
+        self.goal_harness_runtime_root_arg = goal_harness_runtime_root_arg
+        self.goal_harness_scan_path = goal_harness_scan_path
+        self.goal_harness_classification = goal_harness_classification
         self.startup_delay_sec = float(startup_delay_sec)
         self.poll_interval_sec = float(poll_interval_sec)
         self._served_request_count = 0
 
     def version(self) -> str:
-        return "0.3.0"
+        return "0.4.0"
 
     async def setup(self, environment: BaseEnvironment) -> None:
         del environment
@@ -294,11 +388,23 @@ class HarborHostCodexGoalAgent(BaseAgent):
         tmux_name = f"gh_harbor_goal_{run_id}"
         self._write_bridge_script(bridge, request_dir)
 
+        goal_harness_access_packet = build_goal_harness_access_packet(
+            mode=self.goal_harness_mode,
+            packet_mode=self.goal_harness_access_packet_mode,
+            goal_id=self.goal_harness_goal_id,
+            cli_bridge_enabled=self.goal_harness_cli_bridge_enabled,
+            command_prefix=self.goal_harness_command_prefix,
+            registry_arg=self.goal_harness_registry_arg,
+            runtime_root_arg=self.goal_harness_runtime_root_arg,
+            scan_path=self.goal_harness_scan_path,
+            classification=self.goal_harness_classification,
+        )
         prompt = build_host_goal_prompt(
             instruction=instruction,
             bridge_command=bridge,
             marker_path=marker,
             task_workdir=self.task_workdir,
+            goal_harness_access_packet=goal_harness_access_packet,
         )
         prompt_path.write_text(prompt, encoding="utf-8")
 
@@ -356,6 +462,13 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         "completion_marker_observed": marker.exists(),
                         "bridge_request_count": self._served_request_count,
                         "first_blocker": first_blocker,
+                        "goal_harness_mode": self.goal_harness_mode,
+                        "goal_harness_access_packet_injected": bool(
+                            goal_harness_access_packet
+                        ),
+                        "goal_harness_cli_bridge_enabled": (
+                            self.goal_harness_cli_bridge_enabled
+                        ),
                     }
                 )
                 (work_dir / "app_server_goal_turn.compact.json").write_text(
@@ -381,6 +494,10 @@ class HarborHostCodexGoalAgent(BaseAgent):
                             "bridge_request_count": self._served_request_count,
                             "goal_surface": "app_server",
                             "turn_completed_observed": bool(turn.turn_completed_observed),
+                            "goal_harness_mode": self.goal_harness_mode,
+                            "goal_harness_access_packet_injected": bool(
+                                goal_harness_access_packet
+                            ),
                         }
                         return
                     await asyncio.sleep(self.poll_interval_sec)
@@ -395,6 +512,10 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 "goal_surface": "app_server",
                 "turn_completed_observed": bool(turn.turn_completed_observed),
                 "first_blocker": "harbor_host_codex_app_server_goal_timeout",
+                "goal_harness_mode": self.goal_harness_mode,
+                "goal_harness_access_packet_injected": bool(
+                    goal_harness_access_packet
+                ),
             }
             return
 
@@ -444,6 +565,10 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     "goal_harness_agent": self.name(),
                     "completion_marker_observed": True,
                     "bridge_request_count": self._served_request_count,
+                    "goal_harness_mode": self.goal_harness_mode,
+                    "goal_harness_access_packet_injected": bool(
+                        goal_harness_access_packet
+                    ),
                 }
                 return
             capture_path.write_text(self._capture(tmux_name), encoding="utf-8")
@@ -455,4 +580,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
             "completion_marker_observed": False,
             "bridge_request_count": self._served_request_count,
             "first_blocker": "harbor_host_codex_goal_timeout",
+            "goal_harness_mode": self.goal_harness_mode,
+            "goal_harness_access_packet_injected": bool(goal_harness_access_packet),
         }
