@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-21T07:11:23+08:00`
+- updated_at: `2026-06-21T08:03:15+08:00`
 
 ## Case Decisions
 
@@ -47,7 +47,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `terminal-bench@2.0` | `make-doom-for-mips` | `paired_result_requires_attribution` | `timeout_tier_policy_candidate` | `9` |
 | `terminal-bench@2.0` | `merge-diff-arc-agi-task` | `baseline_passed_not_current_treatment_priority` | - | `1` |
 | `terminal-bench@2.0` | `mteb-retrieve` | `paired_baseline_environment_setup_repair_required` | - | `4` |
-| `terminal-bench@2.0` | `multi-source-data-merger` | `paired_baseline_solved_treatment_preserved` | - | `18` |
+| `terminal-bench@2.0` | `multi-source-data-merger` | `paired_baseline_solved_treatment_preserved` | - | `19` |
 | `terminal-bench@2.0` | `nginx-request-logging` | `paired_baseline_solved_treatment_preserved` | - | `7` |
 | `terminal-bench@2.0` | `path-tracing` | `baseline_passed_not_current_treatment_priority` | - | `2` |
 | `terminal-bench@2.0` | `pytorch-model-recovery` | `paired_no_score_uplift_exception_research_required` | `case_exception_research` | `3` |
@@ -268,6 +268,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `terminal-bench@2.0` | `multi-source-data-merger` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/terminal-bench-msdm-runtime-materialization-baseline-20260615T170847CST/jobs/terminal_bench_multi_source_data_merger_codex_goal_mode_runtime_materialization_baseline_20260615T170847CST/result.json` |
 | `terminal-bench@2.0` | `multi-source-data-merger` | `codex_goal_harness_treatment` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-multi-source-data-merger-current-protocol-20260617T201625CST/jobs/terminal_bench_multi_source_data_merger_goal_harness_managed_codex_current_protocol_20260617T201625CST/result.json` |
 | `terminal-bench@2.0` | `multi-source-data-merger` | `hardened_codex_baseline` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-multi-source-data-merger-current-protocol-20260617T201625CST/jobs/terminal_bench_multi_source_data_merger_hardened_codex_current_protocol_20260617T202500CST/result.json` |
+| `terminal-bench@2.0` | `multi-source-data-merger` | `codex_app_server_goal_observation` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `cloud-ecs/parallel-benchmark-20260620T235333Z/terminal-bench-multi-source-data-merger-app-server-r1/terminal_bench_official_result.compact.json` |
 | `terminal-bench@2.0` | `nginx-request-logging` | `codex_goal_mode_baseline` | `` | `1.0` | `` | `` | `none` | `.local/private-benchmark-jobs/terminal-bench-nginx-request-logging-paired-20260614T184054CST/baseline/terminal-bench-nginx-request-logging-paired-20260614T184054CST-baseline/result.json` |
 | `terminal-bench@2.0` | `nginx-request-logging` | `codex_goal_harness_treatment` | `` | `0.0` | `` | `` | `agent_setup_timeout_before_worker_start` | `.local/private-benchmark-jobs/terminal-bench-nginx-request-logging-paired-20260614T184054CST/treatment/terminal-bench-nginx-request-logging-paired-20260614T184054CST-treatment/result.json` |
 | `terminal-bench@2.0` | `nginx-request-logging` | `hardened_codex_baseline` | `` | `0.0` | `` | `` | `worker_install_failed_agent_codex_install_nvm_node` | `.local/private-benchmark-jobs/terminal-bench-nginx-request-logging-hardened-blind-pair-20260616T110017CST/baseline/terminal-bench-nginx-request-logging-hardened-blind-pair-20260616T110017CST-baseline/result.json` |
