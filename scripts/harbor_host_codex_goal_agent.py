@@ -162,7 +162,76 @@ def _coerce_bool(value: str | bool) -> bool:
     return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
-def _compact_json_keys(text: str) -> dict[str, Any]:
+def _compact_todo_summary(value: Any, *, todo_id: str = "") -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    summary: dict[str, Any] = {}
+    for key in ("schema_version", "open_count", "done_count", "completed_count"):
+        if key in value:
+            summary[key] = value[key]
+    items: list[Any] = []
+    for key in ("items", "first_open_items", "first_executable_items"):
+        candidate = value.get(key)
+        if isinstance(candidate, list):
+            items.extend(candidate)
+    if todo_id:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("todo_id") or "") != todo_id:
+                continue
+            summary["case_todo"] = {
+                key: item.get(key)
+                for key in (
+                    "todo_id",
+                    "status",
+                    "claimed_by",
+                    "priority",
+                    "task_class",
+                )
+                if item.get(key) not in (None, "")
+            }
+            break
+    return summary
+
+
+def _compact_interaction_contract(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    user_channel = value.get("user_channel")
+    agent_channel = value.get("agent_channel")
+    cli_channel = value.get("cli_channel")
+    return {
+        key: compact
+        for key, compact in {
+            "schema_version": value.get("schema_version"),
+            "mode": value.get("mode"),
+            "user_action_required": (
+                user_channel.get("action_required")
+                if isinstance(user_channel, dict)
+                else None
+            ),
+            "agent_must_attempt": (
+                agent_channel.get("must_attempt")
+                if isinstance(agent_channel, dict)
+                else None
+            ),
+            "delivery_allowed": (
+                agent_channel.get("delivery_allowed")
+                if isinstance(agent_channel, dict)
+                else None
+            ),
+            "spend_after_validation": (
+                cli_channel.get("spend_after_validation")
+                if isinstance(cli_channel, dict)
+                else None
+            ),
+        }.items()
+        if compact not in (None, "")
+    }
+
+
+def _compact_json_keys(text: str, *, case_todo_id: str = "") -> dict[str, Any]:
     try:
         payload = json.loads(text)
     except Exception:
@@ -186,10 +255,83 @@ def _compact_json_keys(text: str) -> dict[str, Any]:
         "raw_agent_trajectory_recorded",
         "local_paths_recorded",
     }
-    return {
+    compact = {
         "json_parse_ok": True,
         **{key: payload[key] for key in sorted(allowed & set(payload))},
     }
+    agent_summary = _compact_todo_summary(
+        payload.get("agent_todo_summary"),
+        todo_id=case_todo_id,
+    )
+    if agent_summary:
+        compact["agent_todo_summary"] = agent_summary
+    user_summary = _compact_todo_summary(payload.get("user_todo_summary"))
+    if user_summary:
+        compact["user_todo_summary"] = user_summary
+    interaction = _compact_interaction_contract(payload.get("interaction_contract"))
+    if interaction:
+        compact["interaction_contract"] = interaction
+    return compact
+
+
+def _case_scheduler_closeout_summary(
+    trace: dict[str, Any],
+    *,
+    result_kind: str,
+) -> dict[str, Any]:
+    commands = trace.get("commands") if isinstance(trace.get("commands"), list) else []
+    status_summary: dict[str, Any] = {}
+    refresh_observed = False
+    spend_observed = False
+    for command in commands:
+        if not isinstance(command, dict):
+            continue
+        action = str(command.get("action") or "")
+        if action.endswith("_status") and isinstance(
+            command.get("stdout_summary"), dict
+        ):
+            status_summary = command["stdout_summary"]
+        if action.endswith("_refresh_state") and command.get("ok"):
+            refresh_observed = True
+        if action.endswith("_quota_spend") and command.get("ok"):
+            spend_observed = True
+    agent_summary = (
+        status_summary.get("agent_todo_summary")
+        if isinstance(status_summary.get("agent_todo_summary"), dict)
+        else {}
+    )
+    user_summary = (
+        status_summary.get("user_todo_summary")
+        if isinstance(status_summary.get("user_todo_summary"), dict)
+        else {}
+    )
+    case_todo = (
+        agent_summary.get("case_todo")
+        if isinstance(agent_summary.get("case_todo"), dict)
+        else {}
+    )
+    closeout = {
+        "schema_version": "harbor_case_loopx_closeout_summary_v0",
+        "result_kind": result_kind,
+        "status_observed": bool(status_summary),
+        "refresh_state_observed": refresh_observed,
+        "quota_spend_observed": spend_observed,
+        "agent_open_count": agent_summary.get("open_count"),
+        "user_open_count": user_summary.get("open_count"),
+        "case_todo_id": case_todo.get("todo_id") or trace.get("case_todo_id") or "",
+        "case_todo_status": case_todo.get("status") or "",
+        "case_todo_claimed_by": case_todo.get("claimed_by") or "",
+        "timeout_preserves_open_todo": False,
+        "raw_logs_recorded": False,
+        "raw_output_recorded": False,
+    }
+    if result_kind == "timeout_blocker":
+        closeout["timeout_preserves_open_todo"] = (
+            not case_todo
+            or str(case_todo.get("status") or "").strip().lower()
+            not in {"done", "completed", "closed"}
+        )
+    return closeout
 
 
 def _case_loopx_action_from_command(
@@ -339,6 +481,7 @@ def _new_case_scheduler_trace(payload: dict[str, Any]) -> dict[str, Any]:
         "local_paths_recorded": False,
         "commands": [],
         "event_kind_counts": {},
+        "closeout_summary": {},
     }
 
 
@@ -365,7 +508,10 @@ async def _run_case_loopx_cli(
             "action": action,
             "return_code": return_code,
             "ok": return_code == 0,
-            "stdout_summary": _compact_json_keys(stdout.strip()),
+            "stdout_summary": _compact_json_keys(
+                stdout.strip(),
+                case_todo_id=str(payload.get("case_todo_id") or ""),
+            ),
             "stderr_present": bool(stderr.strip()),
             "raw_output_recorded": False,
         }
@@ -575,7 +721,7 @@ def build_case_goal_state_init_payload(
     route: str,
     max_rounds: int,
 ) -> dict[str, Any]:
-    """Build the public-safe case-local GH install/state/todo payload."""
+    """Build the public-safe case-local LoopX install/state/todo payload."""
 
     return dict(
         benchmark_case_loopx_install_payload(
@@ -1187,6 +1333,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         "loopx_case_rollout_event_counts": (
                             case_scheduler_trace.get("event_kind_counts") or {}
                         ),
+                        "loopx_case_closeout_summary": (
+                            case_scheduler_trace.get("closeout_summary") or {}
+                        ),
                         "loopx_prompt_driven_trace_present": bool(
                             prompt_driven_trace.get("command_count")
                         ),
@@ -1319,6 +1468,12 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         args=args,
                         cwd=self.task_workdir,
                     )
+                case_scheduler_trace["closeout_summary"] = (
+                    _case_scheduler_closeout_summary(
+                        case_scheduler_trace,
+                        result_kind=result_kind,
+                    )
+                )
                 await _collect_case_rollout_event_counts(
                     environment,
                     payload=case_state_init_payload,

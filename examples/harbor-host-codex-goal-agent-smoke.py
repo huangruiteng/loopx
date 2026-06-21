@@ -268,6 +268,68 @@ def main() -> int:
             trace=trace,
             cwd="/workspace",
         )
+        status_summary = module._compact_json_keys(
+            json.dumps(
+                {
+                    "ok": True,
+                    "goal_id": init_payload["benchmark_case_goal_id"],
+                    "agent_todo_summary": {
+                        "schema_version": "todo_summary_v0",
+                        "open_count": 1,
+                        "first_open_items": [
+                            {
+                                "todo_id": init_payload["case_todo_id"],
+                                "status": "open",
+                                "claimed_by": init_payload["case_agent_id"],
+                                "priority": "P0",
+                                "task_class": "advancement_task",
+                            }
+                        ],
+                    },
+                    "user_todo_summary": {
+                        "schema_version": "todo_summary_v0",
+                        "open_count": 0,
+                    },
+                    "interaction_contract": {
+                        "schema_version": "loopx_interaction_contract_v0",
+                        "mode": "bounded_delivery",
+                        "user_channel": {"action_required": False},
+                        "agent_channel": {
+                            "must_attempt": True,
+                            "delivery_allowed": True,
+                        },
+                        "cli_channel": {"spend_after_validation": True},
+                    },
+                }
+            ),
+            case_todo_id=init_payload["case_todo_id"],
+        )
+        trace["commands"].extend(
+            [
+                {
+                    "action": "timeout_blocker_status",
+                    "ok": True,
+                    "stdout_summary": status_summary,
+                    "raw_output_recorded": False,
+                },
+                {
+                    "action": "timeout_blocker_refresh_state",
+                    "ok": True,
+                    "stdout_summary": {"json_parse_ok": True, "refreshed": True},
+                    "raw_output_recorded": False,
+                },
+                {
+                    "action": "timeout_blocker_quota_spend",
+                    "ok": True,
+                    "stdout_summary": {"json_parse_ok": True, "spent": True},
+                    "raw_output_recorded": False,
+                },
+            ]
+        )
+        trace["closeout_summary"] = module._case_scheduler_closeout_summary(
+            trace,
+            result_kind="timeout_blocker",
+        )
         return trace
 
     scheduler_trace = asyncio.run(_exercise_case_scheduler())
@@ -277,6 +339,21 @@ def main() -> int:
         "install": 1,
         "quota_should_run": 1,
         "todo_claim": 1,
+    }, scheduler_trace
+    assert scheduler_trace["closeout_summary"] == {
+        "schema_version": "harbor_case_loopx_closeout_summary_v0",
+        "result_kind": "timeout_blocker",
+        "status_observed": True,
+        "refresh_state_observed": True,
+        "quota_spend_observed": True,
+        "agent_open_count": 1,
+        "user_open_count": 0,
+        "case_todo_id": "todo_benchmark_case_main",
+        "case_todo_status": "open",
+        "case_todo_claimed_by": "codex-benchmark-agent",
+        "timeout_preserves_open_todo": True,
+        "raw_logs_recorded": False,
+        "raw_output_recorded": False,
     }, scheduler_trace
     assert scheduler_trace["raw_logs_recorded"] is False, scheduler_trace
 
@@ -331,7 +408,7 @@ def main() -> int:
                 ),
             ]
         ):
-            (request_dir / f"case-gh-{index}.request.json").write_text(
+            (request_dir / f"case-loopx-{index}.request.json").write_text(
                 json.dumps(
                     {
                         "command": command,
