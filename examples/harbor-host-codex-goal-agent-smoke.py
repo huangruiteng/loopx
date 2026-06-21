@@ -76,6 +76,12 @@ def main() -> int:
     assert "do_not_upload_or_submit_to_leaderboard: true" in treatment_packet
     assert "benchmark_loop_contract:" in treatment_packet
     assert "protocol_id: packet_only_observation" in treatment_packet
+    assert "benchmark_case_lifecycle_contract:" in treatment_packet
+    assert "case_isolation_scope: per_benchmark_case_arm" in treatment_packet
+    assert "benchmark_case_goal_id: swe-marathon-current-case-codex-goal-harness-treatment-case" in treatment_packet
+    assert "case_state_path: /app/.codex/goals/swe-marathon-current-case-codex-goal-harness-treatment-case/ACTIVE_GOAL_STATE.md" in treatment_packet
+    assert "required_lifecycle_steps: quota_should_run,todo_claim_or_update,bounded_agent_turn,validation_or_case_result,refresh_state,quota_spend" in treatment_packet
+    assert "required_rollout_event_kinds: quota_should_run,todo_claim,todo_update,validation,refresh_state,quota_spend,compact_case_result,failure_attribution" in treatment_packet
     assert "strict_goal_harness_treatment_claim_allowed: false" in treatment_packet
     assert "goal_harness_treatment_claim_blocker:" in treatment_packet
     polling_packet = module.build_goal_harness_access_packet(
@@ -154,6 +160,9 @@ def main() -> int:
         assert treatment_agent.goal_harness_cli_bridge_enabled is True
         assert treatment_agent.goal_harness_experiment_protocol == "packet_only_observation"
         assert treatment_agent.goal_harness_prompt_polling_rounds == 1
+        assert treatment_agent.goal_harness_benchmark_id == "swe-marathon"
+        assert treatment_agent.goal_harness_case_id == "current-case"
+        assert treatment_agent.goal_harness_arm_id == "codex_goal_harness_treatment"
         polling_agent = module.HarborHostCodexGoalAgent(
             logs_dir=Path(tmp) / "polling-logs",
             goal_surface="app_server",
@@ -161,8 +170,10 @@ def main() -> int:
             goal_harness_access_packet_mode="compact",
             goal_harness_experiment_protocol="max5_blind_loop_no_feedback",
             goal_harness_max_rounds=5,
+            goal_harness_case_id="find-network-alignments",
         )
         assert polling_agent.goal_harness_prompt_polling_rounds == 5
+        assert polling_agent.goal_harness_case_id == "find-network-alignments"
 
     print("harbor host Codex Goal agent smoke passed")
     return 0

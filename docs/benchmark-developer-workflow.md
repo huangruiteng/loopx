@@ -1110,6 +1110,19 @@ is compared: baseline is native Goal mode; test is prompt-driven polling; a
 single access packet without scheduled controller trace is only
 `packet_only_observation`.
 
+For the test arm, also require the shared per-case lifecycle contract from
+`goal_harness.benchmark_case_state`. Each benchmark/case/arm must have an
+isolated `benchmark_case_lifecycle_contract` with
+`case_isolation_scope=per_benchmark_case_arm`, a canonical
+`/app/.codex/goals/<case-arm>/ACTIVE_GOAL_STATE.md` state path, and the public
+lifecycle sequence `quota_should_run -> todo_claim_or_update ->
+bounded_agent_turn -> validation_or_case_result -> refresh_state ->
+quota_spend`. Harbor-family agents inject this contract into the Goal Harness
+access packet and compact metadata; other adapters should reuse the same
+contract rather than inventing benchmark-specific state markers. A runner that
+only performs internal prompt polling without this lifecycle remains
+`packet_only_observation` or incomplete treatment evidence.
+
 `codex exec` is still useful as a tiny connectivity smoke on the cloud host,
 but a successful `codex exec` run is not by itself a Codex Goal baseline. Do not
 rename a polling loop, resume loop, or prompt-prefixed `/goal` experiment into a

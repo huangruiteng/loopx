@@ -34,6 +34,10 @@ from codex_app_server_goal_driver import (
     start_codex_app_server_goal_followup_turn,
     start_codex_app_server_goal_turn,
 )
+from goal_harness.benchmark_case_state import (
+    benchmark_case_lifecycle_contract,
+    render_benchmark_case_lifecycle_contract_lines,
+)
 from goal_harness.benchmark_core.loop_protocol import (
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     GOAL_HARNESS_PACKET_ONLY_OBSERVATION_ROUTE,
@@ -199,6 +203,9 @@ def build_goal_harness_access_packet(
     classification: str = "swe_marathon_codex_goal_harness_treatment",
     experiment_protocol: str = PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
     max_rounds: int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
+    benchmark_id: str = "swe-marathon",
+    case_id: str = "current-case",
+    arm_id: str = "codex_goal_harness_treatment",
 ) -> str:
     """Build a public-safe Goal Harness access packet for Harbor/SWE tasks."""
 
@@ -227,6 +234,12 @@ def build_goal_harness_access_packet(
     claim = classify_goal_harness_treatment_claim(
         {"benchmark_loop_contract": loop_contract}
     )
+    case_lifecycle = benchmark_case_lifecycle_contract(
+        benchmark_id=benchmark_id,
+        case_id=case_id,
+        arm_id=arm_id,
+        max_rounds=max_rounds,
+    )
 
     lines = [
         "Goal Harness Access Packet V0",
@@ -247,6 +260,7 @@ def build_goal_harness_access_packet(
         f"goal_harness_treatment_claim_blocker: {claim['goal_harness_treatment_claim_blocker']}",
     ]
     lines.extend(render_loop_contract_packet_lines(loop_contract))
+    lines.extend(render_benchmark_case_lifecycle_contract_lines(case_lifecycle))
     if cli_enabled:
         lines.extend(
             [
@@ -299,6 +313,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
         goal_harness_experiment_protocol: str = PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
         goal_harness_max_rounds: str | int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
         goal_harness_prompt_polling_rounds: str | int = "auto",
+        goal_harness_benchmark_id: str = "swe-marathon",
+        goal_harness_case_id: str = "current-case",
+        goal_harness_arm_id: str = "codex_goal_harness_treatment",
         startup_delay_sec: str | int | float = 5,
         poll_interval_sec: str | int | float = 5,
         **kwargs: Any,
@@ -324,6 +341,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
         self.goal_harness_classification = goal_harness_classification
         self.goal_harness_experiment_protocol = goal_harness_experiment_protocol
         self.goal_harness_max_rounds = int(goal_harness_max_rounds)
+        self.goal_harness_benchmark_id = goal_harness_benchmark_id
+        self.goal_harness_case_id = goal_harness_case_id
+        self.goal_harness_arm_id = goal_harness_arm_id
         if str(goal_harness_prompt_polling_rounds).strip().lower() == "auto":
             self.goal_harness_prompt_polling_rounds = (
                 self.goal_harness_max_rounds
@@ -451,10 +471,19 @@ class HarborHostCodexGoalAgent(BaseAgent):
             classification=self.goal_harness_classification,
             experiment_protocol=self.goal_harness_experiment_protocol,
             max_rounds=self.goal_harness_max_rounds,
+            benchmark_id=self.goal_harness_benchmark_id,
+            case_id=self.goal_harness_case_id,
+            arm_id=self.goal_harness_arm_id,
         )
         loop_contract: dict[str, Any] = {}
         treatment_claim: dict[str, Any] = {}
         if goal_harness_access_packet:
+            case_lifecycle_contract = benchmark_case_lifecycle_contract(
+                benchmark_id=self.goal_harness_benchmark_id,
+                case_id=self.goal_harness_case_id,
+                arm_id=self.goal_harness_arm_id,
+                max_rounds=self.goal_harness_max_rounds,
+            )
             loop_route = (
                 GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE
                 if self.goal_harness_experiment_protocol
@@ -469,6 +498,8 @@ class HarborHostCodexGoalAgent(BaseAgent):
             treatment_claim = classify_goal_harness_treatment_claim(
                 {"benchmark_loop_contract": loop_contract}
             )
+        else:
+            case_lifecycle_contract = {}
         prompt = build_host_goal_prompt(
             instruction=instruction,
             bridge_command=bridge,
@@ -567,6 +598,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                             self.goal_harness_prompt_polling_rounds
                         ),
                         "benchmark_loop_contract": loop_contract,
+                        "benchmark_case_lifecycle_contract": case_lifecycle_contract,
                         **treatment_claim,
                     }
                 )
@@ -682,6 +714,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     "prompt_polling_enabled": True,
                     "prompt_polling_rounds_completed": current_round,
                     "benchmark_loop_contract": loop_contract,
+                    "benchmark_case_lifecycle_contract": case_lifecycle_contract,
                     **treatment_claim,
                 }
                 return
@@ -709,6 +742,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                                 goal_harness_access_packet
                             ),
                             "benchmark_loop_contract": loop_contract,
+                            "benchmark_case_lifecycle_contract": case_lifecycle_contract,
                             **treatment_claim,
                         }
                         return
@@ -729,6 +763,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     goal_harness_access_packet
                 ),
                 "benchmark_loop_contract": loop_contract,
+                "benchmark_case_lifecycle_contract": case_lifecycle_contract,
                 **treatment_claim,
             }
             return
@@ -784,6 +819,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         goal_harness_access_packet
                     ),
                     "benchmark_loop_contract": loop_contract,
+                    "benchmark_case_lifecycle_contract": case_lifecycle_contract,
                     **treatment_claim,
                 }
                 return
@@ -799,5 +835,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
             "goal_harness_mode": self.goal_harness_mode,
             "goal_harness_access_packet_injected": bool(goal_harness_access_packet),
             "benchmark_loop_contract": loop_contract,
+            "benchmark_case_lifecycle_contract": case_lifecycle_contract,
             **treatment_claim,
         }

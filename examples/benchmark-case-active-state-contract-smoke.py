@@ -26,11 +26,15 @@ from goal_harness.benchmark import (  # noqa: E402
 from goal_harness.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_ACTIVE_STATE_PROOF_FIELDS,
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+    BENCHMARK_CASE_LIFECYCLE_SCHEMA_VERSION,
     benchmark_case_active_state_init_contract,
     benchmark_case_active_state_path,
     benchmark_case_active_state_seed_text,
     benchmark_case_active_state_write_command,
+    benchmark_case_arm_goal_id,
     benchmark_case_goal_id,
+    benchmark_case_lifecycle_contract,
+    render_benchmark_case_lifecycle_contract_lines,
 )
 
 
@@ -121,6 +125,38 @@ def test_seed_write_command_uses_canonical_path() -> None:
     assert "/Users/" not in command
 
 
+def test_case_lifecycle_contract_is_per_case_arm() -> None:
+    contract = benchmark_case_lifecycle_contract(
+        benchmark_id="swe-marathon",
+        case_id="find-network-alignments",
+        arm_id="codex_goal_harness_treatment",
+        max_rounds=5,
+    )
+    expected_goal_id = benchmark_case_arm_goal_id(
+        benchmark_id="swe-marathon",
+        case_id="find-network-alignments",
+        arm_id="codex_goal_harness_treatment",
+    )
+    assert contract["schema_version"] == BENCHMARK_CASE_LIFECYCLE_SCHEMA_VERSION
+    assert contract["case_isolation_scope"] == "per_benchmark_case_arm"
+    assert contract["benchmark_case_goal_id"] == expected_goal_id
+    assert contract["case_state_path"] == benchmark_case_active_state_path(expected_goal_id)
+    assert contract["source_of_truth"] == "case_active_state_and_rollout_event_log"
+    assert "quota_should_run" in contract["required_lifecycle_steps"]
+    assert "todo_claim_or_update" in contract["required_lifecycle_steps"]
+    assert "refresh_state" in contract["required_lifecycle_steps"]
+    assert "quota_spend" in contract["required_lifecycle_steps"]
+    assert "compact_case_result" in contract["required_rollout_event_kinds"]
+    assert contract["runner_internal_prompt_polling_only_allowed"] is False
+    assert contract["surrogate_state_files_allowed"] is False
+    lines = render_benchmark_case_lifecycle_contract_lines(contract)
+    rendered = "\n".join(lines)
+    assert "benchmark_case_lifecycle_contract:" in rendered
+    assert "case_isolation_scope: per_benchmark_case_arm" in rendered
+    assert "/app/.codex/goals/" in rendered
+    assert "/Users/" not in rendered
+
+
 def test_ale_launch_packet_reuses_shared_contract() -> None:
     packet = build_agents_last_exam_local_launch_packet(
         source_root=None,
@@ -156,5 +192,6 @@ if __name__ == "__main__":
     test_shared_contract_for_current_benchmark_routes()
     test_seed_text_uses_real_goal_harness_active_state_shape()
     test_seed_write_command_uses_canonical_path()
+    test_case_lifecycle_contract_is_per_case_arm()
     test_ale_launch_packet_reuses_shared_contract()
     test_terminal_bench_access_packet_fixture_reuses_shared_contract()

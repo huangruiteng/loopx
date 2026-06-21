@@ -14,6 +14,8 @@ BENCHMARK_CASE_ACTIVE_STATE_INIT_FLOW = (
 )
 BENCHMARK_CASE_ACTIVE_STATE_INIT_STAGE = "before_codex_worker_start"
 BENCHMARK_CASE_ACTIVE_STATE_STATUS_FIELD = "case_goal_state_init_status"
+BENCHMARK_CASE_LIFECYCLE_SCHEMA_VERSION = "goal_harness_benchmark_case_lifecycle_v0"
+BENCHMARK_CASE_LIFECYCLE_SOURCE_OF_TRUTH = "case_active_state_and_rollout_event_log"
 BENCHMARK_CASE_ACTIVE_STATE_PROOF_FIELDS = (
     "case_goal_state_init_required",
     "case_goal_state_initialized_before_agent",
@@ -21,11 +23,45 @@ BENCHMARK_CASE_ACTIVE_STATE_PROOF_FIELDS = (
     "case_goal_state_schema_version",
     "case_goal_state_path",
 )
+BENCHMARK_CASE_LIFECYCLE_STEPS = (
+    "quota_should_run",
+    "todo_claim_or_update",
+    "bounded_agent_turn",
+    "validation_or_case_result",
+    "refresh_state",
+    "quota_spend",
+)
+BENCHMARK_CASE_LIFECYCLE_ROLLOUT_EVENTS = (
+    "quota_should_run",
+    "todo_claim",
+    "todo_update",
+    "validation",
+    "refresh_state",
+    "quota_spend",
+    "compact_case_result",
+    "failure_attribution",
+)
 
 
 def benchmark_case_goal_id(benchmark_id: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", benchmark_id.lower()).strip("-")
     return f"{slug or 'benchmark'}-case"
+
+
+def benchmark_case_arm_goal_id(
+    *,
+    benchmark_id: str,
+    case_id: str,
+    arm_id: str,
+) -> str:
+    """Return a canonical per-benchmark/case/arm Goal Harness goal id."""
+
+    slug = re.sub(
+        r"[^a-z0-9]+",
+        "-",
+        f"{benchmark_id}-{case_id}-{arm_id}".lower(),
+    ).strip("-")
+    return f"{slug or 'benchmark-case-arm'}-case"
 
 
 def benchmark_case_active_state_path(
@@ -63,6 +99,86 @@ def benchmark_case_active_state_init_contract(
         "raw_task_text_required_for_init": False,
         "local_paths_recorded": False,
     }
+
+
+def benchmark_case_lifecycle_contract(
+    *,
+    benchmark_id: str,
+    case_id: str,
+    arm_id: str,
+    goal_id: str | None = None,
+    case_state_path: str | None = None,
+    max_rounds: int = 5,
+) -> dict[str, object]:
+    """Return the shared product-path lifecycle contract for a benchmark arm.
+
+    This contract is public-safe and deliberately contains only ids, booleans,
+    and lifecycle/event names. It lets benchmark adapters prove that a treatment
+    arm uses an isolated Goal Harness state path and the real quota/todo/
+    validation/refresh/spend lifecycle instead of a runner-internal surrogate.
+    """
+
+    resolved_goal_id = goal_id or benchmark_case_arm_goal_id(
+        benchmark_id=benchmark_id,
+        case_id=case_id,
+        arm_id=arm_id,
+    )
+    resolved_path = case_state_path or benchmark_case_active_state_path(
+        resolved_goal_id
+    )
+    rounds = max_rounds if isinstance(max_rounds, int) and max_rounds > 0 else 5
+    return {
+        "schema_version": BENCHMARK_CASE_LIFECYCLE_SCHEMA_VERSION,
+        "benchmark_id": benchmark_id,
+        "case_id": case_id,
+        "arm_id": arm_id,
+        "case_isolation_scope": "per_benchmark_case_arm",
+        "benchmark_case_goal_id": resolved_goal_id,
+        "case_state_path": resolved_path,
+        "case_state_init_required_before_worker": True,
+        "source_of_truth": BENCHMARK_CASE_LIFECYCLE_SOURCE_OF_TRUTH,
+        "required_lifecycle_steps": list(BENCHMARK_CASE_LIFECYCLE_STEPS),
+        "required_rollout_event_kinds": list(BENCHMARK_CASE_LIFECYCLE_ROLLOUT_EVENTS),
+        "max_rounds_budget": rounds,
+        "runner_internal_prompt_polling_only_allowed": False,
+        "surrogate_state_files_allowed": False,
+        "official_feedback_forwarded": False,
+        "raw_task_text_required_for_lifecycle": False,
+        "local_paths_recorded": False,
+    }
+
+
+def render_benchmark_case_lifecycle_contract_lines(
+    contract: dict[str, object],
+) -> list[str]:
+    """Render a compact text packet for a case lifecycle contract."""
+
+    fields = (
+        "schema_version",
+        "benchmark_id",
+        "case_id",
+        "arm_id",
+        "case_isolation_scope",
+        "benchmark_case_goal_id",
+        "case_state_path",
+        "source_of_truth",
+        "max_rounds_budget",
+        "runner_internal_prompt_polling_only_allowed",
+        "surrogate_state_files_allowed",
+        "official_feedback_forwarded",
+    )
+    lines = ["benchmark_case_lifecycle_contract:"]
+    for field in fields:
+        value = contract.get(field)
+        if value is None or value == "":
+            continue
+        rendered = str(value).lower() if isinstance(value, bool) else str(value)
+        lines.append(f"  {field}: {rendered}")
+    for field in ("required_lifecycle_steps", "required_rollout_event_kinds"):
+        value = contract.get(field)
+        if isinstance(value, list) and value:
+            lines.append(f"  {field}: {','.join(str(item) for item in value)}")
+    return lines
 
 
 def benchmark_case_active_state_seed_text(
