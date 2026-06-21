@@ -26,6 +26,10 @@ from goal_harness.benchmark_adapters.skillsbench import (  # noqa: E402
     SKILLSBENCH_DEFAULT_TASK,
     build_skillsbench_app_server_goal_worker_contract,
 )
+from goal_harness.benchmark_case_state import (  # noqa: E402
+    benchmark_case_lifecycle_contract,
+    render_benchmark_case_lifecycle_contract_lines,
+)
 from goal_harness.codex_goal_baseline import stable_text_digest  # noqa: E402
 from scripts.codex_app_server_goal_driver import (  # noqa: E402
     compact_turn_metadata,
@@ -60,6 +64,50 @@ def build_contract_payload(args: argparse.Namespace) -> dict[str, Any]:
 def _completion_marker_path(work_dir: Path, prompt: str) -> Path:
     digest = stable_text_digest(prompt)[:12]
     return work_dir / f".goal_harness_app_server_goal_worker_response_{digest}.txt"
+
+
+def build_goal_harness_case_lifecycle_packet(
+    args: argparse.Namespace,
+) -> tuple[str, dict[str, object] | None]:
+    if args.goal_harness_mode != "codex_goal_harness":
+        return "", None
+    if args.goal_harness_access_packet_mode == "none":
+        return "", None
+    case_id = args.goal_harness_case_id or args.task_id
+    contract = benchmark_case_lifecycle_contract(
+        benchmark_id=args.dataset,
+        case_id=case_id,
+        arm_id=args.goal_harness_arm_id,
+        max_rounds=args.goal_harness_max_rounds,
+    )
+    lines = [
+        "skillsbench_goal_harness_case_lifecycle_packet_v0:",
+        f"  packet_mode: {args.goal_harness_access_packet_mode}",
+        "  benchmark_family: benchflow",
+    ]
+    lines.extend(render_benchmark_case_lifecycle_contract_lines(contract))
+    return "\n".join(lines), contract
+
+
+def _prompt_with_goal_harness_case_lifecycle_packet(
+    prompt: str,
+    packet: str,
+) -> str:
+    packet_text = packet.strip()
+    if not packet_text:
+        return prompt
+    return (
+        prompt.rstrip()
+        + "\n\n"
+        + "Goal Harness case lifecycle packet:\n"
+        + packet_text
+        + "\n\n"
+        + "Use this packet as observational control-plane context. Keep the "
+        + "official SkillsBench/BenchFlow verifier authoritative, do not expose "
+        + "reward or verifier output during the agent loop, and do not rely on "
+        + "runner-internal polling alone when claiming Goal Harness treatment "
+        + "evidence."
+    )
 
 
 def _prompt_with_completion_marker(prompt: str, marker_name: str) -> str:
@@ -116,7 +164,15 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
     work_dir.mkdir(parents=True, exist_ok=True)
     if marker_path.exists():
         marker_path.unlink()
-    with_marker_prompt = _prompt_with_completion_marker(prompt, marker_path.name)
+    lifecycle_packet, lifecycle_contract = build_goal_harness_case_lifecycle_packet(args)
+    effective_prompt = _prompt_with_goal_harness_case_lifecycle_packet(
+        prompt,
+        lifecycle_packet,
+    )
+    with_marker_prompt = _prompt_with_completion_marker(
+        effective_prompt,
+        marker_path.name,
+    )
     marker_observed = False
     marker_deleted = False
     turn = start_codex_app_server_goal_turn(
@@ -151,6 +207,10 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                 "completion_marker_requested": True,
                 "completion_marker_observed": marker_observed,
                 "completion_marker_deleted": marker_deleted,
+                "goal_harness_mode": args.goal_harness_mode,
+                "goal_harness_access_packet_mode": args.goal_harness_access_packet_mode,
+                "goal_harness_case_lifecycle_packet_injected": bool(lifecycle_packet),
+                "benchmark_case_lifecycle_contract": lifecycle_contract,
             }
         )
         private_response_written = False
@@ -172,10 +232,16 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         "route": "codex-app-server-goal-baseline",
         "benchmark_id": args.dataset,
         "task_id": args.task_id,
+        "goal_harness_mode": args.goal_harness_mode,
+        "goal_harness_access_packet_mode": args.goal_harness_access_packet_mode,
+        "goal_harness_case_lifecycle_packet_injected": bool(lifecycle_packet),
+        "benchmark_case_lifecycle_contract": lifecycle_contract,
         "worker_contract": build_contract_payload(args),
         "prompt": {
             "sha256": stable_text_digest(prompt),
             "chars": len(prompt),
+            "effective_sha256": stable_text_digest(with_marker_prompt),
+            "effective_chars": len(with_marker_prompt),
             "raw_recorded": False,
         },
         "turn": compact,
@@ -233,6 +299,35 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Mark the surrounding BenchFlow worker integration as ready.",
     )
     parser.add_argument(
+        "--goal-harness-mode",
+        default="codex_goal_mode_baseline",
+        help=(
+            "Goal Harness benchmark arm mode. Use codex_goal_harness only for "
+            "treatment runs that intentionally receive a case lifecycle packet."
+        ),
+    )
+    parser.add_argument(
+        "--goal-harness-access-packet-mode",
+        default="none",
+        help="Set to compact to inject the public-safe case lifecycle packet.",
+    )
+    parser.add_argument(
+        "--goal-harness-case-id",
+        default="",
+        help="Public case id for the per-case/arm Goal Harness lifecycle contract.",
+    )
+    parser.add_argument(
+        "--goal-harness-arm-id",
+        default="codex_app_server_goal_baseline",
+        help="Public arm id for the per-case/arm Goal Harness lifecycle contract.",
+    )
+    parser.add_argument(
+        "--goal-harness-max-rounds",
+        type=int,
+        default=5,
+        help="Maximum public prompt-polling round budget for treatment metadata.",
+    )
+    parser.add_argument(
         "--contract-only",
         action="store_true",
         help="Print only the public-safe worker contract without invoking Codex.",
@@ -248,6 +343,17 @@ def main(argv: list[str] | None = None) -> int:
             "contract_only": True,
             "worker_contract": build_contract_payload(args),
         }
+        lifecycle_packet, lifecycle_contract = build_goal_harness_case_lifecycle_packet(
+            args
+        )
+        payload.update(
+            {
+                "goal_harness_mode": args.goal_harness_mode,
+                "goal_harness_access_packet_mode": args.goal_harness_access_packet_mode,
+                "goal_harness_case_lifecycle_packet_injected": bool(lifecycle_packet),
+                "benchmark_case_lifecycle_contract": lifecycle_contract,
+            }
+        )
     else:
         if not args.work_dir or not args.prompt_file:
             raise SystemExit("--work-dir and --prompt-file are required unless --contract-only")

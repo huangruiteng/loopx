@@ -924,6 +924,17 @@ python3 scripts/skillsbench_host_codex_goal_worker.py \
   --contract-only
 ```
 
+When the worker is launched from a benchmark host wrapper rather than from the
+Goal Harness checkout, set the import path explicitly so shared driver modules
+are resolved from the shipped checkout:
+
+```bash
+PYTHONPATH=<goal-harness-checkout>:<goal-harness-checkout>/scripts \
+  python3 <goal-harness-checkout>/scripts/skillsbench_host_codex_goal_worker.py \
+    --task-id <task-id> \
+    --contract-only
+```
+
 When used for a private case, the same worker reads the private prompt file and
 workspace path on the benchmark host, invokes Codex app-server Goal mode, waits
 for `turn/completed`, and writes the assistant response only to a private
@@ -945,6 +956,33 @@ python3 scripts/skillsbench_host_codex_goal_worker.py \
   --response-text-file <private-agent-response-file> \
   --output-json <private-compact-worker-json>
 ```
+
+For the Goal Harness treatment arm, pass the same private files plus the
+per-case/arm lifecycle packet parameters. The packet is public-safe control
+context only: it names the isolated case goal, required lifecycle events, and
+round budget, while the official SkillsBench verifier remains authoritative
+and hidden from the agent loop:
+
+```bash
+python3 scripts/skillsbench_host_codex_goal_worker.py \
+  --task-id <task-id> \
+  --work-dir <private-case-workdir> \
+  --prompt-file <private-prompt-file> \
+  --response-text-file <private-agent-response-file> \
+  --output-json <private-compact-worker-json> \
+  --goal-harness-mode codex_goal_harness \
+  --goal-harness-access-packet-mode compact \
+  --goal-harness-case-id <task-id> \
+  --goal-harness-arm-id goal_harness_prompt_polling_test \
+  --goal-harness-max-rounds 5
+```
+
+The compact worker JSON must then show
+`goal_harness_case_lifecycle_packet_injected=true` and a
+`benchmark_case_lifecycle_contract` with
+`case_isolation_scope=per_benchmark_case_arm`. A baseline run should keep
+`goal_harness_access_packet_mode=none` and should not include Goal Harness
+lifecycle state.
 
 The compact worker JSON is safe to inspect for lifecycle debugging, but the
 response text file is private task execution material and must stay out of

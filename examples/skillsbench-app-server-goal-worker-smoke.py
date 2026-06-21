@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -27,6 +28,7 @@ from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E40
 
 
 ROUTE = "codex-app-server-goal-baseline"
+WORKER_SCRIPT = REPO_ROOT / "scripts" / "skillsbench_host_codex_goal_worker.py"
 
 FAKE_CODEX = """#!/usr/bin/env python3
 import json
@@ -143,6 +145,14 @@ def assert_plan_prerequisites(plan: dict[str, Any]) -> None:
         prereq["codex_app_server_goal_worker_remote_command_file_bridge_ready"]
         is False
     ), prereq
+
+
+def _load_worker_module() -> Any:
+    spec = importlib.util.spec_from_file_location("skillsbench_goal_worker", WORKER_SCRIPT)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_route_contract_requires_native_goal_proof() -> None:
@@ -283,7 +293,7 @@ def test_host_worker_contract_only_cli() -> None:
     result = subprocess.run(
         [
             sys.executable,
-            str(REPO_ROOT / "scripts" / "skillsbench_host_codex_goal_worker.py"),
+            str(WORKER_SCRIPT),
             "--task-id",
             "tictoc-unnecessary-abort-detection",
             "--contract-only",
@@ -299,6 +309,56 @@ def test_host_worker_contract_only_cli() -> None:
     assert contract["route"] == ROUTE, contract
     assert contract["worker_adapter"]["script"] == "scripts/skillsbench_host_codex_goal_worker.py", contract
     assert contract["worker_adapter"]["reasoning_effort"] == "high", contract
+    assert payload["goal_harness_mode"] == "codex_goal_mode_baseline", payload
+    assert payload["goal_harness_access_packet_mode"] == "none", payload
+    assert payload["goal_harness_case_lifecycle_packet_injected"] is False, payload
+    assert payload["benchmark_case_lifecycle_contract"] is None, payload
+
+
+def test_host_worker_treatment_lifecycle_packet_is_public_safe() -> None:
+    worker = _load_worker_module()
+    args = worker.parse_args(
+        [
+            "--task-id",
+            "tictoc-unnecessary-abort-detection",
+            "--contract-only",
+            "--goal-harness-mode",
+            "codex_goal_harness",
+            "--goal-harness-access-packet-mode",
+            "compact",
+            "--goal-harness-case-id",
+            "tictoc-unnecessary-abort-detection",
+            "--goal-harness-arm-id",
+            "goal_harness_prompt_polling_test",
+            "--goal-harness-max-rounds",
+            "5",
+        ]
+    )
+    packet, contract = worker.build_goal_harness_case_lifecycle_packet(args)
+    assert contract is not None
+    assert "skillsbench_goal_harness_case_lifecycle_packet_v0:" in packet
+    assert "packet_mode: compact" in packet
+    assert "benchmark_family: benchflow" in packet
+    assert "benchmark_case_lifecycle_contract:" in packet
+    assert "benchmark_id: skillsbench" in packet
+    assert "case_id: tictoc-unnecessary-abort-detection" in packet
+    assert "arm_id: goal_harness_prompt_polling_test" in packet
+    assert (
+        "benchmark_case_goal_id: skillsbench-tictoc-unnecessary-abort-detection-goal-harness-prompt-polling-test-case"
+        in packet
+    )
+    assert "case_state_path: /app/.codex/goals/" in packet
+    assert "required_lifecycle_steps: quota_should_run,todo_claim_or_update,bounded_agent_turn,validation_or_case_result,refresh_state,quota_spend" in packet
+    assert "runner_internal_prompt_polling_only_allowed: false" in packet
+    assert "/Users/" not in packet
+    prompt = worker._prompt_with_goal_harness_case_lifecycle_packet(
+        "Private task instruction placeholder.",
+        packet,
+    )
+    assert "Goal Harness case lifecycle packet:" in prompt
+    assert "official SkillsBench/BenchFlow verifier authoritative" in prompt
+    assert "Private task instruction placeholder." in prompt
+    assert "/Users/" not in prompt
 
 
 def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> None:
@@ -314,7 +374,7 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         result = subprocess.run(
             [
                 sys.executable,
-                str(REPO_ROOT / "scripts" / "skillsbench_host_codex_goal_worker.py"),
+                str(WORKER_SCRIPT),
                 "--task-id",
                 "llm-prefix-cache-replay",
                 "--codex-bin",
@@ -342,6 +402,8 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         assert payload["ok"] is True, payload
         assert payload["turn"]["turn_completed_observed"] is True, payload
         assert payload["turn"]["assistant_message_present"] is True, payload
+        assert payload["goal_harness_case_lifecycle_packet_injected"] is False, payload
+        assert payload["turn"]["goal_harness_case_lifecycle_packet_injected"] is False, payload
         assert payload["private_response_text"]["written"] is True, payload
         assert payload["private_response_text"]["path_recorded"] is False, payload
         assert private_response.read_text(encoding="utf-8") == "private worker answer"
@@ -364,7 +426,7 @@ def test_host_worker_marker_completion_when_turn_completed_is_missing() -> None:
         result = subprocess.run(
             [
                 sys.executable,
-                str(REPO_ROOT / "scripts" / "skillsbench_host_codex_goal_worker.py"),
+                str(WORKER_SCRIPT),
                 "--task-id",
                 "llm-prefix-cache-replay",
                 "--codex-bin",
