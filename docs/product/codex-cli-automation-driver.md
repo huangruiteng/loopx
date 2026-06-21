@@ -6,7 +6,8 @@ Goal Harness should make Codex CLI feel easy before it feels automated. The
 primary path is still the Codex TUI: the user starts from a project repo, sends
 one Goal-Harness-generated message, and can keep watching, steering, reviewing,
 or taking over. Automation is allowed only when it preserves that visible
-control surface or falls back explicitly.
+control surface. The default `/goal` product path does not offer headless
+fallback.
 
 ## Current Finding
 
@@ -30,7 +31,7 @@ The important product distinction is:
 | --- | --- | --- |
 | `codex [PROMPT]` | one-message TUI bootstrap is viable | scheduled wakeups |
 | `codex resume ... [PROMPT]` | a visible resume proof is plausible | safe injection into an already-open TUI |
-| `codex exec` | headless fallback is viable | preserved TUI experience |
+| `codex exec` | non-interactive execution exists | preserved TUI experience or default Goal Harness fallback |
 | `remote-control` / app-server | a future visible-control bridge may exist | production-safe Goal Harness driver semantics |
 
 ## Driver Shape
@@ -48,9 +49,9 @@ The v0 driver should be explicit and conservative:
 5. The driver runs `goal-harness codex-cli-visible-driver-plan`.
 6. If the plan proves a visible attach path, the driver may attempt a visible
    `resume` / remote-control turn behind an idle guard.
-7. If no visible attach path is proven, the driver keeps TUI bootstrap primary
-   and offers `goal-harness codex-cli-exec-handoff` as an explicit headless
-   fallback.
+7. If no visible attach path is proven, the driver keeps TUI bootstrap primary.
+   `goal-harness codex-cli-exec-handoff` reports the disabled boundary and does
+   not print a runnable `codex exec` script.
 8. The driver spends quota only after validated writeback.
 
 The local driver must never read or publish:
@@ -80,14 +81,15 @@ The local driver must never read or publish:
 - A visible resume / remote-control proof shows the turn is visible,
   interruptible, and idle-guarded before Goal Harness calls it
   session-attached automation.
-- Headless `codex exec` remains a named fallback, not the default user story.
+- Headless `codex exec` is disabled for the default `/goal` product path, not a
+  named fallback.
 - Every automatic turn writes compact evidence or a precise blocker before
   quota spend.
 
 ## Current MVP
 
 The dry-run-first local driver planner composes the existing quota, TUI,
-visible-driver, and explicit fallback pieces into one operator-facing packet:
+visible-driver, and headless-disabled boundary into one operator-facing packet:
 
 ```bash
 goal-harness codex-cli-local-driver-plan --project . --goal-id <goal> --agent-id <agent>
@@ -98,10 +100,10 @@ transcripts, inspect session files, mutate a Codex session, or spend Goal
 Harness quota. It emits:
 
 - the quota guard command that must run before work;
-- the visible-driver decision for TUI bootstrap, visible attach proof,
-  resume/remote-control spike, or explicit headless fallback;
+- the visible-driver decision for TUI bootstrap, visible attach proof, or
+  resume/remote-control spike;
 - the repo-specific TUI bootstrap message command;
-- the explicit `codex exec` fallback generator;
+- the disabled `codex exec` boundary;
 - the idle-guard placeholder that must exist before any same-session attach is
   treated as production automation.
 
@@ -134,8 +136,8 @@ Harness quota. It only chooses the next safe boundary:
 - require a public-safe visible-session proof before any resume or
   remote-control path is treated as same-session automation;
 - keep the TUI bootstrap as the default when no proof exists;
-- require `--allow-headless-fallback` before emitting a headless `codex exec`
-  fallback command;
+- never emit a headless `codex exec` fallback command from the default `/goal`
+  product path;
 - mark a visible session as a candidate only when the proof fixture confirms
   user opt-in, quota guard, idle guard, visibility, interruptibility, boundary,
   and compact writeback planning.
@@ -149,9 +151,8 @@ goal-harness codex-cli-local-scheduler-tick --project . --goal-id <goal> --agent
 This command is still no-execution by design. A launchd/cron/local-daemon
 wrapper can call it and receive one of two safe outputs:
 
-- a candidate external command, when visible-session proof or explicit headless
-  fallback opt-in is present;
-- a precise blocker writeback command, when proof or opt-in is missing.
+- a candidate external command, when visible-session proof is present;
+- a precise blocker writeback command, when proof is missing.
 
 The tick itself does not run Codex, read transcripts, inspect session files,
 mutate sessions, write Goal Harness state, or spend quota. That boundary keeps
@@ -204,4 +205,5 @@ post-turn writeback path.
 Use the executor wrapper as the smallest local-driver bridge, then move toward
 the real product loop: one TUI message starts Goal Harness, recurring wakeups
 run the guard, a visible same-session turn is attempted only after proof and
-idle checks, and headless `codex exec` remains an explicit fallback.
+idle checks, and headless `codex exec` remains disabled for the default
+`/goal` path.

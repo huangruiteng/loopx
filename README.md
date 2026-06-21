@@ -188,21 +188,26 @@ goal-harness heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> -
 ### Codex CLI
 
 Use this when you want the human-visible TUI to stay primary. Open Codex CLI
-from your project repo and paste one message:
+from your project repo and paste one goal-mode message:
 
 ```text
-Start Goal Harness for this repo. If `goal-harness` is missing, install it with
-the official no-clone GitHub installer, then connect this project. Show me the
-current goal, concrete user gate if any, top todos, and next safe action before
-running longer work. Keep me in this Codex CLI TUI unless I explicitly accept a
-headless fallback. After I paste this, begin the Goal Harness loop; do not stop
-after only explaining what Goal Harness is.
+/goal Start Goal Harness for this repo. Use Goal Harness as the control plane
+for this visible Codex CLI TUI goal. If `goal-harness` is missing, install it
+with the official no-clone GitHub installer, then connect this project. Show me
+the current goal, concrete user gate if any, top todos, and next safe action
+before running longer work. Keep me in this Codex CLI TUI and do not use hidden
+headless execution. Begin the Goal Harness loop now; do not stop after only
+explaining what Goal Harness is.
 ```
 
-The first useful response should show the current goal, user gate, top todos,
-and next safe action. If the guard permits work, the same visible TUI turn can
-claim or choose one runnable agent todo and complete one bounded validated
-segment.
+The `/goal` message gives Codex CLI goal mode the durable loop objective and
+completion criteria. The text is a Codex CLI rewrite of the Goal Harness
+heartbeat prompt: it keeps the App automation lifecycle ideas, but speaks in
+the visible TUI's style and uses `heartbeat-prompt --thin` only as a drift
+check. The first useful response should show the current goal, user gate, top
+todos, and next safe action. If the guard permits work, the same visible TUI
+turn can claim or choose one runnable agent todo and complete one bounded
+validated segment.
 
 After Goal Harness is installed, generate a stricter exact TUI paste block:
 
@@ -216,9 +221,9 @@ For only the pasteable text:
 goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
 ```
 
-Headless `codex exec` is an explicit fallback, not the default experience.
-Pilot packets, local drivers, idle detection, and same-session proof details
-live in [Getting Started](docs/guides/getting-started.md) and the
+Hidden `codex exec` is not part of the default TUI bootstrap. Pilot packets,
+local drivers, idle detection, and same-session proof details live in
+[Getting Started](docs/guides/getting-started.md) and the
 [Codex CLI TUI-first loop](docs/product/codex-cli-tui-loop.md).
 
 ### Other Agents And Manual Shell

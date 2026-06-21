@@ -18,18 +18,23 @@ daemon instead of Codex." The target is:
 
 ## Product Goal
 
-The best first-run experience is one TUI message:
+The best first-run experience is one TUI goal-mode message:
 
 ```text
-Start Goal Harness for this repo. If `goal-harness` is missing, install it with
-the official no-clone GitHub installer, then connect this project. Show me the
-current goal, concrete user gate if any, top todos, and next safe action before
-running longer work. Keep me in this Codex CLI TUI unless I explicitly accept a
-headless fallback. After I paste this, begin the Goal Harness loop; do not stop
-after only explaining what Goal Harness is.
+/goal Start Goal Harness for this repo. Use Goal Harness as the control plane
+for this visible Codex CLI TUI goal. If `goal-harness` is missing, install it
+with the official no-clone GitHub installer, then connect this project. Show me
+the current goal, concrete user gate if any, top todos, and next safe action
+before running longer work. Keep me in this Codex CLI TUI and do not use hidden
+headless execution. Begin the Goal Harness loop now; do not stop after only
+explaining what Goal Harness is.
 ```
 
-That message should be enough for a terminal agent to:
+That `/goal` text should be a Codex CLI-native rewrite of the App heartbeat
+automation prompt. It should keep the same loop discipline while using the TUI
+as the user's live control surface, with `heartbeat-prompt --thin` reserved
+as a drift check when the Goal Harness lifecycle contract changes. The message
+should be enough for a terminal agent to:
 
 - run `goal-harness doctor`;
 - install or repair the local CLI if it is missing, using the no-clone archive
@@ -60,7 +65,7 @@ and the user's live console.
 ### 1. TUI Bootstrap
 
 This is the first supported path. The user starts in Codex CLI TUI and pastes a
-single Goal Harness bootstrap request. The agent performs install/connect,
+single `/goal` Goal Harness bootstrap request. The agent performs install/connect,
 surfaces onboarding decisions, and starts a bounded Goal Harness turn in the
 same conversation. It should not stop after describing the product; once the
 quota/status guard permits work, the first TUI turn should perform one bounded,
@@ -75,10 +80,10 @@ Current prototype:
 goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
 ```
 
-Copy the generated message into Codex CLI TUI. The message tells the agent to
-repair/install Goal Harness if needed, connect the repo conservatively, run the
-quota/status guard, obey `interaction_contract`, preserve the visible TUI, and
-spend quota only after validated writeback.
+Copy the generated message into Codex CLI TUI. It starts with `/goal` and tells
+the agent to repair/install Goal Harness if needed, connect the repo
+conservatively, run the quota/status guard, obey `interaction_contract`,
+preserve the visible TUI, and spend quota only after validated writeback.
 
 Transcript-free first-run smoke packet:
 
@@ -174,17 +179,16 @@ goal-harness codex-cli-visible-driver-plan --project . --goal-id <goal-id>
 
 This command turns the probe result into a dry-run driver plan. It does not run
 Codex, read raw transcripts, read session files, mutate a Codex session, or
-spend Goal Harness quota. Its job is to choose one of four next modes:
+spend Goal Harness quota. Its job is to choose one of three next modes:
 
 - `session_attached_visible_turn`: a future local driver may try the detected
   visible attach primitive, but only behind quota guard and idle guard.
 - `visible_resume_or_remote_control_spike`: `resume [PROMPT]` or
   `remote-control` exists, but it must prove that the turn is visible and
   interruptible before Goal Harness treats it as session-attached automation.
-- `explicit_headless_fallback_after_tui_bootstrap`: keep the one-message TUI
-  bootstrap as the main path and use `codex exec` only when the user knowingly
-  accepts a headless fallback.
-- `tui_bootstrap_only`: ask the user to start inside Codex CLI TUI.
+- `tui_bootstrap_only`: ask the user to start inside Codex CLI TUI. If the
+  probe only exposes `codex exec`, Goal Harness still stays in this mode
+  because headless fallback is disabled for the default `/goal` product path.
 
 Current local-driver planner:
 
@@ -193,8 +197,8 @@ goal-harness codex-cli-local-driver-plan --project . --goal-id <goal-id> --agent
 ```
 
 This command is the conservative MVP for automation setup. It composes the
-quota guard, visible-driver plan, TUI bootstrap command, explicit headless
-fallback command, and idle-guard requirement into a single dry-run packet. It
+quota guard, visible-driver plan, TUI bootstrap command, headless-disabled
+boundary, and idle-guard requirement into a single dry-run packet. It
 does not run Codex, read transcripts, read session files, mutate a session, or
 spend quota.
 
@@ -216,10 +220,9 @@ With runtime-idle evidence and `--guard-checked`, a local scheduler may choose
 exactly one opt-in side effect:
 
 - `--execute-candidate --candidate-command-prefix <prefix>`: run a proven
-  visible or explicit fallback candidate whose command starts with an allowed
-  prefix.
+  visible candidate whose command starts with an allowed prefix.
 - `--execute-blocker-writeback`: run the precise Goal Harness blocker writeback
-  command when the tick says proof or opt-in is missing.
+  command when the tick says proof is missing.
 
 The wrapper reports only whether it ran, return code, timeout, and the selected
 kind. It discards stdout/stderr, does not read transcripts, does not inspect
@@ -333,31 +336,25 @@ It treats `resume` / `remote-control` as proof targets, keeps fixtures
 public-safe, and records blocker-first stop conditions before any later visible
 turn is promoted.
 
-### 3. Headless Fallback
+### 3. Headless Disabled Boundary
 
 `codex exec` remains useful for scheduled or CI-like work, but it is not the
-primary product experience for interactive users. A headless driver is allowed
-when:
+primary product experience for interactive users. The default Codex CLI
+Goal Harness `/goal` path does not expose a headless fallback, even as an
+opt-in, so a first-run packet cannot accidentally move work into hidden
+execution.
 
-- the user knowingly opted into background execution;
-- the goal boundary permits it;
-- the work is independent of an active TUI decision;
-- the driver writes compact evidence back into Goal Harness.
-
-Headless fallback should never be the only way to start Goal Harness.
-
-Current explicit fallback generator:
+Compatibility boundary:
 
 ```bash
 goal-harness codex-cli-exec-handoff --project . --goal-id <goal-id>
 ```
 
-This command prints a `codex exec` handoff script that embeds the same
-Goal-Harness-aware bootstrap message. It does not run Codex, read transcripts,
-read credentials, read session files, mutate a session, or spend quota. Use it
-only when the user knowingly chooses a headless fallback or when a future
-driver decides that same-session attachment is unavailable and the goal
-boundary permits background execution.
+This command no longer prints a runnable `codex exec` handoff script. It
+reports the disabled boundary and points back to
+`codex-cli-bootstrap-message --message-only` for use inside the visible TUI.
+It does not run Codex, read transcripts, read credentials, read session files,
+mutate a session, or spend quota.
 
 ## Session-Attached Turn Algorithm
 
@@ -369,8 +366,8 @@ boundary permits background execution.
    worktree before editing.
 5. Choose among current-agent claimed advancement todos and runnable unclaimed
    candidates; monitor todos are context unless they produce a material event.
-6. Inject a visible steering prompt into the idle TUI session, or fall back to
-   an explicit headless run when the user has allowed it.
+6. Inject a visible steering prompt into the idle TUI session when proven, or
+   keep the one-message TUI bootstrap as the user-facing path.
 7. After validation, run `refresh-state` and `quota spend-slot --execute`.
 8. If validation fails, write a compact blocker instead of spending success
    prose.
@@ -389,7 +386,7 @@ projects runnable candidates; it should not over-specify the model's local plan.
 - Do not let a side agent edit from the primary checkout; obey
   `workspace_guard`.
 - Prefer a visible TUI prompt over silent background mutation.
-- Treat session-attachment failure as an explicit fallback decision, not as a
+- Treat session-attachment failure as a disabled-boundary decision, not as a
   reason to lose the Goal Harness loop.
 
 ## Implementation Roadmap
@@ -407,30 +404,30 @@ projects runnable candidates; it should not over-specify the model's local plan.
 5. **Session probe**: document whether current Codex CLI exposes a stable
    session id, resume handle, or safe injection primitive. The current
    implementation is `goal-harness codex-cli-session-probe`; it separates
-   `exec` fallback support, visible resume / remote-control spike surfaces, and
-   true same-open-TUI visible injection.
+   headless-disabled execution support, visible resume / remote-control spike
+   surfaces, and true same-open-TUI visible injection.
 6. **Visible driver plan**: generate a dry-run plan with
    `goal-harness codex-cli-visible-driver-plan` so the next local driver knows
    whether to attempt visible attach, run a resume/remote-control proof, or
-   fall back explicitly.
+   keep the one-message TUI bootstrap as the product path.
 7. **Local driver planner**: ship
    `goal-harness codex-cli-local-driver-plan` as the dry-run command that
-   composes quota, visible-driver, TUI bootstrap, explicit fallback, and
-   idle-guard requirements.
+   composes quota, visible-driver, TUI bootstrap, headless-disabled boundary,
+   and idle-guard requirements.
 8. **Visible-session proof harness**: validate public-safe observations with
    `goal-harness codex-cli-visible-session-proof` before promoting
    resume/remote-control into any same-session automation path.
 9. **Visible driver run packet**: add
    `goal-harness codex-cli-visible-driver-run` as the no-execution packet that
-   decides whether the next turn needs visible proof, TUI bootstrap, explicit
-   headless opt-in, or a proven visible-session candidate.
+   decides whether the next turn needs visible proof, TUI bootstrap, or a
+   proven visible-session candidate.
 10. **Local scheduler tick**: add
    `goal-harness codex-cli-local-scheduler-tick` as the first executor-facing
    one-shot packet. It emits either an external command candidate or a precise
    blocker writeback command, but does not run Codex, read session files, or
    write Goal Harness state itself. Visible candidates require both
    visible-session proof and runtime-idle detector approval; headless fallback
-   remains explicit opt-in.
+   remains disabled for the default `/goal` path.
 11. **Local scheduler executor wrapper**: add
    `goal-harness codex-cli-local-scheduler-exec` as the explicit opt-in bridge
    that can run one tick result only after guard confirmation, runtime-idle

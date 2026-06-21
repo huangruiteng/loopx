@@ -74,19 +74,24 @@ paths, runtime roots, JSON payloads, or session files.
 First-run path:
 
 ```text
-Start Goal Harness for this repo. If `goal-harness` is missing, install it with
-the official no-clone GitHub installer, then connect this project. Show me the
-current goal, concrete user gate if any, top todos, and next safe action before
-running longer work. Keep me in this Codex CLI TUI unless I explicitly accept a
-headless fallback. After I paste this, begin the Goal Harness loop; do not stop
-after only explaining what Goal Harness is.
+/goal Start Goal Harness for this repo. Use Goal Harness as the control plane
+for this visible Codex CLI TUI goal. If `goal-harness` is missing, install it
+with the official no-clone GitHub installer, then connect this project. Show me
+the current goal, concrete user gate if any, top todos, and next safe action
+before running longer work. Keep me in this Codex CLI TUI and do not use hidden
+headless execution. Begin the Goal Harness loop now; do not stop after only
+explaining what Goal Harness is.
 ```
 
-The first useful response should show the current goal id, concrete user gate
-if one exists, top user todo if any, top agent todo, and next safe action before
-longer delivery work. When the guard permits work, the same TUI turn should
-claim or choose one runnable agent todo and finish one bounded validated
-segment, rather than asking the user to run a separate setup flow.
+The generated paste block is a Codex CLI `/goal` rewrite of the App heartbeat
+prompt, not a copy of that automation body. It keeps the same lifecycle ideas
+while using the TUI as the live control surface; `heartbeat-prompt --thin`
+remains a drift check when the contract changes. The first useful response
+should show the current goal id, concrete user gate if one exists, top user
+todo if any, top agent todo, and next safe action before longer delivery work.
+When the guard permits work, the same TUI turn should claim or choose one
+runnable agent todo and finish one bounded validated segment, rather than
+asking the user to run a separate setup flow.
 
 Once `goal-harness` is installed, generate a stricter repo-specific paste
 message:
@@ -152,8 +157,8 @@ goal-harness codex-cli-visible-driver-plan --project . --goal-id <goal-id>
 ```
 
 To see the full local automation setup plan in one packet, including quota
-guard, visible-driver decision, TUI bootstrap command, explicit headless
-fallback command, and idle-guard requirement, run:
+guard, visible-driver decision, TUI bootstrap command, the headless-disabled
+boundary, and idle-guard requirement, run:
 
 ```bash
 goal-harness codex-cli-local-driver-plan --project . --goal-id <goal-id> --agent-id <agent-id>
@@ -178,16 +183,16 @@ The fixture should contain only booleans and public-safe labels proving user
 opt-in, quota guard, idle guard, visible turn, interruptibility, no transcript
 or session-file reads, and compact writeback planning.
 
-If same-session steering is unavailable and the user explicitly accepts a
-headless fallback, generate the fallback handoff instead of pretending the open
-TUI is preserved:
+The default Codex CLI `/goal` product path does not offer a headless fallback.
+For compatibility, the old handoff command only reports the disabled boundary
+and points back to the message-only TUI bootstrap:
 
 ```bash
 goal-harness codex-cli-exec-handoff --project . --goal-id <goal-id>
 ```
 
 See the [Codex CLI TUI-first loop](../product/codex-cli-tui-loop.md) contract
-for the bootstrap, session-attached automation, and headless fallback split.
+for the bootstrap, session-attached automation, and headless-disabled boundary.
 The [Codex CLI first-run rehearsal](../product/codex-cli-first-run-rehearsal.md)
 keeps the shortest user-facing route in one place: no-clone install,
 one-message TUI bootstrap, and proof-capture fixtures for later automation.
