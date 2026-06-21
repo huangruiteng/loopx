@@ -696,6 +696,211 @@ def build_codex_cli_visible_session_proof(
     }
 
 
+def build_codex_cli_visible_attach_acceptance(
+    *,
+    project: Path,
+    goal_id: str | None,
+    agent_id: str | None,
+    cli_bin: str,
+    codex_bin: str,
+    probe_payload: dict[str, Any],
+    proof_payload: dict[str, Any] | None = None,
+    idle_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Decide whether evidence is strong enough for same-TUI visible attach.
+
+    This packet is an acceptance gate, not an executor. It deliberately keeps
+    Codex CLI `resume` / `remote-control` surfaces in a spike lane unless a
+    public-safe proof shows a visible same-TUI attach and a fresh idle detector
+    proves the later turn is not racing the user or an existing turn.
+    """
+
+    local_plan = build_codex_cli_local_driver_plan(
+        project=project,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+        codex_bin=codex_bin,
+        probe_payload=probe_payload,
+    )
+    visible_plan = (
+        local_plan.get("visible_driver_plan")
+        if isinstance(local_plan.get("visible_driver_plan"), dict)
+        else {}
+    )
+    proof = build_codex_cli_visible_session_proof(
+        project=project,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+        proof_payload=proof_payload,
+    )
+    idle_detector = build_codex_cli_runtime_idle_detector(
+        project=project,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+        idle_payload=idle_payload,
+    )
+    resolved_project = str(local_plan["project"])
+    resolved_goal_id = str(local_plan["goal_id"])
+    agent_arg = f" --agent-id {_shell_arg(agent_id)}" if agent_id else ""
+    common_args = (
+        f"--project {_shell_arg(resolved_project)} "
+        f"--goal-id {_shell_arg(resolved_goal_id)}{agent_arg} "
+        f"--codex-bin {_shell_arg(codex_bin)}"
+    )
+    proof_approved = proof.get("approved_for_same_session_automation") is True
+    idle_approved = idle_detector.get("approved_for_visible_later_turn") is True
+    observed_surface = str(proof.get("observed_surface") or "unknown")
+    driver_mode = str(local_plan.get("driver_mode") or "tui_bootstrap_only")
+    same_tui_proof = proof_approved and observed_surface == "same_tui_visible_attach"
+    accepted_same_tui = same_tui_proof and idle_approved
+    visible_later_turn_candidate = proof_approved and idle_approved
+
+    blockers: list[str] = []
+    if accepted_same_tui:
+        decision = "same_tui_visible_attach_accepted"
+        acceptance_action = "allow_opt_in_same_tui_visible_turn_after_fresh_quota_guard"
+        next_safe_step = (
+            "wire the proven same-TUI visible attach primitive behind a fresh "
+            "quota guard, runtime idle detector, and explicit command boundary"
+        )
+    elif proof_approved and idle_approved:
+        decision = "visible_surface_spike_passed_not_same_tui"
+        acceptance_action = "keep_visible_surface_as_spike_candidate_not_same_tui_attach"
+        blockers.append("same_tui_visible_attach_not_proven")
+        next_safe_step = (
+            "keep one-message TUI bootstrap primary; treat the proven visible "
+            "resume/remote-control surface as an opt-in spike until same-TUI "
+            "attachment is demonstrated"
+        )
+    elif proof_approved:
+        decision = "runtime_idle_evidence_required"
+        acceptance_action = "capture_runtime_idle_evidence_before_later_visible_turn"
+        blockers.extend(idle_detector.get("failures") or ["runtime_idle_evidence_missing"])
+        next_safe_step = (
+            "capture a public-safe runtime idle fixture or local observation "
+            "before any later visible Codex CLI prompt"
+        )
+    elif driver_mode in {"session_attached_visible_turn", "visible_resume_or_remote_control_spike"}:
+        decision = "visible_session_proof_required"
+        acceptance_action = "capture_public_safe_visible_session_proof"
+        if proof_payload is None:
+            blockers.append("visible_session_proof_missing")
+        else:
+            blockers.extend(proof.get("failures") or ["visible_session_proof_incomplete"])
+        next_safe_step = (
+            "do not call this accepted automation yet; first prove visibility, "
+            "interruptibility, boundaries, and compact writeback planning"
+        )
+    elif driver_mode == "explicit_headless_fallback_after_tui_bootstrap":
+        decision = "explicit_headless_fallback_after_tui_bootstrap"
+        acceptance_action = "keep_tui_bootstrap_primary_and_require_explicit_fallback_opt_in"
+        blockers.append("same_tui_or_visible_surface_not_exposed_by_probe")
+        next_safe_step = (
+            "keep one-message TUI bootstrap as the primary path; offer headless "
+            "codex exec only after explicit opt-in"
+        )
+    else:
+        decision = "tui_bootstrap_only"
+        acceptance_action = "ask_user_to_start_inside_codex_cli_tui"
+        blockers.append("codex_cli_attach_surface_not_exposed_by_probe")
+        next_safe_step = "ask the user to start in Codex CLI TUI and paste the bootstrap message"
+
+    commands = (
+        local_plan.get("commands")
+        if isinstance(local_plan.get("commands"), dict)
+        else {}
+    )
+    return {
+        "ok": True,
+        "schema_version": "codex_cli_visible_attach_acceptance_v0",
+        "project": resolved_project,
+        "goal_id": resolved_goal_id,
+        "agent_id": agent_id,
+        "cli_bin": cli_bin,
+        "codex_bin": codex_bin,
+        "decision": decision,
+        "acceptance_action": acceptance_action,
+        "accepted_for_same_tui_automation": accepted_same_tui,
+        "accepted_for_visible_later_turn": visible_later_turn_candidate,
+        "observed_surface": observed_surface,
+        "driver_mode": driver_mode,
+        "next_safe_step": next_safe_step,
+        "blockers": blockers,
+        "requirements": {
+            "help_probe_required": True,
+            "public_safe_visible_session_proof_required": True,
+            "runtime_idle_detector_required": True,
+            "same_tui_surface_required_for_same_tui_acceptance": True,
+            "fresh_quota_guard_required_before_execution": True,
+            "explicit_headless_fallback_opt_in_required": True,
+        },
+        "probe": {
+            "schema_version": probe_payload.get("schema_version"),
+            "source": probe_payload.get("source"),
+            "recommended_mode": probe_payload.get("recommended_mode"),
+            "capabilities": probe_payload.get("capabilities"),
+            "warnings": probe_payload.get("warnings") or [],
+        },
+        "visible_driver_plan": {
+            "schema_version": visible_plan.get("schema_version"),
+            "driver_mode": visible_plan.get("driver_mode"),
+            "automation_action": visible_plan.get("automation_action"),
+            "next_step": visible_plan.get("next_step"),
+        },
+        "visible_session_proof": {
+            "supplied": proof_payload is not None,
+            "approved": proof_approved,
+            "decision": proof.get("decision"),
+            "observed_surface": proof.get("observed_surface"),
+            "failures": proof.get("failures") or [],
+        },
+        "runtime_idle_detector": {
+            "supplied": idle_payload is not None,
+            "approved": idle_approved,
+            "decision": idle_detector.get("decision"),
+            "failures": idle_detector.get("failures") or [],
+            "source": idle_detector.get("source"),
+        },
+        "commands": {
+            "session_probe": f"{_shell_arg(cli_bin)} codex-cli-session-probe --codex-bin {_shell_arg(codex_bin)}",
+            "local_driver_plan": commands.get("local_driver_plan"),
+            "visible_driver_plan": commands.get("visible_driver_plan"),
+            "visible_attach_acceptance": (
+                f"{_shell_arg(cli_bin)} codex-cli-visible-attach-acceptance {common_args} "
+                "--proof-fixture <public-visible-proof.json> --idle-fixture <public-runtime-idle.json>"
+            ),
+            "visible_session_proof": (
+                f"{_shell_arg(cli_bin)} codex-cli-visible-session-proof "
+                f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}"
+                f"{agent_arg} --proof-fixture <public-visible-proof.json>"
+            ),
+            "runtime_idle_detector_fixture": (
+                f"{_shell_arg(cli_bin)} codex-cli-runtime-idle-detector "
+                f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}"
+                f"{agent_arg} --idle-fixture <public-runtime-idle.json>"
+            ),
+            "tui_bootstrap_message": commands.get("tui_bootstrap_message"),
+            "explicit_headless_fallback": commands.get("explicit_headless_fallback"),
+        },
+        "boundary": {
+            "acceptance_packet_only": True,
+            "runs_codex": False,
+            "reads_raw_transcripts": False,
+            "reads_credentials": False,
+            "reads_session_files": False,
+            "reads_stdout_stderr": False,
+            "mutates_codex_session": False,
+            "spends_goal_harness_quota": False,
+            "writes_goal_harness_state": False,
+            "requires_fresh_quota_guard_before_execution": True,
+        },
+        "warnings": list(probe_payload.get("warnings") or []),
+    }
+
+
 def build_codex_cli_visible_driver_plan(
     *,
     project: Path,
@@ -2548,4 +2753,70 @@ def render_codex_cli_visible_session_proof_markdown(payload: dict[str, Any]) -> 
 - mutates_codex_session: `{boundary.get("mutates_codex_session")}`
 - spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
 {required_shape_block}
+"""
+
+
+def render_codex_cli_visible_attach_acceptance_markdown(payload: dict[str, Any]) -> str:
+    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+    proof = (
+        payload.get("visible_session_proof")
+        if isinstance(payload.get("visible_session_proof"), dict)
+        else {}
+    )
+    runtime_idle = (
+        payload.get("runtime_idle_detector")
+        if isinstance(payload.get("runtime_idle_detector"), dict)
+        else {}
+    )
+    blockers = payload.get("blockers") if isinstance(payload.get("blockers"), list) else []
+    blocker_lines = "\n".join(f"- {blocker}" for blocker in blockers) if blockers else "- none"
+    warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
+    warning_lines = "\n".join(f"- {warning}" for warning in warnings) if warnings else "- none"
+    return f"""# Codex CLI Visible Attach Acceptance
+
+- decision: `{payload.get("decision")}`
+- accepted_for_same_tui_automation: `{payload.get("accepted_for_same_tui_automation")}`
+- accepted_for_visible_later_turn: `{payload.get("accepted_for_visible_later_turn")}`
+- observed_surface: `{payload.get("observed_surface")}`
+- driver_mode: `{payload.get("driver_mode")}`
+- next_safe_step: {payload.get("next_safe_step")}
+
+## Proof And Idle
+
+- proof_supplied: `{proof.get("supplied")}`
+- proof_approved: `{proof.get("approved")}`
+- proof_decision: `{proof.get("decision")}`
+- idle_supplied: `{runtime_idle.get("supplied")}`
+- idle_approved: `{runtime_idle.get("approved")}`
+- idle_decision: `{runtime_idle.get("decision")}`
+
+## Blockers
+
+{blocker_lines}
+
+## Commands
+
+```bash
+{commands.get("session_probe")}
+{commands.get("visible_attach_acceptance")}
+{commands.get("visible_session_proof")}
+{commands.get("runtime_idle_detector_fixture")}
+{commands.get("tui_bootstrap_message")}
+```
+
+## Boundary
+
+- acceptance_packet_only: `{boundary.get("acceptance_packet_only")}`
+- runs_codex: `{boundary.get("runs_codex")}`
+- reads_raw_transcripts: `{boundary.get("reads_raw_transcripts")}`
+- reads_session_files: `{boundary.get("reads_session_files")}`
+- reads_stdout_stderr: `{boundary.get("reads_stdout_stderr")}`
+- mutates_codex_session: `{boundary.get("mutates_codex_session")}`
+- spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+- writes_goal_harness_state: `{boundary.get("writes_goal_harness_state")}`
+
+## Warnings
+
+{warning_lines}
 """

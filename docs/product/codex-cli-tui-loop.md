@@ -302,6 +302,26 @@ goal-harness codex-cli-runtime-idle-detector \
   --idle-fixture runtime-idle.public.json
 ```
 
+Current same-TUI acceptance packet:
+
+```bash
+goal-harness codex-cli-visible-attach-acceptance \
+  --project . \
+  --goal-id <goal-id> \
+  --agent-id <agent-id> \
+  --proof-fixture visible-proof.public.json \
+  --idle-fixture runtime-idle.public.json
+```
+
+This packet is the promotion gate before Goal Harness treats later Codex CLI
+automation as safe same-TUI attach. It composes the help-only probe,
+visible-session proof, and runtime-idle detector. `remote-control` or `resume
+[PROMPT]` can pass as a visible spike candidate, but they are not accepted as
+same-TUI automation unless the proof surface is `same_tui_visible_attach` and
+the idle detector passes. If either proof or idle evidence is missing, the
+packet returns a precise blocker and keeps the one-message TUI bootstrap as the
+primary path.
+
 ### 3. Headless Fallback
 
 `codex exec` remains useful for scheduled or CI-like work, but it is not the
@@ -414,9 +434,13 @@ projects runnable candidates; it should not over-specify the model's local plan.
    adapter that can prove coarse human-input idle plus explicit visible
    turn-state without reading transcripts, stdout/stderr, credentials, or
    hidden session files.
-14. **Validation harness**: add a public-safe fixture that proves the driver
+14. **Visible attach acceptance**: promote only a proven `same_tui_visible_attach`
+   route with passing runtime-idle evidence; keep `resume [PROMPT]` and
+   `remote-control` as visible spike candidates until they prove same-TUI
+   semantics.
+15. **Validation harness**: add a public-safe fixture that proves the driver
    never stores raw transcript text and never spends quota before writeback.
-15. **Claude Code follow-up**: port the same product contract only after the
+16. **Claude Code follow-up**: port the same product contract only after the
    Codex CLI path is credible.
 
 ## Success Criteria
