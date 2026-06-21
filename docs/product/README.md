@@ -30,6 +30,11 @@ runtime contract, benchmark route, or launch draft.
   `examples/codex-cli-bounded-visible-pilot-adapter-smoke.py` that validate
   first-response and runtime-idle fixtures before a live TUI bootstrap can be
   counted as successful.
+- Codex CLI visible first-response capture plan: the copy-first packet command
+  and `examples/codex-cli-visible-first-response-capture-plan-smoke.py` that
+  tell an operator how to produce `public-first-response.json` and
+  `public-runtime-idle.json` without argv prompt leakage or raw transcript
+  reads.
 - [Codex CLI no-clone release verification](codex-cli-no-clone-release-verification.md):
   the compact release note and smoke contract that prove the packaged installer,
   fresh-project bootstrap message, bootstrap bundle, and proof fixtures stay

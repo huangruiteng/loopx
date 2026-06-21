@@ -130,3 +130,21 @@ it must also prove the user can interrupt or take over, compact writeback is
 planned before quota spend, and the bootstrap prompt was not passed as an argv
 prompt. If any piece is missing, the pilot stays a precise blocker instead of a
 success claim.
+
+## Visible Capture Plan
+
+Use this packet before a real user-visible rehearsal:
+
+```bash
+goal-harness codex-cli-visible-first-response-capture-plan \
+  --project /tmp/goal-harness-live-tui-pilot.<suffix> \
+  --goal-id public-live-tui-pilot-goal \
+  --agent-id codex-side-bypass
+```
+
+It prints the copy-first procedure, stop conditions, and sample
+`public-first-response.json` / `public-runtime-idle.json` shapes. The user still
+starts in the Codex CLI TUI and pastes the generated message; the packet only
+tells the operator which public-safe booleans to record before running the
+bounded adapter. It never runs Codex, reads terminal output, reads session files,
+or accepts an argv prompt path as success evidence.
