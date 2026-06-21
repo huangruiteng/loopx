@@ -948,6 +948,40 @@ With both flags, the plan should show
 `--host-local-acp-launch`, a real launch must still fail closed as
 `SkillsBenchNativeGoalWorkerIntegrationPending`.
 
+A real remote launch also has a single-checkout invariant: the wrapper must use
+the same Goal Harness checkout for `cd`, `PYTHONPATH`, and the executable
+script path. Do not rely on `PYTHONPATH` alone to override a relative
+`scripts/skillsbench_automation_loop.py` from an older current directory; that
+can produce official results while silently dropping the public controller and
+worker traces. Prefer an immutable tool snapshot and an absolute script path:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+TOOL_ROOT=<goal-harness-tool-snapshot>
+cd "$TOOL_ROOT"
+export PYTHONPATH="$TOOL_ROOT:$TOOL_ROOT/scripts:${PYTHONPATH:-}"
+
+python3 "$TOOL_ROOT/scripts/skillsbench_automation_loop.py" \
+  --task-id llm-prefix-cache-replay \
+  --route codex-app-server-goal-baseline \
+  --remote-command-file-bridge-ready \
+  --host-local-acp-launch \
+  --jobs-dir <run-dir>/jobs \
+  --job-name <job-name> \
+  --app-server-reasoning-effort high
+```
+
+Before comparing scores, confirm that the public closeout contains
+`goal_harness_controller_trace.public.json` and
+`app_server_goal_worker_traces/*.compact.json`. A valid native app-server
+Goal baseline must show at least `goal_get_present=true` and
+`turn_id_present=true` in a public worker trace, or it must close with a precise
+worker-trace blocker such as `worker_prompt_received_no_turn_trace`. If the
+official result exists but those trace files are absent, classify it as a
+tool-snapshot or launcher-persistence problem, not solver-quality evidence.
+
 A full launch of this route must fail closed rather than falling back to
 `codex-acp`, a slash-prefix `/goal` prompt, or a host-only workspace. The
 host-side worker surface is:
