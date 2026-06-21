@@ -322,6 +322,11 @@ the idle detector passes. If either proof or idle evidence is missing, the
 packet returns a precise blocker and keeps the one-message TUI bootstrap as the
 primary path.
 
+The first public-safe proof pilot is recorded in
+[Codex CLI Visible Attach Proof Pilot](codex-cli-visible-attach-proof-pilot.md):
+current `resume` / `remote-control` evidence is promising, but still blocked
+until a visible same-TUI proof and runtime-idle evidence exist.
+
 ### 3. Headless Fallback
 
 `codex exec` remains useful for scheduled or CI-like work, but it is not the
