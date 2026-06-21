@@ -537,6 +537,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
         goal_harness_experiment_protocol: str = PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
         goal_harness_max_rounds: str | int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
         goal_harness_prompt_polling_rounds: str | int = "auto",
+        goal_harness_prompt_polling_round_timeout_sec: str | int | float = "auto",
         goal_harness_benchmark_id: str = "swe-marathon",
         goal_harness_case_id: str = "current-case",
         goal_harness_arm_id: str = "codex_goal_harness_treatment",
@@ -579,6 +580,20 @@ class HarborHostCodexGoalAgent(BaseAgent):
             self.goal_harness_prompt_polling_rounds = max(
                 1,
                 int(goal_harness_prompt_polling_rounds),
+            )
+        if str(goal_harness_prompt_polling_round_timeout_sec).strip().lower() == "auto":
+            self.goal_harness_prompt_polling_round_timeout_sec = min(
+                self.goal_timeout_sec,
+                900.0,
+                max(
+                    300.0,
+                    self.goal_timeout_sec / max(1, self.goal_harness_prompt_polling_rounds),
+                ),
+            )
+        else:
+            self.goal_harness_prompt_polling_round_timeout_sec = max(
+                30.0,
+                float(goal_harness_prompt_polling_round_timeout_sec),
             )
         self.startup_delay_sec = float(startup_delay_sec)
         self.poll_interval_sec = float(poll_interval_sec)
@@ -990,6 +1005,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         "prompt_polling_rounds_requested": (
                             self.goal_harness_prompt_polling_rounds
                         ),
+                        "prompt_polling_round_timeout_sec": (
+                            self.goal_harness_prompt_polling_round_timeout_sec
+                        ),
                         "benchmark_loop_contract": loop_contract,
                         "benchmark_case_lifecycle_contract": case_lifecycle_contract,
                         "goal_harness_case_scheduler_trace_present": bool(
@@ -1135,7 +1153,11 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 try:
                     while current_round <= self.goal_harness_prompt_polling_rounds:
                         marker_seen_this_round = False
-                        while time.time() < deadline:
+                        round_deadline = min(
+                            deadline,
+                            time.time() + self.goal_harness_prompt_polling_round_timeout_sec,
+                        )
+                        while time.time() < round_deadline:
                             observe_codex_app_server_goal_turn(turn)
                             await self._serve_bridge_requests(environment, request_dir)
                             if marker.exists():
@@ -1152,15 +1174,18 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         controller_trace["completion_marker_observed_count"] = (
                             completion_marker_count
                         )
+                        controller_trace["round_timeout_sec"] = (
+                            self.goal_harness_prompt_polling_round_timeout_sec
+                        )
                         await run_case_scheduler_round(
                             round_index=current_round,
                             stage="post_turn",
                         )
-                        if time.time() >= deadline and not (
+                        if time.time() >= round_deadline and not (
                             marker_seen_this_round or turn.turn_completed_observed
                         ):
                             timeout_blocker = (
-                                "harbor_prompt_polling_turn_timeout_before_completion"
+                                "harbor_prompt_polling_round_timeout_before_completion"
                             )
                             controller_trace["last_decision"] = timeout_blocker
                             break
@@ -1235,6 +1260,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     ),
                     "prompt_polling_enabled": True,
                     "prompt_polling_rounds_completed": current_round,
+                    "prompt_polling_round_timeout_sec": (
+                        self.goal_harness_prompt_polling_round_timeout_sec
+                    ),
                     "benchmark_loop_contract": loop_contract,
                     "benchmark_case_lifecycle_contract": case_lifecycle_contract,
                     **case_state_init_compact,

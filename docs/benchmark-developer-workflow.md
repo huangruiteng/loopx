@@ -528,14 +528,19 @@ experiment protocol is explicit:
 --agent-kwarg goal_harness_access_packet_mode=compact \
 --agent-kwarg goal_harness_experiment_protocol=max5_blind_loop_no_feedback \
 --agent-kwarg goal_harness_max_rounds=5 \
---agent-kwarg goal_harness_prompt_polling_rounds=5
+--agent-kwarg goal_harness_prompt_polling_rounds=5 \
+--agent-kwarg goal_harness_prompt_polling_round_timeout_sec=900
 ```
 
 That path starts native Codex app-server Goal once, then uses follow-up
 `turn/start` calls in the same thread for scheduled continuation prompts. It
 does not expose official reward, pass/fail status, verifier errors, or verifier
-output to the worker. If these controller fields are missing from compact
-evidence, classify the run as packet-only observation.
+output to the worker. The per-round timeout is separate from the full job
+timeout: if a single app-server turn does not hand control back, the controller
+must close out with a compact
+`harbor_prompt_polling_round_timeout_before_completion` blocker instead of
+waiting for the whole job timeout. If these controller fields are missing from
+compact evidence, classify the run as packet-only observation.
 
 The treatment path must also install a case-local Goal Harness surface before
 the worker starts. Harbor's host agent seeds

@@ -303,7 +303,27 @@ def main() -> int:
             goal_harness_case_id="find-network-alignments",
         )
         assert polling_agent.goal_harness_prompt_polling_rounds == 5
+        assert polling_agent.goal_harness_prompt_polling_round_timeout_sec == 300.0
         assert polling_agent.goal_harness_case_id == "find-network-alignments"
+        long_polling_agent = module.HarborHostCodexGoalAgent(
+            logs_dir=Path(tmp) / "long-polling-logs",
+            goal_surface="app_server",
+            goal_timeout_sec=18000,
+            goal_harness_mode="codex_goal_harness",
+            goal_harness_access_packet_mode="compact",
+            goal_harness_experiment_protocol="max5_blind_loop_no_feedback",
+            goal_harness_max_rounds=5,
+        )
+        assert long_polling_agent.goal_harness_prompt_polling_round_timeout_sec == 900.0
+        explicit_timeout_agent = module.HarborHostCodexGoalAgent(
+            logs_dir=Path(tmp) / "explicit-timeout-logs",
+            goal_surface="app_server",
+            goal_harness_mode="codex_goal_harness",
+            goal_harness_access_packet_mode="compact",
+            goal_harness_experiment_protocol="max5_blind_loop_no_feedback",
+            goal_harness_prompt_polling_round_timeout_sec=120,
+        )
+        assert explicit_timeout_agent.goal_harness_prompt_polling_round_timeout_sec == 120.0
 
     print("harbor host Codex Goal agent smoke passed")
     return 0
