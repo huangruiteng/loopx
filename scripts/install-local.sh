@@ -14,6 +14,7 @@ releases_dir="${LOOPX_RELEASES_DIR:-$HOME/.local/share/loopx/releases}"
 release_id="${LOOPX_RELEASE_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 release_dir="$releases_dir/$release_id"
 release_tmp="$release_dir.tmp.$$"
+legacy_line=""
 
 warn_stale_promotion_readiness() {
   local python_bin="${LOOPX_PYTHON:-python3}"
@@ -51,6 +52,37 @@ copy_path() {
   fi
 }
 
+append_legacy_line() {
+  local message="$1"
+  if [[ -z "$legacy_line" ]]; then
+    legacy_line="- $message"
+  else
+    legacy_line="$legacy_line"$'\n'"- $message"
+  fi
+}
+
+disable_legacy_shim() {
+  local name="$1"
+  local legacy="$bin_dir/$name"
+  local disabled="$bin_dir/$name.legacy-disabled"
+  if [[ ! -e "$legacy" && ! -L "$legacy" ]]; then
+    return 0
+  fi
+  if [[ ! -L "$legacy" ]]; then
+    append_legacy_line "legacy command left untouched: $legacy is not a symlink"
+    return 0
+  fi
+  local target
+  target="$(readlink "$legacy" || true)"
+  if [[ "$target" != *"/goal-harness/"* && "$target" != *".local/share/goal-harness/"* ]]; then
+    append_legacy_line "legacy command left untouched: $legacy does not point at a legacy release"
+    return 0
+  fi
+  rm -f "$disabled"
+  mv "$legacy" "$disabled"
+  append_legacy_line "legacy command disabled: $disabled"
+}
+
 if [[ -z "$shell_profile" ]]; then
   case "${SHELL:-}" in
     */zsh) shell_profile="$HOME/.zshrc" ;;
@@ -62,6 +94,11 @@ fi
 warn_stale_promotion_readiness
 
 mkdir -p "$bin_dir"
+disable_legacy_shim "goal-harness"
+disable_legacy_shim "goal-harness-canary"
+if [[ -z "$legacy_line" ]]; then
+  legacy_line="- legacy command disabled: not present"
+fi
 mkdir -p "$releases_dir"
 rm -rf "$release_tmp"
 mkdir -p "$release_tmp"
@@ -131,6 +168,8 @@ loopx installed locally
 - executable: $bin_dir/loopx
 - release: $release_dir
 $canary_line
+- executable compatibility: none
+$legacy_line
 - profile: $shell_profile
 $skill_line
 

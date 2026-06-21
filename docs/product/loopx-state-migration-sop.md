@@ -31,6 +31,18 @@ registry. There is no default “migrate everything” behavior.
 loopx doctor
 ```
 
+The installer does not create a `goal-harness` compatibility alias. For
+existing local installs, it disables legacy `goal-harness` and
+`goal-harness-canary` symlinks only when they point at the old local release
+directory. It leaves unrelated user commands untouched.
+
+Verify that the old command is gone before trusting the migration:
+
+```bash
+command -v loopx
+! command -v goal-harness
+```
+
 2. Create a local backup before the first execute.
 
 The migration is copy-first, but existing users should still keep a timestamped

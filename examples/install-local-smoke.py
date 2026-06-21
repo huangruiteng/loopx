@@ -63,6 +63,25 @@ def main() -> int:
         home = root / "home"
         home.mkdir()
         bin_dir = home / ".local" / "bin"
+        bin_dir.mkdir(parents=True)
+        legacy_scripts = (
+            home
+            / ".local"
+            / "share"
+            / "goal-harness"
+            / "releases"
+            / "legacy"
+            / "scripts"
+        )
+        legacy_scripts.mkdir(parents=True)
+        legacy_goal_harness = legacy_scripts / "goal-harness"
+        legacy_goal_harness.write_text("#!/usr/bin/env bash\nexit 99\n", encoding="utf-8")
+        legacy_goal_harness.chmod(0o755)
+        legacy_canary = legacy_scripts / "goal-harness-canary"
+        legacy_canary.write_text("#!/usr/bin/env bash\nexit 99\n", encoding="utf-8")
+        legacy_canary.chmod(0o755)
+        (bin_dir / "goal-harness").symlink_to(legacy_goal_harness)
+        (bin_dir / "goal-harness-canary").symlink_to(legacy_canary)
         codex_home = home / ".codex"
         profile = home / ".zshrc"
         env = {
@@ -84,6 +103,15 @@ def main() -> int:
         assert f"- executable: {bin_dir / 'loopx'}" in install.stdout, install.stdout
         assert "- release: " in install.stdout, install.stdout
         assert f"- canary executable: {bin_dir / 'loopx-canary'}" in install.stdout, install.stdout
+        assert "- executable compatibility: none" in install.stdout, install.stdout
+        assert (
+            f"- legacy command disabled: {bin_dir / 'goal-harness.legacy-disabled'}"
+            in install.stdout
+        ), install.stdout
+        assert (
+            f"- legacy command disabled: {bin_dir / 'goal-harness-canary.legacy-disabled'}"
+            in install.stdout
+        ), install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-doc-registry'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-project'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-self-repair'}" in install.stdout, install.stdout
@@ -91,6 +119,7 @@ def main() -> int:
         wrapper = bin_dir / "loopx"
         assert wrapper.is_symlink(), wrapper
         assert not (bin_dir / "goal-harness").exists()
+        assert (bin_dir / "goal-harness.legacy-disabled").is_symlink()
         assert wrapper.resolve() != REPO_ROOT / "scripts" / "loopx", wrapper.resolve()
         assert wrapper.resolve().name == "loopx", wrapper.resolve()
         release_root = wrapper.resolve().parents[1]
@@ -98,6 +127,7 @@ def main() -> int:
         canary_wrapper = bin_dir / "loopx-canary"
         assert canary_wrapper.is_symlink(), canary_wrapper
         assert not (bin_dir / "goal-harness-canary").exists()
+        assert (bin_dir / "goal-harness-canary.legacy-disabled").is_symlink()
         assert canary_wrapper.resolve() == REPO_ROOT / "scripts" / "loopx", canary_wrapper.resolve()
         assert profile.read_text(encoding="utf-8").count("LoopX local CLI") == 1, profile.read_text()
 
