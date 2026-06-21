@@ -5,7 +5,7 @@ README. The root README is now the short product landing page; this page is the
 hands-on path for installation, project connection, diagnosis, heartbeats,
 dashboard use, development checks, and command discovery.
 
-## Start With An Agent
+## Codex App And Other Agent Setup
 
 If you already use Codex, Claude Code, Cursor, or another terminal agent, paste
 this into the agent from your project repo:
@@ -64,6 +64,8 @@ Success looks like this:
 - the project has `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`;
 - `loopx status` shows the goal and who should act next;
 - local runtime state is ignored, not committed.
+
+## Codex CLI TUI Setup
 
 For Codex CLI users, the product target is: start in the Codex TUI, send one
 LoopX setup message, and let the agent install or reuse LoopX,
@@ -138,8 +140,8 @@ This keeps the first-message TUI start primary, then models later scheduler
 ticks, visible proof, idle guard, guarded execution, blocker writeback, and
 no-transcript boundaries as public-safe metadata.
 
-The later-turn rule is intentionally stricter than the first message: Goal
-Harness may add a visible steering turn only after public-safe visible proof,
+The later-turn rule is intentionally stricter than the first message: LoopX may
+add a visible steering turn only after public-safe visible proof,
 runtime idle evidence, a fresh guard, and explicit execution bounds. Without
 that proof, the driver should write a compact blocker or keep the one-message
 setup bootstrap as the product path.

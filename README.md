@@ -176,8 +176,8 @@ connect, diagnose, and show the next safe action before doing longer work.
 
 ### Codex App
 
-Use this when you are working in Codex App or a Codex App heartbeat-capable
-thread. Paste from the project repo:
+Best when you want LoopX to keep working through Codex App heartbeats. Paste
+this from the project repo:
 
 ```text
 Install and connect LoopX for this project end to end. Do not stop at a
@@ -189,8 +189,8 @@ connected, set or refresh this thread's heartbeat automation from
 `loopx heartbeat-prompt --thin`.
 ```
 
-For recurring Codex App automation, generate the heartbeat body after the
-project is connected:
+After the project is connected, the agent should install the generated
+heartbeat body:
 
 ```bash
 loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
@@ -198,16 +198,15 @@ loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-
 
 ### Codex CLI
 
-Use this when you want the human-visible TUI to stay primary.
-
-1. Open Codex CLI from your project repo:
+Best when the visible TUI should stay primary. Open Codex CLI from your project
+repo:
 
 ```bash
 cd /path/to/your-project
 codex
 ```
 
-2. In the TUI, paste one setup message:
+Then paste one setup message:
 
 ```text
 Install and connect LoopX for this repo from this visible Codex CLI TUI.
@@ -219,21 +218,13 @@ if any, top todos, and next safe action before longer work. Keep me in this TUI
 and do not use hidden headless execution.
 ```
 
-3. The first useful TUI response should show the current goal, user gate, top
-todos, and next safe action. The setup turn should install or reuse the CLI,
-bootstrap/connect the project, and configure the thin `/goal` loop. Longer
-delivery belongs to that configured loop unless you explicitly ask for it in
-the setup turn.
-
 That one message is the install, connect, status check, and loop activation.
-You do not need to run a separate setup command first or paste a second prompt.
+The first useful TUI response should show the current goal, any concrete user
+gate, top todos, and next safe action. Hidden `codex exec` is not the default
+bootstrap path. Details for generated messages, later same-TUI automation, and
+proof capture live in [Getting Started](docs/guides/getting-started.md).
 
-Hidden `codex exec` is not part of the default TUI bootstrap. Pilot packets,
-template generators, local drivers, idle detection, and same-session proof
-details live in [Getting Started](docs/guides/getting-started.md) and the
-[Codex CLI TUI-first loop](docs/product/codex-cli-tui-loop.md).
-
-A successful connection looks like this for every surface:
+A successful connection looks like this:
 
 - `loopx doctor` passes;
 - the project has `.loopx/registry.json`;

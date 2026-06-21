@@ -115,42 +115,61 @@ LoopX 适合长期、多人、多 agent 或带边界的工作：
 
 ## 快速开始
 
-如果你已经在用 Codex、Claude Code、Cursor 或其他终端 agent，最快的方式是把
-下面这段交给 agent，让它在当前项目里安装并连接 LoopX：
+最快的方式是让你已经在用的 agent 从当前项目里启动 LoopX：Codex App 用
+heartbeat，Codex CLI 保留可见 TUI，其他 agent 或手动 shell 走同一个 no-clone
+安装路径。
+
+### Codex App
+
+适合希望 LoopX 通过 Codex App heartbeat 持续推进的项目。把这段发给当前项目线程：
 
 ```text
-请为这个项目端到端安装并连接 LoopX，不要只给计划。
-
-如果 `loopx` 不在 PATH：
-- 如果 ~/loopx 不存在，clone https://github.com/huangruiteng/loopx 到 ~/loopx；
-- 运行 ~/loopx/scripts/install-local.sh；
-- export PATH="$HOME/.local/bin:$PATH"。
-
-然后：
-1. 运行 `loopx doctor`。
-2. 根据当前 repo 名选择稳定 goal id，除非我显式给了 goal id。
-3. 读取项目目标文档（如 GOAL.md、README.md，或我指定的文档）；若没有，就问我要一句目标。
-4. 运行 `loopx connect` 或 `loopx bootstrap`。
-5. 读取 connect 输出里的 onboarding candidates，向我解释候选 agent todo，并问我接受、修改还是拒绝。
-6. 把 `.loopx/` 和 `.codex/goals/` 加入当前项目 `.gitignore`。
-7. 运行 `loopx registry`、`loopx status`、`loopx check --scan-root .`。
-8. 汇报 goal id、创建文件、当前 user todo、当前 agent todo 和下一步安全动作。
-
-不要提交 `.loopx/`、`.codex/goals/`、ACTIVE_GOAL_STATE、本地 registry、
-raw logs、credentials 或私有本地路径。
+请为这个项目端到端安装并连接 LoopX，不要只给计划。如果 `loopx` 缺失，
+使用官方 no-clone GitHub installer 安装。然后运行 doctor，connect 或 bootstrap
+当前 repo，确认本地 LoopX 状态被 gitignore，并在更长工作前汇报 goal id、当前
+user gate、首个 agent todo 和下一步安全动作。项目连接后，用
+`loopx heartbeat-prompt --thin` 设置或刷新这个 Codex App heartbeat。
 ```
 
-也可以手动安装：
+项目连接后，heartbeat body 由 CLI 生成：
 
 ```bash
-git clone https://github.com/huangruiteng/loopx ~/loopx
-~/loopx/scripts/install-local.sh
+loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
+```
+
+### Codex CLI
+
+适合希望保留可见 TUI、随时观察和接管的用户。从项目 repo 打开 Codex CLI：
+
+```bash
+cd /path/to/your-project
+codex
+```
+
+然后在 TUI 里粘贴一条消息：
+
+```text
+Install and connect LoopX for this repo from this visible Codex CLI TUI.
+If `loopx` is missing, install it with the official no-clone GitHub
+installer; if it is already installed, reuse it. Bootstrap or connect this
+project, then generate the thin heartbeat prompt and set the current Codex CLI
+goal to `/goal <thin task_body>`. Show me the current goal, concrete user gate
+if any, top todos, and next safe action before longer work. Keep me in this TUI
+and do not use hidden headless execution.
+```
+
+这条消息就是安装、连接、状态检查和 loop 激活。更细的生成模板、后续同一 TUI
+自动化、idle/proof 边界见
+[Getting Started](docs/guides/getting-started.md)。
+
+### 其他 Agent / 手动 Shell
+
+Claude Code、Cursor、其他终端 agent 或手动 shell 都走同一个 no-clone installer：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
 loopx doctor
-```
-
-连接一个项目：
-
-```bash
 cd /path/to/your-project
 loopx bootstrap \
   --goal-id your-project-goal \
@@ -158,13 +177,9 @@ loopx bootstrap \
   --goal-doc GOAL.md
 ```
 
-诊断当前状态：
-
-```bash
-loopx diagnose
-loopx status
-loopx quota should-run --goal-id your-project-goal
-```
+成功连接后应该能看到 `.loopx/registry.json`、
+`.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`、`loopx status` 的下一步投影；
+这些本地状态必须被 gitignore，不要提交到公开仓库。
 
 ## 用户群与反馈
 
