@@ -5,16 +5,20 @@ This is a thin launcher around the official SkillsBench/BenchFlow runner.  It
 keeps task execution and verification inside BenchFlow, then reduces only the
 official result/timing files into ``benchmark_run_v0``.
 
-For the primary ``goal-harness-blind-loop-treatment`` route it uses BenchFlow's
-``BaseUser`` progressive-disclosure hook as the outer Goal Harness automation
-loop without forwarding official reward, pass/fail, verifier errors, or
-verifier output back to the agent:
+The ``codex-app-server-goal-baseline`` route is the native Codex Goal baseline
+surface. The comparable Goal Harness test route is
+``goal-harness-prompt-polling-test``: it uses BenchFlow's ``BaseUser``
+progressive-disclosure hook as the outer Goal Harness polling controller
+without forwarding official reward, pass/fail, verifier errors, or verifier
+output back to the agent:
 
 - round 0 sends the task instruction with a Goal Harness controller header;
 - later rounds are scheduled continuations that explicitly say they are not
   evidence of verifier success or failure;
 - public closeout reads only official ``result.json`` and ``timing.json``.
 
+The historical ``goal-harness-blind-loop-treatment`` route is kept as an alias
+for existing SkillsBench rows that used the same no-feedback polling semantics.
 The ``codex-acp-blind-loop-baseline`` route uses the same no-reward loop budget
 with an ordinary Codex prompt and no Goal Harness controller semantics. The
 older ``automation-loop-treatment`` route intentionally forwards failed-reward
@@ -28,8 +32,7 @@ slash-command/goal-state evidence. Full execution of this route is blocked by
 default until that evidence exists; use it only for explicit slash-prefix
 experiments.
 
-The ``codex-app-server-goal-baseline`` route is the real native Codex Goal
-baseline surface. It requires a host-side Codex app-server worker using
+The native Goal baseline requires a host-side Codex app-server worker using
 ``thread/start``, ``thread/goal/set``, ``thread/goal/get``, and ``turn/start``.
 Until the BenchFlow worker integration is wired, full execution fails closed;
 ``--plan-only`` still emits the public-safe launch contract.
@@ -87,6 +90,19 @@ from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E40
 from goal_harness.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     run_skillsbench_remote_command_file_bridge_probe,
 )
+from goal_harness.benchmark_core.loop_protocol import (  # noqa: E402
+    AUTOMATION_LOOP_TREATMENT_ROUTE,
+    BLIND_LOOP_DEFAULT_MAX_ROUNDS,
+    CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
+    CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
+    GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE,
+    GOAL_HARNESS_PRODUCT_MODE_ROUTE,
+    GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
+    RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
+    build_benchmark_loop_controller_trace,
+    build_blind_loop_continuation_prompt,
+    build_blind_loop_initial_prompt,
+)
 from goal_harness.benchmark_trajectory import summarize_public_acp_trajectory
 
 DEFAULT_SKILLSBENCH_ROOT = REPO_ROOT / ".local/benchmark/externals/skillsbench"
@@ -97,18 +113,19 @@ DEFAULT_LEDGER = (
 DEFAULT_GOAL_ID = "goal-harness-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
-DEFAULT_MAX_ROUNDS = 5
+DEFAULT_MAX_ROUNDS = BLIND_LOOP_DEFAULT_MAX_ROUNDS
 _MISSING = object()
 SUPPORTED_ROUTES = (
-    "codex-acp-blind-loop-baseline",
-    "goal-harness-blind-loop-treatment",
-    "raw-codex-autonomous-max5",
-    "goal-harness-product-mode",
-    "codex-app-server-goal-baseline",
+    CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
+    GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE,
+    GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
+    RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
+    GOAL_HARNESS_PRODUCT_MODE_ROUTE,
+    CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
     "codex-goal-mode-baseline",
-    "automation-loop-treatment",
+    AUTOMATION_LOOP_TREATMENT_ROUTE,
 )
-DEFAULT_ROUTE = "goal-harness-blind-loop-treatment"
+DEFAULT_ROUTE = GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE
 CODEX_ACP_SET_MODEL_UNSUPPORTED_LABEL = "codex_acp_set_model_unsupported"
 ACP_TRAJECTORY_SUMMARY_SCHEMA_VERSION = "skillsbench_acp_trajectory_summary_v0"
 LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION = (
@@ -1590,7 +1607,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     job_name = args.job_name or (
         f"skillsbench-{task_id}-{route}-{_now_stamp()}"
     )
-    if route == "goal-harness-blind-loop-treatment":
+    if route == GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE:
+        rollout_suffix = "goal_harness_prompt_polling_test"
+    elif route == GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE:
         rollout_suffix = "goal_harness_blind_loop"
     elif route == "goal-harness-product-mode":
         rollout_suffix = "goal_harness_product_mode"
@@ -2163,59 +2182,38 @@ def _merge_final_result_round_reward(
 
 
 def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[str, Any]:
-    return {
-        "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-        "route": route,
-        "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
-        "heartbeat_count": 0,
-        "controller_action_decisions": 0,
-        "initial_prompt_count": 0,
-        "followup_prompt_count": 0,
-        "stop_decision_count": 0,
-        "reward_observation_count": 0,
-        "verifier_feedback_observation_count": 0,
-        "round_rewards": [],
-        "official_success_observed": False,
-        "official_success_observation_count": 0,
-        "first_success_round": None,
-        "official_feedback_forwarded": route == "automation-loop-treatment",
-        "official_feedback_blinded_count": 0,
-        "blind_loop": route
-        in {
-            "codex-acp-blind-loop-baseline",
-            "goal-harness-blind-loop-treatment",
-        },
-        "product_mode": route
-        in {
-            "raw-codex-autonomous-max5",
-            "goal-harness-product-mode",
-        },
+    trace = build_benchmark_loop_controller_trace(
+        route=route,
+        max_rounds=max_rounds,
+        schema_version="skillsbench_goal_harness_controller_trace_v0",
+    )
+    trace.update(
+        {
         "case_goal_state_packet_present": False,
-        "case_goal_state_init_required": route == "goal-harness-product-mode",
+        "case_goal_state_init_required": route == GOAL_HARNESS_PRODUCT_MODE_ROUTE,
         "case_goal_state_initialized_before_agent": False,
         "case_goal_state_init_status": "not_applicable",
         "case_goal_state_path": (
             PRODUCT_MODE_CASE_STATE_PATH
-            if route == "goal-harness-product-mode"
+            if route == GOAL_HARNESS_PRODUCT_MODE_ROUTE
             else ""
         ),
         "case_goal_state_schema_version": (
             PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION
-            if route == "goal-harness-product-mode"
+            if route == GOAL_HARNESS_PRODUCT_MODE_ROUTE
             else ""
         ),
         "declared_done_requires_no_remaining_goals": route
-        == "goal-harness-product-mode",
+        == GOAL_HARNESS_PRODUCT_MODE_ROUTE,
         "agent_declared_done": False,
         "agent_declared_no_remaining_goals": False,
         "declared_done_round": None,
         "declared_done_score": None,
-        "max_rounds_budget": max_rounds,
         "goal_harness_state_reads": 0,
         "goal_harness_state_writes": 0,
         "goal_harness_case_state_reads": 0,
         "goal_harness_case_state_writes": 0,
-        "native_goal_worker_route": route == "codex-app-server-goal-baseline",
+        "native_goal_worker_route": route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
         "native_goal_worker_connected": False,
         "native_goal_worker_connect_count": 0,
         "native_goal_worker_trace_dir_present": False,
@@ -2227,12 +2225,9 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
         "native_goal_worker_assistant_message_present_count": 0,
         "native_goal_worker_public_trace_read": False,
         "native_goal_worker_raw_material_recorded": False,
-        "max_round_observed": -1,
-        "last_decision": "not_started",
-        "raw_task_text_recorded": False,
-        "raw_verifier_output_recorded": False,
-        "raw_agent_trajectory_recorded": False,
-    }
+        }
+    )
+    return trace
 
 
 def _write_controller_trace(plan: dict[str, Any], trace: dict[str, Any] | None) -> None:
@@ -2693,8 +2688,6 @@ def _build_blind_loop_user(
 ):
     from benchflow.sandbox.user import BaseUser, RoundResult
 
-    treatment = route == "goal-harness-blind-loop-treatment"
-
     class BlindLoopUser(BaseUser):
         """Scheduler-side user that withholds official verifier feedback.
 
@@ -2749,48 +2742,20 @@ def _build_blind_loop_user(
                 protected_paths = _protected_paths_from_instruction(instruction)
                 if protected_paths:
                     trace["persistent_constraint_protected_paths"] = protected_paths
-                if treatment and treatment_prompt_style == "baseline-safe":
-                    prefix = "Codex blind-loop baseline-compatible round 1. "
-                    control_clause = "Use ordinary Codex CLI behavior without goal mode. "
-                else:
-                    prefix = (
-                        "Structured blind-loop treatment round 1. "
-                        if treatment
-                        else "Codex blind-loop baseline round 1. "
-                    )
-                    control_clause = (
-                        "Use a disciplined execution style: keep the scope narrow, "
-                        "track your own plan, inspect evidence before editing, and "
-                        "validate locally before finishing. "
-                        if treatment
-                        else "Use ordinary Codex CLI behavior without goal mode. "
-                    )
-                return (
-                    prefix
-                    + "You are running inside the official SkillsBench sandbox. "
-                    + control_clause
-                    + "Do not invoke /goal mode, external Goal Harness CLI, upload, "
-                    "submit, or ask the human for routine execution choices. "
-                    "No official reward, pass/fail status, verifier error, or "
-                    "verifier output will be provided during this loop.\n\n"
-                    "--- TASK INSTRUCTION ---\n"
-                    f"{instruction}"
+                return build_blind_loop_initial_prompt(
+                    route=route,
+                    instruction=instruction,
+                    treatment_prompt_style=treatment_prompt_style,
+                    benchmark_surface="official SkillsBench sandbox",
                 )
 
             _inc_counter(trace, "controller_action_decisions")
             _inc_counter(trace, "followup_prompt_count")
             trace["last_decision"] = "send_blind_scheduled_continuation"
-            return (
-                f"Scheduled blind-loop continuation round {round + 1} of "
-                f"{max_rounds}. This continuation is part of the pre-set loop "
-                "budget and is not evidence that the official verifier passed "
-                "or failed. You are not being shown official reward, pass/fail "
-                "status, verifier error, or verifier output."
-                f"{self._persistent_constraint_clause} Continue from the "
-                "same workspace using only the task instruction, your own edits, "
-                "and local validation signals. Keep scope narrow, reinspect for "
-                "mistakes, make the smallest safe correction if needed, and "
-                "otherwise keep the solution stable."
+            return build_blind_loop_continuation_prompt(
+                scheduled_round=round + 1,
+                max_rounds=max_rounds,
+                persistent_constraint_clause=self._persistent_constraint_clause,
             )
 
     return BlindLoopUser()
@@ -3315,8 +3280,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             controller_trace,
         )
     elif args.route in {
-        "codex-acp-blind-loop-baseline",
-        "goal-harness-blind-loop-treatment",
+        CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
+        GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE,
+        GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
     }:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         controller_user = _build_blind_loop_user(
@@ -3731,8 +3697,10 @@ def update_ledger(
     from goal_harness.benchmark_ledger import update_benchmark_run_ledger
 
     note_route = (
-        "Goal Harness blind-loop treatment"
-        if args.route == "goal-harness-blind-loop-treatment"
+        "Goal Harness prompt-driven polling test"
+        if args.route == GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE
+        else "Goal Harness blind-loop treatment"
+        if args.route == GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE
         else "Codex ACP blind-loop baseline"
         if args.route == "codex-acp-blind-loop-baseline"
         else "Goal Harness product-mode treatment"
@@ -3762,6 +3730,7 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> None:
         return
     classification_by_route = {
         "goal-harness-blind-loop-treatment": "skillsbench_goal_harness_blind_loop_treatment_result_v0",
+        "goal-harness-prompt-polling-test": "skillsbench_goal_harness_prompt_polling_test_result_v0",
         "codex-acp-blind-loop-baseline": "skillsbench_codex_acp_blind_loop_baseline_result_v0",
         "goal-harness-product-mode": "skillsbench_goal_harness_product_mode_result_v0",
         "raw-codex-autonomous-max5": "skillsbench_raw_codex_autonomous_max5_result_v0",
@@ -3805,9 +3774,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=SUPPORTED_ROUTES,
         default=DEFAULT_ROUTE,
         help=(
-            "goal-harness-blind-loop-treatment is the primary no-reward-feedback "
-            "treatment; codex-acp-blind-loop-baseline is the ordinary Codex "
-            "no-goal baseline with the same loop budget; "
+            "codex-app-server-goal-baseline is the native Codex Goal baseline; "
+            "goal-harness-prompt-polling-test is the current no-reward-feedback "
+            "test route with scheduled continuation prompts; "
+            "goal-harness-blind-loop-treatment is the historical SkillsBench "
+            "alias for the same polling semantics; codex-acp-blind-loop-baseline "
+            "is the ordinary Codex no-goal baseline with the same loop budget; "
             "raw-codex-autonomous-max5 and goal-harness-product-mode are the "
             "main-table product-mode comparison routes; "
             "codex-app-server-goal-baseline is the native Codex Goal baseline "
@@ -3856,6 +3828,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="structured",
         help=(
             "Diagnostic prompt wrapper for goal-harness-blind-loop-treatment. "
+            "Also applies to goal-harness-prompt-polling-test. "
             "baseline-safe keeps treatment routing/ledger metadata while using "
             "the baseline-style first prompt to isolate ACP prompt-wrapper issues."
         ),

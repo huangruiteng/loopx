@@ -74,6 +74,22 @@ def main() -> int:
     assert "goal_harness_command_check:" in treatment_packet
     assert "quota should-run" in treatment_packet
     assert "do_not_upload_or_submit_to_leaderboard: true" in treatment_packet
+    assert "benchmark_loop_contract:" in treatment_packet
+    assert "protocol_id: packet_only_observation" in treatment_packet
+    assert "strict_goal_harness_treatment_claim_allowed: false" in treatment_packet
+    assert "goal_harness_treatment_claim_blocker:" in treatment_packet
+    polling_packet = module.build_goal_harness_access_packet(
+        mode="codex_goal_harness",
+        packet_mode="compact",
+        cli_bridge_enabled=True,
+        goal_id="goal-harness-meta",
+        experiment_protocol="max5_blind_loop_no_feedback",
+        max_rounds=5,
+    )
+    assert "protocol_id: max5_blind_loop_no_feedback" in polling_packet
+    assert "route: goal-harness-prompt-polling-test" in polling_packet
+    assert "strict_goal_harness_treatment_claim_allowed: false" in polling_packet
+    assert "controller_trace_absent" in polling_packet
 
     treatment_prompt = module.build_host_goal_prompt(
         instruction="Synthetic Harbor instruction placeholder.",
@@ -106,7 +122,7 @@ def main() -> int:
             app_server_response_timeout_sec="4",
         )
         assert agent.name() == "harbor-host-codex-goal"
-        assert agent.version() == "0.4.0"
+        assert agent.version() == "0.5.0"
         assert agent.goal_timeout_sec == 9.0
         assert agent.poll_interval_sec == 0.5
         assert agent.task_workdir == "/workspace"
@@ -116,6 +132,8 @@ def main() -> int:
         assert agent.app_server_response_timeout_sec == 4.0
         assert agent.goal_harness_mode == "codex_goal_mode_baseline"
         assert agent.goal_harness_access_packet_mode == "none"
+        assert agent.goal_harness_experiment_protocol == "packet_only_observation"
+        assert agent.goal_harness_max_rounds == 5
 
         no_wait_agent = module.HarborHostCodexGoalAgent(
             logs_dir=Path(tmp) / "no-wait-logs",
@@ -134,6 +152,17 @@ def main() -> int:
         assert treatment_agent.goal_harness_mode == "codex_goal_harness"
         assert treatment_agent.goal_harness_access_packet_mode == "compact"
         assert treatment_agent.goal_harness_cli_bridge_enabled is True
+        assert treatment_agent.goal_harness_experiment_protocol == "packet_only_observation"
+        assert treatment_agent.goal_harness_prompt_polling_rounds == 1
+        polling_agent = module.HarborHostCodexGoalAgent(
+            logs_dir=Path(tmp) / "polling-logs",
+            goal_surface="app_server",
+            goal_harness_mode="codex_goal_harness",
+            goal_harness_access_packet_mode="compact",
+            goal_harness_experiment_protocol="max5_blind_loop_no_feedback",
+            goal_harness_max_rounds=5,
+        )
+        assert polling_agent.goal_harness_prompt_polling_rounds == 5
 
     print("harbor host Codex Goal agent smoke passed")
     return 0

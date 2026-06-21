@@ -6831,7 +6831,7 @@
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
-      "case_count": 2,
+      "case_count": 3,
       "cases": {
         "find-network-alignments": {
           "case_id": "find-network-alignments",
@@ -6883,7 +6883,7 @@
           "case_id": "rust-c-compiler",
           "latest_decision": {
             "decision": "single_arm_recorded",
-            "latest_run_id": "f94b97e3a750"
+            "latest_run_id": "391322c541a8"
           },
           "runs": [
             {
@@ -6920,11 +6920,103 @@
               "status": "completed",
               "submit_eligible": false,
               "worker_bridge_status": "not_required"
+            },
+            {
+              "agent_declared_done": false,
+              "arm_id": "swe_marathon_host_codex_goal_harness_packet_only_observation",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/swe-marathon-rust-c-compiler-treatment-20260621T060729Z/jobs/swe-marathon-rust-c-compiler-gh-treatment-r1/harbor_job_result.compact.json"
+              },
+              "benchmark_id": "swe-marathon",
+              "benchmark_loop_contract": {
+                "blind_loop": false,
+                "claim_blocker": "packet_only_no_max5_controller",
+                "max_rounds_budget": 5,
+                "official_feedback_blinded": true,
+                "official_feedback_forwarded": false,
+                "product_mode": false,
+                "protocol_id": "packet_only_observation",
+                "route": "goal-harness-packet-only-observation",
+                "schema_version": "benchmark_loop_protocol_v0",
+                "strict_treatment_claim_allowed": false
+              },
+              "case_id": "rust-c-compiler",
+              "case_ids": [
+                "rust-c-compiler"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "goal_harness_inside_case": true,
+              "goal_harness_treatment_claim_blocker": "missing_max5_blind_loop_protocol,controller_trace_absent,route_not_prompt_polling_test",
+              "goal_harness_treatment_evidence_tier": "packet_or_incomplete",
+              "job_name": "swe-marathon-rust-c-compiler-gh-treatment-r1",
+              "leaderboard_evidence": false,
+              "mode": "swe_marathon_host_codex_goal_harness_packet_only_observation",
+              "notes": "SWE-Marathon rust-c-compiler Goal Harness packet-only observation completed under the same no-upload Harbor host app-server Goal route as baseline; official score remained 0.0 with official_verifier_solution_failure. The access packet and bridge requests provide route-safety evidence, but no prompt-driven polling controller trace was recorded, so do not classify this as the comparable Goal Harness test arm or as uplift/no-uplift evidence.",
+              "official_passed": false,
+              "official_score": 0.0,
+              "recorded_at": "2026-06-21T14:31:29+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "swe-marathon-rust-c-compiler-treatment-20260621T060729Z",
+              "run_id": "391322c541a8",
+              "score_status": "failed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "strict_goal_harness_treatment_claim_allowed": false,
+              "submit_eligible": false,
+              "worker_bridge_status": "not_materialized"
+            }
+          ]
+        },
+        "zstd-decoder": {
+          "case_id": "zstd-decoder",
+          "latest_decision": {
+            "baseline_run_id": "9ae95dbf5ab4",
+            "decision": "baseline_passed_not_current_treatment_priority",
+            "failure_scope": "passed"
+          },
+          "runs": [
+            {
+              "agent_declared_done": false,
+              "arm_id": "swe_marathon_host_codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/swe-marathon-zstd-decoder-baseline-r2-20260621T062826Z/jobs/swe-marathon-zstd-decoder-app-server-baseline-r2/harbor_job_result.compact.json"
+              },
+              "benchmark_id": "swe-marathon",
+              "case_id": "zstd-decoder",
+              "case_ids": [
+                "zstd-decoder"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "goal_harness_inside_case": false,
+              "job_name": "swe-marathon-zstd-decoder-app-server-baseline-r2",
+              "leaderboard_evidence": false,
+              "mode": "codex_goal_mode_baseline",
+              "notes": "SWE-Marathon zstd-decoder native Codex app-server Goal baseline r2 completed with official score 1.0; no Goal Harness packet/test semantics; compact-only public evidence.",
+              "official_passed": true,
+              "official_score": 1.0,
+              "recorded_at": "2026-06-21T14:59:11+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "swe-marathon-zstd-decoder-baseline-r2-20260621T062826Z",
+              "run_id": "9ae95dbf5ab4",
+              "score_status": "passed",
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "worker_bridge_status": "not_required"
             }
           ]
         }
       },
-      "run_count": 2
+      "run_count": 4
     },
     "terminal-bench-worker-materialization@v0": {
       "benchmark_id": "terminal-bench-worker-materialization@v0",
@@ -10674,5 +10766,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-21T13:48:46+08:00"
+  "updated_at": "2026-06-21T14:59:11+08:00"
 }

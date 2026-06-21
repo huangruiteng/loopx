@@ -23,6 +23,7 @@ SKILLSBENCH_PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
 SKILLSBENCH_ROUTES = (
     "codex-acp-blind-loop-baseline",
     "goal-harness-blind-loop-treatment",
+    "goal-harness-prompt-polling-test",
     "codex-app-server-goal-baseline",
     "codex-goal-mode-baseline",
     "automation-loop-treatment",
@@ -131,17 +132,33 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
                 "or verifier output returned to the agent"
             ),
         }
-    if route == "goal-harness-blind-loop-treatment":
+    if route in {
+        "goal-harness-blind-loop-treatment",
+        "goal-harness-prompt-polling-test",
+    }:
+        current_name = route == "goal-harness-prompt-polling-test"
         return {
-            "mode": "skillsbench_goal_harness_blind_loop_treatment",
-            "arm_id": "goal_harness_blind_loop_treatment",
+            "mode": (
+                "skillsbench_goal_harness_prompt_polling_test"
+                if current_name
+                else "skillsbench_goal_harness_blind_loop_treatment"
+            ),
+            "arm_id": (
+                "goal_harness_prompt_polling_test"
+                if current_name
+                else "goal_harness_blind_loop_treatment"
+            ),
             "source_runner": "goal_harness_skillsbench_blind_loop_treatment_skeleton",
             "inner_codex_goal_mode": False,
             "native_goal_mode_requested": False,
             "native_goal_mode_invoked": False,
             "native_goal_mode_confirmation_status": "not_requested",
             "codex_acp_protocol_used": True,
-            "skillsbench_route_semantics": "codex_acp_ordinary_agent_with_outer_goal_harness_blind_loop_no_reward_feedback",
+            "skillsbench_route_semantics": (
+                "codex_acp_ordinary_agent_with_outer_goal_harness_prompt_polling_no_reward_feedback"
+                if current_name
+                else "codex_acp_ordinary_agent_with_outer_goal_harness_blind_loop_no_reward_feedback"
+            ),
             "curated_skills_visible": False,
             "goal_harness_automation_loop": True,
             "goal_harness_inside_case": False,
@@ -1437,6 +1454,15 @@ def build_skillsbench_benchmark_run(
                 if route == "goal-harness-product-mode"
                 else [
                     "ordinary_codex_cli_actor",
+                    "goal_harness_prompt_polling_test",
+                    "official_feedback_withheld",
+                    "fixture_only",
+                    "no_upload",
+                    "single_task_planned",
+                ]
+                if route == "goal-harness-prompt-polling-test"
+                else [
+                    "ordinary_codex_cli_actor",
                     "goal_harness_blind_loop",
                     "official_feedback_withheld",
                     "fixture_only",
@@ -1523,7 +1549,9 @@ def build_skillsbench_benchmark_run(
             "schema_version": "skillsbench_episode_policy_v0",
             "route": route,
             "outer_controller": (
-                "goal_harness_blind_automation_loop"
+                "goal_harness_prompt_polling_loop"
+                if route == "goal-harness-prompt-polling-test"
+                else "goal_harness_blind_automation_loop"
                 if route == "goal-harness-blind-loop-treatment"
                 else "goal_harness_product_mode"
                 if route == "goal-harness-product-mode"
@@ -1543,6 +1571,7 @@ def build_skillsbench_benchmark_run(
                 in {
                     "automation-loop-treatment",
                     "goal-harness-blind-loop-treatment",
+                    "goal-harness-prompt-polling-test",
                     "codex-acp-blind-loop-baseline",
                     "raw-codex-autonomous-max5",
                     "goal-harness-product-mode",
@@ -2161,6 +2190,8 @@ def build_skillsbench_benchflow_result_benchmark_run(
         if is_oracle_runner
         else "goal_harness_blind_automation_loop"
         if route == "goal-harness-blind-loop-treatment"
+        else "goal_harness_prompt_polling_loop"
+        if route == "goal-harness-prompt-polling-test"
         else "goal_harness_product_mode"
         if route == "goal-harness-product-mode"
         else "reward_feedback_automation_loop_ablation"
@@ -2179,6 +2210,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
         in {
             "automation-loop-treatment",
             "goal-harness-blind-loop-treatment",
+            "goal-harness-prompt-polling-test",
             "codex-acp-blind-loop-baseline",
             "raw-codex-autonomous-max5",
             "goal-harness-product-mode",

@@ -386,7 +386,7 @@ solution attempt, switch to the host Codex Goal custom agent instead of
 continuing to rebuild or reinstall Codex in every case container:
 
 ```bash
-export PYTHONPATH=<goal-harness-checkout>/scripts:${PYTHONPATH:-}
+export PYTHONPATH=<goal-harness-checkout>:<goal-harness-checkout>/scripts:${PYTHONPATH:-}
 UV_LINK_MODE=copy uv run --no-default-groups harbor run \
   --env docker \
   --agent-import-path harbor_host_codex_goal_agent:HarborHostCodexGoalAgent \
@@ -395,6 +395,48 @@ UV_LINK_MODE=copy uv run --no-default-groups harbor run \
   --jobs-dir <run-dir>/jobs \
   -p <task-dir>
 ```
+
+When wrapping that launch in `tmux`, `launchd`, or a generated `run.sh`, put the
+same `PYTHONPATH` export inside the wrapper script, not only in the interactive
+shell that creates it. Otherwise Harbor can create a job shell but fail before
+trial execution with `No module named 'harbor_host_codex_goal_agent'`. A reusable
+wrapper should look like:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PYTHONPATH=<goal-harness-checkout>:<goal-harness-checkout>/scripts:${PYTHONPATH:-}
+python3 - <<'PY'
+import importlib
+importlib.import_module("harbor_host_codex_goal_agent")
+importlib.import_module("goal_harness.benchmark_core.loop_protocol")
+PY
+
+cd <harbor-checkout>
+set +e
+UV_LINK_MODE=copy uv run --no-default-groups harbor run \
+  --config <run-dir>/config.json \
+  > <run-dir>/harbor.run.log 2>&1
+status=$?
+set -e
+
+printf "exit_status=%s\n" "$status" > <run-dir>/status.env
+
+if [ -d <run-dir>/jobs/<job-name> ]; then
+  python3 <goal-harness-checkout>/scripts/harbor_job_result_reducer.py \
+    --job-dir <run-dir>/jobs/<job-name> \
+    --benchmark-id swe-marathon \
+    --output-json <run-dir>/jobs/<job-name>/harbor_job_result.compact.json \
+    --pretty
+fi
+
+exit "$status"
+```
+
+Treat a wrapper-level import failure as a launcher blocker, not a benchmark case
+failure: no trial ran, no verifier reward exists, and the next step is to fix the
+host-agent import surface before spending another case attempt.
 
 The agent starts Codex native Goal mode on the benchmark host and exposes a
 host command named `harbor-env-exec`. Codex is instructed to call
@@ -412,12 +454,19 @@ Harbor-family runs: the official environment result and the host completion
 marker are the scoring path, while app-server completion events are diagnostic
 only.
 
-For a matched SWE-Marathon Goal Harness treatment arm, keep the same task,
-model, timeout, environment, jobs directory shape, and no-upload boundary as the
-baseline, but add an explicit Goal Harness access packet to the host agent:
+For the current SWE-Marathon experiment axis, keep the same task, model,
+timeout, environment, jobs directory shape, and no-upload boundary across arms:
+
+- baseline: native Codex app-server Goal mode;
+- test: Goal Harness prompt-driven polling with scheduled continuations.
+
+A single Goal Harness access-packet run is not the test arm by itself. It adds
+planning/checkpoint context to the same host app-server Goal worker, but remains
+packet-only observation unless an outer polling controller records the scheduled
+rounds:
 
 ```bash
-export PYTHONPATH=<goal-harness-checkout>/scripts:${PYTHONPATH:-}
+export PYTHONPATH=<goal-harness-checkout>:<goal-harness-checkout>/scripts:${PYTHONPATH:-}
 UV_LINK_MODE=copy uv run --no-default-groups harbor run \
   --env docker \
   --agent-import-path harbor_host_codex_goal_agent:HarborHostCodexGoalAgent \
@@ -435,17 +484,61 @@ UV_LINK_MODE=copy uv run --no-default-groups harbor run \
   --agent-kwarg goal_harness_runtime_root_arg=<runtime-root> \
   --agent-kwarg goal_harness_scan_path=<public-scan-path> \
   --agent-kwarg goal_harness_classification=<public-classification> \
+  --agent-kwarg goal_harness_experiment_protocol=packet_only_observation \
+  --agent-kwarg goal_harness_max_rounds=5 \
   --jobs-dir <run-dir>/jobs \
   --job-name <matched-treatment-job-name> \
   -p <task-dir>
 ```
 
-The treatment packet is intentionally lightweight: it gives the host Codex
-worker Goal Harness planning/checkpoint commands and boundary reminders, while
-the task solution still goes through `harbor-env-exec` and the official Harbor
-verifier remains authoritative. This is the right comparison against
-`codex_goal_mode_baseline`; it is not a submit/upload path and should still be
-reduced to compact public evidence before ledger ingestion.
+The packet is intentionally lightweight: it gives the host Codex worker Goal
+Harness planning/checkpoint commands and boundary reminders, while the task
+solution still goes through `harbor-env-exec` and the official Harbor verifier
+remains authoritative. It is useful as route-safety evidence, but on its own it
+must be labeled `packet_only_observation`, not the prompt-driven test arm.
+
+The prompt-driven test contract is shared in
+`goal_harness.benchmark_core.loop_protocol` so SkillsBench historical rows,
+SWE-Marathon tests, and future Terminal-Bench tests use one semantics instead of
+parallel old/new definitions. The contract requires:
+
+- `max_rounds_budget=5`;
+- `official_feedback_forwarded=false`;
+- scheduled continuation prompts must not reveal reward, pass/fail, verifier
+  errors, or verifier output;
+- the compact result must include public-safe controller/round evidence such as
+  `round_rewards`, `first_success_round`, `official_feedback_blinded_count`, and
+  the loop contract;
+- if a Harbor/app-server route cannot provide that controller trace, classify it
+  as packet-only route-safety evidence and do not compare it as test.
+
+When launching the actual test arm, the outer controller should set
+`goal_harness_experiment_protocol=max5_blind_loop_no_feedback`, inject a fresh
+Goal Harness packet before each scheduled prompt, keep official feedback
+blinded, and record the public-safe controller trace. The route name for new
+SWE-Marathon/Terminal-Bench work is `goal-harness-prompt-polling-test`; the old
+SkillsBench route name `goal-harness-blind-loop-treatment` is a backward-
+compatible alias for the same no-feedback polling semantics.
+
+For Harbor-family runners, the host agent enables this controller when the
+experiment protocol is explicit:
+
+```bash
+--agent-kwarg goal_harness_mode=codex_goal_harness \
+--agent-kwarg goal_harness_access_packet_mode=compact \
+--agent-kwarg goal_harness_experiment_protocol=max5_blind_loop_no_feedback \
+--agent-kwarg goal_harness_max_rounds=5 \
+--agent-kwarg goal_harness_prompt_polling_rounds=5
+```
+
+That path starts native Codex app-server Goal once, then uses follow-up
+`turn/start` calls in the same thread for scheduled continuation prompts. It
+does not expose official reward, pass/fail status, verifier errors, or verifier
+output to the worker. If these controller fields are missing from compact
+evidence, classify the run as packet-only observation.
+
+This is not a submit/upload path and should still be reduced to compact public
+evidence before ledger ingestion.
 
 The Harbor bundle requires `codex` and `rg`. `curl` is intentionally optional:
 host-copied dynamic curl binaries can fail inside Ubuntu task images because of
@@ -991,6 +1084,31 @@ evidence for all of the following:
   only a prompt string whose first token is `/goal`;
 - the route does not add Goal Harness state, access packets, reward feedback,
   or polling semantics to the baseline arm.
+
+### Goal Harness Prompt-Polling Test Gate
+
+The comparable Goal Harness test arm is **not** the native Codex Goal baseline
+with one extra packet. It is a prompt-driven polling route: an outer controller
+injects Goal Harness context, schedules bounded continuation prompts, withholds
+official reward/pass-fail/verifier output from the agent, and records a
+public-safe controller trace.
+
+Use the shared protocol in `goal_harness.benchmark_core.loop_protocol` across
+benchmarks:
+
+| Benchmark family | Baseline arm | Test arm | Shared surface | Benchmark-specific glue |
+| --- | --- | --- | --- | --- |
+| SkillsBench | `codex-app-server-goal-baseline` for native Goal, or historical `codex-acp-blind-loop-baseline` for old ACP studies | `goal-harness-prompt-polling-test` (`goal-harness-blind-loop-treatment` is a historical alias) | `max5_blind_loop_no_feedback`, `round_rewards`, `official_feedback_blinded_count`, controller trace | BenchFlow `BaseUser` schedules continuation prompts and observes verifier reward only outside the agent-facing prompt |
+| SWE-Marathon | host Codex app-server Goal baseline through Harbor | Goal Harness prompt-polling test through the same Harbor task/workdir/no-upload boundary | same protocol id, max-round budget, packet-only blocker classification | host/Harbor controller must restart or continue app-server turns and re-inject prompts without exposing official verifier feedback |
+| Terminal-Bench | host Codex app-server Goal baseline or official no-upload runner baseline | Goal Harness prompt-polling test through the same official result/reducer path | same protocol id, max-round budget, compact official result fields | terminal runner glue must use official scorer/reducer after each attempt and keep raw panes/logs private |
+
+The shared layer is intentionally small: route ids, max-round budget, feedback
+blinding fields, packet-only classification, and public trace counters. Do not
+force every benchmark into the same runner implementation when its upstream
+surface differs. Do force every benchmark to use the same labels before a result
+is compared: baseline is native Goal mode; test is prompt-driven polling; a
+single access packet without scheduled controller trace is only
+`packet_only_observation`.
 
 `codex exec` is still useful as a tiny connectivity smoke on the cloud host,
 but a successful `codex exec` run is not by itself a Codex Goal baseline. Do not

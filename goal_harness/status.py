@@ -1867,6 +1867,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "official_score_status",
         "skillsbench_route_semantics",
         "native_goal_mode_confirmation_status",
+        "goal_harness_treatment_evidence_tier",
+        "goal_harness_treatment_claim_blocker",
     ):
         value = public_safe_compact_text(source.get(field), limit=140)
         if value:
@@ -1921,6 +1923,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "native_goal_worker_trace_dir_present",
         "native_goal_worker_public_trace_read",
         "native_goal_worker_raw_material_recorded",
+        "strict_goal_harness_treatment_claim_allowed",
+        "controller_trace_present",
     ):
         if isinstance(source.get(field), bool):
             compact[field] = source.get(field)
@@ -1955,9 +1959,41 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "native_goal_worker_turn_start_count",
         "native_goal_worker_turn_completed_observed_count",
         "native_goal_worker_assistant_message_present_count",
+        "max_rounds_budget",
+        "round_reward_count",
     ):
         if isinstance(source.get(field), int) and not isinstance(source.get(field), bool):
             compact[field] = source.get(field)
+    loop_contract = source.get("benchmark_loop_contract")
+    if isinstance(loop_contract, dict):
+        compact_loop_contract: dict[str, Any] = {}
+        for field in (
+            "schema_version",
+            "route",
+            "protocol_id",
+            "claim_blocker",
+        ):
+            value = public_safe_compact_text(loop_contract.get(field), limit=120)
+            if value:
+                compact_loop_contract[field] = value
+        for field in (
+            "official_feedback_forwarded",
+            "official_feedback_blinded",
+            "blind_loop",
+            "product_mode",
+            "strict_treatment_claim_allowed",
+        ):
+            if isinstance(loop_contract.get(field), bool):
+                compact_loop_contract[field] = loop_contract[field]
+        if isinstance(loop_contract.get("max_rounds_budget"), int) and not isinstance(
+            loop_contract.get("max_rounds_budget"),
+            bool,
+        ):
+            compact_loop_contract["max_rounds_budget"] = loop_contract[
+                "max_rounds_budget"
+            ]
+        if compact_loop_contract:
+            compact["benchmark_loop_contract"] = compact_loop_contract
     if isinstance(source.get("official_score"), (int, float)) and not isinstance(
         source.get("official_score"),
         bool,

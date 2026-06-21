@@ -23,6 +23,7 @@ class CodexAppServerGoalTurn:
     process: subprocess.Popen[str]
     thread_id: str
     turn_id: str
+    next_request_id: int = 6
     goal_status: str = ""
     turn_status: str = ""
     turn_completed_observed: bool = False
@@ -409,6 +410,7 @@ def start_codex_app_server_goal_turn(
             process=proc,
             thread_id=thread_id,
             turn_id=turn_id,
+            next_request_id=6,
             goal_status=goal_status,
             turn_status=_extract_turn_status(turn_result),
             notifications=notifications,
@@ -427,6 +429,95 @@ def start_codex_app_server_goal_turn(
         except subprocess.TimeoutExpired:  # pragma: no cover - defensive path.
             proc.kill()
         raise
+
+
+def start_codex_app_server_goal_followup_turn(
+    turn: CodexAppServerGoalTurn,
+    *,
+    work_dir: Path,
+    prompt: str,
+    model_name: str | None = None,
+    reasoning_effort: str | None = None,
+    approval_policy: str = "never",
+    response_timeout_sec: float = 30.0,
+    wait_for_completion: bool = False,
+    turn_timeout_sec: float | None = None,
+) -> CodexAppServerGoalTurn:
+    """Start a follow-up turn in the same app-server thread and goal."""
+
+    if turn._responses is None:
+        raise CodexAppServerGoalDriverError("follow-up turn has no response stream")
+    if turn.process.poll() is not None:
+        raise CodexAppServerGoalDriverError("codex app-server is not running")
+    request_id = max(1, int(turn.next_request_id))
+    notifications = turn.notifications
+
+    goal_get = {
+        "id": request_id,
+        "method": "thread/goal/get",
+        "params": {
+            "threadId": turn.thread_id,
+        },
+    }
+    _send_json(turn.process, goal_get)
+    goal_result = _wait_for_response(
+        turn.process,
+        turn._responses,
+        request_id,
+        notifications=notifications,
+        timeout_sec=response_timeout_sec,
+    )
+    request_id += 1
+    goal_status = _extract_goal_status(goal_result)
+    if goal_status != "active":
+        raise CodexAppServerGoalDriverError(
+            f"thread/goal/get did not confirm active goal: {goal_status or 'missing'}"
+        )
+
+    turn_params: dict[str, Any] = {
+        "threadId": turn.thread_id,
+        "input": [{"type": "text", "text": prompt}],
+        "cwd": str(work_dir),
+        "approvalPolicy": approval_policy,
+    }
+    if model_name:
+        turn_params["model"] = model_name
+    if reasoning_effort:
+        turn_params["effort"] = reasoning_effort
+    turn_start = {
+        "id": request_id,
+        "method": "turn/start",
+        "params": turn_params,
+    }
+    _send_json(turn.process, turn_start)
+    turn_result = _wait_for_response(
+        turn.process,
+        turn._responses,
+        request_id,
+        notifications=notifications,
+        timeout_sec=response_timeout_sec,
+    )
+    request_id += 1
+    turn_id = _extract_turn_id(turn_result)
+    if not turn_id:
+        raise CodexAppServerGoalDriverError("turn/start did not return turn id")
+
+    followup = CodexAppServerGoalTurn(
+        process=turn.process,
+        thread_id=turn.thread_id,
+        turn_id=turn_id,
+        next_request_id=request_id,
+        goal_status=goal_status,
+        turn_status=_extract_turn_status(turn_result),
+        notifications=notifications,
+        _responses=turn._responses,
+    )
+    if wait_for_completion:
+        _wait_for_turn_completion(
+            followup,
+            timeout_sec=turn_timeout_sec or response_timeout_sec,
+        )
+    return followup
 
 
 def compact_turn_metadata(turn: CodexAppServerGoalTurn) -> dict[str, Any]:

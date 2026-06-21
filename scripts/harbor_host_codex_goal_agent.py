@@ -22,14 +22,29 @@ from pathlib import Path
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+REPO_ROOT = SCRIPT_DIR.parent
+for _path in (SCRIPT_DIR, REPO_ROOT):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 from codex_app_server_goal_driver import (
     CodexAppServerGoalDriverError,
     compact_turn_metadata,
     observe_codex_app_server_goal_turn,
+    start_codex_app_server_goal_followup_turn,
     start_codex_app_server_goal_turn,
+)
+from goal_harness.benchmark_core.loop_protocol import (
+    BLIND_LOOP_DEFAULT_MAX_ROUNDS,
+    GOAL_HARNESS_PACKET_ONLY_OBSERVATION_ROUTE,
+    GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
+    MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID,
+    PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
+    build_benchmark_loop_contract,
+    build_benchmark_loop_controller_trace,
+    build_blind_loop_continuation_prompt,
+    classify_goal_harness_treatment_claim,
+    render_loop_contract_packet_lines,
 )
 
 
@@ -182,6 +197,8 @@ def build_goal_harness_access_packet(
     runtime_root_arg: str = "",
     scan_path: str = "",
     classification: str = "swe_marathon_codex_goal_harness_treatment",
+    experiment_protocol: str = PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
+    max_rounds: int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
 ) -> str:
     """Build a public-safe Goal Harness access packet for Harbor/SWE tasks."""
 
@@ -197,6 +214,19 @@ def build_goal_harness_access_packet(
     base += " --format json"
     goal_id_arg = shlex.quote(goal_id)
     scan_path_arg = shlex.quote(scan_path) if scan_path else "<public-scan-path>"
+    route = (
+        GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE
+        if experiment_protocol == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
+        else GOAL_HARNESS_PACKET_ONLY_OBSERVATION_ROUTE
+    )
+    loop_contract = build_benchmark_loop_contract(
+        route=route,
+        max_rounds=max_rounds,
+        protocol_id=experiment_protocol,
+    )
+    claim = classify_goal_harness_treatment_claim(
+        {"benchmark_loop_contract": loop_contract}
+    )
 
     lines = [
         "Goal Harness Access Packet V0",
@@ -212,7 +242,11 @@ def build_goal_harness_access_packet(
         "do_not_record_raw_task_text_logs_trajectories_or_credentials: true",
         "use_goal_harness_for_planning_checkpoints_and_boundary_awareness_only: true",
         "task_environment_commands_still_must_use_harbor_env_exec_bridge: true",
+        f"goal_harness_treatment_evidence_tier: {claim['goal_harness_treatment_evidence_tier']}",
+        f"strict_goal_harness_treatment_claim_allowed: {str(claim['strict_goal_harness_treatment_claim_allowed']).lower()}",
+        f"goal_harness_treatment_claim_blocker: {claim['goal_harness_treatment_claim_blocker']}",
     ]
+    lines.extend(render_loop_contract_packet_lines(loop_contract))
     if cli_enabled:
         lines.extend(
             [
@@ -262,6 +296,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
         goal_harness_classification: str = (
             "swe_marathon_codex_goal_harness_treatment"
         ),
+        goal_harness_experiment_protocol: str = PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
+        goal_harness_max_rounds: str | int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
+        goal_harness_prompt_polling_rounds: str | int = "auto",
         startup_delay_sec: str | int | float = 5,
         poll_interval_sec: str | int | float = 5,
         **kwargs: Any,
@@ -285,12 +322,26 @@ class HarborHostCodexGoalAgent(BaseAgent):
         self.goal_harness_runtime_root_arg = goal_harness_runtime_root_arg
         self.goal_harness_scan_path = goal_harness_scan_path
         self.goal_harness_classification = goal_harness_classification
+        self.goal_harness_experiment_protocol = goal_harness_experiment_protocol
+        self.goal_harness_max_rounds = int(goal_harness_max_rounds)
+        if str(goal_harness_prompt_polling_rounds).strip().lower() == "auto":
+            self.goal_harness_prompt_polling_rounds = (
+                self.goal_harness_max_rounds
+                if goal_harness_experiment_protocol
+                == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
+                else 1
+            )
+        else:
+            self.goal_harness_prompt_polling_rounds = max(
+                1,
+                int(goal_harness_prompt_polling_rounds),
+            )
         self.startup_delay_sec = float(startup_delay_sec)
         self.poll_interval_sec = float(poll_interval_sec)
         self._served_request_count = 0
 
     def version(self) -> str:
-        return "0.4.0"
+        return "0.5.0"
 
     async def setup(self, environment: BaseEnvironment) -> None:
         del environment
@@ -398,7 +449,26 @@ class HarborHostCodexGoalAgent(BaseAgent):
             runtime_root_arg=self.goal_harness_runtime_root_arg,
             scan_path=self.goal_harness_scan_path,
             classification=self.goal_harness_classification,
+            experiment_protocol=self.goal_harness_experiment_protocol,
+            max_rounds=self.goal_harness_max_rounds,
         )
+        loop_contract: dict[str, Any] = {}
+        treatment_claim: dict[str, Any] = {}
+        if goal_harness_access_packet:
+            loop_route = (
+                GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE
+                if self.goal_harness_experiment_protocol
+                == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
+                else GOAL_HARNESS_PACKET_ONLY_OBSERVATION_ROUTE
+            )
+            loop_contract = build_benchmark_loop_contract(
+                route=loop_route,
+                max_rounds=self.goal_harness_max_rounds,
+                protocol_id=self.goal_harness_experiment_protocol,
+            )
+            treatment_claim = classify_goal_harness_treatment_claim(
+                {"benchmark_loop_contract": loop_contract}
+            )
         prompt = build_host_goal_prompt(
             instruction=instruction,
             bridge_command=bridge,
@@ -452,6 +522,29 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 return
             await self._serve_bridge_requests(environment, request_dir)
 
+            prompt_polling_enabled = bool(
+                goal_harness_access_packet
+                and self.goal_harness_experiment_protocol
+                == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
+                and self.goal_harness_prompt_polling_rounds > 1
+            )
+            controller_trace: dict[str, Any] = {}
+            if prompt_polling_enabled:
+                controller_trace = build_benchmark_loop_controller_trace(
+                    route=GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
+                    max_rounds=self.goal_harness_max_rounds,
+                    schema_version="harbor_host_prompt_polling_controller_trace_v0",
+                )
+                controller_trace["initial_prompt_count"] = 1
+                controller_trace["controller_action_decisions"] = 1
+                controller_trace["last_decision"] = "start_initial_app_server_goal_turn"
+                treatment_claim = classify_goal_harness_treatment_claim(
+                    {
+                        "benchmark_loop_contract": loop_contract,
+                        "controller_trace_present": True,
+                    }
+                )
+
             def write_compact(first_blocker: str = "") -> None:
                 compact = compact_turn_metadata(turn)
                 compact.update(
@@ -469,12 +562,129 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         "goal_harness_cli_bridge_enabled": (
                             self.goal_harness_cli_bridge_enabled
                         ),
+                        "prompt_polling_enabled": prompt_polling_enabled,
+                        "prompt_polling_rounds_requested": (
+                            self.goal_harness_prompt_polling_rounds
+                        ),
+                        "benchmark_loop_contract": loop_contract,
+                        **treatment_claim,
                     }
                 )
+                if controller_trace:
+                    compact["goal_harness_controller_trace_present"] = True
+                    compact["goal_harness_controller_trace"] = controller_trace
+                    (work_dir / "goal_harness_controller_trace.public.json").write_text(
+                        json.dumps(controller_trace, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
                 (work_dir / "app_server_goal_turn.compact.json").write_text(
                     json.dumps(compact, sort_keys=True) + "\n",
                     encoding="utf-8",
                 )
+
+            if prompt_polling_enabled:
+                deadline = time.time() + self.goal_timeout_sec
+                current_round = 1
+                completion_marker_count = 0
+                timeout_blocker = ""
+                try:
+                    while current_round <= self.goal_harness_prompt_polling_rounds:
+                        marker_seen_this_round = False
+                        while time.time() < deadline:
+                            observe_codex_app_server_goal_turn(turn)
+                            await self._serve_bridge_requests(environment, request_dir)
+                            if marker.exists():
+                                completion_marker_count += 1
+                                marker_seen_this_round = True
+                                break
+                            if turn.turn_completed_observed:
+                                break
+                            await asyncio.sleep(self.poll_interval_sec)
+                        controller_trace["max_round_observed"] = max(
+                            int(controller_trace.get("max_round_observed", -1)),
+                            current_round,
+                        )
+                        controller_trace["completion_marker_observed_count"] = (
+                            completion_marker_count
+                        )
+                        if time.time() >= deadline and not (
+                            marker_seen_this_round or turn.turn_completed_observed
+                        ):
+                            timeout_blocker = (
+                                "harbor_prompt_polling_turn_timeout_before_completion"
+                            )
+                            controller_trace["last_decision"] = timeout_blocker
+                            break
+                        if current_round >= self.goal_harness_prompt_polling_rounds:
+                            controller_trace["last_decision"] = (
+                                "stop_at_prompt_polling_round_budget"
+                            )
+                            break
+                        if marker.exists():
+                            marker.unlink()
+                        next_round = current_round + 1
+                        continuation_prompt = "\n\n".join(
+                            part
+                            for part in (
+                                goal_harness_access_packet,
+                                build_blind_loop_continuation_prompt(
+                                    scheduled_round=next_round,
+                                    max_rounds=self.goal_harness_prompt_polling_rounds,
+                                    persistent_constraint_clause=(
+                                        " Use harbor-env-exec for task-environment "
+                                        "commands; do not upload or submit."
+                                    ),
+                                ),
+                            )
+                            if part
+                        )
+                        (work_dir / f"prompt_round_{next_round}.txt").write_text(
+                            continuation_prompt,
+                            encoding="utf-8",
+                        )
+                        controller_trace["followup_prompt_count"] = int(
+                            controller_trace.get("followup_prompt_count", 0)
+                        ) + 1
+                        controller_trace["controller_action_decisions"] = int(
+                            controller_trace.get("controller_action_decisions", 0)
+                        ) + 1
+                        controller_trace["last_decision"] = (
+                            "send_prompt_polling_continuation"
+                        )
+                        turn = await asyncio.to_thread(
+                            start_codex_app_server_goal_followup_turn,
+                            turn,
+                            work_dir=work_dir,
+                            prompt=continuation_prompt,
+                            model_name=self.model_name,
+                            reasoning_effort=self.reasoning_effort,
+                            response_timeout_sec=self.app_server_response_timeout_sec,
+                            wait_for_completion=False,
+                        )
+                        current_round = next_round
+                    observe_codex_app_server_goal_turn(turn)
+                    await self._serve_bridge_requests(environment, request_dir)
+                    first_blocker = timeout_blocker
+                    write_compact(first_blocker)
+                finally:
+                    turn.terminate()
+                context.metadata = {
+                    "goal_harness_agent": self.name(),
+                    "completion_marker_observed": bool(completion_marker_count),
+                    "bridge_request_count": self._served_request_count,
+                    "goal_surface": "app_server",
+                    "turn_completed_observed": bool(turn.turn_completed_observed),
+                    "first_blocker": timeout_blocker,
+                    "goal_harness_mode": self.goal_harness_mode,
+                    "goal_harness_access_packet_injected": bool(
+                        goal_harness_access_packet
+                    ),
+                    "prompt_polling_enabled": True,
+                    "prompt_polling_rounds_completed": current_round,
+                    "benchmark_loop_contract": loop_contract,
+                    **treatment_claim,
+                }
+                return
 
             deadline = time.time() + self.goal_timeout_sec
             try:
@@ -498,6 +708,8 @@ class HarborHostCodexGoalAgent(BaseAgent):
                             "goal_harness_access_packet_injected": bool(
                                 goal_harness_access_packet
                             ),
+                            "benchmark_loop_contract": loop_contract,
+                            **treatment_claim,
                         }
                         return
                     await asyncio.sleep(self.poll_interval_sec)
@@ -516,6 +728,8 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 "goal_harness_access_packet_injected": bool(
                     goal_harness_access_packet
                 ),
+                "benchmark_loop_contract": loop_contract,
+                **treatment_claim,
             }
             return
 
@@ -569,6 +783,8 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     "goal_harness_access_packet_injected": bool(
                         goal_harness_access_packet
                     ),
+                    "benchmark_loop_contract": loop_contract,
+                    **treatment_claim,
                 }
                 return
             capture_path.write_text(self._capture(tmux_name), encoding="utf-8")
@@ -582,4 +798,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
             "first_blocker": "harbor_host_codex_goal_timeout",
             "goal_harness_mode": self.goal_harness_mode,
             "goal_harness_access_packet_injected": bool(goal_harness_access_packet),
+            "benchmark_loop_contract": loop_contract,
+            **treatment_claim,
         }
