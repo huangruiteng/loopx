@@ -10,6 +10,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CATALOG = REPO_ROOT / "docs" / "showcases" / "showcase-catalog.json"
 SHOWCASES = REPO_ROOT / "docs" / "showcases" / "README.md"
+POC_FEEDBACK_LOOP = REPO_ROOT / "docs" / "showcases" / "poc-feedback-case-report-loop.md"
 PRIVATE_MARKERS = tuple(
     "".join(parts)
     for parts in (
@@ -55,6 +56,7 @@ def main() -> int:
 
     assert_public_safe(CATALOG)
     assert_public_safe(SHOWCASES)
+    assert_public_safe(POC_FEEDBACK_LOOP)
 
     for case in cases:
         case_id = str(case.get("id") or "")
@@ -150,8 +152,19 @@ def main() -> int:
 
     docs_index = read(REPO_ROOT / "docs" / "README.md")
     repo_readme = read(REPO_ROOT / "README.md")
+    showcase_index = read(SHOWCASES)
+    feedback_loop = read(POC_FEEDBACK_LOOP)
     assert "showcases/README.md" in docs_index, "docs index must link showcases"
     assert "docs/showcases/README.md" in repo_readme, "README must link showcases"
+    assert "poc-feedback-case-report-loop.md" in showcase_index, "showcase index must link PoC feedback loop"
+    for phrase in (
+        "GitHub Issues or Discussions as the primary public entry",
+        "Case Report Shape",
+        "Evidence Checklist",
+        "only catalog-backed, public-safe cases become public cards",
+        "private local status or unreviewed anecdotes",
+    ):
+        assert phrase in feedback_loop, phrase
     for phrase in (
         "Loop engineering for long-running AI agents.",
         "https://huangruiteng.github.io/loopx/frontstage/",
