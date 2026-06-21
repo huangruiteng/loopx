@@ -190,6 +190,13 @@ def load_codex_cli_runtime_idle_fixture(path: Path) -> dict[str, Any]:
     return data
 
 
+def load_codex_cli_first_response_fixture(path: Path) -> dict[str, Any]:
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError("Codex CLI first-response fixture must be a JSON object")
+    return data
+
+
 def probe_human_input_idle_seconds(*, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> dict[str, Any]:
     """Read a coarse local human-input idle metric without touching Codex state.
 
@@ -352,6 +359,33 @@ RUNTIME_IDLE_REQUIRED_FALSE_CHECKS: tuple[tuple[str, tuple[str, ...], str], ...]
     ("no_stdout_stderr_read", ("boundary", "reads_stdout_stderr"), "stdout/stderr streams were not read"),
     ("no_credentials_read", ("boundary", "reads_credentials"), "credentials were not read"),
     ("no_hidden_session_mutation", ("boundary", "mutates_hidden_session_state"), "hidden session state was not mutated"),
+)
+
+
+FIRST_RESPONSE_REQUIRED_TRUE_CHECKS: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    ("manual_or_visible_delivery", ("prompt_delivery", "manual_or_visible_delivery"), "the start message was delivered through a visible TUI path"),
+    ("prompt_public_safe", ("prompt_delivery", "prompt_public_safe"), "the delivered prompt was public-safe"),
+    ("goal_id_visible", ("first_response", "goal_id_visible"), "the first response showed the current goal id"),
+    ("user_gate_or_none_visible", ("first_response", "user_gate_or_none_visible"), "the first response showed the concrete user gate or that none blocks the path"),
+    ("top_user_todo_or_none_visible", ("first_response", "top_user_todo_or_none_visible"), "the first response showed the top user todo or that none exists"),
+    ("top_agent_todo_visible", ("first_response", "top_agent_todo_visible"), "the first response showed the selected agent todo"),
+    ("next_safe_action_visible", ("first_response", "next_safe_action_visible"), "the first response showed the next safe action"),
+    ("bounded_segment_started_or_blocker_written", ("first_response", "bounded_segment_started_or_blocker_written"), "the first response either started one bounded segment or wrote a precise blocker"),
+    ("user_can_interrupt", ("interruptibility", "user_can_interrupt"), "the user can interrupt the visible TUI path"),
+    ("manual_takeover_available", ("interruptibility", "manual_takeover_available"), "manual takeover remains available"),
+    ("compact_evidence_planned", ("writeback", "compact_evidence_planned"), "compact evidence writeback is planned before quota spend"),
+    ("quota_spend_after_writeback_only", ("writeback", "quota_spend_after_writeback_only"), "quota spend happens only after validated writeback"),
+)
+
+
+FIRST_RESPONSE_REQUIRED_FALSE_CHECKS: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    ("no_argv_prompt", ("prompt_delivery", "argv_prompt_used"), "the start prompt was not passed as a process argv prompt"),
+    ("no_raw_transcript_read", ("boundary", "reads_raw_transcripts"), "raw transcripts were not read"),
+    ("no_session_files_read", ("boundary", "reads_session_files"), "session files were not read"),
+    ("no_stdout_stderr_read", ("boundary", "reads_stdout_stderr"), "stdout/stderr streams were not read"),
+    ("no_credentials_read", ("boundary", "reads_credentials"), "credentials were not read"),
+    ("no_hidden_session_mutation", ("boundary", "mutates_hidden_session_state"), "hidden session state was not mutated"),
+    ("no_quota_spend_before_writeback", ("boundary", "spends_quota_before_writeback"), "quota was not spent before writeback"),
 )
 
 
@@ -2138,6 +2172,229 @@ def build_codex_cli_visible_local_driver_pilot(
     }
 
 
+def build_codex_cli_bounded_visible_pilot_adapter(
+    *,
+    project: Path,
+    goal_id: str | None,
+    agent_id: str | None,
+    cli_bin: str,
+    first_response_payload: dict[str, Any] | None = None,
+    idle_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate the bounded evidence needed before claiming live TUI success.
+
+    The adapter is intentionally a packet builder and fixture validator. It
+    does not start Codex, inspect transcripts, read session files, or capture
+    stdout/stderr. A separate visible/manual run must supply a public-safe
+    first-response fixture and a runtime-idle fixture before this packet can
+    approve a live-TUI first-message success claim.
+    """
+
+    bootstrap = build_codex_cli_bootstrap_message(
+        project=project,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+    )
+    resolved_project = str(bootstrap["project"])
+    resolved_goal_id = str(bootstrap["goal_id"])
+    agent_arg = f" --agent-id {_shell_arg(agent_id)}" if agent_id else ""
+    required_first_response_shape = {
+        "observed_surface": "codex_cli_tui_visible_window | visible_paste_adapter",
+        "prompt_delivery": {
+            "manual_or_visible_delivery": True,
+            "prompt_public_safe": True,
+            "argv_prompt_used": False,
+        },
+        "first_response": {
+            "goal_id_visible": True,
+            "user_gate_or_none_visible": True,
+            "top_user_todo_or_none_visible": True,
+            "top_agent_todo_visible": True,
+            "next_safe_action_visible": True,
+            "bounded_segment_started_or_blocker_written": True,
+        },
+        "interruptibility": {
+            "user_can_interrupt": True,
+            "manual_takeover_available": True,
+        },
+        "writeback": {
+            "compact_evidence_planned": True,
+            "quota_spend_after_writeback_only": True,
+        },
+        "boundary": {
+            "reads_raw_transcripts": False,
+            "reads_session_files": False,
+            "reads_stdout_stderr": False,
+            "reads_credentials": False,
+            "mutates_hidden_session_state": False,
+            "spends_quota_before_writeback": False,
+        },
+    }
+
+    first_response_checks: list[dict[str, Any]] = []
+    first_response_failures: list[str] = []
+    observed_surface = "missing"
+    if first_response_payload is None:
+        first_response_failures.append("missing_first_response_evidence")
+    else:
+        observed_surface = str(first_response_payload.get("observed_surface") or "unknown")
+        for key, path, description in FIRST_RESPONSE_REQUIRED_TRUE_CHECKS:
+            passed = _nested_bool(first_response_payload, path)
+            first_response_checks.append(
+                {"key": key, "required": True, "passed": passed, "description": description}
+            )
+            if not passed:
+                first_response_failures.append(key)
+        for key, path, description in FIRST_RESPONSE_REQUIRED_FALSE_CHECKS:
+            passed = _nested_false(first_response_payload, path)
+            first_response_checks.append(
+                {"key": key, "required": False, "passed": passed, "description": description}
+            )
+            if not passed:
+                first_response_failures.append(key)
+        supported_surface = observed_surface in {
+            "codex_cli_tui_visible_window",
+            "visible_paste_adapter",
+        }
+        first_response_checks.append(
+            {
+                "key": "supported_observed_surface",
+                "required": sorted(["codex_cli_tui_visible_window", "visible_paste_adapter"]),
+                "actual": observed_surface,
+                "passed": supported_surface,
+                "description": "first response was observed on a visible Codex CLI surface",
+            }
+        )
+        if not supported_surface:
+            first_response_failures.append("unsupported_observed_surface")
+        if _nested_bool(first_response_payload, ("prompt_delivery", "argv_prompt_used")):
+            first_response_failures.append("argv_prompt_leakage_risk")
+
+    idle_detector = build_codex_cli_runtime_idle_detector(
+        project=project,
+        goal_id=resolved_goal_id,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+        idle_payload=idle_payload,
+    )
+    idle_approved = idle_detector.get("approved_for_visible_later_turn") is True
+    first_response_approved = bool(first_response_payload is not None and not first_response_failures)
+    blockers: list[str] = []
+    blockers.extend(first_response_failures)
+    if not idle_approved:
+        blockers.extend(idle_detector.get("failures") or ["runtime_idle_evidence_required"])
+
+    if first_response_approved and idle_approved:
+        decision = "bounded_visible_pilot_ready_for_success_claim"
+        approved = True
+        next_safe_step = (
+            "write compact success evidence, refresh state with outcome_progress, "
+            "then spend exactly one quota slot"
+        )
+    elif first_response_payload is None:
+        decision = "bounded_visible_completion_evidence_required"
+        approved = False
+        next_safe_step = (
+            "capture the first visible TUI response as the public-safe fixture shape "
+            "below, then rerun this adapter before spending quota"
+        )
+    elif not first_response_approved:
+        decision = "bounded_visible_first_response_incomplete"
+        approved = False
+        next_safe_step = (
+            "treat the live TUI pilot as blocked and write the precise blocker; "
+            "do not claim first-message success"
+        )
+    else:
+        decision = "bounded_visible_runtime_idle_required"
+        approved = False
+        next_safe_step = (
+            "capture runtime idle evidence proving no active typing or running turn "
+            "before marking the visible pilot complete"
+        )
+
+    bounded_adapter_command = (
+        f"{_shell_arg(cli_bin)} codex-cli-bounded-visible-pilot-adapter "
+        f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}"
+        f"{agent_arg} --first-response-fixture <public-first-response.json> "
+        "--idle-fixture <public-runtime-idle.json>"
+    )
+    runtime_idle_command = (
+        f"{_shell_arg(cli_bin)} codex-cli-runtime-idle-detector "
+        f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}"
+        f"{agent_arg} --idle-fixture <public-runtime-idle.json>"
+    )
+    blocker_summary = blockers[0] if blockers else "none"
+    blocker_writeback = (
+        f"{_shell_arg(cli_bin)} refresh-state --goal-id {_shell_arg(resolved_goal_id)} "
+        "--classification codex_cli_bounded_visible_pilot_blocker "
+        "--delivery-batch-scale implementation --delivery-outcome outcome_gap "
+        f"--recommended-action {_shell_arg('Codex CLI bounded visible pilot blocked: ' + blocker_summary)}"
+    )
+    success_writeback = (
+        f"{_shell_arg(cli_bin)} refresh-state --goal-id {_shell_arg(resolved_goal_id)} "
+        "--classification codex_cli_bounded_visible_pilot_success "
+        "--delivery-batch-scale implementation --delivery-outcome outcome_progress "
+        "--recommended-action "
+        f"{_shell_arg('Promote Codex CLI one-message TUI bootstrap only after documented release-path validation.')}"
+    )
+
+    return {
+        "ok": True,
+        "schema_version": "codex_cli_bounded_visible_pilot_adapter_v0",
+        "project": resolved_project,
+        "goal_id": resolved_goal_id,
+        "agent_id": agent_id,
+        "cli_bin": cli_bin,
+        "decision": decision,
+        "approved_for_live_tui_success_claim": approved,
+        "observed_surface": observed_surface,
+        "next_safe_step": next_safe_step,
+        "blockers": blockers,
+        "first_response": {
+            "supplied": first_response_payload is not None,
+            "approved": first_response_approved,
+            "checks": first_response_checks,
+            "failures": first_response_failures,
+        },
+        "runtime_idle_detector": {
+            "supplied": idle_payload is not None,
+            "approved": idle_approved,
+            "decision": idle_detector.get("decision"),
+            "failures": idle_detector.get("failures") or [],
+            "source": idle_detector.get("source"),
+        },
+        "commands": {
+            "bootstrap_message": (
+                f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "
+                f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}"
+                f"{agent_arg} --message-only"
+            ),
+            "bounded_visible_pilot_adapter": bounded_adapter_command,
+            "runtime_idle_detector": runtime_idle_command,
+            "blocker_writeback": blocker_writeback,
+            "success_writeback": success_writeback,
+        },
+        "required_first_response_shape": required_first_response_shape,
+        "required_runtime_idle_shape": idle_detector.get("required_fixture_shape"),
+        "boundary": {
+            "adapter_packet_only": True,
+            "runs_codex": False,
+            "reads_raw_transcripts": False,
+            "reads_credentials": False,
+            "reads_session_files": False,
+            "reads_stdout_stderr": False,
+            "mutates_codex_session": False,
+            "writes_goal_harness_state": False,
+            "spends_goal_harness_quota": False,
+            "requires_visible_delivery": True,
+            "argv_prompt_rejected": True,
+            "success_claim_requires_first_response_and_idle": True,
+        },
+    }
+
+
 def render_codex_cli_session_probe_markdown(payload: dict[str, Any]) -> str:
     capabilities = payload.get("capabilities") or {}
     boundary = payload.get("boundary") or {}
@@ -2651,6 +2908,100 @@ def render_codex_cli_visible_local_driver_pilot_markdown(payload: dict[str, Any]
 ## Warnings
 
 {warning_lines}
+"""
+
+
+def render_codex_cli_bounded_visible_pilot_adapter_markdown(payload: dict[str, Any]) -> str:
+    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
+    commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+    first_response = (
+        payload.get("first_response")
+        if isinstance(payload.get("first_response"), dict)
+        else {}
+    )
+    runtime_idle = (
+        payload.get("runtime_idle_detector")
+        if isinstance(payload.get("runtime_idle_detector"), dict)
+        else {}
+    )
+    blockers = payload.get("blockers") if isinstance(payload.get("blockers"), list) else []
+    blocker_lines = "\n".join(f"- {blocker}" for blocker in blockers) if blockers else "- none"
+    checks = first_response.get("checks") if isinstance(first_response.get("checks"), list) else []
+    check_lines = "\n".join(
+        f"- [{'x' if check.get('passed') else ' '}] {check.get('key')}: {check.get('description')}"
+        for check in checks
+        if isinstance(check, dict)
+    )
+    if not check_lines:
+        check_lines = "- no first-response fixture supplied"
+    required_first_response_shape = payload.get("required_first_response_shape")
+    required_runtime_idle_shape = payload.get("required_runtime_idle_shape")
+    required_shapes = ""
+    if isinstance(required_first_response_shape, dict):
+        required_shapes += f"""
+## Required First-Response Fixture
+
+```json
+{json.dumps(required_first_response_shape, indent=2, ensure_ascii=False)}
+```
+"""
+    if isinstance(required_runtime_idle_shape, dict):
+        required_shapes += f"""
+## Required Runtime Idle Fixture
+
+```json
+{json.dumps(required_runtime_idle_shape, indent=2, ensure_ascii=False)}
+```
+"""
+    return f"""# Codex CLI Bounded Visible Pilot Adapter
+
+- decision: `{payload.get("decision")}`
+- approved_for_live_tui_success_claim: `{payload.get("approved_for_live_tui_success_claim")}`
+- observed_surface: `{payload.get("observed_surface")}`
+- next_safe_step: {payload.get("next_safe_step")}
+
+## First Response
+
+- supplied: `{first_response.get("supplied")}`
+- approved: `{first_response.get("approved")}`
+
+{check_lines}
+
+## Runtime Idle Detector
+
+- supplied: `{runtime_idle.get("supplied")}`
+- approved: `{runtime_idle.get("approved")}`
+- decision: `{runtime_idle.get("decision")}`
+- failures: `{runtime_idle.get("failures")}`
+
+## Blockers
+
+{blocker_lines}
+
+## Commands
+
+```bash
+{commands.get("bootstrap_message")}
+{commands.get("bounded_visible_pilot_adapter")}
+{commands.get("runtime_idle_detector")}
+{commands.get("blocker_writeback")}
+{commands.get("success_writeback")}
+```
+
+## Boundary
+
+- adapter_packet_only: `{boundary.get("adapter_packet_only")}`
+- runs_codex: `{boundary.get("runs_codex")}`
+- reads_raw_transcripts: `{boundary.get("reads_raw_transcripts")}`
+- reads_session_files: `{boundary.get("reads_session_files")}`
+- reads_stdout_stderr: `{boundary.get("reads_stdout_stderr")}`
+- mutates_codex_session: `{boundary.get("mutates_codex_session")}`
+- writes_goal_harness_state: `{boundary.get("writes_goal_harness_state")}`
+- spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+- requires_visible_delivery: `{boundary.get("requires_visible_delivery")}`
+- argv_prompt_rejected: `{boundary.get("argv_prompt_rejected")}`
+- success_claim_requires_first_response_and_idle: `{boundary.get("success_claim_requires_first_response_and_idle")}`
+{required_shapes}
 """
 
 

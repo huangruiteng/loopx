@@ -11,6 +11,7 @@ The top-level CLI keeps global options, registry fallback, and dispatch order.
 from .doctor import handle_doctor_command, register_doctor_command
 from .dreaming import handle_dreaming_command, register_dreaming_commands
 from .starter import (
+    handle_codex_cli_bounded_visible_pilot_adapter_command,
     handle_codex_cli_bootstrap_message_command,
     handle_codex_cli_exec_handoff_command,
     handle_codex_cli_local_driver_plan_command,
@@ -39,6 +40,7 @@ from .status import (
 
 __all__ = [
     "handle_check_command",
+    "handle_codex_cli_bounded_visible_pilot_adapter_command",
     "handle_codex_cli_bootstrap_message_command",
     "handle_codex_cli_exec_handoff_command",
     "handle_codex_cli_local_driver_plan_command",

@@ -30,6 +30,7 @@ from ..codex_cli_probe import (
     DEFAULT_EXECUTOR_TIMEOUT_SECONDS,
     DEFAULT_MIN_HUMAN_INPUT_IDLE_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
+    build_codex_cli_bounded_visible_pilot_adapter,
     build_codex_cli_one_message_loop_pilot,
     build_codex_cli_visible_local_driver_pilot,
     build_codex_cli_visible_attach_acceptance,
@@ -41,8 +42,10 @@ from ..codex_cli_probe import (
     build_codex_cli_visible_session_proof,
     build_codex_cli_runtime_idle_observation_payload,
     build_codex_cli_runtime_idle_detector,
+    load_codex_cli_first_response_fixture,
     load_codex_cli_visible_session_proof_fixture,
     load_codex_cli_runtime_idle_fixture,
+    render_codex_cli_bounded_visible_pilot_adapter_markdown,
     render_codex_cli_one_message_loop_pilot_markdown,
     render_codex_cli_visible_local_driver_pilot_markdown,
     render_codex_cli_visible_attach_acceptance_markdown,
@@ -312,6 +315,27 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Explicitly mark user/operator opt-in for a headless codex exec fallback candidate.",
     )
+
+    codex_cli_bounded_visible_parser = subparsers.add_parser(
+        "codex-cli-bounded-visible-pilot-adapter",
+        help="Validate public-safe first-response and idle evidence before claiming Codex CLI live TUI bootstrap success.",
+    )
+    codex_cli_bounded_visible_parser.add_argument("--project", default=".", help="Project directory to start from.")
+    codex_cli_bounded_visible_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
+    codex_cli_bounded_visible_parser.add_argument(
+        "--agent-id",
+        help="Registered Goal Harness agent id to include in adapter commands.",
+    )
+    codex_cli_bounded_visible_parser.add_argument(
+        "--cli-bin",
+        default="goal-harness",
+        help="Goal Harness CLI binary name embedded in generated commands.",
+    )
+    codex_cli_bounded_visible_parser.add_argument(
+        "--first-response-fixture",
+        help="Public-safe JSON fixture proving the first visible TUI response shape.",
+    )
+    _add_runtime_idle_observation_arguments(codex_cli_bounded_visible_parser)
 
     codex_cli_visible_attach_acceptance_parser = subparsers.add_parser(
         "codex-cli-visible-attach-acceptance",
@@ -823,6 +847,28 @@ def handle_codex_cli_visible_local_driver_pilot_command(
         allow_headless_fallback=bool(args.allow_headless_fallback),
     )
     print_payload(payload, args.format, render_codex_cli_visible_local_driver_pilot_markdown)
+    return 0 if payload.get("ok") else 1
+
+
+def handle_codex_cli_bounded_visible_pilot_adapter_command(
+    args: argparse.Namespace,
+    print_payload: PrintPayload,
+) -> int:
+    first_response_payload = (
+        load_codex_cli_first_response_fixture(Path(args.first_response_fixture).expanduser())
+        if args.first_response_fixture
+        else None
+    )
+    idle_payload = _load_codex_cli_runtime_idle_payload(args)
+    payload = build_codex_cli_bounded_visible_pilot_adapter(
+        project=Path(args.project),
+        goal_id=args.goal_id,
+        agent_id=args.agent_id,
+        cli_bin=args.cli_bin,
+        first_response_payload=first_response_payload,
+        idle_payload=idle_payload,
+    )
+    print_payload(payload, args.format, render_codex_cli_bounded_visible_pilot_adapter_markdown)
     return 0 if payload.get("ok") else 1
 
 

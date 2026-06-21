@@ -142,6 +142,7 @@ from .configure_goal import configure_goal, render_configure_goal_markdown
 from .delivery_outcome import DELIVERY_OUTCOME_CHOICES
 from .cli_commands import (
     handle_check_command,
+    handle_codex_cli_bounded_visible_pilot_adapter_command,
     handle_codex_cli_bootstrap_message_command,
     handle_codex_cli_exec_handoff_command,
     handle_codex_cli_local_driver_plan_command,
@@ -6000,6 +6001,7 @@ def main(argv: list[str] | None = None) -> int:
             "bootstrap",
             "connect",
             "codex-cli-bootstrap-message",
+            "codex-cli-bounded-visible-pilot-adapter",
             "codex-cli-exec-handoff",
             "codex-cli-local-driver-plan",
             "codex-cli-local-scheduler-exec",
@@ -6090,6 +6092,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "codex-cli-visible-local-driver-pilot":
         return handle_codex_cli_visible_local_driver_pilot_command(args, print_payload)
+
+    if args.command == "codex-cli-bounded-visible-pilot-adapter":
+        return handle_codex_cli_bounded_visible_pilot_adapter_command(args, print_payload)
 
     if args.command == "codex-cli-visible-attach-acceptance":
         return handle_codex_cli_visible_attach_acceptance_command(args, print_payload)

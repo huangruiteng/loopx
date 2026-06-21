@@ -108,3 +108,25 @@ files, credentials, private paths, and argv prompt leakage.
 
 Until then, keep the no-clone installer, generated paste message, and
 transcript-free smoke bundle as the reliable first-run route.
+
+## Bounded Adapter Command
+
+The follow-up adapter is public-safe and packet-only: it validates a compact
+first-response fixture plus runtime-idle evidence, but it does not start Codex,
+read transcripts, read session files, capture stdout/stderr, or mutate the TUI.
+
+```bash
+goal-harness codex-cli-bounded-visible-pilot-adapter \
+  --project /tmp/goal-harness-live-tui-pilot.<suffix> \
+  --goal-id public-live-tui-pilot-goal \
+  --agent-id codex-side-bypass \
+  --first-response-fixture public-first-response.json \
+  --idle-fixture public-runtime-idle.json
+```
+
+The first-response fixture must prove the visible TUI showed the goal id, user
+gate or none, top user todo or none, selected agent todo, and next safe action;
+it must also prove the user can interrupt or take over, compact writeback is
+planned before quota spend, and the bootstrap prompt was not passed as an argv
+prompt. If any piece is missing, the pilot stays a precise blocker instead of a
+success claim.

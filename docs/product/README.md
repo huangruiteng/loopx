@@ -26,6 +26,10 @@ runtime contract, benchmark route, or launch draft.
   the first real TUI launch attempt for the generated start message, recording
   why manual paste remains primary until a bounded visible completion proof
   exists.
+- Codex CLI bounded visible pilot adapter: the public-safe packet command and
+  `examples/codex-cli-bounded-visible-pilot-adapter-smoke.py` that validate
+  first-response and runtime-idle fixtures before a live TUI bootstrap can be
+  counted as successful.
 - [Codex CLI no-clone release verification](codex-cli-no-clone-release-verification.md):
   the compact release note and smoke contract that prove the packaged installer,
   fresh-project bootstrap message, bootstrap bundle, and proof fixtures stay
