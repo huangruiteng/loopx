@@ -25,6 +25,7 @@ from goal_harness.status import (  # noqa: E402
     delivery_batch_scale_for_run,
     delivery_outcome_for_run,
     project_asset_summary_is_public_safe,
+    project_asset_todo_summary,
     render_status_markdown,
 )
 from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
@@ -1335,25 +1336,27 @@ def assert_status_agent_lane_next_action_projection() -> None:
         "required_capabilities": ["shell", "filesystem_write"],
         "text": side_action,
     }
+    primary_todo = {
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_primary_route",
+        "index": 1,
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "task_class": "advancement_task",
+        "claimed_by": "codex-main-control",
+        "text": primary_action,
+    }
     agent_todos = {
         "schema_version": "todo_summary_v0",
         "open_count": 2,
         "done_count": 0,
         "total_count": 2,
         "first_open_items": [
-            {
-                "schema_version": "todo_item_v0",
-                "todo_id": "todo_primary_route",
-                "index": 1,
-                "role": "agent",
-                "status": "open",
-                "priority": "P0",
-                "task_class": "advancement_task",
-                "claimed_by": "codex-main-control",
-                "text": primary_action,
-            },
+            primary_todo,
             side_todo,
         ],
+        "items": [primary_todo, side_todo],
         "first_executable_items": [side_todo],
     }
     coordination = {
@@ -1393,7 +1396,7 @@ def assert_status_agent_lane_next_action_projection() -> None:
                         "gate": "none",
                         "stop_condition": "stop on unsafe workspace or user gate",
                         "next_action": primary_action,
-                        "agent_todos": agent_todos,
+                        "agent_todos": project_asset_todo_summary(agent_todos, role="agent"),
                     },
                 }
             ],
@@ -1425,8 +1428,11 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert item["recommended_action"] == primary_action, item
     assert item["project_asset"]["next_action"] == primary_action, item
     markdown = render_status_markdown(payload)
-    assert "agent_lane_next_action: agent=codex-side-bypass todo_id=todo_side_tui" in markdown, markdown
+    assert "current_agent_todo: agent=codex-side-bypass todo_id=todo_side_tui" in markdown, markdown
+    assert "source=agent_lane_next_action" in markdown, markdown
     assert side_action in markdown, markdown
+    assert f"next_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
+    assert f"asset_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
 
 
 def assert_quota_should_run(payload: dict, *, expected: bool, state: str, waiting_on: str) -> dict:

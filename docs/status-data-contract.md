@@ -1020,6 +1020,9 @@ field must therefore carry `preserves_goal_next_action=true` and must not be
 treated as a project-level status overwrite. `status --agent-id` may reuse the
 same quota-derived object as item/project-asset observation data; consumers must
 render it as an agent-lane pointer, not as `recommended_action` replacement.
+Human markdown should label this pointer as the current agent's todo and mark
+co-displayed global agent todo rows as goal-wide, so `--agent-id` is not
+mistaken for a filter that replaces the primary/global queue.
 Within a candidate source, selection is ordered by current-agent claim first,
 then `capability_repair_mode=true`, then priority/index. A repair-mode item
 therefore stays visible as the suggested agent-lane slice even when an older

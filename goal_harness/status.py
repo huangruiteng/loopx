@@ -7787,6 +7787,14 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         if authority_summary:
             lines.append(f"  - authority_material: {authority_summary}")
         project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
+        agent_lane_next_action = (
+            project_asset.get("agent_lane_next_action")
+            if isinstance(project_asset.get("agent_lane_next_action"), dict)
+            else item.get("agent_lane_next_action")
+            if isinstance(item.get("agent_lane_next_action"), dict)
+            else {}
+        )
+        goal_todo_scope_suffix = " scope=goal_all_agents" if agent_lane_next_action else ""
         lines.append(
             "  - project_asset_source: "
             + (
@@ -7820,22 +7828,16 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     "    - agent_lane_recommendation: "
                     f"agent={agent} lane={lane} action={recommendation}"
                 )
-            agent_lane_next_action = (
-                project_asset.get("agent_lane_next_action")
-                if isinstance(project_asset.get("agent_lane_next_action"), dict)
-                else item.get("agent_lane_next_action")
-                if isinstance(item.get("agent_lane_next_action"), dict)
-                else {}
-            )
             if agent_lane_next_action:
                 agent = _markdown_scalar(agent_lane_next_action.get("agent_id") or "")
                 todo_id = _markdown_scalar(agent_lane_next_action.get("todo_id") or "")
                 selected_by = _markdown_scalar(agent_lane_next_action.get("selected_by") or "")
+                confidence = _markdown_scalar(agent_lane_next_action.get("confidence") or "")
                 action = _markdown_scalar(agent_lane_next_action.get("text") or "")
                 lines.append(
-                    "    - agent_lane_next_action: "
+                    "    - current_agent_todo: "
                     f"agent={agent} todo_id={todo_id} selected_by={selected_by} "
-                    f"action={action}"
+                    f"confidence={confidence} source=agent_lane_next_action action={action}"
                 )
             dreaming_lane_badge = (
                 project_asset.get("dreaming_lane_badge")
@@ -7931,14 +7933,22 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                 if asset_agent_todos.get("next"):
                     claimed = asset_agent_todos.get("next_claimed_by")
                     claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                    lines.append(f"      - asset_agent_todo: {_markdown_scalar(asset_agent_todos.get('next') or '')}{claim_suffix}")
+                    lines.append(
+                        f"      - asset_agent_todo: "
+                        f"{_markdown_scalar(asset_agent_todos.get('next') or '')}"
+                        f"{claim_suffix}{goal_todo_scope_suffix}"
+                    )
                 for todo in (asset_agent_todos.get("items") or [])[1:3]:
                     if isinstance(todo, dict) and todo.get("text"):
                         index = todo.get("index")
                         suffix = f"[{index}]" if index is not None else ""
                         claimed = todo.get("claimed_by")
                         claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                        lines.append(f"      - asset_agent_todo{suffix}: {_markdown_scalar(todo.get('text') or '')}{claim_suffix}")
+                        lines.append(
+                            f"      - asset_agent_todo{suffix}: "
+                            f"{_markdown_scalar(todo.get('text') or '')}"
+                            f"{claim_suffix}{goal_todo_scope_suffix}"
+                        )
             asset_quota = (
                 project_asset.get("quota")
                 if isinstance(project_asset.get("quota"), dict)
@@ -8195,7 +8205,11 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     continue
                 claimed = todo.get("claimed_by")
                 claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                lines.append(f"    - next_agent_todo: {_markdown_scalar(todo.get('text') or '')}{claim_suffix}")
+                lines.append(
+                    f"    - next_agent_todo: "
+                    f"{_markdown_scalar(todo.get('text') or '')}"
+                    f"{claim_suffix}{goal_todo_scope_suffix}"
+                )
                 break
         dependency_blockers = (
             item.get("dependency_blockers")
