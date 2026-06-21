@@ -267,7 +267,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     codex_cli_one_message_loop_parser.add_argument(
         "--allow-headless-fallback",
         action="store_true",
-        help="Explicitly mark user/operator opt-in for a headless codex exec fallback candidate.",
+        help="Deprecated and ignored; headless codex exec is disabled for this default /goal path.",
     )
 
     codex_cli_visible_local_driver_parser = subparsers.add_parser(
@@ -315,7 +315,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     codex_cli_visible_local_driver_parser.add_argument(
         "--allow-headless-fallback",
         action="store_true",
-        help="Explicitly mark user/operator opt-in for a headless codex exec fallback candidate.",
+        help="Deprecated and ignored; headless codex exec is disabled for this default /goal path.",
     )
 
     codex_cli_bounded_visible_parser = subparsers.add_parser(
@@ -508,7 +508,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     codex_cli_visible_driver_run_parser.add_argument(
         "--codex-bin",
         default=DEFAULT_CODEX_BIN,
-        help="Codex CLI executable to probe and reference in fallback commands.",
+        help="Codex CLI executable to probe for visible-session capabilities.",
     )
     codex_cli_visible_driver_run_parser.add_argument(
         "--timeout-seconds",
@@ -527,7 +527,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     codex_cli_visible_driver_run_parser.add_argument(
         "--allow-headless-fallback",
         action="store_true",
-        help="Explicitly mark user/operator opt-in for a headless codex exec fallback packet.",
+        help="Deprecated and ignored; headless codex exec is disabled for this default /goal path.",
     )
 
     codex_cli_local_scheduler_tick_parser = subparsers.add_parser(
@@ -548,7 +548,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     codex_cli_local_scheduler_tick_parser.add_argument(
         "--codex-bin",
         default=DEFAULT_CODEX_BIN,
-        help="Codex CLI executable to probe and reference in fallback commands.",
+        help="Codex CLI executable to probe for visible-session capabilities.",
     )
     codex_cli_local_scheduler_tick_parser.add_argument(
         "--timeout-seconds",
@@ -568,7 +568,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     codex_cli_local_scheduler_tick_parser.add_argument(
         "--allow-headless-fallback",
         action="store_true",
-        help="Explicitly mark user/operator opt-in for a headless codex exec fallback candidate.",
+        help="Deprecated and ignored; headless codex exec is disabled for this default /goal path.",
     )
 
     codex_cli_local_scheduler_exec_parser = subparsers.add_parser(
@@ -589,7 +589,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     codex_cli_local_scheduler_exec_parser.add_argument(
         "--codex-bin",
         default=DEFAULT_CODEX_BIN,
-        help="Codex CLI executable to probe and reference in fallback commands.",
+        help="Codex CLI executable to probe for visible-session capabilities.",
     )
     codex_cli_local_scheduler_exec_parser.add_argument(
         "--timeout-seconds",
@@ -615,7 +615,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     codex_cli_local_scheduler_exec_parser.add_argument(
         "--allow-headless-fallback",
         action="store_true",
-        help="Explicitly mark user/operator opt-in for a headless codex exec fallback candidate.",
+        help="Deprecated and ignored; headless codex exec is disabled for this default /goal path.",
     )
     codex_cli_local_scheduler_exec_parser.add_argument(
         "--guard-checked",
@@ -739,7 +739,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
 
     codex_cli_exec_parser = subparsers.add_parser(
         "codex-cli-exec-handoff",
-        help="Generate an explicit one-shot codex exec fallback for Goal Harness onboarding.",
+        help="Show the disabled headless handoff boundary and the TUI message-only bootstrap command.",
     )
     codex_cli_exec_parser.add_argument("--project", default=".", help="Project directory to start from.")
     codex_cli_exec_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")

@@ -117,8 +117,8 @@ def classify_codex_cli_session_surface(
         recommended_mode = "visible_resume_or_remote_control_spike"
         automation_action = "prototype_visible_resume_or_remote_control_with_idle_guard"
     elif exec_supported:
-        recommended_mode = "tui_bootstrap_then_explicit_headless_fallback"
-        automation_action = "keep_tui_bootstrap_primary_and_require_explicit_fallback"
+        recommended_mode = "tui_bootstrap_only"
+        automation_action = "ask_user_to_start_inside_codex_cli_tui"
     else:
         recommended_mode = "tui_bootstrap_only"
         automation_action = "ask_user_to_start_inside_codex_cli_tui"
@@ -131,6 +131,10 @@ def classify_codex_cli_session_surface(
     if (remote_control_surface_detected or visible_resume_supported) and not same_tui_injection_detected:
         warnings.append(
             "A visible resume or remote-control surface exists; prototype it behind an idle guard before calling it session-attached automation."
+        )
+    if exec_supported and not (safe_injection_supported or remote_control_surface_detected or visible_resume_supported):
+        warnings.append(
+            "Codex exec is available, but headless fallback is disabled for the default Goal Harness /goal bootstrap path."
         )
     if not codex_cli_available:
         warnings.append("Codex CLI was not available on PATH; classification used missing-command evidence.")
@@ -701,7 +705,7 @@ def build_codex_cli_visible_session_proof(
     else:
         decision = "visible_session_proof_incomplete"
         recommended_action = (
-            "keep TUI bootstrap primary and headless exec explicit; do not treat this as same-session automation"
+            "keep TUI bootstrap primary; do not treat this as same-session automation"
         )
 
     return {
@@ -828,19 +832,14 @@ def build_codex_cli_visible_attach_acceptance(
             "do not call this accepted automation yet; first prove visibility, "
             "interruptibility, boundaries, and compact writeback planning"
         )
-    elif driver_mode == "explicit_headless_fallback_after_tui_bootstrap":
-        decision = "explicit_headless_fallback_after_tui_bootstrap"
-        acceptance_action = "keep_tui_bootstrap_primary_and_require_explicit_fallback_opt_in"
-        blockers.append("same_tui_or_visible_surface_not_exposed_by_probe")
-        next_safe_step = (
-            "keep one-message TUI bootstrap as the primary path; offer headless "
-            "codex exec only after explicit opt-in"
-        )
     else:
         decision = "tui_bootstrap_only"
         acceptance_action = "ask_user_to_start_inside_codex_cli_tui"
         blockers.append("codex_cli_attach_surface_not_exposed_by_probe")
-        next_safe_step = "ask the user to start in Codex CLI TUI and paste the bootstrap message"
+        next_safe_step = (
+            "ask the user to start in Codex CLI TUI and paste the bootstrap message; "
+            "headless codex exec is disabled for this product path"
+        )
 
     commands = (
         local_plan.get("commands")
@@ -869,7 +868,7 @@ def build_codex_cli_visible_attach_acceptance(
             "runtime_idle_detector_required": True,
             "same_tui_surface_required_for_same_tui_acceptance": True,
             "fresh_quota_guard_required_before_execution": True,
-            "explicit_headless_fallback_opt_in_required": True,
+            "headless_execution_disabled": True,
         },
         "probe": {
             "schema_version": probe_payload.get("schema_version"),
@@ -917,7 +916,8 @@ def build_codex_cli_visible_attach_acceptance(
                 f"{agent_arg} --idle-fixture <public-runtime-idle.json>"
             ),
             "tui_bootstrap_message": commands.get("tui_bootstrap_message"),
-            "explicit_headless_fallback": commands.get("explicit_headless_fallback"),
+            "explicit_headless_fallback": None,
+            "headless_fallback_disabled": commands.get("headless_fallback_disabled"),
         },
         "boundary": {
             "acceptance_packet_only": True,
@@ -930,6 +930,7 @@ def build_codex_cli_visible_attach_acceptance(
             "spends_goal_harness_quota": False,
             "writes_goal_harness_state": False,
             "requires_fresh_quota_guard_before_execution": True,
+            "headless_execution_disabled": True,
         },
         "warnings": list(probe_payload.get("warnings") or []),
     }
@@ -948,7 +949,7 @@ def build_codex_cli_visible_driver_plan(
 
     The plan is intentionally read-only. It decides whether a future local
     driver should attempt a visible session attachment, run a resume/remote
-    control spike, or fall back explicitly to headless `codex exec`.
+    control spike, or keep the one-message TUI bootstrap as the product path.
     """
 
     resolved_project = str(project.expanduser())
@@ -957,7 +958,6 @@ def build_codex_cli_visible_driver_plan(
     safe_injection_supported = bool(capabilities.get("safe_injection_supported"))
     visible_resume_supported = bool(capabilities.get("visible_resume_supported"))
     remote_control_supported = bool(capabilities.get("remote_control_surface_detected"))
-    exec_supported = bool(capabilities.get("exec_supported"))
     agent_arg = f" --agent-id {_shell_arg(agent_id)}" if agent_id else ""
     quota_guard_command = (
         f"{_shell_arg(cli_bin)} --format json quota should-run "
@@ -966,11 +966,6 @@ def build_codex_cli_visible_driver_plan(
     bootstrap_command = (
         f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "
         f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}{agent_arg}"
-    )
-    exec_fallback_command = (
-        f"{_shell_arg(cli_bin)} codex-cli-exec-handoff "
-        f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}{agent_arg} "
-        f"--codex-bin {_shell_arg(codex_bin)}"
     )
     probe_command = f"{_shell_arg(cli_bin)} codex-cli-session-probe --codex-bin {_shell_arg(codex_bin)}"
 
@@ -982,20 +977,16 @@ def build_codex_cli_visible_driver_plan(
         driver_mode = "visible_resume_or_remote_control_spike"
         automation_action = "prototype_visible_resume_or_remote_control_with_idle_guard"
         next_step = "run an explicit proof that resume or remote-control creates a visible interruptible turn"
-    elif exec_supported:
-        driver_mode = "explicit_headless_fallback_after_tui_bootstrap"
-        automation_action = "keep_tui_bootstrap_primary_and_require_explicit_fallback"
-        next_step = "keep one-message TUI bootstrap primary; use codex exec only as explicit fallback"
     else:
         driver_mode = "tui_bootstrap_only"
         automation_action = "ask_user_to_start_inside_codex_cli_tui"
-        next_step = "ask the user to start in Codex CLI TUI and paste the bootstrap message"
+        next_step = "ask the user to start in Codex CLI TUI and paste the bootstrap message; headless fallback is disabled"
 
     driver_steps = [
         "run the session probe and quota guard before any delivery turn",
         "if user_channel.action_required=true, surface only the concrete user gate",
         "if delivery is allowed, verify idle_guard before any visible prompt",
-        "prefer a visible same-TUI turn; otherwise use the explicit headless fallback command",
+        "prefer a visible same-TUI turn; otherwise keep the one-message TUI bootstrap as the product path",
         "write back compact evidence and spend quota only after validation",
     ]
     if driver_mode == "visible_resume_or_remote_control_spike":
@@ -1024,7 +1015,8 @@ def build_codex_cli_visible_driver_plan(
             "probe": probe_command,
             "quota_guard": quota_guard_command,
             "tui_bootstrap_message": bootstrap_command,
-            "explicit_headless_fallback": exec_fallback_command,
+            "explicit_headless_fallback": None,
+            "headless_fallback_disabled": "headless codex exec is disabled for the default Goal Harness /goal bootstrap path",
         },
         "driver_steps": driver_steps,
         "boundary": {
@@ -1037,6 +1029,7 @@ def build_codex_cli_visible_driver_plan(
             "spends_goal_harness_quota": False,
             "requires_idle_guard_before_visible_prompt": True,
             "requires_user_gate_stop": True,
+            "headless_execution_disabled": True,
         },
         "warnings": list(probe_payload.get("warnings") or []),
     }
@@ -1054,8 +1047,8 @@ def build_codex_cli_local_driver_plan(
     """Build a dry-run-first local driver plan for Codex CLI.
 
     This does not launch Codex or mutate any session. It composes the existing
-    one-message TUI bootstrap, visible-driver plan, quota guard, and explicit
-    headless fallback into one operator-facing decision packet.
+    one-message TUI bootstrap, visible-driver plan, quota guard, and the
+    headless-disabled boundary into one operator-facing decision packet.
     """
 
     visible_plan = build_codex_cli_visible_driver_plan(
@@ -1083,11 +1076,6 @@ def build_codex_cli_local_driver_plan(
         f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "
         f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}{agent_arg}"
     )
-    exec_fallback_command = (
-        f"{_shell_arg(cli_bin)} codex-cli-exec-handoff "
-        f"--project {_shell_arg(resolved_project)} --goal-id {_shell_arg(resolved_goal_id)}{agent_arg} "
-        f"--codex-bin {_shell_arg(codex_bin)}"
-    )
     driver_mode = str(visible_plan.get("driver_mode") or "tui_bootstrap_only")
 
     if driver_mode == "session_attached_visible_turn":
@@ -1100,14 +1088,12 @@ def build_codex_cli_local_driver_plan(
         operator_instruction = (
             "Treat resume or remote-control as a proof target, not production session attachment, until the turn is visible and interruptible."
         )
-    elif driver_mode == "explicit_headless_fallback_after_tui_bootstrap":
-        decision = "keep_tui_primary_offer_explicit_exec_fallback"
-        operator_instruction = (
-            "Keep one-message Codex CLI TUI bootstrap as the default; use codex exec only after explicit opt-in."
-        )
     else:
         decision = "ask_user_to_start_from_tui"
-        operator_instruction = "Ask the user to start inside Codex CLI TUI and paste the bootstrap message."
+        operator_instruction = (
+            "Ask the user to start inside Codex CLI TUI and paste the bootstrap message; "
+            "headless codex exec is disabled for this product path."
+        )
 
     return {
         "ok": True,
@@ -1136,14 +1122,15 @@ def build_codex_cli_local_driver_plan(
             ),
             "visible_driver_plan": visible_driver_plan_command,
             "tui_bootstrap_message": bootstrap_command,
-            "explicit_headless_fallback": exec_fallback_command,
+            "explicit_headless_fallback": None,
+            "headless_fallback_disabled": "headless codex exec is disabled for the default Goal Harness /goal bootstrap path",
         },
         "driver_steps": [
             "run quota_guard and stop when user_channel.action_required=true",
-            "run visible_driver_plan to classify TUI, resume, remote-control, or exec fallback mode",
+            "run visible_driver_plan to classify TUI, resume, or remote-control mode",
             "verify idle_guard before any visible resume or remote-control prompt",
             "prefer one-message TUI bootstrap until visible attach is proven",
-            "offer explicit_headless_fallback only after opt-in and goal_boundary approval",
+            "do not offer headless codex exec from the default Goal Harness /goal bootstrap path",
             "write back compact evidence or a precise blocker before quota spend",
         ],
         "idle_guard": {
@@ -1153,7 +1140,7 @@ def build_codex_cli_local_driver_plan(
         },
         "execution_policy": {
             "tui_bootstrap_primary": True,
-            "headless_fallback_requires_user_opt_in": True,
+            "headless_execution_disabled": True,
             "same_session_attachment_requires_visible_proof": True,
             "quota_guard_required": True,
             "spend_after_validated_writeback_only": True,
@@ -1168,6 +1155,7 @@ def build_codex_cli_local_driver_plan(
             "spends_goal_harness_quota": False,
             "requires_idle_guard_before_visible_prompt": True,
             "requires_user_gate_stop": True,
+            "headless_execution_disabled": True,
         },
         "warnings": list(visible_plan.get("warnings") or []),
     }
@@ -1187,8 +1175,9 @@ def build_codex_cli_visible_driver_run_packet(
     """Build the v0 runner packet for one visible Codex CLI driver turn.
 
     The packet is deliberately not an executor. It converts the dry-run local
-    driver plan, optional visible-session proof, and explicit headless opt-in
-    into the next safe command boundary for a local scheduler or human operator.
+    driver plan and optional visible-session proof into the next safe command
+    boundary for a local scheduler or human operator. Headless fallback remains
+    disabled for this default Goal Harness /goal bootstrap path.
     """
 
     local_plan = build_codex_cli_local_driver_plan(
@@ -1228,14 +1217,6 @@ def build_codex_cli_visible_driver_run_packet(
         decision = "visible_session_proof_required"
         next_driver_action = "capture_public_safe_visible_session_proof"
         recommended_command = proof_command
-    elif driver_mode == "explicit_headless_fallback_after_tui_bootstrap" and allow_headless_fallback:
-        decision = "headless_fallback_command_ready"
-        next_driver_action = "run_explicit_headless_fallback_after_quota_guard"
-        recommended_command = commands.get("explicit_headless_fallback")
-    elif driver_mode == "explicit_headless_fallback_after_tui_bootstrap":
-        decision = "headless_fallback_requires_explicit_opt_in"
-        next_driver_action = "ask_user_before_headless_codex_exec"
-        recommended_command = commands.get("tui_bootstrap_message")
     else:
         decision = "tui_bootstrap_only"
         next_driver_action = "ask_user_to_start_inside_codex_cli_tui"
@@ -1245,10 +1226,15 @@ def build_codex_cli_visible_driver_run_packet(
         "run quota_guard and stop if user_channel.action_required=true",
         "stop or relocate if workspace_guard blocks the current checkout",
         "use a visible session only when proof_approved=true and an idle guard passes",
-        "use headless codex exec only when allow_headless_fallback=true and the goal boundary permits it",
+        "do not use headless codex exec from the default Goal Harness /goal bootstrap path",
         "after the Codex turn, validate evidence or blocker before refresh-state",
         "spend quota exactly once after validated writeback, never for this packet alone",
     ]
+    warnings = list(local_plan.get("warnings") or [])
+    if allow_headless_fallback:
+        warnings.append(
+            "allow_headless_fallback was ignored because headless fallback is disabled for the default Goal Harness /goal bootstrap path."
+        )
 
     return {
         "ok": True,
@@ -1280,13 +1266,14 @@ def build_codex_cli_visible_driver_run_packet(
             "quota_guard": commands.get("quota_guard"),
             "tui_bootstrap_message": commands.get("tui_bootstrap_message"),
             "visible_session_proof": proof_command,
-            "explicit_headless_fallback": commands.get("explicit_headless_fallback"),
+            "explicit_headless_fallback": None,
+            "headless_fallback_disabled": commands.get("headless_fallback_disabled"),
         },
         "driver_steps": driver_steps,
         "execution_policy": {
             "tui_bootstrap_primary": True,
             "same_session_attachment_requires_visible_proof": True,
-            "headless_fallback_requires_explicit_opt_in": True,
+            "headless_execution_disabled": True,
             "quota_guard_required": True,
             "idle_guard_required_before_visible_prompt": True,
             "spend_after_validated_writeback_only": True,
@@ -1300,9 +1287,9 @@ def build_codex_cli_visible_driver_run_packet(
             "mutates_codex_session": False,
             "spends_goal_harness_quota": False,
             "requires_user_gate_stop": True,
-            "requires_goal_boundary_before_headless": True,
+            "headless_execution_disabled": True,
         },
-        "warnings": list(local_plan.get("warnings") or []),
+        "warnings": warnings,
     }
 
 
@@ -1412,10 +1399,6 @@ def build_codex_cli_local_scheduler_tick(
                 "capture a public-safe runtime idle observation, keep the one-message TUI path visible, "
                 "and do not run Codex from the scheduler"
             )
-    elif decision == "headless_fallback_command_ready":
-        scheduler_action = "external_headless_fallback_candidate"
-        candidate_command = run_packet.get("recommended_command")
-        next_safe_step = "external scheduler may run the headless fallback only after explicit opt-in and a fresh quota guard"
     elif decision == "visible_session_proof_required":
         scheduler_action = "write_precise_blocker"
         precise_blocker = {
@@ -1427,13 +1410,13 @@ def build_codex_cli_local_scheduler_tick(
             ),
         }
         next_safe_step = "write the blocker, keep TUI bootstrap primary, and do not run Codex from the scheduler"
-    elif decision == "headless_fallback_requires_explicit_opt_in":
+    elif decision.startswith("headless_"):
         scheduler_action = "write_precise_blocker"
         precise_blocker = {
-            "reason": "headless_fallback_opt_in_missing",
+            "reason": "headless_fallback_disabled",
             "message": (
-                "Codex CLI automation is blocked from using headless codex exec until the user "
-                "or operator explicitly opts into the fallback for this goal."
+                "Codex CLI headless fallback is disabled for the default Goal Harness "
+                "/goal bootstrap path; keep the visible TUI bootstrap primary."
             ),
         }
         next_safe_step = "write the blocker and keep the one-message TUI bootstrap as the user-facing path"
@@ -1513,7 +1496,7 @@ def build_codex_cli_local_scheduler_tick(
             "writes_goal_harness_state": False,
             "blocker_writeback_requires_external_execution": True,
             "visible_candidate_requires_runtime_idle_detector": True,
-            "headless_fallback_requires_runtime_idle_detector": False,
+            "headless_execution_disabled": True,
         },
         "warnings": list(run_packet.get("warnings") or []),
     }
@@ -1639,10 +1622,7 @@ def execute_codex_cli_local_scheduler_tick_result(
     elif (execute_candidate or execute_blocker_writeback) and not guard_checked:
         execution["reason"] = "fresh_quota_guard_confirmation_required"
     elif execute_candidate:
-        if scheduler_action not in {
-            "external_visible_command_candidate",
-            "external_headless_fallback_candidate",
-        }:
+        if scheduler_action != "external_visible_command_candidate":
             execution["reason"] = "scheduler_action_not_candidate"
         elif scheduler_action == "external_visible_command_candidate" and not runtime_idle_approved:
             execution["reason"] = "runtime_idle_detector_required"
@@ -1837,7 +1817,7 @@ def build_codex_cli_one_message_loop_pilot(
         else {}
     )
     scheduler_blocker_reason = str(scheduler_blocker.get("reason") or "")
-    if scheduler_action in {"external_visible_command_candidate", "external_headless_fallback_candidate"}:
+    if scheduler_action == "external_visible_command_candidate":
         pilot_decision = "first_message_then_candidate_available"
         followup_mode = "local scheduler can show the candidate, but execution still requires guard and prefix opt-in"
     elif scheduler_action == "write_precise_blocker" and scheduler_blocker_reason.startswith("runtime_idle_"):
@@ -1850,7 +1830,7 @@ def build_codex_cli_one_message_loop_pilot(
         followup_mode = "local scheduler can write the precise blocker after explicit guard-checked opt-in"
     else:
         pilot_decision = "first_message_tui_bootstrap_only"
-        followup_mode = "keep the TUI bootstrap as the product path until a proof or opt-in exists"
+        followup_mode = "keep the TUI bootstrap as the product path until a visible proof exists"
 
     bootstrap_command = (
         f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "
@@ -1861,7 +1841,6 @@ def build_codex_cli_one_message_loop_pilot(
         " --observe-local-runtime --observed-surface visible_resume_prompt "
         "--turn-state idle --probe-human-input-idle --checked-before-prompt "
         "--visible-to-user --user-can-interrupt --manual-takeover-available"
-        f"{' --allow-headless-fallback' if allow_headless_fallback else ''}"
     )
     candidate_execute_template = (
         f"{scheduler_exec_dry_run_command} --guard-checked --execute-candidate "
@@ -1944,7 +1923,7 @@ def build_codex_cli_one_message_loop_pilot(
             "mutates_codex_session": False,
             "spends_goal_harness_quota": False,
             "requires_user_visible_start": True,
-            "headless_fallback_explicit_only": True,
+            "headless_execution_disabled": True,
             "candidate_execution_requires_guard_and_prefix": True,
         },
         "warnings": list(scheduler_executor.get("warnings") or []),
@@ -2142,7 +2121,7 @@ def build_codex_cli_visible_local_driver_pilot(
             "later_turns_visible_to_user": True,
             "user_can_interrupt_or_take_over": True,
             "same_session_attachment_requires_visible_proof": True,
-            "headless_fallback_requires_explicit_opt_in": True,
+            "headless_execution_disabled": True,
             "quota_guard_required_each_tick": True,
             "spend_after_validated_writeback_only": True,
         },
@@ -2160,6 +2139,7 @@ def build_codex_cli_visible_local_driver_pilot(
             "requires_fresh_guard_before_execution": True,
             "candidate_execution_requires_guard_and_prefix": True,
             "blocker_writeback_requires_guard_checked": True,
+            "headless_execution_disabled": True,
         },
         "warnings": [
             *list(one_message.get("warnings") or []),
@@ -2635,6 +2615,9 @@ def render_codex_cli_visible_driver_plan_markdown(payload: dict[str, Any]) -> st
     warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
     step_lines = "\n".join(f"{index}. {step}" for index, step in enumerate(steps, start=1))
     warning_lines = "\n".join(f"- {warning}" for warning in warnings) if warnings else "- none"
+    headless_line = commands.get("explicit_headless_fallback") or (
+        f"# {commands.get('headless_fallback_disabled') or 'headless fallback disabled'}"
+    )
     return f"""# Codex CLI Visible Driver Plan
 
 - driver_mode: `{payload.get("driver_mode")}`
@@ -2648,7 +2631,7 @@ def render_codex_cli_visible_driver_plan_markdown(payload: dict[str, Any]) -> st
 {commands.get("probe")}
 {commands.get("quota_guard")}
 {commands.get("tui_bootstrap_message")}
-{commands.get("explicit_headless_fallback")}
+{headless_line}
 ```
 
 ## Driver Steps
@@ -2680,6 +2663,9 @@ def render_codex_cli_local_driver_plan_markdown(payload: dict[str, Any]) -> str:
     warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
     step_lines = "\n".join(f"{index}. {step}" for index, step in enumerate(steps, start=1))
     warning_lines = "\n".join(f"- {warning}" for warning in warnings) if warnings else "- none"
+    headless_line = commands.get("explicit_headless_fallback") or (
+        f"# {commands.get('headless_fallback_disabled') or 'headless fallback disabled'}"
+    )
     return f"""# Codex CLI Local Driver Plan
 
 - driver_phase: `{payload.get("driver_phase")}`
@@ -2693,7 +2679,7 @@ def render_codex_cli_local_driver_plan_markdown(payload: dict[str, Any]) -> str:
 {commands.get("quota_guard")}
 {commands.get("visible_driver_plan")}
 {commands.get("tui_bootstrap_message")}
-{commands.get("explicit_headless_fallback")}
+{headless_line}
 ```
 
 ## Driver Steps
@@ -2709,7 +2695,7 @@ def render_codex_cli_local_driver_plan_markdown(payload: dict[str, Any]) -> str:
 ## Execution Policy
 
 - tui_bootstrap_primary: `{policy.get("tui_bootstrap_primary")}`
-- headless_fallback_requires_user_opt_in: `{policy.get("headless_fallback_requires_user_opt_in")}`
+- headless_execution_disabled: `{policy.get("headless_execution_disabled")}`
 - same_session_attachment_requires_visible_proof: `{policy.get("same_session_attachment_requires_visible_proof")}`
 - quota_guard_required: `{policy.get("quota_guard_required")}`
 - spend_after_validated_writeback_only: `{policy.get("spend_after_validated_writeback_only")}`
@@ -2738,6 +2724,9 @@ def render_codex_cli_visible_driver_run_packet_markdown(payload: dict[str, Any])
     warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
     step_lines = "\n".join(f"{index}. {step}" for index, step in enumerate(steps, start=1))
     warning_lines = "\n".join(f"- {warning}" for warning in warnings) if warnings else "- none"
+    headless_line = commands.get("explicit_headless_fallback") or (
+        f"# {commands.get('headless_fallback_disabled') or 'headless fallback disabled'}"
+    )
     return f"""# Codex CLI Visible Driver Run Packet
 
 - driver_phase: `{payload.get("driver_phase")}`
@@ -2758,7 +2747,7 @@ def render_codex_cli_visible_driver_run_packet_markdown(payload: dict[str, Any])
 {commands.get("quota_guard")}
 {commands.get("tui_bootstrap_message")}
 {commands.get("visible_session_proof")}
-{commands.get("explicit_headless_fallback")}
+{headless_line}
 ```
 
 ## Visible Session Proof
@@ -2776,7 +2765,7 @@ def render_codex_cli_visible_driver_run_packet_markdown(payload: dict[str, Any])
 
 - tui_bootstrap_primary: `{policy.get("tui_bootstrap_primary")}`
 - same_session_attachment_requires_visible_proof: `{policy.get("same_session_attachment_requires_visible_proof")}`
-- headless_fallback_requires_explicit_opt_in: `{policy.get("headless_fallback_requires_explicit_opt_in")}`
+- headless_execution_disabled: `{policy.get("headless_execution_disabled")}`
 - quota_guard_required: `{policy.get("quota_guard_required")}`
 - idle_guard_required_before_visible_prompt: `{policy.get("idle_guard_required_before_visible_prompt")}`
 - spend_after_validated_writeback_only: `{policy.get("spend_after_validated_writeback_only")}`
@@ -2789,6 +2778,7 @@ def render_codex_cli_visible_driver_run_packet_markdown(payload: dict[str, Any])
 - reads_session_files: `{boundary.get("reads_session_files")}`
 - mutates_codex_session: `{boundary.get("mutates_codex_session")}`
 - spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+- headless_execution_disabled: `{boundary.get("headless_execution_disabled")}`
 
 ## Warnings
 
@@ -2857,6 +2847,7 @@ def render_codex_cli_local_scheduler_tick_markdown(payload: dict[str, Any]) -> s
 - spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
 - writes_goal_harness_state: `{boundary.get("writes_goal_harness_state")}`
 - visible_candidate_requires_runtime_idle_detector: `{boundary.get("visible_candidate_requires_runtime_idle_detector")}`
+- headless_execution_disabled: `{boundary.get("headless_execution_disabled")}`
 
 ## Warnings
 
@@ -2996,7 +2987,7 @@ The first response should show:
 - mutates_codex_session: `{boundary.get("mutates_codex_session")}`
 - spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
 - requires_user_visible_start: `{boundary.get("requires_user_visible_start")}`
-- headless_fallback_explicit_only: `{boundary.get("headless_fallback_explicit_only")}`
+- headless_execution_disabled: `{boundary.get("headless_execution_disabled")}`
 - candidate_execution_requires_guard_and_prefix: `{boundary.get("candidate_execution_requires_guard_and_prefix")}`
 
 ## Warnings
@@ -3084,7 +3075,7 @@ def render_codex_cli_visible_local_driver_pilot_markdown(payload: dict[str, Any]
 - later_turns_visible_to_user: `{policy.get("later_turns_visible_to_user")}`
 - user_can_interrupt_or_take_over: `{policy.get("user_can_interrupt_or_take_over")}`
 - same_session_attachment_requires_visible_proof: `{policy.get("same_session_attachment_requires_visible_proof")}`
-- headless_fallback_requires_explicit_opt_in: `{policy.get("headless_fallback_requires_explicit_opt_in")}`
+- headless_execution_disabled: `{policy.get("headless_execution_disabled")}`
 - quota_guard_required_each_tick: `{policy.get("quota_guard_required_each_tick")}`
 - spend_after_validated_writeback_only: `{policy.get("spend_after_validated_writeback_only")}`
 
@@ -3101,6 +3092,7 @@ def render_codex_cli_visible_local_driver_pilot_markdown(payload: dict[str, Any]
 - spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
 - candidate_execution_requires_guard_and_prefix: `{boundary.get("candidate_execution_requires_guard_and_prefix")}`
 - blocker_writeback_requires_guard_checked: `{boundary.get("blocker_writeback_requires_guard_checked")}`
+- headless_execution_disabled: `{boundary.get("headless_execution_disabled")}`
 
 ## Warnings
 

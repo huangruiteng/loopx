@@ -14,6 +14,7 @@ DEFAULT_HANDOFF_ADAPTER_STATUS = "connected-read-only"
 DEFAULT_HANDOFF_NEXT_PROBE = "(omit --next-probe until a read-only pre-tick command exists)"
 SHARED_GLOBAL_REGISTRY = '"$HOME/.codex/goal-harness/registry.global.json"'
 NO_CLONE_INSTALL_URL = "https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh"
+CODEX_GOAL_OBJECTIVE_MAX_CHARS = 6000
 
 
 def shell_arg(value: str) -> str:
@@ -74,6 +75,22 @@ def render_quota_spend_command(
         "quota spend-slot "
         f"--goal-id {shell_arg(goal_id)} "
         f"--slots 1 --source {shell_arg(source)} --execute{agent_arg}"
+    )
+
+
+def render_heartbeat_prompt_command(
+    goal_id: str,
+    *,
+    cli_bin: str = "goal-harness",
+    agent_id: str | None = None,
+    agent_scope: str = "Codex CLI /goal visible TUI loop",
+    body: str = "thin",
+) -> str:
+    agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
+    scope_arg = f" --agent-scope {shell_arg(agent_scope)}" if agent_id else ""
+    return (
+        f"{shell_arg(cli_bin)} heartbeat-prompt --{shell_arg(body)} "
+        f"--goal-id {shell_arg(goal_id)}{agent_arg}{scope_arg}"
     )
 
 
@@ -230,7 +247,12 @@ def build_codex_cli_bootstrap_message(
     )
     quota_spend_command = render_quota_spend_command(
         resolved_goal_id,
-        source="controller",
+        source="heartbeat",
+        cli_bin=cli_bin,
+        agent_id=agent_id,
+    )
+    heartbeat_prompt_command = render_heartbeat_prompt_command(
+        resolved_goal_id,
         cli_bin=cli_bin,
         agent_id=agent_id,
     )
@@ -244,7 +266,7 @@ def build_codex_cli_bootstrap_message(
         "one bounded segment validated before refresh-state and quota spend-slot",
         "no raw Codex transcripts, session files, credentials, private paths, stdout, or stderr persisted",
     ]
-    message = render_codex_cli_bootstrap_message_text(
+    message = render_codex_cli_goal_mode_bootstrap_text(
         project=resolved_project,
         goal_id=resolved_goal_id,
         agent_id=agent_id,
@@ -253,21 +275,24 @@ def build_codex_cli_bootstrap_message(
         quota_guard_command=quota_guard_command,
         refresh_command=refresh_command,
         quota_spend_command=quota_spend_command,
-        first_run_validation_checklist=first_run_validation_checklist,
     )
     return {
         "ok": True,
         "schema_version": "codex_cli_bootstrap_message_v0",
+        "invocation_mode": "codex_cli_goal_mode",
         "project": resolved_project,
         "goal_id": resolved_goal_id,
         "agent_id": agent_id,
         "cli_bin": cli_bin,
         "install_repair_command": install_repair_command,
         "connect_command": connect_command,
+        "heartbeat_prompt_command": heartbeat_prompt_command,
         "quota_guard_command": quota_guard_command,
         "refresh_command": refresh_command,
         "quota_spend_command": quota_spend_command,
         "first_run_validation_checklist": first_run_validation_checklist,
+        "goal_objective_max_chars": CODEX_GOAL_OBJECTIVE_MAX_CHARS,
+        "goal_objective_characters": len(message.removeprefix("/goal ").strip()),
         "message": message,
     }
 
@@ -310,7 +335,7 @@ def build_codex_cli_tui_bootstrap_smoke_bundle(
     validation_checklist = [
         "archive installer works from a temporary GitHub-style tarball or existing install",
         "message-only command prints only the TUI paste block, not the Markdown review packet",
-        "paste block includes no-clone install repair, quota guard, and bounded writeback commands",
+        "paste block includes no-clone install repair, heartbeat prompt load, quota guard, and bounded writeback commands",
         "quota spend remains a post-validation command inside the paste block, not a smoke side effect",
         "no raw Codex transcripts, session files, credentials, stdout, stderr, or private paths are read",
     ]
@@ -324,28 +349,13 @@ def build_codex_cli_tui_bootstrap_smoke_bundle(
         "install_repair_command": bootstrap["install_repair_command"],
         "review_packet_command": review_packet_command,
         "message_only_command": message_only_command,
+        "heartbeat_prompt_command": bootstrap["heartbeat_prompt_command"],
         "quota_guard_command": bootstrap["quota_guard_command"],
         "refresh_command": bootstrap["refresh_command"],
         "quota_spend_command": bootstrap["quota_spend_command"],
         "validation_checklist": validation_checklist,
         "boundary": boundary,
     }
-
-
-def render_codex_cli_exec_handoff_command(
-    *,
-    project: str,
-    codex_bin: str,
-    prompt: str,
-) -> str:
-    return "\n".join(
-        [
-            f"cd {shell_arg(project)}",
-            "cat <<'GOAL_HARNESS_CODEX_PROMPT' | " f"{shell_arg(codex_bin)} exec",
-            prompt,
-            "GOAL_HARNESS_CODEX_PROMPT",
-        ]
-    )
 
 
 def build_codex_cli_exec_handoff(
@@ -364,26 +374,31 @@ def build_codex_cli_exec_handoff(
     )
     resolved_project = str(project.expanduser())
     resolved_goal_id = str(bootstrap["goal_id"])
-    prompt = str(bootstrap["message"])
-    handoff_command = render_codex_cli_exec_handoff_command(
-        project=resolved_project,
-        codex_bin=codex_bin,
-        prompt=prompt,
+    agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
+    message_only_command = (
+        f"{shell_arg(cli_bin)} codex-cli-bootstrap-message "
+        f"--project {shell_arg(resolved_project)} "
+        f"--goal-id {shell_arg(resolved_goal_id)}{agent_arg} --message-only"
     )
     return {
         "ok": True,
         "schema_version": "codex_cli_exec_handoff_v0",
-        "mode": "explicit_headless_fallback",
-        "primary_experience": "codex_cli_tui_bootstrap",
+        "mode": "headless_fallback_disabled_for_goal_mode_bootstrap",
+        "primary_experience": "codex_cli_tui_goal_bootstrap",
         "project": resolved_project,
         "goal_id": resolved_goal_id,
         "agent_id": agent_id,
         "cli_bin": cli_bin,
         "codex_bin": codex_bin,
+        "disabled_reason": (
+            "Default Codex CLI Goal Harness bootstrap must stay visible in the TUI; "
+            "headless codex exec handoff is disabled to avoid accidental hidden execution."
+        ),
         "session_probe_command": f"{shell_arg(cli_bin)} codex-cli-session-probe --codex-bin {shell_arg(codex_bin)}",
         "quota_guard_command": bootstrap["quota_guard_command"],
         "quota_spend_command": bootstrap["quota_spend_command"],
-        "handoff_command": handoff_command,
+        "message_only_command": message_only_command,
+        "handoff_command": "",
         "boundary": {
             "runs_codex": False,
             "reads_raw_transcripts": False,
@@ -391,6 +406,8 @@ def build_codex_cli_exec_handoff(
             "reads_session_files": False,
             "mutates_codex_session": False,
             "spends_goal_harness_quota": False,
+            "headless_execution_disabled": True,
+            "provides_executable_headless_command": False,
         },
     }
 
@@ -414,9 +431,8 @@ def render_codex_cli_bootstrap_message_text(
     return f"""Start the Goal Harness loop for this repo from this same Codex CLI TUI session.
 
 Goal: one-message TUI bootstrap. Keep this TUI as the visible place where I can
-watch, steer, review, and take over. Do not switch to hidden headless `codex exec`
-as the primary path; use headless only as an explicit fallback after Goal Harness
-or the user allows it.
+watch, steer, review, and take over. Do not use hidden headless `codex exec`
+for this bootstrap loop.
 
 After I paste this message, begin the Goal Harness loop automatically. Do not
 stop after explaining what Goal Harness is. Stop only for a concrete user gate,
@@ -491,6 +507,53 @@ explicit execution bounds. Keep optional automation checks such as
 local-driver-plan or visible-session-proof as follow-up diagnostics, not
 first-run prerequisites.
 """
+
+
+def render_codex_cli_goal_mode_bootstrap_text(
+    *,
+    project: str,
+    goal_id: str,
+    agent_id: str | None,
+    cli_preflight: str,
+    connect_command: str,
+    quota_guard_command: str,
+    refresh_command: str,
+    quota_spend_command: str,
+) -> str:
+    del cli_preflight
+    resolved_agent = agent_id or "the registry-selected agent"
+    claim_command = (
+        f"goal-harness todo claim --goal-id {goal_id} --todo-id <todo_id> --claimed-by {resolved_agent}"
+    )
+    goal_text = (
+        f"Advance `{goal_id}` from the registry-declared active state in this visible Codex CLI TUI. "
+        "This one-message /goal is the durable TUI heartbeat prompt: keep the user able to watch, steer, review, and take over; "
+        "do not use hidden headless codex exec for this bootstrap loop; do not read or store raw Codex transcripts/session files. "
+        "Use skills: `goal-harness-project`; if behavior is surprising, tiny, or contradictory, use `goal-harness-self-repair`. "
+        "Goal Harness CLI is source of truth. "
+        f"Project: `{project}`. Agent: `{resolved_agent}`; read role, primary agent, scope, write boundary, and workspace rules from registry/quota. "
+        "If this agent is side-agent or workspace_guard requires it, use an independent git worktree/branch before edits. "
+        f"Claim in-scope todo with `{claim_command}`; if claimed/outside scope, choose another or report none. Do not write scope into todo metadata. "
+        "At each continuation, first show: current goal id; concrete user gate or none; top user todo or none; top agent todo; next safe action. "
+        f"Ensure PATH has `$HOME/.local/bin`; if `goal-harness` is missing, install via {NO_CLONE_INSTALL_URL}; if the repo is not connected, bootstrap conservatively with `{connect_command}`. "
+        "Inspect registry/global quota truth, active state, status/run history, repo state. Run `goal-harness doctor >/dev/null`, then "
+        f"`{quota_guard_command}`; follow `interaction_contract`. "
+        "If action_required=true or open_count>0, list concrete payload todo(s)/questions, never only owner gate; if missing, say `具体 user todo 未投影，需修复 Goal Harness 状态投影`; no delivery/spend. "
+        "If false/0, say `无用户待办/无需通知` or continue quietly. "
+        "If should_run=false, do only the permitted monitor/quiet path; monitor-only quiet skips stay active and no-spend. "
+        "If P0 is blocked but CLI contract permits safe work, continue verifiable P1/P2. "
+        "If should_run=true, do a bounded steering audit across P0/P1/P2, choose one in-scope todo, complete one coherent validated batch or a concrete blocker. "
+        "Plans/done must become Goal Harness todos, writeback, or no-follow-up rationale, not chat-only prose. After two no-progress turns, self-repair before another quiet no-op. "
+        f"After validated writeback, run `{refresh_command}` if needed, then spend exactly once with `{quota_spend_command}`. "
+        "Do not spend for quiet skips, preflight failures, blocker-push asks, pure dry-runs, self-cancel turns, or duplicate accounting. "
+        "No project-specific branches here. Do not consume the learning material queue unless explicitly asked. Stop for private material, credentials, destructive git, unauthorized production actions, unsafe ambiguity, or true goal completion."
+    )
+    if len(goal_text) > CODEX_GOAL_OBJECTIVE_MAX_CHARS:
+        raise ValueError(
+            "Codex CLI /goal bootstrap objective exceeds "
+            f"{CODEX_GOAL_OBJECTIVE_MAX_CHARS} characters"
+        )
+    return f"/goal {goal_text}"
 
 
 def render_prompt_text(
@@ -705,9 +768,16 @@ def render_codex_cli_bootstrap_message_markdown(payload: dict[str, Any]) -> str:
     checklist = "\n".join(
         f"- {item}" for item in payload.get("first_run_validation_checklist", [])
     )
+    goal_mode_note = ""
+    if payload.get("invocation_mode") == "codex_cli_goal_mode":
+        goal_mode_note = (
+            "\nThe generated block starts with `/goal`, so Codex CLI goal mode "
+            "owns the visible loop objective and completion criteria.\n"
+        )
     return f"""# Codex CLI Goal Harness Bootstrap Message
 
 Copy the block below into Codex CLI TUI from the project repo.
+{goal_mode_note}
 
 ````text
 {payload.get("message", "")}
@@ -732,6 +802,7 @@ for a contributor clone:
 - goal_id: `{payload.get("goal_id")}`
 - agent_id: `{payload.get("agent_id") or "(not provided)"}`
 - cli_bin: `{payload.get("cli_bin")}`
+- heartbeat_prompt_drift_check: `{payload.get("heartbeat_prompt_command")}`
 """
 
 
@@ -750,6 +821,7 @@ mutating a real Codex session.
 ```
 
 - review_packet: `{payload.get("review_packet_command")}`
+- heartbeat_prompt: `{payload.get("heartbeat_prompt_command")}`
 - quota_guard: `{payload.get("quota_guard_command")}`
 - refresh_state: `{payload.get("refresh_command")}`
 - quota_spend_after_validation: `{payload.get("quota_spend_command")}`
@@ -778,14 +850,14 @@ mutating a real Codex session.
 
 def render_codex_cli_exec_handoff_markdown(payload: dict[str, Any]) -> str:
     boundary = payload.get("boundary") or {}
-    return f"""# Codex CLI Exec Handoff
+    return f"""# Codex CLI Exec Handoff Disabled
 
-This is an explicit headless fallback, not the primary TUI experience.
-Prefer `goal-harness codex-cli-bootstrap-message` when a user can start from
-the Codex CLI TUI.
+The default Codex CLI Goal Harness bootstrap is TUI-visible `/goal` mode.
+Headless `codex exec` handoff is disabled here to avoid accidental hidden
+execution. Use the message-only command below inside the visible Codex CLI TUI.
 
 ````bash
-{payload.get("handoff_command", "")}
+{payload.get("message_only_command", "")}
 ````
 
 ## Guard Commands
@@ -793,6 +865,7 @@ the Codex CLI TUI.
 - session_probe: `{payload.get("session_probe_command")}`
 - quota_guard: `{payload.get("quota_guard_command")}`
 - quota_spend: `{payload.get("quota_spend_command")}`
+- disabled_reason: {payload.get("disabled_reason")}
 
 ## Boundary
 
@@ -802,4 +875,6 @@ the Codex CLI TUI.
 - reads_session_files: `{boundary.get("reads_session_files")}`
 - mutates_codex_session: `{boundary.get("mutates_codex_session")}`
 - spends_goal_harness_quota: `{boundary.get("spends_goal_harness_quota")}`
+- headless_execution_disabled: `{boundary.get("headless_execution_disabled")}`
+- provides_executable_headless_command: `{boundary.get("provides_executable_headless_command")}`
 """
