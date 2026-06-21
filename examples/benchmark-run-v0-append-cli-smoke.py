@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test appending compact benchmark events through the Goal Harness CLI."""
+"""Smoke-test appending compact benchmark events through the LoopX CLI."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.review_packet import build_review_packet  # noqa: E402
-from goal_harness.status import (  # noqa: E402
+from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.status import (  # noqa: E402
     benchmark_comparison_decision_note,
     collect_status,
     compact_benchmark_comparison,
@@ -129,9 +129,9 @@ def benchmark_result_event() -> dict[str, Any]:
     return {
         "schema_version": "benchmark_result_v0",
         "task_id": "mini_control_plane_repair_v0",
-        "scenario_id": "with_goal_harness",
+        "scenario_id": "with_loopx",
         "worker_mode": "deterministic",
-        "harness_identity": "goal_harness",
+        "harness_identity": "loopx",
         "worker_surface": "deterministic_shim",
         "terminal_state": "success",
         "official_task_score": {"kind": "deterministic_validation", "passed": True, "value": 1.0},
@@ -170,22 +170,22 @@ def benchmark_comparison_event() -> dict[str, Any]:
         "task_id": "mini_control_plane_repair_v0",
         "comparison_id": "mini_control_plane_repair_v0_ab",
         "benchmark_id": "local-deterministic",
-        "mode_pair": ["without_goal_harness", "with_goal_harness"],
-        "baseline_scenario_id": "without_goal_harness",
-        "treatment_scenario_id": "with_goal_harness",
+        "mode_pair": ["without_loopx", "with_loopx"],
+        "baseline_scenario_id": "without_loopx",
+        "treatment_scenario_id": "with_loopx",
         "scenario_count": 2,
         "both_success": True,
         "official_task_score_delta": 0.0,
         "control_plane_score_delta": 0.143,
         "cost_delta_usd": 0.274,
-        "with_goal_harness_overhead_ms": 12.5,
-        "with_goal_harness_extra_writebacks": 3,
-        "with_goal_harness_extra_spends": 3,
+        "with_loopx_overhead_ms": 12.5,
+        "with_loopx_extra_writebacks": 3,
+        "with_loopx_extra_spends": 3,
         "failure_attribution_labels": ["verifier_platform_probe_failure"],
         "baseline_failure_gate": {
             "schema_version": "benchmark_baseline_failure_gate_v0",
             "baseline_mode": "codex_cli_goal_mode",
-            "baseline_scenario_id": "without_goal_harness",
+            "baseline_scenario_id": "without_loopx",
             "baseline_terminal_state": "failed",
             "baseline_failed": True,
             "failure_phase": "validation",
@@ -197,8 +197,8 @@ def benchmark_comparison_event() -> dict[str, Any]:
             "same_runner_protocol": True,
             "trace_publicness_verified": True,
             "baseline_attempt_count": 1,
-            "minimum_next_evidence": "run the Goal Harness treatment arm on the same public task",
-            "evidence_refs": ["benchmark_result_v0:without_goal_harness"],
+            "minimum_next_evidence": "run the LoopX treatment arm on the same public task",
+            "evidence_refs": ["benchmark_result_v0:without_loopx"],
             "raw_log_path": "/" + "tmp/private/raw.log",
         },
         "claim_boundary": {
@@ -217,15 +217,15 @@ def benchmark_comparison_event() -> dict[str, Any]:
         },
         "result_refs": [
             {
-                "scenario_id": "without_goal_harness",
+                "scenario_id": "without_loopx",
                 "task_id": "mini_control_plane_repair_v0",
-                "result_id": "result_without_goal_harness",
+                "result_id": "result_without_loopx",
                 "raw_log_path": "/" + "tmp/private/raw.log",
             },
             {
-                "scenario_id": "with_goal_harness",
+                "scenario_id": "with_loopx",
                 "task_id": "mini_control_plane_repair_v0",
-                "result_id": "result_with_goal_harness",
+                "result_id": "result_with_loopx",
             },
         ],
         "metrics_compared": [
@@ -250,7 +250,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     benchmark_run_path = root / "benchmark_run.json"
     benchmark_result_path = root / "benchmark_result.json"
     benchmark_comparison_path = root / "benchmark_comparison.json"
@@ -299,7 +299,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path, Path]:
 
 def run_cli(args: list[str]) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=True,
         text=True,
@@ -478,7 +478,7 @@ def main() -> None:
         comparison_summary = comparison_run["benchmark_comparison_summary"]
         assert comparison_summary["schema_version"] == "benchmark_comparison_v0", comparison_summary
         assert comparison_summary["comparison_id"] == "mini_control_plane_repair_v0_ab", comparison_summary
-        assert comparison_summary["mode_pair"] == ["without_goal_harness", "with_goal_harness"], comparison_summary
+        assert comparison_summary["mode_pair"] == ["without_loopx", "with_loopx"], comparison_summary
         assert comparison_summary["official_task_score_delta"] == 0.0, comparison_summary
         assert comparison_summary["control_plane_score_delta"] == 0.143, comparison_summary
         assert comparison_summary["cost_delta_usd"] == 0.274, comparison_summary
@@ -487,11 +487,11 @@ def main() -> None:
         assert comparison_summary["baseline_failure_gate"] == {
             "schema_version": "benchmark_baseline_failure_gate_v0",
             "baseline_mode": "codex_cli_goal_mode",
-            "baseline_scenario_id": "without_goal_harness",
+            "baseline_scenario_id": "without_loopx",
             "baseline_terminal_state": "failed",
             "failure_phase": "validation",
             "failure_class": "verifier_platform_probe_failure",
-            "minimum_next_evidence": "run the Goal Harness treatment arm on the same public task",
+            "minimum_next_evidence": "run the LoopX treatment arm on the same public task",
             "baseline_failed": True,
             "control_plane_addressable": True,
             "treatment_eligible": True,
@@ -500,7 +500,7 @@ def main() -> None:
             "trace_publicness_verified": True,
             "baseline_attempt_count": 1,
             "failure_attribution_labels": ["verifier_platform_probe_failure"],
-            "evidence_refs": ["benchmark_result_v0:without_goal_harness"],
+            "evidence_refs": ["benchmark_result_v0:without_loopx"],
         }, comparison_summary
         assert comparison_summary["claim_boundary"] == {
             "leaderboard_claim_allowed": False,
@@ -545,7 +545,7 @@ def main() -> None:
                 "task_id": "torch-tensor-parallelism",
                 "comparison_id": "torch_tensor_parallelism_failure_triage",
                 "benchmark_id": "terminal-bench@2.0",
-                "mode_pair": ["hardened_codex_baseline", "codex_goal_harness_active_user"],
+                "mode_pair": ["hardened_codex_baseline", "codex_loopx_active_user"],
                 "both_success": False,
                 "official_task_score_delta": 0.0,
                 "failure_attribution_labels": ["verifier_platform_probe_failure"],
@@ -579,7 +579,7 @@ def main() -> None:
                 "comparison_id": "terminal_bench_goal_mode_failure_gate",
                 "benchmark_id": "terminal-bench@2.0",
                 "baseline_scenario_id": "codex_goal_mode",
-                "treatment_scenario_id": "codex_goal_harness",
+                "treatment_scenario_id": "codex_loopx",
                 "baseline_failure_gate": {
                     "baseline_mode": "codex_cli_goal_mode",
                     "baseline_scenario_id": "codex_goal_mode",
@@ -590,7 +590,7 @@ def main() -> None:
                     "failure_attribution_labels": ["worker_trace_without_benchmark_run_writeback"],
                     "control_plane_addressable": True,
                     "treatment_eligible": True,
-                    "minimum_next_evidence": "run same-task Goal Harness treatment with compact writeback required",
+                    "minimum_next_evidence": "run same-task LoopX treatment with compact writeback required",
                 },
             }
         )
@@ -598,7 +598,7 @@ def main() -> None:
         assert gate_only_note["evidence_layer"] == "baseline_failure_gate", gate_only_note
         assert gate_only_note["decision"] == "continue", gate_only_note
         assert gate_only_note["minimum_next_evidence"] == (
-            "run same-task Goal Harness treatment with compact writeback required"
+            "run same-task LoopX treatment with compact writeback required"
         ), gate_only_note
         assert "baseline failure is control-plane-addressable and treatment-eligible" in gate_only_note["may_claim"], gate_only_note
         assert "treatment uplift before paired treatment evidence exists" in gate_only_note["must_not_claim"], gate_only_note

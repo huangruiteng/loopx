@@ -8,8 +8,8 @@ This packet adds a compact-only reduction step for an already completed
 private AgentIssue-Bench `lagent_239` real run:
 
 ```bash
-goal-harness benchmark agentissue-codex-runner-flow \
-  --goal-id goal-harness-meta \
+loopx benchmark agentissue-codex-runner-flow \
+  --goal-id loopx-meta \
   --tag lagent_239 \
   --real-result-root <private-real-result-root>
 ```
@@ -73,7 +73,7 @@ resolved attempts. Missing phase proof is a reducer error; a false eval-result
 field is an official unresolved score with failure attribution.
 
 Passing `--execute` appends the derived compact `benchmark_run_v0` event to
-Goal Harness run history. The payload also includes a compact
+LoopX run history. The payload also includes a compact
 `benchmark_result_v0` object for consumers that want to append or compare
 result-layer evidence separately.
 
@@ -104,13 +104,13 @@ Codex or Docker execution.
 python3 examples/agentissue-bench-codex-cli-runner-real-result-smoke.py
 python3 regression/agentissue-lagent239-real-codex-runner.py
 python3 -m py_compile \
-  goal_harness/benchmark.py \
-  goal_harness/cli.py \
+  loopx/benchmark.py \
+  loopx/cli.py \
   examples/agentissue-bench-codex-cli-runner-real-result-smoke.py \
   regression/agentissue-lagent239-real-codex-runner.py
-goal-harness check \
-  --scan-path goal_harness/benchmark.py \
-  --scan-path goal_harness/cli.py \
+loopx check \
+  --scan-path loopx/benchmark.py \
+  --scan-path loopx/cli.py \
   --scan-path examples/agentissue-bench-codex-cli-runner-real-result-smoke.py \
   --scan-path regression/agentissue-lagent239-real-codex-runner.py \
   --scan-path regression/README.md \

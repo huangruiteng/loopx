@@ -172,7 +172,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--workspace",
-        default="~/goal-harness-bench",
+        default="~/loopx-bench",
         help="Benchmark workspace root on the host. Only its basename is emitted.",
     )
     parser.add_argument("--min-free-gib", type=float, default=80.0)

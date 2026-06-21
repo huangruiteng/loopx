@@ -1,6 +1,6 @@
 # Architecture
 
-Goal Harness has seven layers.
+LoopX has seven layers.
 
 1. **Registry**: lists known goals, their repos, adapters, authority sources,
    status, and guards.
@@ -21,10 +21,10 @@ project goal state
 shared runtime root
         |
         v
-goal-harness history/check
+loopx history/check
         |
         v
-goal-harness status
+loopx status
         |
         v
 quota-aware agent tick / heartbeat / future UI
@@ -34,32 +34,32 @@ The core repository intentionally avoids domain logic. A data experiment goal,
 a note-maintenance goal, and a harness self-improvement goal should share the
 same runtime and contract, but use different adapters.
 
-Goal Harness should still absorb field-tested project-control mechanisms such
+LoopX should still absorb field-tested project-control mechanisms such
 as authority registries, current-belief TODOs, managed external-source
 manifests, experiment boards, validation surface maps, and gated handoff
 packets. See [field-derived-patterns.md](field-derived-patterns.md).
 
-Goal Harness should also expose a human-friendly frontstage without moving the
+LoopX should also expose a human-friendly frontstage without moving the
 source of truth into chat. A goal can project as a channel, agents can project
 as workspace members, and task ownership can project as explicit leases; the
 registry, active state, run history, quota, gates, and lease events remain the
 backstage ledger. See
 [frontstage-channel-lease-roadmap.md](frontstage-channel-lease-roadmap.md).
 
-Goal Harness should also grow a narrow host-integration surface. CLI commands
+LoopX should also grow a narrow host-integration surface. CLI commands
 remain the compatibility baseline, but long-running agent hosts benefit when
 the same state is available through hook/MCP/server adapters:
 
-- hook activation should only route the host toward the current Goal Harness
+- hook activation should only route the host toward the current LoopX
   contract; it must not embed a second scheduler or stale project policy;
 - MCP/server tools should expose lifecycle reads, todo/gate/lease writes, and
   compact status projections without requiring the host to parse Markdown;
 - host adapters should isolate platform details while preserving the same
   registry, event-ledger, quota, public/private boundary, and lease semantics;
-- task graphs should be optional projections over Goal Harness state, not a
+- task graphs should be optional projections over LoopX state, not a
   replacement for the event ledger or active goal truth.
 
-This keeps Goal Harness portable across Codex, local CLI loops, dashboards, and
+This keeps LoopX portable across Codex, local CLI loops, dashboards, and
 future agent hosts while avoiding a forked control plane per host.
 The v0 protocol contract is
 [`host-integration-surface-v0`](reference/protocols/host-integration-surface-v0.md):
@@ -70,7 +70,7 @@ remains available when an adapter is absent.
 
 ## Lifetime Goal Invariant
 
-Goal Harness should optimize for **lifetime goals**: durable intentions that
+LoopX should optimize for **lifetime goals**: durable intentions that
 may outlive a single thread, executor, project phase, or plan. This is a
 product invariant, not an eighth storage layer.
 
@@ -117,7 +117,7 @@ In the current control plane, a **goal** is the stable `goal_id` boundary: one
 registry entry, active-state file, quota lane, run-history stream, and status
 projection. A **todo** is a structured active-state checkbox inside that goal,
 addressed by `todo_id` and projected as an agent or user work item. There is no
-separate issue object in the Goal Harness runtime model.
+separate issue object in the LoopX runtime model.
 
 The server path should land in layers:
 
@@ -181,7 +181,7 @@ compare-and-swap style conflict responses.
 
 ## State Interaction Model
 
-Goal Harness has four product actors:
+LoopX has four product actors:
 
 - the **goal**, which owns durable objective, state, guards, run history, and
   reward overlays;
@@ -200,7 +200,7 @@ See [state-interaction-model.md](state-interaction-model.md).
 
 ## Controller / Sub-Agent Model
 
-For Codex-style parallel work, Goal Harness treats the main goal run as a
+For Codex-style parallel work, LoopX treats the main goal run as a
 controller run. The controller owns:
 
 - the objective and active goal state,
@@ -216,7 +216,7 @@ Sub-agents own bounded child work:
 - one validation or benchmark surface,
 - one risk or boundary check.
 
-Goal Harness does not replace the operating-system scheduler or Codex App
+LoopX does not replace the operating-system scheduler or Codex App
 executor. It should, however, own the simple compute quota that those executors
 read before running more work. Timer cadence is an execution mechanism, not the
 product source of truth for project priority.

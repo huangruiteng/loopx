@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 GOAL_ID = "benchmark-baseline-failure-gate-smoke"
@@ -46,7 +46,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     baseline_result_path = root / "baseline_result.json"
     baseline_run_path = root / "baseline_run.json"
 
@@ -70,7 +70,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
             "goals": [
                 {
                     "id": GOAL_ID,
-                    "domain": "goal-harness-platform",
+                    "domain": "loopx-platform",
                     "status": "active",
                     "state_file": state_file,
                     "repo": str(project),
@@ -150,7 +150,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
 
 def run_cli(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=check,
         text=True,
@@ -183,7 +183,7 @@ def base_args(registry_path: Path, runtime: Path, result_path: Path) -> list[str
         "--baseline-mode",
         "codex_cli_goal_mode",
         "--treatment-scenario-id",
-        "codex_goal_harness",
+        "codex_loopx",
         "--failure-phase",
         "writeback",
         "--failure-class",
@@ -191,7 +191,7 @@ def base_args(registry_path: Path, runtime: Path, result_path: Path) -> list[str
         "--failure-attribution-label",
         "worker_trace_without_benchmark_run_writeback",
         "--minimum-next-evidence",
-        "run same-task Goal Harness treatment with compact writeback required",
+        "run same-task LoopX treatment with compact writeback required",
         "--evidence-ref",
         f"benchmark_result_v0:{BASELINE_SCENARIO}",
         "--no-global-sync",
@@ -288,17 +288,17 @@ def assert_codex_goal_mode_fixture(registry_path: Path, runtime: Path) -> None:
     run = payload["benchmark_run"]
     assert run["mode"] == "codex_goal_mode_baseline_cli_dry_run", run
     assert run["worker_mode"] == "codex_goal_mode_baseline", run
-    assert run["goal_harness_inside_case"] is False, run
+    assert run["loopx_inside_case"] is False, run
     assert run["case_semantics_changed_by_harness"] is False, run
-    assert run["official_score_comparable_to_goal_harness_treatment"] is True, run
+    assert run["official_score_comparable_to_loopx_treatment"] is True, run
     assert run["control_plane_score_applicable"] is False, run
-    assert "goal_harness_mode" not in run["agent"]["kwargs_keys"], run
+    assert "loopx_mode" not in run["agent"]["kwargs_keys"], run
     assert "codex_goal_mode_invocation_surface" in run["agent"]["kwargs_keys"], run
     assert (
         run["episode_policy"]["schema_version"]
         == "terminal_bench_codex_goal_mode_baseline_episode_policy_v0"
     ), run
-    assert run["episode_policy"]["goal_harness_role"] == "parent_runner_only_compact_ingest", run
+    assert run["episode_policy"]["loopx_role"] == "parent_runner_only_compact_ingest", run
     assert run["real_run"] is False, run
     assert run["submit_eligible"] is False, run
     assert_public_safe(payload)

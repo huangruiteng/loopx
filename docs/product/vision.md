@@ -1,6 +1,6 @@
 # Product Vision
 
-Goal Harness is not only a developer tool for AI coding loops. It starts there
+LoopX is not only a developer tool for AI coding loops. It starts there
 because engineering work exposes the hard control-plane problems quickly:
 state drift, human gates, run evidence, handoffs, ownership, quota, and
 public/private boundaries. The larger product category is a dynamic goal
@@ -28,14 +28,14 @@ off-hours, then open a first screen and understand:
 
 **让多个 agent 昼夜接力，把人的判断留在控制面。**
 
-Goal Harness 把目标、用户决策、agent todo、认领关系、scope、safe fallback、
+LoopX 把目标、用户决策、agent todo、认领关系、scope、safe fallback、
 run history 和 quota 放进同一层状态：该等人的地方明确等人，不该空等的
 安全侧路继续推进。
 
 The product promise is always-on progress without uncontrolled autonomy:
 primary and side agents can continue bounded work, while human gates,
 capability gates, quota, evidence, and project boundaries remain explicit. In
-that sense, Goal Harness is not just a longer prompt or a bigger todo list; it
+that sense, LoopX is not just a longer prompt or a bigger todo list; it
 is the dynamic goal state around executor loops.
 
 ## Creator-Operator Case
@@ -55,7 +55,7 @@ can help them keep a creative goal moving:
 
 The bottleneck is product experience as much as model capability. A user should
 not have to read raw browsing traces, private notes, or agent reasoning to know
-whether the work is useful. Goal Harness should turn that activity into a
+whether the work is useful. LoopX should turn that activity into a
 small set of visible control-plane objects: goals, gates, todos, evidence,
 feedback, boundaries, and next actions.
 
@@ -66,7 +66,7 @@ The current roadmap for this case should land as four public-safe tracks:
 1. **Creator-operator case spec**: write the scenario as a concrete public
    showcase with synthetic or redacted evidence. The case should explain the
    user's job-to-be-done, the agent's long-running loop, where human taste or
-   publishing judgment gates progress, and what Goal Harness contributes.
+   publishing judgment gates progress, and what LoopX contributes.
 2. **Non-technical operator status model**: design first-screen cards that say
    what happened, what is happening, where the agent is blocked, what comes
    next, and what user feedback would change. This model should avoid internal
@@ -82,9 +82,9 @@ The current roadmap for this case should land as four public-safe tracks:
 
 ## Boundary
 
-This vision does not turn Goal Harness into a social-media crawler, publishing
+This vision does not turn LoopX into a social-media crawler, publishing
 bot, or end-user content platform. Those tools may live in a host product or
-project adapter. Goal Harness should provide the durable control projection:
+project adapter. LoopX should provide the durable control projection:
 current goal, decision gates, safe next work, evidence summaries, feedback
 writeback, and boundary checks.
 
@@ -97,10 +97,10 @@ The default product posture is conservative:
   public-safe basis;
 - keep user taste feedback separate from hard safety or permission gates.
 
-## Why It Belongs In Goal Harness
+## Why It Belongs In LoopX
 
 This case stress-tests the same product promise as engineering and benchmark
 loops, but with a different user: a non-engineering operator who needs clarity,
-not infrastructure. If Goal Harness can make this workflow legible, it proves
+not infrastructure. If LoopX can make this workflow legible, it proves
 the control plane is not just for developers. It is a way to keep long-running
 agent work useful, bounded, reviewable, and easy to steer.

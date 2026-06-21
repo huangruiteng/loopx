@@ -6,7 +6,7 @@ Checked at: 2026-06-08T03:28:00+08:00.
 
 `benchmark_restart_actionability_v0` remains research/docs-only for now.
 
-Do not project it into Goal Harness status, review-packet, project-asset, or
+Do not project it into LoopX status, review-packet, project-asset, or
 handoff hot paths until a real restarted-worker consumer needs the signal
 outside this research folder, an approved no-submit setup check produces compact
 public evidence, or repeated heartbeats show agents re-deriving the same

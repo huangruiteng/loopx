@@ -11,9 +11,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
-from goal_harness.review_packet import build_review_packet  # noqa: E402
-from goal_harness.status import (  # noqa: E402
+from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.status import (  # noqa: E402
     MAX_PROJECT_ASSET_TODO_ITEMS,
     TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
@@ -337,11 +337,11 @@ def assert_claimed_markdown_todos_survive_visibility_lanes() -> None:
         "## Agent Todo\n\n"
         f"{unclaimed_lines}\n"
         f" - [ ] {FRONTSTAGE_CLAIMED_TODO}\n"
-        "   <!-- goal-harness:todo todo_id=todo_claimed_markdown status=open "
+        "   <!-- loopx:todo todo_id=todo_claimed_markdown status=open "
         "task_class=advancement_task action_kind=frontstage_dashboard_route_mvp "
         "claimed_by=codex-side-bypass -->\n"
         f"- [ ] {FRONTSTAGE_MONITOR_TODO}\n"
-        "  <!-- goal-harness:todo todo_id=todo_claimed_monitor status=open "
+        "  <!-- loopx:todo todo_id=todo_claimed_monitor status=open "
         "task_class=continuous_monitor action_kind=repository_quality_monitor "
         "claimed_by=codex-side-bypass -->\n"
     )
@@ -440,7 +440,7 @@ def assert_claimed_advancement_lanes_preserve_claimants() -> None:
     primary_claimed_lines = "\n".join(
         (
             f"- [ ] [P1] Primary claimed advancement item {index}.\n"
-            f"  <!-- goal-harness:todo todo_id=todo_primary_{index} status=open "
+            f"  <!-- loopx:todo todo_id=todo_primary_{index} status=open "
             "task_class=advancement_task action_kind=primary_backlog "
             "claimed_by=codex-main-control -->"
         )
@@ -449,7 +449,7 @@ def assert_claimed_advancement_lanes_preserve_claimants() -> None:
     stale_side_lines = "\n".join(
         (
             f"- [ ] [P1] Stale side claimed advancement item {index}.\n"
-            f"  <!-- goal-harness:todo todo_id=todo_side_stale_{index} status=open "
+            f"  <!-- loopx:todo todo_id=todo_side_stale_{index} status=open "
             "task_class=advancement_task action_kind=frontstage_stale_backlog "
             "claimed_by=codex-side-bypass -->"
         )
@@ -460,7 +460,7 @@ def assert_claimed_advancement_lanes_preserve_claimants() -> None:
         f"{primary_claimed_lines}\n"
         f"{stale_side_lines}\n"
         "- [ ] [P0] Side claimed TUI continuation item.\n"
-        "  <!-- goal-harness:todo todo_id=todo_side_tui status=open "
+        "  <!-- loopx:todo todo_id=todo_side_tui status=open "
         "task_class=advancement_task action_kind=codex_cli_tui_continuation "
         "claimed_by=codex-side-bypass -->\n"
     )
@@ -576,7 +576,7 @@ def main() -> int:
     }, asset_summary
     assert asset_summary["detail_pointer"] == {
         "schema_version": TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
-        "cold_path": "goal-harness status --format json",
+        "cold_path": "loopx status --format json",
         "active_state_source": "registry goal state_file",
         "full_list_included": False,
     }, asset_summary

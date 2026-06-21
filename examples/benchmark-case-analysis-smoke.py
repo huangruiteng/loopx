@@ -128,8 +128,8 @@ def test_case_analysis_json() -> None:
         "terminal_bench_current_protocol_recheck_v0"
     ), current_protocol
     assert current_protocol["baseline_route"] == "hardened-codex", current_protocol
-    assert current_protocol["goal_harness_route"] == (
-        "goal-harness-managed-codex"
+    assert current_protocol["loopx_route"] == (
+        "loopx-managed-codex"
     ), current_protocol
     assert current_protocol["baseline_official_score"] == 1, current_protocol
     assert current_protocol["treatment_official_score"] == 1, current_protocol
@@ -191,7 +191,7 @@ def test_case_analysis_json() -> None:
         "claimable_uplift"
     ] is False, legacy_nginx
     assert nginx_route_canary["arms"]["treatment"][
-        "worker_goal_harness_cli_call_total"
+        "worker_loopx_cli_call_total"
     ] == 0, nginx_route_canary
     nginx_probe = legacy_nginx["worker_materialization_probe"]
     assert nginx_probe["run_id"] == "51fa05316d18", nginx_probe
@@ -284,7 +284,7 @@ def test_case_analysis_json() -> None:
     assert paratransit_uplift["scores"]["treatment_round_rewards"] == "1:0", (
         paratransit_uplift
     )
-    assert paratransit_uplift["arms"]["treatment"]["goal_harness_cli_call_count"] == 1, (
+    assert paratransit_uplift["arms"]["treatment"]["loopx_cli_call_count"] == 1, (
         paratransit_uplift
     )
     assert paratransit_uplift["arms"]["treatment"]["agent_declared_done"] is True, (
@@ -311,8 +311,8 @@ def test_case_analysis_json() -> None:
     assert paratransit_trace["raw_text_copied_to_public"] is False, paratransit_trace
     assert paratransit_trace["round_count"] == 1, paratransit_trace
     assert paratransit_trace["tool_call_count"] == 16, paratransit_trace
-    assert paratransit_trace["goal_harness_cli_call_count"] == 0, paratransit_trace
-    assert paratransit_trace["goal_harness_cli_calls"] == [], paratransit_trace
+    assert paratransit_trace["loopx_cli_call_count"] == 0, paratransit_trace
+    assert paratransit_trace["loopx_cli_calls"] == [], paratransit_trace
     assert paratransit_trace["protected_path_edit_signal_count"] == 0, (
         paratransit_trace
     )
@@ -407,10 +407,10 @@ def test_case_analysis_json() -> None:
         "confounded_by_unequal_timeout_envelopes"
     ), zstd_timeout
     zstd_product_path = swe_zstd_regression["product_path_validation"]
-    assert zstd_product_path["treatment_goal_harness_inside_case"] is True, (
+    assert zstd_product_path["treatment_loopx_inside_case"] is True, (
         zstd_product_path
     )
-    assert zstd_product_path["treatment_goal_harness_cli_call_count"] == 12, (
+    assert zstd_product_path["treatment_loopx_cli_call_count"] == 12, (
         zstd_product_path
     )
     assert zstd_product_path["treatment_worker_bridge_materialization_status"] == (
@@ -499,8 +499,8 @@ def test_case_analysis_json() -> None:
     assert debug_trace["raw_text_copied_to_public"] is False, debug_trace
     assert debug_trace["round_count"] == 5, debug_trace
     assert debug_trace["tool_call_count"] == 112, debug_trace
-    assert debug_trace["goal_harness_cli_call_count"] == 0, debug_trace
-    assert debug_trace["goal_harness_cli_calls"] == [], debug_trace
+    assert debug_trace["loopx_cli_call_count"] == 0, debug_trace
+    assert debug_trace["loopx_cli_calls"] == [], debug_trace
     assert debug_trace["protected_path_mentions"] == [
         "/app/reward_fn.py",
         "/app/train_grpo.py",
@@ -895,8 +895,8 @@ def test_case_analysis_json() -> None:
     ], reward_payload
     blind_protocol = interaction["primary_comparison_protocol"]
     assert blind_protocol["baseline_route"] == "raw-codex-autonomous-max5", blind_protocol
-    assert blind_protocol["treatment_route"] == "goal-harness-product-mode", blind_protocol
-    assert "Goal Harness product-mode" in blind_protocol["inner_case_actor"], blind_protocol
+    assert blind_protocol["treatment_route"] == "loopx-product-mode", blind_protocol
+    assert "LoopX product-mode" in blind_protocol["inner_case_actor"], blind_protocol
     assert blind_protocol["headline_metrics"] == [
         "best_score",
         "final_score",
@@ -1059,7 +1059,7 @@ def test_case_analysis_json() -> None:
     assert "bike-rebalance" not in {
         case["case_id"] for case in controls["runner_repair_controls"]
     }, controls
-    assert interaction["goal_harness_inside_case"] is False, interaction
+    assert interaction["loopx_inside_case"] is False, interaction
     assert "debug-trl-grpo" in {
         case["case_id"] for case in interaction["negative_and_neutral_controls"]
     }, interaction
@@ -1129,7 +1129,7 @@ def test_case_analysis_markdown() -> None:
     assert "private verifier output tail can leak" in text, text
     assert "reward-feedback ablation" in text, text
     assert "codex-acp-blind-loop-baseline" in text, text
-    assert "goal-harness-blind-loop-treatment" in text, text
+    assert "loopx-blind-loop-treatment" in text, text
     assert "official_feedback_blinded=true" in text, text
     assert "two controller decisions" in text, text
     assert "not explained by interaction count alone" in text, text

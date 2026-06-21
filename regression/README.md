@@ -1,4 +1,4 @@
-# Goal Harness Regression Suite
+# LoopX Regression Suite
 
 This directory is for low-frequency behavior regressions that check how Goal
 Harness CLI contracts are consumed by worker/executor surfaces.
@@ -24,7 +24,7 @@ python3 regression/cli-command-module-contract.py
 ```
 
 Runs a contract-only compatibility check for the first modular CLI command
-seam. It imports `goal_harness.cli_commands`, then verifies the old public
+seam. It imports `loopx.cli_commands`, then verifies the old public
 `doctor`, `new-project-prompt`, `demo`, `check`, `status`, and
 `review-packet` invocations still return successful JSON payloads after their
 registration/handling moves out of the top-level `cli.py` file.
@@ -78,7 +78,7 @@ delivery quota before promotion.
 python3 regression/external-evidence-observation-real-codex.py
 ```
 
-Runs the contract-only path. It creates an isolated Goal Harness fixture and
+Runs the contract-only path. It creates an isolated LoopX fixture and
 checks two projection contracts:
 
 - explicit `waiting_on=external_evidence` goals return an
@@ -145,7 +145,7 @@ python3 regression/codex-app-server-goal-baseline-contract.py
 Runs the contract-only Codex Goal benchmark baseline seam. It verifies that the
 preferred automation surface is Codex app-server `thread/goal/set` plus
 `thread/goal/get` with `experimentalApi=true`, that `codex exec` remains only a
-connectivity smoke, and that slash-prefixed prompts or Goal Harness state leaks
+connectivity smoke, and that slash-prefixed prompts or LoopX state leaks
 cannot be promoted into paired baseline evidence.
 
 ```bash

@@ -22,7 +22,7 @@ def normalize(text: str) -> str:
 
 def run_cli(*args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=True,
         text=True,
@@ -53,7 +53,7 @@ def assert_doc() -> None:
         "process command line",
         "live_tui_first_message_blocked_by_bounded_visible_completion_missing",
         "manual TUI bootstrap remains primary",
-        "the user pastes one Goal Harness start message",
+        "the user pastes one LoopX start message",
         "without leaking project-specific prompt text through process arguments",
         "raw transcript or session-file reads",
         "Codex CLI bounded visible pilot adapter",
@@ -61,7 +61,7 @@ def assert_doc() -> None:
     for phrase in must_have:
         assert phrase in normalized, phrase
 
-    assert "Goal Harness should not advertise automated `codex [PROMPT]` launch" in text
+    assert "LoopX should not advertise automated `codex [PROMPT]` launch" in text
     assert "raw TUI output, Codex transcripts, session files" in normalized, text
     assert "without raw transcript or session-file reads" in normalized, text
 
@@ -81,7 +81,7 @@ def assert_bootstrap_message_still_copy_first() -> None:
     message = run_cli(
         "codex-cli-bootstrap-message",
         "--project",
-        "/tmp/goal-harness-live-tui-pilot.public",
+        "/tmp/loopx-live-tui-pilot.public",
         "--goal-id",
         GOAL_ID,
         "--agent-id",
@@ -89,7 +89,7 @@ def assert_bootstrap_message_still_copy_first() -> None:
         "--message-only",
     )
     normalized = normalize(message)
-    assert message.startswith("Install and connect Goal Harness for this repo"), message
+    assert message.startswith("Install and connect LoopX for this repo"), message
     assert not message.startswith("/goal "), message
     assert "Codex CLI TUI" in normalized, message
     assert "setup/bootstrap instruction" in normalized, message

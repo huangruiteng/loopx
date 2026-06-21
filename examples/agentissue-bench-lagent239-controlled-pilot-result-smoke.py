@@ -267,7 +267,7 @@ def reduce_to_benchmark_result(packet: dict[str, Any]) -> dict[str, Any]:
         "task_id": "agentissue_bench_lagent_239",
         "scenario_id": "controlled_lagent239_local_codex_patch_and_single_tag_eval",
         "worker_mode": "trusted_local_codex_cli",
-        "harness_identity": "goal_harness",
+        "harness_identity": "loopx",
         "terminal_state": packet["reducer"]["terminal_state"],
         "official_task_score": {
             "kind": "agentissue_bench_single_tag_container_eval",

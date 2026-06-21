@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
@@ -27,14 +27,14 @@ README = TOPIC_DIR / "README.md"
 GOAL_ID = "terminal-bench-managed-preflight-fixture"
 BENCHMARK_ID = "terminal-bench@2.0"
 TASK_ID = "build-cython-ext"
-RUN_MODE = "goal_harness_managed_codex_real_run_preflight_guard"
-WORKER_MODE = "goal_harness_managed_codex_cli"
+RUN_MODE = "loopx_managed_codex_real_run_preflight_guard"
+WORKER_MODE = "loopx_managed_codex_cli"
 
 REQUIRED_DOC_SNIPPETS = [
     "Terminal-Bench Managed Real-Run Preflight Guard V0",
-    "goal-harness benchmark run terminal-bench",
+    "loopx benchmark run terminal-bench",
     "--preflight-guard",
-    "goal_harness_managed_codex_real_run_preflight_guard",
+    "loopx_managed_codex_real_run_preflight_guard",
     "ready_for_private_managed_no_upload_pilot_review",
     "auth-surface variable names are checked",
     "credential values are never read or stored",
@@ -71,7 +71,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -93,7 +93,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
             "goals": [
                 {
                     "id": GOAL_ID,
-                    "domain": "goal-harness-platform",
+                    "domain": "loopx-platform",
                     "status": "active-read-only",
                     "state_file": state_file,
                     "repo": str(project),
@@ -127,7 +127,7 @@ def write_fake_surface_commands(root: Path) -> Path:
 
 def run_cli(args: list[str], *, env: dict[str, str], check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=check,
         text=True,
@@ -158,7 +158,7 @@ def common_args(registry_path: Path, runtime: Path) -> list[str]:
         "--goal-id",
         GOAL_ID,
         "--mode",
-        "goal-harness-managed-codex",
+        "loopx-managed-codex",
         "--dataset",
         BENCHMARK_ID,
         "--include-task-name",
@@ -191,7 +191,7 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert payload["dry_run"] is (not appended), payload
     assert payload["classification"] == "terminal_bench_managed_real_run_preflight_guard_v0", payload
     assert payload["benchmark_cli"]["benchmark"] == "terminal-bench", payload
-    assert payload["benchmark_cli"]["mode"] == "goal-harness-managed-codex", payload
+    assert payload["benchmark_cli"]["mode"] == "loopx-managed-codex", payload
     assert payload["benchmark_cli"]["fake_worker"] is False, payload
     assert payload["benchmark_cli"]["preflight_guard"] is True, payload
     assert payload["benchmark_cli"]["real_runner_invoked"] is False, payload
@@ -200,7 +200,7 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
 
     event = payload["benchmark_run"]
     assert event["schema_version"] == "benchmark_run_v0", event
-    assert event["source_runner"] == "goal_harness_terminal_bench_managed_real_run_preflight_guard", event
+    assert event["source_runner"] == "loopx_terminal_bench_managed_real_run_preflight_guard", event
     assert event["benchmark_id"] == BENCHMARK_ID, event
     assert event["mode"] == RUN_MODE, event
     assert event["worker_mode"] == WORKER_MODE, event
@@ -214,7 +214,7 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert event["real_run"] is False, event
     assert event["submit_eligible"] is False, event
     assert event["official_task_score"]["kind"] == "not_run", event
-    assert event["goal_harness_inside_case"] is True, event
+    assert event["loopx_inside_case"] is True, event
     assert event["official_score_comparable_to_native_codex"] is False, event
     assert event["model_plus_harness_pair"] is True, event
     assert event["leaderboard_evidence"] is False, event
@@ -250,7 +250,7 @@ def assert_hardened_control_preflight(registry_path: Path, runtime: Path, env: d
     event = payload["benchmark_run"]
     assert event["mode"] == "hardened_codex_baseline_preflight_guard", event
     assert event["worker_mode"] == "hardened_codex_baseline", event
-    assert event["goal_harness_inside_case"] is False, event
+    assert event["loopx_inside_case"] is False, event
     assert event["case_semantics_changed_by_harness"] is False, event
     assert event["hardened_install_baseline"] is True, event
     assert event["preflight_guard"]["schema_version"] == (

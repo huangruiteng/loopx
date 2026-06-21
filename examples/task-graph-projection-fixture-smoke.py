@@ -100,7 +100,7 @@ def main() -> int:
 
     for needle in [
         "attention_queue.items[].task_graph_projection",
-        "goal-harness --format json review-packet --goal-id <goal-id>",
+        "loopx --format json review-packet --goal-id <goal-id>",
         "event ledger",
         "active goal state",
         "projection_is_writable=false",

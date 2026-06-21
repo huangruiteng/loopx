@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     build_benchmark_claim_review,
     build_benchmark_verifier_attribution_review,
 )
@@ -28,7 +28,7 @@ def comparison(delta: float, *, comparison_id: str = "fixture-pair") -> dict[str
         "comparison_id": comparison_id,
         "benchmark_id": "terminal-bench@2.0",
         "baseline_scenario_id": "hardened-codex",
-        "treatment_scenario_id": "codex-goal-harness",
+        "treatment_scenario_id": "codex-loopx",
         "official_task_score_delta": delta,
         "control_plane_score_delta": 0.75,
         "both_success": delta == 0,
@@ -70,7 +70,7 @@ def benchmark_run(
             "value": score,
             "passed": score >= 1,
         },
-        "worker_goal_harness_cli_call_total": worker_calls,
+        "worker_loopx_cli_call_total": worker_calls,
         "worker_benchmark_run_schema_ok_count": 1 if worker_calls else 0,
         "score_failure_attribution": attribution,
         "failure_attribution_labels": labels or [],
@@ -135,7 +135,7 @@ def test_candidate_with_baseline_attribution_caveat() -> None:
         attribution="verifier_platform_probe_failure",
         labels=["verifier_platform_probe_failure"],
     )
-    treatment = benchmark_run("codex-goal-harness", 1.0, worker_calls=4)
+    treatment = benchmark_run("codex-loopx", 1.0, worker_calls=4)
     payload = build_benchmark_claim_review(
         comparison(1.0),
         benchmark_runs=[baseline, treatment],
@@ -155,7 +155,7 @@ def test_candidate_with_baseline_attribution_caveat() -> None:
 
 def test_loop_validation_without_score_uplift() -> None:
     baseline = benchmark_run("hardened-codex", 1.0)
-    treatment = benchmark_run("codex-goal-harness", 1.0, worker_calls=3)
+    treatment = benchmark_run("codex-loopx", 1.0, worker_calls=3)
     payload = build_benchmark_claim_review(
         comparison(0.0, comparison_id="no-delta-pair"),
         benchmark_runs=[baseline, treatment],
@@ -174,7 +174,7 @@ def test_claim_review_derives_compact_agent_timeout_attribution() -> None:
         exception_type="AgentTimeoutError",
     )
     treatment = benchmark_run(
-        "codex-goal-harness",
+        "codex-loopx",
         0.0,
         worker_calls=2,
         exception_type="AgentTimeoutError",
@@ -201,7 +201,7 @@ def test_claim_review_derives_compact_agent_setup_timeout_attribution() -> None:
         exception_type="AgentSetupTimeoutError",
     )
     treatment = benchmark_run(
-        "codex-goal-harness",
+        "codex-loopx",
         0.0,
         worker_calls=0,
         exception_type="AgentSetupTimeoutError",
@@ -229,7 +229,7 @@ def test_claim_review_derives_worker_start_setup_attribution() -> None:
         exception_type="NonZeroAgentExitCodeError",
         worker_start_status="pre_worker_agent_setup_failed",
     )
-    treatment = benchmark_run("codex-goal-harness", 0.0, worker_calls=0)
+    treatment = benchmark_run("codex-loopx", 0.0, worker_calls=0)
     payload = build_benchmark_claim_review(
         comparison(0.0, comparison_id="worker-start-setup-failure"),
         benchmark_runs=[baseline, treatment],
@@ -266,7 +266,7 @@ def test_cli_review_claim() -> None:
             encoding="utf-8",
         )
         treatment_path.write_text(
-            json.dumps(benchmark_run("codex-goal-harness", 1.0, worker_calls=4)),
+            json.dumps(benchmark_run("codex-loopx", 1.0, worker_calls=4)),
             encoding="utf-8",
         )
 
@@ -274,7 +274,7 @@ def test_cli_review_claim() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -305,7 +305,7 @@ def test_verifier_attribution_keeps_compact_caveat() -> None:
         attribution="verifier_platform_probe_failure",
         labels=["verifier_platform_probe_failure"],
     )
-    treatment = benchmark_run("codex-goal-harness", 1.0, worker_calls=4)
+    treatment = benchmark_run("codex-loopx", 1.0, worker_calls=4)
 
     payload = build_benchmark_verifier_attribution_review(
         benchmark_runs=[baseline, treatment],
@@ -340,7 +340,7 @@ def test_verifier_attribution_resolves_explicit_model_failure() -> None:
         attribution="model_solution_failure",
         labels=[],
     )
-    treatment = benchmark_run("codex-goal-harness", 1.0, worker_calls=4)
+    treatment = benchmark_run("codex-loopx", 1.0, worker_calls=4)
 
     payload = build_benchmark_verifier_attribution_review(
         benchmark_runs=[baseline, treatment],
@@ -366,7 +366,7 @@ def test_verifier_attribution_resolves_compact_agent_timeout() -> None:
         exception_type="AgentTimeoutError",
     )
     treatment = benchmark_run(
-        "codex-goal-harness",
+        "codex-loopx",
         0.0,
         worker_calls=2,
         exception_type="AgentTimeoutError",
@@ -400,7 +400,7 @@ def test_verifier_attribution_routes_generic_agent_exception_to_case_research() 
         verifier_reward_present=False,
     )
     treatment = benchmark_run(
-        "codex-goal-harness",
+        "codex-loopx",
         0.0,
         worker_calls=2,
         exception_type="RuntimeError",
@@ -440,7 +440,7 @@ def test_verifier_attribution_routes_agent_setup_timeout_to_startup_repair() -> 
         exception_type="AgentSetupTimeoutError",
     )
     treatment = benchmark_run(
-        "codex-goal-harness",
+        "codex-loopx",
         0.0,
         worker_calls=0,
         exception_type="AgentSetupTimeoutError",
@@ -481,7 +481,7 @@ def test_verifier_attribution_uses_compact_worker_start_status() -> None:
         exception_type="NonZeroAgentExitCodeError",
         worker_start_status="pre_worker_agent_setup_failed",
     )
-    treatment = benchmark_run("codex-goal-harness", 0.0, worker_calls=0)
+    treatment = benchmark_run("codex-loopx", 0.0, worker_calls=0)
 
     payload = build_benchmark_verifier_attribution_review(
         benchmark_runs=[baseline, treatment],
@@ -511,7 +511,7 @@ def test_verifier_attribution_uses_startup_blocker_status() -> None:
         0.0,
         startup_blocker="codex_cli_not_on_path",
     )
-    treatment = benchmark_run("codex-goal-harness", 0.0)
+    treatment = benchmark_run("codex-loopx", 0.0)
 
     payload = build_benchmark_verifier_attribution_review(
         benchmark_runs=[baseline, treatment],
@@ -535,12 +535,12 @@ def test_verifier_attribution_uses_startup_blocker_status() -> None:
 
 def test_verifier_attribution_routes_worker_self_validation_mismatch() -> None:
     baseline = benchmark_run(
-        "codex-goal-harness",
+        "codex-loopx",
         0.0,
         attribution="worker_self_validation_official_score_mismatch",
         labels=["worker_self_validation_official_score_mismatch"],
     )
-    treatment = benchmark_run("codex-goal-harness", 0.0, worker_calls=2)
+    treatment = benchmark_run("codex-loopx", 0.0, worker_calls=2)
 
     payload = build_benchmark_verifier_attribution_review(
         benchmark_runs=[baseline, treatment],
@@ -567,12 +567,12 @@ def test_verifier_attribution_routes_worker_self_validation_mismatch() -> None:
 
 def test_verifier_attribution_routes_worker_validation_scope_ambiguous() -> None:
     baseline = benchmark_run(
-        "codex-goal-harness",
+        "codex-loopx",
         0.0,
         attribution="worker_validation_scope_ambiguous_official_score_failure",
         labels=["worker_validation_scope_ambiguous_official_score_failure"],
     )
-    treatment = benchmark_run("codex-goal-harness", 0.0, worker_calls=2)
+    treatment = benchmark_run("codex-loopx", 0.0, worker_calls=2)
 
     payload = build_benchmark_verifier_attribution_review(
         benchmark_runs=[baseline, treatment],
@@ -611,7 +611,7 @@ def test_verifier_attribution_routes_clean_runner_zero_to_finer_compact() -> Non
         },
         verifier_reward_present=True,
     )
-    treatment = benchmark_run("codex-goal-harness", 1.0, worker_calls=2)
+    treatment = benchmark_run("codex-loopx", 1.0, worker_calls=2)
 
     payload = build_benchmark_verifier_attribution_review(
         benchmark_runs=[baseline, treatment],
@@ -637,7 +637,7 @@ def test_verifier_attribution_routes_clean_runner_zero_to_finer_compact() -> Non
 
 def test_verifier_attribution_all_passed_moves_to_new_candidate() -> None:
     baseline = benchmark_run("codex-goal-mode", 1.0)
-    treatment = benchmark_run("codex-goal-harness", 1.0, worker_calls=2)
+    treatment = benchmark_run("codex-loopx", 1.0, worker_calls=2)
 
     payload = build_benchmark_verifier_attribution_review(
         benchmark_runs=[baseline, treatment],
@@ -674,7 +674,7 @@ def test_cli_review_verifier_attribution() -> None:
             encoding="utf-8",
         )
         treatment_path.write_text(
-            json.dumps(benchmark_run("codex-goal-harness", 1.0, worker_calls=4)),
+            json.dumps(benchmark_run("codex-loopx", 1.0, worker_calls=4)),
             encoding="utf-8",
         )
 
@@ -682,7 +682,7 @@ def test_cli_review_verifier_attribution() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",

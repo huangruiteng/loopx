@@ -1,6 +1,6 @@
 # Public Launch Narrative Draft
 
-This draft is the public, repository-maintained version of the Goal Harness
+This draft is the public, repository-maintained version of the LoopX
 launch narrative. It is safe to review in PRs, quote in public issues, and use
 as source material for external posts. It should not include private benchmark
 traces, internal document links, raw verifier output, local absolute paths, or
@@ -8,7 +8,7 @@ unpublished performance claims.
 
 ## Core Judgment
 
-Goal Harness is not primarily a todo app, benchmark runner, or replacement
+LoopX is not primarily a todo app, benchmark runner, or replacement
 agent framework.
 
 Its strongest public position is:
@@ -38,7 +38,7 @@ Exam style work. One benchmark family became source-ready, but the next real
 local run required acquiring a large Docker image. That acquisition is a human
 resource decision, not something an automation loop should silently perform.
 
-Goal Harness should handle that situation as a first-class control-plane event:
+LoopX should handle that situation as a first-class control-plane event:
 
 1. Write the image acquisition as a concrete user todo.
 2. Keep that benchmark lane marked as source/runner-ready but image-gated.
@@ -50,7 +50,7 @@ Goal Harness should handle that situation as a first-class control-plane event:
 This is the product moment worth explaining publicly.
 
 Many agent products stop at the first gate and wait for the user to click a
-choice. Goal Harness should make the user decision explicit while still using
+choice. LoopX should make the user decision explicit while still using
 the agent turn on safe validated work. The operator sees both facts: what needs
 their decision, and why the agent is still allowed to make progress elsewhere.
 
@@ -58,7 +58,7 @@ their decision, and why the agent is still allowed to make progress elsewhere.
 
 The external story can be compressed into three claims:
 
-1. Agent runtimes do the work; Goal Harness keeps long-running work
+1. Agent runtimes do the work; LoopX keeps long-running work
    recoverable, reviewable, and bounded.
 2. Human-in-the-loop is not frequent confirmation. It is durable user intent,
    gate, reward, and boundary state that future agent turns can inherit.
@@ -69,14 +69,14 @@ This lets the project stay distinct from generic agent frameworks:
 
 - Prompt engineering asks how to instruct the model.
 - Context engineering asks what to show the model.
-- Goal Harness asks how the agent keeps acting over time without losing the
+- LoopX asks how the agent keeps acting over time without losing the
   goal, crossing boundaries, or making the human become a scheduler.
 
 ## README / PR Boundary
 
 Public README and PR copy may claim:
 
-- Goal Harness makes user and agent work lanes explicit.
+- LoopX makes user and agent work lanes explicit.
 - A gated high-priority lane can coexist with safe fallback work.
 - Fallback work is audited as fallback.
 - Quota spend happens only after validated delivery or compact blocker

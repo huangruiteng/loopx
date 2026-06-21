@@ -13,7 +13,7 @@ const dashboardDir = resolve(repoRoot, "apps/dashboard");
 const fixtureName = "status.quota-default.browser-smoke.json";
 const fixturePath = resolve(dashboardDir, "public", fixtureName);
 const playwrightCliOutputDir = resolve(repoRoot, ".playwright-cli");
-const port = Number(process.env.GOAL_HARNESS_DASHBOARD_QUOTA_DEFAULT_SMOKE_PORT ?? "5193");
+const port = Number(process.env.LOOPX_DASHBOARD_QUOTA_DEFAULT_SMOKE_PORT ?? "5193");
 const session = `ghqd${process.pid}`;
 const pwcli = process.env.PWCLI ?? resolve(homedir(), ".codex/skills/playwright/scripts/playwright_cli.sh");
 

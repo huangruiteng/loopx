@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 GOAL_ID = "active-user-assisted-pilot-append-fixture"
@@ -51,7 +51,7 @@ def active_user_pilot_event() -> dict[str, Any]:
             "kind": "previous_compact_negative_result",
             "failed_autonomous_modes": [
                 {"mode": "hardened_codex_baseline", "official_task_score": 0.0},
-                {"mode": "codex_goal_harness", "official_task_score": 0.0},
+                {"mode": "codex_loopx", "official_task_score": 0.0},
             ],
             "both_autonomous_modes_failed": True,
             "assisted_score_kind": "not_run",
@@ -75,7 +75,7 @@ def active_user_pilot_event() -> dict[str, Any]:
                 "public_task_statement",
                 "compact_failure_summary",
                 "worker_visible_validation_output",
-                "public_safe_goal_harness_state_summary",
+                "public_safe_loopx_state_summary",
             ],
             "forbidden": [
                 "hidden_tests",
@@ -153,7 +153,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     pilot_path = root / "active_user_pilot.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
@@ -198,7 +198,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
 
 def run_cli(args: list[str]) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=True,
         text=True,
@@ -297,7 +297,7 @@ def main() -> None:
         trigger = summary["trigger"]
         assert trigger["both_autonomous_modes_failed"] is True, trigger
         assert trigger["failed_autonomous_mode_count"] == 2, trigger
-        assert trigger["failed_autonomous_modes"] == ["hardened_codex_baseline", "codex_goal_harness"], trigger
+        assert trigger["failed_autonomous_modes"] == ["hardened_codex_baseline", "codex_loopx"], trigger
         assert trigger["assisted_score_kind"] == "not_run", trigger
 
         operator = summary["operator_simulator_run"]

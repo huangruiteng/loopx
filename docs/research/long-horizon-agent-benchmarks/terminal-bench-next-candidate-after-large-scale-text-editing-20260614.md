@@ -16,8 +16,8 @@ The latest `large-scale-text-editing` compact evidence is not a reason to
 repeat the same task immediately:
 
 - Codex goal-mode baseline closed with official score `0.0`;
-- `codex-goal-harness` treatment also closed with official score `0.0`;
-- the treatment worker bridge did not reach the required in-case Goal Harness
+- `codex-loopx` treatment also closed with official score `0.0`;
+- the treatment worker bridge did not reach the required in-case LoopX
   CLI counter trace;
 - the current active P0 records the same-task repeat as blocked until Codex is
   usable before worker start or worker CLI counter trace reaches the minimum;
@@ -40,9 +40,9 @@ The previous post-`regex-log` packet named this fallback order if
 
 This turn reran strict no-run preflights for the first three fallback
 candidates with the current comparison shape: Codex CLI goal mode versus
-`codex-goal-harness`.
+`codex-loopx`.
 
-| Candidate | Codex goal-mode baseline | `codex-goal-harness` treatment | Notes |
+| Candidate | Codex goal-mode baseline | `codex-loopx` treatment | Notes |
 | --- | --- | --- | --- |
 | `git-multibranch` | ready | ready | Source-control workflow, high fit for restart/state and validation behavior. |
 | `nginx-request-logging` | ready | ready | Config/debugging fallback. |
@@ -76,16 +76,16 @@ Rationale:
   rollback/restart behavior without depending on heavyweight model downloads
   or brute-force resource use;
 - it preserves the corrected comparison baseline: Codex CLI goal mode versus
-  `codex-goal-harness`.
+  `codex-loopx`.
 
 ## Next Allowed Action
 
 Run exactly one private no-upload paired pilot for `terminal-bench@2.0` /
 `git-multibranch`:
 
-1. run the Codex goal-mode baseline with no Goal Harness access packet or
+1. run the Codex goal-mode baseline with no LoopX access packet or
    worker bridge;
-2. run the `codex-goal-harness` treatment with the active worker bridge;
+2. run the `codex-loopx` treatment with the active worker bridge;
 3. ingest only compact Harbor results after both arms close or emit compact
    blockers;
 4. run `benchmark_verifier_attribution_review_v0` before any same-task repeat

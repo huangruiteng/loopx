@@ -19,7 +19,7 @@ const missingFixtureName = "status.promotion-readiness-missing.json";
 const freshFixturePath = resolve(publicDir, freshFixtureName);
 const staleFixturePath = resolve(publicDir, staleFixtureName);
 const missingFixturePath = resolve(publicDir, missingFixtureName);
-const port = Number(process.env.GOAL_HARNESS_DASHBOARD_PROMOTION_READINESS_SMOKE_PORT ?? "5196");
+const port = Number(process.env.LOOPX_DASHBOARD_PROMOTION_READINESS_SMOKE_PORT ?? "5196");
 
 const quotaEligible = {
   compute: 1,
@@ -59,7 +59,7 @@ function baseStatusFixture(promotionReadinessSummary) {
     status_contract: {
       schema_version: 2,
       minimum_dashboard_schema_version: 2,
-      producer: "goal-harness status",
+      producer: "loopx status",
       reload_hint: "scripts/macos-dashboard-launchagent.sh restart",
     },
     contract: {
@@ -92,7 +92,7 @@ function baseStatusFixture(promotionReadinessSummary) {
       autonomous_backlog_candidates: null,
       items: [
         {
-          goal_id: "goal-harness-meta",
+          goal_id: "loopx-meta",
           status: "promotion_readiness_ops_panel_fixture",
           waiting_on: "codex",
           severity: "action",
@@ -143,8 +143,8 @@ function baseStatusFixture(promotionReadinessSummary) {
       run_count: 1,
       goals: [
         {
-          id: "goal-harness-meta",
-          domain: "goal-harness-fixture",
+          id: "loopx-meta",
+          domain: "loopx-fixture",
           status: "promotion_readiness_ops_panel_fixture",
           lifecycle_phase: "fixture",
           lifecycle_flags: ["fixture"],
@@ -158,7 +158,7 @@ function baseStatusFixture(promotionReadinessSummary) {
           unique_runs: 1,
           latest_runs: [
             {
-              goal_id: "goal-harness-meta",
+              goal_id: "loopx-meta",
               generated_at: "2026-01-01T00:00:00+00:00",
               classification: "promotion_readiness_ops_panel_fixture",
               delivery_batch_scale: "multi_surface",
@@ -172,7 +172,7 @@ function baseStatusFixture(promotionReadinessSummary) {
       ],
       recent_runs: [
         {
-          goal_id: "goal-harness-meta",
+          goal_id: "loopx-meta",
           generated_at: "2026-01-01T00:00:00+00:00",
           classification: "promotion_readiness_ops_panel_fixture",
           delivery_batch_scale: "multi_surface",
@@ -194,7 +194,7 @@ function baseStatusFixture(promotionReadinessSummary) {
 const freshPromotionReadinessSummary = {
   available: true,
   source: "run_history",
-  goal_id: "goal-harness-meta",
+  goal_id: "loopx-meta",
   generated_at: "2026-01-01T00:00:00+00:00",
   classification: "canary_promotion_readiness_smoke_group",
   delivery_batch_scale: "multi_surface",
@@ -238,7 +238,7 @@ const missingPromotionReadinessSummary = {
 
 function loadPlaywright() {
   const candidates = [
-    process.env.GOAL_HARNESS_PLAYWRIGHT_PACKAGE,
+    process.env.LOOPX_PLAYWRIGHT_PACKAGE,
     resolve(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"),
   ].filter(Boolean);
 
@@ -259,7 +259,7 @@ function loadPlaywright() {
     }
   }
 
-  throw new Error("Playwright package not found; install playwright or set GOAL_HARNESS_PLAYWRIGHT_PACKAGE");
+  throw new Error("Playwright package not found; install playwright or set LOOPX_PLAYWRIGHT_PACKAGE");
 }
 
 async function launchBrowser(chromium) {
@@ -294,7 +294,7 @@ function startDashboardServer() {
     throw new Error(`Vite package not installed: ${viteBin}`);
   }
   const nodeBin = [
-    process.env.GOAL_HARNESS_NODE_BIN,
+    process.env.LOOPX_NODE_BIN,
     "/opt/homebrew/bin/node",
     "/usr/local/bin/node",
     process.execPath,
@@ -369,7 +369,7 @@ async function main() {
         "AGE",
         "SAMPLES",
         "0.25h",
-        "goal=goal-harness-meta",
+        "goal=loopx-meta",
         "window=24h · artifacts=true/true",
         "append-only run history",
         "source of truth",
@@ -395,7 +395,7 @@ async function main() {
         "python3 examples/canary-promotion-readiness-smoke.py",
         "promotion-readiness evidence is stale; fixture guard",
         "25.5h",
-        "goal=goal-harness-meta",
+        "goal=loopx-meta",
         "window=24h · artifacts=true/true",
         "stale promotion readiness fixture",
       ],

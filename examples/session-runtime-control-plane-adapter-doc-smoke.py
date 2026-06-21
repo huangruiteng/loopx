@@ -27,7 +27,7 @@ def main() -> int:
         doc,
         [
             "The host session log is the raw fact source.",
-            "Goal Harness run history is a\ncompact control projection.",
+            "LoopX run history is a\ncompact control projection.",
             "Phase 1: Read-Only Projection",
             "Phase 2: Controlled Writeback",
             "build_session_runtime_readonly_projection",

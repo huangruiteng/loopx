@@ -58,10 +58,10 @@ examples/agentissue-bench-codex-cli-runner-publication-change-set-smoke.py
 Stage only the AgentIssue hunks from these mixed tracked files:
 
 ```text
-goal_harness/benchmark.py
-goal_harness/benchmark_adapters/agentissue.py
-goal_harness/cli.py
-goal_harness/status.py
+loopx/benchmark.py
+loopx/benchmark_adapters/agentissue.py
+loopx/cli.py
+loopx/status.py
 docs/research/long-horizon-agent-benchmarks/README.md
 ```
 
@@ -120,7 +120,7 @@ The publication change set must not include:
 
 ```text
 .local/
-.goal-harness/
+.loopx/
 ~/.codex/
 trajectory.json
 screenshot.png
@@ -156,10 +156,10 @@ Then compile and scan only the publication surfaces:
 
 ```bash
 python3 -m py_compile \
-  goal_harness/benchmark.py \
-  goal_harness/benchmark_adapters/agentissue.py \
-  goal_harness/cli.py \
-  goal_harness/status.py \
+  loopx/benchmark.py \
+  loopx/benchmark_adapters/agentissue.py \
+  loopx/cli.py \
+  loopx/status.py \
   examples/agentissue-bench-codex-cli-runner-contract-smoke.py \
   examples/agentissue-bench-codex-cli-runner-flow-smoke.py \
   examples/agentissue-bench-codex-cli-runner-dry-run-wrapper-smoke.py \
@@ -172,11 +172,11 @@ python3 -m py_compile \
   examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py \
   examples/agentissue-bench-codex-cli-runner-publication-change-set-smoke.py
 
-goal-harness check \
-  --scan-path goal_harness/benchmark.py \
-  --scan-path goal_harness/benchmark_adapters/agentissue.py \
-  --scan-path goal_harness/cli.py \
-  --scan-path goal_harness/status.py \
+loopx check \
+  --scan-path loopx/benchmark.py \
+  --scan-path loopx/benchmark_adapters/agentissue.py \
+  --scan-path loopx/cli.py \
+  --scan-path loopx/status.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-contract-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-flow-plan-v0.md \

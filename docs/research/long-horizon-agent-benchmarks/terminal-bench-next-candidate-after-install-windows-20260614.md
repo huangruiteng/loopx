@@ -38,7 +38,7 @@ Rationale:
 - It is a multi-step document/data processing task, which is closer to the
   long-horizon control-plane target than another platform/verifier-repair loop.
 - Strict no-run preflight was ready for both the Codex goal-mode baseline and
-  the Goal Harness treatment.
+  the LoopX treatment.
 
 ## Strict Preflight Summary
 
@@ -47,9 +47,9 @@ For `terminal-bench@2.0` / `financial-document-processor`:
 | Arm | ready | task material | no upload | submit eligible | auth values recorded | raw paths recorded | worker bridge |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Codex goal-mode baseline | true | ready | true | false | false | false | false |
-| Codex goal-harness treatment | true | ready | true | false | false | false | true |
+| Codex loopx treatment | true | ready | true | false | false | false | true |
 
-The preflight used the Goal Harness Terminal-Bench preflight guard with
+The preflight used the LoopX Terminal-Bench preflight guard with
 `--require-task-material-ready`. It records booleans and task ids only.
 
 ## Next Allowed Action
@@ -57,9 +57,9 @@ The preflight used the Goal Harness Terminal-Bench preflight guard with
 Run exactly one private no-upload paired pilot for
 `terminal-bench@2.0` / `financial-document-processor`:
 
-1. run the Codex goal-mode baseline with no Goal Harness access packet or
+1. run the Codex goal-mode baseline with no LoopX access packet or
    worker bridge;
-2. run the `codex-goal-harness` treatment with the active worker bridge;
+2. run the `codex-loopx` treatment with the active worker bridge;
 3. ingest only compact Harbor results after both arms close or emit compact
    blockers;
 4. run `benchmark_verifier_attribution_review_v0` before any same-task repeat

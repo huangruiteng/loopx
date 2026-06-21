@@ -1,6 +1,6 @@
 # Experiment Controller Milestone
 
-Goal Harness should connect a long-running experiment controller only when the
+LoopX should connect a long-running experiment controller only when the
 connection improves the work beyond bare Codex App goal mode. The milestone is
 not "start watching another repo." It is a product gate for better experiment
 context, better human reward capture, and easier multi-project operation.
@@ -16,7 +16,7 @@ Connect an experiment controller when all three gates are true:
 - The project has a stable objective, current experiment hypothesis, latest
   comparable result, and next gating condition that can be represented without
   exposing private details.
-- Goal Harness can preserve context across runs better than a normal goal-mode
+- LoopX can preserve context across runs better than a normal goal-mode
   thread: objective, active branch, experiment route, metric target, known
   failure modes, blocked state, and latest recommended action survive reloads.
 - The dashboard or status export gives the operator a clearer multi-project
@@ -54,7 +54,7 @@ guardrails, but they should not replace the primary goal.
 The comparison target is the default Codex App goal loop with one thread and
 local chat context.
 
-Goal Harness must add:
+LoopX must add:
 
 - **Durable context**: every run writes a compact public-safe index plus a
   private payload when needed. The next controller tick should know the latest
@@ -92,15 +92,15 @@ shape:
 ```
 
 The public index should keep only compact, non-sensitive fields. Private
-payloads may keep richer evidence. `goal-harness status` keeps only
+payloads may keep richer evidence. `loopx status` keeps only
 `recorded_at`, `decision`, `reward`, `reason_summary`, and `follow_up` under
 `human_reward`, so the dashboard can show that a human reward signal exists and
 what class of decision it judged.
 
-Use `goal-harness reward` to append this compact signal to an existing run:
+Use `loopx reward` to append this compact signal to an existing run:
 
 ```bash
-goal-harness reward \
+loopx reward \
   --goal-id example-experiment-goal \
   --run-generated-at 2026-06-01T00:00:00+00:00 \
   --decision continue_route \
@@ -127,7 +127,7 @@ latest run. That draft should default to `--dry-run`; the operator still records
 the judgment through the CLI until browser-side writes can enforce the same
 local-only boundary and public-safe text checks.
 
-For local dashboards backed by `goal-harness serve-status`, the draft can also
+For local dashboards backed by `loopx serve-status`, the draft can also
 round-trip through `POST /reward/dry-run`. That endpoint validates the selected
 goal/run and compact reward text but always returns `appended=false`.
 
@@ -163,14 +163,14 @@ The common progression is:
   are present.
 - decision advisor: safe after comparable evidence and human reward are
   recorded.
-- write controller: remains opt-in; Goal Harness should not imply mutation
+- write controller: remains opt-in; LoopX should not imply mutation
   permission from observation or advice readiness.
 
 ## Readiness Checklist
 
 Before connecting a real experiment controller, validate:
 
-- `goal-harness status` exposes the goal, latest run, contract health, and
+- `loopx status` exposes the goal, latest run, contract health, and
   attention queue without local path leaks.
 - The adapter writes compact run history with `classification`,
   `recommended_action`, `health_check`, and artifact availability.

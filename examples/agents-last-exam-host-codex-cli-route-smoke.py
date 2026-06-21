@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     build_agents_last_exam_host_codex_cua_no_task_smoke_from_environment,
     build_agents_last_exam_host_codex_cli_route,
 )
@@ -221,7 +221,7 @@ def run_cli_smoke() -> None:
         base_cmd = [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",
@@ -282,7 +282,7 @@ def run_cli_no_task_e2e_smoke() -> None:
         cmd = [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",

@@ -23,14 +23,14 @@ released benchmark describes 60 human-authored bilingual tasks across six
 categories, with 26 multimodal tasks. The paper reports that tasks average
 roughly 8 minutes and more than 20 tool calls per run.
 
-The benchmark is unusually relevant to Goal Harness because it evaluates the
+The benchmark is unusually relevant to LoopX because it evaluates the
 same task suite across multiple agent harnesses: OpenClaw, Claude Code, Codex,
 and Hermes Agent. The public leaderboard also exposes a harness-comparison
 table for the same model across those harnesses.
 
-## Why It Matches Goal Harness
+## Why It Matches LoopX
 
-WildClawBench tests three things Goal Harness cares about more directly than
+WildClawBench tests three things LoopX cares about more directly than
 another same-policy SkillsBench rerun:
 
 1. Harness effects are first-class. The paper reports that switching harness
@@ -43,7 +43,7 @@ another same-policy SkillsBench rerun:
    real tools such as shell, browser, file system, email, calendar, and
    optional skills rather than mock APIs.
 
-This makes WildClawBench a better next hypothesis source for Goal Harness than
+This makes WildClawBench a better next hypothesis source for LoopX than
 continuing to mine already-classified SkillsBench controls. SkillsBench is
 still useful for prompt/round-policy regressions, but the current queue already
 has baseline-solved, neutral, positive-control, regression, and setup-blocker
@@ -59,7 +59,7 @@ Harness-specific target is:
 - final score differs, or side-effect auditing differs;
 - trace evidence shows stale state, weak recovery, premature stop, unsafe side
   effect, missing artifact, or poor validation discipline;
-- Goal Harness can plausibly help through state truth, todo/replan structure,
+- LoopX can plausibly help through state truth, todo/replan structure,
   compact evidence, permission gates, or restartable execution.
 
 Good first cases would be tasks where a baseline agent exits early, performs
@@ -69,7 +69,7 @@ output without the required artifact/state change.
 ## No-Upload Feasibility
 
 WildClawBench is not immediately eligible for a no-upload autonomous official
-run under the current Goal Harness standing policy.
+run under the current LoopX standing policy.
 
 Reasons:
 

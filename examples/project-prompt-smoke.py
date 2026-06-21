@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.project_prompt import build_new_project_prompt  # noqa: E402
+from loopx.project_prompt import build_new_project_prompt  # noqa: E402
 
 
 DOC = REPO_ROOT / "docs/new-project-codex-prompt.md"
@@ -57,7 +57,7 @@ MUST_HAVE = (
     "如果你通过 read-only 分析、review doc、gate checklist 或 P0/P1 steering",
     "用户/owner 待办",
     "不要只写在 `Next Action`、外部 review 文档或聊天里。",
-    "goal-harness todo add --goal-id",
+    "loopx todo add --goal-id",
     "--role user --text \"<public-safe user/owner action>\"",
     "agent 自己的后续动作写成 `--role agent`",
     "docs/project-agent-todo-contract.md",
@@ -66,7 +66,7 @@ SPEND_MUST_HAVE = (
     "validation / writeback 完成后",
     "state-only `refresh-state` 之前",
     "只 append 一次 quota spend",
-    'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id',
+    'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id',
     "--source adapter --execute",
     "再在 spend 后 refresh",
     "不要为 quiet `should_run=false` skip、preflight 失败、或纯 dry-run preview 记账",
@@ -75,7 +75,7 @@ SPEND_MUST_HAVE = (
 )
 HEARTBEAT_PROMPT_MUST_HAVE = (
     "如果要给这个项目设置 recurring Codex App heartbeat",
-    "goal-harness heartbeat-prompt",
+    "loopx heartbeat-prompt",
     "--active-state .codex/goals/",
     "再把输出复制进 automation",
 )
@@ -89,7 +89,7 @@ HANDOFF_MUST_HAVE = (
     "当前权威状态来自 `attention_queue.items` / `project_asset`",
     "如果缺少 `project_asset` 或标记为 `legacy/raw fallback`",
     "不要把 raw queue 字段当作 owner/gate/stop authority",
-    "goal-harness review-packet --goal-id",
+    "loopx review-packet --goal-id",
     "--handoff-only",
     "只把输出的 handoff 交给目标项目 agent",
     "完整 review packet 留给 operator view / evidence drill-down",
@@ -99,9 +99,9 @@ HANDOFF_MUST_HAVE = (
 def assert_quota_guard(text: str) -> None:
     normalized = " ".join(text.split())
     assert 'export PATH="$HOME/.local/bin:$PATH"' in text, text
-    assert 'install_script="$HOME/goal-harness/scripts/install-local.sh"' in text, text
-    assert "goal-harness doctor >/dev/null" in text, text
-    assert 'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id' in text, text
+    assert 'install_script="$HOME/loopx/scripts/install-local.sh"' in text, text
+    assert "loopx doctor >/dev/null" in text, text
+    assert 'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id' in text, text
     positions = []
     for phrase in MUST_HAVE:
         assert phrase in normalized, text
@@ -117,7 +117,7 @@ def assert_quota_guard(text: str) -> None:
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -157,11 +157,11 @@ def main() -> int:
         write_scope=None,
     )
     assert payload["quota_guard_command"] == (
-        'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" '
+        'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
         "quota should-run --goal-id new-project-main-control"
     ), payload
     assert payload["quota_spend_command"] == (
-        'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" '
+        'loopx --registry "$HOME/.codex/loopx/registry.global.json" '
         "quota spend-slot --goal-id new-project-main-control --slots 1 --source adapter --execute"
     ), payload
     assert_quota_guard(payload["prompt"])

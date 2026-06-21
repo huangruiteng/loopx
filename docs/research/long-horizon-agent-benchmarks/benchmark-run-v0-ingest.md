@@ -4,7 +4,7 @@ Checked at: 2026-06-07T18:30:00+08:00
 
 ## Purpose
 
-`benchmark_run_v0` is the first Goal Harness event shape for public benchmark
+`benchmark_run_v0` is the first LoopX event shape for public benchmark
 runs. It is intentionally passive: it reads official runner outputs and turns
 them into a compact, restartable control-plane event without changing benchmark
 prompts, task files, timeout settings, resources, scoring, or upload behavior.
@@ -41,7 +41,7 @@ Every ingested run should emit one `benchmark_run_v0` object:
 | `source_runner` | `harbor` for this first contract. |
 | `benchmark_id` | Dataset or benchmark id, such as `terminal-bench@2.0`. |
 | `job_name` | Redacted job name, not an absolute path. |
-| `mode` | `passive_observer` until a custom Goal Harness agent wrapper is approved. |
+| `mode` | `passive_observer` until a custom LoopX agent wrapper is approved. |
 | `agent` | Agent name, import path when used, model, and public-safe kwargs summary. |
 | `progress` | Total, completed, errored, running, pending, cancelled, and retry counts. |
 | `metrics` | Aggregate input/cache/output tokens and cost when official output supplies them. |
@@ -82,10 +82,10 @@ use model APIs, use cloud sandboxes, or upload leaderboard results.
 ## CLI Append
 
 After a runner or parser has produced a `benchmark_run_v0` JSON object, append it
-to the normal Goal Harness run history with:
+to the normal LoopX run history with:
 
 ```bash
-goal-harness history append-benchmark-run \
+loopx history append-benchmark-run \
   --goal-id <goal-id> \
   --benchmark-run-json <benchmark-run-v0.json> \
   --delivery-batch-scale implementation \
@@ -102,7 +102,7 @@ public-safe summary rather than raw runner logs or host paths.
 Treatment runs should be selected from an explicit compact baseline-failure
 gate, not from benchmark-specific prompt wording or regexes. A baseline runner
 or supervising agent may attach a public-safe `baseline_failure_gate` object to
-a `benchmark_comparison_v0` row before any Goal Harness treatment attempt:
+a `benchmark_comparison_v0` row before any LoopX treatment attempt:
 
 | Field | Meaning |
 | --- | --- |
@@ -113,7 +113,7 @@ a `benchmark_comparison_v0` row before any Goal Harness treatment attempt:
 | `baseline_failed` | Whether the baseline actually failed or blocked. |
 | `failure_phase` / `failure_class` | Public-safe failure attribution. |
 | `control_plane_addressable` | Whether the failure plausibly concerns coordination, writeback, restartability, stale state, boundary, evidence, or similar control-plane behavior. |
-| `treatment_eligible` | Whether a Goal Harness treatment run is allowed for this baseline failure. |
+| `treatment_eligible` | Whether a LoopX treatment run is allowed for this baseline failure. |
 | `minimum_next_evidence` | The next public-safe evidence required before broader claims. |
 | `negative_selection_reason` | Required when the candidate is not treatment-eligible. |
 
@@ -127,7 +127,7 @@ interpretation.
 The structured reducer is:
 
 ```bash
-goal-harness benchmark baseline-failure-gate \
+loopx benchmark baseline-failure-gate \
   --benchmark-id terminal-bench@2.0 \
   --baseline-result-json <benchmark-result-v0.json> \
   --baseline-mode codex_cli_goal_mode \
@@ -151,8 +151,8 @@ Stop before:
 - using `--upload`, `harbor upload`, or official leaderboard submission;
 - modifying benchmark task prompts, tests, resources, timeouts, scoring, or
   official runner code;
-- claiming Goal Harness improves benchmark score without paired bare Codex and
-  passive Goal Harness runs;
+- claiming LoopX improves benchmark score without paired bare Codex and
+  passive LoopX runs;
 - copying private source material, credentials, host paths, or raw Codex session
   content into public artifacts.
 
@@ -160,7 +160,7 @@ Stop before:
 
 After the append CLI exists, the next bounded product step is a passive baseline
 protocol: define a tiny paired-run fixture for bare Codex CLI versus passive
-Goal Harness wrapping, then have the runner write one `benchmark_run_v0` event
+LoopX wrapping, then have the runner write one `benchmark_run_v0` event
 through this command. Keep the fixture local and deterministic before invoking
 real Terminal-Bench, Docker, Codex, model APIs, or leaderboard upload paths,
 and keep doing this without adding benchmark-specific heartbeat prompt branches.

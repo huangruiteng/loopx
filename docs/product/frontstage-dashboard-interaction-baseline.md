@@ -1,6 +1,6 @@
 # Frontstage Dashboard Interaction Baseline
 
-Goal Harness has two frontend jobs, and they should not collapse into one
+LoopX has two frontend jobs, and they should not collapse into one
 layout.
 
 The showcase surface sells the product model. The ops surface lets real users
@@ -22,7 +22,7 @@ state requires an explicit ops route and a loopback or relative status source.
 Use the Multica-style agent workspace direction as a product benchmark for
 density and interaction grammar: visible agents, claimed work, boards, timelines,
 search, filters, compact role state, and reusable workspace primitives. Do not
-clone its product model. Goal Harness still treats quota, status, todos, gates,
+clone its product model. LoopX still treats quota, status, todos, gates,
 leases, run history, and append-only evidence as the control-plane source of
 truth.
 

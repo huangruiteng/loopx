@@ -1,6 +1,6 @@
 # Benchmark Core Adapter Contract v0
 
-Goal Harness benchmark code should use a small shared core plus
+LoopX benchmark code should use a small shared core plus
 benchmark-specific adapters, following the pattern used by Inspect AI, Inspect
 Evals, BrowserGym, and AgentLab.
 
@@ -43,17 +43,17 @@ private paths, credentials, and benchmark logs remain outside public artifacts.
 
 ## Module Layout
 
-Keep `goal_harness/benchmark.py` as a legacy public facade while moving durable
+Keep `loopx/benchmark.py` as a legacy public facade while moving durable
 surfaces into smaller modules:
 
 | Module | Owns | Must Not Own |
 | --- | --- | --- |
-| `goal_harness.benchmark_core` | adapter-neutral lifecycle, round summaries, artifact/source boundary policy, JSON/number IO reducers | benchmark-specific launchers or scoring quirks |
-| `goal_harness.benchmark_adapters.skillsbench` | SkillsBench routes, arm semantics, job names, public-safe setup failure attribution | Terminal-Bench/ALE/AgentIssue behavior |
-| `goal_harness.benchmark_adapters.terminal_bench` | Terminal-Bench public constants, runner modes, CLI-bridge/access-packet labels, private-runner launch/materialization/readiness helpers, Harbor result reducers, timeout and compact validation policy constants | ALE/SkillsBench/AgentIssue behavior |
-| `goal_harness.benchmark_adapters.agents_last_exam` | ALE public constants, case-state path, local runner/source readiness, launch-packet, validation-gate, CUA/Codex-route, task-material and result-report helpers | Terminal-Bench/SkillsBench/AgentIssue behavior or raw ALE task material |
-| `goal_harness.benchmark_adapters.agentissue` | AgentIssue-Bench runner packets, synthetic staging, execution gates, compact result reducer | shared artifact boundary or unrelated benchmark policy |
-| `goal_harness.benchmark` | backward-compatible public imports plus legacy functions not yet extracted | new benchmark-specific code when a narrower adapter module exists |
+| `loopx.benchmark_core` | adapter-neutral lifecycle, round summaries, artifact/source boundary policy, JSON/number IO reducers | benchmark-specific launchers or scoring quirks |
+| `loopx.benchmark_adapters.skillsbench` | SkillsBench routes, arm semantics, job names, public-safe setup failure attribution | Terminal-Bench/ALE/AgentIssue behavior |
+| `loopx.benchmark_adapters.terminal_bench` | Terminal-Bench public constants, runner modes, CLI-bridge/access-packet labels, private-runner launch/materialization/readiness helpers, Harbor result reducers, timeout and compact validation policy constants | ALE/SkillsBench/AgentIssue behavior |
+| `loopx.benchmark_adapters.agents_last_exam` | ALE public constants, case-state path, local runner/source readiness, launch-packet, validation-gate, CUA/Codex-route, task-material and result-report helpers | Terminal-Bench/SkillsBench/AgentIssue behavior or raw ALE task material |
+| `loopx.benchmark_adapters.agentissue` | AgentIssue-Bench runner packets, synthetic staging, execution gates, compact result reducer | shared artifact boundary or unrelated benchmark policy |
+| `loopx.benchmark` | backward-compatible public imports plus legacy functions not yet extracted | new benchmark-specific code when a narrower adapter module exists |
 
 New benchmark code should choose one of these homes before adding functions. If
 a helper is useful across benchmarks, put it in `benchmark_core`. If it names a

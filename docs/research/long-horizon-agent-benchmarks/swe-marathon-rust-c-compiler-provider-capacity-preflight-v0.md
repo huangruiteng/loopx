@@ -37,7 +37,7 @@ docker context ls
 docker info --format 'ServerVersion={{.ServerVersion}} CPUs={{.NCPU}} MemTotal={{.MemTotal}} DockerRootDir={{.DockerRootDir}} OperatingSystem={{.OperatingSystem}}'
 docker system df
 colima list
-colima status --profile goal-harness-bench --json
+colima status --profile loopx-bench --json
 df -g .
 ```
 
@@ -47,8 +47,8 @@ Observed compact results:
 | --- | --- | --- |
 | Docker CLI | present | pass |
 | Docker daemon | server `28.4.0` reachable | pass |
-| Docker context | `colima-goal-harness-bench` | pass |
-| Colima profile | `goal-harness-bench` running | pass |
+| Docker context | `colima-loopx-bench` | pass |
+| Colima profile | `loopx-bench` running | pass |
 | Runtime | Docker on Colima / macOS Virtualization.Framework | pass |
 | CPU capacity | 4 CPUs | pass, exactly at requirement |
 | Memory capacity | 8589934592 bytes / 8 GiB | fail, below 16 GiB requirement |
@@ -74,7 +74,7 @@ explicitly approved.
 Option A: keep SWE-Marathon as the active lane, but require an owner-approved
 local runtime adjustment before any run:
 
-- increase the `goal-harness-bench` Colima profile memory to at least 16 GiB,
+- increase the `loopx-bench` Colima profile memory to at least 16 GiB,
   with a safer target of 20 to 24 GiB if the machine can spare it;
 - ensure at least 25 to 30 GiB host free space before task image build/start;
 - optionally approve Docker image cleanup only after confirming the inactive

@@ -8,13 +8,13 @@ not a Codex invocation, and not leaderboard evidence.
 
 ## Purpose
 
-The readiness fixture proves Goal Harness can prepare the evidence shape for a
+The readiness fixture proves LoopX can prepare the evidence shape for a
 future Terminal-Bench official pilot without crossing the benchmark boundary.
 It should emit a compact `benchmark_result_v0` comparison shell and a
 control-plane evidence checklist for two scenarios:
 
 - `bare_codex_cli_readiness`
-- `passive_goal_harness_wrapper_readiness`
+- `passive_loopx_wrapper_readiness`
 
 Both scenarios must keep `official_task_score.kind = not_run`. The fixture may
 show which fields would be collected, but it must not claim task success,
@@ -29,8 +29,8 @@ Every readiness shell should preserve:
 | `schema_version` | `benchmark_result_v0`. |
 | `decision_id` | `terminal_bench_official_pilot_decision_packet_v0`. |
 | `benchmark_id` | `terminal-bench@2.0`. |
-| `scenario_id` | `bare_codex_cli_readiness` or `passive_goal_harness_wrapper_readiness`. |
-| `harness_identity` | `none` or `goal_harness_passive_wrapper`. |
+| `scenario_id` | `bare_codex_cli_readiness` or `passive_loopx_wrapper_readiness`. |
+| `harness_identity` | `none` or `loopx_passive_wrapper`. |
 | `worker_surface` | Codex CLI official/custom-agent boundary under review. |
 | `terminal_state` | `readiness_only`. |
 | `official_task_score` | `not_run`; no score value. |
@@ -47,7 +47,7 @@ The fixture passes only when it proves the following fields are represented:
 - task id or split placeholder;
 - agent command boundary;
 - official score fields;
-- Goal Harness control-plane score fields;
+- LoopX control-plane score fields;
 - pairing rule for `benchmark_run_v0`;
 - public artifact manifest;
 - side-effect and forbidden-surface audit;

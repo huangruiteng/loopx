@@ -1,6 +1,6 @@
 # Public / Private Boundary
 
-Goal Harness is designed to be public, but most useful goal evidence is not.
+LoopX is designed to be public, but most useful goal evidence is not.
 
 ## Public
 
@@ -54,7 +54,7 @@ Run summaries are publishable only after sanitization.
 
 ## Practical Rule
 
-The public repo should answer: "How does a goal harness work?"
+The public repo should answer: "How does a loopx work?"
 
 The project repo should answer: "What is this specific goal currently doing?"
 
@@ -70,8 +70,8 @@ If a runtime-only goal is obsolete, archive its directory rather than copying
 private run payloads into public notes:
 
 ```bash
-goal-harness archive-runtime --goal-id old-experiment-goal
-goal-harness archive-runtime --goal-id old-experiment-goal --execute
+loopx archive-runtime --goal-id old-experiment-goal
+loopx archive-runtime --goal-id old-experiment-goal --execute
 ```
 
 The first command is a dry-run. The second moves the local runtime directory
@@ -80,7 +80,7 @@ payload.
 
 ## Private-Safe Pilot Checklist
 
-Before a private project becomes a Goal Harness pilot, define this boundary in
+Before a private project becomes a LoopX pilot, define this boundary in
 the project-local active state or registry. Do this before reading private
 evidence, launching adapters, or publishing a public fixture.
 

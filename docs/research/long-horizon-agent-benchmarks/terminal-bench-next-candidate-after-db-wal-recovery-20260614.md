@@ -13,7 +13,7 @@ values. It does not upload, share, submit, or make leaderboard claims.
 The compact paired run for `db-wal-recovery` closed with:
 
 - Codex goal-mode baseline official score `1.0`;
-- Codex goal-harness treatment official score `0.0`;
+- Codex loopx treatment official score `0.0`;
 - compact-only verifier-attribution review;
 - treatment caveat `verifier_platform_probe_failure`;
 - no same-task treatment claim;
@@ -21,7 +21,7 @@ The compact paired run for `db-wal-recovery` closed with:
 - routing action `select_new_material_ready_case_no_score_failure`.
 
 Therefore the next action should not repeat `db-wal-recovery`, should not claim
-Goal Harness lift from it, and should select a different material-ready case.
+LoopX lift from it, and should select a different material-ready case.
 
 ## Candidate Audit
 
@@ -53,9 +53,9 @@ Rationale:
 - It is material-ready for `terminal-bench@2.0` under the current strict
   preflight guard.
 - It preserves the corrected baseline definition: Codex CLI goal mode versus
-  `codex-goal-harness`, not bare Codex versus a harnessed worker.
+  `codex-loopx`, not bare Codex versus a harnessed worker.
 - It is better suited than already-completed candidates for testing whether
-  Goal Harness improves launch discipline, compact blocker capture, and
+  LoopX improves launch discipline, compact blocker capture, and
   recovery from setup-heavy benchmark failures.
 
 ## Strict Preflight Summary
@@ -65,10 +65,10 @@ For `terminal-bench@2.0` / `build-cython-ext`:
 | Arm | dry-run ok | task material required | no upload boundary | submit eligible | auth values read | real runner invoked | real Codex invoked | worker bridge |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Codex goal-mode baseline | true | true | true | false | false | false | false | absent |
-| Codex goal-harness treatment | true | true | true | false | false | false | false | requested; minimum worker calls `1` |
+| Codex loopx treatment | true | true | true | false | false | false | false | requested; minimum worker calls `1` |
 
 Both arms reported `ready_for_private_managed_no_upload_pilot_review`. The
-preflight used the Goal Harness Terminal-Bench preflight guard with
+preflight used the LoopX Terminal-Bench preflight guard with
 `--require-task-material-ready`; it records booleans and task ids only.
 
 ## Next Allowed Action
@@ -76,9 +76,9 @@ preflight used the Goal Harness Terminal-Bench preflight guard with
 Run exactly one private no-upload paired pilot for `terminal-bench@2.0` /
 `build-cython-ext`:
 
-1. run the Codex goal-mode baseline without a Goal Harness access packet or
+1. run the Codex goal-mode baseline without a LoopX access packet or
    worker bridge;
-2. run the `codex-goal-harness` treatment with the active worker bridge;
+2. run the `codex-loopx` treatment with the active worker bridge;
 3. ingest only compact Harbor results after both arms close or emit compact
    blockers;
 4. run `benchmark_verifier_attribution_review_v0` before any same-task repeat

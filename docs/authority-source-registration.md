@@ -1,41 +1,41 @@
 # Authority Source Registration
 
-`goal-harness register-authority-source` records one local authority or material
+`loopx register-authority-source` records one local authority or material
 source for a goal without storing the raw source reference. It is meant for
 internal docs, private repositories, owner-review packets, and validation
 snapshots where the project agent needs a public-safe projection, not the raw
 link.
 
 The command writes the selected source registry, usually the ignored
-`.goal-harness/registry.json`, and may sync a compact projection into the shared
+`.loopx/registry.json`, and may sync a compact projection into the shared
 global registry. Public repository files should keep examples and contracts
 only.
 
 ## Registry Boundary Classes
 
-Goal Harness exposes a registry boundary classifier:
+LoopX exposes a registry boundary classifier:
 
 ```bash
-goal-harness registry-boundary --path .goal-harness/registry.json --require-gitignored
+loopx registry-boundary --path .loopx/registry.json --require-gitignored
 ```
 
 Use it before committing registry-related work. It separates four surfaces:
 
 | Boundary | Storage | GitHub policy |
 | --- | --- | --- |
-| project-local private registry | `.goal-harness/registry.json` in one repo | must be ignored; do not push |
+| project-local private registry | `.loopx/registry.json` in one repo | must be ignored; do not push |
 | shared global-local registry | `<runtime-root>/registry.global.json` | local control plane only; do not push |
 | public-safe projection | generated compact counts/roles with no raw refs | ignored by default; do not push runtime registry files to GitHub |
 | public example fixture | hand-written examples under `examples/` | may be tracked only when it is a fixture/contract, not live state |
 
 The classifier reports `classification`, `should_be_gitignored`,
 `github_push_allowed`, `private_marker_count`, git tracked/ignored state, and
-any boundary risks. `goal-harness check` also reports the active registry
+any boundary risks. `loopx check` also reports the active registry
 boundary so publish-time scans can catch a local registry that accidentally
 became tracked.
 
-This distinction is intentional: Goal Harness provides registry capability, and
-Goal Harness should use that capability to manage its own source authority, but
+This distinction is intentional: LoopX provides registry capability, and
+LoopX should use that capability to manage its own source authority, but
 runtime registry files are still state, not public repository artifacts. Public
 docs may describe schemas, examples, and compact counts; raw local registries,
 global-local registries, and generated public-safe projections stay ignored
@@ -44,7 +44,7 @@ unless they are explicitly authored as example fixtures.
 ## Minimal Command
 
 ```bash
-goal-harness register-authority-source \
+loopx register-authority-source \
   --goal-id example-goal \
   --source-id product-vision \
   --source-ref "https://example.invalid/private/doc" \
@@ -92,11 +92,11 @@ the existing authority-registry projection.
 
 ## Project-Local Doc Registry Mechanism
 
-Doc registry is a general Goal Harness mechanism, not an agent-harness-specific
+Doc registry is a general LoopX mechanism, not an agent-harness-specific
 import path. Each managed project should own its authority surface in its own
 project-local registry, usually `docs/meta/DOC_REGISTRY.yaml` plus the goal's
-ignored `.goal-harness/registry.json`. For connected projects without a tracked
-`DOC_REGISTRY.yaml`, the ignored `.goal-harness/registry.json` is still the
+ignored `.loopx/registry.json`. For connected projects without a tracked
+`DOC_REGISTRY.yaml`, the ignored `.loopx/registry.json` is still the
 project-local doc registry surface through `authority_registry.topic_authority`
 and `authority_registry.project_materials`; project agents should not downgrade
 new durable materials to memory-only notes.
@@ -106,11 +106,11 @@ paper, owner packet, migration report, or external material, the default order
 is:
 
 1. Identify the target project and goal first. Do not register material into
-   `goal-harness-meta` just because the current worker found it.
+   `loopx-meta` just because the current worker found it.
 2. If the material belongs to that project, add or update the project's own
    doc registry topic/source entry first.
 3. Register the compact material contract into that same project's
-   `.goal-harness/registry.json` with `register-authority-source`, or import a
+   `.loopx/registry.json` with `register-authority-source`, or import a
    redacted summary of another project's doc registry with
    `import-doc-registry-authority`.
 4. Sync only compact counts and redacted hashes into the shared global registry;
@@ -136,11 +136,11 @@ any task that introduces a durable authority source or research material that
 future agents may need to route work, validate decisions, or resolve conflicts.
 Register that material in the target project's own doc registry before relying
 on chat memory. A user's "remember this design doc" request inside a connected
-project is a doc-registry trigger even when it does not mention Goal Harness.
+project is a doc-registry trigger even when it does not mention LoopX.
 
 The minimal executor sequence is:
 
-1. Resolve the target `goal_id` and project registry from Goal Harness state.
+1. Resolve the target `goal_id` and project registry from LoopX state.
 2. Classify the material as owned by the current project, another project, or
    out of scope.
 3. For current-project material, update the project-local doc registry first,
@@ -168,7 +168,7 @@ todo or blocker that names the missing authority decision.
 
 ## Importing A Doc Registry
 
-`goal-harness import-doc-registry-authority` imports the authority contract from
+`loopx import-doc-registry-authority` imports the authority contract from
 a DOC_REGISTRY-style YAML file without copying the raw document body or the raw
 registry path into the stored payload. It reads only:
 
@@ -184,7 +184,7 @@ small samples for local operator orientation. Shared global sync keeps the usual
 compact authority/material counts.
 
 ```bash
-goal-harness import-doc-registry-authority \
+loopx import-doc-registry-authority \
   --goal-id example-goal \
   --source-id external-doc-registry \
   --doc-registry-path ../external-project/docs/meta/DOC_REGISTRY.yaml \

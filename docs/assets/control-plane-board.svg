@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
-  <title id="title">Goal Harness control-plane board</title>
+  <title id="title">LoopX control-plane board</title>
   <desc id="desc">A public-safe synthetic board showing a user gate, shared goal state, claimed todo, safe fallback, run history, quota guard, and evidence writeback.</desc>
   <defs>
     <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">

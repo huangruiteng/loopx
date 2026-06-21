@@ -25,12 +25,12 @@ FAILED_AUTONOMOUS_MODES = [
     {
         "mode": "hardened_codex_baseline",
         "official_task_score": 0.0,
-        "goal_harness_cli_calls": 0,
+        "loopx_cli_calls": 0,
     },
     {
-        "mode": "codex_goal_harness",
+        "mode": "codex_loopx",
         "official_task_score": 0.0,
-        "goal_harness_cli_calls": 2,
+        "loopx_cli_calls": 2,
     },
 ]
 
@@ -38,7 +38,7 @@ ALLOWED_VISIBILITY = [
     "public_task_statement",
     "compact_failure_summary",
     "worker_visible_validation_output",
-    "public_safe_goal_harness_state_summary",
+    "public_safe_loopx_state_summary",
 ]
 
 NO_ORACLE_AUDIT_KEYS = [
@@ -116,7 +116,7 @@ def assisted_run(plan: dict[str, Any]) -> dict[str, Any]:
         "task_id": plan["task_id"],
         "mode": "assisted_operator_simulator",
         "worker_identity": {
-            "surface": "codex_goal_harness_fixture",
+            "surface": "codex_loopx_fixture",
             "model_family": "deterministic_shim",
         },
         "simulator_identity": {

@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import parse_active_state_todos  # noqa: E402
+from loopx.status import parse_active_state_todos  # noqa: E402
 
 
 GOAL_ID = "todo-archive-completed-goal"
@@ -45,7 +45,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime = root / "runtime"
     state_file = ".codex/goals/todo-archive-completed-goal/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(state_text(), encoding="utf-8")
     registry_path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,7 +84,7 @@ def run_cli(registry_path: Path, runtime: Path, *args: str, check: bool = True) 
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -102,7 +102,7 @@ def run_cli(registry_path: Path, runtime: Path, *args: str, check: bool = True) 
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-todo-archive-completed-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-todo-archive-completed-") as tmp:
         registry_path, runtime, state_path = write_fixture(Path(tmp))
         original = state_path.read_text(encoding="utf-8")
         parsed = parse_active_state_todos(original)

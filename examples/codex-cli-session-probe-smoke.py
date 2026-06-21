@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.codex_cli_probe import (  # noqa: E402
+from loopx.codex_cli_probe import (  # noqa: E402
     build_codex_cli_visible_driver_plan,
     classify_codex_cli_session_surface,
 )
@@ -79,7 +79,7 @@ Resume a previous interactive session.
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -108,7 +108,7 @@ def assert_fallback_contract(payload: dict[str, object]) -> None:
     assert boundary["reads_credentials"] is False, payload
     assert boundary["reads_session_files"] is False, payload
     assert boundary["mutates_codex_session"] is False, payload
-    assert boundary["spends_goal_harness_quota"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
 
 
 def main() -> int:
@@ -125,7 +125,7 @@ def main() -> int:
         project=Path("/tmp/public-codex-cli-project"),
         goal_id="public-codex-cli-goal",
         agent_id="codex-side-bypass",
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         codex_bin="codex",
         probe_payload=remote_payload,
     )
@@ -135,7 +135,7 @@ def main() -> int:
     assert remote_plan["boundary"]["reads_raw_transcripts"] is False, remote_plan
     assert remote_plan["boundary"]["reads_session_files"] is False, remote_plan
     assert remote_plan["boundary"]["mutates_codex_session"] is False, remote_plan
-    assert remote_plan["boundary"]["spends_goal_harness_quota"] is False, remote_plan
+    assert remote_plan["boundary"]["spends_loopx_quota"] is False, remote_plan
     assert "resume [PROMPT]" in " ".join(remote_plan["driver_steps"]), remote_plan
     assert remote_plan["commands"]["explicit_headless_fallback"] is None, remote_plan
     assert "headless codex exec is disabled" in remote_plan["commands"]["headless_fallback_disabled"], remote_plan
@@ -147,14 +147,14 @@ def main() -> int:
         project=Path("/tmp/public-codex-cli-project"),
         goal_id="public-codex-cli-goal",
         agent_id="codex-side-bypass",
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         codex_bin="codex",
         probe_payload=attach_payload,
     )
     assert attach_plan["driver_mode"] == "session_attached_visible_turn", attach_plan
     assert "visible attach primitive" in attach_plan["next_step"], attach_plan
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-probe-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-probe-") as tmp:
         fixture = Path(tmp) / "codex-help.json"
         fixture.write_text(json.dumps({"command_outputs": HELP_FIXTURE}))
         cli_json = json.loads(

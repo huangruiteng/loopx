@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.operator_gate import OPERATOR_GATE_RESUME_CONTRACT_VERSION, record_operator_gate  # noqa: E402
+from loopx.operator_gate import OPERATOR_GATE_RESUME_CONTRACT_VERSION, record_operator_gate  # noqa: E402
 
 
 def write_registry(root: Path) -> Path:
@@ -27,7 +27,7 @@ def write_registry(root: Path) -> Path:
         "# Checkpointed Gate Goal\n",
         encoding="utf-8",
     )
-    registry = project / ".goal-harness" / "registry.json"
+    registry = project / ".loopx" / "registry.json"
     registry.parent.mkdir(parents=True, exist_ok=True)
     registry.write_text(
         json.dumps(
@@ -55,7 +55,7 @@ def write_registry(root: Path) -> Path:
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-operator-gate-resume-contract-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-operator-gate-resume-contract-") as tmp:
         root = Path(tmp)
         registry = write_registry(root)
         payload = record_operator_gate(

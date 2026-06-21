@@ -28,13 +28,13 @@ engineering benchmark and should not be treated as Agents' Last Exam evidence.
 
 The next benchmark lane should optimize for:
 
-- low enough frontier-agent success that Goal Harness has room to matter;
+- low enough frontier-agent success that LoopX has room to matter;
 - task horizons long enough to stress stale state, restartability,
   self-verification, and premature stopping;
 - public, reproducible local or Docker execution before paid cloud;
 - objective scoring or replayable graders;
 - compatibility with Codex CLI or a straightforward custom-agent wrapper;
-- public-safe artifacts that can be written into Goal Harness state without
+- public-safe artifacts that can be written into LoopX state without
   copying hidden refs, raw trajectories, private data, or credentials.
 
 Quota rule: do not spend scarce benchmark quota on aggregate runs. Spend only
@@ -52,7 +52,7 @@ not yet give a clean Codex CLI baseline.
 | Candidate | Direct Codex CLI score? | Public evidence to use |
 | --- | --- | --- |
 | SWE-Marathon | Yes. | Public score trackers synced from the official leaderboard report `Codex CLI + GPT-5.5` at `12.0%` pass@1, while the paper says no evaluated configuration exceeds 30% pass@1. |
-| Terminal-Bench 2.0 | Yes, but high on aggregate. | Official leaderboard shows `Codex CLI + GPT-5.5` at `82.2% +/- 2.2`, so only hand-picked hard/long cases are useful for Goal Harness. |
+| Terminal-Bench 2.0 | Yes, but high on aggregate. | Official leaderboard shows `Codex CLI + GPT-5.5` at `82.2% +/- 2.2`, so only hand-picked hard/long cases are useful for LoopX. |
 | AgentIssue-Bench | No direct Codex CLI score found in the paper scan. | Current paper / leaderboard evidence evaluates Agentless, AutoCodeRover, and SWE-agent with GPT-4o / Claude-3.5 Sonnet; correct resolution is only `0.67%` to `4.67%`. Treat as domain-relevant but not Codex-proven. |
 | PerfBench | No direct Codex CLI score found in the paper scan. | Paper evaluates OpenHands and OpenHands-Perf-Agent with GPT-4.1 / Claude Sonnet 4; success is about `3%` baseline and `20%` with performance-aware tooling. |
 | SWE-Bench Pro public | Not cleanly Codex CLI in the official Scale page. | The public page reports resolve-rate methodology and model leaderboard data; third-party summaries often mention GPT/Codex variants, but this should be treated as model/harness-specific until verified from the source row. |
@@ -61,18 +61,18 @@ not yet give a clean Codex CLI baseline.
 
 ## Recommended Shortlist
 
-| Rank | Candidate | Public difficulty signal | Setup posture | Goal Harness leverage | Recommendation |
+| Rank | Candidate | Public difficulty signal | Setup posture | LoopX leverage | Recommendation |
 | --- | --- | --- | --- | --- | --- |
 | 1 | SWE-Marathon | 20 ultra-long software-engineering tasks; current agent configs remain below reliable completion, with reported pass@1 below 30%. | New; needs runner and wrapper audit. | Directly targets self-verification, recovery, premature termination, multi-stage objectives, and large-codebase continuation. | First new setup-readiness scan. |
-| 2 | AgentIssue-Bench | 50 reproducible agent-system issue tasks; current reported SE-agent correct resolution rates are only 0.67%-4.67%, but no direct Codex CLI score found yet. | Local/Docker in shape, but official helpers need a safety wrapper before shared-host use. | Very close to Goal Harness itself: memory, tool, provider, workflow, and agent-runtime bugs. | Second scan should produce a one-tag no-run launch packet before any pull/run. |
+| 2 | AgentIssue-Bench | 50 reproducible agent-system issue tasks; current reported SE-agent correct resolution rates are only 0.67%-4.67%, but no direct Codex CLI score found yet. | Local/Docker in shape, but official helpers need a safety wrapper before shared-host use. | Very close to LoopX itself: memory, tool, provider, workflow, and agent-runtime bugs. | Second scan should produce a one-tag no-run launch packet before any pull/run. |
 | 3 | PerfBench | 81 real .NET performance bug tasks; baseline OpenHands ~3%, performance-specialized agent ~20%. | Likely local/Docker with .NET and benchmarking costs. | Strong validation loop: benchmark design, regression avoidance, output processing, performance attribution. | Strong pilot candidate after setup cost check. |
 | 4 | SWE-Bench Pro public | 1,865 tasks across 41 repos; public leaderboard notes top models around 23% on public set versus 70%+ on SWE-bench Verified. | Docker-based environments; public dataset and trajectories. | Long-horizon professional SWE, contamination-resistant, clear fail-to-pass/pass-to-pass scoring. | Good larger lane after small setup probe. |
 | 5 | MLE-bench | 75 Kaggle competitions; best reported o1-preview + AIDE gets bronze-level in 16.9% of competitions. | Data and compute heavier, but not GCP-specific by nature. | Long ML engineering loops, experiment tracking, validation discipline. | Keep as medium-cost ML lane; start with a tiny no-leaderboard subset only. |
 | 6 | TheAgentCompany | Self-contained software-company environment; competitive agents complete about 24%-30% of tasks. | Local/cloud servers; browser/code/program/coworker stack. | Strong product fit for durable workplace state, but integration surface is heavier than CLI/SWE lanes. | Third-phase cross-app lane. |
 | 7 | APEX-Agents | 480 cross-application professional-services tasks; paper reports 24.0% top Pass@1, live leaderboard currently shows stronger newer models but still below saturation. | Open data/code/Archipelago; likely heavier app/workspace setup. | Excellent professional-work target, less directly Codex-CLI-first. | Watch and scan after SWE lanes. |
-| 8 | Terminal-Bench hard subset | Terminal-Bench 2.0 has 89 tasks, but current full-board Codex CLI/GPT-5.5 is already above 80%. | Already partially integrated in Goal Harness. | Still useful only on selected hard/long cases where control-plane failures show up. | Continue only selected hard cases; avoid full aggregate quota. |
+| 8 | Terminal-Bench hard subset | Terminal-Bench 2.0 has 89 tasks, but current full-board Codex CLI/GPT-5.5 is already above 80%. | Already partially integrated in LoopX. | Still useful only on selected hard/long cases where control-plane failures show up. | Continue only selected hard cases; avoid full aggregate quota. |
 | 9 | AppWorld | 750 tasks over 9 apps / 457 APIs; GPT-4o reported ~49% normal, ~30% challenge. | Local synthetic app/API world. | Good deterministic simulator track, but less obviously low-success for current Codex. | Secondary simulator/control-plane lane. |
-| 10 | OSWorld / OS-Marathon | OSWorld originally low, but modern computer-use agents may be much stronger; OS-Marathon reports 0% on some repetitive long-horizon settings. | GUI/desktop setup; less Codex-CLI-native. | Useful after Goal Harness has a computer-use/operator-simulator story. | Later, not first. |
+| 10 | OSWorld / OS-Marathon | OSWorld originally low, but modern computer-use agents may be much stronger; OS-Marathon reports 0% on some repetitive long-horizon settings. | GUI/desktop setup; less Codex-CLI-native. | Useful after LoopX has a computer-use/operator-simulator story. | Later, not first. |
 
 ## Why These Beat ALE For The Next Immediate Slice
 
@@ -104,7 +104,7 @@ batch:
 2. AgentIssue-Bench scan:
    - verify task environments and public tests;
    - check whether tasks are small enough for a first local pilot;
-   - record issue categories that map to Goal Harness product weaknesses.
+   - record issue categories that map to LoopX product weaknesses.
 3. PerfBench scan:
    - verify .NET toolchain/Docker feasibility on this host;
    - identify benchmark-output schema and no-regression checks;
@@ -148,5 +148,5 @@ benchmark quota slot on a paired run.
 ## Claim Boundary
 
 This scan ranks candidate lanes, not benchmark performance. It should not be
-used to claim Goal Harness improves any benchmark. The next evidence-producing
+used to claim LoopX improves any benchmark. The next evidence-producing
 step is setup-readiness, not a scored run.

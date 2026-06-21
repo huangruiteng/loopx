@@ -25,7 +25,7 @@ The `pytorch-model-recovery` same-task repeat is blocked:
 Therefore the next action should not repeat `pytorch-model-recovery` or return
 to an exhausted earlier case. The allowed P0 lane is to select a fresh
 material-ready official Terminal-Bench case with the current paired baseline:
-Codex goal mode versus `codex-goal-harness`.
+Codex goal mode versus `codex-loopx`.
 
 ## Self-Repair Finding
 
@@ -34,7 +34,7 @@ Reject the stale `db-wal-recovery` open todo from the active state.
 Rationale:
 
 - `db-wal-recovery` already has a current Codex goal-mode versus
-  `codex-goal-harness` paired compact closeout;
+  `codex-loopx` paired compact closeout;
 - the compact review recorded baseline official score `1.0`,
   treatment official score `0.0`, and routed away from same-task repeat;
 - a later public-safe packet selected `build-cython-ext` after that review, so
@@ -64,7 +64,7 @@ Consumed or blocked current-protocol cases include:
 Two fresh candidates were strict-preflighted with the current paired baseline
 shape:
 
-| Candidate | Codex goal-mode baseline | Codex goal-harness treatment | Notes |
+| Candidate | Codex goal-mode baseline | Codex loopx treatment | Notes |
 | --- | --- | --- | --- |
 | `make-doom-for-mips` | ready | ready | System/build task likely to expose setup, compilation, and long-horizon debugging failure modes. |
 | `regex-log` | ready | ready | Material-ready, but likely narrower and less diagnostic than a system/build case. |
@@ -88,9 +88,9 @@ Rationale:
 - no current paired closeout was found in the active-state and private-run
   directory audit;
 - its system/build shape is more likely than `regex-log` to expose failures
-  Goal Harness should help recover or classify;
+  LoopX should help recover or classify;
 - it preserves the corrected baseline definition: Codex CLI goal mode versus
-  `codex-goal-harness`, not bare Codex or an older hardened baseline.
+  `codex-loopx`, not bare Codex or an older hardened baseline.
 
 ## Strict Preflight Summary
 
@@ -99,12 +99,12 @@ For `terminal-bench@2.0` / `make-doom-for-mips`:
 | Arm | ready | task material | no upload | submit eligible | auth values recorded | raw paths recorded | worker bridge |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Codex goal-mode baseline | true | ready | true | false | false | false | false |
-| Codex goal-harness treatment | true | ready | true | false | false | false | true |
+| Codex loopx treatment | true | ready | true | false | false | false | true |
 
 The baseline preflight reported
 `ready_for_private_managed_no_upload_pilot_review` with
-`goal_harness_access_packet_absent=true` and
-`goal_harness_cli_bridge_absent=true`.
+`loopx_access_packet_absent=true` and
+`loopx_cli_bridge_absent=true`.
 
 The treatment preflight reported the active-user assisted treatment contract
 with the active worker bridge requested. Its expected pre-run blocker is
@@ -116,9 +116,9 @@ treatment worker starts and observes a post-start simulator message.
 Run exactly one private no-upload paired pilot for `terminal-bench@2.0` /
 `make-doom-for-mips`:
 
-1. run the Codex goal-mode baseline with no Goal Harness access packet or
+1. run the Codex goal-mode baseline with no LoopX access packet or
    worker bridge;
-2. run the `codex-goal-harness` treatment with the active worker bridge and
+2. run the `codex-loopx` treatment with the active worker bridge and
    active-user assisted treatment path;
 3. ingest only compact Harbor results after both arms close or emit compact
    blockers;

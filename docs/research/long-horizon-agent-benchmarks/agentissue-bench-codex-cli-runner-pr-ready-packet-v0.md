@@ -63,13 +63,13 @@ contract -> flow plan -> dry-run wrapper -> synthetic staging -> execution gate 
 The CLI surfaces are:
 
 ```text
-goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239
-goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --synthetic-staging-root <private-root>
-goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --execution-gate-root <private-root>
-goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --first-run-handoff-root <private-root>
-goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --workflow-check-root <private-root>
-goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --run-gate-root <private-root>
-goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239 --target-runner-handoff-root <private-root>
+loopx benchmark agentissue-codex-runner-flow --tag lagent_239
+loopx benchmark agentissue-codex-runner-flow --tag lagent_239 --synthetic-staging-root <private-root>
+loopx benchmark agentissue-codex-runner-flow --tag lagent_239 --execution-gate-root <private-root>
+loopx benchmark agentissue-codex-runner-flow --tag lagent_239 --first-run-handoff-root <private-root>
+loopx benchmark agentissue-codex-runner-flow --tag lagent_239 --workflow-check-root <private-root>
+loopx benchmark agentissue-codex-runner-flow --tag lagent_239 --run-gate-root <private-root>
+loopx benchmark agentissue-codex-runner-flow --tag lagent_239 --target-runner-handoff-root <private-root>
 ```
 
 All root options are mutually exclusive. They materialize public-safe packet
@@ -94,12 +94,12 @@ this packet.
 ```bash
 python3 examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py
 python3 -m py_compile \
-  goal_harness/benchmark.py \
-  goal_harness/cli.py \
+  loopx/benchmark.py \
+  loopx/cli.py \
   examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py
-goal-harness check \
-  --scan-path goal_harness/benchmark.py \
-  --scan-path goal_harness/cli.py \
+loopx check \
+  --scan-path loopx/benchmark.py \
+  --scan-path loopx/cli.py \
   --scan-path examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

@@ -57,7 +57,7 @@ The contract supports two provider surfaces:
    boundaries are all ready.
 2. `remote_gpu_route_b_noauth_helper`: allowed only for no-auth helper/provider
    plumbing. It may not receive local Codex auth, API keys, shell history,
-   local Goal Harness runtime, private task material, or raw output.
+   local LoopX runtime, private task material, or raw output.
 
 Provider selection fails closed when:
 
@@ -108,7 +108,7 @@ Targeted validation:
 ```bash
 python3 examples/swe-bench-pro-launch-wrapper-contract-smoke.py
 python3 -m py_compile examples/swe-bench-pro-launch-wrapper-contract-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/swe-bench-pro-launch-wrapper-contract-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/swe-bench-pro-launch-wrapper-contract-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

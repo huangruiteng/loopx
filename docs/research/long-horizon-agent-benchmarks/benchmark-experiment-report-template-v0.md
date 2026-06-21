@@ -2,9 +2,9 @@
 
 Checked at: 2026-06-07T23:55:00+08:00.
 
-This template is the paper-ready reporting surface for Goal Harness
+This template is the paper-ready reporting surface for LoopX
 long-horizon benchmark work. It separates official benchmark evidence from
-Goal Harness control-plane evidence and assisted operator-simulator evidence so
+LoopX control-plane evidence and assisted operator-simulator evidence so
 future reports do not overclaim leaderboard uplift from local or assisted
 fixtures.
 
@@ -13,7 +13,7 @@ fixtures.
 The report should answer three questions without mixing evidence layers:
 
 1. What did the benchmark's native scoring say?
-2. What did Goal Harness add as a control plane around the same worker/task?
+2. What did LoopX add as a control plane around the same worker/task?
 3. What changed only when an assisted operator-simulator overlay was allowed?
 
 The local report schema is `benchmark_experiment_report_v0`. It can summarize
@@ -50,7 +50,7 @@ Every report should include these sections in this order:
 
 ## Treatment Selection Gate
 
-The baseline for Goal Harness benchmark comparisons is Codex CLI goal mode, not
+The baseline for LoopX benchmark comparisons is Codex CLI goal mode, not
 an unstructured bare prompt. Before spending a treatment run, the report chain
 should contain a compact `benchmark_baseline_failure_gate_v0` projection inside
 `benchmark_comparison_v0` / `benchmark_comparison_decision_note_v0`.

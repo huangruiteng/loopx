@@ -184,7 +184,7 @@ Targeted validation:
 ```bash
 python3 examples/swe-bench-pro-one-instance-execution-gate-smoke.py
 python3 -m py_compile examples/swe-bench-pro-one-instance-execution-gate-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/swe-bench-pro-one-instance-execution-gate-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/swe-bench-pro-one-instance-execution-gate-packet-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

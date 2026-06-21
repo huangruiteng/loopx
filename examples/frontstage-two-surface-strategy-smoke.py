@@ -37,7 +37,7 @@ def main() -> int:
         "`/frontstage` without `mode=ops` belongs to the public showcase surface",
         "`/frontstage?mode=ops&statusUrl=...` belongs to local ops inspection",
         "`docs/showcases/showcase-catalog.json`",
-        "`goal-harness serve-status --global-registry`",
+        "`loopx serve-status --global-registry`",
         "The public showcase surface must not read",
         "The ops surface should still default to read-only",
         "Public visual experiments must not depend on live state",
@@ -82,7 +82,7 @@ def main() -> int:
     ]:
         assert_contains(compact_showcase_note, public_source_contract)
 
-    route_row = "| Public showcase and homepage | Explain Goal Harness"
+    route_row = "| Public showcase and homepage | Explain LoopX"
     ops_row = "| Real ops control plane | Help the operator inspect"
     assert_contains(compact_strategy, compact(route_row))
     assert_contains(compact_strategy, compact(ops_row))

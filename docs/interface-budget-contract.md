@@ -1,6 +1,6 @@
 # Interface Budget Contract
 
-Goal Harness keeps hot-path worker surfaces small enough that a short heartbeat
+LoopX keeps hot-path worker surfaces small enough that a short heartbeat
 can route work without reading raw run history or long chat context. This is a
 restraint contract, not an encouragement to add more state surfaces. Each
 surface below has a single owner, a named consumer action, a cold-path fallback,
@@ -43,7 +43,7 @@ Cadence contract:
 
 The same smoke also emits and validates an `interface_budget_cadence` summary
 for clean drift checks. A drift-check run may record that summary in run
-history; `goal-harness status` projects it under
+history; `loopx status` projects it under
 `attention_queue.items[].project_asset.interface_budget_cadence`, and
 `quota should-run` mirrors the selected goal summary at top level. This lets a
 short heartbeat quiet-skip a still-fresh clean check without losing the ongoing

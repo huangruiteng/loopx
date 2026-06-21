@@ -19,7 +19,7 @@ const staleFixtureName = "status.ops-decision-freshness-stale.json";
 const oldContractFixturePath = resolve(publicDir, oldContractFixtureName);
 const emptyFixturePath = resolve(publicDir, emptyFixtureName);
 const staleFixturePath = resolve(publicDir, staleFixtureName);
-const port = Number(process.env.GOAL_HARNESS_DASHBOARD_OPS_FRESHNESS_SMOKE_PORT ?? "5195");
+const port = Number(process.env.LOOPX_DASHBOARD_OPS_FRESHNESS_SMOKE_PORT ?? "5195");
 
 const quotaEligible = {
   compute: 1,
@@ -41,7 +41,7 @@ function baseStatusFixture(decisionFreshnessSummary) {
     status_contract: {
       schema_version: 2,
       minimum_dashboard_schema_version: 2,
-      producer: "goal-harness status",
+      producer: "loopx status",
       reload_hint: "scripts/macos-dashboard-launchagent.sh restart",
     },
     contract: {
@@ -74,7 +74,7 @@ function baseStatusFixture(decisionFreshnessSummary) {
       autonomous_backlog_candidates: null,
       items: [
         {
-          goal_id: "goal-harness-meta",
+          goal_id: "loopx-meta",
           status: "decision_freshness_ops_panel_fixture",
           waiting_on: "codex",
           severity: "action",
@@ -125,8 +125,8 @@ function baseStatusFixture(decisionFreshnessSummary) {
       run_count: 1,
       goals: [
         {
-          id: "goal-harness-meta",
-          domain: "goal-harness-fixture",
+          id: "loopx-meta",
+          domain: "loopx-fixture",
           status: "decision_freshness_ops_panel_fixture",
           lifecycle_phase: "fixture",
           lifecycle_flags: ["fixture"],
@@ -140,7 +140,7 @@ function baseStatusFixture(decisionFreshnessSummary) {
           unique_runs: 1,
           latest_runs: [
             {
-              goal_id: "goal-harness-meta",
+              goal_id: "loopx-meta",
               generated_at: "2026-01-01T00:00:00+00:00",
               classification: "decision_freshness_ops_panel_fixture",
               delivery_batch_scale: "multi_surface",
@@ -154,7 +154,7 @@ function baseStatusFixture(decisionFreshnessSummary) {
       ],
       recent_runs: [
         {
-          goal_id: "goal-harness-meta",
+          goal_id: "loopx-meta",
           generated_at: "2026-01-01T00:00:00+00:00",
           classification: "decision_freshness_ops_panel_fixture",
           delivery_batch_scale: "multi_surface",
@@ -200,7 +200,7 @@ const staleDecisionFreshnessSummary = {
   },
   items: [
     {
-      goal_id: "goal-harness-meta",
+      goal_id: "loopx-meta",
       decision_kind: "operator_gate",
       decision_at: "2025-12-24T00:00:00+00:00",
       classification: "operator_gate_approved",
@@ -223,7 +223,7 @@ const staleDecisionFreshnessSummary = {
 
 function loadPlaywright() {
   const candidates = [
-    process.env.GOAL_HARNESS_PLAYWRIGHT_PACKAGE,
+    process.env.LOOPX_PLAYWRIGHT_PACKAGE,
     resolve(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"),
   ].filter(Boolean);
 
@@ -244,7 +244,7 @@ function loadPlaywright() {
     }
   }
 
-  throw new Error("Playwright package not found; install playwright or set GOAL_HARNESS_PLAYWRIGHT_PACKAGE");
+  throw new Error("Playwright package not found; install playwright or set LOOPX_PLAYWRIGHT_PACKAGE");
 }
 
 async function launchBrowser(chromium) {
@@ -279,7 +279,7 @@ function startDashboardServer() {
     throw new Error(`Vite package not installed: ${viteBin}`);
   }
   const nodeBin = [
-    process.env.GOAL_HARNESS_NODE_BIN,
+    process.env.LOOPX_NODE_BIN,
     "/opt/homebrew/bin/node",
     "/usr/local/bin/node",
     process.execPath,
@@ -365,7 +365,7 @@ async function main() {
         "live zero-item fixture",
         "exact replay 仍回到 append-only run history",
       ],
-      ["状态服务契约过旧", "goal-harness-meta\ngate", "已过期，需 rebase", "[plugin:vite:oxc]", "Transform failed"],
+      ["状态服务契约过旧", "loopx-meta\ngate", "已过期，需 rebase", "[plugin:vite:oxc]", "Transform failed"],
     );
 
     await assertOpsPage(
@@ -376,7 +376,7 @@ async function main() {
         "Goal Operations",
         "决策 freshness",
         "rebase 1",
-        "goal-harness-meta",
+        "loopx-meta",
         "gate",
         "已过期，需 rebase",
         "stale decision fixture",

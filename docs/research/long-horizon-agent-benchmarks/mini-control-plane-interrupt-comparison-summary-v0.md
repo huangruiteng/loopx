@@ -33,7 +33,7 @@ through status or review packets.
 ## Interpretation
 
 The useful signal is not an official score uplift. The useful signal is that the
-same local task can succeed while Goal Harness records the interruption,
+same local task can succeed while LoopX records the interruption,
 stale-state trap, validation failure, human-gate resume recheck, side-effect
 audit, and spend discipline as separate control-plane evidence.
 

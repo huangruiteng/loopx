@@ -1,4 +1,4 @@
-# Getting Started With Goal Harness
+# Getting Started With LoopX
 
 This guide carries the operational detail that used to live in the root
 README. The root README is now the short product landing page; this page is the
@@ -11,21 +11,21 @@ If you already use Codex, Claude Code, Cursor, or another terminal agent, paste
 this into the agent from your project repo:
 
 ```text
-Install and connect Goal Harness for this project end to end. Do not stop at a
+Install and connect LoopX for this project end to end. Do not stop at a
 plan.
 
-If `goal-harness` is not on PATH:
+If `loopx` is not on PATH:
 - install it without making me clone the repo:
 
-curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
 export PATH="$HOME/.local/bin:$PATH"
 
 Then:
-1. Run `goal-harness doctor`.
+1. Run `loopx doctor`.
 2. Choose a stable goal id from this repo name unless I gave one explicitly.
 3. Read the project goal doc if present (`GOAL.md`, `README.md`, or the doc I
    name); otherwise ask me for a one-sentence objective.
-4. Run `goal-harness connect` or `goal-harness bootstrap` for this repo with
+4. Run `loopx connect` or `loopx bootstrap` for this repo with
    that goal id, objective, domain, and goal doc.
 5. Read the `Onboarding Scan`, `Proposed Onboarding Candidates`,
    `Accept Candidate Commands`, and `Autonomy Choice` from the connect output.
@@ -34,22 +34,22 @@ Then:
    - whether `autonomous=yes`, meaning you may start the first accepted agent
      todo after the quota guard passes.
    Do not make me run the acceptance commands manually; run the accepted
-   `goal-harness todo add ...` commands yourself. If I choose
-   `autonomous=no`, stop after `goal-harness refresh-state`.
-6. Ensure `.goal-harness/` and `.codex/goals/` are ignored in this project.
-7. Run `goal-harness registry`, `goal-harness status`, and
-   `goal-harness check --scan-root .`.
+   `loopx todo add ...` commands yourself. If I choose
+   `autonomous=no`, stop after `loopx refresh-state`.
+6. Ensure `.loopx/` and `.codex/goals/` are ignored in this project.
+7. Run `loopx registry`, `loopx status`, and
+   `loopx check --scan-root .`.
 8. Report the goal id, created files, current user todo, current agent todo,
    and next safe action.
 
-Do not commit `.goal-harness/`, `.codex/goals/`, live ACTIVE_GOAL_STATE files,
+Do not commit `.loopx/`, `.codex/goals/`, live ACTIVE_GOAL_STATE files,
 runtime registries, raw logs, credentials, or private local paths.
 ```
 
 For a longer generated handoff prompt, install once and run:
 
 ```bash
-goal-harness new-project-prompt \
+loopx new-project-prompt \
   --project /path/to/your-project \
   --goal-doc /path/to/your-project/GOAL.md
 ```
@@ -59,14 +59,14 @@ the full guard, quota, todo, and heartbeat protocol for a new project.
 
 Success looks like this:
 
-- `goal-harness doctor` passes;
-- the project has `.goal-harness/registry.json`;
+- `loopx doctor` passes;
+- the project has `.loopx/registry.json`;
 - the project has `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`;
-- `goal-harness status` shows the goal and who should act next;
+- `loopx status` shows the goal and who should act next;
 - local runtime state is ignored, not committed.
 
 For Codex CLI users, the product target is: start in the Codex TUI, send one
-Goal Harness setup message, and let the agent install or reuse Goal Harness,
+LoopX setup message, and let the agent install or reuse LoopX,
 bootstrap/connect the project, then set the current Codex goal to the thin
 heartbeat prompt. Later automation should stay visible and interruptible in
 that TUI whenever the CLI exposes a safe session-attachment primitive. The
@@ -76,8 +76,8 @@ roots, JSON payloads, session files, or heartbeat prompt syntax.
 First-run path:
 
 ```text
-Install and connect Goal Harness for this repo from this visible Codex CLI TUI.
-If `goal-harness` is missing, install it with the official no-clone GitHub
+Install and connect LoopX for this repo from this visible Codex CLI TUI.
+If `loopx` is missing, install it with the official no-clone GitHub
 installer; if it is already installed, reuse it. Bootstrap or connect this
 project, then generate the thin heartbeat prompt and set the current Codex CLI
 goal to `/goal <thin task_body>`. Show me the current goal, concrete user gate
@@ -95,15 +95,15 @@ todo, and next safe action before longer delivery work. The setup turn should
 not spend quota for delivery unless the user explicitly asks it to do delivery
 after loop activation.
 
-Once `goal-harness` is installed, generate a stricter repo-specific setup
+Once `loopx` is installed, generate a stricter repo-specific setup
 message:
 
 ```bash
-goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>
+loopx codex-cli-bootstrap-message --project . --goal-id <goal-id>
 ```
 
 Keep that as the preferred interactive path: the human watches and steers in
-Codex CLI TUI, while Goal Harness owns quota/status/todos/gates/writeback. The
+Codex CLI TUI, while LoopX owns quota/status/todos/gates/writeback. The
 generated packet also shows the no-clone install-repair command, the
 post-bootstrap thin prompt generation command, and a transcript-free validation
 checklist, so a fresh repo path can be reviewed without touching raw Codex
@@ -112,14 +112,14 @@ session data.
 If the user only wants the pasteable TUI text, omit the wrapper:
 
 ```bash
-goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
+loopx codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
 ```
 
 To review the whole one-message loop contract without running Codex, generate a
 pilot packet:
 
 ```bash
-goal-harness codex-cli-one-message-loop-pilot --project . --goal-id <goal-id> --agent-id <agent-id>
+loopx codex-cli-one-message-loop-pilot --project . --goal-id <goal-id> --agent-id <agent-id>
 ```
 
 The pilot ties the first TUI paste message to the later
@@ -131,7 +131,7 @@ To review the returning-user local-driver loop without touching a real Codex
 session, generate the visible local-driver pilot packet:
 
 ```bash
-goal-harness codex-cli-visible-local-driver-pilot --project . --goal-id <goal-id> --agent-id <agent-id>
+loopx codex-cli-visible-local-driver-pilot --project . --goal-id <goal-id> --agent-id <agent-id>
 ```
 
 This keeps the first-message TUI start primary, then models later scheduler
@@ -149,14 +149,14 @@ works. To evaluate future same-session automation support without touching
 transcripts or session files, run:
 
 ```bash
-goal-harness codex-cli-session-probe
+loopx codex-cli-session-probe
 ```
 
 To turn that probe into a dry-run driver decision without mutating a Codex
 session, run:
 
 ```bash
-goal-harness codex-cli-visible-driver-plan --project . --goal-id <goal-id>
+loopx codex-cli-visible-driver-plan --project . --goal-id <goal-id>
 ```
 
 To see the full local automation setup plan in one packet, including quota
@@ -164,7 +164,7 @@ guard, visible-driver decision, TUI bootstrap command, the headless-disabled
 boundary, and idle-guard requirement, run:
 
 ```bash
-goal-harness codex-cli-local-driver-plan --project . --goal-id <goal-id> --agent-id <agent-id>
+loopx codex-cli-local-driver-plan --project . --goal-id <goal-id> --agent-id <agent-id>
 ```
 
 This is still dry-run-only. It does not run Codex, read transcripts, read
@@ -175,7 +175,7 @@ visible same-session path, validate a public-safe proof fixture before treating
 that path as automation:
 
 ```bash
-goal-harness codex-cli-visible-session-proof \
+loopx codex-cli-visible-session-proof \
   --project . \
   --goal-id <goal-id> \
   --agent-id <agent-id> \
@@ -191,7 +191,7 @@ For compatibility, the old handoff command only reports the disabled boundary
 and points back to the message-only TUI bootstrap:
 
 ```bash
-goal-harness codex-cli-exec-handoff --project . --goal-id <goal-id>
+loopx codex-cli-exec-handoff --project . --goal-id <goal-id>
 ```
 
 See the [Codex CLI TUI-first loop](../product/codex-cli-tui-loop.md) contract
@@ -212,17 +212,17 @@ python3 examples/fresh-clone-quickstart-smoke.py
 
 ## No-Clone Install
 
-Install or update Goal Harness without cloning the repository:
+Install or update LoopX without cloning the repository:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
 export PATH="$HOME/.local/bin:$PATH"
-goal-harness doctor
+loopx doctor
 ```
 
 The installer downloads a GitHub archive, writes a stable local release snapshot
-under `~/.local/share/goal-harness/releases/`, installs the CLI wrapper under
-`~/.local/bin`, and installs the reusable Goal Harness skills under
+under `~/.local/share/loopx/releases/`, installs the CLI wrapper under
+`~/.local/bin`, and installs the reusable LoopX skills under
 `~/.codex/skills`.
 
 This is the recommended install repair path for Codex CLI users because an
@@ -231,22 +231,22 @@ repository first.
 
 ## Contributor Install
 
-Install one shared local checkout when you want to develop Goal Harness itself
+Install one shared local checkout when you want to develop LoopX itself
 or test a live canary wrapper:
 
 ```bash
-git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
-~/goal-harness/scripts/install-local.sh
-goal-harness doctor
+git clone https://github.com/huangruiteng/loopx ~/loopx
+~/loopx/scripts/install-local.sh
+loopx doctor
 ```
 
 The checkout installer creates:
 
-- `~/.local/bin/goal-harness`, pointing at a stable local release snapshot;
-- `~/.local/bin/goal-harness-canary`, pointing at the live checkout;
-- the Goal Harness Codex skills under `~/.codex/skills`.
+- `~/.local/bin/loopx`, pointing at a stable local release snapshot;
+- `~/.local/bin/loopx-canary`, pointing at the live checkout;
+- the LoopX Codex skills under `~/.codex/skills`.
 
-Those global skills are the intended product surface for reusable Goal Harness
+Those global skills are the intended product surface for reusable LoopX
 agent behavior; project-specific state and private decisions stay in the local
 registry and active goal files.
 
@@ -258,53 +258,53 @@ checkout to the default local release.
 `scripts/install-local.sh` manages two reusable local surfaces:
 
 - the CLI wrappers under `~/.local/bin`;
-- the Goal Harness Codex skills under `~/.codex/skills`.
+- the LoopX Codex skills under `~/.codex/skills`.
 
 For a no-clone install, rerun the GitHub archive installer to refresh the
 release snapshot and skills:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
-goal-harness doctor
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+loopx doctor
 ```
 
 For a contributor checkout, re-run the installer to update both surfaces from
 the current checkout:
 
 ```bash
-cd ~/goal-harness
+cd ~/loopx
 git pull --ff-only
 ./scripts/install-local.sh
-goal-harness doctor
+loopx doctor
 ```
 
-Use `goal-harness-canary` when you want to test the live checkout before making
-it the default release snapshot. `goal-harness doctor` reports whether the
+Use `loopx-canary` when you want to test the live checkout before making
+it the default release snapshot. `loopx doctor` reports whether the
 default wrapper points at a release snapshot, whether the canary wrapper points
 at the live checkout, and whether the required skills are installed.
 
-If an agent says it cannot find Goal Harness, repair in this order:
+If an agent says it cannot find LoopX, repair in this order:
 
 1. Ensure `~/.local/bin` is on `PATH`.
-2. Re-run `~/goal-harness/scripts/install-local.sh`.
-3. Run `goal-harness doctor`.
+2. Re-run `~/loopx/scripts/install-local.sh`.
+3. Run `loopx doctor`.
 4. If a recurring automation is stale, regenerate it with
-   `goal-harness heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"`.
+   `loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"`.
 
 The reusable skills have intentionally narrow jobs:
 
 | Skill | Use it for | Do not use it for |
 | --- | --- | --- |
-| `goal-harness-project` | Connecting projects, reading status/quota/history, diagnosing Goal Harness, generating heartbeat/review packets, and refreshing state. | Reading private project documents by default or replacing the CLI as source of truth. |
-| `goal-harness-doc-registry` | Registering durable project material and redacted authority-source metadata. | Copying raw doc bodies, internal URLs, or private comments into public repo docs. |
-| `goal-harness-self-repair` | Repairing surprising control-plane behavior, stale projection, tiny turns, or contradictory guard payloads. | Lowering gates, guessing around missing authority, or committing private runtime state. |
+| `loopx-project` | Connecting projects, reading status/quota/history, diagnosing LoopX, generating heartbeat/review packets, and refreshing state. | Reading private project documents by default or replacing the CLI as source of truth. |
+| `loopx-doc-registry` | Registering durable project material and redacted authority-source metadata. | Copying raw doc bodies, internal URLs, or private comments into public repo docs. |
+| `loopx-self-repair` | Repairing surprising control-plane behavior, stale projection, tiny turns, or contradictory guard payloads. | Lowering gates, guessing around missing authority, or committing private runtime state. |
 
 Keep three layers separate:
 
 - **Global skill behavior** belongs in `skills/` and is installed under
   `~/.codex/skills`.
-- **Project state** belongs in `.goal-harness/`, `.codex/goals/`, and
-  `~/.codex/goal-harness`; keep it local unless a sanitized fixture is
+- **Project state** belongs in `.loopx/`, `.codex/goals/`, and
+  `~/.codex/loopx`; keep it local unless a sanitized fixture is
   intentionally committed.
 - **Repository rules** belong in `AGENTS.md`, `CONTRIBUTING.md`, and public
   docs. They can constrain contributors and agents in this repository, but they
@@ -314,14 +314,14 @@ There is no dedicated uninstall command yet. For manual cleanup, remove only
 the reusable surfaces you intend to drop:
 
 ```bash
-rm -f ~/.local/bin/goal-harness ~/.local/bin/goal-harness-canary
-rm -rf ~/.codex/skills/goal-harness-project \
-       ~/.codex/skills/goal-harness-doc-registry \
-       ~/.codex/skills/goal-harness-self-repair
+rm -f ~/.local/bin/loopx ~/.local/bin/loopx-canary
+rm -rf ~/.codex/skills/loopx-project \
+       ~/.codex/skills/loopx-doc-registry \
+       ~/.codex/skills/loopx-self-repair
 ```
 
 This does not archive connected project state or runtime history. Archive or
-remove `.goal-harness/`, `.codex/goals/`, and `~/.codex/goal-harness` only when
+remove `.loopx/`, `.codex/goals/`, and `~/.codex/loopx` only when
 you intentionally want to retire those local project records.
 
 ## Connect A Project Manually
@@ -330,7 +330,7 @@ From the project repository:
 
 ```bash
 cd /path/to/your-project
-goal-harness bootstrap \
+loopx bootstrap \
   --goal-id your-project-goal \
   --objective "Improve this project through bounded, verified goal segments." \
   --goal-doc GOAL.md
@@ -339,17 +339,17 @@ goal-harness bootstrap \
 `connect` is an alias for `bootstrap`:
 
 ```bash
-goal-harness connect --goal-id your-project-goal
+loopx connect --goal-id your-project-goal
 ```
 
 This creates or connects:
 
 ```text
 your-project/
-  .goal-harness/registry.json
+  .loopx/registry.json
   .codex/goals/your-project-goal/ACTIVE_GOAL_STATE.md
 
-~/.codex/goal-harness/
+~/.codex/loopx/
   goals/<goal-id>/runs/
 ```
 
@@ -357,7 +357,7 @@ Treat live goal state and registries as local runtime data. Add these paths to
 the connected project `.gitignore` before committing:
 
 ```gitignore
-.goal-harness/
+.loopx/
 .codex/goals/
 goals/**/ACTIVE_GOAL_STATE.md
 ```
@@ -371,11 +371,11 @@ Users should not need to run diagnostic commands by hand. Ask your Codex,
 Claude Code, Cursor, or terminal agent:
 
 ```text
-Diagnose Goal Harness for this project end to end. Do not ask me to run shell
+Diagnose LoopX for this project end to end. Do not ask me to run shell
 commands.
 
-If `goal-harness` is missing, install or repair it first. Then run
-`goal-harness diagnose` yourself, read the diagnostic packet, and use your own
+If `loopx` is missing, install or repair it first. Then run
+`loopx diagnose` yourself, read the diagnostic packet, and use your own
 reasoning to tell me:
 - whether this project can currently self-drive;
 - what evidence supports that answer;
@@ -383,28 +383,28 @@ reasoning to tell me:
 - the exact question I need to answer, if a user/controller gate exists;
 - what you will do next.
 
-Do not treat Goal Harness machine signals as the final verdict. They are
+Do not treat LoopX machine signals as the final verdict. They are
 evidence for your diagnosis.
 ```
 
-`goal-harness diagnose` is intentionally an agent-facing evidence packet. It
+`loopx diagnose` is intentionally an agent-facing evidence packet. It
 collects compact `status`, `quota should-run`, todo, interaction-contract, and
 boundary signals, then gives the agent a reasoning checklist. The agent makes
 the diagnosis in natural language.
 
-If you want to try Goal Harness before connecting a real repo, create a
+If you want to try LoopX before connecting a real repo, create a
 disposable demo goal:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
-goal-harness demo
+loopx demo
 ```
 
 Expected first-run signals:
 
 - the output contains `ok: True`;
 - a project-local registry and active goal state were created under
-  `/tmp/goal-harness-demo`;
+  `/tmp/loopx-demo`;
 - one user todo and one agent todo are visible;
 - `refresh-state` appended a compact run;
 - `quota should-run` returns `should_run=True` and `state=eligible`.
@@ -412,10 +412,10 @@ Expected first-run signals:
 Inspect the demo:
 
 ```bash
-cd /tmp/goal-harness-demo
-goal-harness status
-goal-harness quota should-run --goal-id demo-goal
-goal-harness history --goal-id demo-goal
+cd /tmp/loopx-demo
+loopx status
+loopx quota should-run --goal-id demo-goal
+loopx history --goal-id demo-goal
 ```
 
 ## Daily Workflow
@@ -423,27 +423,27 @@ goal-harness history --goal-id demo-goal
 Inspect installation and registry health:
 
 ```bash
-goal-harness doctor
-goal-harness registry
-goal-harness check --scan-root .
+loopx doctor
+loopx registry
+loopx check --scan-root .
 ```
 
 Read status and history:
 
 ```bash
-goal-harness status
-goal-harness history --goal-id your-project-goal
+loopx status
+loopx history --goal-id your-project-goal
 ```
 
 Add explicit work:
 
 ```bash
-goal-harness todo add \
+loopx todo add \
   --goal-id your-project-goal \
   --role user \
   --text "Review the owner checklist."
 
-goal-harness todo add \
+loopx todo add \
   --goal-id your-project-goal \
   --role agent \
   --text "Summarize the safe read-only evidence." \
@@ -454,7 +454,7 @@ goal-harness todo add \
 Complete an agent todo and atomically add the next executable item:
 
 ```bash
-goal-harness todo complete \
+loopx todo complete \
   --goal-id your-project-goal \
   --todo-id todo_ab12cd34ef56 \
   --evidence "Validated with examples/demo-cli-smoke.py" \
@@ -467,24 +467,24 @@ goal-harness todo complete \
 Append a state-only refresh after local state or docs change:
 
 ```bash
-goal-harness refresh-state --goal-id your-project-goal
+loopx refresh-state --goal-id your-project-goal
 ```
 
 Generate a compact handoff packet for an agent:
 
 ```bash
-goal-harness review-packet --goal-id your-project-goal
+loopx review-packet --goal-id your-project-goal
 ```
 
 Record an operator gate decision or run-bound reward:
 
 ```bash
-goal-harness operator-gate \
+loopx operator-gate \
   --goal-id your-project-goal \
   --decision approve \
   --reason-summary "Approve read-only map opt-in"
 
-goal-harness reward \
+loopx reward \
   --goal-id your-project-goal \
   --decision continue_route \
   --reward positive \
@@ -497,9 +497,9 @@ Quota is compute eligibility, not strategy. It answers whether an automatic
 turn may run now, and what kind of turn is allowed.
 
 ```bash
-goal-harness quota status
-goal-harness quota plan
-goal-harness quota should-run --goal-id your-project-goal
+loopx quota status
+loopx quota plan
+loopx quota should-run --goal-id your-project-goal
 ```
 
 The `next_automatic_turn` reported by `quota plan` is only an advisory
@@ -542,7 +542,7 @@ After an automatic turn actually spends delivery compute, append one spend
 event:
 
 ```bash
-goal-harness quota spend-slot \
+loopx quota spend-slot \
   --goal-id your-project-goal \
   --slots 1 \
   --source heartbeat \
@@ -555,7 +555,7 @@ pure dry-run previews.
 Generate a guarded Codex App heartbeat body:
 
 ```bash
-goal-harness heartbeat-prompt --thin --goal-id your-project-goal
+loopx heartbeat-prompt --thin --goal-id your-project-goal
 ```
 
 For shared-control-plane agents, pass identity and scope in the automation
@@ -563,13 +563,13 @@ prompt, then let the agent soft-claim matching todos with a registered
 `--claimed-by` id:
 
 ```bash
-goal-harness configure-goal --goal-id your-project-goal \
+loopx configure-goal --goal-id your-project-goal \
   --registered-agent codex-main-control \
   --registered-agent codex-side-bypass \
   --primary-agent codex-main-control \
   --execute
 
-goal-harness heartbeat-prompt --compact --goal-id your-project-goal \
+loopx heartbeat-prompt --compact --goal-id your-project-goal \
   --agent-id codex-side-bypass \
   --agent-scope "control-plane coordination"
 ```
@@ -586,7 +586,7 @@ review, verification, merge, publication, and high-risk side-agent review. Side
 agents are prompted to work in separate worktrees, and `quota should-run
 --agent-id <side-agent-id>` fails closed with `workspace_guard` when a side
 agent runs from the primary checkout. Small AGENTS-eligible
-validated changes may be self-merged with explicit Goal Harness evidence;
+validated changes may be self-merged with explicit LoopX evidence;
 higher-risk or unclear work should still be handed back through a primary
 review todo.
 
@@ -596,19 +596,19 @@ See [heartbeat automation prompt](../heartbeat-automation-prompt.md) and
 ## Dashboard
 
 Dashboard status is an experimental operator preview. The CLI and
-`goal-harness status` remain the canonical daily workflow; the React dashboard
+`loopx status` remain the canonical daily workflow; the React dashboard
 is useful for demos, public-safe fixtures, and local inspection.
 
 Serve status JSON:
 
 ```bash
-goal-harness serve-status --port 8765
+loopx serve-status --port 8765
 ```
 
 Run the dashboard:
 
 ```bash
-cd ~/goal-harness/apps/dashboard
+cd ~/loopx/apps/dashboard
 npm install
 npm run dev
 ```
@@ -616,14 +616,14 @@ npm run dev
 For the shared multi-project view:
 
 ```bash
-goal-harness serve-status --global-registry --port 8766 --limit 80
+loopx serve-status --global-registry --port 8766 --limit 80
 ```
 
 On macOS, keep the global feed and built dashboard running after login:
 
 ```bash
-~/goal-harness/scripts/macos-dashboard-launchagent.sh install
-~/goal-harness/scripts/macos-dashboard-launchagent.sh status
+~/loopx/scripts/macos-dashboard-launchagent.sh install
+~/loopx/scripts/macos-dashboard-launchagent.sh status
 ```
 
 The dashboard should answer, before raw log drill-down:
@@ -656,7 +656,7 @@ Keep private:
 Run the public/private scan before publishing docs or examples:
 
 ```bash
-goal-harness check \
+loopx check \
   --scan-path README.md \
   --scan-path docs/ \
   --scan-path examples/
@@ -669,7 +669,7 @@ See [public/private boundary](../public-private-boundary.md).
 Run the focused CLI and contract smokes from the repository root:
 
 ```bash
-python3 -m py_compile goal_harness/*.py
+python3 -m py_compile loopx/*.py
 python3 examples/demo-cli-smoke.py
 python3 examples/todo-cli-smoke.py
 python3 examples/todo-lifecycle-cli-smoke.py
@@ -692,8 +692,8 @@ For release-promotion readiness:
 
 ```bash
 python3 examples/canary-promotion-readiness-smoke.py
-goal-harness promotion-gate --format json
-goal-harness upgrade-plan --format json
+loopx promotion-gate --format json
+loopx upgrade-plan --format json
 ```
 
 ## Documentation Map
@@ -745,7 +745,7 @@ sync-global             merge project registry into the global registry
 check                   run contract and public/private boundary checks
 ```
 
-Use `goal-harness <command> --help` for command-specific flags.
+Use `loopx <command> --help` for command-specific flags.
 
 ## Repository Quality Guard
 

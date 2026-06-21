@@ -302,8 +302,8 @@ def start_codex_app_server_goal_turn(
             "method": "initialize",
             "params": {
                 "clientInfo": {
-                    "name": "goal_harness_benchmark_host_agent",
-                    "title": "Goal Harness Benchmark Host Agent",
+                    "name": "loopx_benchmark_host_agent",
+                    "title": "LoopX Benchmark Host Agent",
                     "version": "0.1.0",
                 },
                 "capabilities": {"experimentalApi": True},

@@ -90,7 +90,7 @@ Targeted validation:
 ```bash
 python3 examples/benchmark-execution-route-selection-smoke.py
 python3 -m py_compile examples/benchmark-execution-route-selection-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/benchmark-execution-route-selection-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/benchmark-execution-route-selection-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md
@@ -99,6 +99,6 @@ goal-harness check \
 ## Claim Boundary
 
 This route-selection packet is not a benchmark result and should not be used
-to claim Goal Harness improves SWE-Bench Pro, TheAgentCompany, or any other
+to claim LoopX improves SWE-Bench Pro, TheAgentCompany, or any other
 benchmark. It only reduces the next-route ambiguity for future execution-scope
 planning.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test multiple independent Goal Harness goals in one repository."""
+"""Smoke-test multiple independent LoopX goals in one repository."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def write_fixture(root: Path) -> Path:
     project = root / "project"
     project.mkdir()
     (project / "README.md").write_text("# Same Repo Multi Goal\n", encoding="utf-8")
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     connect_goal(root, registry_path, project, MAIN_GOAL, "Run the main control lane.")
     connect_goal(root, registry_path, project, BYPASS_GOAL, "Run the side bypass lane.")
@@ -100,7 +100,7 @@ def run_cli(root: Path, registry_path: Path, *args: str, check: bool = True) -> 
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -129,7 +129,7 @@ def assert_local_goal_map(root: Path, registry_path: Path, goal_id: str) -> None
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-multi-goal-same-repo-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-multi-goal-same-repo-") as tmp:
         root = Path(tmp)
         registry_path = write_fixture(root)
 

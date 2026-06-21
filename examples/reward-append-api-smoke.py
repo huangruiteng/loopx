@@ -56,7 +56,7 @@ def start_server(repo_root: Path, registry: Path, runtime_root: Path, port: int,
     command = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(registry),
         "--runtime-root",
@@ -169,7 +169,7 @@ def main() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--registry",

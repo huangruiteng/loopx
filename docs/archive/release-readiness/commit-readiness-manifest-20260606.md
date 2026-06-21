@@ -1,12 +1,12 @@
 # Commit Readiness Manifest - 2026-06-06
 
 Status: current public dirty-tree readiness map. Use this file to review and
-stage the present Goal Harness checkout before canary promotion, commit, push,
+stage the present LoopX checkout before canary promotion, commit, push,
 or PR creation. It supersedes the closed 2026-06-03 historical snapshot for the
 current tree only.
 
 This manifest is not approval to publish private material. It is a grouping and
-validation map for the public Goal Harness changes currently visible in
+validation map for the public LoopX changes currently visible in
 `git status --short`.
 
 ## Steering Audit
@@ -36,7 +36,7 @@ Reason: the first review batch is product-coherent, but several required files
 are not hunk-isolated. Whole-file staging would silently mix release-promotion
 readiness with other current dirty-tree surfaces:
 
-- `goal_harness/status.py` includes promotion-gate projections, but also
+- `loopx/status.py` includes promotion-gate projections, but also
   dependency blockers, autonomous backlog candidates, event-ledger summaries,
   decision freshness, quota/handoff helpers, and status contract changes.
 - `README.md`, `docs/status-data-contract.md`,
@@ -61,7 +61,7 @@ No files were staged by this decision. The Git index remains available for a
 clean follow-up staging pass.
 
 Validation after this decision: `python3 examples/promotion-gate-smoke.py`,
-`python3 examples/status-markdown-smoke.py`, `goal-harness-canary check`, and
+`python3 examples/status-markdown-smoke.py`, `loopx-canary check`, and
 `git diff --check` passed.
 
 ## Hunk-Level Staging Map - 2026-06-06T05:38:30+08:00
@@ -77,7 +77,7 @@ stage only the exact release-promotion hunks.
 These files are narrow enough to stage whole-file for the release-readiness
 batch:
 
-- `goal_harness/promotion_gate.py`
+- `loopx/promotion_gate.py`
 - `examples/promotion-gate-smoke.py`
 - `examples/canary-promotion-readiness-smoke.py`
 - `examples/canary-promotion-readiness-writeback-smoke.py`
@@ -98,12 +98,12 @@ larger combined batch includes dashboard/demo readiness before staging:
 Use `git add -p` or an equivalent cached patch. Do not whole-file stage these
 unless choosing the larger combined release-readiness batch.
 
-- `goal_harness/cli.py`
+- `loopx/cli.py`
   - stage the `.promotion_gate` import;
   - stage the `promotion-gate` subparser definition;
   - stage the `if args.command == "promotion-gate"` handler;
   - avoid unrelated review-packet, todo, heartbeat, or global-registry hunks.
-- `goal_harness/doctor.py`
+- `loopx/doctor.py`
   - stage `PROMOTION_READINESS_CLASSIFICATIONS`,
     `PROMOTION_READINESS_FRESHNESS_HOURS`,
     `add_promotion_readiness_freshness()`, and
@@ -112,7 +112,7 @@ unless choosing the larger combined release-readiness batch.
     hunks;
   - avoid unrelated install wrapper or PATH diagnostics unless the combined
     release-readiness batch intentionally includes them.
-- `goal_harness/status.py`
+- `loopx/status.py`
   - stage promotion-readiness imports from `doctor.py` and the
     `build_promotion_gate` import;
   - stage `PROMOTION_READINESS_PROXY_NOTE`;
@@ -177,7 +177,7 @@ python3 examples/run-smokes.py
 python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence
 npm --prefix apps/dashboard run smoke:demo-readiness
 npm --prefix apps/dashboard run build
-goal-harness-canary check
+loopx-canary check
 git diff --check
 ```
 
@@ -186,7 +186,7 @@ combined release-readiness batch or write back the exact file/hunk that blocks
 staging.
 
 Validation after adding this map: `python3 examples/promotion-gate-smoke.py`,
-`python3 examples/status-markdown-smoke.py`, `goal-harness-canary check`, and
+`python3 examples/status-markdown-smoke.py`, `loopx-canary check`, and
 `git diff --check` passed.
 
 ## Staging Applied - 2026-06-06T05:43:51+08:00
@@ -209,7 +209,7 @@ Validation before staging:
   browser smokes.
 - `npm --prefix apps/dashboard run build`: passed with the existing Vite
   chunk-size warning.
-- `goal-harness-canary check`: passed; public boundary scan clean.
+- `loopx-canary check`: passed; public boundary scan clean.
 - `git diff --check`: passed.
 
 Staging rule: use the explicit `git status --short` file list from this
@@ -232,7 +232,7 @@ repo publication after validation. The branch was created from the current
 local `main`, which was already ahead of `origin/main`; this decision does not
 push or open a PR yet.
 
-Commit-scope guard: do not add unstaged runtime outputs, `.goal-harness/`,
+Commit-scope guard: do not add unstaged runtime outputs, `.loopx/`,
 `.local/`, generated dashboard `dist/`, private project evidence, credentials,
 or production identifiers.
 
@@ -243,7 +243,7 @@ Decision: push branch `codex/release-readiness-hardening` and open a draft PR.
 Result:
 
 - branch pushed to `origin/codex/release-readiness-hardening`;
-- draft PR: https://github.com/huangruiteng/goal-harness/pull/1;
+- draft PR: https://github.com/huangruiteng/loopx/pull/1;
 - PR title: `[codex] Harden release readiness control plane`.
 
 Publication note: the draft PR is intentionally stacked on the current local
@@ -259,10 +259,10 @@ of installer stderr prose or chat memory.
 
 Candidate files:
 
-- `goal_harness/promotion_gate.py`
-- `goal_harness/cli.py` (promotion-gate command wiring)
-- `goal_harness/doctor.py` (release provenance and promotion readiness)
-- `goal_harness/status.py` (promotion readiness and promotion_gate projections)
+- `loopx/promotion_gate.py`
+- `loopx/cli.py` (promotion-gate command wiring)
+- `loopx/doctor.py` (release provenance and promotion readiness)
+- `loopx/status.py` (promotion readiness and promotion_gate projections)
 - `scripts/install-local.sh`
 - `README.md` (canary-promotion and promotion-gate operator path)
 - `docs/status-data-contract.md`
@@ -350,14 +350,14 @@ Candidate files:
 - `docs/integration.md`
 - `docs/quota-allocation.md`
 - `docs/state-interaction-model.md`
-- `skills/goal-harness-project/SKILL.md`
-- `goal_harness/execution_profile.py`
-- `goal_harness/heartbeat_prompt.py`
-- `goal_harness/operator_gate.py`
-- `goal_harness/quota.py`
-- `goal_harness/review_packet.py`
-- `goal_harness/state_refresh.py`
-- `goal_harness/project_prompt.py`
+- `skills/loopx-project/SKILL.md`
+- `loopx/execution_profile.py`
+- `loopx/heartbeat_prompt.py`
+- `loopx/operator_gate.py`
+- `loopx/quota.py`
+- `loopx/review_packet.py`
+- `loopx/state_refresh.py`
+- `loopx/project_prompt.py`
 - `examples/blocker-push-runtime-smoke.py`
 - `examples/global-registry-sync-smoke.py`
 - `examples/heartbeat-prompt-smoke.py`
@@ -394,11 +394,11 @@ grows.
 
 Candidate files:
 
-- `goal_harness/bootstrap.py`
-- `goal_harness/contract.py`
-- `goal_harness/demo.py`
-- `goal_harness/global_registry.py`
-- `goal_harness/status.py` (shared status/data projection hunks)
+- `loopx/bootstrap.py`
+- `loopx/contract.py`
+- `loopx/demo.py`
+- `loopx/global_registry.py`
+- `loopx/status.py` (shared status/data projection hunks)
 - `apps/dashboard/src/data/action-packet.ts`
 - `examples/contract-reward-overlay-smoke.py`
 - `examples/demo-cli-smoke.py`
@@ -413,11 +413,11 @@ Validation already observed in recent slices:
 - `python3 examples/demo-cli-smoke.py`
 - `python3 examples/usage-summary-smoke.py`
 - `python3 examples/run-smokes.py` (31 public smoke scripts)
-- `goal-harness-canary check`
+- `loopx-canary check`
 
 Review notes:
 
-- Some files, especially `goal_harness/status.py` and
+- Some files, especially `loopx/status.py` and
   `apps/dashboard/src/views/dashboard-page.tsx`, span several batches. If the
   reviewer wants small commits, use hunk staging. Otherwise, combine related
   status/dashboard batches into one reviewed product-hardening commit.
@@ -427,7 +427,7 @@ Review notes:
 
 Candidate files:
 
-- `goals/goal-harness-meta/ACTIVE_GOAL_STATE.md`
+- `goals/loopx-meta/ACTIVE_GOAL_STATE.md`
 - `docs/commit-readiness-manifest-20260606.md`
 
 Guidance:
@@ -441,8 +441,8 @@ Guidance:
 
 Keep these out of any public commit:
 
-- `.local/**`, `.goal-harness/**` runtime outputs, shared
-  `~/.codex/goal-harness/**` run history, quota events, or live reward overlay
+- `.local/**`, `.loopx/**` runtime outputs, shared
+  `~/.codex/loopx/**` run history, quota events, or live reward overlay
   data.
 - Codex App automation config, thread metadata, screenshots, generated browser
   session state, and private local logs.
@@ -460,7 +460,7 @@ python3 examples/run-smokes.py
 python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence
 npm --prefix apps/dashboard run smoke:demo-readiness
 npm --prefix apps/dashboard run build
-goal-harness-canary check
+loopx-canary check
 git diff --check
 ```
 
@@ -468,7 +468,7 @@ For a release-promotion evidence writeback, run:
 
 ```bash
 python3 examples/canary-promotion-readiness-smoke.py
-goal-harness-canary promotion-gate --format json
+loopx-canary promotion-gate --format json
 ```
 
 The second command should report `gate_state=ready`, `can_promote=true`, and
@@ -487,7 +487,7 @@ subsets of it:
   browser smokes.
 - `npm --prefix apps/dashboard run build`: passed with the existing Vite chunk
   size warning.
-- `goal-harness-canary check`: passed; public boundary scan clean.
+- `loopx-canary check`: passed; public boundary scan clean.
 - `git diff --check`: passed.
 
 Re-run the minimum validation after this manifest is edited or after any

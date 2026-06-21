@@ -12,8 +12,8 @@ surfaces, but they must not outrank a runnable Codex CLI TUI continuation task.
 The near-term product promise is:
 
 1. a user opens Codex CLI TUI in a project repo;
-2. one pasted Goal Harness message starts the loop;
-3. Goal Harness can later steer or resume work through the same visible TUI
+2. one pasted LoopX message starts the loop;
+3. LoopX can later steer or resume work through the same visible TUI
    whenever Codex exposes a safe attach primitive;
 4. the user can keep watching, interrupt, steer, review, or take over.
 
@@ -23,14 +23,14 @@ exact blocker that prevents it.
 
 ## Scheduling Rule
 
-When Goal Harness chooses between runnable productization tasks:
+When LoopX chooses between runnable productization tasks:
 
 - Codex CLI TUI continuation wins over frontstage polish, showcase copy, or
   dashboard route work when the continuation task is runnable and in scope.
 - Frontstage and showcase work can run first only when the TUI continuation is
   concretely gated by missing proof, missing CLI capability, user decision, or
   a higher-risk runtime boundary.
-- If Goal Harness selects frontstage work while a Codex CLI TUI continuation
+- If LoopX selects frontstage work while a Codex CLI TUI continuation
   task is runnable, the agent should treat that as a planning drift and run
   self-repair before writing code.
 
@@ -43,7 +43,7 @@ losing the trusted TUI.
 The next useful Codex CLI TUI continuation slice should produce public-safe
 evidence for one of these outcomes:
 
-- `same_tui_continuation_proven`: a later Goal Harness steering prompt is added
+- `same_tui_continuation_proven`: a later LoopX steering prompt is added
   to the same open Codex CLI TUI session, with visible proof and runtime idle
   evidence.
 - `same_tui_continuation_blocked`: the current Codex CLI surface cannot safely
@@ -70,5 +70,5 @@ come first, the agent should:
 4. only then advance frontstage or showcase support work.
 
 This keeps fancy demo surfaces aligned with the more important adoption path:
-Goal Harness should be easy to start from inside the TUI that developers
+LoopX should be easy to start from inside the TUI that developers
 already trust.

@@ -15,8 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import build_benchmark_runner_invariant_review  # noqa: E402
-from goal_harness.status import compact_benchmark_run  # noqa: E402
+from loopx.benchmark import build_benchmark_runner_invariant_review  # noqa: E402
+from loopx.status import compact_benchmark_run  # noqa: E402
 
 
 def benchmark_run(
@@ -31,7 +31,7 @@ def benchmark_run(
         "source_runner": "worker-bridge",
         "benchmark_id": "terminal-bench@2.0",
         "job_name": "terminal-bench-2-0-runner-invariant-fixture",
-        "mode": "codex-goal-harness",
+        "mode": "codex-loopx",
         "real_run": True,
         "submit_eligible": submit_eligible,
         "leaderboard_evidence": leaderboard_evidence,
@@ -127,7 +127,7 @@ def test_cli_review_runner_invariants() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -151,7 +151,7 @@ def test_cli_review_runner_invariants() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",

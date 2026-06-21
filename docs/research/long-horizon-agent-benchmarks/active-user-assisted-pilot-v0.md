@@ -3,7 +3,7 @@
 Checked at: 2026-06-10T16:08:00+08:00.
 
 This fixture defines the first deterministic active-user assisted pilot for
-Goal Harness long-horizon benchmark research. It is a public-safe pilot shape,
+LoopX long-horizon benchmark research. It is a public-safe pilot shape,
 not a real benchmark run and not an official score claim.
 
 ## Purpose
@@ -14,7 +14,7 @@ first reference case is `terminal-bench@2.0/train-fasttext`, using only compact
 public-safe facts:
 
 - autonomous baseline score: `0.0`;
-- passive Goal Harness treatment score: `0.0`;
+- passive LoopX treatment score: `0.0`;
 - assisted score: `not_run`;
 - raw runner logs, worker transcripts, local artifact paths, hidden tests, and
   expected solutions are unavailable to the simulator.
@@ -55,7 +55,7 @@ pilot controls risk through budgets and audits:
 The first public implementation uses an audited external update loop rather
 than a direct Codex chat-session injection. The simulator appends compact
 user-style messages to a worker-visible feed, and the worker polls
-`goal-harness worker-bridge active-user-observe` after its own start marker.
+`loopx worker-bridge active-user-observe` after its own start marker.
 
 This channel is intentionally pull-based:
 

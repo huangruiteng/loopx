@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.session_runtime import (  # noqa: E402
+from loopx.session_runtime import (  # noqa: E402
     SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION,
     build_session_runtime_readonly_projection,
 )

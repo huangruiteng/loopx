@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_case_analysis import (  # noqa: E402
+from loopx.benchmark_case_analysis import (  # noqa: E402
     BENCHMARK_CASE_ANALYSIS_CANDIDATE_REPORT_SCHEMA_VERSION,
     BENCHMARK_CASE_ANALYSIS_UPSERT_PROPOSAL_SCHEMA_VERSION,
     build_case_analysis_candidate_report,
@@ -208,7 +208,7 @@ def test_candidate_cli_on_fixture() -> None:
         assert_public_safe(proposals_output)
 
 
-def test_goal_harness_benchmark_cli_on_fixture() -> None:
+def test_loopx_benchmark_cli_on_fixture() -> None:
     with tempfile.TemporaryDirectory(prefix="case-analysis-candidates-gh-cli-") as tmp:
         root = Path(tmp)
         ledger_path = root / "ledger.json"
@@ -217,7 +217,7 @@ def test_goal_harness_benchmark_cli_on_fixture() -> None:
         analysis_path.write_text(json.dumps(fixture_analysis()), encoding="utf-8")
         output = subprocess.check_output(
             [
-                str(REPO_ROOT / "scripts" / "goal-harness"),
+                str(REPO_ROOT / "scripts" / "loopx"),
                 "--format",
                 "json",
                 "benchmark",
@@ -239,7 +239,7 @@ def test_goal_harness_benchmark_cli_on_fixture() -> None:
         assert_public_safe(output)
         proposals_output = subprocess.check_output(
             [
-                str(REPO_ROOT / "scripts" / "goal-harness"),
+                str(REPO_ROOT / "scripts" / "loopx"),
                 "--format",
                 "json",
                 "benchmark",
@@ -265,7 +265,7 @@ def test_goal_harness_benchmark_cli_on_fixture() -> None:
         assert_public_safe(proposals_output)
         markdown = subprocess.check_output(
             [
-                str(REPO_ROOT / "scripts" / "goal-harness"),
+                str(REPO_ROOT / "scripts" / "loopx"),
                 "benchmark",
                 "case-analysis-candidates",
                 "--run-ledger-path",
@@ -325,7 +325,7 @@ def main() -> None:
     test_candidate_report_from_fixture()
     test_proposed_records_from_fixture()
     test_candidate_cli_on_fixture()
-    test_goal_harness_benchmark_cli_on_fixture()
+    test_loopx_benchmark_cli_on_fixture()
     test_default_assets_have_public_safe_candidates()
     print("benchmark-case-analysis-candidates-smoke ok")
 

@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_core import (  # noqa: E402
+from loopx.benchmark_core import (  # noqa: E402
     BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION,
     BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_LAUNCH_PLAN_SCHEMA_VERSION,
     BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_RUNNER_BATCH_SCHEMA_VERSION,
@@ -22,7 +22,7 @@ from goal_harness.benchmark_core import (  # noqa: E402
     build_split_control_remote_executor_readiness,
     build_split_control_remote_executor_runner_batch,
 )
-from goal_harness.benchmark_adapters.terminal_bench import (  # noqa: E402
+from loopx.benchmark_adapters.terminal_bench import (  # noqa: E402
     TERMINAL_BENCH_REMOTE_EXECUTOR_COMMAND_ADAPTER_SCHEMA,
     TERMINAL_BENCH_REMOTE_EXECUTOR_HANDLE_FIELDS,
     TERMINAL_BENCH_REMOTE_EXECUTOR_LAUNCH_ADAPTER_SCHEMA,
@@ -55,7 +55,7 @@ def ready_local_driver_contract(label: str = "local_codex_driver") -> dict[str, 
         "owns": [
             "codex_cli",
             "codex_auth",
-            "goal_harness_state",
+            "loopx_state",
             "model_invocation",
             "planning_and_patch_generation",
         ],
@@ -69,7 +69,7 @@ def ready_local_driver_contract(label: str = "local_codex_driver") -> dict[str, 
         "keeps_local": [
             "codex_auth",
             "model_invocation",
-            "goal_harness_state",
+            "loopx_state",
             "raw_reasoning_trace",
         ],
     }
@@ -121,7 +121,7 @@ def test_remote_codex_is_not_required_for_split_control() -> None:
     payload = build_split_control_remote_executor_readiness(
         local_agent={
             "codex_cli_available": True,
-            "goal_harness_available": True,
+            "loopx_available": True,
             "codex_auth_ready": True,
             "codex_auth_local_only": True,
             "model_invocation_local": True,
@@ -190,7 +190,7 @@ def test_ready_parallel_batch_size_is_capped() -> None:
         max_parallel_cases=4,
         local_agent={
             "codex_cli_available": True,
-            "goal_harness_available": True,
+            "loopx_available": True,
             "codex_auth_ready": True,
             "codex_auth_local_only": True,
             "model_invocation_local": True,
@@ -226,7 +226,7 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
         max_parallel_cases=4,
         local_agent={
             "codex_cli_available": True,
-            "goal_harness_available": True,
+            "loopx_available": True,
             "codex_auth_ready": True,
             "codex_auth_local_only": True,
             "model_invocation_local": True,
@@ -534,7 +534,7 @@ def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
         benchmark_ids=("terminal-bench@2.0", "skillsbench@1.1"),
         local_agent={
             "codex_cli_available": True,
-            "goal_harness_available": True,
+            "loopx_available": True,
             "codex_auth_ready": True,
             "codex_auth_local_only": True,
             "model_invocation_local": True,
@@ -702,7 +702,7 @@ def test_runner_batch_requires_fresh_readiness_recheck() -> None:
         benchmark_ids=("terminal-bench@2.0",),
         local_agent={
             "codex_cli_available": True,
-            "goal_harness_available": True,
+            "loopx_available": True,
             "codex_auth_ready": True,
             "codex_auth_local_only": True,
             "model_invocation_local": True,
@@ -733,7 +733,7 @@ def test_runner_batch_requires_fresh_readiness_recheck() -> None:
             benchmark_ids=("terminal-bench@2.0",),
             local_agent={
                 "codex_cli_available": True,
-                "goal_harness_available": True,
+                "loopx_available": True,
                 "codex_auth_ready": True,
                 "codex_auth_local_only": True,
                 "model_invocation_local": True,
@@ -765,7 +765,7 @@ def test_runner_batch_sanitizes_post_launch_evidence() -> None:
         benchmark_ids=("skillsbench@1.1",),
         local_agent={
             "codex_cli_available": True,
-            "goal_harness_available": True,
+            "loopx_available": True,
             "codex_auth_ready": True,
             "codex_auth_local_only": True,
             "model_invocation_local": True,
@@ -822,7 +822,7 @@ def test_launch_plan_blocks_when_no_subset_is_ready() -> None:
         benchmark_ids=("agents-last-exam@local-docker",),
         local_agent={
             "codex_cli_available": True,
-            "goal_harness_available": True,
+            "loopx_available": True,
             "codex_auth_ready": True,
             "codex_auth_local_only": True,
             "model_invocation_local": True,

@@ -1,6 +1,6 @@
-# Contributing To Goal Harness
+# Contributing To LoopX
 
-Thanks for helping improve Goal Harness. This project is early, so the best
+Thanks for helping improve LoopX. This project is early, so the best
 contributions are small, reviewable, and tied to a public task or clear bug.
 
 ## Find Work
@@ -20,10 +20,10 @@ request.
 
 ## Public And Private Boundaries
 
-Goal Harness coordinates local agent state, so some files are runtime data and
+LoopX coordinates local agent state, so some files are runtime data and
 must stay out of public contributions:
 
-- do not commit `.goal-harness/`, `.codex/goals/`, or live
+- do not commit `.loopx/`, `.codex/goals/`, or live
   `ACTIVE_GOAL_STATE.md` files;
 - do not publish private benchmark traces, verifier output, raw agent sessions,
   credentials, internal document links, or local machine paths;
@@ -36,7 +36,7 @@ schema docs, dashboard UI code, and sanitized fixtures.
 Run the public/private scan before sending docs or examples:
 
 ```bash
-goal-harness check \
+loopx check \
   --scan-path README.md \
   --scan-path CONTRIBUTING.md \
   --scan-path CONTRIBUTOR_TASKS.md \
@@ -49,24 +49,24 @@ goal-harness check \
 Install and verify the checkout:
 
 ```bash
-git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
-~/goal-harness/scripts/install-local.sh
+git clone https://github.com/huangruiteng/loopx ~/loopx
+~/loopx/scripts/install-local.sh
 export PATH="$HOME/.local/bin:$PATH"
-goal-harness doctor
-goal-harness demo
+loopx doctor
+loopx demo
 ```
 
 Common focused checks:
 
 ```bash
-python3 -m py_compile goal_harness/*.py
+python3 -m py_compile loopx/*.py
 python3 examples/demo-cli-smoke.py
 python3 examples/fresh-clone-quickstart-smoke.py
 python3 examples/todo-cli-smoke.py
 python3 examples/todo-lifecycle-cli-smoke.py
 python3 examples/quota-contract-smoke.py
 python3 examples/review-packet-cli-smoke.py
-goal-harness check --scan-root .
+loopx check --scan-root .
 git diff --check
 ```
 

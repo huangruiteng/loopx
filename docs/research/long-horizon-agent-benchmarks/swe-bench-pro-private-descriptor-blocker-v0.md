@@ -78,7 +78,7 @@ blocker and should not spend benchmark/model/Docker budget.
 ```bash
 python3 examples/swe-bench-pro-private-descriptor-blocker-smoke.py
 python3 -m py_compile examples/swe-bench-pro-private-descriptor-blocker-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/swe-bench-pro-private-descriptor-blocker-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/swe-bench-pro-private-descriptor-blocker-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

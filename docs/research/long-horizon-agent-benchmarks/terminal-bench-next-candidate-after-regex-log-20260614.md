@@ -15,9 +15,9 @@ The restarted private no-upload `terminal-bench@2.0` / `regex-log` pair closed
 with:
 
 - Codex goal-mode baseline official score `1.0`;
-- `codex-goal-harness` treatment official score `1.0`;
+- `codex-loopx` treatment official score `1.0`;
 - official score delta `0.0`;
-- treatment worker bridge verified with two Goal Harness CLI calls;
+- treatment worker bridge verified with two LoopX CLI calls;
 - compact runner invariants clean;
 - no raw logs, task text, trajectory, transcript, credential, upload, submit,
   or leaderboard surface used;
@@ -28,7 +28,7 @@ with:
 Therefore the next action should not repeat `regex-log` unless a named
 cost-control hypothesis exists. The safe P0 lane is to select a stronger
 material-ready case under the current comparison shape: Codex CLI goal mode
-versus `codex-goal-harness`.
+versus `codex-loopx`.
 
 ## Source Boundary Gate
 
@@ -67,11 +67,11 @@ Terminal-Bench task ids. Sixty of those task ids were not mentioned in the
 active state. Eight fresh unmentioned candidates were strict-preflighted with
 the current paired baseline shape:
 
-| Candidate | Codex goal-mode baseline | `codex-goal-harness` treatment | Notes |
+| Candidate | Codex goal-mode baseline | `codex-loopx` treatment | Notes |
 | --- | --- | --- | --- |
 | `headless-terminal` | ready | ready | Terminal/UI-like candidate, but less likely to stress multi-step editing. |
 | `git-multibranch` | ready | ready | Source-control candidate and first fallback. |
-| `large-scale-text-editing` | ready | ready | Long-context editing candidate with high Goal Harness fit. |
+| `large-scale-text-editing` | ready | ready | Long-context editing candidate with high LoopX fit. |
 | `nginx-request-logging` | ready | ready | Config/debugging candidate and second fallback. |
 | `mteb-retrieve` | ready | ready | Retrieval/ML candidate, possible external-package friction. |
 | `hf-model-inference` | ready | ready | ML inference candidate, possible model/runtime friction. |
@@ -88,7 +88,7 @@ For all eight candidates and both arms, strict preflight reported:
 - `raw_paths_recorded=false`;
 - `validation_passed=true`.
 
-For all `codex-goal-harness` treatment arms, the active worker bridge was
+For all `codex-loopx` treatment arms, the active worker bridge was
 requested and the worker mount surface was ready.
 
 ## Selection
@@ -102,11 +102,11 @@ Rationale:
   exhausted queue and older protocol-calibration cases;
 - its long-context editing shape is more likely than `regex-log` to expose
   stale context, restart, validation, and compact writeback failure modes that
-  Goal Harness is meant to reduce;
+  LoopX is meant to reduce;
 - it avoids model-download-heavy and brute-force-shaped candidates while still
   being more diagnostic than another narrow parser/log case;
 - it preserves the corrected comparison baseline: Codex CLI goal mode versus
-  `codex-goal-harness`.
+  `codex-loopx`.
 
 Fallback order if launch readiness changes:
 
@@ -122,9 +122,9 @@ Fallback order if launch readiness changes:
 Run exactly one private no-upload paired pilot for `terminal-bench@2.0` /
 `large-scale-text-editing`:
 
-1. run the Codex goal-mode baseline with no Goal Harness access packet or
+1. run the Codex goal-mode baseline with no LoopX access packet or
    worker bridge;
-2. run the `codex-goal-harness` treatment with the active worker bridge;
+2. run the `codex-loopx` treatment with the active worker bridge;
 3. ingest only compact Harbor results after both arms close or emit compact
    blockers;
 4. run `benchmark_verifier_attribution_review_v0` before any same-task repeat

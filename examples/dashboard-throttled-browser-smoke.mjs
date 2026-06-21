@@ -13,7 +13,7 @@ const dashboardDir = resolve(repoRoot, "apps/dashboard");
 const fixtureName = "status.throttled.browser-smoke.json";
 const fixturePath = resolve(dashboardDir, "public", fixtureName);
 const playwrightCliOutputDir = resolve(repoRoot, ".playwright-cli");
-const port = Number(process.env.GOAL_HARNESS_DASHBOARD_SMOKE_PORT ?? "5191");
+const port = Number(process.env.LOOPX_DASHBOARD_SMOKE_PORT ?? "5191");
 const session = `ght${process.pid}`;
 const pwcli = process.env.PWCLI ?? resolve(homedir(), ".codex/skills/playwright/scripts/playwright_cli.sh");
 

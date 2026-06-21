@@ -1,11 +1,11 @@
 # Server-Client Product Shape
 
-This note describes a medium-term product shape for Goal Harness. It is not an
+This note describes a medium-term product shape for LoopX. It is not an
 implementation spec for a network service. The purpose is to name the product
 roles clearly enough that future CLI, dashboard, Lark, MCP, and server work can
 share one mental model.
 
-Goal Harness is the control plane around agent loops:
+LoopX is the control plane around agent loops:
 
 - the server owns durable goal state, event history, and governed planning
   lanes;
@@ -16,7 +16,7 @@ Goal Harness is the control plane around agent loops:
 
 ### Server
 
-The Goal Harness server is the durable control-plane owner. It should be
+The LoopX server is the durable control-plane owner. It should be
 thought of first as a database-backed state system, not as the place where
 agent intelligence lives. In local-first mode, this may still be implemented
 by files plus CLI commands. In the product shape, however, the server is where
@@ -89,7 +89,7 @@ runtime: it detects installed agent CLIs, registers runtimes with the server,
 polls for claimed tasks, creates isolated workspaces, starts the agent CLI,
 streams results back, and sends heartbeats.
 
-The Goal Harness takeaway:
+The LoopX takeaway:
 
 - **Database first**: durable coordination facts should live in a real state
   store or a file-backed equivalent before they are projected into UI, prompts,
@@ -103,10 +103,10 @@ The Goal Harness takeaway:
   heartbeats, claims, and results should be appendable facts that can produce
   first-screen cards, review packets, and automation prompts.
 - **Vector memory is optional**: pgvector is useful when a product wants skill
-  or memory retrieval. Goal Harness should not require vector storage for v0
+  or memory retrieval. LoopX should not require vector storage for v0
   control-plane correctness; relational/event facts come first.
 
-So "server" in Goal Harness should usually mean:
+So "server" in LoopX should usually mean:
 
 ```text
 durable state store
@@ -159,7 +159,7 @@ An executor loop should:
 - stop before credentials, destructive git, private material, production
   actions, or unapproved publication boundaries.
 
-The executor can be powerful without being the product authority. Goal Harness
+The executor can be powerful without being the product authority. LoopX
 keeps the authority in the shared state that the user, primary agent, and side
 agents can all inspect.
 
@@ -170,22 +170,22 @@ The product loop is:
 ```text
 user
   -> client
-  -> Goal Harness server/state
+  -> LoopX server/state
   -> executor loop
-  -> Goal Harness server/state
+  -> LoopX server/state
   -> client
   -> user
 ```
 
 The client should not bypass the server by turning every user sentence directly
 into an agent instruction. The executor should not bypass the client by hiding
-important decisions in chat or local memory. Goal Harness exists so user
+important decisions in chat or local memory. LoopX exists so user
 judgment, agent work, evidence, and future planning remain visible in the same
 control plane.
 
 ## Capability Boundaries
 
-Goal Harness should not become:
+LoopX should not become:
 
 - an agent runtime that owns model execution, tools, billing, or permissions;
 - a generic workflow engine where every step is a hidden automation edge;

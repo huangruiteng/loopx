@@ -89,7 +89,7 @@ Purpose: convert between local Codex execution and the Archipelago MCP gateway.
 
 The action bridge must run on the trusted local host. It may create a local
 private transcript but should not expose raw prompt, file, screenshot, or task
-artifact content in public Goal Harness output.
+artifact content in public LoopX output.
 
 Minimum responsibilities:
 
@@ -117,7 +117,7 @@ screenshots_public=false
 
 ### Grading/Reducer Layer
 
-Purpose: keep official scoring and public Goal Harness evidence separate.
+Purpose: keep official scoring and public LoopX evidence separate.
 
 After an approved real run, grading may use private initial/final snapshots,
 trajectory, verifiers, eval configs, scoring config, and optional golden
@@ -174,7 +174,7 @@ names, document names, generated file contents, raw MCP payloads, raw
 trajectory messages, screenshot paths, local absolute paths, credential names,
 or provider account details in public events.
 
-`benchmark_result_v0` should keep official task score and Goal Harness control
+`benchmark_result_v0` should keep official task score and LoopX control
 value separate:
 
 ```text
@@ -207,7 +207,7 @@ local fixture and smoke contract that proves only the bridge/reducer shape:
 
 This fixture must not import Archipelago, start Docker, use Hugging Face,
 invoke Codex, call a model, or read environment credentials. It should be a
-Goal Harness contract smoke only.
+LoopX contract smoke only.
 
 ## Real-Run Gate
 
@@ -244,7 +244,7 @@ Stop immediately if a next step would:
 
 ## Decision
 
-The APEX-Agents path is now ready for a no-run Goal Harness implementation
+The APEX-Agents path is now ready for a no-run LoopX implementation
 slice: build a deterministic bridge/reducer fixture and smoke test. That is
-the best next autonomous step because it advances reusable Goal Harness
+the best next autonomous step because it advances reusable LoopX
 benchmark capability while preserving every real-run gate.

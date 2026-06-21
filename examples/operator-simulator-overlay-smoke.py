@@ -17,7 +17,7 @@ PROTOCOL = TOPIC_DIR / "operator-simulator-overlay-v0.md"
 PLAN_SCHEMA = "operator_simulator_overlay_v0"
 ACTIVE_INJECTION_SCHEMA = "active_user_simulator_injection_v0"
 RUN_SCHEMA = "operator_simulator_run_v0"
-BENCHMARK_ID = "goal-harness-local-operator-simulator@v0"
+BENCHMARK_ID = "loopx-local-operator-simulator@v0"
 TASK_ID = "mini_control_plane_repair_v0"
 
 SIMULATOR_SETTINGS = [
@@ -31,14 +31,14 @@ SIMULATOR_SETTINGS = [
 
 COMPARISON_MODES = [
     "official_or_native",
-    "passive_goal_harness_wrapper",
+    "passive_loopx_wrapper",
     "assisted_operator_simulator",
 ]
 
 ALLOWED_VISIBILITY = [
     "public_task_statement",
     "benchmark_visible_worker_context",
-    "public_safe_goal_harness_state_summary",
+    "public_safe_loopx_state_summary",
     "public_safe_todos_gates_review_packet",
     "goal_tick_phases",
     "worker_visible_validation_output",
@@ -224,7 +224,7 @@ def scripted_run_row(plan: dict[str, Any]) -> dict[str, Any]:
                 "chars": 156,
                 "visible_evidence_basis": [
                     "worker_visible_validation_output",
-                    "public_safe_goal_harness_state_summary",
+                    "public_safe_loopx_state_summary",
                 ],
                 "no_oracle_audit": {key: False for key in NO_ORACLE_AUDIT_KEYS},
                 "accepted_by_worker": True,

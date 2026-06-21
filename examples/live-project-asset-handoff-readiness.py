@@ -29,15 +29,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--goal-id", required=True, help="Live goal id to check.")
     parser.add_argument(
         "--registry",
-        default=str(Path.home() / ".codex" / "goal-harness" / "registry.global.json"),
-        help="Goal Harness registry path. Defaults to the shared global registry.",
+        default=str(Path.home() / ".codex" / "loopx" / "registry.global.json"),
+        help="LoopX registry path. Defaults to the shared global registry.",
     )
-    parser.add_argument("--runtime-root", help="Optional Goal Harness runtime root.")
+    parser.add_argument("--runtime-root", help="Optional LoopX runtime root.")
     return parser.parse_args()
 
 
-def run_goal_harness(args: argparse.Namespace, *command: str) -> dict[str, Any]:
-    cli = [sys.executable, "-m", "goal_harness.cli", "--registry", args.registry]
+def run_loopx(args: argparse.Namespace, *command: str) -> dict[str, Any]:
+    cli = [sys.executable, "-m", "loopx.cli", "--registry", args.registry]
     if args.runtime_root:
         cli.extend(["--runtime-root", args.runtime_root])
     cli.extend(["--format", "json", *command])
@@ -68,7 +68,7 @@ def assert_public_safe_text(text: str, *, label: str) -> None:
 
 
 def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
-    status_payload = run_goal_harness(args, "status", "--limit", "20")
+    status_payload = run_loopx(args, "status", "--limit", "20")
     assert status_payload.get("ok") is True, status_payload
     item = attention_item(status_payload, args.goal_id)
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
@@ -78,7 +78,7 @@ def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
     assert readiness.get("codex_ready") is True, readiness
     assert readiness.get("source") == "project_asset", readiness
     assert readiness.get("quota_state") == "eligible", readiness
-    expected_probe = f"goal-harness review-packet --goal-id {args.goal_id} --handoff-only"
+    expected_probe = f"loopx review-packet --goal-id {args.goal_id} --handoff-only"
     assert readiness.get("next_probe") == expected_probe, readiness
     checks = readiness.get("checks") if isinstance(readiness.get("checks"), dict) else {}
     for check in (
@@ -91,7 +91,7 @@ def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
     ):
         assert checks.get(check) is True, readiness
 
-    should_run = run_goal_harness(args, "quota", "should-run", "--goal-id", args.goal_id)
+    should_run = run_loopx(args, "quota", "should-run", "--goal-id", args.goal_id)
     assert should_run.get("ok") is True, should_run
     assert should_run.get("project_asset_source") == "project_asset", should_run
     assert should_run.get("recommended_action") == project_asset.get("next_action"), should_run
@@ -114,7 +114,7 @@ def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
         assert summary.get("open_count") == asset_todos.get("open"), should_run
         assert summary.get("total_count") == asset_todos.get("total"), should_run
 
-    handoff = run_goal_harness(args, "review-packet", "--goal-id", args.goal_id, "--handoff-only", "--limit", "20")
+    handoff = run_loopx(args, "review-packet", "--goal-id", args.goal_id, "--handoff-only", "--limit", "20")
     assert handoff.get("ok") is True, handoff
     assert handoff.get("handoff_only") is True, handoff
     handoff_text = str(handoff.get("handoff_text") or "")
@@ -122,7 +122,7 @@ def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
     assert "项目资产来源：project_asset" in handoff_text, handoff_text
     assert "不要从旧聊天或旧 packet 拼当前状态" in handoff_text, handoff_text
     assert "停止条件：" in handoff_text, handoff_text
-    assert "【Goal Harness Review Packet】" not in handoff_text, handoff_text
+    assert "【LoopX Review Packet】" not in handoff_text, handoff_text
     assert "【人只需判断】" not in handoff_text, handoff_text
     assert "operator_gate_decision_commands" not in json.dumps(handoff, ensure_ascii=False), handoff
     assert_public_safe_text(handoff_text, label="handoff-only markdown")

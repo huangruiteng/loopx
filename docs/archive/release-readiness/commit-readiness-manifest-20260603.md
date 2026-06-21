@@ -1,7 +1,7 @@
 # Commit Readiness Manifest - 2026-06-03 (Closed Historical Snapshot)
 
 Status: closed historical snapshot. The public dirty tree described below was
-validated, committed, and pushed through later Goal Harness slices. Do not use
+validated, committed, and pushed through later LoopX slices. Do not use
 this file as a current dirty-tree checklist.
 
 Current use:
@@ -9,12 +9,12 @@ Current use:
 - Treat this file as archival evidence of how the 2026-06-03 public tree was
   grouped before publication.
 - Re-check current readiness with `git status --short`, `git log -1 --oneline`,
-  `goal-harness --format json check --scan-root .`, and
-  `goals/goal-harness-meta/ACTIVE_GOAL_STATE.md` before acting on any cluster.
+  `loopx --format json check --scan-root .`, and
+  `goals/loopx-meta/ACTIVE_GOAL_STATE.md` before acting on any cluster.
 - Preserve the publish-policy notes below as historical context, not as proof
   that the present tree is ready to publish.
 
-For public Goal Harness daily iteration, autonomous commit/push and PR creation
+For public LoopX daily iteration, autonomous commit/push and PR creation
 are allowed when the public-sensitive scan is clean, validation passes, and the
 change does not include company-internal or private material.
 
@@ -46,19 +46,19 @@ Candidate files:
 
 - `README.md`
 - `docs/heartbeat-automation-prompt.md`
-- `goal_harness/heartbeat_prompt.py`
-- `skills/goal-harness-project/SKILL.md`
+- `loopx/heartbeat_prompt.py`
+- `skills/loopx-project/SKILL.md`
 - `examples/heartbeat-prompt-smoke.py`
 
 Validation already run in this slice:
 
 - `python3 examples/heartbeat-prompt-smoke.py`
-- `python3 -m py_compile goal_harness/heartbeat_prompt.py examples/heartbeat-prompt-smoke.py`
-- `python3 -m compileall -q goal_harness`
+- `python3 -m py_compile loopx/heartbeat_prompt.py examples/heartbeat-prompt-smoke.py`
+- `python3 -m compileall -q loopx`
 
 Remaining before commit:
 
-- Regenerate one sample `goal-harness heartbeat-prompt --goal-id ...` output
+- Regenerate one sample `loopx heartbeat-prompt --goal-id ...` output
   manually and skim that it stays human-readable.
 - Check that the public template does not promise a specific Codex App API
   surface beyond "delete or pause through automation management".
@@ -76,9 +76,9 @@ run-bound human reward overlays exist.
 
 Candidate files:
 
-- `goal_harness/history.py`
-- `goal_harness/status.py` (runtime/status hunks)
-- `goal_harness/contract.py`
+- `loopx/history.py`
+- `loopx/status.py` (runtime/status hunks)
+- `loopx/contract.py`
 - `examples/status-markdown-smoke.py`
 - `examples/contract-reward-overlay-smoke.py`
 
@@ -86,7 +86,7 @@ Validation already run in prior slices or this slice:
 
 - `python3 examples/status-markdown-smoke.py`
 - `python3 examples/contract-reward-overlay-smoke.py`
-- `goal-harness --format json check --scan-root .`
+- `loopx --format json check --scan-root .`
 
 Remaining before commit:
 
@@ -109,9 +109,9 @@ to browse project files manually.
 
 Candidate files:
 
-- `goal_harness/materials.py`
-- `goal_harness/status.py` (todo review-material hunks)
-- `goal_harness/status_server.py` (loopback `/review-material` endpoint)
+- `loopx/materials.py`
+- `loopx/status.py` (todo review-material hunks)
+- `loopx/status_server.py` (loopback `/review-material` endpoint)
 - `apps/dashboard/src/data/status.ts`
 - `apps/dashboard/src/views/dashboard-page.tsx` (review-material UI hunks)
 - `examples/user-todo-review-material-smoke.py`
@@ -168,12 +168,12 @@ Boundary risks:
 
 Candidate files:
 
-- `goals/goal-harness-meta/ACTIVE_GOAL_STATE.md`
+- `goals/loopx-meta/ACTIVE_GOAL_STATE.md`
 - `docs/commit-readiness-manifest-20260603.md`
 
 Commit guidance:
 
-- Treat `goals/goal-harness-meta/ACTIVE_GOAL_STATE.md` as public state
+- Treat `goals/loopx-meta/ACTIVE_GOAL_STATE.md` as public state
   writeback. It may be included with a final "state and manifest" commit if the
   public boundary scan remains clean.
 - This manifest can be committed as review metadata or deleted before a final
@@ -185,7 +185,7 @@ These are not part of the public dirty tree and must stay out of any commit:
 
 - `.local/**` from any connected project.
 - Codex App automation config and thread metadata.
-- Shared runtime history under the local Goal Harness runtime directory,
+- Shared runtime history under the local LoopX runtime directory,
   including quota spend, state refresh, archived demo, and reward overlay run
   files.
 - Temporary demo project directories, dashboard dev-server artifacts, generated
@@ -206,7 +206,7 @@ python3 examples/user-todo-review-material-smoke.py
 python3 examples/contract-reward-overlay-smoke.py
 npm --prefix apps/dashboard run build
 node examples/dashboard-reward-append-browser-smoke.mjs
-goal-harness --format json check --scan-root .
+loopx --format json check --scan-root .
 git diff --check
 ```
 
@@ -226,7 +226,7 @@ Commands run:
 - `python3 examples/contract-reward-overlay-smoke.py`
 - `npm --prefix apps/dashboard run build`
 - `node examples/dashboard-reward-append-browser-smoke.mjs`
-- `goal-harness --format json check --scan-root .`
+- `loopx --format json check --scan-root .`
 - `git diff --check`
 
 Notes:
@@ -234,7 +234,7 @@ Notes:
 - The aggregate smoke runner passed 18 public smoke scripts.
 - The dashboard build passed with the existing Vite chunk-size warning.
 - The dashboard reward append browser smoke passed.
-- `goal-harness check` passed with errors=0, warnings=0, and a clean public
+- `loopx check` passed with errors=0, warnings=0, and a clean public
   boundary scan over 86 files.
 
 ## Public-Sensitive Diff Review - 2026-06-03T10:56:57+08:00
@@ -265,9 +265,9 @@ Findings:
 - `apps/dashboard/src/views/dashboard-page.tsx` contains both review-material
   and reward-append hunks; use hunk staging if the operator wants separate
   commits for Cluster 3 and Cluster 4.
-- `goal_harness/status.py` contains both runtime/status and review-material
+- `loopx/status.py` contains both runtime/status and review-material
   hunks; use hunk staging if Cluster 2 and Cluster 3 should stay separate.
-- `goals/goal-harness-meta/ACTIVE_GOAL_STATE.md` is large state writeback; keep
+- `goals/loopx-meta/ACTIVE_GOAL_STATE.md` is large state writeback; keep
   it as a final state/manifest commit or omit it from feature commits if the
   operator wants a lean release branch.
 
@@ -289,7 +289,7 @@ request before commit, push, or PR creation.
 
 Current policy:
 
-- Autonomous commit/push is allowed for public Goal Harness changes when the
+- Autonomous commit/push is allowed for public LoopX changes when the
   public boundary scan is clean and validation passes.
 - Autonomous PR creation is allowed under the same boundary, usually when the
   work is not already on the intended target branch.
@@ -301,7 +301,7 @@ Current policy:
 
 ## Publication Validation - 2026-06-03T11:06:50+08:00
 
-Status: passed; safe to publish the current public Goal Harness dirty tree.
+Status: passed; safe to publish the current public LoopX dirty tree.
 
 Commands run:
 
@@ -312,7 +312,7 @@ Commands run:
 - `python3 examples/contract-reward-overlay-smoke.py`
 - `npm --prefix apps/dashboard run build`
 - `node examples/dashboard-reward-append-browser-smoke.mjs`
-- `goal-harness --format json check --scan-root .`
+- `loopx --format json check --scan-root .`
 - `git diff --check`
 - Targeted `rg` sensitive-pattern scan over the candidate files.
 
@@ -321,6 +321,6 @@ Notes:
 - The aggregate smoke runner passed 18 public smoke scripts.
 - The dashboard build passed with the existing Vite chunk-size warning.
 - The dashboard reward append browser smoke passed.
-- `goal-harness check` passed with errors=0, warnings=0, and a clean public
+- `loopx check` passed with errors=0, warnings=0, and a clean public
   boundary scan over 88 files.
 - The targeted sensitive-pattern scan produced no findings.

@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
@@ -62,7 +62,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime = root / "runtime"
     real_result_root = root / "private-real-result-root"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -84,7 +84,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
             "goals": [
                 {
                     "id": GOAL_ID,
-                    "domain": "goal-harness-platform",
+                    "domain": "loopx-platform",
                     "status": "active-read-only",
                     "state_file": state_file,
                     "repo": str(project),
@@ -101,7 +101,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         real_result_root / "benchmark_run.compact.json",
         {
             "schema_version": "benchmark_run_v0",
-            "source_runner": "goal_harness_agentissue_codex_cli_runner",
+            "source_runner": "loopx_agentissue_codex_cli_runner",
             "benchmark_id": BENCHMARK_ID,
             "selected_tag": SELECTED_TAG,
             "real_run": True,
@@ -168,7 +168,7 @@ def write_patch_apply_failure_fixture(real_result_root: Path) -> None:
         real_result_root / "benchmark_run.compact.json",
         {
             "schema_version": "benchmark_run_v0",
-            "source_runner": "goal_harness_agentissue_codex_cli_runner",
+            "source_runner": "loopx_agentissue_codex_cli_runner",
             "benchmark_id": BENCHMARK_ID,
             "selected_tag": SELECTED_TAG,
             "selected_image": "alfin06/agentissue-bench:lagent_239",
@@ -229,7 +229,7 @@ def write_patch_apply_failure_fixture(real_result_root: Path) -> None:
 
 def run_cli(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=check,
         text=True,

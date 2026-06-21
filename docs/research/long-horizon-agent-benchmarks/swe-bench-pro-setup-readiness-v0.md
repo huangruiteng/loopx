@@ -28,13 +28,13 @@ is explicitly approved.
 
 ## Difficulty And Codex Signal
 
-SWE-Bench Pro is a strong Goal Harness candidate because it is explicitly
+SWE-Bench Pro is a strong LoopX candidate because it is explicitly
 designed for long-horizon, multi-file, professional software engineering tasks.
 The paper describes 1,865 total problems across 41 active repositories, with a
 public set of 731 tasks from 11 repositories plus held-out and commercial
 subsets.
 
-The initial public-set results are low enough to be useful for Goal Harness
+The initial public-set results are low enough to be useful for LoopX
 uplift measurement. The paper reports Pass@1 public-set resolution of `23.3%`
 for OpenAI GPT-5, `22.7%` for Claude Opus 4.1, `17.6%` for Claude Sonnet 4,
 `4.9%` for OpenAI GPT-4o, and `3.4%` for Qwen-3 32B under a unified SWE-Agent

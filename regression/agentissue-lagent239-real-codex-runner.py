@@ -78,7 +78,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     runner_root = root / "private-runner-root"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
@@ -100,7 +100,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
             "goals": [
                 {
                     "id": GOAL_ID,
-                    "domain": "goal-harness-platform",
+                    "domain": "loopx-platform",
                     "status": "active-read-only",
                     "state_file": state_file,
                     "repo": str(project),
@@ -118,7 +118,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
 
 def run_cli(args: list[str], *, cwd: Path = REPO_ROOT) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=cwd,
         check=True,
         text=True,
@@ -196,13 +196,13 @@ def assert_materialized_contract(runner_root: Path, payload: dict[str, Any]) -> 
     assert_no_forbidden_text(manifest)
 
 
-def write_goal_harness_wrapper(root: Path) -> Path:
-    wrapper = root / "goal-harness-wrapper.sh"
+def write_loopx_wrapper(root: Path) -> Path:
+    wrapper = root / "loopx-wrapper.sh"
     wrapper.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         f"cd {str(REPO_ROOT)!r}\n"
-        f"exec {sys.executable!r} -m goal_harness.cli \"$@\"\n",
+        f"exec {sys.executable!r} -m loopx.cli \"$@\"\n",
         encoding="utf-8",
     )
     wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
@@ -258,7 +258,7 @@ def run_private_script(
 
     artifacts = runner_root / "artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)
-    wrapper = write_goal_harness_wrapper(root)
+    wrapper = write_loopx_wrapper(root)
     script = runner_root / "run-lagent239.private.sh"
 
     common_env = {
@@ -266,7 +266,7 @@ def run_private_script(
         "PROMPT_PATH": str(prompt_path),
         "CODEX_BIN": codex_cli,
         "DOCKER_BIN": docker_cli,
-        "GOAL_HARNESS_BIN": str(wrapper),
+        "LOOPX_BIN": str(wrapper),
         "APPEND_HISTORY": "0",
     }
     with (artifacts / "precheck.private.log").open("w", encoding="utf-8") as stream:

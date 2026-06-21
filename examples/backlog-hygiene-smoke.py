@@ -19,7 +19,7 @@ def run_cli(*args: str, registry_path: Path, runtime: Path) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -47,7 +47,7 @@ def write_fixture(
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     agent_todo_lines = [
@@ -122,7 +122,7 @@ def attention_item(status_payload: dict) -> dict:
 
 
 def assert_hidden_backlog_warning() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-backlog-hygiene-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-backlog-hygiene-") as tmp:
         registry_path, runtime = write_fixture(Path(tmp), include_agent_todo=False)
         status_payload = run_cli("status", registry_path=registry_path, runtime=runtime)
         item = attention_item(status_payload)
@@ -140,7 +140,7 @@ def assert_hidden_backlog_warning() -> None:
 
 
 def assert_open_agent_todo_suppresses_warning() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-backlog-hygiene-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-backlog-hygiene-") as tmp:
         registry_path, runtime = write_fixture(Path(tmp), include_agent_todo=True)
         status_payload = run_cli("status", registry_path=registry_path, runtime=runtime)
         item = attention_item(status_payload)
@@ -153,7 +153,7 @@ def assert_open_agent_todo_suppresses_warning() -> None:
 
 
 def assert_completed_todo_archive_warning() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-todo-archive-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-todo-archive-") as tmp:
         registry_path, runtime = write_fixture(
             Path(tmp),
             include_agent_todo=True,
@@ -177,7 +177,7 @@ def assert_completed_todo_archive_warning() -> None:
 
 
 def assert_completed_archive_section_is_not_active_todo() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-todo-archive-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-todo-archive-") as tmp:
         registry_path, runtime = write_fixture(
             Path(tmp),
             include_agent_todo=True,

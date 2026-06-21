@@ -301,7 +301,7 @@ def reduce_to_benchmark_result(packet: dict[str, Any]) -> dict[str, Any]:
         "task_id": "swe_bench_pro_nodebb_selected_instance",
         "scenario_id": "one_instance_execution_gate_no_run",
         "worker_mode": "deterministic_fixture",
-        "harness_identity": "goal_harness",
+        "harness_identity": "loopx",
         "terminal_state": "blocked_before_execution_scope",
         "official_task_score": {
             "kind": "swe_bench_pro_official_score",

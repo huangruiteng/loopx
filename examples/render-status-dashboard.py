@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Render a static Goal Harness status dashboard from JSON output.
+"""Render a static LoopX status dashboard from JSON output.
 
 Usage:
-  goal-harness --format json status > /tmp/goal-status.json
+  loopx --format json status > /tmp/goal-status.json
   python3 examples/render-status-dashboard.py /tmp/goal-status.json /tmp/goal-status.html
 """
 
@@ -374,7 +374,7 @@ def render_dashboard(payload: dict[str, Any]) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Goal Harness Status</title>
+  <title>LoopX Status</title>
   <style>
     :root {{
       color-scheme: light;
@@ -634,7 +634,7 @@ def render_dashboard(payload: dict[str, Any]) -> str:
   <main>
     <section class="topbar">
       <div>
-        <h1>Goal Harness Status</h1>
+        <h1>LoopX Status</h1>
         <p class="meta">Registry: {esc(payload.get("registry"))}</p>
         <p class="meta">Runtime: {esc(payload.get("runtime_root"))}</p>
       </div>
@@ -666,8 +666,8 @@ def render_dashboard(payload: dict[str, Any]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Render Goal Harness status JSON as a static HTML dashboard.")
-    parser.add_argument("status_json", help="Path to goal-harness --format json status output.")
+    parser = argparse.ArgumentParser(description="Render LoopX status JSON as a static HTML dashboard.")
+    parser.add_argument("status_json", help="Path to loopx --format json status output.")
     parser.add_argument("output_html", help="Path to write the rendered dashboard HTML.")
     args = parser.parse_args()
 

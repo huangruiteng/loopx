@@ -1,6 +1,6 @@
 # Long-Task Cadence Policy
 
-Goal Harness should preserve the native long-horizon strength of an agent loop.
+LoopX should preserve the native long-horizon strength of an agent loop.
 Heartbeat automation is useful because it keeps goals alive, but it can also
 train the controller into tiny status-only turns if every wakeup is treated as a
 small independent task. The cadence policy describes how product surfaces and
@@ -23,7 +23,7 @@ still stop or ask.
 
 ## Product Presets
 
-Goal Harness should expose a small preset set instead of making users tune many
+LoopX should expose a small preset set instead of making users tune many
 heuristics directly:
 
 | Preset | Intended Use | Minimum Segment |
@@ -95,7 +95,7 @@ these are true:
 
 For the default `long` preset, the minimum useful batch is
 `implementation_plus_validation_writeback`: one coherent artifact, targeted
-validation, and Goal Harness writeback. A docs-only batch can still satisfy
+validation, and LoopX writeback. A docs-only batch can still satisfy
 `long` when the selected todo is a durable design contract and the matching
 smoke or public boundary check passes. Status-only refreshes, repeated brief
 checks, and unvalidated single-surface edits should increment the too-small

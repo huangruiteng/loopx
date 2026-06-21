@@ -2,7 +2,7 @@
 
 Status: public-safe architecture target + read-only projection contract v0.
 
-Goal Harness should be able to sit beside an existing agent host without
+LoopX should be able to sit beside an existing agent host without
 becoming that host. The target role is a long-horizon task control plane:
 turn session-level execution facts into goal-level state that is recoverable,
 auditable, gated, attention-ranked, and reusable across sessions.
@@ -18,7 +18,7 @@ An agent host owns the execution plane:
 - host authentication, rate limits, billing, trace, and audit;
 - raw transcripts, raw logs, and raw tool outputs.
 
-Goal Harness owns the goal-level control projection:
+LoopX owns the goal-level control projection:
 
 - `goal_state`: objective, non-goals, authority sources, current boundary;
 - `run_projection`: compact session/outcome summary with pointers to source
@@ -34,17 +34,17 @@ Goal Harness owns the goal-level control projection:
   promoted.
 
 A product surface owns the frontstage user experience: task cards, approvals,
-progress, recovery entry points, and collaboration views. Goal Harness should
+progress, recovery entry points, and collaboration views. LoopX should
 explain why a card exists, whether it may run, which gate blocks it, and how it
 recovers after approval; it should not become the default end-user console.
 
 ## Core Principle
 
-The host session log is the raw fact source. Goal Harness run history is a
+The host session log is the raw fact source. LoopX run history is a
 compact control projection. A projection may reference host ids such as session,
 event, tool call, artifact, approval, or outcome ids, but it must not copy full
 transcripts, credentials, raw logs, private traces, or sandbox internals into
-Goal Harness state.
+LoopX state.
 
 This avoids a second event store. If the host says a session completed and Goal
 Harness says a goal is still blocked, the projection must explain the
@@ -58,7 +58,7 @@ artifact, or human decision not yet recorded.
 Input: compact host summaries for sessions, events, outcomes, approvals, and
 artifacts.
 
-Output: a Goal Harness attention item with:
+Output: a LoopX attention item with:
 
 - `waiting_on`;
 - `next_action`;
@@ -79,7 +79,7 @@ four questions:
 
 ### Phase 2: Controlled Writeback
 
-After the read-only projection proves useful, Goal Harness may map compact
+After the read-only projection proves useful, LoopX may map compact
 control events back to host metadata or events:
 
 - operator gate requested/resolved;
@@ -89,17 +89,17 @@ control events back to host metadata or events:
 - artifact pointer or run projection pointer.
 
 Writeback must remain compact and reversible. It should not copy raw evidence
-or turn Goal Harness into the host's permission system.
+or turn LoopX into the host's permission system.
 
 ### Phase 3: Product Surface Integration
 
-The product surface should display Goal Harness projections instead of asking
-users to read the Goal Harness dashboard directly. Goal Harness remains the
+The product surface should display LoopX projections instead of asking
+users to read the LoopX dashboard directly. LoopX remains the
 reliability and governance layer behind the product view.
 
 ## Non-Goals
 
-Goal Harness should not:
+LoopX should not:
 
 - reimplement the host's agent loop or model strategy;
 - reimplement the host's event store;
@@ -141,7 +141,7 @@ raw event bodies, exact host URLs, raw logs, credentials, and local paths stay
 outside the repository.
 
 The current v0 implementation is a pure builder,
-`goal_harness.session_runtime.build_session_runtime_readonly_projection(...)`.
+`loopx.session_runtime.build_session_runtime_readonly_projection(...)`.
 It accepts compact session, event, outcome, gate, artifact, and decision-result
 summaries, then returns:
 

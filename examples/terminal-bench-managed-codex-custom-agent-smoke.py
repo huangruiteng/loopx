@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     TERMINAL_BENCH_MANAGED_AGENT_IMPORT_PATH,
     build_terminal_bench_benchmark_run,
     build_terminal_bench_managed_harbor_command,
@@ -31,10 +31,10 @@ README = TOPIC_DIR / "README.md"
 REQUIRED_DOC_SNIPPETS = [
     "Terminal-Bench Managed Codex Custom Agent V0",
     "--agent-import-path",
-    "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
-    "goal_harness_managed_codex",
-    "goal_harness_terminal_bench_policy_v0",
-    "terminal_bench_goal_harness_managed_codex_v0",
+    "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
+    "loopx_managed_codex",
+    "loopx_terminal_bench_policy_v0",
+    "terminal_bench_loopx_managed_codex_v0",
     "case_semantics_changed_by_harness",
     "official_score_comparable_to_native_codex",
     "model_plus_harness_pair",
@@ -171,8 +171,8 @@ def install_fake_harbor_modules() -> None:
 
 def load_agent_module() -> Any:
     install_fake_harbor_modules()
-    module_path = REPO_ROOT / "goal_harness" / "terminal_bench_agent.py"
-    spec = importlib.util.spec_from_file_location("goal_harness_terminal_bench_agent_smoke", module_path)
+    module_path = REPO_ROOT / "loopx" / "terminal_bench_agent.py"
+    spec = importlib.util.spec_from_file_location("loopx_terminal_bench_agent_smoke", module_path)
     assert spec and spec.loader, module_path
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -210,7 +210,7 @@ def assert_command_contract() -> None:
     assert "<private-jobs-dir>" in command, command
     assert_public_safe(joined)
 
-    event = build_terminal_bench_benchmark_run(mode="goal-harness-managed-codex")
+    event = build_terminal_bench_benchmark_run(mode="loopx-managed-codex")
     assert event["agent"]["import_path"] == TERMINAL_BENCH_MANAGED_AGENT_IMPORT_PATH, event
     assert event["managed_runner_command_preview"] == command, event
     assert event["real_run"] is False, event
@@ -223,25 +223,25 @@ def assert_adapter_contract() -> None:
     module = load_agent_module()
     task = "Build the extension and make the test pass."
     managed = module.build_managed_terminal_bench_instruction(task)
-    assert "Goal Harness managed Codex mode" in managed, managed
+    assert "LoopX managed Codex mode" in managed, managed
     assert "----- TERMINAL-BENCH TASK -----" in managed, managed
     assert module.TERMINAL_BENCH_CASE_STATE_PATH in managed, managed
     assert module.BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION in managed, managed
     assert task in managed, managed
 
     agent = module.GoalHarnessManagedCodex(logs_dir=Path("logs"), model_name="gpt-5.5")
-    assert agent.name() == "goal-harness-managed-codex", agent.name()
+    assert agent.name() == "loopx-managed-codex", agent.name()
     context = FakeAgentContext()
     asyncio.run(agent.run(task, object(), context))
     assert agent.received_instruction is not None
-    assert "Goal Harness managed Codex mode" in agent.received_instruction
+    assert "LoopX managed Codex mode" in agent.received_instruction
     assert module.TERMINAL_BENCH_CASE_STATE_PATH in agent.received_instruction
     assert task in agent.received_instruction
     root_calls = [call for call in agent.exec_calls if call["user"] == "root"]
     assert len(root_calls) == 1, root_calls
     init_command = root_calls[0]["command"]
     assert "/app/.codex/goals/terminal-bench-case/ACTIVE_GOAL_STATE.md" in init_command
-    assert ".goal-harness-case-state.md" not in init_command
+    assert ".loopx-case-state.md" not in init_command
     assert module.BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION in init_command
     assert context.is_empty(), context.metadata
     agent.populate_context_post_run(context)
@@ -249,36 +249,36 @@ def assert_adapter_contract() -> None:
     assert context.n_cache_tokens == 45, context.n_cache_tokens
     assert context.n_output_tokens == 67, context.n_output_tokens
     assert context.cost_usd == 0.89, context.cost_usd
-    goal_harness = context.metadata["goal_harness"]
-    assert goal_harness["mode"] == "goal_harness_managed_codex", goal_harness
-    assert goal_harness["goal_harness_inside_case"] is True, goal_harness
-    assert goal_harness["case_semantics_changed_by_harness"] is True, goal_harness
-    assert goal_harness["official_score_comparable_to_native_codex"] is False, goal_harness
-    assert goal_harness["model_plus_harness_pair"] is True, goal_harness
-    assert goal_harness["raw_task_instruction_recorded"] is False, goal_harness
-    assert goal_harness["raw_managed_prompt_recorded"] is False, goal_harness
-    assert goal_harness["case_goal_state_init_required"] is True, goal_harness
-    assert goal_harness["case_goal_state_initialized_before_agent"] is True, goal_harness
-    assert goal_harness["case_goal_state_init_status"] == "passed", goal_harness
+    loopx = context.metadata["loopx"]
+    assert loopx["mode"] == "loopx_managed_codex", loopx
+    assert loopx["loopx_inside_case"] is True, loopx
+    assert loopx["case_semantics_changed_by_harness"] is True, loopx
+    assert loopx["official_score_comparable_to_native_codex"] is False, loopx
+    assert loopx["model_plus_harness_pair"] is True, loopx
+    assert loopx["raw_task_instruction_recorded"] is False, loopx
+    assert loopx["raw_managed_prompt_recorded"] is False, loopx
+    assert loopx["case_goal_state_init_required"] is True, loopx
+    assert loopx["case_goal_state_initialized_before_agent"] is True, loopx
+    assert loopx["case_goal_state_init_status"] == "passed", loopx
     assert (
-        goal_harness["case_goal_state_schema_version"]
+        loopx["case_goal_state_schema_version"]
         == module.BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
-    ), goal_harness
+    ), loopx
     assert (
-        goal_harness["case_goal_state_path"]
+        loopx["case_goal_state_path"]
         == module.TERMINAL_BENCH_CASE_STATE_PATH
-    ), goal_harness
-    counters = goal_harness["goal_harness_interaction_counters"]
+    ), loopx
+    counters = loopx["loopx_interaction_counters"]
     assert counters["case_goal_state_init_required"] is True, counters
     assert counters["case_goal_state_initialized_before_agent"] is True, counters
-    assert counters["goal_harness_case_state_writes"] == 1, counters
+    assert counters["loopx_case_state_writes"] == 1, counters
     assert counters["case_goal_state_path"] == module.TERMINAL_BENCH_CASE_STATE_PATH
-    assert goal_harness["leaderboard_evidence"] is False, goal_harness
-    assert goal_harness["context_metadata_deferred_until_post_run"] is True, goal_harness
-    assert goal_harness["context_post_run_ingested"] is True, goal_harness
-    assert goal_harness["usage_source"] == "codex_cli_session_token_count_event", goal_harness
-    assert goal_harness["token_cost_fallback_applied"] is False, goal_harness
-    assert_public_safe(goal_harness)
+    assert loopx["leaderboard_evidence"] is False, loopx
+    assert loopx["context_metadata_deferred_until_post_run"] is True, loopx
+    assert loopx["context_post_run_ingested"] is True, loopx
+    assert loopx["usage_source"] == "codex_cli_session_token_count_event", loopx
+    assert loopx["token_cost_fallback_applied"] is False, loopx
+    assert_public_safe(loopx)
 
 
 def assert_session_usage_fallback_contract() -> None:

@@ -15,15 +15,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import build_terminal_bench_harbor_result_benchmark_run  # noqa: E402
-from goal_harness.benchmark_ledger import (  # noqa: E402
+from loopx.benchmark import build_terminal_bench_harbor_result_benchmark_run  # noqa: E402
+from loopx.benchmark_ledger import (  # noqa: E402
     BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
     build_benchmark_run_ledger_entry,
     load_benchmark_run_ledger,
     render_benchmark_run_ledger_markdown,
     update_benchmark_run_ledger,
 )
-from goal_harness.status import compact_benchmark_run  # noqa: E402
+from loopx.status import compact_benchmark_run  # noqa: E402
 
 
 GOAL_ID = "benchmark-run-ledger-fixture"
@@ -38,7 +38,7 @@ def write_registry(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
         "---\n"
@@ -79,12 +79,12 @@ def write_goal_mode_model_access_failure_job(root: Path) -> Path:
     job_dir = root / "jobs" / "terminal_bench_2_0_ledger_fixture_codex_goal_mode_baseline"
     trial_dir = job_dir / "ledger-fixture__model"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.1-codex-max",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_mode_baseline",
-            "goal_harness_ablation_mode": "codex_goal_mode_baseline",
-            "goal_harness_access_packet_mode": "none",
+            "loopx_mode": "codex_goal_mode_baseline",
+            "loopx_ablation_mode": "codex_goal_mode_baseline",
+            "loopx_access_packet_mode": "none",
         },
     }
     write_json(
@@ -99,9 +99,9 @@ def write_goal_mode_model_access_failure_job(root: Path) -> Path:
                 "--include-task-name",
                 "ledger-fixture",
                 "--agent-kwarg",
-                "goal_harness_mode=codex_goal_mode_baseline",
+                "loopx_mode=codex_goal_mode_baseline",
                 "--agent-kwarg",
-                "goal_harness_access_packet_mode=none",
+                "loopx_access_packet_mode=none",
             ],
             "trials": [
                 {
@@ -131,7 +131,7 @@ def write_goal_mode_model_access_failure_job(root: Path) -> Path:
                 "n_cancelled_trials": 0,
                 "n_retries": 0,
                 "evals": {
-                    "goal-harness-managed-codex__gpt-5.1-codex-max__terminal-bench": {
+                    "loopx-managed-codex__gpt-5.1-codex-max__terminal-bench": {
                         "n_trials": 1,
                         "n_errors": 1,
                         "metrics": [{"mean": 0.0}],
@@ -431,8 +431,8 @@ def test_ledger_skips_running_result_placeholder() -> None:
     compact = {
         "schema_version": "benchmark_run_v0",
         "benchmark_id": "terminal-bench@2.0",
-        "job_name": "terminal_bench_train_fasttext_goal_harness_managed_codex_20260618T035534CST",
-        "mode": "goal_harness_managed_codex",
+        "job_name": "terminal_bench_train_fasttext_loopx_managed_codex_20260618T035534CST",
+        "mode": "loopx_managed_codex",
         "official_score_status": "missing",
         "progress": {
             "n_total_trials": 1,
@@ -624,9 +624,9 @@ def test_paired_runner_setup_blocker_overrides_zero_delta_no_uplift() -> None:
     }
     treatment = {
         **baseline,
-        "job_name": "terminal_bench_2_0_setup_timeout_fixture_codex_goal_harness",
-        "mode": "codex_goal_harness",
-        "goal_harness_inside_case": True,
+        "job_name": "terminal_bench_2_0_setup_timeout_fixture_codex_loopx",
+        "mode": "codex_loopx",
+        "loopx_inside_case": True,
     }
     with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-paired-setup-") as tmp:
         root = Path(tmp)
@@ -676,9 +676,9 @@ def test_verified_bridge_official_zero_routes_to_no_uplift_not_alignment() -> No
     }
     treatment = {
         **baseline,
-        "job_name": "terminal_bench_2_0_headless_terminal_codex_goal_harness_treatment",
-        "mode": "codex_goal_harness",
-        "goal_harness_inside_case": True,
+        "job_name": "terminal_bench_2_0_headless_terminal_codex_loopx_treatment",
+        "mode": "codex_loopx",
+        "loopx_inside_case": True,
         "worker_bridge_materialization_status": "verified",
         "score_failure_attribution": "worker_bridge_connected_official_score_failure",
         "failure_attribution_labels": [
@@ -749,9 +749,9 @@ def test_repeated_case_timeout_routes_to_timeout_tier_candidate() -> None:
     }
     treatment = {
         **baseline,
-        "job_name": "terminal_bench_2_0_make_doom_for_mips_codex_goal_harness_treatment",
-        "mode": "codex_goal_harness",
-        "goal_harness_inside_case": True,
+        "job_name": "terminal_bench_2_0_make_doom_for_mips_codex_loopx_treatment",
+        "mode": "codex_loopx",
+        "loopx_inside_case": True,
     }
 
     with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-timeout-tier-") as tmp:
@@ -807,9 +807,9 @@ def test_passed_pair_routes_to_baseline_solved_non_regression() -> None:
     }
     treatment = {
         **baseline,
-        "job_name": "skillsbench_1_1_passed_pair_fixture_goal_harness_blind_loop_treatment",
-        "mode": "skillsbench_goal_harness_blind_loop_treatment",
-        "goal_harness_automation_loop": True,
+        "job_name": "skillsbench_1_1_passed_pair_fixture_loopx_blind_loop_treatment",
+        "mode": "skillsbench_loopx_blind_loop_treatment",
+        "loopx_automation_loop": True,
     }
     with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-passed-pair-") as tmp:
         root = Path(tmp)
@@ -1010,7 +1010,7 @@ def test_cli_harbor_ingest_updates_run_ledger() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--registry",
                 str(registry_path),
                 "--runtime-root",
@@ -1085,7 +1085,7 @@ def test_cli_compact_run_json_updates_run_ledger() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--registry",
                 str(registry_path),
                 "--runtime-root",
@@ -1159,7 +1159,7 @@ def test_cli_run_ledger_check_reports_and_clears_history_drift() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--registry",
                 str(registry_path),
                 "--runtime-root",
@@ -1184,7 +1184,7 @@ def test_cli_run_ledger_check_reports_and_clears_history_drift() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--registry",
                 str(registry_path),
                 "--runtime-root",
@@ -1218,7 +1218,7 @@ def test_cli_run_ledger_check_reports_and_clears_history_drift() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--registry",
                 str(registry_path),
                 "--runtime-root",
@@ -1242,7 +1242,7 @@ def test_cli_run_ledger_check_reports_and_clears_history_drift() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--registry",
                 str(registry_path),
                 "--runtime-root",
@@ -1281,7 +1281,7 @@ def test_cli_post_launch_json_updates_run_ledger() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--registry",
                 str(registry_path),
                 "--runtime-root",

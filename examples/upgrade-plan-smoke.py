@@ -14,8 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
-from goal_harness.upgrade import build_upgrade_plan, prompt_digest, render_upgrade_plan_markdown  # noqa: E402
+from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
+from loopx.upgrade import build_upgrade_plan, prompt_digest, render_upgrade_plan_markdown  # noqa: E402
 
 
 GOAL_ID = "upgrade-plan-goal"
@@ -36,7 +36,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
         "- Keep the fixture heartbeat prompt current.\n",
         encoding="utf-8",
     )
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     registry_path.parent.mkdir(parents=True)
     registry_path.write_text(
         json.dumps(
@@ -77,7 +77,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
 
 
 def assert_unknown_manifest_blocks_promotion(registry_path: Path) -> dict:
-    payload = build_upgrade_plan(registry_path=registry_path, cli_bin="goal-harness")
+    payload = build_upgrade_plan(registry_path=registry_path, cli_bin="loopx")
     assert payload["ok"] is True, payload
     assert payload["prompt_modes"] == ["thin"], payload
     assert payload["summary"]["managed_goal_count"] == 1, payload
@@ -147,7 +147,7 @@ def assert_matching_manifest_is_ready(registry_path: Path, manifest_path: Path, 
     payload = build_upgrade_plan(
         registry_path=registry_path,
         installed_manifest=manifest_path,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
     )
     assert payload["summary"]["unknown_prompt_count"] == 0, payload
     assert payload["summary"]["stale_prompt_count"] == 0, payload
@@ -193,7 +193,7 @@ def assert_not_installed_manifest_is_ready(registry_path: Path, manifest_path: P
     payload = build_upgrade_plan(
         registry_path=registry_path,
         installed_manifest=manifest_path,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
     )
     assert payload["summary"]["unknown_prompt_count"] == 0, payload
     assert payload["summary"]["stale_prompt_count"] == 0, payload
@@ -221,7 +221,7 @@ def assert_not_installed_manifest_is_ready(registry_path: Path, manifest_path: P
 def assert_stage_deferred_selection_is_not_upgrade_work(registry_path: Path) -> None:
     payload = build_upgrade_plan(
         registry_path=registry_path,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         goal_ids=[DEFERRED_GOAL_ID],
     )
     assert payload["summary"]["managed_goal_count"] == 0, payload
@@ -268,7 +268,7 @@ def assert_codex_app_automation_is_discovered(registry_path: Path, codex_home: P
         active_state=None,
         active_state_source="registry",
         thin=True,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
     )["task_body"]
     expected_sha = first_payload["managed_heartbeats"][0]["generated_prompts"]["thin"]["sha256"]
     assert prompt_digest(rendered) == expected_sha, first_payload
@@ -276,7 +276,7 @@ def assert_codex_app_automation_is_discovered(registry_path: Path, codex_home: P
         codex_home,
         prompt=rendered,
     )
-    payload = build_upgrade_plan(registry_path=registry_path, cli_bin="goal-harness")
+    payload = build_upgrade_plan(registry_path=registry_path, cli_bin="loopx")
     assert payload["installed_manifest"]["source"] == "codex_app_automations", payload
     assert payload["installed_manifest"]["available"] is True, payload
     auto_entry = payload["installed_manifest"]["entries"][0]
@@ -310,11 +310,11 @@ def assert_codex_app_stale_policy_prompt_is_flagged(registry_path: Path, codex_h
         "Current controller policy:\n"
         "- If `should_run=false`: no implementation, adapter work, file edits, research, exploration, or spend.\n"
         "- If `safe_bypass_kind=outcome_floor_recovery`: attempt one bounded recovery segment.\n"
-        "Details: goal-harness heartbeat-prompt --compact --goal-id "
+        "Details: loopx heartbeat-prompt --compact --goal-id "
         f"{GOAL_ID} --active-state /tmp/stale/ACTIVE_GOAL_STATE.md\n"
     )
     write_codex_app_automation(codex_home, prompt=stale_prompt)
-    payload = build_upgrade_plan(registry_path=registry_path, cli_bin="goal-harness")
+    payload = build_upgrade_plan(registry_path=registry_path, cli_bin="loopx")
     assert payload["summary"]["ready_for_default_promotion"] is False, payload
     assert payload["summary"]["stale_prompt_count"] == 1, payload
     assert payload["summary"]["installed_prompt_policy_warning_prompt_count"] == 1, payload
@@ -349,7 +349,7 @@ def assert_codex_app_stale_policy_prompt_is_flagged(registry_path: Path, codex_h
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-upgrade-plan-smoke-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-upgrade-plan-smoke-") as raw_tmp:
         root = Path(raw_tmp)
         old_codex_home = os.environ.get("CODEX_HOME")
         os.environ["CODEX_HOME"] = str(root / "codex-home")

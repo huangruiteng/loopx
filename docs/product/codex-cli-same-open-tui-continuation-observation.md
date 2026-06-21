@@ -12,9 +12,9 @@ session.
 
 ## Question
 
-Can a user start Goal Harness with one Codex CLI TUI message and keep the same
+Can a user start LoopX with one Codex CLI TUI message and keep the same
 visible TUI as the place to watch, steer, review, and take over through the
-initial Goal Harness guard and steering step?
+initial LoopX guard and steering step?
 
 ## Observation
 
@@ -23,7 +23,7 @@ Yes, for the interactive bootstrap continuation path.
 In the observed session:
 
 - the operator started from an already visible Codex CLI TUI and explicitly
-  asked Goal Harness to keep that TUI as the primary surface;
+  asked LoopX to keep that TUI as the primary surface;
 - the agent first showed the current goal id, concrete user gate, top user todo,
   top agent todo, and next safe action before running longer work;
 - the registered-agent quota guard initially returned a side-agent workspace
@@ -58,8 +58,8 @@ flags alone are insufficient, and the packet correctly returns
 Keep the product path as:
 
 1. user opens Codex CLI TUI in the project repo;
-2. user pastes one Goal Harness bootstrap message;
-3. Goal Harness shows the compact control-plane snapshot and, if quota allows,
+2. user pastes one LoopX bootstrap message;
+3. LoopX shows the compact control-plane snapshot and, if quota allows,
    performs one bounded visible segment in that same TUI;
 4. later automation remains blocked until visible-session proof and runtime-idle
    evidence pass;
@@ -67,7 +67,7 @@ Keep the product path as:
    interactive path.
 
 This keeps the trusted TUI front and center while avoiding a premature claim
-that Goal Harness can safely inject future scheduled turns into the same open
+that LoopX can safely inject future scheduled turns into the same open
 session.
 
 ## Validation
@@ -75,17 +75,17 @@ session.
 Public-safe validation commands for this observation:
 
 ```bash
-goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" \
-  quota should-run --goal-id goal-harness-meta --agent-id codex-side-bypass
+loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" \
+  quota should-run --goal-id loopx-meta --agent-id codex-side-bypass
 ```
 
 From the independent side-agent worktree this returned `decision=run` and
 `effective_action=normal_run`.
 
 ```bash
-goal-harness --format json codex-cli-visible-attach-acceptance \
+loopx --format json codex-cli-visible-attach-acceptance \
   --project . \
-  --goal-id goal-harness-meta \
+  --goal-id loopx-meta \
   --agent-id codex-side-bypass \
   --observed-surface same_tui_visible_attach \
   --turn-state idle \

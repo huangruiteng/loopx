@@ -86,8 +86,8 @@ profile exists without a matching `registered_agents` entry.
 Today, scoped heartbeat setup passes both identity and natural-language scope:
 
 ```bash
-goal-harness heartbeat-prompt --thin \
-  --goal-id goal-harness-meta \
+loopx heartbeat-prompt --thin \
+  --goal-id loopx-meta \
   --agent-id codex-side-bypass \
   --agent-scope "Productization showcase docs lane. Avoid benchmark work."
 ```
@@ -95,8 +95,8 @@ goal-harness heartbeat-prompt --thin \
 After `agent_profile_v0` is implemented, the common path should be:
 
 ```bash
-goal-harness heartbeat-prompt --thin \
-  --goal-id goal-harness-meta \
+loopx heartbeat-prompt --thin \
+  --goal-id loopx-meta \
   --agent-id codex-side-bypass
 ```
 
@@ -166,7 +166,7 @@ from the profile and current work:
 ```
 
 Dashboards may show this member card to humans, but writes still go through
-Goal Harness todo, gate, lease, reward, and refresh commands.
+LoopX todo, gate, lease, reward, and refresh commands.
 
 ## Migration Path
 

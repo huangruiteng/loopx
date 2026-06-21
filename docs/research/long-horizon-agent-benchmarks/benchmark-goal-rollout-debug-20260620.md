@@ -9,7 +9,7 @@ layers:
   evidence.
 
 The missing layer was the one operators and future agents need for debugging:
-what path the case took, which Goal Harness todo/status transition drove it,
+what path the case took, which LoopX todo/status transition drove it,
 where official scoring was reached, and which next question should be answered
 before spending another case rotation.
 
@@ -50,7 +50,7 @@ next case" or "which phase failed".
 | `terminal-bench@2.0` | `nginx-request-logging` | host Codex app-server Goal observation | `1.0`, official pass | Current app-server Goal route reached official closeout and passed without recording raw transcript. This is the route sanity control for the batch: app-server Goal can complete at least one Terminal-Bench pass/control case, so the `multi-source-data-merger` zero should be treated as case- or phase-specific until compared. |
 | `skillsbench@1.1` | `react-performance-debugging` | native app-server Goal baseline | `0.0`, `skillsbench_runner_error` | Native worker connection was observed, but the public trace shows no worker trace directory, no turn-start, and no turn-complete evidence. This is route/runner evidence, not solver-quality baseline evidence; the next engineering question is why the host worker connects but does not materialize public worker turn trace. |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | BenchFlow ACP blind-loop baseline/treatment | `0.0/0.0`, `paired_no_score_uplift` | Runner and verifier reached official score after runtime-layer refactor, but this is not native app-server Goal evidence. Treat it as setup/verifier progress and weak-policy no-uplift evidence. |
-| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | BenchFlow ACP blind-loop baseline/treatment | `0.0/0.0`, `paired_no_score_uplift` | Setup/prewarm no longer blocks the case. It is currently a stability canary, not a proof that Goal Harness improves SkillsBench task outcome. |
+| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | BenchFlow ACP blind-loop baseline/treatment | `0.0/0.0`, `paired_no_score_uplift` | Setup/prewarm no longer blocks the case. It is currently a stability canary, not a proof that LoopX improves SkillsBench task outcome. |
 | `swe-marathon` | `find-network-alignments` | Harbor host Codex app-server Goal | `0.0`, `official_verifier_solution_failure` | First native Goal SWE-Marathon cloud closeout. Harbor reached environment operation, agent execution, verifier, and job closeout; the next missing signal is whether the zero came from timeout/incomplete edit or wrong solution. |
 | `swe-marathon` | `rust-c-compiler` | Harbor host Codex app-server Goal, prewarmed/larger-budget r2 | `0.0`, `official_verifier_solution_failure` | Second native Goal SWE-Marathon closeout. The previous setup blocker is superseded: setup, agent execution, official verifier, and job closeout completed. The remaining gap is solution-phase attribution, not Docker capacity. |
 
@@ -85,7 +85,7 @@ next case" or "which phase failed".
   counters?
 - SWE-Marathon: can Harbor expose compact edit/test/verify phase counters so
   `official_verifier_solution_failure` is not the only post-closeout label?
-- Goal Harness: should active-case status and run ledger both link to this
+- LoopX: should active-case status and run ledger both link to this
   rollout layer so future agents can debug the path, not only the score?
 
 ## Proposed Durable Shape
@@ -102,7 +102,7 @@ For each real benchmark case closeout, write one public-safe rollout row with:
 - next debug questions.
 
 Raw trajectories remain private. Public trajectory summaries should be counters
-only, following `goal_harness/benchmark_trajectory.py`.
+only, following `loopx/benchmark_trajectory.py`.
 
 The follow-up failure-attribution layer narrows these rows into concrete
 obligations: Terminal-Bench and SWE-Marathon need public-safe solution-phase

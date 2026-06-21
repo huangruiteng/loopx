@@ -7,7 +7,7 @@ remote GPU development host as a benchmark provider while keeping Codex auth on
 the local machine.
 
 This proof did not copy `~/.codex`, API keys, Codex session state, shell
-histories, `.env` files, local Goal Harness runtime, raw trajectories,
+histories, `.env` files, local LoopX runtime, raw trajectories,
 screenshots, hidden refs, task bodies, solution files, or test bodies to the
 remote host. It did not run Codex, model APIs, benchmark tasks, Docker pull,
 Docker build, Docker run, upload, leaderboard, publish, or submit actions.
@@ -17,7 +17,7 @@ Docker build, Docker run, upload, leaderboard, publish, or submit actions.
 Route shape:
 
 ```text
-local Codex / Goal Harness driver
+local Codex / LoopX driver
   -> local Docker CLI
   -> Docker-over-SSH remote daemon
 ```
@@ -63,7 +63,7 @@ Runner-level e2e status:
 Route shape:
 
 ```text
-local Codex / Goal Harness driver
+local Codex / LoopX driver
   -> SSH command adapter
   -> private remote workspace
 ```
@@ -95,7 +95,7 @@ benchmark_started=false
 The dry-run manifest excluded:
 
 - `.git/`
-- `.goal-harness/`
+- `.loopx/`
 - `.local/`
 - `.env`
 - `.env.*`

@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
@@ -25,17 +25,17 @@ README = TOPIC_DIR / "README.md"
 GOAL_ID = "terminal-bench-cli-dry-run-fixture"
 BENCHMARK_ID = "terminal-bench@2.0"
 TASK_ID = "build-cython-ext"
-RUN_MODE = "goal_harness_managed_codex_fake_worker_wrapper"
-WORKER_MODE = "goal_harness_managed_codex_cli"
+RUN_MODE = "loopx_managed_codex_fake_worker_wrapper"
+WORKER_MODE = "loopx_managed_codex_cli"
 
 REQUIRED_DOC_SNIPPETS = [
     "Terminal-Bench CLI Dry-Run Fake Worker V0",
-    "goal-harness benchmark run terminal-bench",
+    "loopx benchmark run terminal-bench",
     "codex_goal_mode_baseline_cli_dry_run",
     "--fake-worker",
     "benchmark_run_v0",
     "fixture-only",
-    "goal_harness_managed_codex_fake_worker_wrapper",
+    "loopx_managed_codex_fake_worker_wrapper",
     "fake_managed_worker_only_no_real_case",
     "official_score_comparable_to_native_codex=false",
     "python3 examples/terminal-bench-cli-dry-run-fake-worker-smoke.py",
@@ -70,7 +70,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -92,7 +92,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
             "goals": [
                 {
                     "id": GOAL_ID,
-                    "domain": "goal-harness-platform",
+                    "domain": "loopx-platform",
                     "status": "active-read-only",
                     "state_file": state_file,
                     "repo": str(project),
@@ -112,7 +112,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
 
 def run_cli(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=check,
         text=True,
@@ -142,7 +142,7 @@ def common_args(registry_path: Path, runtime: Path) -> list[str]:
         "--goal-id",
         GOAL_ID,
         "--mode",
-        "goal-harness-managed-codex",
+        "loopx-managed-codex",
         "--dataset",
         BENCHMARK_ID,
         "--include-task-name",
@@ -180,14 +180,14 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert payload["dry_run"] is (not appended), payload
     assert payload["classification"] == "terminal_bench_cli_fake_worker_v0", payload
     assert payload["benchmark_cli"]["benchmark"] == "terminal-bench", payload
-    assert payload["benchmark_cli"]["mode"] == "goal-harness-managed-codex", payload
+    assert payload["benchmark_cli"]["mode"] == "loopx-managed-codex", payload
     assert payload["benchmark_cli"]["fake_worker"] is True, payload
     assert payload["benchmark_cli"]["real_runner_invoked"] is False, payload
     assert payload["benchmark_cli"]["real_codex_invoked"] is False, payload
 
     event = payload["benchmark_run"]
     assert event["schema_version"] == "benchmark_run_v0", event
-    assert event["source_runner"] == "goal_harness_terminal_bench_cli_skeleton", event
+    assert event["source_runner"] == "loopx_terminal_bench_cli_skeleton", event
     assert event["benchmark_id"] == BENCHMARK_ID, event
     assert event["mode"] == RUN_MODE, event
     assert event["agent"]["model"] == "gpt-5.5", event
@@ -200,7 +200,7 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert event["submit_eligible"] is False, event
     assert event["official_task_score"]["kind"] == "not_run", event
     assert event["official_task_score"].get("value") is None, event
-    assert event["goal_harness_inside_case"] is True, event
+    assert event["loopx_inside_case"] is True, event
     assert event["official_score_comparable_to_native_codex"] is False, event
     assert event["model_plus_harness_pair"] is True, event
     assert event["leaderboard_evidence"] is False, event

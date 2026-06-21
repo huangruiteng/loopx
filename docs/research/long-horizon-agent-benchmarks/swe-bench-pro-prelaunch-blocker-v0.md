@@ -33,7 +33,7 @@ Blocking signals:
 - no private sample artifact has been created for the official evaluator;
 - no attempt patch artifact exists for the selected instance;
 - no evaluator `scripts_dir` has been staged for a real local run;
-- no Goal Harness SWE-Bench Pro launch wrapper exists yet to connect the
+- no LoopX SWE-Bench Pro launch wrapper exists yet to connect the
   selected sample, attempt patch, selected image, official evaluator, and
   compact reducer;
 - the current local Docker provider is `aarch64` while the selected image is
@@ -84,7 +84,7 @@ Targeted validation:
 ```bash
 python3 examples/swe-bench-pro-prelaunch-blocker-smoke.py
 python3 -m py_compile examples/swe-bench-pro-prelaunch-blocker-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/swe-bench-pro-prelaunch-blocker-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/swe-bench-pro-prelaunch-blocker-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

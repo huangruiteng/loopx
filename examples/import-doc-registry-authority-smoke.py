@@ -22,7 +22,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = ".codex/goals/doc-registry-authority-import-goal/ACTIVE_GOAL_STATE.md"
-    registry = project / ".goal-harness" / "registry.json"
+    registry = project / ".loopx" / "registry.json"
     doc_registry = project / "external" / "DOC_REGISTRY.yaml"
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -94,7 +94,7 @@ def run_cli(registry: Path, runtime: Path, *args: str) -> dict[str, Any]:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "--registry",
@@ -150,7 +150,7 @@ def assert_doc_contract() -> None:
     text = DOC.read_text(encoding="utf-8")
     for marker in (
         "Project-Local Doc Registry Mechanism",
-        "Doc registry is a general Goal Harness mechanism",
+        "Doc registry is a general LoopX mechanism",
         "not an agent-harness-specific",
         "Identify the target project and goal first",
         "project's own doc registry",
@@ -167,7 +167,7 @@ def assert_doc_contract() -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-doc-registry-authority-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-doc-registry-authority-") as raw_tmp:
         registry, runtime, _project, doc_registry = write_fixture(Path(raw_tmp))
         before = registry.read_text(encoding="utf-8")
         dry = run_cli(registry, runtime, *import_args(doc_registry, dry_run=True))

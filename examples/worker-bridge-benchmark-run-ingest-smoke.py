@@ -15,9 +15,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.review_packet import build_review_packet  # noqa: E402
-from goal_harness.status import collect_status  # noqa: E402
-from goal_harness.worker_bridge import (  # noqa: E402
+from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
+from loopx.worker_bridge import (  # noqa: E402
     build_worker_bridge_benchmark_run_from_counters,
     write_worker_bridge_benchmark_run_file,
 )
@@ -37,7 +37,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     benchmark_run_path = project / "worker-benchmark-run.json"
 
@@ -78,7 +78,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         },
     )
     worker_payload = build_worker_bridge_benchmark_run_from_counters(
-        {"goal_harness_cli_calls": {"total": 5}},
+        {"loopx_cli_calls": {"total": 5}},
         counter_trace_present=True,
         source_runner="worker_bridge_ingest_smoke",
         benchmark_id="worker-bridge-ingest-smoke@v0",
@@ -92,7 +92,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
 
 def run_cli(args: list[str]) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=True,
         text=True,
@@ -187,8 +187,8 @@ def main() -> None:
         assert summary["schema_version"] == "benchmark_run_v0", summary
         assert summary["source_runner"] == "worker_bridge_ingest_smoke", summary
         assert summary["benchmark_id"] == "worker-bridge-ingest-smoke@v0", summary
-        assert summary["worker_goal_harness_cli_call_total"] == 5, summary
-        assert summary["goal_harness_worker_cli_bridge_trace_observed"] is True, summary
+        assert summary["worker_loopx_cli_call_total"] == 5, summary
+        assert summary["loopx_worker_cli_bridge_trace_observed"] is True, summary
         assert summary["validation"]["all_passed"] is True, summary
         outcome = summary["worker_bridge_outcome"]
         assert outcome["worker_bridge_verified"] is True, summary
@@ -198,7 +198,7 @@ def main() -> None:
         assert health["schema_version"] == "worker_bridge_ingest_health_note_v0", health
         assert health["health_state"] == "worker_bridge_verified_pending_runner_return", health
         assert health["evidence_layer"] == "worker_bridge_ingest_only", health
-        assert health["worker_goal_harness_cli_call_total"] == 5, health
+        assert health["worker_loopx_cli_call_total"] == 5, health
         assert health["runner_return_status"] == "pending_after_worker_bridge_success", health
         assert health["official_score_status"] == "blocked_pending_runner_return", health
         assert "raw trace public" in health["must_not_claim"], health

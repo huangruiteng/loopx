@@ -2,9 +2,9 @@
 
 Checked at: 2026-06-07T20:10:51+08:00.
 
-This dossier ranks candidate long-horizon agent benchmarks for Goal Harness
+This dossier ranks candidate long-horizon agent benchmarks for LoopX
 research. It is a research artifact, not a product implementation plan. Any
-Goal Harness feature discovered here should be split into normal product code,
+LoopX feature discovered here should be split into normal product code,
 examples, or contract docs outside this topic folder.
 
 ## Current Recommendation
@@ -18,7 +18,7 @@ cloud sandbox, or leaderboard path is invoked.
 
 The reason is pragmatic. Terminal-Bench has an open runner, Docker-style
 terminal tasks, verified leaderboard entries, and visible Codex/Codex-adjacent
-agent rows. It is the fastest way to test whether a passive Goal Harness wrapper
+agent rows. It is the fastest way to test whether a passive LoopX wrapper
 can add restartability, state truth, event ledgers, and failure attribution
 without changing the official scoring protocol.
 
@@ -39,10 +39,10 @@ inventory still need a no-execution launch packet.
 | 3 | FrontierSWE | Frontier-stress SWE readiness lane | Direct Codex leaderboard rows and 20-hour task framing across performance engineering, computational science, and ML research; needs runner/no-upload mapping before execution. |
 | 4 | LongCLI-Bench | Paper hypothesis and failure-analysis source | Directly studies long-horizon CLI programming, step-level failures, and human-agent collaboration gains; runner openness still needs verification before it becomes an execution lane. |
 | 5 | WildClawBench | Native-runtime comparison lane | Promising because it evaluates real CLI harnesses including Codex-style harnesses in reproducible containers, but it is very new and needs protocol/code review. |
-| 6 | HORIZON / METR-style signals | Diagnostic and positioning signal | Useful to explain long-horizon degradation and compare across domains, but currently better as a leaderboard/diagnostic reference than as the first runnable Goal Harness integration. |
+| 6 | HORIZON / METR-style signals | Diagnostic and positioning signal | Useful to explain long-horizon degradation and compare across domains, but currently better as a leaderboard/diagnostic reference than as the first runnable LoopX integration. |
 | 7 | RoadmapBench / SWE-EVO | Software-evolution watchlist | Strong long-horizon SWE framing around version upgrades and multi-step codebase evolution, but runner maturity and Codex CLI compatibility need review before they displace Terminal-Bench. |
 | 8 | ALE-Bench | Objective-driven algorithm lane | Good future lane for scored iterative search and restart discipline, but requires heavier compute and stricter benchmark-surface controls. |
-| 9 | OSWorld / WebArena / TheAgentCompany | Cross-surface and simulator design references | Useful for GUI/web/workplace environment design and user-simulator thinking, but not the first Goal Harness engineering runner. |
+| 9 | OSWorld / WebArena / TheAgentCompany | Cross-surface and simulator design references | Useful for GUI/web/workplace environment design and user-simulator thinking, but not the first LoopX engineering runner. |
 | 10 | RALPHBench | Extremely long-horizon watchlist | Potentially close to the paper ambition and advertises Codex rows, but it is pre-launch enough to treat as monitoring input, not a first execution lane. |
 | 11 | Tau-style suites | Simulator research only | Valuable for user-simulator design, but not the headline long-horizon engineering benchmark. |
 
@@ -62,15 +62,15 @@ Evidence:
 - GitHub repo describes Terminal-Bench as evaluating real-world end-to-end
   terminal tasks autonomously.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
-- Strong first target for passive Goal Harness because the benchmark already
+- Strong first target for passive LoopX because the benchmark already
   separates agent tool/scaffold from model.
-- Goal Harness can wrap around run setup, event ledger, restart state,
+- LoopX can wrap around run setup, event ledger, restart state,
   validation evidence, and failure attribution while preserving official task
   scoring.
 - The benchmark explicitly forbids timeout/resource modification in leaderboard
-  submissions, so Goal Harness integration must avoid changing resource budget
+  submissions, so LoopX integration must avoid changing resource budget
   or task files.
 
 Open questions:
@@ -102,12 +102,12 @@ Evidence:
   long-horizon hours-to-days software-engineering tasks end-to-end in a
   sandboxed environment.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - Strongest research target once Terminal-Bench wrapper mechanics are known.
 - Directly tests multi-hour/multi-day continuation, state handoff, validation
   discipline, and restartability.
-- Likely a good paper target because Goal Harness's thesis is about reducing
+- Likely a good paper target because LoopX's thesis is about reducing
   coordination load and preserving durable state over long projects.
 
 Risks:
@@ -139,17 +139,17 @@ Evidence:
 - Public launch framing gives agents up to roughly 20 hours per task, making it
   a stronger long-horizon stress test than short issue-fix suites.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - High-value strategic lane for long-horizon checkpointing, validation,
   partial-progress capture, restart discipline, and compute stewardship.
 - Good public comparison candidate because direct Codex rows exist.
-- Strong paper-positioning candidate once Goal Harness has a stable cloud-host
+- Strong paper-positioning candidate once LoopX has a stable cloud-host
   execution substrate and compact reducer.
 
 Risks:
 
-- No Goal Harness source-pinned checkout or runner map exists yet.
+- No LoopX source-pinned checkout or runner map exists yet.
 - The no-upload/no-submit boundary, artifact schema, and task inventory need a
   setup-readiness scan before any real run.
 - The wall-clock budget is high enough that FrontierSWE should not preempt the
@@ -172,10 +172,10 @@ Evidence:
 - It reports state-of-the-art pass rates below 20 percent, with many tasks
   stalling before 30 percent completion.
 - It finds human-agent collaboration through plan injection and interactive
-  guidance improves outcomes, which aligns with Goal Harness's supervised
+  guidance improves outcomes, which aligns with LoopX's supervised
   long-horizon thesis.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - Excellent source for paper framing and failure taxonomy.
 - Useful for designing operator-simulator experiments because it explicitly
@@ -202,10 +202,10 @@ Evidence:
   as OpenClaw, Claude Code, Codex, or Hermes Agent.
 - It reports harness choice alone can shift one model by up to 18 points.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - Useful after Terminal-Bench because it emphasizes native runtime and harness
-  effects, which is exactly where Goal Harness should claim value.
+  effects, which is exactly where LoopX should claim value.
 
 Risk:
 
@@ -226,10 +226,10 @@ Evidence:
   on long-horizon software engineering, with METR-Horizon as the primary signal
   and Terminal-Bench plus SWE-style benchmarks as secondary signals.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - Use as a positioning and diagnostic source, not first runner.
-- The failure-attribution angle is useful for Goal Harness result reports.
+- The failure-attribution angle is useful for LoopX result reports.
 
 Sources:
 
@@ -245,10 +245,10 @@ Evidence:
 - It reports performance degradation over late turns and argues the bottleneck
   is maintaining correct analytical state rather than merely increasing steps.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - Watchlist for state-truth research after engineering benchmark lanes run.
-- Relevant to Goal Harness because it isolates state maintenance failures.
+- Relevant to LoopX because it isolates state maintenance failures.
 
 Source:
 
@@ -265,7 +265,7 @@ Evidence:
 - The paper reports a median modification footprint of 3,700 lines across 51
   files and a strongest-model solve rate of 39.1 percent.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - Strong paper-framing candidate because it directly evaluates sustained
   multi-target software development rather than single GitHub issues.
@@ -290,7 +290,7 @@ Evidence:
   plan multi-step changes, and navigate large repositories.
 - The repo supports evaluation through OpenHands and SWE-agent scaffolds.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - Useful as a second-wave software-evolution benchmark if RoadmapBench proves
   too new or unavailable.
@@ -318,7 +318,7 @@ Evidence:
 - The repo explicitly warns agents not to access private seeds or private input
   fields during experiments.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - Good future lane for restartability and evidence discipline because score
   feedback, iterative testing, and forbidden private surfaces are central.
@@ -326,7 +326,7 @@ Fit for Goal Harness:
 Risk:
 
 - Higher compute cost and benchmark-governance burden than Terminal-Bench.
-- It should not be used until Goal Harness can prove side-effect and forbidden
+- It should not be used until LoopX can prove side-effect and forbidden
   surface audits on a smaller runner.
 
 Sources:
@@ -345,7 +345,7 @@ Evidence:
 - TheAgentCompany models a software-company workplace where agents browse the
   web, write code, run programs, and communicate with simulated coworkers.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - These are not the first engineering-runner target, but they are strong design
   references for user-simulator overlays, multi-surface traces, checkpointed
@@ -356,7 +356,7 @@ Fit for Goal Harness:
 Risk:
 
 - OSWorld and WebArena shift the problem toward GUI/browser automation, which
-  could expand Goal Harness before the terminal/SWE control-plane claims are
+  could expand LoopX before the terminal/SWE control-plane claims are
   measured.
 
 Sources:
@@ -376,7 +376,7 @@ Evidence:
   benchmark results are still coming soon, while also showing early Codex,
   Claude Code, and Gemini CLI rows.
 
-Fit for Goal Harness:
+Fit for LoopX:
 
 - Monitor as a high-ambition external benchmark candidate and paper-positioning
   signal.
@@ -395,9 +395,9 @@ Source:
 Decision id: `terminal_bench_official_pilot_decision_packet_v0`.
 
 Terminal-Bench remains the first official-pilot target because it is the
-smallest credible public benchmark where Goal Harness can be measured as a
+smallest credible public benchmark where LoopX can be measured as a
 control plane around an existing Codex-capable terminal agent protocol. The
-pilot should prove that Goal Harness can add durable state, restart evidence,
+pilot should prove that LoopX can add durable state, restart evidence,
 event-ledger writeback, stale-state checks, and failure attribution without
 changing the benchmark's task files, timeouts, resources, scoring, or
 leaderboard submission rules.
@@ -407,17 +407,17 @@ Use this packet as the gate before any real execution:
 | Field | Decision |
 | --- | --- |
 | Pilot benchmark | `terminal-bench@2.0` through Harbor or another official Terminal-Bench 2.0 path. |
-| Executor target | Native Codex CLI if the official custom-agent/import path can launch it; otherwise local passive Goal Harness wrapper for A/B measurement only. |
+| Executor target | Native Codex CLI if the official custom-agent/import path can launch it; otherwise local passive LoopX wrapper for A/B measurement only. |
 | Required prior artifact | `terminal_bench_probe_v0`, `passive-baseline-protocol-v0.md`, and `terminal-bench-official-pilot-readiness-v0.md` are the current public-safe setup/protocol artifacts. |
 | First allowed action | A no-submit boundary probe that records runner source, runner version or commit, agent command boundary, submit eligibility, future event shape, and exact stop condition. |
 | First forbidden action | Running a real Terminal-Bench task, starting Docker, invoking Codex/model APIs, using cloud sandboxes, or uploading leaderboard traces without explicit authorization. |
 | Official score fields | Benchmark-native pass/fail or accuracy, task id or split, repetitions, model/agent tuple, runner source, and whether the run is submit-eligible. |
-| Goal Harness score fields | restartability, stale-state avoidance, event-ledger completeness, evidence discipline, boundary safety, writeback quality, failure attribution, and overhead. |
-| Pairing rule | Every official-task result should be paired with a compact `benchmark_run_v0` event for `bare_codex_cli` or `passive_goal_harness_wrapper`, then summarized through `benchmark_result_v0`. |
+| LoopX score fields | restartability, stale-state avoidance, event-ledger completeness, evidence discipline, boundary safety, writeback quality, failure attribution, and overhead. |
+| Pairing rule | Every official-task result should be paired with a compact `benchmark_run_v0` event for `bare_codex_cli` or `passive_loopx_wrapper`, then summarized through `benchmark_result_v0`. |
 | Stop condition | Stop if compliance would require changing official timeouts/resources/scoring, reading private logs, using credentials, or making public claims from local-only evidence. |
 
 The first measurable outcome is not leaderboard uplift. It is a public-safe
-decision trace proving whether Goal Harness can collect comparable control-plane
+decision trace proving whether LoopX can collect comparable control-plane
 evidence around the official runner. Do not start SWE-Marathon until the
 Terminal-Bench wrapper boundary is known.
 
@@ -425,7 +425,7 @@ Terminal-Bench wrapper boundary is known.
 
 The next public-safe probe is `terminal-bench-no-submit-boundary-probe-v0.md`.
 It emits a `runner_boundary_probe_v0` payload: public runner identity, planned
-mode boundaries for `bare_codex_cli` and `passive_goal_harness_wrapper`, hard
+mode boundaries for `bare_codex_cli` and `passive_loopx_wrapper`, hard
 `submit_eligible = false` / `real_run = false` flags, and the future
 `benchmark_run_v0` plus `benchmark_result_v0` event shape. This is a no-submit
 boundary probe, not task evidence.

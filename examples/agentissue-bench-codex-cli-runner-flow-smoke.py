@@ -273,7 +273,7 @@ def reduce_to_benchmark_result(plan: dict[str, Any]) -> dict[str, Any]:
         "task_id": "agentissue_bench_lagent_239",
         "scenario_id": "lagent239_codex_cli_runner_flow_plan_no_execution",
         "worker_mode": "trusted_local_codex_cli_runner_plan",
-        "harness_identity": "goal_harness",
+        "harness_identity": "loopx",
         "terminal_state": "runner_flow_plan_ready_before_execution",
         "official_task_score": {
             "kind": "agentissue_bench_single_tag_container_eval",

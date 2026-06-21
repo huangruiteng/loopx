@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     build_agents_last_exam_baked_task_input_scan,
     build_agents_last_exam_baked_task_input_readiness,
     build_agents_last_exam_task_material_readiness,
@@ -420,7 +420,7 @@ def run_cli_smoke() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -443,7 +443,7 @@ def run_cli_smoke() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -469,7 +469,7 @@ def run_cli_smoke() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",

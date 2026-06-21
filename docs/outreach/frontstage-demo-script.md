@@ -1,18 +1,18 @@
 # Frontstage Demo Script
 
-This is a public-safe script for showing Goal Harness to a new user or
+This is a public-safe script for showing LoopX to a new user or
 developer in one screen. It uses the hosted frontstage and the showcase catalog,
-not local Goal Harness status exports.
+not local LoopX status exports.
 
 Demo URL:
 
-<https://huangruiteng.github.io/goal-harness/frontstage/>
+<https://huangruiteng.github.io/loopx/frontstage/>
 
-![Hosted Goal Harness frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
+![Hosted LoopX frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
 
 ## 30-Second Version
 
-Goal Harness is a control plane for long-running agent work. It does not
+LoopX is a control plane for long-running agent work. It does not
 replace Codex, Claude Code, Cursor, or another executor loop. It keeps the
 long-running goal visible: human gates, agent todos, claims, scope, quota,
 evidence, run history, and public/private boundaries.
@@ -25,13 +25,13 @@ motion, efficiency evidence, and boundary warnings rendered from
 
 1. Open the hosted frontstage.
 2. Point at the headline: "Always-on agent teams, governed by human judgment."
-3. Point at the case counters: Goal Harness is explained through public cases,
+3. Point at the case counters: LoopX is explained through public cases,
    not raw private runs.
 4. Point at Efficiency Evidence: the self-iteration case maps public Git
    history into a conservative, maturity-adjusted workload story.
 5. Point at Public Boundary: the public view is useful because it says what was
    omitted, not because it hides the fact that a boundary exists.
-6. Close with the product distinction: executor loops do the work; Goal Harness
+6. Close with the product distinction: executor loops do the work; LoopX
    preserves the control-plane state that lets the next loop continue safely.
 
 ## Two-Minute Version
@@ -61,7 +61,7 @@ loops.
 ## What To Say
 
 - "Your agents keep the night shift. You keep the judgment."
-- "Goal Harness is not another model runtime. It is the state layer around
+- "LoopX is not another model runtime. It is the state layer around
   agent runtimes."
 - "The gated route waits clearly; independent safe work can continue with
   evidence."

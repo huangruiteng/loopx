@@ -11,8 +11,8 @@ TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
 README = TOPIC_DIR / "README.md"
 DECISION_DOC = TOPIC_DIR / "benchmark-restart-actionability-projection-decision-v0.md"
 ACTIONABILITY_DOC = TOPIC_DIR / "benchmark-restart-actionability-v0.md"
-STATUS = REPO_ROOT / "goal_harness" / "status.py"
-REVIEW_PACKET = REPO_ROOT / "goal_harness" / "review_packet.py"
+STATUS = REPO_ROOT / "loopx" / "status.py"
+REVIEW_PACKET = REPO_ROOT / "loopx" / "review_packet.py"
 HOT_PATH_SMOKE = REPO_ROOT / "examples" / "hot-path-interface-budget-smoke.py"
 
 ACTIONABILITY_SCHEMA = "benchmark_restart_actionability_v0"
@@ -46,7 +46,7 @@ def main() -> int:
     required_doc_text = [
         ACTIONABILITY_SCHEMA,
         "remains research/docs-only",
-        "Do not project it into Goal Harness status, review-packet, project-asset",
+        "Do not project it into LoopX status, review-packet, project-asset",
         "Projection Gate",
         "source_schema_version",
         "selected_action_kind",

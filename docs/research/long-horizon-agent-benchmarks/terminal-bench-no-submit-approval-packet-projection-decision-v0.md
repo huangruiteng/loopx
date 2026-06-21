@@ -7,7 +7,7 @@ Checked at: 2026-06-08T02:56:00+08:00.
 `terminal_bench_no_submit_approval_packet_v0` remains research/docs-only for
 now.
 
-Do not project it into Goal Harness status, review-packet, or project-asset
+Do not project it into LoopX status, review-packet, or project-asset
 handoff hot paths until a real agent consumer needs the packet outside this
 research folder, an approved no-submit setup check produces compact public
 evidence, or repeated heartbeats show agents re-deriving the same gate boundary.

@@ -4,7 +4,7 @@ Status: public-safe protocol for opt-in proof capture.
 Primary path: one-message Codex CLI TUI bootstrap.
 
 This protocol turns a promising Codex CLI `resume` / `remote-control` surface
-into evidence, not authority. Goal Harness may only promote later visible
+into evidence, not authority. LoopX may only promote later visible
 automation after a public-safe proof shows the turn is visible, interruptible,
 freshly idle-guarded, and independent of transcripts, session files, stdout,
 stderr, credentials, or hidden session mutation.
@@ -15,7 +15,7 @@ Use this protocol only when all of these are true:
 
 - the user has already started from a normal Codex CLI TUI flow or explicitly
   opted into a proof run;
-- `quota should-run` allows this Goal Harness turn;
+- `quota should-run` allows this LoopX turn;
 - the test prompt is public-safe and does not depend on private repo state;
 - the candidate surface is one of `visible_resume_prompt`,
   `remote_control_visible_prompt`, or `same_tui_visible_attach`;
@@ -104,25 +104,25 @@ bodies.
    candidate prompt. Unknown turn state, recent typing, or a running turn fails
    closed.
 5. Attempt only a visible proof prompt with an allowed command prefix. The
-   prompt should say that Goal Harness is testing visible steering and should
+   prompt should say that LoopX is testing visible steering and should
    be safe to interrupt.
 6. Record only the compact fixture booleans and public-safe labels above.
 7. Validate the fixtures:
 
 ```bash
-goal-harness codex-cli-visible-session-proof \
+loopx codex-cli-visible-session-proof \
   --project . \
   --goal-id <goal-id> \
   --agent-id <agent-id> \
   --proof-fixture visible-proof.public.json
 
-goal-harness codex-cli-runtime-idle-detector \
+loopx codex-cli-runtime-idle-detector \
   --project . \
   --goal-id <goal-id> \
   --agent-id <agent-id> \
   --idle-fixture runtime-idle.public.json
 
-goal-harness codex-cli-visible-attach-acceptance \
+loopx codex-cli-visible-attach-acceptance \
   --project . \
   --goal-id <goal-id> \
   --agent-id <agent-id> \
@@ -160,4 +160,4 @@ Stop and record a blocker when any of these happen:
   paths, screenshots, or raw session material.
 
 The safe fallback is always to keep the one-message TUI bootstrap visible and
-write the precise blocker into Goal Harness.
+write the precise blocker into LoopX.

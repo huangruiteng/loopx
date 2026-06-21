@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.codex_cli_probe import (  # noqa: E402
+from loopx.codex_cli_probe import (  # noqa: E402
     build_codex_cli_visible_attach_acceptance,
     classify_codex_cli_session_surface,
 )
@@ -122,7 +122,7 @@ PASSING_IDLE_FIXTURE = {
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -141,7 +141,7 @@ def build(
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         codex_bin="codex",
         probe_payload=classify_codex_cli_session_surface(command_outputs=command_outputs),
         proof_payload=proof,
@@ -157,8 +157,8 @@ def assert_public_safe_boundary(payload: dict[str, object]) -> None:
     assert boundary["reads_session_files"] is False, payload
     assert boundary["reads_stdout_stderr"] is False, payload
     assert boundary["mutates_codex_session"] is False, payload
-    assert boundary["spends_goal_harness_quota"] is False, payload
-    assert boundary["writes_goal_harness_state"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
+    assert boundary["writes_loopx_state"] is False, payload
 
 
 def main() -> int:
@@ -207,7 +207,7 @@ def main() -> int:
     assert fallback["requirements"]["headless_execution_disabled"] is True, fallback
     assert_public_safe_boundary(fallback)
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-visible-attach-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-visible-attach-") as tmp:
         tmpdir = Path(tmp)
         help_fixture = tmpdir / "codex-attach-help.json"
         proof_path = tmpdir / "same-tui-proof.json"

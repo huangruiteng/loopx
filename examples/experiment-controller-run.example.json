@@ -11,6 +11,6 @@
     "reason_summary": "operator accepted the route because the comparable metric improved and validation was aligned",
     "follow_up": "promote the route to a longer-window check"
   },
-  "json_path": "/tmp/goal-harness/example-experiment-run.json",
-  "markdown_path": "/tmp/goal-harness/example-experiment-run.md"
+  "json_path": "/tmp/loopx/example-experiment-run.json",
+  "markdown_path": "/tmp/loopx/example-experiment-run.md"
 }

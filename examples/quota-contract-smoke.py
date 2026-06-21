@@ -125,7 +125,7 @@ def main() -> int:
     )
     assert_contains(
         quota_doc,
-        "`goal-harness todo add --role user` instead of hiding it in `Next Action`",
+        "`loopx todo add --role user` instead of hiding it in `Next Action`",
         label="quota doc",
     )
     assert_contains(
@@ -306,12 +306,12 @@ def main() -> int:
     )
     assert_contains(
         status_contract,
-        "`goal-harness quota status` and `goal-harness quota plan` derive an agent-facing grouping from this same status payload",
+        "`loopx quota status` and `loopx quota plan` derive an agent-facing grouping from this same status payload",
         label="status contract",
     )
     assert_contains(
         status_contract,
-        'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id <goal-id>',
+        'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <goal-id>',
         label="status contract",
     )
     assert_contains(

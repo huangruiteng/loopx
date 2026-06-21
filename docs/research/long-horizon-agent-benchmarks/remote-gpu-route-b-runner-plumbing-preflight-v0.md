@@ -3,7 +3,7 @@
 Date: 2026-06-12
 
 Purpose: prove the smallest no-score/no-upload runner plumbing path for Route
-B after the remote sync and isolated Goal Harness install. The route keeps the
+B after the remote sync and isolated LoopX install. The route keeps the
 local driver in control, invokes the remote helper through the SSH command
 adapter, and uses only an isolated remote temporary registry/runtime surface.
 
@@ -12,7 +12,7 @@ Codex workers, model APIs, benchmark tasks, uploads, leaderboard paths, submit
 actions, raw trajectories, screenshots, hidden refs, task bodies, solution
 files, test bodies, or other users' workloads. It did not copy or read Codex
 auth, API keys, access tokens, `.env` files, shell histories, SSH private keys,
-local Goal Harness runtime, or credentials.
+local LoopX runtime, or credentials.
 
 ## Temporary Remote Control Surface
 
@@ -61,7 +61,7 @@ bridge_json=true
 bridge_ok=true
 bridge_dry_run=true
 bridge_appended=false
-bridge_classification=terminal_bench_codex_goal_harness_cli_bridge_contract_runner_fixture_v0
+bridge_classification=terminal_bench_codex_loopx_cli_bridge_contract_runner_fixture_v0
 bridge_preflight_guard=false
 bridge_cli_bridge_contract=true
 bridge_cli_bridge_trace_observed=true
@@ -79,7 +79,7 @@ preflight_json=true
 preflight_ok=true
 preflight_dry_run=true
 preflight_appended=false
-preflight_classification=terminal_bench_codex_goal_harness_preflight_guard_v0
+preflight_classification=terminal_bench_codex_loopx_preflight_guard_v0
 preflight_preflight_guard=true
 preflight_cli_bridge_contract=false
 preflight_cli_bridge_trace_observed=false
@@ -94,9 +94,9 @@ upload_invoked=false
 
 ## Decision
 
-Route B is now runner-plumbing-ready for no-score/no-upload Goal Harness
+Route B is now runner-plumbing-ready for no-score/no-upload LoopX
 benchmark preparation. The remote command adapter can invoke the isolated
-Goal Harness helper, create a temporary registry/runtime, produce compact
+LoopX helper, create a temporary registry/runtime, produce compact
 Terminal-Bench bridge/preflight events, and preserve the no-run/no-auth
 boundary.
 

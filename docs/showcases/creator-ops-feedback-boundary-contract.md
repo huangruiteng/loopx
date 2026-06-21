@@ -1,7 +1,7 @@
 # Creator-Ops Feedback And Boundary Contract
 
 This contract describes how a public-safe creator-operator showcase should turn
-non-technical user feedback into visible Goal Harness state.
+non-technical user feedback into visible LoopX state.
 
 It is a product contract for demos and future frontends. It is not a social
 platform crawler, publishing tool, private memory store, or claim about real
@@ -17,7 +17,7 @@ prompts, traces, or logs:
 - what can safely continue while the gated route waits;
 - how my feedback changes the next agent move.
 
-Goal Harness should make that feedback visible as structured state instead of
+LoopX should make that feedback visible as structured state instead of
 letting it disappear into chat history.
 
 ## Feedback Classes

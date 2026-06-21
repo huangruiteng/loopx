@@ -38,7 +38,7 @@ def main() -> int:
         "examples/showcase-catalog-smoke.py",
         "python3 examples/showcase-catalog-smoke.py",
         "npm run smoke:frontstage-share-bundle",
-        "npm run export:frontstage-share -- --base /goal-harness/ --out-dir ../../output/frontstage-pages",
+        "npm run export:frontstage-share -- --base /loopx/ --out-dir ../../output/frontstage-pages",
         "actions/configure-pages@v6",
         "enablement: true",
         "actions/upload-pages-artifact@v5",

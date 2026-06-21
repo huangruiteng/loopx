@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.codex_cli_probe import (  # noqa: E402
+from loopx.codex_cli_probe import (  # noqa: E402
     build_codex_cli_visible_local_driver_pilot,
     classify_codex_cli_session_surface,
 )
@@ -48,7 +48,7 @@ Resume a previous interactive session.
 
 VISIBLE_PROOF_FIXTURE = {
     "observed_surface": "visible_resume_prompt",
-    "recommended_command": "codex resume public-session-id 'Goal Harness visible steering turn'",
+    "recommended_command": "codex resume public-session-id 'LoopX visible steering turn'",
     "user_opt_in": True,
     "quota_guard": {"passed": True},
     "idle_guard": {
@@ -105,7 +105,7 @@ def build_pilot(
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         codex_bin="codex",
         probe_payload=classify_codex_cli_session_surface(command_outputs=REMOTE_RESUME_HELP_FIXTURE),
         proof_payload=proof_payload,
@@ -126,15 +126,15 @@ def assert_pilot_boundary(payload: dict[str, object]) -> None:
     assert boundary["reads_session_files"] is False, payload
     assert boundary["reads_stdout_stderr"] is False, payload
     assert boundary["mutates_codex_session"] is False, payload
-    assert boundary["writes_goal_harness_state"] is False, payload
-    assert boundary["spends_goal_harness_quota"] is False, payload
+    assert boundary["writes_loopx_state"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
     assert boundary["candidate_execution_requires_guard_and_prefix"] is True, payload
     assert boundary["blocker_writeback_requires_guard_checked"] is True, payload
 
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -189,7 +189,7 @@ def main() -> int:
     assert with_proof["execution_policy"]["later_turns_visible_to_user"] is True, with_proof
     assert with_proof["execution_policy"]["user_can_interrupt_or_take_over"] is True, with_proof
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-visible-local-driver-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-visible-local-driver-") as tmp:
         tmp_path = Path(tmp)
         help_fixture = tmp_path / "codex-remote-help.json"
         help_fixture.write_text(json.dumps({"command_outputs": REMOTE_RESUME_HELP_FIXTURE}))

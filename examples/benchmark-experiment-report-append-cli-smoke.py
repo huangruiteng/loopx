@@ -17,9 +17,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.cli_commands.status import review_packet_handoff_only_payload  # noqa: E402
-from goal_harness.review_packet import build_review_packet  # noqa: E402
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.cli_commands.status import review_packet_handoff_only_payload  # noqa: E402
+from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 GOAL_ID = "benchmark-report-append-cli-fixture"
@@ -55,7 +55,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     report_path = root / "benchmark_report.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
@@ -100,7 +100,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
 
 def run_cli(args: list[str]) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=True,
         text=True,

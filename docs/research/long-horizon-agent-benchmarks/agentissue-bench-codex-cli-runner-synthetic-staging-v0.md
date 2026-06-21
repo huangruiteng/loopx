@@ -8,8 +8,8 @@ This packet extends the `lagent_239` AgentIssue-Bench Codex CLI runner flow
 with an opt-in synthetic private job-root fixture:
 
 ```bash
-goal-harness benchmark agentissue-codex-runner-flow \
-  --goal-id goal-harness-meta \
+loopx benchmark agentissue-codex-runner-flow \
+  --goal-id loopx-meta \
   --tag lagent_239 \
   --synthetic-staging-root <private-job-root>
 ```
@@ -72,12 +72,12 @@ real source extraction and host-Codex patch production.
 ```bash
 python3 examples/agentissue-bench-codex-cli-runner-synthetic-staging-smoke.py
 python3 -m py_compile \
-  goal_harness/benchmark.py \
-  goal_harness/cli.py \
+  loopx/benchmark.py \
+  loopx/cli.py \
   examples/agentissue-bench-codex-cli-runner-synthetic-staging-smoke.py
-goal-harness check \
-  --scan-path goal_harness/benchmark.py \
-  --scan-path goal_harness/cli.py \
+loopx check \
+  --scan-path loopx/benchmark.py \
+  --scan-path loopx/cli.py \
   --scan-path examples/agentissue-bench-codex-cli-runner-synthetic-staging-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-synthetic-staging-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

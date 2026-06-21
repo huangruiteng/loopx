@@ -22,14 +22,14 @@ screenshots, upload, submit, or touch credentials.
 
 ## Difficulty And Fit
 
-PerfBench is a strong Goal Harness-style benchmark if the runner source becomes
+PerfBench is a strong LoopX-style benchmark if the runner source becomes
 available. The paper defines 81 real-world .NET performance bug-fixing tasks
 from popular GitHub repositories. Tasks require agents to reason about
 non-functional performance problems, generate BenchmarkDotNet benchmarks, and
 validate improvements by comparing execution metrics for the developer fix and
 the agent fix.
 
-This is a good match for Goal Harness because the benchmark stresses:
+This is a good match for LoopX because the benchmark stresses:
 
 - long multi-step diagnosis rather than one-shot functional patching;
 - measurable validation, regression avoidance, and claim discipline;

@@ -2,18 +2,18 @@
 
 Checked at: 2026-06-08T19:21:00+08:00.
 
-This note documents the first public Goal Harness CLI skeleton for the
+This note documents the first public LoopX CLI skeleton for the
 Terminal-Bench lane:
 
 ```bash
-goal-harness benchmark run terminal-bench \
+loopx benchmark run terminal-bench \
   --goal-id <goal-id> \
-  --mode hardened-codex|codex-goal-harness|goal-harness-managed-codex \
+  --mode hardened-codex|codex-loopx|loopx-managed-codex \
   --fake-worker
 ```
 
 The command is fixture-only. By default it is a dry-run; with `--execute` it
-appends a compact `benchmark_run_v0` row to the selected Goal Harness runtime.
+appends a compact `benchmark_run_v0` row to the selected LoopX runtime.
 It still does not run Harbor, Terminal-Bench, Docker, real Codex CLI, model
 APIs, direct LLM APIs, cloud sandboxes, paid compute, uploads, shares, or
 leaderboard paths.
@@ -26,13 +26,13 @@ The CLI exposes the current runner-mode contract lanes:
 | --- | --- | --- |
 | `hardened-codex` | `hardened_codex_baseline_cli_dry_run` | Fixture event only. |
 | `codex-goal-mode` | `codex_goal_mode_baseline_cli_dry_run` | Fixture event only; primary baseline envelope. |
-| `codex-goal-harness` | `codex_goal_harness_cli_dry_run` | Fixture event only. |
+| `codex-loopx` | `codex_loopx_cli_dry_run` | Fixture event only. |
 | `passive-observed-codex` | `passive_observed_codex_cli_dry_run` | Fixture event only. |
-| `goal-harness-managed-codex --fake-worker` | `goal_harness_managed_codex_fake_worker_wrapper` | Deterministic fake-worker event only. |
+| `loopx-managed-codex --fake-worker` | `loopx_managed_codex_fake_worker_wrapper` | Deterministic fake-worker event only. |
 
 `--fake-worker` is currently allowed only for
-`goal-harness-managed-codex` and `codex-goal-harness`. That keeps the hardened
-baseline as a no-worker control and makes Goal Harness modes the only
+`loopx-managed-codex` and `codex-loopx`. That keeps the hardened
+baseline as a no-worker control and makes LoopX modes the only
 fake-worker treatments.
 
 ## Event Boundary
@@ -42,7 +42,7 @@ The CLI-generated event keeps:
 | Field | Value |
 | --- | --- |
 | `schema_version` | `benchmark_run_v0` |
-| `source_runner` | `goal_harness_terminal_bench_cli_skeleton` |
+| `source_runner` | `loopx_terminal_bench_cli_skeleton` |
 | `benchmark_id` | default `terminal-bench@2.0` |
 | `task_id` | default `build-cython-ext` |
 | `real_run` | `false` |
@@ -54,9 +54,9 @@ The CLI-generated event keeps:
 
 For managed fake-worker mode it also keeps:
 
-- `worker_mode=goal_harness_managed_codex_cli`;
+- `worker_mode=loopx_managed_codex_cli`;
 - `case_semantics_changed_by_harness=true`;
-- `goal_harness_inside_case=true`;
+- `loopx_inside_case=true`;
 - `official_score_comparable_to_native_codex=false`;
 - `model_plus_harness_pair=true`;
 - `first_blocker=fake_managed_worker_only_no_real_case`.

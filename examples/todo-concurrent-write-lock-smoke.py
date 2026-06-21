@@ -15,8 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.file_lock import exclusive_file_lock  # noqa: E402
-from goal_harness.status import parse_active_state_todos  # noqa: E402
+from loopx.file_lock import exclusive_file_lock  # noqa: E402
+from loopx.status import parse_active_state_todos  # noqa: E402
 
 
 GOAL_ID = "todo-concurrent-write-lock-goal"
@@ -30,7 +30,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_file.parent.mkdir(parents=True)
     state_file.write_text(
         "---\n"
@@ -80,7 +80,7 @@ def cli_args(registry_path: Path, *args: str) -> list[str]:
     return [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(registry_path),
         "--format",
@@ -138,7 +138,7 @@ def find_item(state_file: Path, text: str) -> dict[str, Any]:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-todo-lock-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-todo-lock-smoke-") as tmp:
         registry_path, state_file = write_fixture(Path(tmp))
 
         with exclusive_file_lock(state_file):

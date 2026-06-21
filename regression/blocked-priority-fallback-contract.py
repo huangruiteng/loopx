@@ -11,8 +11,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
-from goal_harness.status import compact_todo_group, project_asset_todo_summary  # noqa: E402
+from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from loopx.status import compact_todo_group, project_asset_todo_summary  # noqa: E402
 
 
 GOAL_ID = "blocked-priority-fallback-fixture"

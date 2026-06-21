@@ -53,7 +53,7 @@ REQUIRED_PHRASES = (
     "--codex-cli /path/to/codex",
     "codex exec --skip-git-repo-check --ephemeral --ignore-user-config",
     "--ignore-rules --sandbox workspace-write --ask-for-approval never",
-    "The deterministic Goal Harness CLI shim remains the default public smoke",
+    "The deterministic LoopX CLI shim remains the default public smoke",
     "The real-worker mode is opt-in",
     "starts from an empty isolated `HOME` and `CODEX_HOME`",
     "must not read real session history or Codex App thread state",

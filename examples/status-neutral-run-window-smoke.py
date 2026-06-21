@@ -12,9 +12,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.diagnose import collect_diagnosis  # noqa: E402
-from goal_harness.quota import QUOTA_MONITOR_POLL_CLASSIFICATION, build_quota_should_run  # noqa: E402
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.diagnose import collect_diagnosis  # noqa: E402
+from loopx.quota import QUOTA_MONITOR_POLL_CLASSIFICATION, build_quota_should_run  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 GOAL_ID = "neutral-window-connected-delivery"
@@ -32,7 +32,7 @@ def write_registry(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -43,7 +43,7 @@ def write_registry(root: Path) -> Path:
         "# Neutral Window Fixture\n\n"
         "## Agent Todo\n\n"
         f"- [ ] {AGENT_TODO}\n"
-        "  <!-- goal-harness:todo todo_id=todo_monitor_fixture status=open "
+        "  <!-- loopx:todo todo_id=todo_monitor_fixture status=open "
         "task_class=continuous_monitor action_kind=stable_signal_monitor -->\n",
         encoding="utf-8",
     )
@@ -132,7 +132,7 @@ def write_runs(root: Path) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-neutral-window-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-neutral-window-") as tmp:
         root = Path(tmp)
         registry_path = write_registry(root)
         write_runs(root)

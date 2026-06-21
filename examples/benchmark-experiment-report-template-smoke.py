@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import benchmark_comparison_decision_note  # noqa: E402
+from loopx.status import benchmark_comparison_decision_note  # noqa: E402
 
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
 README = TOPIC_DIR / "README.md"
@@ -55,7 +55,7 @@ def comparison_summary_payload() -> dict[str, Any]:
         "schema_version": COMPARISON_SCHEMA,
         "task_id": "mini_control_plane_repair_v0",
         "comparison_id": "mini_control_plane_repair_v0_ab",
-        "mode_pair": ["bare_codex_cli", "passive_goal_harness_wrapper"],
+        "mode_pair": ["bare_codex_cli", "passive_loopx_wrapper"],
         "official_task_score_delta": 0.0,
         "control_plane_score_delta": 0.143,
         "both_success": True,
@@ -69,7 +69,7 @@ def readiness_summary_payload() -> dict[str, Any]:
         "schema_version": COMPARISON_SCHEMA,
         "task_id": "terminal_bench_official_pilot_readiness_v0",
         "comparison_id": "terminal_bench_official_pilot_readiness_ab",
-        "mode_pair": ["bare_codex_cli_readiness", "passive_goal_harness_wrapper_readiness"],
+        "mode_pair": ["bare_codex_cli_readiness", "passive_loopx_wrapper_readiness"],
         "official_task_score_delta": "not_applicable_readiness_only",
         "control_plane_score_delta": 0.0,
         "both_success": None,
@@ -83,7 +83,7 @@ def failure_summary_payload() -> dict[str, Any]:
         "schema_version": COMPARISON_SCHEMA,
         "task_id": "mini_control_plane_repair_failure_probe_v0",
         "comparison_id": "mini_control_plane_repair_failure_probe_ab",
-        "mode_pair": ["bare_codex_cli", "passive_goal_harness_wrapper"],
+        "mode_pair": ["bare_codex_cli", "passive_loopx_wrapper"],
         "official_task_score_delta": 0.0,
         "control_plane_score_delta": 0.0,
         "both_success": False,
@@ -104,10 +104,10 @@ def report_payload(note: dict[str, Any], readiness_note: dict[str, Any], failure
         "schema_version": REPORT_SCHEMA,
         "experiment_identity": {
             "report_id": "mini-control-plane-repair-report-v0",
-            "benchmark_id": "goal-harness-local-passive-baseline@v0",
+            "benchmark_id": "loopx-local-passive-baseline@v0",
             "task_slice": "mini_control_plane_repair_v0",
             "worker_surface": "codex_cli_fixture",
-            "harness_identity": "goal_harness_passive_wrapper",
+            "harness_identity": "loopx_passive_wrapper",
             "harness_policy_version": "local-smoke-v0",
             "trace_publicness": "public_contract_fixture",
         },
@@ -118,7 +118,7 @@ def report_payload(note: dict[str, Any], readiness_note: dict[str, Any], failure
             "delta": note["official_task_score_delta"],
             "task_id_or_split": "mini_control_plane_repair_v0",
             "repetitions": 1,
-            "runner_source": "goal-harness-local-fixture",
+            "runner_source": "loopx-local-fixture",
             "submit_eligible": False,
             "leaderboard_evidence": False,
         },
@@ -132,7 +132,7 @@ def report_payload(note: dict[str, Any], readiness_note: dict[str, Any], failure
             "regression_avoidance_passed": True,
             "source_events": [
                 "benchmark_run_v0:bare_codex_cli:fixture",
-                "benchmark_run_v0:passive_goal_harness_wrapper:fixture",
+                "benchmark_run_v0:passive_loopx_wrapper:fixture",
                 "benchmark_result_v0:paired_comparison:fixture",
                 f"{DECISION_NOTE_SCHEMA}:mini_control_plane_repair_v0_ab:fixture",
             ],
@@ -168,11 +168,11 @@ def report_payload(note: dict[str, Any], readiness_note: dict[str, Any], failure
         "reproducibility_artifacts": {
             "source_events": [
                 "benchmark_run_v0:bare_codex_cli:fixture",
-                "benchmark_run_v0:passive_goal_harness_wrapper:fixture",
+                "benchmark_run_v0:passive_loopx_wrapper:fixture",
                 "benchmark_result_v0:paired_comparison:fixture",
                 f"{DECISION_NOTE_SCHEMA}:mini_control_plane_repair_v0_ab:fixture",
             ],
-            "runner_versions": ["goal-harness-local-fixture@v0"],
+            "runner_versions": ["loopx-local-fixture@v0"],
             "task_identifiers": ["mini_control_plane_repair_v0"],
             "validation_commands": [
                 "python3 examples/codex-cli-long-run-benchmark-smoke.py",

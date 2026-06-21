@@ -64,8 +64,8 @@ This does not prove that a full benchmark can run yet. The open question is
 which e2e architecture can satisfy the benchmark runner while keeping Codex
 auth local:
 
-1. Route A: local Codex/Goal Harness driver plus remote Docker provider.
-2. Route B: local Codex/Goal Harness driver plus SSH command adapter and
+1. Route A: local Codex/LoopX driver plus remote Docker provider.
+2. Route B: local Codex/LoopX driver plus SSH command adapter and
    redacted sync.
 
 Both should get a minimal no-upload e2e proof before choosing the first real

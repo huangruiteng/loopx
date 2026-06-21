@@ -79,7 +79,7 @@ type ShowcaseFrontstageCase = {
 
 const showcaseCases = (showcaseCatalog as { cases: ShowcaseFrontstageCase[] }).cases;
 const selfIterationShowcase = showcaseCases.find(
-  (item) => item.id === "2026-06-19-goal-harness-self-iteration",
+  (item) => item.id === "2026-06-19-loopx-self-iteration",
 );
 const frontstageShowcases = showcaseCases.filter((item) => item.frontend_card);
 
@@ -211,7 +211,7 @@ function showcaseCaseHref(casePage?: string) {
   if (!casePage) {
     return undefined;
   }
-  return `https://github.com/huangruiteng/goal-harness/blob/main/${casePage}`;
+  return `https://github.com/huangruiteng/loopx/blob/main/${casePage}`;
 }
 
 function uniqueClaimOwners(projection: GoalChannelProjection) {
@@ -756,7 +756,7 @@ const developerOnboardingSteps = [
   {
     icon: Activity,
     label: "Start",
-    title: "Open the project and send one Goal Harness bootstrap message in Codex CLI.",
+    title: "Open the project and send one LoopX bootstrap message in Codex CLI.",
     body: "The first response should name the goal, visible gate, current todo, and next safe action before work starts.",
   },
   {
@@ -775,7 +775,7 @@ const developerOnboardingSteps = [
     icon: GitBranch,
     label: "Prove",
     title: "Validate, write back progress, and spend quota only after a durable state transition.",
-    body: "Developer mode is read-only in the browser; Goal Harness CLI and append-only history remain the source of truth.",
+    body: "Developer mode is read-only in the browser; LoopX CLI and append-only history remain the source of truth.",
   },
 ];
 
@@ -850,7 +850,7 @@ function PublicShowcaseBoundaryPanel() {
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">write authority</div>
           <div className="mt-2 text-sm font-semibold leading-6 text-slate-950">None in browser</div>
-          <p className="mt-1 text-xs leading-5 text-slate-600">The frontstage explains cases; Goal Harness CLI and append-only history remain the control plane.</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">The frontstage explains cases; LoopX CLI and append-only history remain the control plane.</p>
         </div>
       </div>
     </Panel>
@@ -891,7 +891,7 @@ function DeveloperOnboardingPanel() {
               ["identity", "heartbeat uses --agent-id and scoped automation identity"],
               ["health", "quota/status agree on user todos, runnable candidates, and gate state"],
               ["workspace", "workspace_guard blocks side-agent edits in the primary checkout"],
-              ["handoff", "TUI steering stays visible while Goal Harness owns quota/status/writeback"],
+              ["handoff", "TUI steering stays visible while LoopX owns quota/status/writeback"],
             ].map(([label, value]) => (
               <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2" key={label}>
                 <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-300">{label}</div>
@@ -1017,7 +1017,7 @@ function FrontstageRoute({
     ? projection.display_name
     : isDeveloperMode
       ? "Developer Onboarding Frontstage"
-      : "Goal Harness Showcase Frontstage";
+      : "LoopX Showcase Frontstage";
   const heroSubtitle = isOpsMode
     ? "Always-on agent operations, with human judgment kept in the control plane."
     : isDeveloperMode
@@ -1129,7 +1129,7 @@ function FrontstageRoute({
               <GitBranch className="h-4 w-4" />
             </div>
             <div>
-              <div className="text-sm font-semibold">Goal Harness</div>
+              <div className="text-sm font-semibold">LoopX</div>
               <div className="text-xs text-slate-500">Frontstage channel</div>
             </div>
           </div>
@@ -1148,7 +1148,7 @@ function FrontstageRoute({
             </a>
           </div>
           <div className="mt-5 space-y-2 text-xs leading-5 text-slate-500">
-            <p>Projection is read-only. The append-only Goal Harness ledger remains the source of truth.</p>
+            <p>Projection is read-only. The append-only LoopX ledger remains the source of truth.</p>
             <p>Inspired by modern agent boards, but scoped to gates, todos, claims, quota, and evidence.</p>
           </div>
           <div className="mt-5 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3" data-testid="frontstage-live-source-panel">

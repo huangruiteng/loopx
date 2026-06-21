@@ -1,16 +1,16 @@
 # Long-Horizon Agent Benchmark Roadmap
 
-Goal Harness needs an external validity track beyond local regression smokes. The
+LoopX needs an external validity track beyond local regression smokes. The
 long-term target is to run, improve, and eventually publish on public
 long-horizon agent benchmarks while preserving the product thesis: agents should
 work through durable state, gates, evidence, and recovery rather than through
 prompt bloat or raw chat history. When human-agent collaboration is evaluated,
-Goal Harness should supply its own bounded operator simulator as an overlay,
+LoopX should supply its own bounded operator simulator as an overlay,
 not require the benchmark itself to provide a user simulator.
 
 ## Thesis
 
-Goal Harness should be evaluated as an agent control plane, not merely as a
+LoopX should be evaluated as an agent control plane, not merely as a
 project dashboard. A credible benchmark result should show whether the harness
 improves:
 
@@ -39,11 +39,11 @@ should answer:
 - Does the official protocol allow a custom wrapper around the agent, or only a
   fixed agent submission?
 - Are there hidden tests, exploit scans, or anti-reward-hacking safeguards?
-- Can Goal Harness add event-ledger/restartability instrumentation without
+- Can LoopX add event-ledger/restartability instrumentation without
   changing the scoring protocol?
 - Can a separate assisted-mode study add a bounded operator simulator without
   confusing the result with the official leaderboard protocol?
-- What Codex goal-mode baseline failures are observable before any Goal Harness
+- What Codex goal-mode baseline failures are observable before any LoopX
   treatment, and which of those failures are plausibly addressable by
   control-plane state, todo, checkpoint, replan, validation, writeback, or
   failure attribution?
@@ -61,7 +61,7 @@ Initial paper and benchmark scan:
 
 ### Universal: Baseline Failure-Case Mining
 
-Every benchmark lane must pass the same selection gate before Goal Harness
+Every benchmark lane must pass the same selection gate before LoopX
 treatment runs. The goal is not to spend on benchmarks where the base agent only
 fails because of raw model capability, hidden-test ambiguity, missing domain
 knowledge, flaky infrastructure, or an unobservable evaluator.
@@ -78,7 +78,7 @@ evidence:
   validation, premature stop, over-broad edit/action, poor evidence trail,
   source/coverage drift, skill/tool routing miss, artifact provenance gap,
   policy/gate miss, failure-attribution gap, or ordinary model miss;
-- control-plane leverage: whether Goal Harness could plausibly change the
+- control-plane leverage: whether LoopX could plausibly change the
   outcome through state truth, todo continuity, checkpoint/restart, bounded
   replan, validation discipline, policy/gate handling, public-safe writeback, or
   compact failure attribution.
@@ -92,7 +92,7 @@ than forcing a treatment run.
 
 This gate applies to all benchmark families:
 
-| Family | Baseline failure to mine first | Goal Harness leverage if present |
+| Family | Baseline failure to mine first | LoopX leverage if present |
 | --- | --- | --- |
 | Terminal / CLI / SWE | Long validation loops, dependency triage, stale state, repeated failed fixes, timeout after drift | checkpoint/replan, validation discipline, compact run ledger, failure attribution |
 | Skill benchmarks | Wrong skill chosen, missing skill provenance, unsafe skill reuse, negative transfer | skill-state review, provenance gates, routed-skill exposure trace |
@@ -122,7 +122,7 @@ Initial fit:
   CLI as a relevant agent surface.
 - SWE-Marathon and HORIZON-style benchmarks are closer to the target claim:
   ultra-long-horizon software work rather than short interaction episodes.
-- These benchmarks can support a leaderboard-oriented track where Goal Harness
+- These benchmarks can support a leaderboard-oriented track where LoopX
   wraps the worker without changing the official task, scoring, or allowed
   tools.
 - They directly test the control-plane value proposition: state truth,
@@ -148,13 +148,13 @@ Sources:
 
 Initial fit:
 
-- The user simulator is first-class, so Goal Harness can learn simulator
+- The user simulator is first-class, so LoopX can learn simulator
   evaluation patterns before applying its own operator simulator to engineering
   benchmarks.
 - Airline/retail/banking-style domains resemble enterprise project workflows:
   policy adherence, tool updates, multi-turn clarification, and final state
   verification.
-- The benchmark can support an A/B study: stock agent versus Goal Harness
+- The benchmark can support an A/B study: stock agent versus LoopX
   wrapped agent, with identical task/user-simulator settings.
 - It is a good substrate for a paper section on user-simulator fidelity, but it
   should not be used as the headline evidence for long-horizon engineering
@@ -184,7 +184,7 @@ Initial fit:
 
 WebArena, VisualWebArena, and OSWorld are useful later-stage benchmarks for
 browser/computer-use agents. They are lower priority for the first integration
-because Goal Harness currently has stronger leverage on state, quota, gates,
+because LoopX currently has stronger leverage on state, quota, gates,
 and user-agent coordination than on visual desktop control.
 
 Sources:
@@ -192,13 +192,13 @@ Sources:
 - WebArena paper: https://arxiv.org/abs/2307.13854
 - OSWorld paper: https://arxiv.org/abs/2404.07972
 
-## Goal Harness Operator Simulator Program
+## LoopX Operator Simulator Program
 
-Goal Harness needs its own operator simulator for assisted long-horizon
+LoopX needs its own operator simulator for assisted long-horizon
 benchmark studies. This is different from choosing benchmarks that already have
 a user simulator. The benchmark selection should optimize for hard long-horizon
 engineering work and Codex/executor compatibility; the operator simulator is a
-Goal Harness overlay used to study supervised execution.
+LoopX overlay used to study supervised execution.
 
 There are three result modes:
 
@@ -207,10 +207,10 @@ There are three result modes:
   evidence, and cost/state accounting. No operator-simulator hinting,
   approvals, or extra task guidance is allowed.
 - **Passive control-plane mode:** keep the same autonomous worker decisions, but
-  record richer Goal Harness state, Goal Tick phases, validation, and restart
+  record richer LoopX state, Goal Tick phases, validation, and restart
   artifacts. This measures whether the control plane improves auditability and
   recovery without changing task policy. It is also the first test of whether
-  Goal Harness helps without any operator simulator: if passive mode cannot
+  LoopX helps without any operator simulator: if passive mode cannot
   improve restartability, stale-state avoidance, continuation quality, or
   failure attribution over Codex CLI goal mode, the operator-simulator work is not
   yet grounded.
@@ -241,13 +241,13 @@ The simulator contract should record:
 
 The operator simulator must not act as an oracle. It must not see hidden tests,
 expected solutions, benchmark answer keys, private project data, or any state
-that the benchmark protocol would forbid the agent from using. A Goal Harness
+that the benchmark protocol would forbid the agent from using. A LoopX
 result must not claim official long-horizon benchmark improvement if the gain
 comes from assisted operator-simulator intervention.
 
 ## Passive Baseline Hypotheses
 
-Before using an operator simulator, Goal Harness should prove or falsify a
+Before using an operator simulator, LoopX should prove or falsify a
 passive-control-plane benefit against Codex CLI goal mode. The benchmark program
 should track these hypotheses:
 
@@ -272,7 +272,7 @@ explains why supervision is needed.
 ## Autonomous Planning Triggers
 
 Long-horizon research cannot rely on the user to notice every stagnation point.
-Goal Harness should trigger a planning refresh when the current control plane
+LoopX should trigger a planning refresh when the current control plane
 shows that execution is no longer converting intent into evidence.
 
 Planning refresh is not a license to expand scope every turn. It is a bounded
@@ -283,7 +283,7 @@ add a new todo, retire stale work, or request an operator decision.
 This is control-plane planning, not task-policy planning. The refresh may
 repair the execution track when the project stops converting intent into
 evidence, but the worker model still owns belief synthesis and the concrete
-implementation/debug strategy inside the authorized boundary. Goal Harness can
+implementation/debug strategy inside the authorized boundary. LoopX can
 say "this todo is stale; split it and validate the next slice with command X."
 It should not silently decide the semantic solution to the task or rewrite
 project direction as if a dreaming or replan proposal were already approved.
@@ -315,7 +315,7 @@ The planning refresh output should be public-safe and structured:
 - whether the next turn is implementation, setup, paper survey, or observation.
 
 This mechanism is part of the benchmark program itself: one result dimension is
-whether Goal Harness can autonomously maintain a useful research agenda over
+whether LoopX can autonomously maintain a useful research agenda over
 many turns without drifting into prompt-only planning or waiting for the user to
 restate the strategy.
 
@@ -328,7 +328,7 @@ Planning outputs should carry their authority level:
 | `proposal` | A dreaming/exploration/research suggestion that may improve future work. | Route to operator/controller review before making it active project truth. |
 | `agent_policy_choice` | A concrete task-solving strategy chosen from current belief. | Belongs to the worker inside the current authorized boundary. |
 
-## Goal Harness Integration
+## LoopX Integration
 
 The benchmark adapter should add control-plane structure without changing the
 benchmark's scoring rules:
@@ -358,10 +358,10 @@ user-simulator relevance, baseline failure observability, control-plane
 addressability, and publishability.
 
 The dossier must read the SOTA papers or official benchmark reports first. It
-should not select a benchmark only because it sounds aligned with Goal Harness.
+should not select a benchmark only because it sounds aligned with LoopX.
 The first recommendation must explicitly name the expected executor path:
 Codex CLI goal mode, a benchmark-provided Codex adapter with an equivalent goal
-surface, or a small public-safe Goal Harness passive wrapper around an official
+surface, or a small public-safe LoopX passive wrapper around an official
 executor.
 
 ### P1: Official Long-Horizon Engineering Pilot
@@ -370,7 +370,7 @@ Run the first small official-protocol pilot on Terminal-Bench, SWE-Marathon, or
 another selected long-horizon engineering benchmark:
 
 - stock/native agent path;
-- Goal Harness wrapped worker path;
+- LoopX wrapped worker path;
 - identical task, model, allowed tools, environment, and scoring;
 - no user-simulator overlay if the official benchmark protocol does not allow
   it;
@@ -378,30 +378,30 @@ another selected long-horizon engineering benchmark:
   benchmark-internal scoring changes.
 
 The pilot is successful when it produces comparable official metrics and a
-restartable Goal Harness event ledger without changing task answers, tests, or
+restartable LoopX event ledger without changing task answers, tests, or
 benchmark policy.
 
 The first pilot must begin with a baseline failure record or a documented
-hard-case prior. Goal Harness treatment is justified only when that baseline
+hard-case prior. LoopX treatment is justified only when that baseline
 evidence names a control-plane-addressable failure class.
 
-### P1: Passive Goal Harness Baseline
+### P1: Passive LoopX Baseline
 
 Run the same selected engineering slice in at least two autonomous modes:
 
-- Codex CLI goal mode without Goal Harness state;
-- Codex CLI goal mode with a passive Goal Harness wrapper.
+- Codex CLI goal mode without LoopX state;
+- Codex CLI goal mode with a passive LoopX wrapper.
 
 No operator-simulator intervention is allowed. Compare task success,
 restartability, stale-state errors, duplicated work after interruption,
 validation quality, failure attribution, and overhead. This is the first proof
-point for whether Goal Harness helps by itself.
+point for whether LoopX helps by itself.
 
 ### P1: Planning-Trigger Regression
 
 Add a synthetic long-horizon research fixture that simulates repeated eligible
 turns, a no-progress streak, and a repeated recommended action. The fixture
-should prove that Goal Harness emits a bounded planning-refresh todo instead of
+should prove that LoopX emits a bounded planning-refresh todo instead of
 quietly looping or relying on the user to re-plan.
 
 ### P1: Operator-Simulator Overlay Pilot
@@ -418,7 +418,7 @@ the same or similar long-horizon task slice:
 - separate reporting from official leaderboard metrics;
 - comparison against native and passive control-plane modes.
 
-This pilot answers whether Goal Harness can model supervised long-horizon work,
+This pilot answers whether LoopX can model supervised long-horizon work,
 not whether the base agent is autonomous SOTA. The first deterministic
 active-user assisted pilot remains a deterministic active-user assisted pilot
 fixture: it uses a previously failed compact Terminal-Bench case to validate
@@ -433,7 +433,7 @@ Run a small tau-style pilot as a user-simulator research slice:
 - one public split or a small representative subset;
 - fixed simulator model and seed policy;
 - baseline stock agent;
-- Goal Harness wrapped agent;
+- LoopX wrapped agent;
 - identical scoring harness.
 
 This pilot should be labeled as collaboration/user-simulator evidence, not as
@@ -459,7 +459,7 @@ that baseline is proven.
 ### P1/P2: Cross-Benchmark Failure-Case Gate
 
 For every new benchmark family, run a small baseline failure-mining pass before
-any Goal Harness treatment. The output should be a public-safe failure taxonomy,
+any LoopX treatment. The output should be a public-safe failure taxonomy,
 a short list of control-plane-addressable cases, and an explicit negative list
 of cases rejected because their failures are model-only, environment-only,
 oracle/hidden-test ambiguous, or not observable enough. Do not spend treatment
@@ -498,7 +498,7 @@ separate from external benchmark execution.
   trigger gap and do not treat a slash-prefix prompt or polling loop as the
   baseline.
 - [ ] [P0] If the Terminal-Bench goal-mode baseline failure is
-  control-plane-addressable, run the matched `codex-goal-harness` treatment on
+  control-plane-addressable, run the matched `codex-loopx` treatment on
   the same case with task, prompt, tests, scorer, image, timeout, model, runner
   source, and publication boundary unchanged. If it is not addressable, record
   the negative selection and move to the next selected case.
@@ -512,15 +512,15 @@ separate from external benchmark execution.
   failure is control-plane-addressable.
 - [ ] [P1] Keep SkillsBench on the AgentLoop / skill-runtime lane. Mine only
   skill-routing, skill-provenance, unsafe-reuse, or negative-transfer failures;
-  do not spend Goal Harness long-horizon treatment unless the failure requires
+  do not spend LoopX long-horizon treatment unless the failure requires
   skill-state review, provenance gates, or exposure/writeback tracing.
 - [ ] [P1/P2] Put WideSearch / DeepWideSearch, SpreadsheetBench, DSBench, and
   tau-style simulator tasks behind the same baseline-failure gate. For each,
-  define the family-specific failure classes before any paired Goal Harness
+  define the family-specific failure classes before any paired LoopX
   treatment.
 - [ ] [P1] Keep the autonomous planning-trigger regression in the product track:
   after repeated no-progress, phase transition, backlog mismatch, or evidence
-  contradiction, Goal Harness should split/add/retire todos and emit the next
+  contradiction, LoopX should split/add/retire todos and emit the next
   bounded validation command.
 - [ ] [P2] Triage Agents' Last Exam only after the first Terminal-Bench paired
   pilot or a documented Terminal-Bench blocker. Build an adapter dossier before

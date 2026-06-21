@@ -26,8 +26,8 @@ CANDIDATE_AFTER_APPROVAL_COMMANDS = [
     "git ls-remote https://github.com/harbor-framework/terminal-bench HEAD",
     "harbor --help",
     "tb --help",
-    "goal-harness history append-benchmark-run --benchmark-run-json <benchmark-run-v0.json>",
-    "goal-harness history append-benchmark-result --benchmark-result-json <benchmark-result-v0.json>",
+    "loopx history append-benchmark-run --benchmark-run-json <benchmark-run-v0.json>",
+    "loopx history append-benchmark-result --benchmark-result-json <benchmark-result-v0.json>",
 ]
 
 FORBIDDEN_SURFACES = [
@@ -54,7 +54,7 @@ FORBIDDEN_SURFACES = [
 EXPECTED_PUBLIC_ARTIFACTS = [
     "terminal_bench_no_submit_setup_check_v0.json",
     "benchmark_run_v0:bare_codex_cli_no_submit_setup",
-    "benchmark_run_v0:passive_goal_harness_wrapper_no_submit_setup",
+    "benchmark_run_v0:passive_loopx_wrapper_no_submit_setup",
     "benchmark_result_v0:readiness_only_not_run",
 ]
 
@@ -132,7 +132,7 @@ def approval_packet() -> dict[str, Any]:
             },
             {
                 "schema_version": "benchmark_run_v0",
-                "scenario_id": "passive_goal_harness_wrapper_no_submit_setup",
+                "scenario_id": "passive_loopx_wrapper_no_submit_setup",
                 "runner_mode": "setup_check_no_submit",
                 "real_run": False,
                 "submit_eligible": False,

@@ -17,20 +17,20 @@ const fixturePath = resolve(dashboardDir, "public", fixtureName);
 const approvedFixturePath = resolve(dashboardDir, "public", approvedFixtureName);
 const staleHistoryApprovedFixturePath = resolve(dashboardDir, "public", staleHistoryApprovedFixtureName);
 const playwrightCliOutputDir = resolve(repoRoot, ".playwright-cli");
-const port = Number(process.env.GOAL_HARNESS_DASHBOARD_OPERATOR_GATE_SMOKE_PORT ?? "5192");
+const port = Number(process.env.LOOPX_DASHBOARD_OPERATOR_GATE_SMOKE_PORT ?? "5192");
 const session = `ghog${process.pid}`;
 const pwcli = process.env.PWCLI ?? resolve(homedir(), ".codex/skills/playwright/scripts/playwright_cli.sh");
 
 const goalId = "planned-main-control";
 const operatorQuestion = "是否同意 `planned-main-control` 先执行 read-only map opt-in？";
-const recommendedAction = "先在 Goal Harness 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run";
+const recommendedAction = "先在 LoopX 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run";
 const assetNextAction = "Project asset: handle owner todo before approving the gate";
 const assetStopCondition = "Project asset stop: record or defer the owner todo before approval";
 const userTodoText = "Read owner review worksheet first.";
 const agentTodoText = "Run the read-only map dry-run after owner todo resolution.";
-const previewCommand = "goal-harness read-only-map --goal-id planned-main-control --dry-run";
+const previewCommand = "loopx read-only-map --goal-id planned-main-control --dry-run";
 const approvedAction = "operator approved read-only map; project agent can execute the approved dry-run";
-const approvedCommand = "goal-harness read-only-map --goal-id planned-main-control --dry-run --approved";
+const approvedCommand = "loopx read-only-map --goal-id planned-main-control --dry-run --approved";
 
 const operatorGateQuota = {
   compute: 0.5,
@@ -292,7 +292,7 @@ const staleHistoryApprovedStatusFixture = {
               decision: "defer",
               operator_question: operatorQuestion,
               reason_summary: "stale defer should not replace the current queue item",
-              agent_command: "goal-harness stale-command --dry-run",
+              agent_command: "loopx stale-command --dry-run",
             },
           },
         ],
@@ -315,7 +315,7 @@ const staleHistoryApprovedStatusFixture = {
           decision: "defer",
           operator_question: operatorQuestion,
           reason_summary: "stale defer should not replace the current queue item",
-          agent_command: "goal-harness stale-command --dry-run",
+          agent_command: "loopx stale-command --dry-run",
         },
       },
     ],

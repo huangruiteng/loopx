@@ -2,7 +2,7 @@
 
 Date: 2026-06-20
 
-Purpose: add FrontierSWE to the Goal Harness benchmark candidate set and decide
+Purpose: add FrontierSWE to the LoopX benchmark candidate set and decide
 whether it should become an execution lane, a readiness lane, or a watchlist
 lane.
 
@@ -29,7 +29,7 @@ performance engineering, computational science, and machine-learning research.
 FrontierSWE has direct Codex leaderboard evidence. The public leaderboard
 observed on 2026-06-20 includes GPT-5.5 via Codex and GPT-5.4 via Codex rows.
 That means FrontierSWE is not merely an adjacent-agent benchmark; it already
-has a public Codex surface that can be compared against a Goal Harness assisted
+has a public Codex surface that can be compared against a LoopX assisted
 Codex route once our execution route is stable.
 
 The evidence class is not the same as SWE-Marathon:
@@ -37,17 +37,17 @@ The evidence class is not the same as SWE-Marathon:
 - SWE-Marathon is a low-baseline candidate, with prior setup notes recording
   `Codex CLI + GPT-5.5` at `12.0%` pass@1.
 - FrontierSWE is a frontier-stress candidate, with direct Codex leaderboard
-  rows but no local Goal Harness baseline-failure mining pass yet.
+  rows but no local LoopX baseline-failure mining pass yet.
 
 ## Readiness Verdict
 
 Add FrontierSWE as a `P1` readiness lane, not as the next immediate execution
 lane.
 
-Reasons it fits Goal Harness:
+Reasons it fits LoopX:
 
 - Horizon is real. Public framing gives agents up to roughly 20 hours per task,
-  which is closer to Goal Harness's long-running state, gate, restart, and
+  which is closer to LoopX's long-running state, gate, restart, and
   validation thesis than short issue-fix suites.
 - Task domains are control-plane relevant: performance engineering,
   computational science, and machine-learning research tend to expose long
@@ -61,7 +61,7 @@ Reasons it fits Goal Harness:
 
 Current blockers before a useful run:
 
-- No local or cloud checkout has been inspected under the Goal Harness runbook.
+- No local or cloud checkout has been inspected under the LoopX runbook.
 - The runner boundary, no-upload flags, artifact paths, and failure-reduction
   schema are not yet documented.
 - Task wall-clock budget is high; a first run should not start before the

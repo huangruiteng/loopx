@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.quota import (  # noqa: E402
+from loopx.quota import (  # noqa: E402
     build_quota_should_run,
     build_quota_slot_preview,
     render_quota_should_run_markdown,
@@ -53,8 +53,8 @@ def run_git(path: Path, *args: str) -> None:
 def init_repo(primary: Path, side: Path) -> None:
     primary.mkdir(parents=True)
     run_git(primary, "init")
-    run_git(primary, "config", "user.email", "goal-harness@example.invalid")
-    run_git(primary, "config", "user.name", "Goal Harness Smoke")
+    run_git(primary, "config", "user.email", "loopx@example.invalid")
+    run_git(primary, "config", "user.name", "LoopX Smoke")
     (primary / "README.md").write_text("fixture\n", encoding="utf-8")
     run_git(primary, "add", "README.md")
     run_git(primary, "commit", "-m", "initial fixture")
@@ -158,7 +158,7 @@ def status_payload(repo: Path, registry: Path) -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-workspace-guard-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-workspace-guard-") as tmp:
         root = Path(tmp)
         primary = root / "primary"
         side = root / "side-worktree"

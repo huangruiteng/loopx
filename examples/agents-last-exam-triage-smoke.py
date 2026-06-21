@@ -15,8 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import build_agents_last_exam_result_benchmark_report  # noqa: E402
-from goal_harness.status import (  # noqa: E402
+from loopx.benchmark import build_agents_last_exam_result_benchmark_report  # noqa: E402
+from loopx.status import (  # noqa: E402
     benchmark_experiment_report_readiness_note,
     compact_benchmark_experiment_report,
 )
@@ -105,7 +105,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def run_cli(args: list[str]) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=True,
         text=True,
@@ -153,7 +153,7 @@ def write_synthetic_ale_run(root: Path) -> Path:
             {
                 "schema_version": 2,
                 "run_id": "codex__openai-gpt-5-4__demo__hello__v0__20260611_000000",
-                "agent_id": "codex_goal_harness",
+                "agent_id": "codex_loopx",
                 "model": "openai/gpt-5.4",
                 "task_path": "demo/hello",
                 "variant_index": 0,
@@ -211,7 +211,7 @@ def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     run_dir = write_synthetic_ale_run(root)
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
@@ -254,7 +254,7 @@ def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
 
 
 def assert_ale_result_ingest_contract() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-ale-ingest-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-ale-ingest-") as tmp:
         run_dir = write_synthetic_ale_run(Path(tmp))
         report = build_agents_last_exam_result_benchmark_report(
             run_dir,
@@ -293,7 +293,7 @@ def assert_ale_result_ingest_contract() -> None:
 
 
 def assert_ale_result_append_cli() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-ale-append-cli-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-ale-append-cli-") as tmp:
         registry_path, runtime, run_dir = write_cli_fixture(Path(tmp))
         index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
         args = [

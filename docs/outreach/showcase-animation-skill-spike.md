@@ -6,7 +6,7 @@ runtime dependency.
 
 ## Goal
 
-Create a 20-30 second animated demo that explains Goal Harness through public
+Create a 20-30 second animated demo that explains LoopX through public
 showcases:
 
 - the 0617 user-gate case;

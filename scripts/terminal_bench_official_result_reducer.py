@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import compact_benchmark_run  # noqa: E402
+from loopx.status import compact_benchmark_run  # noqa: E402
 
 
 FORBIDDEN_RAW_KEYS = frozenset(
@@ -220,7 +220,7 @@ def build_reduction(
         ),
         "score_failure_attribution": failure_class,
         "failure_attribution_labels": failure_labels,
-        "goal_harness_inside_case": False,
+        "loopx_inside_case": False,
         "leaderboard_evidence": False,
         "submit_eligible": False,
         "agent_model": metadata.get("model_name"),

@@ -10,7 +10,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.quota import build_quota_should_run
+from loopx.quota import build_quota_should_run
 
 
 GOAL_ID = "protocol-router-comparison-fixture"

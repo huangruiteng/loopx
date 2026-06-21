@@ -1,7 +1,7 @@
 # Project Agent Todo Contract
 
 Project agents should keep operator-facing work out of long chat replies,
-review documents, and overloaded `Next Action` paragraphs. Goal Harness uses
+review documents, and overloaded `Next Action` paragraphs. LoopX uses
 separate fields so the dashboard and quota guard can show the right work to the
 right actor.
 
@@ -25,7 +25,7 @@ When read-only analysis, a review packet, a gate checklist, or P0/P1 steering
 finds a concrete user or owner action, write it immediately with the todo CLI:
 
 ```bash
-goal-harness todo add \
+loopx todo add \
   --goal-id <goal-id> \
   --role user \
   --text "<public-safe user or owner action>"
@@ -34,7 +34,7 @@ goal-harness todo add \
 Use `--role agent` for project-agent follow-up work:
 
 ```bash
-goal-harness todo add \
+loopx todo add \
   --goal-id <goal-id> \
   --role agent \
   --text "<public-safe agent action>"
@@ -45,7 +45,7 @@ classification. Use `advancement_task` for a bounded implementation,
 validation, benchmark, blocker-writeback, or repair segment:
 
 ```bash
-goal-harness todo add \
+loopx todo add \
   --goal-id <goal-id> \
   --role agent \
   --text "<public-safe executable agent action>" \
@@ -57,7 +57,7 @@ Use `continuous_monitor` only for watch-only surfaces where an unchanged poll
 must stay quiet:
 
 ```bash
-goal-harness todo add \
+loopx todo add \
   --goal-id <goal-id> \
   --role agent \
   --text "<public-safe monitor action>" \
@@ -74,9 +74,9 @@ inserts the metadata comment instead of creating a duplicate checkbox.
 lanes for owner input and concrete blockers; quota/executor code must not treat
 them as advancement work.
 
-Terminology: a `goal_id` is the Goal Harness control-plane boundary: registry
+Terminology: a `goal_id` is the LoopX control-plane boundary: registry
 entry, active-state file, quota lane, status projection, and run-history stream.
-A `todo_id` is a structured work item inside that goal. Goal Harness does not
+A `todo_id` is a structured work item inside that goal. LoopX does not
 currently model issues as a separate runtime object.
 
 Multiple agents may share the same project control plane. A todo can carry a
@@ -101,7 +101,7 @@ guard.
 Contributor-facing example:
 
 ```bash
-goal-harness --format json quota should-run \
+loopx --format json quota should-run \
   --goal-id <goal-id> \
   --agent-id codex-side-bypass
 ```
@@ -115,7 +115,7 @@ guard:
 ```bash
 git worktree add /tmp/<goal-id>-side-agent -b codex/<side-agent-branch>
 cd /tmp/<goal-id>-side-agent
-goal-harness --format json quota should-run \
+loopx --format json quota should-run \
   --goal-id <goal-id> \
   --agent-id codex-side-bypass
 ```
@@ -133,7 +133,7 @@ accidental collisions without writing scope into todo metadata or turning
 advancement todo exists, quota may also expose
 `agent_lane_next_action.schema_version=agent_lane_next_action_v0`. That field is
 the side agent's current slice for this turn; it does not overwrite the
-goal-level `Next Action` owned by the primary/global route. `goal-harness status
+goal-level `Next Action` owned by the primary/global route. `loopx status
 --agent-id <side-agent-id>` may attach the same derived field to matching status
 queue items for observation, while leaving the project-level route unchanged.
 When a candidate has `target_capabilities` and missing target bridge
@@ -143,7 +143,7 @@ runnable work in the same claim/priority bucket so capability-building todos do
 not require fragile active-state reordering.
 
 ```bash
-goal-harness configure-goal \
+loopx configure-goal \
   --goal-id <goal-id> \
   --registered-agent codex-main-control \
   --registered-agent codex-side-bypass \
@@ -155,7 +155,7 @@ Then claim through the dedicated command. `--claimed-by` is required for
 `todo claim` and must match one of the registered agent ids:
 
 ```bash
-goal-harness todo claim \
+loopx todo claim \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by codex-main-control
@@ -186,13 +186,13 @@ todo text. If a dashboard or controller needs the new checklist immediately,
 refresh the status projection after the write:
 
 ```bash
-goal-harness refresh-state --goal-id <goal-id>
+loopx refresh-state --goal-id <goal-id>
 ```
 
 ## Lifecycle Contract
 
 Agents should not patch active-state checkboxes directly to move work forward.
-Use the lifecycle commands so Goal Harness can preserve `todo_id`, status,
+Use the lifecycle commands so LoopX can preserve `todo_id`, status,
 classification metadata, timestamps, and idempotency in one write.
 
 Todo lifecycle should stay simple. Do not add a separate feature state machine
@@ -211,13 +211,13 @@ the agent should do one of two things:
   the feature is truly finished and does not need rollout, audit, docs, or
   product-path proof.
 
-This keeps the active checklist honest without making Goal Harness a heavyweight
+This keeps the active checklist honest without making LoopX a heavyweight
 project-management state machine.
 
 Complete the current todo and atomically register the next executable todo:
 
 ```bash
-goal-harness todo complete \
+loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --evidence "<public-safe artifact or result>" \
@@ -230,7 +230,7 @@ If an agent takes ownership at completion time, include the claim in the same
 locked lifecycle write:
 
 ```bash
-goal-harness todo complete \
+loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by codex-side-bypass \
@@ -250,7 +250,7 @@ agent may self-merge and complete without a successor review todo by making the
 exception explicit:
 
 ```bash
-goal-harness todo complete \
+loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by codex-side-bypass \
@@ -270,7 +270,7 @@ not append a follow-up goal-level `surface_only` sync after a validated
 progress with:
 
 ```bash
-goal-harness refresh-state \
+loopx refresh-state \
   --goal-id <goal-id> \
   --classification <public-safe-progress-classification> \
   --delivery-batch-scale multi_surface \
@@ -284,7 +284,7 @@ may also atomically add that successor todo and claim it back to the same side
 agent:
 
 ```bash
-goal-harness todo complete \
+loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by codex-side-bypass \
@@ -300,7 +300,7 @@ review handoff and must stay claimed by the primary agent.
 Use `todo update` for lower-level status changes:
 
 ```bash
-goal-harness todo update \
+loopx todo update \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --status blocked \
@@ -311,7 +311,7 @@ goal-harness todo update \
 Use `todo supersede` when the current open todo should be retired and replaced:
 
 ```bash
-goal-harness todo supersede \
+loopx todo supersede \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --reason "<public-safe reason>" \
@@ -345,7 +345,7 @@ the checkbox, for example:
 
 ```markdown
 - [ ] Run one validated benchmark case and write back result or blocker.
-  <!-- goal-harness:todo todo_id=todo_8e280be49441 status=open task_class=advancement_task action_kind=run_eval required_capabilities=shell%2Cbenchmark_runner claimed_by=codex-main-control -->
+  <!-- loopx:todo todo_id=todo_8e280be49441 status=open task_class=advancement_task action_kind=run_eval required_capabilities=shell%2Cbenchmark_runner claimed_by=codex-main-control -->
 ```
 
 Plain checkbox text remains a compatibility fallback. New automation-facing
@@ -359,7 +359,7 @@ lack `benchmark_runner`, `external_evidence_poll`, `network`, or another bridge
 for a specific step.
 
 ```bash
-goal-harness todo add \
+loopx todo add \
   --goal-id <goal-id> \
   --role agent \
   --text "<public-safe executable agent action>" \
@@ -375,7 +375,7 @@ prerequisite. For example, a benchmark product-path parity todo can hard-require
 only shell while targeting the benchmark runner bridge:
 
 ```bash
-goal-harness todo add \
+loopx todo add \
   --goal-id <goal-id> \
   --role agent \
   --text "<public-safe benchmark parity repair action>" \

@@ -15,12 +15,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.paths import global_registry_path  # noqa: E402
-from goal_harness.quota import build_quota_should_run  # noqa: E402
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.paths import global_registry_path  # noqa: E402
+from loopx.quota import build_quota_should_run  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
-META_GOAL_ID = "goal-harness-meta"
+META_GOAL_ID = "loopx-meta"
 OTHER_GOAL_ID = "ordinary-control"
 
 
@@ -89,8 +89,8 @@ def write_global_registry(
     other_project = root / "ordinary-project"
     meta_project.mkdir()
     other_project.mkdir()
-    missing_source = meta_project / ".goal-harness" / "registry.json"
-    stale_source = meta_project / ".goal-harness" / "stale-registry.json"
+    missing_source = meta_project / ".loopx" / "registry.json"
+    stale_source = meta_project / ".loopx" / "stale-registry.json"
     source_registry = missing_source
     synced_at = "2026-01-01T00:00:00+00:00"
     if finding_kind == "stale_source_registry":
@@ -119,7 +119,7 @@ def write_global_registry(
                 goal_id=OTHER_GOAL_ID,
                 project=other_project,
                 runtime=runtime,
-                source_registry=other_project / ".goal-harness" / "registry.json",
+                source_registry=other_project / ".loopx" / "registry.json",
                 synced_at=synced_at,
                 meta_policy=False,
             ),
@@ -137,7 +137,7 @@ def queue_item(status_payload: dict, goal_id: str) -> dict:
 
 
 def assert_meta_source_shadow(finding_kind: str) -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-meta-source-shadow-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-meta-source-shadow-") as tmp:
         root = Path(tmp)
         registry_path, runtime, project = write_global_registry(root, finding_kind=finding_kind)
         status_payload = collect_status(

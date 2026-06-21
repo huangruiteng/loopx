@@ -1,7 +1,7 @@
 # Benchmark Rerun Review 2026-06-16
 
 Source boundary: compact benchmark-run ledger, benchmark-case-analysis, active
-Goal Harness state, and public process/observable handles only. This review did
+LoopX state, and public process/observable handles only. This review did
 not read raw logs, raw task text, raw trajectories, verifier output tails,
 credentials, upload paths, or leaderboard material.
 
@@ -10,7 +10,7 @@ credentials, upload paths, or leaderboard material.
 Primary SkillsBench comparison now means:
 
 - baseline route: `codex-acp-blind-loop-baseline`
-- treatment route: `goal-harness-blind-loop-treatment`
+- treatment route: `loopx-blind-loop-treatment`
 - no Codex `/goal` mode in either arm
 - no official reward, pass/fail, verifier error, or verifier output forwarded
   to the agent during the loop
@@ -19,7 +19,7 @@ Primary SkillsBench comparison now means:
 - record offline `round_rewards` and `first_success_round`
 
 Older reward-feedback positives remain useful ablation evidence, but they are
-not primary no-reward Goal Harness uplift evidence.
+not primary no-reward LoopX uplift evidence.
 
 ## Immediate Decisions
 
@@ -59,7 +59,7 @@ not primary no-reward Goal Harness uplift evidence.
 ## Stable Takeaways
 
 - The old SkillsBench uplift story is reward-feedback evidence, not primary
-  no-reward Goal Harness evidence. `llm-prefix-cache-replay` has now failed the
+  no-reward LoopX evidence. `llm-prefix-cache-replay` has now failed the
   max-5 blind-loop recheck at `0.0/0.0`; `dapt-intrusion-detection` did not
   reach agent rounds under the max-5 route because the fail-fast preflight
   classified an apt setup risk. It remains unresolved rather than usable for a
@@ -95,7 +95,7 @@ not primary no-reward Goal Harness uplift evidence.
 
 | Priority | Case | Why | Stop / do not run when |
 | --- | --- | --- | --- |
-| P1 | Benchmark queue re-rank after setup-route validation | `suricata-custom-exfil` now validates the runtime-tools/package-manager repair, but it solved as baseline official `1.0` in round 1, so it is not a useful treatment priority. | Do not run the matching `suricata` treatment. Pick the next lane only if it can test Goal Harness value under the current max-5 no-reward protocol without known setup blockers. |
+| P1 | Benchmark queue re-rank after setup-route validation | `suricata-custom-exfil` now validates the runtime-tools/package-manager repair, but it solved as baseline official `1.0` in round 1, so it is not a useful treatment priority. | Do not run the matching `suricata` treatment. Pick the next lane only if it can test LoopX value under the current max-5 no-reward protocol without known setup blockers. |
 | P2 / after policy change | one neutral guard, preferably `software-dependency-audit` or `react-performance-debugging` | Useful only to test whether a new prompt/round policy damages clean `0.0/0.0` controls. | Do not run under the unchanged current policy; `azure-bgp-oscillation-route-leak` already provides one max-5 neutral guard. |
 | P2 / after policy change | one solved guard from `ada-bathroom-plan-repair`, `organize-messy-files`, `citation-check`, `3d-scan-calc`, `bike-rebalance` | Useful only to test whether treatment damages easy first-round success. | Do not run under the unchanged current policy; these are already first-round success/non-regression assets. |
 
@@ -111,7 +111,7 @@ the image-build-time Dockerfile runtime-tools patch.
 
 Validated surfaces: `py_compile`, `skillsbench-benchmark-run-smoke`,
 `benchmark-run-ledger-smoke`, `benchmark-case-analysis-smoke`,
-`goal-harness check`, and `git diff --check`.
+`loopx check`, and `git diff --check`.
 
 Next validation is exactly one no-upload `suricata-custom-exfil` baseline
 retry/probe under private runner-output capture. Do not launch the matching

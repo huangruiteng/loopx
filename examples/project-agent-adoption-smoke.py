@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Smoke-test the project-agent Goal Harness adoption path.
+"""Smoke-test the project-agent LoopX adoption path.
 
 This fixture proves the executor-facing loop, not just isolated helpers:
 
 1. `quota should-run` exposes a concrete todo write hint.
-2. A project agent can use `goal-harness todo add --role user`.
+2. A project agent can use `loopx todo add --role user`.
 3. `status` projects that user todo into the attention queue.
 4. After an approved operator gate, `review-packet` gives only the short,
    goal-guarded approved handoff to the target agent.
@@ -23,14 +23,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 GOAL_ID = "adoption-main-control"
 USER_TODO = "Review the P0 owner-risk checklist before approving delivery."
 AGENT_TODO = "Run the read-only map dry-run after the operator approval is recorded."
-APPROVED_COMMAND = f"goal-harness read-only-map --goal-id {GOAL_ID} --dry-run"
+APPROVED_COMMAND = f"loopx read-only-map --goal-id {GOAL_ID} --dry-run"
 
 
 def write_planned_fixture(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
     state_file = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_file.parent.mkdir(parents=True)
     state_file.write_text(
         "---\n"
@@ -83,7 +83,7 @@ def run_cli(root: Path, registry_path: Path, *args: str) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -107,7 +107,7 @@ def attention_item(status_payload: dict) -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-project-agent-adoption-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-project-agent-adoption-") as tmp:
         root = Path(tmp)
         registry_path = write_planned_fixture(root)
         project = root / "project"
@@ -126,7 +126,7 @@ def main() -> int:
         assert first_quota["should_run"] is False, first_quota
         assert first_quota["todo_write_hint"]["section"] == "User Todo / Owner Review Reading Queue", first_quota
         assert first_quota["todo_write_hint"]["user_todo_command_template"] == (
-            f"goal-harness todo add --goal-id {GOAL_ID} --role user --text '<public-safe user/owner action>'"
+            f"loopx todo add --goal-id {GOAL_ID} --role user --text '<public-safe user/owner action>'"
         ), first_quota
         assert first_quota["agent_todo_summary"]["open_count"] == 1, first_quota
         assert first_quota["agent_todo_summary"]["first_open_items"][0]["text"] == AGENT_TODO, first_quota
@@ -199,7 +199,7 @@ def main() -> int:
         assert approved_quota["state"] == "eligible", approved_quota
         assert approved_quota["agent_command"] == APPROVED_COMMAND, approved_quota
         assert approved_quota["todo_write_hint"]["agent_todo_command_template"].startswith(
-            f"goal-harness todo add --goal-id {GOAL_ID} --role agent "
+            f"loopx todo add --goal-id {GOAL_ID} --role agent "
         ), approved_quota
 
         packet = run_cli(root, registry_path, "review-packet", "--goal-id", GOAL_ID, "--scan-root", str(project))

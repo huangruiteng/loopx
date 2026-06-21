@@ -6,7 +6,7 @@ Checked at: 2026-06-08T02:41:00+08:00
 
 `benchmark_interrupt_comparison_summary_v0` remains research-only for now.
 
-Do not project it into Goal Harness status or review-packet hot paths until a
+Do not project it into LoopX status or review-packet hot paths until a
 project agent actually needs the signal outside the research folder, or until a
 real passive benchmark run produces comparable interrupt/recovery evidence.
 

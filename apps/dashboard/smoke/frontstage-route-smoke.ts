@@ -118,7 +118,7 @@ includes(frontstageSource, "Frontstage channel", "frontstage channel copy");
 includes(frontstageSource, "Channel board", "channel board nav");
 includes(frontstageSource, "Developer cockpit", "developer cockpit nav");
 includes(frontstageSource, "Always-on agent operations", "always-on operations copy");
-includes(frontstageSource, "Goal Harness Showcase Frontstage", "showcase-first hero title");
+includes(frontstageSource, "LoopX Showcase Frontstage", "showcase-first hero title");
 includes(frontstageSource, "Async agent teams, governed by human judgment", "showcase-first hero copy");
 includes(frontstageSource, "Developer Onboarding Frontstage", "developer mode hero title");
 includes(frontstageSource, 'data-testid="frontstage-developer-onboarding"', "developer onboarding panel");
@@ -175,7 +175,7 @@ includes(frontstageSource, 'data-testid="frontstage-showcase-spotlight-case-page
 includes(frontstageSource, "Open selected case page", "showcase spotlight case page copy");
 includes(frontstageSource, "docs/showcases/showcase-catalog.json", "showcase catalog source copy");
 includes(frontstageSource, "Open case page", "case page outbound link");
-includes(frontstageSource, "github.com/huangruiteng/goal-harness/blob/main", "public GitHub case page links");
+includes(frontstageSource, "github.com/huangruiteng/loopx/blob/main", "public GitHub case page links");
 includes(frontstageSource, "Projection is read-only", "read-only truth copy");
 includes(frontstageSource, "Inspired by modern agent boards", "product benchmark copy");
 excludes(frontstageSource, "<form", "write form");
@@ -183,7 +183,7 @@ excludes(frontstageSource, "method=", "form method");
 excludes(frontstageSource, "onclick=", "inline click handler");
 
 includes(catalogSource, '"efficiency_model"', "showcase catalog efficiency model");
-includes(catalogSource, '"2026-06-19-goal-harness-self-iteration"', "self-iteration showcase case");
+includes(catalogSource, '"2026-06-19-loopx-self-iteration"', "self-iteration showcase case");
 includes(catalogSource, '"2026-06-17-blocked-p0-safe-rotation"', "blocked P0 showcase case");
 includes(catalogSource, '"2026-06-20-creator-operator-case-spec"', "creator operator showcase case");
 
@@ -250,7 +250,7 @@ includes(selectionSource, "Multica", "Multica benchmark note");
 includes(selectionSource, "agent board", "agent board benchmark note");
 
 includes(frontstageDeveloperSource, 'data-testid="frontstage-developer-cockpit"', "developer cockpit route test id");
-includes(frontstageDeveloperSource, "Goal Harness Projection Developer Cockpit", "developer cockpit title");
+includes(frontstageDeveloperSource, "LoopX Projection Developer Cockpit", "developer cockpit title");
 includes(frontstageDeveloperSource, "Status Contract Explorer", "status contract explorer panel");
 includes(frontstageDeveloperSource, 'data-testid="developer-contract-explorer"', "developer contract explorer test id");
 includes(frontstageDeveloperSource, "Projection Diffing", "projection diffing panel");
@@ -266,7 +266,7 @@ includes(frontstageDeveloperSource, 'data-testid="developer-extension-boundary"'
 includes(frontstageDeveloperSource, "apps/dashboard/src/data/status.ts", "status parser source pointer");
 includes(frontstageDeveloperSource, "apps/dashboard/src/data/goal-channel-frontstage.ts", "projection source pointer");
 includes(frontstageDeveloperSource, "examples/status.example.json", "fixture source pointer");
-includes(frontstageDeveloperSource, "goal-harness check --scan-path apps/dashboard", "boundary check command");
+includes(frontstageDeveloperSource, "loopx check --scan-path apps/dashboard", "boundary check command");
 includes(frontstageDeveloperSource, "reverse-engineering the large operator page", "developer cockpit purpose");
 includes(frontstageDeveloperSource, "live status feeds, registry files, and browser write APIs stay outside", "developer cockpit boundary");
 excludes(frontstageDeveloperSource, "<form", "developer cockpit write form");

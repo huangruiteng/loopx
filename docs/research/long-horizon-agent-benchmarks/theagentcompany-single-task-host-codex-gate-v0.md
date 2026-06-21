@@ -98,7 +98,7 @@ Validation commands:
 ```bash
 python3 examples/theagentcompany-single-task-host-codex-gate-smoke.py
 python3 -m py_compile examples/theagentcompany-single-task-host-codex-gate-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/theagentcompany-single-task-host-codex-gate-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/theagentcompany-single-task-host-codex-gate-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

@@ -1,7 +1,7 @@
 # task_graph_projection_v0
 
 `task_graph_projection_v0` is an optional read-only graph view over existing
-Goal Harness state. It helps agents and operators see dependency, gate,
+LoopX state. It helps agents and operators see dependency, gate,
 validation, repair, and handoff relationships without creating a second task
 store.
 
@@ -15,8 +15,8 @@ The source of truth remains:
 - run-history evidence and blocker writebacks.
 
 The projection may appear under `attention_queue.items[].task_graph_projection`
-in `goal-harness --format json status`. Full
-`goal-harness --format json review-packet --goal-id <goal-id>` output may
+in `loopx --format json status`. Full
+`loopx --format json review-packet --goal-id <goal-id>` output may
 include the same object for operator review. The handoff-only review-packet
 surface should stay compact and omit the graph unless a future interface budget
 explicitly allows it.
@@ -27,7 +27,7 @@ explicitly allows it.
 {
   "schema_version": "task_graph_projection_v0",
   "mode": "read_only",
-  "goal_id": "goal-harness-meta",
+  "goal_id": "loopx-meta",
   "generated_at": "2026-06-21T12:00:00Z",
   "derived_from": {
     "source_of_truth": [
@@ -38,7 +38,7 @@ explicitly allows it.
       "leases",
       "run_history"
     ],
-    "status_item_goal_id": "goal-harness-meta",
+    "status_item_goal_id": "loopx-meta",
     "active_state_updated_at": "2026-06-21T11:55:00Z",
     "run_history_window": "compact_latest_runs"
   },
@@ -55,7 +55,7 @@ explicitly allows it.
 
 ## Nodes
 
-Each node must be compact and must point back to durable Goal Harness ids.
+Each node must be compact and must point back to durable LoopX ids.
 Allowed `kind` values are:
 
 - `deliverable`: a todo-backed artifact or implementation step;
@@ -98,13 +98,13 @@ An edge does not grant permission to run a command or mutate state.
 
 `task_graph_projection_v0` has no write authority. It must never expose a graph
 write command, browser write affordance, hidden scheduler, or alternate lease
-store. State changes continue through existing Goal Harness lifecycle commands:
+store. State changes continue through existing LoopX lifecycle commands:
 
-- `goal-harness todo ...`;
-- `goal-harness operator-gate ...`;
-- `goal-harness reward ...`;
-- `goal-harness refresh-state ...`;
-- `goal-harness quota spend-slot ...`;
+- `loopx todo ...`;
+- `loopx operator-gate ...`;
+- `loopx reward ...`;
+- `loopx refresh-state ...`;
+- `loopx quota spend-slot ...`;
 - future server/MCP write APIs that preserve the same event-ledger semantics.
 
 Consumers should treat the graph as stale after any lifecycle event until it is
@@ -120,7 +120,7 @@ A valid public fixture or implementation must prove:
 - `truth_contract.write_api=false`;
 - every node id is unique;
 - every edge endpoint references an existing node;
-- every node and edge references existing Goal Harness ids rather than raw
+- every node and edge references existing LoopX ids rather than raw
   private material;
 - no local absolute paths, credentials, raw transcripts, or raw logs are
   projected;

@@ -4,7 +4,7 @@ This note defines a first-screen status model for people who are operating a
 long-running agent goal but do not want to inspect prompts, logs, CLI output,
 or raw traces.
 
-The model is intentionally product-facing. It translates Goal Harness state
+The model is intentionally product-facing. It translates LoopX state
 into plain-language cards:
 
 - what changed since the last check;
@@ -161,7 +161,7 @@ permission, or compliance gates.
 
 ## State Mapping
 
-The first screen should be generated from existing Goal Harness projections
+The first screen should be generated from existing LoopX projections
 before adding new UI state.
 
 | Product card | Source fields |
@@ -215,7 +215,7 @@ agent logs.
 The first implementation of this model is ready when:
 
 - a public-safe status mock can render all cards from synthetic or existing
-  compact Goal Harness projections;
+  compact LoopX projections;
 - open user todos appear as concrete questions, not generic "owner gate" copy;
 - no-open-user-todo states render quietly without false urgency;
 - side-agent ownership and review handoff are visible without overriding quota

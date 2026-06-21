@@ -17,7 +17,7 @@ PRIVATE_MARKERS = tuple(
         ("internal", "-api-drive"),
         ("bytedance.com", "/wiki"),
         ("/", "Users/"),
-        (".codex", "/goal-harness"),
+        (".codex", "/loopx"),
         ("BEGIN", " PRIVATE ", "KEY"),
         ("Author", "ization:"),
         ("to", "ken="),
@@ -38,14 +38,14 @@ def assert_public_safe(path: Path) -> None:
 
 def main() -> int:
     catalog = json.loads(read(CATALOG))
-    assert catalog["schema_version"] == "goal_harness_showcase_catalog_v0", catalog
+    assert catalog["schema_version"] == "loopx_showcase_catalog_v0", catalog
     cases = catalog.get("cases")
     assert isinstance(cases, list) and len(cases) >= 2, catalog
 
     case_ids = {case.get("id") for case in cases}
     assert "2026-06-17-blocked-p0-safe-rotation" in case_ids, case_ids
     assert "2026-06-19-dynamic-workflow-hardware-agent" in case_ids, case_ids
-    assert "2026-06-19-goal-harness-self-iteration" in case_ids, case_ids
+    assert "2026-06-19-loopx-self-iteration" in case_ids, case_ids
 
     assert_public_safe(CATALOG)
     assert_public_safe(SHOWCASES)
@@ -88,7 +88,7 @@ def main() -> int:
                 feedback_contract_path = REPO_ROOT / feedback_contract
                 assert feedback_contract_path.is_file(), case
                 assert_public_safe(feedback_contract_path)
-        if case_id == "2026-06-19-goal-harness-self-iteration":
+        if case_id == "2026-06-19-loopx-self-iteration":
             assert case.get("status") == "public_evidence_case", case
             assert demo_command is None, case
             workload = case.get("workload_signal")
@@ -121,7 +121,7 @@ def main() -> int:
             assert "efficiency_evidence_model" in case.get("pattern_tags", []), case
             page_text = read(page)
             for phrase in (
-                "Goal Harness was used to improve a fast-moving Goal Harness repository",
+                "LoopX was used to improve a fast-moving LoopX repository",
                 "The public repository history shows a connected long-horizon feature chain",
                 "Efficiency Evidence Model",
                 "The baseline below already assumes competent AI coding help",
@@ -144,7 +144,7 @@ def main() -> int:
         "Always-on agent teams, governed by human judgment.",
         "## See It In Action",
         "docs/showcases/cases/0617-blocked-p0-safe-rotation.md",
-        "docs/showcases/cases/0619-goal-harness-self-iteration.md",
+        "docs/showcases/cases/0619-loopx-self-iteration.md",
         "docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md",
     ):
         assert phrase in repo_readme, phrase

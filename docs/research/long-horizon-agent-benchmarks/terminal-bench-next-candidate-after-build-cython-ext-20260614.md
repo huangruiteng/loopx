@@ -14,7 +14,7 @@ claims.
 The compact paired run for `build-cython-ext` closed with:
 
 - Codex goal-mode baseline official score `1.0`;
-- Codex goal-harness treatment official score `1.0`;
+- Codex loopx treatment official score `1.0`;
 - compact-only verifier-attribution review;
 - `raw_artifacts_read=false`;
 - `repeat_allowed=false`;
@@ -24,7 +24,7 @@ The compact paired run for `build-cython-ext` closed with:
 Therefore the next action should not repeat `build-cython-ext` or claim
 treatment lift from it. The allowed P0 lane is selecting a different
 material-ready case with a better chance of exposing a Codex goal-mode baseline
-failure or a Goal Harness control-plane advantage.
+failure or a LoopX control-plane advantage.
 
 ## Candidate Audit
 
@@ -33,7 +33,7 @@ The recent material-ready queue is now mostly consumed:
 - `install-windows-3.11`, `financial-document-processor`,
   `multi-source-data-merger`, `db-wal-recovery`, and `build-cython-ext` have
   current paired compact evidence under the Codex goal-mode versus
-  `codex-goal-harness` comparison shape;
+  `codex-loopx` comparison shape;
 - `kv-store-grpc` already consumed a fresh attempt as a compact
   post-launch-materialization blocker and should not be treated as fresh;
 - `custom-memory-heap-crash`, `git-leak-recovery`, `cobol-modernization`,
@@ -55,13 +55,13 @@ Select `pytorch-model-recovery` as the next Terminal-Bench candidate.
 Rationale:
 
 - it has prior compact low-success signal, so it is more likely to expose the
-  failure modes Goal Harness is meant to make recoverable;
+  failure modes LoopX is meant to make recoverable;
 - cross-history screening found no current Codex goal-mode versus
-  `codex-goal-harness` paired closeout for this task;
+  `codex-loopx` paired closeout for this task;
 - both arms passed the current strict no-run preflight with locally resolved
   task material;
 - it keeps the corrected baseline definition: Codex CLI goal mode versus
-  `codex-goal-harness`, not bare Codex or an older hardened baseline.
+  `codex-loopx`, not bare Codex or an older hardened baseline.
 
 ## Strict Preflight Summary
 
@@ -70,12 +70,12 @@ For `terminal-bench@2.0` / `pytorch-model-recovery`:
 | Arm | ready | task material | no upload | submit eligible | auth values recorded | raw paths recorded | worker bridge |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Codex goal-mode baseline | true | ready | true | false | false | false | false |
-| Codex goal-harness treatment | true | ready | true | false | false | false | true |
+| Codex loopx treatment | true | ready | true | false | false | false | true |
 
 The baseline preflight reported
 `ready_for_private_managed_no_upload_pilot_review` with
-`goal_harness_access_packet_absent=true` and
-`goal_harness_cli_bridge_absent=true`.
+`loopx_access_packet_absent=true` and
+`loopx_cli_bridge_absent=true`.
 
 The treatment preflight reported the active-user assisted treatment contract:
 the private launch surface is ready, the worker bridge is requested, the
@@ -89,9 +89,9 @@ claims until a post-start worker observation is actually ingested.
 Run exactly one private no-upload protocol-calibration paired pilot for
 `terminal-bench@2.0` / `pytorch-model-recovery`:
 
-1. run the Codex goal-mode baseline with no Goal Harness access packet or
+1. run the Codex goal-mode baseline with no LoopX access packet or
    worker bridge;
-2. run the `codex-goal-harness` treatment with the active worker bridge and
+2. run the `codex-loopx` treatment with the active worker bridge and
    active-user assisted treatment path;
 3. ingest only compact Harbor results after both arms close or emit compact
    blockers;

@@ -19,7 +19,7 @@ def run_cli(*args: str, registry_path: Path, runtime: Path) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -60,7 +60,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     runs_dir = runtime / "goals" / GOAL_ID / "runs"
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,7 +136,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-dreaming-dry-run-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-dreaming-dry-run-") as tmp:
         registry_path, runtime, state_path, index_path = write_fixture(Path(tmp))
         before_state = state_path.read_text(encoding="utf-8")
         before_index = index_path.read_text(encoding="utf-8")

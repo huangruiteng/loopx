@@ -1,5 +1,5 @@
 {
-  "schema_version": "goal_harness_showcase_animation_storyboard_v0",
+  "schema_version": "loopx_showcase_animation_storyboard_v0",
   "source_catalog": "docs/showcases/showcase-catalog.json",
   "duration_seconds_target": {
     "min": 20,
@@ -55,7 +55,7 @@
     {
       "id": "self-iteration-efficiency-evidence",
       "time_seconds": [14, 21],
-      "source_case_ids": ["2026-06-19-goal-harness-self-iteration"],
+      "source_case_ids": ["2026-06-19-loopx-self-iteration"],
       "visual": "repo-scale requirement clusters compress into validated commits, docs, smokes, and frontstage surfaces",
       "copy": "Async side work turns repo history into recoverable product momentum.",
       "motion_notes": "avoid raw commit firehoses; use compact clusters and conservative evidence labels"

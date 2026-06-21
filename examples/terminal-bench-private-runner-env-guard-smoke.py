@@ -17,7 +17,7 @@ import sys
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     TERMINAL_BENCH_CODEX_INSTALL_STRATEGY_REQUIRE_EXISTING,
     TERMINAL_BENCH_CODEX_INSTALL_STRATEGY_RUNTIME_INSTALL_IF_MISSING,
     TERMINAL_BENCH_SETUP_TIMEOUT_REPAIR_CODEX_PREFLIGHT_TIMEOUT_SEC,
@@ -41,7 +41,7 @@ from goal_harness.benchmark import (  # noqa: E402
     summarize_terminal_bench_private_runner_launch,
     wait_for_terminal_bench_launch_materialization,
 )
-from goal_harness.status import (  # noqa: E402
+from loopx.status import (  # noqa: E402
     _compact_benchmark_post_launch_materialization,
     compact_benchmark_run,
 )
@@ -57,7 +57,7 @@ def expect_raises(callable_obj, needle: str) -> None:
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-task-material-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-task-material-") as tmp:
         dataset = Path(tmp) / "terminal-bench-local"
         good_task = dataset / "good-task"
         good_task.mkdir(parents=True)
@@ -89,9 +89,9 @@ def main() -> None:
             task_id="bad-task",
             jobs_dir="<private-jobs-dir>",
             job_name="terminal_bench_bad_material_env_guard_smoke",
-            goal_harness_mode="codex_goal_harness",
-            goal_harness_goal_id="goal-harness-meta",
-            goal_harness_cli_bridge_enabled=True,
+            loopx_mode="codex_loopx",
+            loopx_goal_id="loopx-meta",
+            loopx_cli_bridge_enabled=True,
         )
         assert bad_launch["first_blocker"] == "task_material_missing_instruction_md", bad_launch
         assert bad_launch["ready"] is False, bad_launch
@@ -107,9 +107,9 @@ def main() -> None:
             task_id="missing-task",
             jobs_dir="<private-jobs-dir>",
             job_name="terminal_bench_missing_material_env_guard_smoke",
-            goal_harness_mode="codex_goal_harness",
-            goal_harness_goal_id="goal-harness-meta",
-            goal_harness_cli_bridge_enabled=True,
+            loopx_mode="codex_loopx",
+            loopx_goal_id="loopx-meta",
+            loopx_cli_bridge_enabled=True,
             require_task_material_ready=True,
         )
         assert (
@@ -169,9 +169,9 @@ def main() -> None:
     generated = build_terminal_bench_managed_harbor_command(
         jobs_dir="<private-jobs-dir>",
         job_name="terminal_bench_env_guard_smoke",
-        goal_harness_mode="codex_goal_harness",
-        goal_harness_goal_id="goal-harness-meta",
-        goal_harness_cli_bridge_enabled=True,
+        loopx_mode="codex_loopx",
+        loopx_goal_id="loopx-meta",
+        loopx_cli_bridge_enabled=True,
         agent_timeout_multiplier=4,
     )
     assert "CODEX_FORCE_AUTH_JSON=true" in generated, generated
@@ -180,18 +180,18 @@ def main() -> None:
     baseline_generated = build_terminal_bench_managed_harbor_command(
         jobs_dir="<private-jobs-dir>",
         job_name="terminal_bench_hardened_baseline_env_guard_smoke",
-        goal_harness_mode="hardened_codex_baseline",
-        goal_harness_ablation_mode="hardened_codex_baseline",
-        goal_harness_access_packet_mode="none",
-        goal_harness_cli_bridge_enabled=False,
+        loopx_mode="hardened_codex_baseline",
+        loopx_ablation_mode="hardened_codex_baseline",
+        loopx_access_packet_mode="none",
+        loopx_cli_bridge_enabled=False,
         agent_timeout_multiplier=4,
     )
     assert "--agent-import-path" in baseline_generated, baseline_generated
-    assert "goal_harness_mode=hardened_codex_baseline" in baseline_generated, baseline_generated
-    assert "goal_harness_access_packet_mode=none" in baseline_generated, baseline_generated
-    assert "goal_harness_cli_bridge_enabled=true" not in baseline_generated, baseline_generated
+    assert "loopx_mode=hardened_codex_baseline" in baseline_generated, baseline_generated
+    assert "loopx_access_packet_mode=none" in baseline_generated, baseline_generated
+    assert "loopx_cli_bridge_enabled=true" not in baseline_generated, baseline_generated
     assert (
-        "goal_harness_codex_install_strategy="
+        "loopx_codex_install_strategy="
         + TERMINAL_BENCH_CODEX_INSTALL_STRATEGY_RUNTIME_INSTALL_IF_MISSING
     ) in baseline_generated, baseline_generated
     assert "--mounts" not in baseline_generated, baseline_generated
@@ -200,9 +200,9 @@ def main() -> None:
     launch = build_terminal_bench_private_runner_launch(
         jobs_dir="<private-jobs-dir>",
         job_name="terminal_bench_env_guard_smoke",
-        goal_harness_mode="codex_goal_harness",
-        goal_harness_goal_id="goal-harness-meta",
-        goal_harness_cli_bridge_enabled=True,
+        loopx_mode="codex_loopx",
+        loopx_goal_id="loopx-meta",
+        loopx_cli_bridge_enabled=True,
         agent_timeout_multiplier=4,
         agent_setup_timeout_multiplier=3,
     )
@@ -226,11 +226,11 @@ def main() -> None:
     assert summary["no_upload_boundary"] is True, summary
     assert summary["submit_eligible"] is False, summary
     assert summary["env_pythonpath_present"] is True, summary
-    assert summary["goal_harness_project_root_pythonpath_present"] is True, summary
+    assert summary["loopx_project_root_pythonpath_present"] is True, summary
     assert summary["agent_name"] == "", summary
     assert summary["agent_import_path_present"] is True, summary
-    assert summary["goal_harness_agent_kwargs_present"] is True, summary
-    assert summary["goal_harness_worker_bridge_requested"] is True, summary
+    assert summary["loopx_agent_kwargs_present"] is True, summary
+    assert summary["loopx_worker_bridge_requested"] is True, summary
     timeout_policy = summary["timeout_multiplier_policy"]
     assert timeout_policy["schema_version"] == (
         "terminal_bench_launch_timeout_multiplier_policy_v0"
@@ -286,9 +286,9 @@ def main() -> None:
     relative_jobs_launch = build_terminal_bench_private_runner_launch(
         jobs_dir="relative-private-jobs",
         job_name="terminal_bench_relative_jobs_dir_env_guard_smoke",
-        goal_harness_mode="codex_goal_harness",
-        goal_harness_goal_id="goal-harness-meta",
-        goal_harness_cli_bridge_enabled=True,
+        loopx_mode="codex_loopx",
+        loopx_goal_id="loopx-meta",
+        loopx_cli_bridge_enabled=True,
     )
     jobs_dir_index = relative_jobs_launch["argv"].index("--jobs-dir") + 1
     assert relative_jobs_launch["argv"][jobs_dir_index] == str(
@@ -298,15 +298,15 @@ def main() -> None:
     fail_fast_launch = build_terminal_bench_private_runner_launch(
         jobs_dir="<private-jobs-dir>",
         job_name="terminal_bench_fail_fast_setup_env_guard_smoke",
-        goal_harness_mode="codex_goal_harness",
-        goal_harness_goal_id="goal-harness-meta",
-        goal_harness_cli_bridge_enabled=True,
+        loopx_mode="codex_loopx",
+        loopx_goal_id="loopx-meta",
+        loopx_cli_bridge_enabled=True,
         agent_timeout_multiplier=4,
         agent_setup_timeout_multiplier=4,
         codex_install_strategy=TERMINAL_BENCH_CODEX_INSTALL_STRATEGY_REQUIRE_EXISTING,
     )
     assert (
-        "goal_harness_codex_install_strategy="
+        "loopx_codex_install_strategy="
         + TERMINAL_BENCH_CODEX_INSTALL_STRATEGY_REQUIRE_EXISTING
     ) in fail_fast_launch["argv"], fail_fast_launch["argv"]
     fail_fast_summary = summarize_terminal_bench_private_runner_launch(fail_fast_launch)
@@ -332,13 +332,13 @@ def main() -> None:
         setup_timeout_repair_profile=True,
     )
     assert (
-        "goal_harness_codex_install_strategy="
+        "loopx_codex_install_strategy="
         + TERMINAL_BENCH_CODEX_INSTALL_STRATEGY_REQUIRE_EXISTING
     ) in repair_profile_launch["argv"], repair_profile_launch["argv"]
     assert "--agent-timeout-multiplier" in repair_profile_launch["argv"], repair_profile_launch["argv"]
     assert "--agent-setup-timeout-multiplier" in repair_profile_launch["argv"], repair_profile_launch["argv"]
     assert (
-        "goal_harness_codex_preflight_timeout_sec="
+        "loopx_codex_preflight_timeout_sec="
         f"{TERMINAL_BENCH_SETUP_TIMEOUT_REPAIR_CODEX_PREFLIGHT_TIMEOUT_SEC}"
     ) in repair_profile_launch["argv"], repair_profile_launch["argv"]
     repair_profile_summary = summarize_terminal_bench_private_runner_launch(
@@ -414,7 +414,7 @@ def main() -> None:
         ),
     )
     assert (
-        "goal_harness_worker_codex_materialization_strategy="
+        "loopx_worker_codex_materialization_strategy="
         + TERMINAL_BENCH_WORKER_CODEX_MATERIALIZATION_STRATEGY_WORKER_PATH
     ) in materialized_profile_launch["argv"], materialized_profile_launch["argv"]
     materialized_profile_summary = summarize_terminal_bench_private_runner_launch(
@@ -441,7 +441,7 @@ def main() -> None:
         ),
     )
     assert (
-        "goal_harness_worker_codex_materialization_strategy="
+        "loopx_worker_codex_materialization_strategy="
         + TERMINAL_BENCH_WORKER_CODEX_MATERIALIZATION_STRATEGY_RUNTIME_EXTENDED
     ) in runtime_extended_launch["argv"], runtime_extended_launch["argv"]
     assert "--allow-environment-host" in runtime_extended_launch["argv"], (
@@ -493,7 +493,7 @@ def main() -> None:
         worker_materialization_probe_only=True,
     )
     assert (
-        "goal_harness_worker_materialization_probe_only=true"
+        "loopx_worker_materialization_probe_only=true"
         in runtime_probe_launch["argv"]
     ), runtime_probe_launch["argv"]
     runtime_probe_summary = summarize_terminal_bench_private_runner_launch(
@@ -597,7 +597,7 @@ def main() -> None:
         jobs_dir="<private-jobs-dir>",
         run_root="terminal-bench-managed-case-run-launch-smoke",
         job_name="terminal_bench_managed_case_run_launch_smoke",
-        mode="goal-harness-managed-codex",
+        mode="loopx-managed-codex",
         task_id="multi-source-data-merger",
         setup_timeout_repair_profile=True,
         worker_codex_materialization_strategy=(
@@ -619,13 +619,13 @@ def main() -> None:
         managed_case_run_payload
     )
     assert managed_case_run_payload["launch_summary"][
-        "goal_harness_agent_kwargs_present"
+        "loopx_agent_kwargs_present"
     ] is True, managed_case_run_payload
     assert managed_case_run_payload["launch_summary"][
-        "goal_harness_managed_codex_requested"
+        "loopx_managed_codex_requested"
     ] is True, managed_case_run_payload
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-prelaunch-block-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-prelaunch-block-") as tmp:
         prelaunch_root = Path(tmp) / "case-run"
         prelaunch_jobs = prelaunch_root / "jobs"
         blocked_case_run = launch_terminal_bench_case_run(
@@ -669,7 +669,7 @@ def main() -> None:
         blocked_rendered = json.dumps(blocked_case_run, sort_keys=True)
         assert str(tmp) not in blocked_rendered, blocked_case_run
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-existing-job-root-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-existing-job-root-") as tmp:
         collision_root = Path(tmp) / "case-run"
         collision_jobs = collision_root / "jobs"
         collision_job_name = "terminal_bench_existing_stale_job_root_smoke"
@@ -765,7 +765,7 @@ def main() -> None:
         collision_rendered = json.dumps(collision_case_run, sort_keys=True)
         assert str(tmp) not in collision_rendered, collision_case_run
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-launch-materialization-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-launch-materialization-") as tmp:
         materialization_root = Path(tmp)
         materialization_jobs = materialization_root / "jobs"
         materialization_jobs.mkdir()
@@ -1010,14 +1010,14 @@ time.sleep(3)
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",
             "run",
             "terminal-bench",
             "--goal-id",
-            "goal-harness-meta",
+            "loopx-meta",
             "--mode",
             "codex-goal-mode",
             "--preflight-guard",
@@ -1050,14 +1050,14 @@ time.sleep(3)
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",
             "run",
             "terminal-bench",
             "--goal-id",
-            "goal-harness-meta",
+            "loopx-meta",
             "--mode",
             "codex-goal-mode",
             "--preflight-guard",
@@ -1094,7 +1094,7 @@ time.sleep(3)
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",
@@ -1147,7 +1147,7 @@ time.sleep(3)
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",
@@ -1192,7 +1192,7 @@ time.sleep(3)
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",
@@ -1240,7 +1240,7 @@ time.sleep(3)
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",
@@ -1286,14 +1286,14 @@ time.sleep(3)
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",
             "launch-terminal-bench-run",
             "terminal-bench",
             "--mode",
-            "goal-harness-managed-codex",
+            "loopx-managed-codex",
             "--include-task-name",
             "multi-source-data-merger",
             "--jobs-dir",
@@ -1327,16 +1327,16 @@ time.sleep(3)
         cli_managed_payload
     )
     assert cli_managed_payload["launch_summary"][
-        "goal_harness_managed_codex_requested"
+        "loopx_managed_codex_requested"
     ] is True, cli_managed_payload
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-prelaunch-cli-block-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-prelaunch-cli-block-") as tmp:
         cli_block_root = Path(tmp) / "case-run"
         cli_block = subprocess.run(
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -1386,7 +1386,7 @@ time.sleep(3)
         cli_block_rendered = json.dumps(cli_block_payload, sort_keys=True)
         assert str(tmp) not in cli_block_rendered, cli_block_payload
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-worker-probe-poll-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-worker-probe-poll-") as tmp:
         poll_root = Path(tmp) / "worker-probe"
         poll_jobs = poll_root / "jobs"
         poll_job_name = "terminal_bench_worker_probe_poll_smoke"
@@ -1425,7 +1425,7 @@ time.sleep(3)
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -1489,7 +1489,7 @@ time.sleep(3)
             "leaderboard_evidence": False,
         },
     }
-    with tempfile.TemporaryDirectory(prefix="goal-harness-probe-launch-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-probe-launch-") as tmp:
         probe_root = Path(tmp) / "probe"
         probe_payload = launch_terminal_bench_environment_setup_probe(
             gate=probe_gate,
@@ -1525,7 +1525,7 @@ time.sleep(3)
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -1549,7 +1549,7 @@ time.sleep(3)
         assert dry_run_payload["process_started"] is False, dry_run_payload
         assert str(probe_root) not in dry_run_cli.stdout, dry_run_cli.stdout
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-post-launch-ended-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-post-launch-ended-") as tmp:
         missing_jobs_dir = Path(tmp) / "missing-jobs"
         ended_without_jobs_dir = summarize_terminal_bench_post_launch_materialization(
             missing_jobs_dir,
@@ -1570,7 +1570,7 @@ time.sleep(3)
         assert marker["raw_logs_read"] is False, marker
         assert marker["raw_task_text_read"] is False, marker
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-post-launch-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-post-launch-") as tmp:
         jobs_dir = Path(tmp) / "jobs"
         jobs_dir.mkdir()
         ended_without_job_root = summarize_terminal_bench_post_launch_materialization(
@@ -1608,7 +1608,7 @@ time.sleep(3)
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -1645,7 +1645,7 @@ time.sleep(3)
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -1802,7 +1802,7 @@ time.sleep(3)
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "benchmark",
                 "summarize-post-launch",
                 "terminal-bench",
@@ -1921,7 +1921,7 @@ time.sleep(3)
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "benchmark",
                 "resume-terminal-bench-job",
                 "terminal-bench",
@@ -1988,7 +1988,7 @@ time.sleep(3)
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -2057,13 +2057,13 @@ time.sleep(3)
                     "agent": {
                         "name": "codex",
                         "import_path": (
-                            "goal_harness.terminal_bench_agent:"
+                            "loopx.terminal_bench_agent:"
                             "GoalHarnessManagedCodex"
                         ),
                         "kwargs": {
-                            "goal_harness_mode": "codex_goal_mode_baseline",
-                            "goal_harness_access_packet_mode": "none",
-                            "goal_harness_worker_materialization_probe_only": "true",
+                            "loopx_mode": "codex_goal_mode_baseline",
+                            "loopx_access_packet_mode": "none",
+                            "loopx_worker_materialization_probe_only": "true",
                         },
                     },
                 }
@@ -2183,13 +2183,13 @@ time.sleep(3)
                     "agent": {
                         "name": "codex",
                         "import_path": (
-                            "goal_harness.terminal_bench_agent:"
+                            "loopx.terminal_bench_agent:"
                             "GoalHarnessManagedCodex"
                         ),
                         "kwargs": {
-                            "goal_harness_mode": "hardened_codex_baseline",
-                            "goal_harness_access_packet_mode": "none",
-                            "goal_harness_worker_materialization_probe_only": "true",
+                            "loopx_mode": "hardened_codex_baseline",
+                            "loopx_access_packet_mode": "none",
+                            "loopx_worker_materialization_probe_only": "true",
                         },
                     },
                 }
@@ -2250,7 +2250,7 @@ time.sleep(3)
             + "\n",
             encoding="utf-8",
         )
-        (probe_trial_agent_root / "goal-harness-worker-setup-diagnostic.json").write_text(
+        (probe_trial_agent_root / "loopx-worker-setup-diagnostic.json").write_text(
             json.dumps(
                 {
                     "schema_version": "terminal_bench_worker_setup_diagnostic_v0",
@@ -2264,7 +2264,7 @@ time.sleep(3)
             + "\n",
             encoding="utf-8",
         )
-        (probe_trial_agent_root / "goal-harness-worker-benchmark-run.json").write_text(
+        (probe_trial_agent_root / "loopx-worker-benchmark-run.json").write_text(
             json.dumps(
                 {
                     "schema_version": "benchmark_run_v0",
@@ -2440,7 +2440,7 @@ time.sleep(3)
     )
     assert baseline_launch["argv"][0] == resolve_terminal_bench_runner_binary("uvx"), baseline_launch["argv"]
     assert "--agent-import-path" in baseline_launch["argv"], baseline_launch["argv"]
-    assert "goal_harness_mode=hardened_codex_baseline" in baseline_launch["argv"], baseline_launch["argv"]
+    assert "loopx_mode=hardened_codex_baseline" in baseline_launch["argv"], baseline_launch["argv"]
     assert "--mounts" not in baseline_launch["argv"], baseline_launch["argv"]
     baseline_summary = summarize_terminal_bench_private_runner_launch(baseline_launch)
     assert baseline_summary["ready"] == baseline_launch["ready"], baseline_summary
@@ -2448,8 +2448,8 @@ time.sleep(3)
     assert baseline_summary["no_upload_boundary"] is True, baseline_summary
     assert baseline_summary["submit_eligible"] is False, baseline_summary
     assert baseline_summary["agent_import_path_present"] is True, baseline_summary
-    assert baseline_summary["goal_harness_agent_kwargs_present"] is True, baseline_summary
-    assert baseline_summary["goal_harness_worker_bridge_requested"] is False, baseline_summary
+    assert baseline_summary["loopx_agent_kwargs_present"] is True, baseline_summary
+    assert baseline_summary["loopx_worker_bridge_requested"] is False, baseline_summary
 
     goal_mode_launch = build_terminal_bench_private_runner_launch(
         mode="codex-goal-mode",
@@ -2460,10 +2460,10 @@ time.sleep(3)
     )
     assert goal_mode_launch["argv"][0] == resolve_terminal_bench_runner_binary("uvx"), goal_mode_launch["argv"]
     assert "--agent-import-path" in goal_mode_launch["argv"], goal_mode_launch["argv"]
-    assert "goal_harness_mode=codex_goal_mode_baseline" in goal_mode_launch["argv"], goal_mode_launch["argv"]
-    assert "goal_harness_ablation_mode=codex_goal_mode_baseline" in goal_mode_launch["argv"], goal_mode_launch["argv"]
-    assert "goal_harness_access_packet_mode=none" in goal_mode_launch["argv"], goal_mode_launch["argv"]
-    assert "goal_harness_cli_bridge_enabled=true" not in goal_mode_launch["argv"], goal_mode_launch["argv"]
+    assert "loopx_mode=codex_goal_mode_baseline" in goal_mode_launch["argv"], goal_mode_launch["argv"]
+    assert "loopx_ablation_mode=codex_goal_mode_baseline" in goal_mode_launch["argv"], goal_mode_launch["argv"]
+    assert "loopx_access_packet_mode=none" in goal_mode_launch["argv"], goal_mode_launch["argv"]
+    assert "loopx_cli_bridge_enabled=true" not in goal_mode_launch["argv"], goal_mode_launch["argv"]
     assert "--mounts" not in goal_mode_launch["argv"], goal_mode_launch["argv"]
     goal_mode_summary = summarize_terminal_bench_private_runner_launch(goal_mode_launch)
     assert goal_mode_summary["ready"] == goal_mode_launch["ready"], goal_mode_summary
@@ -2478,8 +2478,8 @@ time.sleep(3)
     assert goal_mode_summary["codex_goal_mode_baseline_claim_blocker"] == (
         "missing_codex_app_server_goal_proof"
     ), goal_mode_summary
-    assert goal_mode_summary["goal_harness_access_packet_absent"] is True, goal_mode_summary
-    assert goal_mode_summary["goal_harness_worker_bridge_requested"] is False, goal_mode_summary
+    assert goal_mode_summary["loopx_access_packet_absent"] is True, goal_mode_summary
+    assert goal_mode_summary["loopx_worker_bridge_requested"] is False, goal_mode_summary
     assert goal_mode_summary["no_upload_boundary"] is True, goal_mode_summary
     assert goal_mode_summary["submit_eligible"] is False, goal_mode_summary
     assert goal_mode_summary["timeout_multiplier_policy"][
@@ -2517,17 +2517,17 @@ time.sleep(3)
     assert app_server_goal_summary["codex_goal_mode_baseline_claim_blocker"] == (
         "terminal_bench_app_server_goal_turn_start_proof_missing"
     ), app_server_goal_summary
-    assert app_server_goal_summary["goal_harness_access_packet_absent"] is True, app_server_goal_summary
+    assert app_server_goal_summary["loopx_access_packet_absent"] is True, app_server_goal_summary
     assert app_server_goal_summary["first_blocker"] == (
         "terminal_bench_app_server_goal_turn_start_proof_missing"
     ), app_server_goal_summary
 
     expect_raises(
         lambda: build_terminal_bench_managed_harbor_command(
-            goal_harness_mode="goal_harness_managed_codex",
-            goal_harness_cli_bridge_enabled=True,
+            loopx_mode="loopx_managed_codex",
+            loopx_cli_bridge_enabled=True,
         ),
-        "codex_goal_harness",
+        "codex_loopx",
     )
 
 

@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     build_benchmark_claim_review,
     build_benchmark_verifier_attribution_review,
     build_skillsbench_benchmark_run,
@@ -30,19 +30,19 @@ from goal_harness.benchmark import (  # noqa: E402
     SKILLSBENCH_LOCAL_DRIVER_A2A_CONTRACT_SCHEMA_VERSION,
     SKILLSBENCH_WORKER_HANDSHAKE_PREFLIGHT_SCHEMA_VERSION,
 )
-from goal_harness.benchmark_ledger import (  # noqa: E402
+from loopx.benchmark_ledger import (  # noqa: E402
     load_benchmark_run_ledger,
     update_benchmark_run_ledger,
 )
-from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
+from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     SKILLSBENCH_LOCAL_ACP_RELAY_PROBE_SCHEMA_VERSION,
     run_skillsbench_local_acp_relay_probe,
 )
-from goal_harness.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
+from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_SCHEMA_VERSION,
     run_skillsbench_remote_command_file_bridge_probe,
 )
-from goal_harness.status import compact_benchmark_run  # noqa: E402
+from loopx.status import compact_benchmark_run  # noqa: E402
 from scripts.skillsbench_automation_loop import (  # noqa: E402
     CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD,
     CODEX_ACP_RUNTIME_DEPS_SETUP_CMD,
@@ -132,7 +132,7 @@ def test_skillsbench_local_driver_a2a_contract_keeps_codex_local() -> None:
     assert payload["boundary"]["submit_allowed"] is False, payload
     assert payload["mini_pair"]["routes"] == [
         "raw-codex-autonomous-max5",
-        "goal-harness-product-mode",
+        "loopx-product-mode",
     ], payload
     text = json.dumps(payload, sort_keys=True)
     for forbidden in (
@@ -505,7 +505,7 @@ def test_skillsbench_worker_handshake_preflight_missing_runtime_is_compact() -> 
 
 def test_local_codex_participant_ping_missing_binary_is_compact() -> None:
     payload = materialize_local_codex_participant(
-        codex_bin="/definitely/missing/goal-harness-codex",
+        codex_bin="/definitely/missing/loopx-codex",
         timeout_sec=1,
     )
     assert (
@@ -527,7 +527,7 @@ def test_blind_loop_continuation_reprojects_round_one_constraints() -> None:
         "/app/reward_fn.py. Avoid broad rewrites."
     )
     assert "do not invoke /goal mode" in clause, clause
-    assert "external Goal Harness CLI" in clause, clause
+    assert "external LoopX CLI" in clause, clause
     assert "upload, submit" in clause, clause
     assert "ask the human" in clause, clause
     assert "/app/train_grpo.py" in clause, clause
@@ -555,7 +555,7 @@ def test_product_mode_declared_done_marker_detection() -> None:
 def test_product_mode_case_state_seed_uses_active_goal_shape() -> None:
     seed = product_mode_case_state_seed_text(
         task_id="sample-task",
-        route="goal-harness-product-mode",
+        route="loopx-product-mode",
         max_rounds=5,
     )
     assert f"goal_id: {skillsbench_loop.PRODUCT_MODE_CASE_GOAL_ID}" in seed
@@ -565,7 +565,7 @@ def test_product_mode_case_state_seed_uses_active_goal_shape() -> None:
     assert "## Local Evidence" in seed
     assert "## Replan Log" in seed
     assert "## Remaining Goals" in seed
-    assert ".goal-harness-case-state.md" not in seed
+    assert ".loopx-case-state.md" not in seed
 
 
 def test_product_mode_declared_done_requires_case_state_depth() -> None:
@@ -573,7 +573,7 @@ def test_product_mode_declared_done_requires_case_state_depth() -> None:
         root = Path(tmp)
         jobs_dir = root / "jobs"
         job_name = "skillsbench_depth_gate_fixture"
-        rollout_name = "case__goal_harness_product_mode"
+        rollout_name = "case__loopx_product_mode"
         trajectory_path = (
             jobs_dir / job_name / rollout_name / "agent" / "acp_trajectory.jsonl"
         )
@@ -590,12 +590,12 @@ def test_product_mode_declared_done_requires_case_state_depth() -> None:
             encoding="utf-8",
         )
         trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-            "route": "goal-harness-product-mode",
-            "goal_harness_state_reads": 0,
-            "goal_harness_state_writes": 0,
-            "goal_harness_case_state_reads": 0,
-            "goal_harness_case_state_writes": 0,
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
+            "loopx_state_reads": 0,
+            "loopx_state_writes": 0,
+            "loopx_case_state_reads": 0,
+            "loopx_case_state_writes": 0,
             "heartbeat_count": 0,
             "controller_action_decisions": 0,
             "initial_prompt_count": 0,
@@ -634,7 +634,7 @@ def test_product_mode_declared_done_requires_case_state_depth() -> None:
         sys.modules["benchflow.sandbox.user"] = fake_user
         try:
             user = _build_product_mode_user(
-                route="goal-harness-product-mode",
+                route="loopx-product-mode",
                 max_rounds=5,
                 trace=trace,
                 plan=plan,
@@ -687,7 +687,7 @@ def write_registry(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
         "---\n"
@@ -770,13 +770,13 @@ def compact_skillsbench_run(
 def test_skillsbench_skeleton_builder() -> None:
     compact = compact_benchmark_run(
         build_skillsbench_benchmark_run(
-            route="goal-harness-blind-loop-treatment",
+            route="loopx-blind-loop-treatment",
             task_id="citation-check",
         )
     )
     assert compact is not None
     assert compact["benchmark_id"] == "skillsbench@1.1", compact
-    assert compact["mode"] == "skillsbench_goal_harness_blind_loop_treatment"
+    assert compact["mode"] == "skillsbench_loopx_blind_loop_treatment"
     assert compact["real_run"] is False, compact
     assert compact["submit_eligible"] is False, compact
     assert compact["leaderboard_evidence"] is False, compact
@@ -784,7 +784,7 @@ def test_skillsbench_skeleton_builder() -> None:
     assert "do_not_read_raw_task_prompt_solution_or_trajectory" in compact[
         "stop_conditions"
     ], compact
-    assert compact["goal_harness_inside_case"] is False, compact
+    assert compact["loopx_inside_case"] is False, compact
     assert compact["episode_policy"]["raw_trace_recorded"] is False, compact
     assert compact["native_goal_mode_invoked"] is False, compact
     assert compact["codex_acp_protocol_used"] is True, compact
@@ -792,7 +792,7 @@ def test_skillsbench_skeleton_builder() -> None:
     assert compact["official_feedback_blinded"] is True, compact
     assert compact["reward_feedback_forwarded"] is False, compact
     assert compact["skillsbench_route_semantics"] == (
-        "codex_acp_ordinary_agent_with_outer_goal_harness_blind_loop_no_reward_feedback"
+        "codex_acp_ordinary_agent_with_outer_loopx_blind_loop_no_reward_feedback"
     ), compact
 
     blind_baseline = compact_benchmark_run(
@@ -803,7 +803,7 @@ def test_skillsbench_skeleton_builder() -> None:
     )
     assert blind_baseline is not None
     assert blind_baseline["mode"] == "skillsbench_codex_acp_blind_loop_baseline"
-    assert blind_baseline["goal_harness_automation_loop"] is False, blind_baseline
+    assert blind_baseline["loopx_automation_loop"] is False, blind_baseline
     assert blind_baseline["blind_loop"] is True, blind_baseline
     assert blind_baseline["official_feedback_blinded"] is True, blind_baseline
     assert blind_baseline["reward_feedback_forwarded"] is False, blind_baseline
@@ -838,7 +838,7 @@ def test_skillsbench_skeleton_builder() -> None:
         "skillsbench_raw_codex_autonomous_max5_baseline"
     ), raw_product_baseline
     assert raw_product_baseline["product_mode"] is True, raw_product_baseline
-    assert raw_product_baseline["goal_harness_automation_loop"] is False, (
+    assert raw_product_baseline["loopx_automation_loop"] is False, (
         raw_product_baseline
     )
     assert raw_product_baseline["official_feedback_blinded"] is True, (
@@ -850,19 +850,19 @@ def test_skillsbench_skeleton_builder() -> None:
 
     product_treatment = compact_benchmark_run(
         build_skillsbench_benchmark_run(
-            route="goal-harness-product-mode",
+            route="loopx-product-mode",
             task_id="citation-check",
         )
     )
     assert product_treatment is not None
     assert product_treatment["mode"] == (
-        "skillsbench_goal_harness_product_mode_treatment"
+        "skillsbench_loopx_product_mode_treatment"
     ), product_treatment
     assert product_treatment["product_mode"] is True, product_treatment
-    assert product_treatment["goal_harness_automation_loop"] is True, (
+    assert product_treatment["loopx_automation_loop"] is True, (
         product_treatment
     )
-    assert product_treatment["goal_harness_inside_case"] is True, product_treatment
+    assert product_treatment["loopx_inside_case"] is True, product_treatment
     assert product_treatment["case_semantics_changed_by_harness"] is True, (
         product_treatment
     )
@@ -877,7 +877,7 @@ def test_skillsbench_verifier_tail_disabled_at_zero() -> None:
     args = parse_args(["--task-id", "sample-task", "--route", "automation-loop-treatment"])
     assert args.max_verifier_output_chars == 0, args
     default_args = parse_args(["--task-id", "sample-task"])
-    assert default_args.route == "goal-harness-blind-loop-treatment", default_args
+    assert default_args.route == "loopx-blind-loop-treatment", default_args
 
 
 def write_official_skillsbench_result(
@@ -1428,7 +1428,7 @@ def test_skillsbench_oracle_result_reward_artifact_recovery() -> None:
         )
         full_run = build_skillsbench_benchflow_result_benchmark_run(
             result_path,
-            route="goal-harness-product-mode",
+            route="loopx-product-mode",
         )
         compact = compact_benchmark_run(full_run)
         assert compact is not None
@@ -1447,10 +1447,10 @@ def test_skillsbench_oracle_result_reward_artifact_recovery() -> None:
             "skillsbench_oracle_solution_runner"
         ), full_run
         assert full_run["mode_contract"]["codex_acp_protocol_used"] is False, full_run
-        assert full_run["mode_contract"]["goal_harness_inside_case"] is False, full_run
+        assert full_run["mode_contract"]["loopx_inside_case"] is False, full_run
         assert full_run["mode_contract"]["official_score_comparable_to_native_codex"] is False
         assert full_run["mode_contract"][
-            "official_score_comparable_to_goal_harness_treatment"
+            "official_score_comparable_to_loopx_treatment"
         ] is False
         assert "verifier_infrastructure_failure" not in compact.get(
             "failure_attribution_labels", []
@@ -1701,7 +1701,7 @@ def test_skillsbench_volume_mount_failure_attribution() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="goal-harness-product-mode",
+                route="loopx-product-mode",
             )
         )
         assert compact is not None
@@ -1717,7 +1717,7 @@ def test_skillsbench_volume_mount_failure_attribution() -> None:
         fingerprint = compact["runner_failure_fingerprint"]
         assert "volume_mount_failure" in fingerprint["matched_patterns"], fingerprint
         plan = {
-            "route": "goal-harness-product-mode",
+            "route": "loopx-product-mode",
             "task_id": "suricata-custom-exfil",
             "task_setup_preflight": {
                 "schema_version": "skillsbench_task_setup_preflight_v0",
@@ -1854,7 +1854,7 @@ def test_skillsbench_codex_acp_internal_error_attribution() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="goal-harness-blind-loop-treatment",
+                route="loopx-blind-loop-treatment",
             )
         )
         assert compact is not None
@@ -1897,8 +1897,8 @@ def test_skillsbench_codex_acp_post_success_trace_recovers_score() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-acp-trace-score-") as tmp:
         result_path = write_official_skillsbench_codex_acp_internal_error(Path(tmp))
         controller_trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-            "route": "goal-harness-product-mode",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "heartbeat_count": 3,
             "controller_action_decisions": 3,
@@ -1944,7 +1944,7 @@ def test_skillsbench_codex_acp_post_success_trace_recovers_score() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="goal-harness-product-mode",
+                route="loopx-product-mode",
                 controller_trace=controller_trace,
             )
         )
@@ -1957,7 +1957,7 @@ def test_skillsbench_codex_acp_post_success_trace_recovers_score() -> None:
             "value": 1.0,
         }, compact
         assert compact["official_score_source"] == (
-            "goal_harness_controller_trace_best_round_reward_post_success_acp_closeout"
+            "loopx_controller_trace_best_round_reward_post_success_acp_closeout"
         ), compact
         assert compact["score_failure_attribution"] == "none", compact
         assert compact["runner_failure"]["failure_class"] == (
@@ -1969,7 +1969,7 @@ def test_skillsbench_codex_acp_post_success_trace_recovers_score() -> None:
         assert compact["validation"]["official_case_success"] is True, compact
         assert compact["validation"]["official_verifier_status"] == "completed", compact
         assert compact["validation"]["validation_scope"] == (
-            "official_benchflow_result_json_plus_goal_harness_controller_trace"
+            "official_benchflow_result_json_plus_loopx_controller_trace"
         ), compact
         round_trace = compact["round_reward_trace"]
         assert round_trace["official_score_recovered_from_controller_trace"] is True
@@ -1996,7 +1996,7 @@ def test_skillsbench_codex_acp_post_success_finalization_route() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="goal-harness-product-mode",
+                route="loopx-product-mode",
             )
         )
         assert compact is not None
@@ -2007,7 +2007,7 @@ def test_skillsbench_codex_acp_post_success_finalization_route() -> None:
         }
         compact["round_reward_trace"] = {
             "schema_version": "benchmark_round_reward_trace_v0",
-            "source": "goal_harness_controller_trace",
+            "source": "loopx_controller_trace",
             "round_index_origin": "agent_round_1_is_first_completed_agent_attempt",
             "records": [
                 {
@@ -2377,14 +2377,14 @@ def test_skillsbench_runner_plan_supports_baseline_route() -> None:
             CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD.index("command -v curl")
             < CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD.index("apt-get")
         )
-        assert "/tmp/goal-harness-apt-cache" not in CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD
+        assert "/tmp/loopx-apt-cache" not in CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD
         assert "/var/cache/apt/archives" in CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD
         assert "libssl.so.3" in CODEX_ACP_RUNTIME_DEPS_SETUP_CMD
         assert "microdnf install -y openssl-libs" in (
             CODEX_ACP_RUNTIME_DEPS_SETUP_CMD
         )
         assert "glibc >=2.34" in CODEX_ACP_RUNTIME_DEPS_SETUP_CMD
-        assert "/tmp/goal-harness-apt-cache" not in CODEX_ACP_RUNTIME_DEPS_SETUP_CMD
+        assert "/tmp/loopx-apt-cache" not in CODEX_ACP_RUNTIME_DEPS_SETUP_CMD
         assert "/var/cache/apt/archives" in CODEX_ACP_RUNTIME_DEPS_SETUP_CMD
         assert "/opt/benchflow/bin/codex-acp" in CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD
         assert '"$agent_bin" --version' in CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD
@@ -2499,7 +2499,7 @@ def test_skillsbench_runner_plan_supports_product_mode_routes() -> None:
         root = Path(tmp)
         for route, suffix in (
             ("raw-codex-autonomous-max5", "raw_codex_autonomous_max5"),
-            ("goal-harness-product-mode", "goal_harness_product_mode"),
+            ("loopx-product-mode", "loopx_product_mode"),
         ):
             args = parse_args(
                 [
@@ -2628,7 +2628,7 @@ def test_skillsbench_reduce_only_recovers_prepared_task_staging_metadata() -> No
             "FROM ubuntu:20.04\n"
             f"{DOCKER_APT_RETRY_BEGIN}\n"
             "RUN true\n"
-            "# END GOAL_HARNESS_SKILLSBENCH_APT_RETRY\n",
+            "# END LOOPX_SKILLSBENCH_APT_RETRY\n",
             encoding="utf-8",
         )
 
@@ -2648,8 +2648,8 @@ def test_skillsbench_controller_trace_counts_are_compacted() -> None:
         root = Path(tmp)
         result_path = write_official_skillsbench_result(root, reward=1.0)
         blind_trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-            "route": "goal-harness-blind-loop-treatment",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-blind-loop-treatment",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "heartbeat_count": 3,
             "controller_action_decisions": 3,
@@ -2681,8 +2681,8 @@ def test_skillsbench_controller_trace_counts_are_compacted() -> None:
             "official_feedback_forwarded": False,
             "blind_loop": True,
             "max_rounds_budget": 2,
-            "goal_harness_state_reads": 0,
-            "goal_harness_state_writes": 0,
+            "loopx_state_reads": 0,
+            "loopx_state_writes": 0,
             "last_decision": "stop_after_blind_loop_official_success_observed_without_feedback",
             "raw_task_text_recorded": False,
             "raw_verifier_output_recorded": False,
@@ -2691,7 +2691,7 @@ def test_skillsbench_controller_trace_counts_are_compacted() -> None:
         blind_compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="goal-harness-blind-loop-treatment",
+                route="loopx-blind-loop-treatment",
                 controller_trace=blind_trace,
             )
         )
@@ -2740,7 +2740,7 @@ def test_skillsbench_controller_trace_counts_are_compacted() -> None:
             },
         )
         partial_trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
             "route": "codex-acp-blind-loop-baseline",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "blind_loop": True,
@@ -2770,8 +2770,8 @@ def test_skillsbench_controller_trace_counts_are_compacted() -> None:
         assert partial_trace["round_rewards"][1]["source"] == "benchflow_final_result", partial_trace
 
         depth_gate_trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-            "route": "goal-harness-product-mode",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "product_mode": True,
             "max_round_observed": 4,
@@ -2803,8 +2803,8 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         root = Path(tmp)
         result_path = write_official_skillsbench_result(root, reward=0.0)
         trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-            "route": "goal-harness-blind-loop-treatment",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-blind-loop-treatment",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "heartbeat_count": 5,
             "controller_action_decisions": 5,
@@ -2831,7 +2831,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="goal-harness-blind-loop-treatment",
+                route="loopx-blind-loop-treatment",
                 controller_trace=trace,
             )
         )
@@ -2849,7 +2849,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         ), round_trace
 
         controller_trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
             "route": "automation-loop-treatment",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "heartbeat_count": 2,
@@ -2859,8 +2859,8 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             "stop_decision_count": 0,
             "reward_observation_count": 1,
             "verifier_feedback_observation_count": 1,
-            "goal_harness_state_reads": 0,
-            "goal_harness_state_writes": 0,
+            "loopx_state_reads": 0,
+            "loopx_state_writes": 0,
             "last_decision": "send_followup_after_failed_reward",
             "raw_task_text_recorded": False,
             "raw_verifier_output_recorded": False,
@@ -2881,9 +2881,9 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert counters["controller_initial_prompt_count"] == 1, compact
         assert counters["controller_followup_prompt_count"] == 1, compact
         assert counters["counter_trust_level"] == (
-            "official_benchflow_compact_result_plus_goal_harness_controller_trace"
+            "official_benchflow_compact_result_plus_loopx_controller_trace"
         ), compact
-        assert "goal_harness:controller_trace.public.json" in compact["evidence_files"]
+        assert "loopx:controller_trace.public.json" in compact["evidence_files"]
         assert compact["read_boundary"]["controller_trace_read"] is True, compact
         compact_text = json.dumps(compact, sort_keys=True)
         assert "private_verifier_output" not in compact_text
@@ -2921,7 +2921,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             },
         )
         app_server_trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
             "route": "codex-app-server-goal-baseline",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "native_goal_worker_route": True,
@@ -2952,7 +2952,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert native_compact is not None
         assert native_compact["case_id"] == "llm-prefix-cache-replay", native_compact
         assert native_compact["case_ids"] == ["llm-prefix-cache-replay"], native_compact
-        assert native_compact["validation"]["goal_harness_controller_trace_present"] is True
+        assert native_compact["validation"]["loopx_controller_trace_present"] is True
         assert native_compact["validation"]["failed_checks"] == [], native_compact
         native_counters = native_compact["interaction_counters"]
         assert native_counters["controller_trace_present"] is True, native_compact
@@ -2969,7 +2969,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert native_validation["native_goal_worker_trace_status"] == "public_trace_observed", native_compact
 
         connected_no_trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
             "route": "codex-app-server-goal-baseline",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "native_goal_worker_route": True,
@@ -3043,7 +3043,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             },
         )
         connected_lifecycle_trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
             "route": "codex-app-server-goal-baseline",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "native_goal_worker_route": True,
@@ -3090,7 +3090,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         empty_worker_trace_dir = root / "native-worker-empty-traces"
         empty_worker_trace_dir.mkdir()
         connected_empty_trace_dir = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
             "route": "codex-app-server-goal-baseline",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "native_goal_worker_route": True,
@@ -3163,11 +3163,11 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             comparison,
             benchmark_runs=[baseline, compact],
         )
-        assert "missing_treatment_worker_goal_harness_evidence" not in review[
+        assert "missing_treatment_worker_loopx_evidence" not in review[
             "decision"
         ]["blockers"], review
         assert review["treatment_worker_evidence"][
-            "outer_goal_harness_controller_present"
+            "outer_loopx_controller_present"
         ] is True, review
 
 
@@ -3176,8 +3176,8 @@ def test_skillsbench_product_mode_declared_done_is_compacted() -> None:
         root = Path(tmp)
         result_path = write_official_skillsbench_result(root, reward=0.25)
         controller_trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-            "route": "goal-harness-product-mode",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "product_mode": True,
             "agent_declared_done": True,
@@ -3210,10 +3210,10 @@ def test_skillsbench_product_mode_declared_done_is_compacted() -> None:
             "case_goal_state_schema_version": PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
             "declared_done_requires_no_remaining_goals": True,
             "max_rounds_budget": 5,
-            "goal_harness_state_reads": 1,
-            "goal_harness_state_writes": 1,
-            "goal_harness_case_state_reads": 1,
-            "goal_harness_case_state_writes": 1,
+            "loopx_state_reads": 1,
+            "loopx_state_writes": 1,
+            "loopx_case_state_reads": 1,
+            "loopx_case_state_writes": 1,
             "last_decision": "stop_after_agent_declared_done_without_official_feedback",
             "raw_task_text_recorded": False,
             "raw_verifier_output_recorded": False,
@@ -3222,7 +3222,7 @@ def test_skillsbench_product_mode_declared_done_is_compacted() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="goal-harness-product-mode",
+                route="loopx-product-mode",
                 controller_trace=controller_trace,
             )
         )
@@ -3244,8 +3244,8 @@ def test_skillsbench_product_mode_declared_done_is_compacted() -> None:
         assert counters["declared_done_requires_no_remaining_goals"] is True, compact
         assert counters["agent_declared_done"] is True, compact
         assert counters["declared_done_round"] == 1, compact
-        assert counters["goal_harness_case_state_reads"] == 1, compact
-        assert counters["goal_harness_case_state_writes"] == 1, compact
+        assert counters["loopx_case_state_reads"] == 1, compact
+        assert counters["loopx_case_state_writes"] == 1, compact
         round_trace = compact["round_reward_trace"]
         assert round_trace["agent_declared_done"] is True, compact
         assert round_trace["declared_done_round"] == 1, compact
@@ -3280,7 +3280,7 @@ def test_skillsbench_product_mode_case_state_usage_is_compacted() -> None:
         root = Path(tmp)
         jobs_dir = root / "jobs"
         job_name = "skillsbench_case_state_fixture"
-        rollout_name = "case__goal_harness_product_mode"
+        rollout_name = "case__loopx_product_mode"
         trajectory_path = (
             jobs_dir / job_name / rollout_name / "agent" / "acp_trajectory.jsonl"
         )
@@ -3289,7 +3289,7 @@ def test_skillsbench_product_mode_case_state_usage_is_compacted() -> None:
             {
                 "type": "user_message",
                 "text": (
-                    "Goal Harness product-mode treatment. Maintain "
+                    "LoopX product-mode treatment. Maintain "
                     f"{PRODUCT_MODE_CASE_STATE_PATH}."
                 ),
             },
@@ -3314,20 +3314,20 @@ def test_skillsbench_product_mode_case_state_usage_is_compacted() -> None:
                 stream.write(json.dumps(event, sort_keys=True) + "\n")
 
         summary = summarize_acp_trajectory(trajectory_path)
-        assert summary["goal_harness_case_state_path_count"] == 1, summary
-        assert summary["goal_harness_case_state_paths"] == [
+        assert summary["loopx_case_state_path_count"] == 1, summary
+        assert summary["loopx_case_state_paths"] == [
             PRODUCT_MODE_CASE_STATE_PATH
         ], summary
-        assert summary["goal_harness_case_state_read_count"] == 1, summary
-        assert summary["goal_harness_case_state_write_count"] == 1, summary
+        assert summary["loopx_case_state_read_count"] == 1, summary
+        assert summary["loopx_case_state_write_count"] == 1, summary
 
         trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-            "route": "goal-harness-product-mode",
-            "goal_harness_state_reads": 0,
-            "goal_harness_state_writes": 0,
-            "goal_harness_case_state_reads": 0,
-            "goal_harness_case_state_writes": 0,
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
+            "loopx_state_reads": 0,
+            "loopx_state_writes": 0,
+            "loopx_case_state_reads": 0,
+            "loopx_case_state_writes": 0,
         }
         _merge_acp_trajectory_summary(
             {
@@ -3337,17 +3337,17 @@ def test_skillsbench_product_mode_case_state_usage_is_compacted() -> None:
             },
             trace,
         )
-        assert trace["goal_harness_case_state_reads"] == 1, trace
-        assert trace["goal_harness_case_state_writes"] == 1, trace
-        assert trace["goal_harness_state_reads"] == 1, trace
-        assert trace["goal_harness_state_writes"] == 1, trace
+        assert trace["loopx_case_state_reads"] == 1, trace
+        assert trace["loopx_case_state_writes"] == 1, trace
+        assert trace["loopx_state_reads"] == 1, trace
+        assert trace["loopx_state_writes"] == 1, trace
 
 
 def test_skillsbench_product_mode_legacy_case_state_path_is_not_compacted() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-legacy-case-state-") as tmp:
         root = Path(tmp)
         trajectory_path = root / "acp_trajectory.jsonl"
-        legacy_path = "/app/.goal-harness-case-state.md"
+        legacy_path = "/app/.loopx-case-state.md"
         events = [
             {
                 "type": "tool_call",
@@ -3370,10 +3370,10 @@ def test_skillsbench_product_mode_legacy_case_state_path_is_not_compacted() -> N
                 stream.write(json.dumps(event, sort_keys=True) + "\n")
 
         summary = summarize_acp_trajectory(trajectory_path)
-        assert summary["goal_harness_case_state_path_count"] == 0, summary
-        assert summary["goal_harness_case_state_paths"] == [], summary
-        assert summary["goal_harness_case_state_read_count"] == 0, summary
-        assert summary["goal_harness_case_state_write_count"] == 0, summary
+        assert summary["loopx_case_state_path_count"] == 0, summary
+        assert summary["loopx_case_state_paths"] == [], summary
+        assert summary["loopx_case_state_read_count"] == 0, summary
+        assert summary["loopx_case_state_write_count"] == 0, summary
 
 
 def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
@@ -3381,7 +3381,7 @@ def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
         root = Path(tmp)
         jobs_dir = root / "jobs"
         job_name = "debug-trl-grpo-trace-summary"
-        rollout_name = "debug-trl-grpo__goal_harness_blind_loop"
+        rollout_name = "debug-trl-grpo__loopx_blind_loop"
         run_dir = jobs_dir / job_name / rollout_name
         trajectory_path = run_dir / "agent" / "acp_trajectory.jsonl"
         trajectory_path.parent.mkdir(parents=True)
@@ -3395,7 +3395,7 @@ def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
             },
             {
                 "type": "tool_call",
-                "title": "goal-harness status",
+                "title": "loopx status",
                 "status": "completed",
                 "content": [],
             },
@@ -3429,11 +3429,11 @@ def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
         assert summary["event_count"] == 5, summary
         assert summary["round_count"] == 1, summary
         assert summary["tool_call_count"] == 3, summary
-        assert summary["goal_harness_cli_call_count"] == 1, summary
-        assert summary["goal_harness_cli_calls"] == [
+        assert summary["loopx_cli_call_count"] == 1, summary
+        assert summary["loopx_cli_calls"] == [
             {
                 "round": 1,
-                "command": "goal-harness status",
+                "command": "loopx status",
                 "subcommands": ["status"],
                 "flags": [],
                 "state_usage": "state_read",
@@ -3443,14 +3443,14 @@ def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
         ], summary
         assert summary["action_category_counts"] == {
             "edit": 1,
-            "goal_harness_cli": 1,
+            "loopx_cli": 1,
             "validation": 1,
         }, summary
-        assert summary["goal_harness_cli_state_usage_counts"] == {
+        assert summary["loopx_cli_state_usage_counts"] == {
             "state_read": 1,
         }, summary
-        assert summary["goal_harness_cli_state_read_count"] == 1, summary
-        assert summary["goal_harness_cli_state_write_count"] == 0, summary
+        assert summary["loopx_cli_state_read_count"] == 1, summary
+        assert summary["loopx_cli_state_write_count"] == 0, summary
         assert summary["protected_path_mentions"] == [
             "/app/reward_fn.py",
             "/app/train_grpo.py",
@@ -3463,7 +3463,7 @@ def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
                 "--task-id",
                 "debug-trl-grpo",
                 "--route",
-                "goal-harness-blind-loop-treatment",
+                "loopx-blind-loop-treatment",
                 "--jobs-dir",
                 str(jobs_dir),
                 "--job-name",
@@ -3474,8 +3474,8 @@ def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
         )
         plan = build_plan(args)
         trace = {
-            "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-            "route": "goal-harness-blind-loop-treatment",
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-blind-loop-treatment",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "blind_loop": True,
             "official_feedback_forwarded": False,
@@ -3488,7 +3488,7 @@ def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
         assert trace["raw_agent_trajectory_recorded"] is False, trace
         assert trace["acp_trajectory_summary"]["codex_acp_text_bytes"] == 0, trace
 
-        trace_path = jobs_dir / job_name / "goal_harness_controller_trace.public.json"
+        trace_path = jobs_dir / job_name / "loopx_controller_trace.public.json"
         write_json(trace_path, trace)
         result_path = write_official_skillsbench_result(root, reward=0.0)
         compact = reduce_result(args, result_path, plan)
@@ -3496,28 +3496,28 @@ def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
         assert counters["private_trajectory_summary_present"] is True, compact
         assert counters["private_trajectory_event_count"] == 5, compact
         assert counters["private_trajectory_tool_call_count"] == 3, compact
-        assert counters["goal_harness_cli_call_count"] == 1, compact
-        assert counters["goal_harness_cli_calls"] == [
+        assert counters["loopx_cli_call_count"] == 1, compact
+        assert counters["loopx_cli_calls"] == [
             {
                 "round": 1,
-                "command": "goal-harness status",
+                "command": "loopx status",
                 "raw_title_copied": False,
                 "raw_output_copied": False,
             }
         ], compact
         assert counters["trajectory_action_category_counts"] == {
             "edit": 1,
-            "goal_harness_cli": 1,
+            "loopx_cli": 1,
             "validation": 1,
         }, compact
-        assert counters["goal_harness_cli_state_usage_counts"] == {
+        assert counters["loopx_cli_state_usage_counts"] == {
             "state_read": 1,
         }, compact
-        assert counters["goal_harness_cli_state_read_count"] == 1, compact
-        assert counters["goal_harness_cli_state_write_count"] == 0, compact
+        assert counters["loopx_cli_state_read_count"] == 1, compact
+        assert counters["loopx_cli_state_write_count"] == 0, compact
         assert counters["protected_path_mention_count"] == 2, compact
         assert counters["protected_path_edit_signal_count"] == 1, compact
-        assert "goal_harness:acp_trajectory_summary" in compact["evidence_files"], compact
+        assert "loopx:acp_trajectory_summary" in compact["evidence_files"], compact
         compact_text = json.dumps(compact, sort_keys=True)
         assert "Do not modify" not in compact_text, compact
         assert "Finished local validation" not in compact_text, compact
@@ -3532,7 +3532,7 @@ def test_cli_dry_run_skillsbench_skeleton() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--registry",
                 str(registry_path),
                 "--runtime-root",
@@ -3575,7 +3575,7 @@ def test_cli_dry_run_skillsbench_official_result() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--registry",
                 str(registry_path),
                 "--runtime-root",
@@ -3631,7 +3631,7 @@ def test_skillsbench_runner_plan_supports_controller_trace_path() -> None:
         plan = payload["launch_plan"]
         assert plan["route"] == "automation-loop-treatment", plan
         assert plan["controller_trace_json"].endswith(
-            "goal_harness_controller_trace.public.json"
+            "loopx_controller_trace.public.json"
         ), plan
         assert plan["include_task_skills"] is False, plan
 
@@ -3649,12 +3649,12 @@ def test_skillsbench_compact_runs_update_ledger_pair() -> None:
         )
         treatment = compact_skillsbench_run(
             task_id="citation-check",
-            mode="skillsbench_goal_harness_automation_loop_treatment",
+            mode="skillsbench_loopx_automation_loop_treatment",
             score=1.0,
             passed=True,
             round_reward_trace={
                 "schema_version": "benchmark_round_reward_trace_v0",
-                "source": "goal_harness_controller_trace",
+                "source": "loopx_controller_trace",
                 "round_index_origin": "agent_round_1_is_first_completed_agent_attempt",
                 "records": [
                     {
@@ -3696,7 +3696,7 @@ def test_skillsbench_compact_runs_update_ledger_pair() -> None:
             dry_run=False,
         )
         assert treatment_update["entry"]["arm_id"] == (
-            "goal_harness_automation_loop_treatment"
+            "loopx_automation_loop_treatment"
         )
         assert treatment_update["case_decision"]["decision"] == (
             "paired_treatment_improved"
@@ -3719,7 +3719,7 @@ def test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs() -> None:
         ledger_path = root / "benchmark-run-ledger.json"
         compact = compact_skillsbench_run(
             task_id="software-dependency-audit",
-            mode="skillsbench_goal_harness_automation_loop_treatment",
+            mode="skillsbench_loopx_automation_loop_treatment",
             score=0.0,
             passed=False,
         )
@@ -4240,7 +4240,7 @@ def test_skillsbench_main_recovers_missing_reward_with_structured_prereq_blocker
                 result_path,
                 {
                     "task_name": "tictoc-unnecessary-abort-detection",
-                    "rollout_name": "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                    "rollout_name": "tictoc-unnecessary-abort-detection__loopx_blind_loop",
                     "rewards": None,
                     "agent": "codex-acp",
                     "agent_name": "",
@@ -4267,13 +4267,13 @@ def test_skillsbench_main_recovers_missing_reward_with_structured_prereq_blocker
                         "--task-id",
                         "tictoc-unnecessary-abort-detection",
                         "--route",
-                        "goal-harness-blind-loop-treatment",
+                        "loopx-blind-loop-treatment",
                         "--jobs-dir",
                         str(jobs_dir),
                         "--job-name",
                         job_name,
                         "--rollout-name",
-                        "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                        "tictoc-unnecessary-abort-detection__loopx_blind_loop",
                         "--run-group-id",
                         "skillsbench-missing-reward-prereq-fixture",
                     ]
@@ -4338,8 +4338,8 @@ def test_skillsbench_main_marks_empty_acp_trajectory_after_host_install() -> Non
             write_json(
                 Path(plan["controller_trace_json"]),
                 {
-                    "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-                    "route": "goal-harness-blind-loop-treatment",
+                    "schema_version": "skillsbench_loopx_controller_trace_v0",
+                    "route": "loopx-blind-loop-treatment",
                     "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
                     "heartbeat_count": 1,
                     "controller_action_decisions": 1,
@@ -4374,7 +4374,7 @@ def test_skillsbench_main_marks_empty_acp_trajectory_after_host_install() -> Non
                 result_path,
                 {
                     "task_name": "tictoc-unnecessary-abort-detection",
-                    "rollout_name": "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                    "rollout_name": "tictoc-unnecessary-abort-detection__loopx_blind_loop",
                     "rewards": None,
                     "agent": "codex-acp",
                     "agent_name": "",
@@ -4401,13 +4401,13 @@ def test_skillsbench_main_marks_empty_acp_trajectory_after_host_install() -> Non
                         "--task-id",
                         "tictoc-unnecessary-abort-detection",
                         "--route",
-                        "goal-harness-blind-loop-treatment",
+                        "loopx-blind-loop-treatment",
                         "--jobs-dir",
                         str(jobs_dir),
                         "--job-name",
                         job_name,
                         "--rollout-name",
-                        "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                        "tictoc-unnecessary-abort-detection__loopx_blind_loop",
                         "--run-group-id",
                         "skillsbench-empty-acp-fixture",
                     ]
@@ -4470,8 +4470,8 @@ def test_skillsbench_main_marks_agent_message_only_no_tool_calls() -> None:
             write_json(
                 Path(plan["controller_trace_json"]),
                 {
-                    "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-                    "route": "goal-harness-blind-loop-treatment",
+                    "schema_version": "skillsbench_loopx_controller_trace_v0",
+                    "route": "loopx-blind-loop-treatment",
                     "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
                     "heartbeat_count": 2,
                     "controller_action_decisions": 2,
@@ -4512,7 +4512,7 @@ def test_skillsbench_main_marks_agent_message_only_no_tool_calls() -> None:
                 result_path,
                 {
                     "task_name": "tictoc-unnecessary-abort-detection",
-                    "rollout_name": "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                    "rollout_name": "tictoc-unnecessary-abort-detection__loopx_blind_loop",
                     "rewards": None,
                     "agent": "codex-acp",
                     "agent_name": "codex-acp",
@@ -4540,13 +4540,13 @@ def test_skillsbench_main_marks_agent_message_only_no_tool_calls() -> None:
                         "--task-id",
                         "tictoc-unnecessary-abort-detection",
                         "--route",
-                        "goal-harness-blind-loop-treatment",
+                        "loopx-blind-loop-treatment",
                         "--jobs-dir",
                         str(jobs_dir),
                         "--job-name",
                         job_name,
                         "--rollout-name",
-                        "tictoc-unnecessary-abort-detection__goal_harness_blind_loop",
+                        "tictoc-unnecessary-abort-detection__loopx_blind_loop",
                         "--run-group-id",
                         "skillsbench-agent-message-only-fixture",
                     ]
@@ -4650,7 +4650,7 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-round-reward-main-") as tmp:
         jobs_dir = Path(tmp) / "jobs"
         job_name = "skillsbench-round-trace-fixture"
-        rollout_name = "sample-task__goal_harness_blind_loop"
+        rollout_name = "sample-task__loopx_blind_loop"
         run_dir = jobs_dir / job_name / rollout_name
         write_json(
             run_dir / "result.json",
@@ -4671,10 +4671,10 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
         )
         write_json(run_dir / "timing.json", {"total": 3.0})
         write_json(
-            jobs_dir / job_name / "goal_harness_controller_trace.public.json",
+            jobs_dir / job_name / "loopx_controller_trace.public.json",
             {
-                "schema_version": "skillsbench_goal_harness_controller_trace_v0",
-                "route": "goal-harness-blind-loop-treatment",
+                "schema_version": "skillsbench_loopx_controller_trace_v0",
+                "route": "loopx-blind-loop-treatment",
                 "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
                 "heartbeat_count": 3,
                 "controller_action_decisions": 3,
@@ -4720,7 +4720,7 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
                     "--task-id",
                     "sample-task",
                     "--route",
-                    "goal-harness-blind-loop-treatment",
+                    "loopx-blind-loop-treatment",
                     "--jobs-dir",
                     str(jobs_dir),
                     "--job-name",

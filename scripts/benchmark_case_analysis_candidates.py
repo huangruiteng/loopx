@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_case_analysis import (  # noqa: E402
+from loopx.benchmark_case_analysis import (  # noqa: E402
     build_case_analysis_candidate_report,
     load_json,
     render_case_analysis_candidate_report_markdown,

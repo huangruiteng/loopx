@@ -36,7 +36,7 @@ REQUIRED_DOC_SNIPPETS = [
     "modernize-scientific-stack",
     "llm-inference-batching-scheduler",
     "codex-goal-mode",
-    "codex-goal-harness",
+    "codex-loopx",
     "case_semantics_changed_by_harness=true",
     "official_score_comparable_to_native_codex=false",
     "python3 examples/terminal-bench-official-hard-case-selection-smoke.py",
@@ -73,7 +73,7 @@ def selection_payload() -> dict[str, Any]:
             {
                 "rank": index + 1,
                 "task_id": task_id,
-                "run_pair": ["codex-goal-mode", "codex-goal-harness"],
+                "run_pair": ["codex-goal-mode", "codex-loopx"],
             }
             for index, task_id in enumerate(PRIMARY_TASKS)
         ],
@@ -97,7 +97,7 @@ def selection_payload() -> dict[str, Any]:
         "managed_mode_claim_boundary": {
             "model_plus_harness_pair": True,
             "case_semantics_changed_by_harness": True,
-            "goal_harness_inside_case": True,
+            "loopx_inside_case": True,
             "official_score_comparable_to_native_codex": False,
             "leaderboard_evidence": False,
         },
@@ -106,7 +106,7 @@ def selection_payload() -> dict[str, Any]:
             "runner_return_status",
             "wall_time_and_timeout_tier",
             "codex_usage_when_available",
-            "goal_harness_cli_calls",
+            "loopx_cli_calls",
             "codex_runtime_goal_tool_calls",
             "worker_benchmark_run_schema_validity",
             "failure_attribution",
@@ -151,16 +151,16 @@ def assert_selection_payload(payload: dict[str, Any]) -> None:
     assert payload["selection_policy"]["run_all_89_first"] is False, payload
     assert payload["selection_policy"]["batch_size"] == 3, payload
     for item in payload["primary_batch"]:
-        assert item["run_pair"] == ["codex-goal-mode", "codex-goal-harness"], item
+        assert item["run_pair"] == ["codex-goal-mode", "codex-loopx"], item
     invariants = payload["paired_run_invariants"]
     assert all(invariants.values()), invariants
     managed = payload["managed_mode_claim_boundary"]
     assert managed["model_plus_harness_pair"] is True, managed
     assert managed["case_semantics_changed_by_harness"] is True, managed
-    assert managed["goal_harness_inside_case"] is True, managed
+    assert managed["loopx_inside_case"] is True, managed
     assert managed["official_score_comparable_to_native_codex"] is False, managed
     assert managed["leaderboard_evidence"] is False, managed
-    assert "goal_harness_cli_calls" in payload["required_metrics"], payload
+    assert "loopx_cli_calls" in payload["required_metrics"], payload
     assert "do_not_run_all_89_tasks" in payload["stop_conditions"], payload
     assert_public_safe(payload)
 

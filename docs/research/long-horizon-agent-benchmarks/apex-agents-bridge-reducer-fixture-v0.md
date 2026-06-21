@@ -8,7 +8,7 @@ This note records the first deterministic no-run fixture for the APEX-Agents
 host-Codex bridge/reducer route described in
 `apex-agents-codex-bridge-reducer-packet-v0.md`.
 
-The fixture is deliberately not an APEX run. It proves only that Goal Harness
+The fixture is deliberately not an APEX run. It proves only that LoopX
 can reduce a redacted Archipelago/APEX bridge observation into compact public
 `benchmark_run_v0` and `benchmark_result_v0` events while preserving the
 official-score versus control-plane-score boundary.
@@ -59,7 +59,7 @@ Targeted validation:
 ```bash
 python3 examples/apex-agents-bridge-reducer-smoke.py
 python3 -m py_compile examples/apex-agents-bridge-reducer-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/apex-agents-bridge-reducer-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/apex-agents-bridge-reducer-fixture-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

@@ -17,9 +17,9 @@ def add_tree(tar: tarfile.TarFile, root: Path, name: str) -> None:
         for child in sorted(path.rglob("*")):
             if ".git" in child.parts or "__pycache__" in child.parts:
                 continue
-            tar.add(child, arcname=str(Path("goal-harness-main") / child.relative_to(root)))
+            tar.add(child, arcname=str(Path("loopx-main") / child.relative_to(root)))
     else:
-        tar.add(path, arcname=str(Path("goal-harness-main") / name))
+        tar.add(path, arcname=str(Path("loopx-main") / name))
 
 
 def main() -> None:
@@ -28,13 +28,13 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
-        archive = tmp / "goal-harness.tar.gz"
+        archive = tmp / "loopx.tar.gz"
         home = tmp / "home"
         home.mkdir()
 
         with tarfile.open(archive, "w:gz") as tar:
             for name in (
-                "goal_harness",
+                "loopx",
                 "scripts",
                 "skills",
                 "docs",
@@ -50,17 +50,18 @@ def main() -> None:
             {
                 "HOME": str(home),
                 "CODEX_HOME": str(home / ".codex"),
-                "GOAL_HARNESS_BIN_DIR": str(home / ".local" / "bin"),
-                "GOAL_HARNESS_RELEASES_DIR": str(home / ".local" / "share" / "goal-harness" / "releases"),
-                "GOAL_HARNESS_SHELL_PROFILE": str(home / ".profile"),
-                "GOAL_HARNESS_ARCHIVE_URL": f"file://{archive}",
-                "GOAL_HARNESS_INSTALL_CANARY": "0",
+                "LOOPX_BIN_DIR": str(home / ".local" / "bin"),
+                "LOOPX_RELEASES_DIR": str(home / ".local" / "share" / "loopx" / "releases"),
+                "LOOPX_SHELL_PROFILE": str(home / ".profile"),
+                "LOOPX_ARCHIVE_URL": f"file://{archive}",
+                "LOOPX_INSTALL_CANARY": "0",
             }
         )
         subprocess.run(["bash", str(script)], check=True, env=env, cwd=tmp)
 
-        installed = home / ".local" / "bin" / "goal-harness"
+        installed = home / ".local" / "bin" / "loopx"
         assert installed.exists(), installed
+        assert not (home / ".local" / "bin" / "goal-harness").exists()
         doctor = subprocess.run(
             [str(installed), "doctor"],
             check=True,
@@ -71,12 +72,13 @@ def main() -> None:
         assert "ok: `True`" in doctor.stdout, doctor.stdout
 
         for skill in (
-            "goal-harness-project",
-            "goal-harness-doc-registry",
-            "goal-harness-self-repair",
+            "loopx-project",
+            "loopx-doc-registry",
+            "loopx-self-repair",
         ):
             assert (home / ".codex" / "skills" / skill / "SKILL.md").exists(), skill
 
+        assert not (home / ".local" / "bin" / "loopx-canary").exists()
         assert not (home / ".local" / "bin" / "goal-harness-canary").exists()
 
 

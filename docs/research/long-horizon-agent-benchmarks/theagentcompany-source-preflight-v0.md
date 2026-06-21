@@ -57,7 +57,7 @@ services, runs the controller with a short task-file instruction, then invokes
 the in-container evaluator and moves compact result plus trajectory files back
 to the host output directory.
 
-The official evaluation script is not a safe first-run wrapper for Goal Harness:
+The official evaluation script is not a safe first-run wrapper for LoopX:
 
 - It iterates over all task directories.
 - It relies on task-directory metadata such as scenario presence.
@@ -94,7 +94,7 @@ preflight. The likely safe shape is:
 7. Record raw trajectory and screenshots as local-private artifacts.
 8. Run the evaluator only after environment credentials, public default-service
    credentials, and evaluator-key handling are explicitly scoped.
-9. Reduce the output to compact score/result metadata before any Goal Harness
+9. Reduce the output to compact score/result metadata before any LoopX
    public artifact, status projection, or report claim.
 
 The official docs also allow agents to browse from outside the container, so a

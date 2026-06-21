@@ -1,6 +1,6 @@
 # Status Data Contract
 
-`goal-harness --format json status` is the stable first-screen data contract for
+`loopx --format json status` is the stable first-screen data contract for
 agents, heartbeat jobs, dashboards, and local UI experiments.
 
 The command is an export: it reads the registry, compact run indexes, and the
@@ -15,9 +15,9 @@ into the operator's language before presenting them as primary copy. The
 machine tokens may remain in drill-down views, logs, or packets where exact
 debuggability matters.
 
-When a command is run outside a project-local `.goal-harness/registry.json`,
+When a command is run outside a project-local `.loopx/registry.json`,
 the CLI falls back to the shared local global registry at
-`~/.codex/goal-harness/registry.global.json` if it exists. That registry is
+`~/.codex/loopx/registry.global.json` if it exists. That registry is
 maintained automatically by `connect` and `refresh-state` so each project agent
 can update its own local state while dashboards still see the multi-project
 view.
@@ -25,7 +25,7 @@ view.
 For local dashboards, the same JSON shape can be served over loopback HTTP:
 
 ```bash
-goal-harness serve-status --global-registry --port 8766 --limit 80
+loopx serve-status --global-registry --port 8766 --limit 80
 ```
 
 The default endpoint in that example is `http://127.0.0.1:8766/status.json`.
@@ -35,7 +35,7 @@ avoiding a project-local registry scope warning. For project-local debugging,
 omit `--global-registry` or pass the project registry explicitly. The server is
 intended for local dashboard development and includes CORS headers so a Vite app
 on another localhost port can fetch it.
-The disposable `goal-harness demo` path intentionally uses a project-local
+The disposable `loopx demo` path intentionally uses a project-local
 server on `127.0.0.1:8765`; it does not sync the temporary demo into the shared
 global registry.
 
@@ -120,23 +120,23 @@ dry-run response.
 ## Command
 
 ```bash
-goal-harness --format json status > goal-status.json
+loopx --format json status > goal-status.json
 ```
 
-By default, `status` scans the Goal Harness install root for public/private
+By default, `status` scans the LoopX install root for public/private
 contract health. Use narrow scan paths only when you intentionally want the
 status export to check a specific public-safe project surface:
 
 ```bash
-goal-harness --format json status \
+loopx --format json status \
   --scan-path README.md \
   --scan-path docs/ \
   --scan-path examples/
 ```
 
-For compute allocation, `goal-harness quota status` and
-`goal-harness quota plan` derive an agent-facing grouping from this same status
-payload. `goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json"
+For compute allocation, `loopx quota status` and
+`loopx quota plan` derive an agent-facing grouping from this same status
+payload. `loopx --registry "$HOME/.codex/loopx/registry.global.json"
 quota should-run --goal-id <goal-id>` derives a per-goal automation guard from
 that grouping for project heartbeats. These are read-only views, not a separate
 source of truth. Scripts should treat `summary.next_automatic_turn` in the
@@ -195,7 +195,7 @@ no-spend checks with `should_run=false` and
 transition may be written back once when it changes the selected goal decision.
 `handoff_readiness.handoff_interface_budget` declares the machine-readable
 budget for the minimal project-agent handoff: `mode=project_agent_handoff`,
-`max_lines=16`, and `max_chars=1800`. `goal-harness review-packet
+`max_lines=16`, and `max_chars=1800`. `loopx review-packet
 --handoff-only --format json` returns the same contract plus live `line_count`,
 `char_count`, and `within_budget`, so a short heartbeat can reject handoff
 bloat without carrying this rule in prompt text.
@@ -222,14 +222,14 @@ goals must stay out of the eligible lane even when they have a high
 ```json
 {
   "ok": true,
-  "registry": ".goal-harness/registry.json",
+  "registry": ".loopx/registry.json",
   "runtime_root": "./runtime",
   "goal_count": 3,
   "run_count": 2,
   "status_contract": {
     "schema_version": 2,
     "minimum_dashboard_schema_version": 2,
-    "producer": "goal-harness status",
+    "producer": "loopx status",
     "reload_hint": "scripts/macos-dashboard-launchagent.sh restart"
   },
   "contract": {
@@ -251,8 +251,8 @@ goals must stay out of the eligible lane even when they have a high
   "global_registry": {
     "available": true,
     "ok": true,
-    "registry": "~/.codex/goal-harness/registry.global.json",
-    "current_registry": ".goal-harness/registry.json",
+    "registry": "~/.codex/loopx/registry.global.json",
+    "current_registry": ".loopx/registry.json",
     "current_registry_is_global": false,
     "global_goal_count": 4,
     "current_goal_count": 3,
@@ -281,7 +281,7 @@ goals must stay out of the eligible lane even when they have a high
       "task_class": "advancement_task",
       "items": [
         {
-          "goal_id": "goal-harness-meta",
+          "goal_id": "loopx-meta",
           "quota_state": "eligible",
           "priority": "P1",
           "todo_index": 1,
@@ -331,7 +331,7 @@ goals must stay out of the eligible lane even when they have a high
   "promotion_readiness_summary": {
     "available": true,
     "source": "run_history",
-    "goal_id": "goal-harness-meta",
+    "goal_id": "loopx-meta",
     "generated_at": "2026-06-01T00:08:00+00:00",
     "classification": "canary_promotion_readiness_smoke_group",
     "delivery_batch_scale": "multi_surface",
@@ -374,7 +374,7 @@ goals must stay out of the eligible lane even when they have a high
     },
     "items": [
       {
-        "goal_id": "goal-harness-meta",
+        "goal_id": "loopx-meta",
         "decision_kind": "operator_gate",
         "decision_at": "2026-06-01T00:05:00+00:00",
         "classification": "operator_gate_approved",
@@ -427,7 +427,7 @@ newer panels.
 ## Interface Budget Cadence
 
 When a run-history record includes `interface_budget_cadence`,
-`goal-harness status` projects a compact copy under
+`loopx status` projects a compact copy under
 `attention_queue.items[].project_asset.interface_budget_cadence`. For the
 selected goal, `quota should-run` also mirrors the same object at top level as
 `interface_budget_cadence`.
@@ -456,7 +456,7 @@ Stable fields:
 
 ## Promotion Gate JSON
 
-`goal-harness promotion-gate --format json` is the compact machine-readable
+`loopx promotion-gate --format json` is the compact machine-readable
 gate for local release promotion. It reads the same append-only readiness event
 as `doctor`, `status`, and `install-local.sh`, then returns a small operation
 result that scripts can assert without parsing installer stderr.
@@ -466,7 +466,7 @@ installer should warn before promotion, not that the CLI refuses to install.
 The warning remains a human-facing guardrail; automation should use
 `gate_state`, `can_promote`, `should_warn`, and `readiness.freshness_status` as
 the stable fields.
-`goal-harness status --format json` embeds the same compact result under
+`loopx status --format json` embeds the same compact result under
 `promotion_gate`, so dashboard panels, installer smoke, and CLI gate checks
 consume one state contract instead of re-deriving release-readiness state
 separately.
@@ -476,8 +476,8 @@ Fresh shape:
 ```json
 {
   "ok": true,
-  "registry": ".goal-harness/registry.json",
-  "runtime_root": "~/.codex/goal-harness",
+  "registry": ".loopx/registry.json",
+  "runtime_root": "~/.codex/loopx",
   "gate": "promotion_readiness",
   "gate_state": "ready",
   "can_promote": true,
@@ -486,7 +486,7 @@ Fresh shape:
   "recommended_action": "promotion readiness is fresh",
   "readiness": {
     "available": true,
-    "goal_id": "goal-harness-meta",
+    "goal_id": "loopx-meta",
     "classification": "canary_promotion_readiness_smoke_group",
     "freshness_status": "fresh",
     "requires_readiness_run": false,
@@ -534,11 +534,11 @@ outside the machine.
 Registry boundary should be checked with:
 
 ```bash
-goal-harness registry-boundary --path <registry.json> --require-gitignored
+loopx registry-boundary --path <registry.json> --require-gitignored
 ```
 
 The shared `registry.global.json` is classified as `shared_local_registry` and
-must not be pushed. Project `.goal-harness/registry.json` files are
+must not be pushed. Project `.loopx/registry.json` files are
 `project_local_private_registry`. Generated public-safe registry projections are
 still runtime artifacts by default: they can be useful for review or handoff,
 but `github_push_allowed=false` unless the file is an explicitly authored
@@ -553,8 +553,8 @@ Finding shape:
   "severity": "action",
   "goal_id": "project-main-control",
   "message": "`project-main-control` source registry changed after its last global sync",
-  "recommended_action": "run `goal-harness sync-global --goal-id project-main-control` from the source project",
-  "path": "/path/to/project/.goal-harness/registry.json"
+  "recommended_action": "run `loopx sync-global --goal-id project-main-control` from the source project",
+  "path": "/path/to/project/.loopx/registry.json"
 }
 ```
 
@@ -598,7 +598,7 @@ the local machine.
 
 ## Attention Queue
 
-The attention queue is sorted by Goal Harness status logic. A UI should render
+The attention queue is sorted by LoopX status logic. A UI should render
 it as the primary worklist.
 
 Counters:
@@ -627,11 +627,11 @@ Item shape:
   ],
   "waiting_on": "user_or_controller",
   "severity": "action",
-  "recommended_action": "先在 Goal Harness 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run",
+  "recommended_action": "先在 LoopX 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run",
   "project_asset": {
     "owner": "user_or_controller",
     "gate": "operator_question",
-    "next_action": "先在 Goal Harness 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run",
+    "next_action": "先在 LoopX 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run",
     "stop_condition": "record aligned eval evidence and one human reward event",
     "user_todos": {
       "open": 1,
@@ -673,10 +673,10 @@ Item shape:
       "handoff_has_stop_condition": true,
       "handoff_sanitized_surface": true
     },
-    "next_probe": "goal-harness review-packet --goal-id complex-project-main-control --handoff-only"
+    "next_probe": "loopx review-packet --goal-id complex-project-main-control --handoff-only"
   },
   "operator_question": "是否同意 `complex-project-main-control` 先执行 read-only map opt-in？",
-  "agent_command": "goal-harness read-only-map --goal-id complex-project-main-control --dry-run",
+  "agent_command": "loopx read-only-map --goal-id complex-project-main-control --dry-run",
   "quota": {
     "compute": 0.5,
     "window_hours": 24,
@@ -712,7 +712,7 @@ Item fields:
   `stop_condition`, and may include compact `user_todos`, `agent_todos`, `quota`, and
   `latest_validation` summaries. Registry-backed project assets also include
   `execution_profile`, the project-level delivery floor created by
-  `goal-harness connect`, and `orchestration`, the compact projection of
+  `loopx connect`, and `orchestration`, the compact projection of
   registry `spawn_policy` with `mode`, `spawn_allowed`, `max_children`, and
   optional `allowed_domains`. They may also include `control_plane`, the
   compact per-goal policy projection for settings such as self-repair, and
@@ -785,7 +785,7 @@ Item fields:
   execution profile wording. `post_handoff_outcome_gap_streak` counts
   consecutive work runs that did not advance the declared outcome floor.
   `quota_slot_spent` events do not count as post-handoff work.
-- `operator_question`: optional human-facing gate to show in the Goal Harness
+- `operator_question`: optional human-facing gate to show in the LoopX
   operator view. This is the canonical place for user/controller judgment.
 - `agent_command`: optional command or instruction for the target project agent
   after the operator gate is approved. Dashboard consumers should not treat it
@@ -920,7 +920,7 @@ record if it is old. Watch-only legacy records remain visible in run history
 without entering the queue.
 
 `status=state_refreshed` is emitted for registered goals when the latest compact
-run came from `goal-harness refresh-state`. Dashboard consumers should show it
+run came from `loopx refresh-state`. Dashboard consumers should show it
 as Codex-ready work: the controller state changed, and the next agent turn
 should inspect the refreshed active state before continuing.
 If the refresh command was run without `--recommended-action`, the compact
@@ -1131,7 +1131,7 @@ and keep only current open work plus a small recent-done tail under active
 This warning is a checklist hygiene signal only: it does not change quota
 eligibility, grant write or production permission, or supersede open user/agent
 todo blockers. It also does not mark an open todo complete; executors should
-use `goal-harness todo complete`, `todo update`, or `todo supersede` for
+use `loopx todo complete`, `todo update`, or `todo supersede` for
 structured lifecycle transitions by `todo_id`.
 When the payload includes `autonomous_replan_obligation`, the active state's
 current `Next Action` or `Operating Lessons`, or the recent public run history,
@@ -1155,7 +1155,7 @@ destructive, production, or owner-only authority and honors `stop_condition`.
 This is intended to keep monitor-only work from consuming the primary
 executable backlog, not to bypass real gates.
 The payload includes `interaction_contract.schema_version =
-goal_harness_interaction_contract_v0`, which is the primary user/agent/CLI
+loopx_interaction_contract_v0`, which is the primary user/agent/CLI
 protocol for a selected goal. It groups the current turn into a stable
 `mode` such as `bounded_delivery`, `user_gate`, `user_todo_blocker_push`,
 `external_evidence_observation`, `monitor_quiet_skip`, `autonomous_replan`,
@@ -1240,7 +1240,7 @@ Review Packet source-of-truth rule:
 - the dashboard/operator view owns the human decision;
 - the copied Review Packet is a bridge from that decision surface to a local
   operator preview and a target project-agent instruction;
-- `goal-harness review-packet --goal-id <goal-id>` may generate the same
+- `loopx review-packet --goal-id <goal-id>` may generate the same
   packet from the status contract for CLI-facing agents, but it is still a
   read-only packaging command;
 - when status includes same-goal `decision_freshness_summary` items that require
@@ -1248,7 +1248,7 @@ Review Packet source-of-truth rule:
   freshness warning before the operator approves or relays work; this warning
   stays out of the minimized handoff-only text so the project agent still
   receives a small current instruction;
-- `goal-harness review-packet --goal-id <goal-id> --handoff-only` is the
+- `loopx review-packet --goal-id <goal-id> --handoff-only` is the
   copy-minimal form for an already selected or approved target-agent relay: it
   prints only the `project_agent_handoff` text in markdown output, while JSON
   output returns a minimized handoff payload instead of the full operator
@@ -1324,7 +1324,7 @@ todo as the unlock condition, and make the copy affordance status/history-only
 rather than an approved handoff or read-only map delivery path.
 
 `status=read_only_project_map` is emitted when the latest compact run came from
-`goal-harness read-only-map`. Dashboard consumers should show it as Codex-ready
+`loopx read-only-map`. Dashboard consumers should show it as Codex-ready
 work with a map-specific badge or drill-down: the project is connected and has
 a read-only map run, but the next useful action still needs a controller or
 agent to use that map. Compact run records may include a public-safe
@@ -1370,7 +1370,7 @@ reports `project_goal_state_dir_not_detected:<goal-id>` and the legacy
 `project_local_goal_state_not_detected` risk even when another goal in the same
 repo is healthy.
 
-The CLI cleanup path is `goal-harness archive-runtime --goal-id <goal-id>`. It
+The CLI cleanup path is `loopx archive-runtime --goal-id <goal-id>`. It
 defaults to dry-run and requires `--execute` before moving the runtime directory
 under `<runtime-root>/archived-goals/`.
 
@@ -1609,7 +1609,7 @@ separate from reward signals. Use them for approvals such as read-only map
 opt-in:
 
 ```bash
-goal-harness operator-gate \
+loopx operator-gate \
   --goal-id complex-project-main-control \
   --decision approve \
   --reason-summary "同意先执行 read-only map opt-in"
@@ -1630,7 +1630,7 @@ or external messages belong after the fresh approved resume.
 Operators can append `human_reward` with the CLI:
 
 ```bash
-goal-harness reward \
+loopx reward \
   --goal-id example-experiment-goal \
   --decision continue_route \
   --reward positive \
@@ -1648,7 +1648,7 @@ Both dry-run and append responses include:
   "active_state_summary": "dry-run：将记录目标 `example-experiment-goal` ...",
   "project_agent_visibility": {
     "source_of_truth": "run_bound_human_reward_overlay",
-    "history_command": "goal-harness history --goal-id example-experiment-goal --limit 3",
+    "history_command": "loopx history --goal-id example-experiment-goal --limit 3",
     "active_state_role": "summary_only",
     "review_packet_role": "optional_handoff_only"
   }
@@ -1659,7 +1659,7 @@ Agents should treat `history_command` as the standard visibility path. Active
 state can repeat the summary and next action for context, but it is not the
 durable reward store.
 
-When `goal-harness status` renders Markdown, a latest run with `human_reward`
+When `loopx status` renders Markdown, a latest run with `human_reward`
 should expand the compact reward fields under `Run History` and repeat the same
 project-agent history lookup. This keeps the dashboard as the operator surface
 while making CLI status sufficient for project agents that only need to notice
@@ -1674,7 +1674,7 @@ The CLI can also preview or perform the active-state summary write when the
 operator explicitly asks for it:
 
 ```bash
-goal-harness reward \
+loopx reward \
   --goal-id example-experiment-goal \
   --decision continue_route \
   --reward positive \
@@ -1743,7 +1743,7 @@ effective wall-time limit, and whether the observed or expected run meets the
 true long-task bar (`>=1800s`). These fields are claim guards, not scoring
 changes. It may also carry `overhead_attribution_counters`, a compact
 runner-side summary of wall time, usage metrics, worker bridge event counts,
-Goal Harness CLI call totals, and Codex runtime goal-tool counts. That summary
+LoopX CLI call totals, and Codex runtime goal-tool counts. That summary
 is for private paired-run diagnosis only; it is not a raw phase trace and must
 not be used as a score uplift claim. These fields must not include raw Codex
 sessions, host absolute paths, credentials, private benchmark material, or
@@ -1758,7 +1758,7 @@ benchmark-specific synonyms:
   `environment_ready` for environment-only readiness, `worker_case_success` for
   an explicit worker-side case-success claim, and `official_verifier_result`
   when an official verifier result is present.
-- `validation.bridge_connected`: whether the Goal Harness-enhanced worker
+- `validation.bridge_connected`: whether the LoopX-enhanced worker
   control path is connected. This supports a connectivity claim only; it is not
   case success.
 - `validation.case_success_claimed`: whether the worker explicitly claims the
@@ -1791,7 +1791,7 @@ writeback, spend, and forbidden-access totals. It must not include changed file
 paths, raw trajectories, local artifact paths, credentials, private traces, or
 leaderboard claims.
 
-`goal-harness history append-benchmark-result --benchmark-result-json <path>`
+`loopx history append-benchmark-result --benchmark-result-json <path>`
 is the matching append path for this projection. It is dry-run by default and
 accepts only a compact `benchmark_result_v0` JSON object; it does not discover
 or parse runner directories, task artifacts, Codex sessions, private traces, or
@@ -1808,7 +1808,7 @@ It may carry numeric deltas or public-safe symbolic deltas such as
 changed file paths, absolute runner directories, Codex session transcripts,
 private traces, credentials, or leaderboard submission artifacts.
 
-`goal-harness history append-benchmark-comparison --benchmark-comparison-json
+`loopx history append-benchmark-comparison --benchmark-comparison-json
 <path>` is the matching append path for this projection. It is dry-run by
 default and accepts only a compact `benchmark_comparison_v0` JSON object; it
 does not discover result pairs from runner directories, parse raw task
@@ -1834,7 +1834,7 @@ next-decision fields. It must not include raw benchmark logs, local artifact
 paths, Codex session transcripts, private traces, credentials, or leaderboard
 submission artifacts.
 
-`goal-harness history append-benchmark-report --benchmark-report-json <path>` is
+`loopx history append-benchmark-report --benchmark-report-json <path>` is
 the matching append path for this projection. It is dry-run by default and
 accepts only a compact `benchmark_experiment_report_v0` JSON object; it does
 not run a benchmark, invoke a model or simulator, read runner directories, parse
@@ -1850,7 +1850,7 @@ paths, hidden tests, expected solutions, benchmark answer keys, private traces,
 credentials, or leaderboard submission artifacts. It must also keep the
 assisted-collaboration claim separate from official benchmark score claims.
 
-`goal-harness history append-active-user-assisted-pilot --active-user-pilot-json
+`loopx history append-active-user-assisted-pilot --active-user-pilot-json
 <path>` is the matching append path for this projection. It is dry-run by
 default and accepts only a compactable `active_user_assisted_pilot_v0` JSON
 object; the CLI compacts the input before writing durable history. It does not
@@ -1888,7 +1888,7 @@ handoff follow-through summary may include
 `chain_map=benchmark-report-chain-map-v0.md` so a worker can jump from the
 compact replay decision back to the full reviewer-facing chain contract.
 The same information may appear in
-`goal-harness review-packet --handoff-only --format json` as
+`loopx review-packet --handoff-only --format json` as
 `benchmark_report_chain_handoff` with
 `schema_version=benchmark_report_chain_handoff_v0`. That JSON projection is a
 read-only relay helper over existing status/run-history fields; it does not add
@@ -1916,7 +1916,7 @@ The summary reports:
 
 This projection does not promote anything and does not replace the run artifact.
 `scripts/install-local.sh` consumes the same readiness fact only to print a
-non-blocking warning; operators should still run `goal-harness doctor` or the
+non-blocking warning; operators should still run `loopx doctor` or the
 canary-promotion readiness smoke for exact local release evidence.
 
 ## Decision Freshness Summary
@@ -2105,7 +2105,7 @@ A first useful UI can be built from the export alone:
   classifications, authority coverage, controller readiness, health checks,
   reward signals, and artifact availability.
 - Reward CLI draft: selected goal plus latest compact run timestamp should be
-  enough to generate a local `goal-harness reward --dry-run` command. Draft
+  enough to generate a local `loopx reward --dry-run` command. Draft
   fields should default from the selected operator decision and missing gates,
   while remaining editable before validation. The dashboard should append
   feedback only when the live loopback status server explicitly exposes the
@@ -2118,10 +2118,10 @@ A first useful UI can be built from the export alone:
   `--enable-reward-write-api`, the dashboard may send that exact preview to
   `POST /reward/append`. A successful append writes one run-bound
   `human_reward` overlay, refreshes status, and makes the next project-agent
-  automation able to see the feedback through `goal-harness status` or
-  `goal-harness history`.
+  automation able to see the feedback through `loopx status` or
+  `loopx history`.
 - Reward source of truth: durable user reward belongs in a run-bound
-  `human_reward` overlay appended through `goal-harness reward`. Active goal
+  `human_reward` overlay appended through `loopx reward`. Active goal
   state can summarize that such a reward was recorded, and the Review Packet can
   be forwarded to another project agent for immediate coordination through the
   returned history lookup, but neither replaces the compact run overlay as the
@@ -2154,7 +2154,7 @@ The repository includes a no-dependency renderer that turns any status JSON
 export into a static HTML dashboard:
 
 ```bash
-goal-harness --format json status > /tmp/goal-status.json
+loopx --format json status > /tmp/goal-status.json
 python3 examples/render-status-dashboard.py /tmp/goal-status.json /tmp/goal-status.html
 ```
 

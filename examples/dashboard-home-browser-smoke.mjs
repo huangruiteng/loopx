@@ -15,7 +15,7 @@ const dashboardDir = resolve(repoRoot, "apps/dashboard");
 const fixtureName = "status.home.browser-smoke.json";
 const fixturePath = resolve(dashboardDir, "public", fixtureName);
 const visualOutputDir = resolve(repoRoot, "output/playwright/dashboard-home-visual-acceptance");
-const port = Number(process.env.GOAL_HARNESS_DASHBOARD_HOME_SMOKE_PORT ?? "5194");
+const port = Number(process.env.LOOPX_DASHBOARD_HOME_SMOKE_PORT ?? "5194");
 
 const quotaEligible = {
   compute: 1,
@@ -143,8 +143,8 @@ const goalSpecs = [
     },
   },
   {
-    id: "goal-harness-meta",
-    domain: "goal-harness-fixture",
+    id: "loopx-meta",
+    domain: "loopx-fixture",
     status: "dashboard_home_chinese_operator_copy_contract",
     waiting_on: "codex",
     quota: { ...quotaEligible, spent_slots: 9 },
@@ -229,7 +229,7 @@ const statusFixture = {
   status_contract: {
     schema_version: 2,
     minimum_dashboard_schema_version: 2,
-    producer: "goal-harness status",
+    producer: "loopx status",
     reload_hint: "scripts/macos-dashboard-launchagent.sh restart",
   },
   contract: {
@@ -264,7 +264,7 @@ const statusFixture = {
       open_count: 2,
       items: [
         {
-          goal_id: "goal-harness-meta",
+          goal_id: "loopx-meta",
           status: "dashboard_home_chinese_operator_copy_contract",
           waiting_on: "codex",
           quota_state: "eligible",
@@ -300,7 +300,7 @@ const statusFixture = {
         control_plane: spec.controlPlane,
         user_todos: todoGroupFor(spec, "user"),
         agent_todos: todoGroupFor(spec, "agent"),
-        dependency_blockers: spec.id === "goal-harness-meta" && sideBypassUserTodo
+        dependency_blockers: spec.id === "loopx-meta" && sideBypassUserTodo
           ? {
               source: "attention_queue.user_todos",
               open_count: 1,
@@ -385,7 +385,7 @@ const statusFixture = {
     },
     items: [
       {
-        goal_id: "goal-harness-meta",
+        goal_id: "loopx-meta",
         decision_kind: "operator_gate",
         decision_at: "2025-12-24T00:00:00+00:00",
         classification: "operator_gate_approved",
@@ -409,7 +409,7 @@ const statusFixture = {
 
 function loadPlaywright() {
   const candidates = [
-    process.env.GOAL_HARNESS_PLAYWRIGHT_PACKAGE,
+    process.env.LOOPX_PLAYWRIGHT_PACKAGE,
     resolve(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"),
   ].filter(Boolean);
 
@@ -430,7 +430,7 @@ function loadPlaywright() {
     }
   }
 
-  throw new Error("Playwright package not found; install playwright or set GOAL_HARNESS_PLAYWRIGHT_PACKAGE");
+  throw new Error("Playwright package not found; install playwright or set LOOPX_PLAYWRIGHT_PACKAGE");
 }
 
 async function launchBrowser(chromium) {
@@ -465,7 +465,7 @@ function startDashboardServer() {
     throw new Error(`Vite package not installed: ${viteBin}`);
   }
   const nodeBin = [
-    process.env.GOAL_HARNESS_NODE_BIN,
+    process.env.LOOPX_NODE_BIN,
     "/opt/homebrew/bin/node",
     "/usr/local/bin/node",
     process.execPath,
@@ -602,7 +602,7 @@ async function main() {
       "需要 Codex recovery",
       "排序器 / 跨域证据",
       "具体 blocker",
-      "Goal Harness Meta",
+      "LoopX Meta",
       "配额守卫",
       "状态写回",
       "第一屏决策帧",
@@ -660,7 +660,7 @@ async function main() {
       await mobilePage.close();
     }
 
-    await page.goto(`${baseUrl}/?view=ops&goalId=goal-harness-meta&statusUrl=/${fixtureName}`, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/?view=ops&goalId=loopx-meta&statusUrl=/${fixtureName}`, { waitUntil: "networkidle" });
     await page.waitForSelector('[data-testid="control-plane-settings-panel"]', { timeout: 10_000 });
     const settingsText = await page.locator('[data-testid="control-plane-settings-panel"]').innerText();
     const requiredSettings = [
@@ -687,7 +687,7 @@ async function main() {
     const settingsCommand = await page.locator('[data-testid="control-plane-settings-command-preview"]').innerText();
     const requiredCommandParts = [
       "configure-goal",
-      "--goal-id goal-harness-meta",
+      "--goal-id loopx-meta",
       "--quota-compute 1.5",
       "--quota-window-hours 24",
       "--self-repair-enabled",

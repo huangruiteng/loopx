@@ -24,7 +24,7 @@ COMMON_REQUIRED_SNIPPETS = (
     "credentials",
     "leaderboard",
     "Codex goal",
-    "Goal Harness",
+    "LoopX",
     "Select",
     "repeat",
     "treatment",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Goal Harness behavior regressions in safe contract-only mode."""
+"""Run LoopX behavior regressions in safe contract-only mode."""
 
 from __future__ import annotations
 

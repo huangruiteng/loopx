@@ -1,20 +1,20 @@
 # Compute Quota
 
-Goal Harness should own compute allocation across projects. The first version
+LoopX should own compute allocation across projects. The first version
 should stay deliberately simple: each goal gets one compute quota number, and
 automations or controller ticks use that number to decide how often the goal may
 consume agent time.
 
 This replaces the current ad hoc pattern where priority is encoded only by
 changing automation periods. A timer can wake the executor, but the product
-policy should live in Goal Harness.
+policy should live in LoopX.
 
 ## Product Scope
 
 In v0.1, quota means **compute quota only**.
 
 It does not decide human reward, write approval, production permission, or
-operator gate outcomes. Those remain separate Goal Harness states.
+operator gate outcomes. Those remain separate LoopX states.
 
 Compute quota answers one question:
 
@@ -132,7 +132,7 @@ Current self-repair settings:
 
 - `control_plane.self_repair.enabled`: default `false`.
 - `control_plane.self_repair.allow_health_blocker_repair`: when enabled, a goal
-  may spend one bounded turn repairing Goal Harness health or contract blockers
+  may spend one bounded turn repairing LoopX health or contract blockers
   that prevent normal delivery.
 - `control_plane.self_repair.allow_waiting_projection_repair`: when enabled, a
   goal in `state=waiting` with no concrete waiting owner but with a current
@@ -157,7 +157,7 @@ agent to run work that would otherwise be blocked.
 
 The allocation rule is intentionally small:
 
-1. derive quota groups from the same status payload used by `goal-harness
+1. derive quota groups from the same status payload used by `loopx
    status`;
 2. keep `blocked_health`, `operator_gate`, `focus_wait`, `waiting`,
    `throttled`, and `paused` goals in their own lanes, even when they have a
@@ -211,7 +211,7 @@ dependency-only observation, the payload includes `work_lane_contract` with
 `lane=continuous_monitor`. If open agent todos remain, schema
 `work_lane_contract_v1` now classifies todo items as
 `task_class=advancement_task` or `task_class=continuous_monitor`. Agents should
-register executable work with `goal-harness todo add --task-class
+register executable work with `loopx todo add --task-class
 advancement_task --action-kind <token>` instead of depending on project-specific
 phrases in the automation prompt. The guard treats explicit `task_class` as
 authoritative, uses recognized generic `action_kind` tokens as the next best
@@ -248,7 +248,7 @@ one small machine contract.
 
 Executable todos can also declare explicit write-scope requirements through
 todo metadata, for example `required_write_scopes=runner%2F%2A%2A` or the CLI
-flag `goal-harness todo add --required-write-scope runner/**`. Before normal
+flag `loopx todo add --required-write-scope runner/**`. Before normal
 delivery, `quota should-run` compares the first executable advancement todo's
 `required_write_scopes` with `goal_boundary.write_scope`. If the current
 boundary does not cover the selected scope, the guard keeps `should_run=true`
@@ -260,7 +260,7 @@ or write a concrete user/controller gate before attempting the write.
 
 Executable todos can also declare environment capability requirements through
 todo metadata, for example `required_capabilities=shell%2Cbenchmark_runner` or
-the CLI flag `goal-harness todo add --required-capability benchmark_runner`.
+the CLI flag `loopx todo add --required-capability benchmark_runner`.
 This is not a global agent profile and not a permission system. It is a
 per-todo execution preflight so the guard can distinguish "quota is available"
 from "this step can actually run in the current environment."
@@ -276,7 +276,7 @@ current launcher capabilities. Basic local capabilities such as `shell`,
 add temporary capabilities with `--available-capability`, for example:
 
 ```bash
-goal-harness --format json quota should-run \
+loopx --format json quota should-run \
   --goal-id <goal-id> \
   --available-capability benchmark_runner
 ```
@@ -312,7 +312,7 @@ Multiple P0/P1 items are handled as an ordered queue, not as a single selected
 todo. The guard scans visible executable candidates in projection order and
 projects which candidates are actually runnable in `runnable_candidates`; the
 agent then chooses which runnable item to advance during its steering audit. A
-runnable P0 remains visible before any P1 fallback, but Goal Harness does not
+runnable P0 remains visible before any P1 fallback, but LoopX does not
 turn that ordering into an automatic final choice. Blocked higher-priority
 candidates stay visible in `blocked_candidates`. If every visible executable
 candidate is missing a capability, the gate returns
@@ -348,7 +348,7 @@ For autonomous heartbeats, unchanged monitor polls can be recorded as
 no-spend stall evidence with:
 
 ```bash
-goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota monitor-poll --goal-id <GOAL_ID> --source heartbeat --execute
+loopx --registry "$HOME/.codex/loopx/registry.global.json" quota monitor-poll --goal-id <GOAL_ID> --source heartbeat --execute
 ```
 
 `quota monitor-poll` is valid only when the current guard is
@@ -424,11 +424,11 @@ The first screen should make it obvious why a project is quiet:
 The first read-only or preview commands are:
 
 ```bash
-goal-harness quota status
-goal-harness quota plan
-goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id <goal-id>
-goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id <goal-id> --slots 1
-goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id <goal-id> --slots 1 --execute
+loopx quota status
+loopx quota plan
+loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <goal-id>
+loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <goal-id> --slots 1
+loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <goal-id> --slots 1 --execute
 ```
 
 These commands reuse the status contract, including contract health, global
@@ -509,7 +509,7 @@ notification, make the turn a user-action gate, or leave the top-level
 `should_run` set for an otherwise quiet no-op.
 For every registered goal, `quota should-run` also includes a `todo_write_hint`
 so agent executors know to write newly discovered user/owner work with
-`goal-harness todo add --role user` instead of hiding it in `Next Action`,
+`loopx todo add --role user` instead of hiding it in `Next Action`,
 review docs, or chat.
 For goals with `coordination.registered_agents`, `quota should-run` accepts an
 optional `--agent-id <registered-agent>`. Identity-aware heartbeat prompts pass
@@ -541,11 +541,11 @@ the preferred place for project-specific delivery boundaries; automation
 prompts should say to obey `goal_boundary` instead of repeating long protected
 file or action lists.
 It also includes `heartbeat_recommendation`, which keeps generic heartbeat
-lifecycle decisions in Goal Harness instead of one-off automation prompts. The
+lifecycle decisions in LoopX instead of one-off automation prompts. The
 common modes are:
 
 - `run_first_read_only_map`: a connected read-only goal has no saved compact run
-  yet; run one real `goal-harness read-only-map --goal-id <goal-id>`, validate
+  yet; run one real `loopx read-only-map --goal-id <goal-id>`, validate
   and save the `read_only_project_map`, then append exactly one heartbeat spend.
 - `mapped_noop_if_unchanged`: the latest compact read-only map already exists;
   if there is no new user instruction, owner evidence, agent todo, stale source,
@@ -556,7 +556,7 @@ common modes are:
   the contract is bounded, not tiny.
 
 The same response includes `interaction_contract.schema_version =
-goal_harness_interaction_contract_v0`, the top-level user/agent/CLI protocol
+loopx_interaction_contract_v0`, the top-level user/agent/CLI protocol
 for the selected turn. It tells a worker whether this is a user gate, blocker
 push, bounded delivery, external-evidence observation, monitor quiet skip,
 autonomous replan, outcome-floor recovery, mapped no-op, or quota throttle. It
@@ -694,12 +694,12 @@ one independent safe-bypass step.
 Other write commands can stay behind explicit operator approval:
 
 ```bash
-goal-harness quota set --goal-id <goal-id> --compute 0.5
-goal-harness quota pause --goal-id <goal-id>
-goal-harness quota burst --goal-id <goal-id> --slots 2 --dry-run
+loopx quota set --goal-id <goal-id> --compute 0.5
+loopx quota pause --goal-id <goal-id>
+loopx quota burst --goal-id <goal-id> --slots 2 --dry-run
 ```
 
-The important behavior is that automations ask Goal Harness whether a goal is
+The important behavior is that automations ask LoopX whether a goal is
 eligible before spending compute. They should not rely only on their own cron
 period as the priority model.
 
@@ -707,7 +707,7 @@ period as the priority model.
 
 - Each active goal can expose a compute quota such as `1.0`, `0.5`, `0.3`, or
   `0`.
-- `goal-harness status` can explain whether the goal is eligible, throttled,
+- `loopx status` can explain whether the goal is eligible, throttled,
   waiting, paused, or blocked before an automation spends another turn.
 - A shared controller can rank eligible goals by compute quota without opening
   every project-agent thread.

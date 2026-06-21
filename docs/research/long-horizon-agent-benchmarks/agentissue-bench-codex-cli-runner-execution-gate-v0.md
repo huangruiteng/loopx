@@ -8,8 +8,8 @@ This packet adds the next no-execute gate for the selected
 AgentIssue-Bench tag:
 
 ```bash
-goal-harness benchmark agentissue-codex-runner-flow \
-  --goal-id goal-harness-meta \
+loopx benchmark agentissue-codex-runner-flow \
+  --goal-id loopx-meta \
   --tag lagent_239 \
   --execution-gate-root <private-gate-root>
 ```
@@ -82,12 +82,12 @@ are rendered, and that future execution still requires a run-specific opt-in.
 ```bash
 python3 examples/agentissue-bench-codex-cli-runner-execution-gate-smoke.py
 python3 -m py_compile \
-  goal_harness/benchmark.py \
-  goal_harness/cli.py \
+  loopx/benchmark.py \
+  loopx/cli.py \
   examples/agentissue-bench-codex-cli-runner-execution-gate-smoke.py
-goal-harness check \
-  --scan-path goal_harness/benchmark.py \
-  --scan-path goal_harness/cli.py \
+loopx check \
+  --scan-path loopx/benchmark.py \
+  --scan-path loopx/cli.py \
   --scan-path examples/agentissue-bench-codex-cli-runner-execution-gate-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-execution-gate-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

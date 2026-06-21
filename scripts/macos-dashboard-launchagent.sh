@@ -2,21 +2,21 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="${GOAL_HARNESS_REPO_ROOT:-$(cd "$script_dir/.." && pwd)}"
-dashboard_dir="${GOAL_HARNESS_DASHBOARD_DIR:-$repo_root/apps/dashboard}"
-dashboard_dist_dir="${GOAL_HARNESS_DASHBOARD_DIST_DIR:-$dashboard_dir/dist}"
-bin_dir="${GOAL_HARNESS_BIN_DIR:-$HOME/.local/bin}"
-registry="${GOAL_HARNESS_GLOBAL_REGISTRY:-$HOME/.codex/goal-harness/registry.global.json}"
-status_port="${GOAL_HARNESS_STATUS_PORT:-8766}"
-status_limit="${GOAL_HARNESS_STATUS_LIMIT:-80}"
-status_contract_min_version="${GOAL_HARNESS_STATUS_CONTRACT_MIN_VERSION:-2}"
-dashboard_port="${GOAL_HARNESS_DASHBOARD_PORT:-5174}"
-host="${GOAL_HARNESS_DASHBOARD_HOST:-127.0.0.1}"
-label_prefix="${GOAL_HARNESS_LAUNCH_LABEL_PREFIX:-com.goal-harness}"
+repo_root="${LOOPX_REPO_ROOT:-$(cd "$script_dir/.." && pwd)}"
+dashboard_dir="${LOOPX_DASHBOARD_DIR:-$repo_root/apps/dashboard}"
+dashboard_dist_dir="${LOOPX_DASHBOARD_DIST_DIR:-$dashboard_dir/dist}"
+bin_dir="${LOOPX_BIN_DIR:-$HOME/.local/bin}"
+registry="${LOOPX_GLOBAL_REGISTRY:-$HOME/.codex/loopx/registry.global.json}"
+status_port="${LOOPX_STATUS_PORT:-8766}"
+status_limit="${LOOPX_STATUS_LIMIT:-80}"
+status_contract_min_version="${LOOPX_STATUS_CONTRACT_MIN_VERSION:-2}"
+dashboard_port="${LOOPX_DASHBOARD_PORT:-5174}"
+host="${LOOPX_DASHBOARD_HOST:-127.0.0.1}"
+label_prefix="${LOOPX_LAUNCH_LABEL_PREFIX:-com.loopx}"
 
 uid="$(id -u)"
 launch_agents_dir="$HOME/Library/LaunchAgents"
-logs_dir="$HOME/Library/Logs/goal-harness"
+logs_dir="$HOME/Library/Logs/loopx"
 status_label="$label_prefix.status"
 dashboard_label="$label_prefix.dashboard"
 status_plist="$launch_agents_dir/$status_label.plist"
@@ -28,25 +28,25 @@ usage() {
 Usage: $0 [--enable-control-plane-write-api] install|uninstall|start|stop|restart|status
 
 Installs user-level macOS LaunchAgents for:
-  - Goal Harness global status feed: http://$host:$status_port/status.json
-  - Goal Harness dashboard:          http://$host:$dashboard_port/
+  - LoopX global status feed: http://$host:$status_port/status.json
+  - LoopX dashboard:          http://$host:$dashboard_port/
 
 Default mode is read-only for control-plane settings. Pass
 --enable-control-plane-write-api with install or restart to write that explicit
 opt-in flag into the status LaunchAgent plist.
 
 Environment overrides:
-  GOAL_HARNESS_REPO_ROOT
-  GOAL_HARNESS_DASHBOARD_DIR
-  GOAL_HARNESS_DASHBOARD_DIST_DIR
-  GOAL_HARNESS_BIN_DIR
-  GOAL_HARNESS_GLOBAL_REGISTRY
-  GOAL_HARNESS_STATUS_PORT
-  GOAL_HARNESS_STATUS_LIMIT
-  GOAL_HARNESS_STATUS_CONTRACT_MIN_VERSION
-  GOAL_HARNESS_DASHBOARD_PORT
-  GOAL_HARNESS_DASHBOARD_HOST
-  GOAL_HARNESS_LAUNCH_LABEL_PREFIX
+  LOOPX_REPO_ROOT
+  LOOPX_DASHBOARD_DIR
+  LOOPX_DASHBOARD_DIST_DIR
+  LOOPX_BIN_DIR
+  LOOPX_GLOBAL_REGISTRY
+  LOOPX_STATUS_PORT
+  LOOPX_STATUS_LIMIT
+  LOOPX_STATUS_CONTRACT_MIN_VERSION
+  LOOPX_DASHBOARD_PORT
+  LOOPX_DASHBOARD_HOST
+  LOOPX_LAUNCH_LABEL_PREFIX
 EOF
 }
 
@@ -67,16 +67,16 @@ require_macos() {
 }
 
 resolve_status_command() {
-  if [[ -x "$bin_dir/goal-harness-canary" ]]; then
-    printf '%s\n' "$bin_dir/goal-harness-canary"
-  elif [[ -x "$bin_dir/goal-harness" ]]; then
-    printf '%s\n' "$bin_dir/goal-harness"
-  elif command -v goal-harness-canary >/dev/null 2>&1; then
-    command -v goal-harness-canary
-  elif command -v goal-harness >/dev/null 2>&1; then
-    command -v goal-harness
+  if [[ -x "$bin_dir/loopx-canary" ]]; then
+    printf '%s\n' "$bin_dir/loopx-canary"
+  elif [[ -x "$bin_dir/loopx" ]]; then
+    printf '%s\n' "$bin_dir/loopx"
+  elif command -v loopx-canary >/dev/null 2>&1; then
+    command -v loopx-canary
+  elif command -v loopx >/dev/null 2>&1; then
+    command -v loopx
   else
-    echo "goal-harness is not installed; run scripts/install-local.sh first." >&2
+    echo "loopx is not installed; run scripts/install-local.sh first." >&2
     exit 1
   fi
 }

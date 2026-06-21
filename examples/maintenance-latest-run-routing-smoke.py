@@ -11,11 +11,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.quota import build_quota_should_run  # noqa: E402
-from goal_harness.status import autonomous_backlog_candidates, goal_attention  # noqa: E402
+from loopx.quota import build_quota_should_run  # noqa: E402
+from loopx.status import autonomous_backlog_candidates, goal_attention  # noqa: E402
 
 
-GOAL_ID = "goal-harness-meta"
+GOAL_ID = "loopx-meta"
 READINESS_ACTION = (
     "Canary promotion-readiness smoke passed; promotion may proceed after "
     "doctor/status reports fresh evidence."

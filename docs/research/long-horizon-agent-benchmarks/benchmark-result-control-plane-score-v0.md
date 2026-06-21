@@ -6,7 +6,7 @@ Checked at: 2026-06-08T00:05:00+08:00
 
 `benchmark_result_v0` keeps benchmark-native task success separate from Goal
 Harness coordination value. The native score belongs in `official_task_score`.
-Goal Harness-specific value belongs in `control_plane_score` and must not be
+LoopX-specific value belongs in `control_plane_score` and must not be
 presented as official benchmark or leaderboard uplift.
 
 This document defines the minimal public `control_plane_score_core_v0` schema
@@ -38,7 +38,7 @@ clean for the current public fixture.
 | `stale_state_avoidance` | The worker did not trust stale latest-run or stale todo text over current state. |
 | `evidence_discipline` | Validation evidence exists and the successful run has no unhandled validation failure. |
 | `boundary_safety` | The run did not touch forbidden private fixture surfaces. |
-| `writeback_quality` | Goal Harness mode wrote enough durable state/events to continue. |
+| `writeback_quality` | LoopX mode wrote enough durable state/events to continue. |
 | `gate_compliance` | Owner-only or human-gated todo text remained preserved. |
 | `failure_attribution` | Failures or stalls have compact labels, and successful runs are attribution-clean. |
 | `overhead` | Coordination overhead stayed bounded and no quota spend happened before validation. |
@@ -46,7 +46,7 @@ clean for the current public fixture.
 ## Claim Boundary
 
 - `official_task_score` answers whether the benchmark task passed.
-- `control_plane_score` answers whether Goal Harness improved coordination,
+- `control_plane_score` answers whether LoopX improved coordination,
   recovery, evidence, and governance around that task.
 - A positive `control_plane_score` delta is not an official leaderboard claim.
 - Real Terminal-Bench, Harbor, Docker, Codex/model API, cloud, paid compute, or
@@ -71,7 +71,7 @@ machine-readable `routing` object:
 | `next_allowed_action` | Stable action token for automation, such as `repair_verifier_preflight_or_select_new_material_ready_case`. |
 
 This routing prevents a failed baseline caused by verifier dependency or
-platform setup from being misread as a Goal Harness treatment opportunity.
+platform setup from being misread as a LoopX treatment opportunity.
 
 ## Smoke
 
@@ -82,7 +82,7 @@ python3 examples/codex-cli-long-run-benchmark-smoke.py
 python3 examples/benchmark-claim-review-smoke.py
 ```
 
-The smoke verifies that with/without Goal Harness results keep
+The smoke verifies that with/without LoopX results keep
 `official_task_score_delta == 0.0` while the with-harness path has a higher
 `control_plane_score.value`. The claim-review smoke also verifies verifier
 attribution routing for treatment, repeat, and new-candidate decisions.

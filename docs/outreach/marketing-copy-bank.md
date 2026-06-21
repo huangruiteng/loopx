@@ -1,6 +1,6 @@
 # Marketing Copy Bank
 
-This is a public-safe source bank for Goal Harness outreach copy. It turns
+This is a public-safe source bank for LoopX outreach copy. It turns
 first-contact confusion, launch-note drafts, and maintainer advertising
 patterns into reusable language without publishing private screenshots, raw
 benchmark traces, internal links, local paths, credentials, or unverified
@@ -19,7 +19,7 @@ showcase catalog.
 
 **让多个 agent 昼夜接力，把人的判断留在控制面。**
 
-Goal Harness keeps goals, user decisions, agent todos, claims, scopes, safe
+LoopX keeps goals, user decisions, agent todos, claims, scopes, safe
 fallback, run history, quota, evidence, and public/private boundaries in one
 shared state layer. The gated route waits clearly; independent safe side work
 can continue with evidence.
@@ -38,22 +38,22 @@ Technical angle:
 
 > The always-on promise is backed by agent identity, `claimed_by`, scope,
 > capability gates, quota, run history, evidence writeback, and public/private
-> boundary checks. Goal Harness is not "run agents forever"; it is governed
+> boundary checks. LoopX is not "run agents forever"; it is governed
 > continuity: a dynamic goal control plane around executor loops.
 
 Plain Chinese form:
 
-> Goal Harness 不是新的 agent runtime。它是给 Codex、Claude Code、Cursor 这类
+> LoopX 不是新的 agent runtime。它是给 Codex、Claude Code、Cursor 这类
 > agent loop 加的一层长程控制面：目标、用户决策、agent todo、认领、scope、
 > fallback、证据和 quota 不再散落在聊天里。人的多个 agent 可以持续接力，但
 > 每一次接力都要受 gate、scope、quota 和证据约束。
 
 ## What To Say First
 
-When someone asks whether Goal Harness replaces Codex goal mode:
+When someone asks whether LoopX replaces Codex goal mode:
 
 > No. Codex goal, automation, CLI loops, Claude Code, Cursor, and benchmark
-> runners execute bounded work. Goal Harness keeps the dynamic goal control
+> runners execute bounded work. LoopX keeps the dynamic goal control
 > plane visible across those loops.
 
 When someone asks why this matters:
@@ -80,14 +80,14 @@ Good copy:
 
 - "If your agent can work for hours, it also needs a control plane for what it
   is allowed to do next."
-- "Goal Harness lets the agent keep the long-running goal stable while the
+- "LoopX lets the agent keep the long-running goal stable while the
   executor loop changes from Codex to automation to another terminal agent."
 - "It helps distinguish 'blocked by a user decision' from 'safe to continue
   another lane'."
 
 Avoid:
 
-- claiming Goal Harness makes the model smarter;
+- claiming LoopX makes the model smarter;
 - implying it replaces the coding agent;
 - promising unattended production control.
 
@@ -100,7 +100,7 @@ Good copy:
 
 - "Research tasks do not only need more context; they need durable routing
   state."
-- "When one branch is gated, Goal Harness keeps the gate visible and lets safe
+- "When one branch is gated, LoopX keeps the gate visible and lets safe
   evidence-gathering continue elsewhere."
 - "The next run inherits the latest goal, todo ownership, gate, blocker, and
   validation boundary instead of starting from a half-remembered chat."
@@ -126,7 +126,7 @@ Good copy:
   safe side path."
 - "Quota spend should follow validated writeback, not a vague feeling that the
   agent did something."
-- "Goal Harness makes overnight progress reviewable: what happened, why it was
+- "LoopX makes overnight progress reviewable: what happened, why it was
   allowed, what evidence was written, and what still needs a human."
 
 Avoid:
@@ -205,7 +205,7 @@ Use these as modular building blocks.
 
 ### Value Statements
 
-- "Goal Harness reduces state drift, not by hiding decisions, but by making
+- "LoopX reduces state drift, not by hiding decisions, but by making
   them first-class objects."
 - "It turns long-running agent work into a reviewable sequence of bounded
   decisions, actions, validations, and handoffs."
@@ -218,7 +218,7 @@ Use these as modular building blocks.
 
 Safe claims:
 
-- Goal Harness is a local control plane for long-running agent goals.
+- LoopX is a local control plane for long-running agent goals.
 - It can make user gates, agent todos, claims, quota, run history, and evidence
   visible across turns.
 - It supports public-safe showcases and synthetic demos.
@@ -249,7 +249,7 @@ Avoid entirely unless a maintainer explicitly approves a public artifact:
 Keep the first screen direct:
 
 ```text
-# Goal Harness
+# LoopX
 
 Always-on agent teams, governed by human judgment.
 
@@ -260,15 +260,15 @@ Then explain the relationship:
 
 ```text
 Codex, Claude Code, Cursor, and scheduled terminal agents execute work.
-Goal Harness keeps the dynamic goal control plane visible across those loops:
+LoopX keeps the dynamic goal control plane visible across those loops:
 goals, gates, todos, claims, scopes, run history, quota, and evidence.
 ```
 
-Prefer this wording when the reader is comparing Goal Harness to static goal
+Prefer this wording when the reader is comparing LoopX to static goal
 prompts:
 
 ```text
-Goal Harness turns a static agent goal into dynamic, reviewable state: gates,
+LoopX turns a static agent goal into dynamic, reviewable state: gates,
 todos, claims, scopes, evidence, quota, and handoff boundaries survive across
 executor loops.
 ```
@@ -282,7 +282,7 @@ Always-on agent teams, governed by human judgment
 Gate-aware human-in-the-loop control plane
 让多个 agent 昼夜接力，把人的判断留在控制面。
 
-Goal Harness 不是替代 Codex goal/automation，而是给这些 agent loop
+LoopX 不是替代 Codex goal/automation，而是给这些 agent loop
 提供动态长期目标控制面：目标、用户决策、agent todo、认领、scope、
 safe fallback、run history 和 quota 能在同一层状态里被看见、继承、验证。
 ```
@@ -303,7 +303,7 @@ handed to the next turn.
 Use a case-shaped sentence:
 
 ```text
-When a P0 lane needed owner judgment, Goal Harness kept that gate visible while
+When a P0 lane needed owner judgment, LoopX kept that gate visible while
 the agent continued a safe P1/P2 side path, wrote evidence, and preserved the
 handoff boundary.
 ```
@@ -313,7 +313,7 @@ handoff boundary.
 - "Try the synthetic showcase demo first."
 - "Add one public-safe case before adding a new claim."
 - "Open a contributor task if you have a control-plane pattern to reproduce."
-- "Use Goal Harness when your agent project spans many turns, tools, decisions,
+- "Use LoopX when your agent project spans many turns, tools, decisions,
   or handoffs."
 - "If your agent keeps working while you sleep, make the gates and evidence
   visible before you trust the result."
@@ -322,7 +322,7 @@ handoff boundary.
 
 - Prefer concrete cases over abstract hype.
 - Prefer "control plane around agent loops" over "agent teammate" framing.
-- Keep `Goal Harness` as the brand. Use "dynamic goal control plane" as the
+- Keep `LoopX` as the brand. Use "dynamic goal control plane" as the
   category, and reserve "lifetime-goal" for explaining the time horizon.
 - If a phrase becomes a stable product promise, move it into README/docs and
   add appropriate validation. Do not enforce temporary marketing wording with

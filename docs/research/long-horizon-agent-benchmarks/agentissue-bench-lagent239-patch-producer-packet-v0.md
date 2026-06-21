@@ -86,7 +86,7 @@ Targeted validation:
 ```bash
 python3 examples/agentissue-bench-lagent239-patch-producer-smoke.py
 python3 -m py_compile examples/agentissue-bench-lagent239-patch-producer-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/agentissue-bench-lagent239-patch-producer-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-lagent239-patch-producer-packet-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

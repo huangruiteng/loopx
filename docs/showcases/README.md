@@ -1,13 +1,13 @@
-# Goal Harness Showcases
+# LoopX Showcases
 
-This directory collects public-safe examples that explain where Goal Harness
+This directory collects public-safe examples that explain where LoopX
 helps and how the behavior can be reproduced or visualized.
 
 Showcases are not raw run logs. Each case should reduce a real collaboration
 into a reusable control-plane pattern:
 
-- the situation before Goal Harness was useful;
-- the Goal Harness behavior that changed the work loop;
+- the situation before LoopX was useful;
+- the LoopX behavior that changed the work loop;
 - the user-facing value in plain language;
 - the evidence boundary, including what must stay private;
 - a reproducible demo or the reason a demo is still pending;
@@ -28,7 +28,7 @@ The first creator-operator storyboard is
 Its feedback and source-status contract is
 [creator-ops-feedback-boundary-contract.md](creator-ops-feedback-boundary-contract.md).
 The first static frontstage prototype is generated from the catalog with
-`python3 examples/showcase-frontstage-prototype.py --output /tmp/goal-harness-showcases.html`.
+`python3 examples/showcase-frontstage-prototype.py --output /tmp/loopx-showcases.html`.
 
 The dashboard frontstage now has a separate public-safe share-bundle path for
 showing a live-looking control-plane board without exposing local state:
@@ -38,14 +38,14 @@ cd apps/dashboard
 npm run export:frontstage-share
 ```
 
-This writes `/tmp/goal-harness-frontstage-share-bundle` with the compiled
+This writes `/tmp/loopx-frontstage-share-bundle` with the compiled
 dashboard, a sanitized `goal_channel_projection_v0` status fixture, direct
 `/frontstage/` static-route support, and a manifest. It is the foundation for a
 future GitHub Pages showcase: Pages should publish this generated artifact, not
 live registry files or local status exports.
 Once repository Pages is enabled for GitHub Actions, the same generated bundle
 is available as the
-[hosted frontstage](https://huangruiteng.github.io/goal-harness/frontstage/).
+[hosted frontstage](https://huangruiteng.github.io/loopx/frontstage/).
 That hosted route is intentionally case-first. It should help a new user or
 developer understand the showcased patterns before reading CLI output: public
 cases, efficiency evidence, and the public boundary come from this directory;
@@ -58,12 +58,12 @@ and the
 [public storyboard artifact](showcase-animation-storyboard.json). Keep
 `showcase-catalog.json` as the only case data source.
 Generate the first catalog-backed animation prototype with
-`python3 examples/showcase-animation-prototype.py --output /tmp/goal-harness-showcase-animation.html`
+`python3 examples/showcase-animation-prototype.py --output /tmp/loopx-showcase-animation.html`
 or open the committed
 [showcase-animation-prototype.html](showcase-animation-prototype.html). Validate
 the artifact with `python3 examples/showcase-animation-prototype-smoke.py`.
 
-![Hosted Goal Harness frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
+![Hosted LoopX frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
 
 ## Current Cases
 
@@ -71,7 +71,7 @@ the artifact with `python3 examples/showcase-animation-prototype-smoke.py`.
 | --- | --- | --- | --- |
 | [0617 blocked P0 with safe P1/P2 rotation](cases/0617-blocked-p0-safe-rotation.md) | Blocked priority fallback, concrete user gate, quota discipline | Reproducible synthetic demo | `python3 examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` |
 | [0619 dynamic workflow for hardware-agent development](cases/0619-dynamic-workflow-hardware-agent.md) | Dynamic workflow, multi-agent convergence, shared control plane | Redacted stub pending contributor detail | Public-safe narrative only |
-| [0619 Goal Harness self-iteration loop](cases/0619-goal-harness-self-iteration.md) | Self-iteration, side-agent scope, evidence writeback | Public Git evidence case | Commit-backed narrative and workload signal |
+| [0619 LoopX self-iteration loop](cases/0619-loopx-self-iteration.md) | Self-iteration, side-agent scope, evidence writeback | Public Git evidence case | Commit-backed narrative and workload signal |
 | [0620 creator-operator long-running agent case](cases/0620-creator-operator-case-spec.md) | Creator-operator workflow, user gate, feedback capture, material library | Synthetic product case spec | [Fake-data storyboard](creator-ops-fake-data-storyboard.md), [feedback contract](creator-ops-feedback-boundary-contract.md) |
 
 ## Case Lifecycle
@@ -81,7 +81,7 @@ the artifact with `python3 examples/showcase-animation-prototype-smoke.py`.
 2. **Sanitized**: write a public-safe case card with the domain generalized,
    the evidence boundary explicit, and no private source material.
 3. **Reproducible**: add a small synthetic demo or smoke that proves the
-   reusable Goal Harness behavior without depending on private artifacts.
+   reusable LoopX behavior without depending on private artifacts.
 4. **Frontend-ready**: add or update the catalog fields needed for a visual
    website card, such as story beats, pattern tags, and suggested visual
    layout.
@@ -108,7 +108,7 @@ Do commit:
   `benchmark-rotation`;
 - reusable control-plane patterns, such as `concrete_user_gate`,
   `blocked_priority_fallback`, or `dynamic_workflow`;
-- synthetic demos that exercise public Goal Harness contracts;
+- synthetic demos that exercise public LoopX contracts;
 - explicit `evidence_boundary` notes that keep future authors honest.
 
 ## Future Frontend Shape
@@ -117,7 +117,7 @@ The catalog is intentionally small enough for a static website to render.
 A good first website view would show:
 
 - a card grid of cases grouped by pattern family;
-- a visual timeline for each case: trigger, Goal Harness state, agent action,
+- a visual timeline for each case: trigger, LoopX state, agent action,
   user decision, and outcome;
 - a "try the demo" command when a case has a synthetic reproduction;
 - a redaction badge when a case is a stub awaiting contributor details.

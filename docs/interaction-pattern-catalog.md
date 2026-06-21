@@ -1,6 +1,6 @@
 # Interaction Pattern Catalog
 
-Goal Harness has accumulated many user / agent / state interaction lessons.
+LoopX has accumulated many user / agent / state interaction lessons.
 The state interaction model explains the architecture; this catalog records the
 repeatable situations we want every controller, heartbeat, dashboard, and
 benchmark runner to handle the same way.
@@ -130,7 +130,7 @@ Human asks, approvals, interventions, and reward-derived lessons.
 | --- | --- | --- | --- | --- | --- |
 | P0 | IP-004 | Concrete User Todo Projection | User | ask or notify with concrete todo/question | do not hide behind generic "owner gate" text |
 | P0 | IP-014 | Decision Write Preview And Append | User/operator | explicit preview/apply decision | append only exact run-bound reward or gate decision event |
-| P1 | IP-017 | User Reward Lesson Promotion | User plus Goal Harness | acknowledge only when lesson changes route/priority/boundary | promote correction into durable lesson, todo, or projection before continuing |
+| P1 | IP-017 | User Reward Lesson Promotion | User plus LoopX | acknowledge only when lesson changes route/priority/boundary | promote correction into durable lesson, todo, or projection before continuing |
 | P2 | IP-009 | Active User Assistance | User simulator / operator | bounded intervention | inject audited user help without leaking reward/oracle signals |
 
 ### State And Boundary
@@ -167,7 +167,7 @@ Replanning, dreaming, cadence, and future-work writeback.
 | P0 | IP-013 | Autonomous Replan Vs Advisory Dreaming | Agent/controller plus user when promoted | ask only for promotion/decision | repair stalled delivery; keep dreaming proposal non-executable |
 | P1 | IP-024 | Repair Delta Contract | Agent/controller | no interruption unless repair creates a user todo | self-repair/replan must change the machine-visible frontier or record a no-op/blocker |
 | P1 | IP-010 | Cadence Widening | Agent/controller | no interruption by default | widen next work segment when turns become too small |
-| P1 | IP-018 | Plan To Todo Writeback | Agent plus Goal Harness | no interruption unless a user todo is created | write user-facing plans into todos, Next Action, or refresh-state |
+| P1 | IP-018 | Plan To Todo Writeback | Agent plus LoopX | no interruption unless a user todo is created | write user-facing plans into todos, Next Action, or refresh-state |
 
 ## Visual Model
 
@@ -176,7 +176,7 @@ implementation. Keep diagrams public-safe and generic. Prefer diagrams that
 show actor boundaries, decision ownership, and fallback behavior without raw
 project or benchmark evidence.
 
-The smallest reusable diagram is the user / agent / Goal Harness routing loop:
+The smallest reusable diagram is the user / agent / LoopX routing loop:
 
 ```mermaid
 flowchart LR
@@ -197,7 +197,7 @@ while doing fallback work.
 
 ```mermaid
 sequenceDiagram
-  participant GH as Goal Harness
+  participant GH as LoopX
   participant Agent as Agent
   participant User as User
   GH->>Agent: P0 blocked, P1 fallback safe
@@ -259,7 +259,7 @@ without a validated artifact or blocker.
 
 - `examples/work-lane-contract-smoke.py`
 - `examples/heartbeat-quota-flow-smoke.py`
-- `goal-harness check`
+- `loopx check`
 
 #### IP-002 Blocked Priority With Safe Fallback
 
@@ -289,7 +289,7 @@ now, and the pending user todo remains <concrete ask>.
 
 ```mermaid
 sequenceDiagram
-  participant GH as Goal Harness
+  participant GH as LoopX
   participant Agent as Agent
   participant User as User
   GH->>Agent: Higher P0 blocked, fallback executable
@@ -571,7 +571,7 @@ payload says user action is required but no concrete todo/question is projected,
 the correct message is a state projection bug:
 
 ```text
-specific user todo is not projected; repair Goal Harness state projection
+specific user todo is not projected; repair LoopX state projection
 ```
 
 When `action_required=false` and `user_todo_summary.open_count=0`, the system
@@ -627,7 +627,7 @@ append remains disabled until a separate equivalent handshake exists.
 sequenceDiagram
   participant User as Operator
   participant UI as Dashboard/CLI
-  participant GH as Goal Harness
+  participant GH as LoopX
   User->>UI: Select exact run or gate
   UI->>GH: Preview compact decision
   GH->>UI: public-safe preview_id / dry-run result
@@ -685,7 +685,7 @@ The correction should record:
   the rule.
 
 This is not the same as hidden model memory. The model may remember the
-conversation, but Goal Harness must expose a replayable hook for future agents.
+conversation, but LoopX must expose a replayable hook for future agents.
 
 **Visual Model**
 
@@ -708,7 +708,7 @@ main blocker or keeps following a stale local-only benchmark staging todo.
 
 **Validation**
 
-- `skills/goal-harness-self-repair/references/repair-patterns.md`
+- `skills/loopx-self-repair/references/repair-patterns.md`
 - `docs/state-interaction-model.md`
 - future `user_reward_lesson_projection_gap` status/quota smoke that checks
   explicit operating lessons are projected into `recommended_action`,
@@ -734,7 +734,7 @@ official autonomous score claims.
 ```mermaid
 sequenceDiagram
   participant Sim as User simulator
-  participant GH as Goal Harness
+  participant GH as LoopX
   participant Agent as Agent
   Sim->>GH: Public-safe intervention within budget
   GH->>Agent: Audited assistance channel
@@ -744,7 +744,7 @@ sequenceDiagram
 
 **Bad smell**
 
-The system calls a run "Goal Harness uplift" when the treatment secretly saw
+The system calls a run "LoopX uplift" when the treatment secretly saw
 reward signals, oracle information, or unbounded human hints.
 
 **Validation**
@@ -812,7 +812,7 @@ todo and the automation drifts into monitor-only no-ops.
 
 **Expected behavior**
 
-Goal Harness should return boundary projection repair or a concrete
+LoopX should return boundary projection repair or a concrete
 user/controller gate. The agent should not execute the write, and should not
 spend turns on repo-only handoff if the real blocker is missing scope
 projection.
@@ -876,11 +876,11 @@ the checkpointed decision.
 The agent should first identify the owning project, then register a compact
 source contract in that project's authority surface. If the project has a
 tracked `docs/meta/DOC_REGISTRY.yaml`, update that authority map first. If it
-does not, use the project-local `.goal-harness/registry.json` through
+does not, use the project-local `.loopx/registry.json` through
 `authority_registry.topic_authority` and `authority_registry.project_materials`.
 This distinction is a storage/publication boundary, not two competing authority
 systems: tracked `DOC_REGISTRY` files are project assets for review, while the
-ignored `authority_registry` fallback is Goal Harness control-plane state.
+ignored `authority_registry` fallback is LoopX control-plane state.
 
 The stored material should answer what it is, how fresh it is, which topic it
 governs, whether owner review or read access is needed, and how conflicts are
@@ -935,7 +935,7 @@ control-plane lane, while `todo_id` names the work item inside it. Different
 todos inside the same goal do not conflict merely because they share a goal;
 only competing pending leases for the same `todo_id` or overlapping write
 scopes should conflict. Status and future channel projections may render the
-claim, but the lease remains a projection over the Goal Harness ledger and does
+claim, but the lease remains a projection over the LoopX ledger and does
 not override `goal_boundary`, user gates, quota, or write-scope checks.
 
 When a lease is active and the selected action is inside its scope, the owner
@@ -988,7 +988,7 @@ scope into todo metadata. The side agent learns its scope from the automation
 prompt or handoff, then claims only a concrete in-scope todo:
 
 ```bash
-goal-harness todo claim \
+loopx todo claim \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by <side-agent-id>
@@ -999,7 +999,7 @@ small, validated, public-safe, and allowed by repository policy, the side agent
 may self-merge and complete the todo with evidence:
 
 ```bash
-goal-harness todo complete \
+loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by <side-agent-id> \
@@ -1094,7 +1094,7 @@ looks like a stale automation prompt instead of the completed scoped turn.
 The agent claims concrete work before delivery:
 
 ```bash
-goal-harness todo claim \
+loopx todo claim \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by <agent-id>
@@ -1108,7 +1108,7 @@ When an open todo is wrong rather than merely incomplete, the agent should
 supersede it instead of editing its text in place or marking it done:
 
 ```bash
-goal-harness todo supersede \
+loopx todo supersede \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --reason "<public-safe reason>" \
@@ -1123,14 +1123,14 @@ When a non-trivial slice is completed, the completion must either create a
 successor todo or record why no successor is needed:
 
 ```bash
-goal-harness todo complete \
+loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --evidence "<public-safe validation or artifact>" \
   --next-agent-todo "<next rollout/proof/docs/review step>"
 ```
 
-Successor todos are the lightweight lifecycle model. Goal Harness should not
+Successor todos are the lightweight lifecycle model. LoopX should not
 grow many feature states such as slice_done, rolled_out, or proven_in_product
 unless a UI/runtime need appears. A done todo means the current slice is done;
 the successor expresses the next slice. If there is truly no follow-up, the
@@ -1331,7 +1331,7 @@ the control plane.
 **Validation**
 
 - `docs/status-data-contract.md`
-- `skills/goal-harness-self-repair/references/repair-patterns.md`
+- `skills/loopx-self-repair/references/repair-patterns.md`
 - future regression where the latest N runs are neutral and the N+1 run is the
   authoritative state transition.
 
@@ -1535,7 +1535,7 @@ slice and writes back the selected todo/guidance changes, it must append a
 structured ACK:
 
 ```bash
-goal-harness refresh-state \
+loopx refresh-state \
   --goal-id <goal-id> \
   --classification autonomous_replan_recorded \
   --autonomous-replan-recorded \
@@ -1649,7 +1649,7 @@ resolved repair; it is an unclosed control-plane loop with better narration.
 **Validation**
 
 - `docs/archive/incidents/monitor-only-replan-stall-incident-20260621.md`
-- `skills/goal-harness-self-repair/references/repair-patterns.md`
+- `skills/loopx-self-repair/references/repair-patterns.md`
 - future regression that compares before/after frontier fields for repair and
   replan closeout runs.
 
@@ -1694,7 +1694,7 @@ asking it to do tiny heartbeat-shaped steps.
 
 **Trigger**
 
-- the agent tells the user a connected Goal Harness plan, top-todo list,
+- the agent tells the user a connected LoopX plan, top-todo list,
   route change, benchmark branch policy, deprecation policy, or priority stack;
 - the plan contains concrete future P0/P1/P2 work, user actions, route
   decisions, or cleanup/deprecation commitments;
@@ -1710,7 +1710,7 @@ final response, the agent must do one of:
 - write a public-safe doc/catalog entry and add the corresponding todo;
 - explicitly say the plan is speculative and no writeback was performed.
 
-This keeps the model's understanding, the user's mental plan, and Goal Harness
+This keeps the model's understanding, the user's mental plan, and LoopX
 state from diverging. It also prevents a later heartbeat from following a stale
 `recommended_action` even though the previous turn already explained a better
 route.
@@ -1736,13 +1736,13 @@ flowchart TD
 
 The agent says "current Top Todo: P0 cloud Codex login, P0 pull clean benchmark
 workspaces, P1 split-control retrospective, P1 branch hygiene runbook", but the
-active Goal Harness state contains only one broad P0 and none of the P1
+active LoopX state contains only one broad P0 and none of the P1
 successor work. The next automation then behaves as if the plan never existed.
 
 **Validation**
 
-- `skills/goal-harness-project/SKILL.md`
-- `skills/goal-harness-self-repair/references/repair-patterns.md`
+- `skills/loopx-project/SKILL.md`
+- `skills/loopx-self-repair/references/repair-patterns.md`
 - `examples/heartbeat-prompt-smoke.py`
 - future status/quota smoke that flags user-facing plans without todo or
   refresh-state writeback.

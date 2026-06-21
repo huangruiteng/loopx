@@ -16,13 +16,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     SKILLSBENCH_APP_SERVER_GOAL_WORKER_CONTRACT_SCHEMA_VERSION,
     build_skillsbench_app_server_goal_worker_contract,
     build_skillsbench_benchmark_run,
     skillsbench_route_contract,
 )
-from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
+from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     run_skillsbench_local_acp_relay_probe,
 )
 
@@ -106,7 +106,7 @@ for line in sys.stdin:
             if isinstance(block, dict)
         )
         match = re.search(
-            r"\\./(?P<name>\\.goal_harness_app_server_goal_worker_response_[0-9a-f]+\\.txt)",
+            r"\\./(?P<name>\\.loopx_app_server_goal_worker_response_[0-9a-f]+\\.txt)",
             prompt,
         )
         if match:
@@ -187,7 +187,7 @@ def test_skeleton_marks_app_server_goal_actor() -> None:
     run = build_skillsbench_benchmark_run(route=ROUTE, task_id="llm-prefix-cache-replay")
     counters = run["interaction_counters"]
     policy = run["episode_policy"]
-    assert run["source_runner"] == "goal_harness_skillsbench_host_codex_app_server_goal_worker", run
+    assert run["source_runner"] == "loopx_skillsbench_host_codex_app_server_goal_worker", run
     assert counters["native_goal_mode_requested"] is True, counters
     assert counters["native_goal_mode_invoked"] is True, counters
     assert counters["codex_acp_protocol_used"] is False, counters
@@ -309,9 +309,9 @@ def test_host_worker_contract_only_cli() -> None:
     assert contract["route"] == ROUTE, contract
     assert contract["worker_adapter"]["script"] == "scripts/skillsbench_host_codex_goal_worker.py", contract
     assert contract["worker_adapter"]["reasoning_effort"] == "high", contract
-    assert payload["goal_harness_mode"] == "codex_goal_mode_baseline", payload
-    assert payload["goal_harness_access_packet_mode"] == "none", payload
-    assert payload["goal_harness_case_lifecycle_packet_injected"] is False, payload
+    assert payload["loopx_mode"] == "codex_goal_mode_baseline", payload
+    assert payload["loopx_access_packet_mode"] == "none", payload
+    assert payload["loopx_case_lifecycle_packet_injected"] is False, payload
     assert payload["benchmark_case_lifecycle_contract"] is None, payload
 
 
@@ -322,40 +322,40 @@ def test_host_worker_treatment_lifecycle_packet_is_public_safe() -> None:
             "--task-id",
             "tictoc-unnecessary-abort-detection",
             "--contract-only",
-            "--goal-harness-mode",
-            "codex_goal_harness",
-            "--goal-harness-access-packet-mode",
+            "--loopx-mode",
+            "codex_loopx",
+            "--loopx-access-packet-mode",
             "compact",
-            "--goal-harness-case-id",
+            "--loopx-case-id",
             "tictoc-unnecessary-abort-detection",
-            "--goal-harness-arm-id",
-            "goal_harness_prompt_polling_test",
-            "--goal-harness-max-rounds",
+            "--loopx-arm-id",
+            "loopx_prompt_polling_test",
+            "--loopx-max-rounds",
             "5",
         ]
     )
-    packet, contract = worker.build_goal_harness_case_lifecycle_packet(args)
+    packet, contract = worker.build_loopx_case_lifecycle_packet(args)
     assert contract is not None
-    assert "skillsbench_goal_harness_case_lifecycle_packet_v0:" in packet
+    assert "skillsbench_loopx_case_lifecycle_packet_v0:" in packet
     assert "packet_mode: compact" in packet
     assert "benchmark_family: benchflow" in packet
     assert "benchmark_case_lifecycle_contract:" in packet
     assert "benchmark_id: skillsbench" in packet
     assert "case_id: tictoc-unnecessary-abort-detection" in packet
-    assert "arm_id: goal_harness_prompt_polling_test" in packet
+    assert "arm_id: loopx_prompt_polling_test" in packet
     assert (
-        "benchmark_case_goal_id: skillsbench-tictoc-unnecessary-abort-detection-goal-harness-prompt-polling-test-case"
+        "benchmark_case_goal_id: skillsbench-tictoc-unnecessary-abort-detection-loopx-prompt-polling-test-case"
         in packet
     )
     assert "case_state_path: /app/.codex/goals/" in packet
     assert "required_lifecycle_steps: quota_should_run,todo_claim_or_update,bounded_agent_turn,validation_or_case_result,refresh_state,quota_spend" in packet
     assert "runner_internal_prompt_polling_only_allowed: false" in packet
     assert "/Users/" not in packet
-    prompt = worker._prompt_with_goal_harness_case_lifecycle_packet(
+    prompt = worker._prompt_with_loopx_case_lifecycle_packet(
         "Private task instruction placeholder.",
         packet,
     )
-    assert "Goal Harness case lifecycle packet:" in prompt
+    assert "LoopX case lifecycle packet:" in prompt
     assert "official SkillsBench/BenchFlow verifier authoritative" in prompt
     assert "Private task instruction placeholder." in prompt
     assert "/Users/" not in prompt
@@ -402,8 +402,8 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         assert payload["ok"] is True, payload
         assert payload["turn"]["turn_completed_observed"] is True, payload
         assert payload["turn"]["assistant_message_present"] is True, payload
-        assert payload["goal_harness_case_lifecycle_packet_injected"] is False, payload
-        assert payload["turn"]["goal_harness_case_lifecycle_packet_injected"] is False, payload
+        assert payload["loopx_case_lifecycle_packet_injected"] is False, payload
+        assert payload["turn"]["loopx_case_lifecycle_packet_injected"] is False, payload
         assert payload["private_response_text"]["written"] is True, payload
         assert payload["private_response_text"]["path_recorded"] is False, payload
         assert private_response.read_text(encoding="utf-8") == "private worker answer"
@@ -462,7 +462,7 @@ def test_host_worker_marker_completion_when_turn_completed_is_missing() -> None:
         assert turn["assistant_message_present"] is True, payload
         assert payload["private_response_text"]["written"] is True, payload
         assert private_response.read_text(encoding="utf-8") == "private marker answer"
-        assert not list(work.glob(".goal_harness_app_server_goal_worker_response_*.txt"))
+        assert not list(work.glob(".loopx_app_server_goal_worker_response_*.txt"))
         public_json = json.dumps(payload)
         assert "private marker answer" not in public_json, payload
         assert "Private task instruction placeholder" not in public_json, payload

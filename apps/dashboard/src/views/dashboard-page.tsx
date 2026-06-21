@@ -408,7 +408,7 @@ function buildRewardCommand({
   followUp: string;
 }) {
   const lines = [
-    "goal-harness \\",
+    "loopx \\",
     `  --registry ${shellQuote(registry)} \\`,
     `  --runtime-root ${shellQuote(runtimeRoot)} \\`,
     "  reward \\",
@@ -1971,9 +1971,9 @@ function buildConfigureGoalCommand({
   if (!goalId) {
     return "";
   }
-  const registryArg = registry ? shellArg(registry) : "$HOME/.codex/goal-harness/registry.global.json";
+  const registryArg = registry ? shellArg(registry) : "$HOME/.codex/loopx/registry.global.json";
   const parts = [
-    "goal-harness",
+    "loopx",
     "--registry",
     registryArg,
     "configure-goal",
@@ -2387,8 +2387,8 @@ const shareGoalSpecs: ShareGoalSpec[] = [
     icon: ShieldCheck,
   },
   {
-    id: "goal-harness-meta",
-    label: "Goal Harness Meta",
+    id: "loopx-meta",
+    label: "LoopX Meta",
     subtitle: "控制面自举与稳定性",
     emphasis: "把观察循环转成状态、配额、active-state 的可验证产品改动。",
     accent: "border-t-sky-500",
@@ -2790,7 +2790,7 @@ function shareStatusForGoal(view: ShareGoalView): { label: string; summary: stri
       variant: "info",
     };
   }
-  if (view.spec.id === "goal-harness-meta") {
+  if (view.spec.id === "loopx-meta") {
     return {
       label: "控制面健康",
       summary: "全局注册表、配额守卫、active-state 刷新处于可观测闭环。",
@@ -3141,7 +3141,7 @@ function ShareGuardEvidence({
 }) {
   const side = views.find((view) => view.spec.id === "showcase-side-agent-self-iteration");
   const creator = views.find((view) => view.spec.id === "showcase-creator-operator");
-  const meta = views.find((view) => view.spec.id === "goal-harness-meta");
+  const meta = views.find((view) => view.spec.id === "loopx-meta");
   const gate = views.find((view) => view.spec.id === "showcase-user-gate-safe-side-path");
   const sideGap = side?.row?.queueItem?.handoff_readiness?.post_handoff_outcome_gap_streak
     ?? side?.row?.queueItem?.quota?.post_handoff_outcome_gap_streak
@@ -3369,7 +3369,7 @@ function ShareEvidenceView({
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="max-w-3xl">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="success">Goal Harness 控制面</Badge>
+                  <Badge variant="success">LoopX 控制面</Badge>
                   <Badge variant="neutral">公开 showcase</Badge>
                   <Badge variant={payload.ok ? "success" : "danger"}>{payload.ok ? "状态健康" : "健康阻塞"}</Badge>
                 </div>
@@ -3377,7 +3377,7 @@ function ShareEvidenceView({
                   把多项目 Agent 工作变成可管理的 Todo、证据和配额
                 </h1>
                 <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">
-                  这个看板只展示公开 showcases：user gate、side-agent 自迭代、creator operator 和 Goal Harness Meta 统一到同一套控制面。
+                  这个看板只展示公开 showcases：user gate、side-agent 自迭代、creator operator 和 LoopX Meta 统一到同一套控制面。
                   用户待办单独挂起，Agent 高优任务继续推进，配额守卫和交接合约负责防止重复空转。
                 </p>
               </div>
@@ -3603,7 +3603,7 @@ function buildStatusCommand({
   runtimeRoot: string;
 }) {
   return [
-    "goal-harness \\",
+    "loopx \\",
     `  --registry ${shellQuote(registry)} \\`,
     `  --runtime-root ${shellQuote(runtimeRoot)} \\`,
     "  --format json \\",
@@ -3621,7 +3621,7 @@ function buildHistoryCommand({
   runtimeRoot: string;
 }) {
   return [
-    "goal-harness \\",
+    "loopx \\",
     `  --registry ${shellQuote(registry)} \\`,
     `  --runtime-root ${shellQuote(runtimeRoot)} \\`,
     "  history \\",
@@ -3640,7 +3640,7 @@ function buildReadOnlyMapDryRunCommand({
   runtimeRoot: string;
 }) {
   return [
-    "goal-harness \\",
+    "loopx \\",
     `  --registry ${shellQuote(registry)} \\`,
     `  --runtime-root ${shellQuote(runtimeRoot)} \\`,
     "  read-only-map \\",
@@ -3659,7 +3659,7 @@ function buildRefreshStateDryRunCommand({
   runtimeRoot: string;
 }) {
   return [
-    "goal-harness \\",
+    "loopx \\",
     `  --registry ${shellQuote(registry)} \\`,
     `  --runtime-root ${shellQuote(runtimeRoot)} \\`,
     "  refresh-state \\",
@@ -3678,7 +3678,7 @@ function buildOperatorGateDryRunCommand({
   runtimeRoot: string;
 }) {
   return [
-    "goal-harness \\",
+    "loopx \\",
     `  --registry ${shellQuote(registry)} \\`,
     `  --runtime-root ${shellQuote(runtimeRoot)} \\`,
     "  operator-gate \\",
@@ -5627,7 +5627,7 @@ export function DashboardPage() {
                 <GitBranch className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-sm font-semibold">Goal Harness</div>
+                <div className="text-sm font-semibold">LoopX</div>
                 <div className="text-xs text-zinc-400">Local control plane</div>
               </div>
             </div>

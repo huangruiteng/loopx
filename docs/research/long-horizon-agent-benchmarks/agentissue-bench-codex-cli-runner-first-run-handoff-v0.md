@@ -8,8 +8,8 @@ This packet turns the guarded `lagent_239` execution gate into a no-execute
 first-run handoff surface:
 
 ```bash
-goal-harness benchmark agentissue-codex-runner-flow \
-  --goal-id goal-harness-meta \
+loopx benchmark agentissue-codex-runner-flow \
+  --goal-id loopx-meta \
   --tag lagent_239 \
   --first-run-handoff-root <private-gate-root>
 ```
@@ -30,7 +30,7 @@ private packet root.
 The handoff packet records the command shape:
 
 ```text
-goal-harness benchmark agentissue-codex-runner-flow --goal-id <goal-id> --tag lagent_239 --execution-gate-root <private-gate-root> --delivery-batch-scale multi_surface --delivery-outcome outcome_progress --execute
+loopx benchmark agentissue-codex-runner-flow --goal-id <goal-id> --tag lagent_239 --execution-gate-root <private-gate-root> --delivery-batch-scale multi_surface --delivery-outcome outcome_progress --execute
 ```
 
 It records a private artifact boundary:
@@ -70,12 +70,12 @@ rendered, while all real execution flags remain false.
 ```bash
 python3 examples/agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py
 python3 -m py_compile \
-  goal_harness/benchmark.py \
-  goal_harness/cli.py \
+  loopx/benchmark.py \
+  loopx/cli.py \
   examples/agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py
-goal-harness check \
-  --scan-path goal_harness/benchmark.py \
-  --scan-path goal_harness/cli.py \
+loopx check \
+  --scan-path loopx/benchmark.py \
+  --scan-path loopx/cli.py \
   --scan-path examples/agentissue-bench-codex-cli-runner-first-run-handoff-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-first-run-handoff-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

@@ -4,7 +4,7 @@ This packet adds one no-execute target-runner handoff for the selected
 AgentIssue-Bench tag `lagent_239`:
 
 ```bash
-goal-harness benchmark agentissue-codex-runner-flow \
+loopx benchmark agentissue-codex-runner-flow \
   --goal-id <goal-id> \
   --tag lagent_239 \
   --target-runner-handoff-root <private-handoff-root>
@@ -54,7 +54,7 @@ Private execution artifacts must be reduced before any public writeback.
 ```bash
 python3 examples/agentissue-bench-codex-cli-runner-target-handoff-smoke.py
 python3 -m py_compile examples/agentissue-bench-codex-cli-runner-target-handoff-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/agentissue-bench-codex-cli-runner-target-handoff-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-target-handoff-v0.md
 ```

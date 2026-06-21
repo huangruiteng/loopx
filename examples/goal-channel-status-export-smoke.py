@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 GOAL_ID = "goal-channel-status-export"
@@ -34,17 +34,17 @@ def write_state(project: Path) -> str:
         "[P2] Export the read-only goal channel projection through status.\n\n"
         "## User Todo / Owner Review Reading Queue\n\n"
         "- [ ] [P0] Decide whether the gated route can continue.\n"
-        "  <!-- goal-harness:todo todo_id=todo_user_gate status=open task_class=user_gate -->\n\n"
+        "  <!-- loopx:todo todo_id=todo_user_gate status=open task_class=user_gate -->\n\n"
         "## Agent Todo\n\n"
         "- [ ] [P2] Publish the status-feed projection without write authority.\n"
-        "  <!-- goal-harness:todo todo_id=todo_agent_projection status=open task_class=advancement_task action_kind=goal_channel_status_export claimed_by=codex-side-bypass -->\n",
+        "  <!-- loopx:todo todo_id=todo_agent_projection status=open task_class=advancement_task action_kind=goal_channel_status_export claimed_by=codex-side-bypass -->\n",
         encoding="utf-8",
     )
     return state_file
 
 
 def write_registry(project: Path, runtime: Path) -> Path:
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(
         json.dumps(
@@ -90,7 +90,7 @@ def write_run_history(runtime: Path) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-goal-channel-status-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-goal-channel-status-") as tmp:
         root = Path(tmp)
         project = root / "project"
         runtime = root / "runtime"

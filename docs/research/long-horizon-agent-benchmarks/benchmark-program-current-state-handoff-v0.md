@@ -2,7 +2,7 @@
 
 Checked at: 2026-06-08T03:34:00+08:00.
 
-This handoff is the compact current-state runbook for the Goal Harness
+This handoff is the compact current-state runbook for the LoopX
 long-horizon benchmark research program. It tells a fresh worker what the
 current evidence means, which artifacts own the details, and which transitions
 are allowed next.

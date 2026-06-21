@@ -21,9 +21,9 @@ def run_cli(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     home = cwd / "home"
     home.mkdir(parents=True, exist_ok=True)
     env["HOME"] = str(home)
-    env.pop("GOAL_HARNESS_REGISTRY", None)
+    env.pop("LOOPX_REGISTRY", None)
     return subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=cwd,
         env=env,
         text=True,
@@ -64,7 +64,7 @@ def main() -> int:
         project = root / "project"
         project.mkdir()
         (project / "README.md").write_text("public docs stay clean\n", encoding="utf-8")
-        for dirname in [".local", ".goal-harness", ".goal-wrapper.local", "runtime"]:
+        for dirname in [".local", ".loopx", ".goal-wrapper.local", "runtime"]:
             local_dir = project / dirname
             local_dir.mkdir(parents=True)
             (local_dir / "private.md").write_text(PRIVATE_DOC_MARKER, encoding="utf-8")

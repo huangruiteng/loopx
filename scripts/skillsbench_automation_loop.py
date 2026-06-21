@@ -6,21 +6,21 @@ keeps task execution and verification inside BenchFlow, then reduces only the
 official result/timing files into ``benchmark_run_v0``.
 
 The ``codex-app-server-goal-baseline`` route is the native Codex Goal baseline
-surface. The comparable Goal Harness test route is
-``goal-harness-prompt-polling-test``: it uses BenchFlow's ``BaseUser``
-progressive-disclosure hook as the outer Goal Harness polling controller
+surface. The comparable LoopX test route is
+``loopx-prompt-polling-test``: it uses BenchFlow's ``BaseUser``
+progressive-disclosure hook as the outer LoopX polling controller
 without forwarding official reward, pass/fail, verifier errors, or verifier
 output back to the agent:
 
-- round 0 sends the task instruction with a Goal Harness controller header;
+- round 0 sends the task instruction with a LoopX controller header;
 - later rounds are scheduled continuations that explicitly say they are not
   evidence of verifier success or failure;
 - public closeout reads only official ``result.json`` and ``timing.json``.
 
-The historical ``goal-harness-blind-loop-treatment`` route is kept as an alias
+The historical ``loopx-blind-loop-treatment`` route is kept as an alias
 for existing SkillsBench rows that used the same no-feedback polling semantics.
 The ``codex-acp-blind-loop-baseline`` route uses the same no-reward loop budget
-with an ordinary Codex prompt and no Goal Harness controller semantics. The
+with an ordinary Codex prompt and no LoopX controller semantics. The
 older ``automation-loop-treatment`` route intentionally forwards failed-reward
 feedback and is kept only as a reward-feedback ablation.
 
@@ -41,10 +41,10 @@ Run from the SkillsBench checkout so BenchFlow's dependency environment is
 available, for example:
 
     cd .local/benchmark/externals/skillsbench
-    uv run python /path/to/goal-harness/scripts/skillsbench_automation_loop.py \
+    uv run python /path/to/loopx/scripts/skillsbench_automation_loop.py \
       --task-id react-performance-debugging
 
-When invoked from the Goal Harness repository with a Python that cannot import
+When invoked from the LoopX repository with a Python that cannot import
 ``benchflow``, the launcher re-execs itself with the SkillsBench checkout's
 ``.venv/bin/python`` if that environment is present.
 """
@@ -72,67 +72,67 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-from goal_harness.benchmark_case_state import (  # noqa: E402
+from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
     benchmark_case_active_state_path,
     benchmark_case_active_state_seed_text,
     benchmark_case_active_state_write_command,
 )
-from goal_harness.benchmark_adapters.skillsbench import (  # noqa: E402
+from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
     build_skillsbench_app_server_goal_worker_contract,
     build_skillsbench_worker_handshake_preflight,
 )
-from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
+from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     default_skillsbench_local_acp_relay_command,
     run_skillsbench_host_local_acp_transport_probe,
     run_skillsbench_local_acp_relay_probe,
 )
-from goal_harness.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
+from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     run_skillsbench_remote_command_file_bridge_probe,
 )
-from goal_harness.benchmark_core.loop_protocol import (  # noqa: E402
+from loopx.benchmark_core.loop_protocol import (  # noqa: E402
     AUTOMATION_LOOP_TREATMENT_ROUTE,
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
     CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
-    GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE,
-    GOAL_HARNESS_PRODUCT_MODE_ROUTE,
-    GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
+    LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
+    LOOPX_PRODUCT_MODE_ROUTE,
+    LOOPX_PROMPT_POLLING_TEST_ROUTE,
     RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
     build_benchmark_loop_controller_trace,
     build_blind_loop_continuation_prompt,
     build_blind_loop_initial_prompt,
 )
-from goal_harness.benchmark_trajectory import summarize_public_acp_trajectory
+from loopx.benchmark_trajectory import summarize_public_acp_trajectory
 
 DEFAULT_SKILLSBENCH_ROOT = REPO_ROOT / ".local/benchmark/externals/skillsbench"
 DEFAULT_LEDGER = (
     REPO_ROOT
     / "docs/research/long-horizon-agent-benchmarks/benchmark-run-ledger.json"
 )
-DEFAULT_GOAL_ID = "goal-harness-meta"
+DEFAULT_GOAL_ID = "loopx-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
 DEFAULT_MAX_ROUNDS = BLIND_LOOP_DEFAULT_MAX_ROUNDS
 _MISSING = object()
 SUPPORTED_ROUTES = (
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
-    GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE,
-    GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
+    LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
+    LOOPX_PROMPT_POLLING_TEST_ROUTE,
     RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
-    GOAL_HARNESS_PRODUCT_MODE_ROUTE,
+    LOOPX_PRODUCT_MODE_ROUTE,
     CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
     "codex-goal-mode-baseline",
     AUTOMATION_LOOP_TREATMENT_ROUTE,
 )
-DEFAULT_ROUTE = GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE
+DEFAULT_ROUTE = LOOPX_BLIND_LOOP_TREATMENT_ROUTE
 CODEX_ACP_SET_MODEL_UNSUPPORTED_LABEL = "codex_acp_set_model_unsupported"
 ACP_TRAJECTORY_SUMMARY_SCHEMA_VERSION = "skillsbench_acp_trajectory_summary_v0"
 LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION = (
     "skillsbench_local_codex_participant_materialization_v0"
 )
 LOCAL_CODEX_PARTICIPANT_READY_MARKER = (
-    "GOAL_HARNESS_LOCAL_CODEX_PARTICIPANT_READY"
+    "LOOPX_LOCAL_CODEX_PARTICIPANT_READY"
 )
 PRODUCT_MODE_CASE_GOAL_ID = "skillsbench-case"
 PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
@@ -163,19 +163,19 @@ def _filter_kwargs_for_signature(
     }
 
 
-DOCKER_APP_SKILLS_MOUNT_BEGIN = "# BEGIN GOAL_HARNESS_SKILLSBENCH_APP_SKILLS_MOUNT"
-DOCKER_APP_SKILLS_MOUNT_END = "# END GOAL_HARNESS_SKILLSBENCH_APP_SKILLS_MOUNT"
-DOCKER_APT_RETRY_BEGIN = "# BEGIN GOAL_HARNESS_SKILLSBENCH_APT_RETRY"
-DOCKER_APT_RETRY_END = "# END GOAL_HARNESS_SKILLSBENCH_APT_RETRY"
+DOCKER_APP_SKILLS_MOUNT_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
+DOCKER_APP_SKILLS_MOUNT_END = "# END LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
+DOCKER_APT_RETRY_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APT_RETRY"
+DOCKER_APT_RETRY_END = "# END LOOPX_SKILLSBENCH_APT_RETRY"
 DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN = (
-    "# BEGIN GOAL_HARNESS_SKILLSBENCH_CODEX_ACP_RUNTIME_TOOLS"
+    "# BEGIN LOOPX_SKILLSBENCH_CODEX_ACP_RUNTIME_TOOLS"
 )
 DOCKER_CODEX_ACP_RUNTIME_TOOLS_END = (
-    "# END GOAL_HARNESS_SKILLSBENCH_CODEX_ACP_RUNTIME_TOOLS"
+    "# END LOOPX_SKILLSBENCH_CODEX_ACP_RUNTIME_TOOLS"
 )
-DOCKER_HOST_CPU_ENV = "GOAL_HARNESS_SKILLSBENCH_DOCKER_CPUS"
+DOCKER_HOST_CPU_ENV = "LOOPX_SKILLSBENCH_DOCKER_CPUS"
 SANDBOX_PATH_RE = re.compile(r"/(?:app|root|workspace|tmp)/[A-Za-z0-9_./-]+")
-GOAL_HARNESS_CLI_RE = re.compile(r"(?:^|\s)goal-harness(?:\s|$)")
+LOOPX_CLI_RE = re.compile(r"(?:^|\s)loopx(?:\s|$)")
 SHELL_EDIT_RE = re.compile(
     r"(?i)(?:apply_patch|perl\b.*\s-[0-9a-z]*p|sed\b.*\s-i|"
     r"python\b.*(?:write_text|open\(.+['\"]w|Path\(.+\)\.write)|"
@@ -1035,7 +1035,7 @@ def build_compose_setup_diagnostic(
         interaction.get("private_trajectory_round_count")
     )
     tool_call_count = _public_int(interaction.get("private_trajectory_tool_call_count"))
-    goal_harness_cli_count = _public_int(interaction.get("goal_harness_cli_call_count"))
+    loopx_cli_count = _public_int(interaction.get("loopx_cli_call_count"))
     round_reward_count = _public_int(interaction.get("controller_round_reward_count"))
     agent_rounds_started = any(
         value > 0
@@ -1044,7 +1044,7 @@ def build_compose_setup_diagnostic(
             action_decision_count,
             trajectory_round_count,
             tool_call_count,
-            goal_harness_cli_count,
+            loopx_cli_count,
             round_reward_count,
         )
     )
@@ -1118,7 +1118,7 @@ def build_compose_setup_diagnostic(
         "controller_action_decision_count": action_decision_count,
         "trajectory_round_count": trajectory_round_count,
         "trajectory_tool_call_count": tool_call_count,
-        "goal_harness_cli_call_count": goal_harness_cli_count,
+        "loopx_cli_call_count": loopx_cli_count,
         "round_reward_count": round_reward_count,
         "official_score_missing": official_score_missing,
         "official_result_json_materialized": official_result_materialized,
@@ -1186,7 +1186,7 @@ def _strip_marker_block(text: str, begin: str, end: str) -> str:
 
 
 def _write_text_atomic(path: Path, content: str) -> None:
-    tmp = path.with_name(f"{path.name}.goal-harness-tmp")
+    tmp = path.with_name(f"{path.name}.loopx-tmp")
     tmp.write_text(content, encoding="utf-8")
     os.replace(tmp, path)
 
@@ -1197,7 +1197,7 @@ def product_mode_case_state_seed_text(
     route: str,
     max_rounds: int,
 ) -> str:
-    """Return a public-safe Goal Harness active-state skeleton for a case."""
+    """Return a public-safe LoopX active-state skeleton for a case."""
 
     return benchmark_case_active_state_seed_text(
         benchmark_name="SkillsBench",
@@ -1407,7 +1407,7 @@ def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
         "      'Acquire::http::No-Cache \"true\";' \\\n"
         "      'Acquire::https::No-Cache \"true\";' \\\n"
         "      'Acquire::Check-Valid-Until \"false\";' \\\n"
-        "      > /etc/apt/apt.conf.d/80-goal-harness-retry; \\\n"
+        "      > /etc/apt/apt.conf.d/80-loopx-retry; \\\n"
         "    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb\n"
         f"{DOCKER_APT_RETRY_END}"
     )
@@ -1456,7 +1456,7 @@ def patch_dockerfile_codex_acp_runtime_tools(dockerfile: Path) -> bool:
         "        'Acquire::http::No-Cache \"true\";' \\\n"
         "        'Acquire::https::No-Cache \"true\";' \\\n"
         "        'Acquire::Check-Valid-Until \"false\";' \\\n"
-        "        > /etc/apt/apt.conf.d/80-goal-harness-retry; \\\n"
+        "        > /etc/apt/apt.conf.d/80-loopx-retry; \\\n"
         "      apt-get update -qq; \\\n"
         "      apt-get install -y -qq --no-install-recommends ca-certificates curl tar xz-utils; \\\n"
         "      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb; \\\n"
@@ -1607,12 +1607,12 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     job_name = args.job_name or (
         f"skillsbench-{task_id}-{route}-{_now_stamp()}"
     )
-    if route == GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE:
-        rollout_suffix = "goal_harness_prompt_polling_test"
-    elif route == GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE:
-        rollout_suffix = "goal_harness_blind_loop"
-    elif route == "goal-harness-product-mode":
-        rollout_suffix = "goal_harness_product_mode"
+    if route == LOOPX_PROMPT_POLLING_TEST_ROUTE:
+        rollout_suffix = "loopx_prompt_polling_test"
+    elif route == LOOPX_BLIND_LOOP_TREATMENT_ROUTE:
+        rollout_suffix = "loopx_blind_loop"
+    elif route == "loopx-product-mode":
+        rollout_suffix = "loopx_product_mode"
     elif route == "raw-codex-autonomous-max5":
         rollout_suffix = "raw_codex_autonomous_max5"
     elif route == "codex-acp-blind-loop-baseline":
@@ -1620,14 +1620,14 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     elif route == "codex-app-server-goal-baseline":
         rollout_suffix = "codex_app_server_goal"
     elif route == "automation-loop-treatment":
-        rollout_suffix = "goal_harness_reward_feedback_ablation"
+        rollout_suffix = "loopx_reward_feedback_ablation"
     else:
         rollout_suffix = route_slug
     rollout_name = args.rollout_name or f"{task_id}__{rollout_suffix}"
     jobs_dir = Path(args.jobs_dir).expanduser()
     result_path = jobs_dir / job_name / rollout_name / "result.json"
     compact_path = jobs_dir / job_name / rollout_name / "benchmark_run.compact.json"
-    controller_trace_path = jobs_dir / job_name / "goal_harness_controller_trace.public.json"
+    controller_trace_path = jobs_dir / job_name / "loopx_controller_trace.public.json"
     app_server_goal_worker_trace_dir = (
         jobs_dir / job_name / "app_server_goal_worker_traces"
     )
@@ -2185,34 +2185,34 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
     trace = build_benchmark_loop_controller_trace(
         route=route,
         max_rounds=max_rounds,
-        schema_version="skillsbench_goal_harness_controller_trace_v0",
+        schema_version="skillsbench_loopx_controller_trace_v0",
     )
     trace.update(
         {
         "case_goal_state_packet_present": False,
-        "case_goal_state_init_required": route == GOAL_HARNESS_PRODUCT_MODE_ROUTE,
+        "case_goal_state_init_required": route == LOOPX_PRODUCT_MODE_ROUTE,
         "case_goal_state_initialized_before_agent": False,
         "case_goal_state_init_status": "not_applicable",
         "case_goal_state_path": (
             PRODUCT_MODE_CASE_STATE_PATH
-            if route == GOAL_HARNESS_PRODUCT_MODE_ROUTE
+            if route == LOOPX_PRODUCT_MODE_ROUTE
             else ""
         ),
         "case_goal_state_schema_version": (
             PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION
-            if route == GOAL_HARNESS_PRODUCT_MODE_ROUTE
+            if route == LOOPX_PRODUCT_MODE_ROUTE
             else ""
         ),
         "declared_done_requires_no_remaining_goals": route
-        == GOAL_HARNESS_PRODUCT_MODE_ROUTE,
+        == LOOPX_PRODUCT_MODE_ROUTE,
         "agent_declared_done": False,
         "agent_declared_no_remaining_goals": False,
         "declared_done_round": None,
         "declared_done_score": None,
-        "goal_harness_state_reads": 0,
-        "goal_harness_state_writes": 0,
-        "goal_harness_case_state_reads": 0,
-        "goal_harness_case_state_writes": 0,
+        "loopx_state_reads": 0,
+        "loopx_state_writes": 0,
+        "loopx_case_state_reads": 0,
+        "loopx_case_state_writes": 0,
         "native_goal_worker_route": route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
         "native_goal_worker_connected": False,
         "native_goal_worker_connect_count": 0,
@@ -2364,8 +2364,8 @@ def _tool_title_kind(title: str) -> str:
     if not text:
         return "unknown"
     lower = text.lower()
-    if GOAL_HARNESS_CLI_RE.search(text):
-        return "goal_harness_cli"
+    if LOOPX_CLI_RE.search(text):
+        return "loopx_cli"
     if lower.startswith("read "):
         return "read_file"
     if lower.startswith("search "):
@@ -2387,7 +2387,7 @@ def _tool_title_kind(title: str) -> str:
     return lower.split()[0][:40]
 
 
-def _normalized_goal_harness_cli_call(
+def _normalized_loopx_cli_call(
     title: str,
     *,
     round_index: int,
@@ -2401,7 +2401,7 @@ def _normalized_goal_harness_cli_call(
         (
             index
             for index, token in enumerate(tokens)
-            if token == "goal-harness" or token.endswith("/goal-harness")
+            if token == "loopx" or token.endswith("/loopx")
         ),
         -1,
     )
@@ -2419,7 +2419,7 @@ def _normalized_goal_harness_cli_call(
             subcommands.append(token)
             if len(subcommands) >= 2:
                 break
-    command = " ".join(["goal-harness", *subcommands])
+    command = " ".join(["loopx", *subcommands])
     return {
         "round": max(1, round_index),
         "command": command,
@@ -2458,7 +2458,7 @@ def _protected_paths_continuation_clause(instruction: str) -> str:
 def _blind_loop_persistent_continuation_clause(instruction: str) -> str:
     return (
         " Durable controller constraints from round 1 still apply: do not "
-        "invoke /goal mode, external Goal Harness CLI, upload, submit, or ask "
+        "invoke /goal mode, external LoopX CLI, upload, submit, or ask "
         "the human for routine execution choices."
         f"{_protected_paths_continuation_clause(instruction)}"
     )
@@ -2501,8 +2501,8 @@ def _record_declared_done(
 
 
 def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
-    reads = trace.get("goal_harness_case_state_reads")
-    writes = trace.get("goal_harness_case_state_writes")
+    reads = trace.get("loopx_case_state_reads")
+    writes = trace.get("loopx_case_state_writes")
     return (
         isinstance(reads, int)
         and not isinstance(reads, bool)
@@ -2573,28 +2573,28 @@ def _merge_acp_trajectory_summary(
                 codex_acp_size = 0
             summary["codex_acp_text_present"] = codex_acp_size > 0
             summary["codex_acp_text_bytes"] = codex_acp_size
-        cli_state_reads = summary.get("goal_harness_cli_state_read_count", 0)
-        cli_state_writes = summary.get("goal_harness_cli_state_write_count", 0)
-        case_state_reads = summary.get("goal_harness_case_state_read_count", 0)
-        case_state_writes = summary.get("goal_harness_case_state_write_count", 0)
+        cli_state_reads = summary.get("loopx_cli_state_read_count", 0)
+        cli_state_writes = summary.get("loopx_cli_state_write_count", 0)
+        case_state_reads = summary.get("loopx_case_state_read_count", 0)
+        case_state_writes = summary.get("loopx_case_state_write_count", 0)
         if isinstance(case_state_reads, int) and not isinstance(case_state_reads, bool):
-            trace["goal_harness_case_state_reads"] = max(
-                int(trace.get("goal_harness_case_state_reads", 0)),
+            trace["loopx_case_state_reads"] = max(
+                int(trace.get("loopx_case_state_reads", 0)),
                 case_state_reads,
             )
         if isinstance(case_state_writes, int) and not isinstance(case_state_writes, bool):
-            trace["goal_harness_case_state_writes"] = max(
-                int(trace.get("goal_harness_case_state_writes", 0)),
+            trace["loopx_case_state_writes"] = max(
+                int(trace.get("loopx_case_state_writes", 0)),
                 case_state_writes,
             )
         if isinstance(cli_state_reads, int) and isinstance(case_state_reads, int):
-            trace["goal_harness_state_reads"] = max(
-                int(trace.get("goal_harness_state_reads", 0)),
+            trace["loopx_state_reads"] = max(
+                int(trace.get("loopx_state_reads", 0)),
                 cli_state_reads + case_state_reads,
             )
         if isinstance(cli_state_writes, int) and isinstance(case_state_writes, int):
-            trace["goal_harness_state_writes"] = max(
-                int(trace.get("goal_harness_state_writes", 0)),
+            trace["loopx_state_writes"] = max(
+                int(trace.get("loopx_state_writes", 0)),
                 cli_state_writes + case_state_writes,
             )
         trace["private_agent_trajectory_present"] = True
@@ -2625,10 +2625,10 @@ def _build_controller_user(max_output_chars: int, trace: dict[str, Any]):
                 _inc_counter(trace, "initial_prompt_count")
                 trace["last_decision"] = "send_initial_controller_prompt"
                 return (
-                    "Goal Harness automation-loop round 1. "
+                    "LoopX automation-loop round 1. "
                     "You are running inside the official SkillsBench sandbox. "
                     "Solve the benchmark task using ordinary Codex agent behavior; "
-                    "do not invoke /goal mode, external Goal Harness CLI, upload, "
+                    "do not invoke /goal mode, external LoopX CLI, upload, "
                     "submit, or ask the human for routine execution choices. "
                     "Inspect the workspace, implement the fix, and run local "
                     "validation before finishing.\n\n"
@@ -2667,7 +2667,7 @@ def _build_controller_user(max_output_chars: int, trace: dict[str, Any]):
             _inc_counter(trace, "followup_prompt_count")
             trace["last_decision"] = "send_followup_after_failed_reward"
             return (
-                f"Goal Harness automation-loop follow-up round {round + 1}. "
+                f"LoopX automation-loop follow-up round {round + 1}. "
                 "The previous attempt did not pass the verifier. Continue in the "
                 "same workspace, read /app/instruction.md if needed, inspect the "
                 "failure, make the smallest correct fix, and rerun validation. "
@@ -2778,7 +2778,7 @@ def _build_codex_goal_mode_baseline_user():
             return (
                 "/goal Complete the following SkillsBench task. Keep working "
                 "until the task is done, validated, or blocked by the benchmark "
-                "environment. Do not use external Goal Harness CLI, upload, "
+                "environment. Do not use external LoopX CLI, upload, "
                 "submit, or ask the human for routine execution choices.\n\n"
                 "--- TASK INSTRUCTION ---\n"
                 f"{instruction}"
@@ -2796,14 +2796,14 @@ def _build_product_mode_user(
 ):
     from benchflow.sandbox.user import BaseUser, RoundResult
 
-    treatment = route == "goal-harness-product-mode"
+    treatment = route == "loopx-product-mode"
 
     def treatment_state_contract() -> str:
         return (
-            "Goal Harness case-state contract: a canonical active-state "
+            "LoopX case-state contract: a canonical active-state "
             f"skeleton is already initialized at `{PRODUCT_MODE_CASE_STATE_PATH}` "
             "before the agent starts. This path intentionally mirrors the "
-            "normal Goal Harness active-state shape inside the benchmark "
+            "normal LoopX active-state shape inside the benchmark "
             "sandbox. Before substantive edits, read the file and keep its "
             f"`schema_version: {PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION}`, "
             "`## Agent Todo`, `## Done Todo`, `## Local Evidence`, "
@@ -2811,7 +2811,7 @@ def _build_product_mode_user(
             "before each continuation, update it after local evidence changes, "
             "and before declaring done rewrite it so there are no open agent "
             "todos and `## Remaining Goals` says none. If the real "
-            "Goal Harness CLI is available you may also use it, but this file "
+            "LoopX CLI is available you may also use it, but this file "
             "is the required per-case state surface. "
         )
 
@@ -2864,7 +2864,7 @@ def _build_product_mode_user(
                                 "or failed. You are not being shown official "
                                 "reward, pass/fail status, verifier error, or "
                                 "verifier output. You declared done, but the "
-                                "required Goal Harness case-state interaction "
+                                "required LoopX case-state interaction "
                                 f"was not observed. Re-read "
                                 f"`{PRODUCT_MODE_CASE_STATE_PATH}`, update it "
                                 "with current todos/evidence/replan state, "
@@ -2900,12 +2900,12 @@ def _build_product_mode_user(
                 if protected_paths:
                     trace["persistent_constraint_protected_paths"] = protected_paths
                 if treatment:
-                    prefix = "Goal Harness product-mode treatment round 1. "
+                    prefix = "LoopX product-mode treatment round 1. "
                     trace["case_goal_state_packet_present"] = True
                     control_clause = (
-                        "Use Goal Harness as your product control plane: create "
+                        "Use LoopX as your product control plane: create "
                         "a compact goal state, maintain todos, replan when local "
-                        "evidence changes, and use Goal Harness CLI/status/ledger "
+                        "evidence changes, and use LoopX CLI/status/ledger "
                         "surfaces when available. "
                         + treatment_state_contract()
                     )
@@ -2935,14 +2935,14 @@ def _build_product_mode_user(
             trace["last_decision"] = "send_product_mode_scheduled_continuation"
             if treatment:
                 mode_clause = (
-                    "Continue from your Goal Harness case state at "
+                    "Continue from your LoopX case state at "
                     f"`{PRODUCT_MODE_CASE_STATE_PATH}` and todo/replan ledger; "
                     "re-read and update them if local evidence changed."
                 )
             else:
                 mode_clause = (
                     "Continue from your own local plan/todo notes; do not use "
-                    "Goal Harness CLI/state/ledger."
+                    "LoopX CLI/state/ledger."
                 )
             return (
                 f"Scheduled product-mode continuation round {round + 1} of "
@@ -3108,7 +3108,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         prerequisites["codex_acp_runtime_launch_preflight_status"] = "passed"
 
     async def seed_product_mode_case_state(env: Any) -> None:
-        if args.route != "goal-harness-product-mode":
+        if args.route != "loopx-product-mode":
             return
         trace = controller_trace if isinstance(controller_trace, dict) else {}
         trace["case_goal_state_init_required"] = True
@@ -3132,7 +3132,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             detail = stderr or stdout or "no output"
             trace["case_goal_state_init_status"] = "failed"
             raise RuntimeError(
-                "Goal Harness case active-state init failed: " + detail[:1000]
+                "LoopX case active-state init failed: " + detail[:1000]
             )
         trace["case_goal_state_initialized_before_agent"] = True
         trace["case_goal_state_init_status"] = "passed"
@@ -3281,8 +3281,8 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         )
     elif args.route in {
         CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
-        GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE,
-        GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
+        LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
+        LOOPX_PROMPT_POLLING_TEST_ROUTE,
     }:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         controller_user = _build_blind_loop_user(
@@ -3293,7 +3293,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         )
     elif args.route in {
         "raw-codex-autonomous-max5",
-        "goal-harness-product-mode",
+        "loopx-product-mode",
     }:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         controller_user = _build_product_mode_user(
@@ -3315,7 +3315,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         or args.require_preinstalled_benchflow_agent_runtime
         else [ensure_codex_acp_runtime_deps]
     )
-    if args.route == "goal-harness-product-mode":
+    if args.route == "loopx-product-mode":
         pre_agent_hooks.append(seed_product_mode_case_state)
 
     agent_env: dict[str, str] = {}
@@ -3391,10 +3391,10 @@ def reduce_result(
 ) -> dict[str, Any]:
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
-    from goal_harness.benchmark import (
+    from loopx.benchmark import (
         build_skillsbench_benchflow_result_benchmark_run,
     )
-    from goal_harness.status import compact_benchmark_run
+    from loopx.status import compact_benchmark_run
 
     controller_trace = _read_controller_trace(plan)
     _merge_acp_trajectory_summary(plan, controller_trace)
@@ -3571,12 +3571,12 @@ def build_runner_failure_compact(
 
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
-    from goal_harness.benchmark import build_skillsbench_benchmark_run
-    from goal_harness.benchmark_adapters.skillsbench import (
+    from loopx.benchmark import build_skillsbench_benchmark_run
+    from loopx.benchmark_adapters.skillsbench import (
         skillsbench_runner_error_attribution,
         skillsbench_runner_error_fingerprint,
     )
-    from goal_harness.status import compact_benchmark_run
+    from loopx.status import compact_benchmark_run
 
     exception_type, attribution, labels = skillsbench_runner_error_attribution(
         str(exc)
@@ -3694,20 +3694,20 @@ def update_ledger(
     *,
     compact_path: Path | None = None,
 ) -> dict[str, Any]:
-    from goal_harness.benchmark_ledger import update_benchmark_run_ledger
+    from loopx.benchmark_ledger import update_benchmark_run_ledger
 
     note_route = (
-        "Goal Harness prompt-driven polling test"
-        if args.route == GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE
-        else "Goal Harness blind-loop treatment"
-        if args.route == GOAL_HARNESS_BLIND_LOOP_TREATMENT_ROUTE
+        "LoopX prompt-driven polling test"
+        if args.route == LOOPX_PROMPT_POLLING_TEST_ROUTE
+        else "LoopX blind-loop treatment"
+        if args.route == LOOPX_BLIND_LOOP_TREATMENT_ROUTE
         else "Codex ACP blind-loop baseline"
         if args.route == "codex-acp-blind-loop-baseline"
-        else "Goal Harness product-mode treatment"
-        if args.route == "goal-harness-product-mode"
+        else "LoopX product-mode treatment"
+        if args.route == "loopx-product-mode"
         else "raw Codex autonomous max5 baseline"
         if args.route == "raw-codex-autonomous-max5"
-        else "Goal Harness reward-feedback ablation"
+        else "LoopX reward-feedback ablation"
         if args.route == "automation-loop-treatment"
         else "Codex ACP baseline"
     )
@@ -3729,10 +3729,10 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> None:
     if not args.append_history:
         return
     classification_by_route = {
-        "goal-harness-blind-loop-treatment": "skillsbench_goal_harness_blind_loop_treatment_result_v0",
-        "goal-harness-prompt-polling-test": "skillsbench_goal_harness_prompt_polling_test_result_v0",
+        "loopx-blind-loop-treatment": "skillsbench_loopx_blind_loop_treatment_result_v0",
+        "loopx-prompt-polling-test": "skillsbench_loopx_prompt_polling_test_result_v0",
         "codex-acp-blind-loop-baseline": "skillsbench_codex_acp_blind_loop_baseline_result_v0",
-        "goal-harness-product-mode": "skillsbench_goal_harness_product_mode_result_v0",
+        "loopx-product-mode": "skillsbench_loopx_product_mode_result_v0",
         "raw-codex-autonomous-max5": "skillsbench_raw_codex_autonomous_max5_result_v0",
         "automation-loop-treatment": "skillsbench_reward_feedback_ablation_result_v0",
         "codex-app-server-goal-baseline": "skillsbench_codex_app_server_goal_baseline_result_v0",
@@ -3745,7 +3745,7 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> None:
     cmd = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(Path(args.registry).expanduser()),
         "--runtime-root",
@@ -3775,12 +3775,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_ROUTE,
         help=(
             "codex-app-server-goal-baseline is the native Codex Goal baseline; "
-            "goal-harness-prompt-polling-test is the current no-reward-feedback "
+            "loopx-prompt-polling-test is the current no-reward-feedback "
             "test route with scheduled continuation prompts; "
-            "goal-harness-blind-loop-treatment is the historical SkillsBench "
+            "loopx-blind-loop-treatment is the historical SkillsBench "
             "alias for the same polling semantics; codex-acp-blind-loop-baseline "
             "is the ordinary Codex no-goal baseline with the same loop budget; "
-            "raw-codex-autonomous-max5 and goal-harness-product-mode are the "
+            "raw-codex-autonomous-max5 and loopx-product-mode are the "
             "main-table product-mode comparison routes; "
             "codex-app-server-goal-baseline is the native Codex Goal baseline "
             "contract using app-server thread/goal/set/get and turn/start; "
@@ -3827,8 +3827,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=("structured", "baseline-safe"),
         default="structured",
         help=(
-            "Diagnostic prompt wrapper for goal-harness-blind-loop-treatment. "
-            "Also applies to goal-harness-prompt-polling-test. "
+            "Diagnostic prompt wrapper for loopx-blind-loop-treatment. "
+            "Also applies to loopx-prompt-polling-test. "
             "baseline-safe keeps treatment routing/ledger metadata while using "
             "the baseline-style first prompt to isolate ACP prompt-wrapper issues."
         ),
@@ -3869,7 +3869,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--ledger-path", default=str(DEFAULT_LEDGER))
     parser.add_argument("--goal-id", default=DEFAULT_GOAL_ID)
-    parser.add_argument("--registry", default=str(REPO_ROOT / ".goal-harness/registry.json"))
+    parser.add_argument("--registry", default=str(REPO_ROOT / ".loopx/registry.json"))
     parser.add_argument("--runtime-root", default=str(REPO_ROOT / ".local"))
     parser.add_argument("--append-history", action="store_true")
     parser.add_argument("--update-ledger", action="store_true")
@@ -3941,7 +3941,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "During --local-driver-worker-handshake-preflight, launch a local "
             "ACP stdio relay handshake probe. The default probe uses the "
-            "Goal Harness dry-run relay and does not invoke Codex."
+            "LoopX dry-run relay and does not invoke Codex."
         ),
     )
     parser.add_argument(
@@ -3949,7 +3949,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "Optional command for --local-acp-relay-probe. Omit to use the "
-            "Goal Harness dry-run relay."
+            "LoopX dry-run relay."
         ),
     )
     parser.add_argument(
@@ -4200,7 +4200,7 @@ def main(argv: list[str] | None = None) -> int:
                 "route": args.route,
                 "reason": (
                     "codex-app-server-goal-baseline requires --host-local-acp-launch "
-                    "so BenchFlow connects to the Goal Harness ACP relay that "
+                    "so BenchFlow connects to the LoopX ACP relay that "
                     "delegates prompts to the host Codex app-server Goal worker; "
                     "the current runner must not fall back to codex-acp"
                 ),

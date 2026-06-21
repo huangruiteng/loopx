@@ -1,13 +1,13 @@
 # Field-Derived Project Control Patterns
 
-Goal Harness should grow from repeated real collaboration patterns, not only
+LoopX should grow from repeated real collaboration patterns, not only
 from abstract feature ideas. This document records public-safe mechanisms that
 have proven useful in documentation-heavy agent infrastructure work,
 long-window experiment control, and multi-project Codex collaboration.
 
 The examples below are intentionally sanitized. Project-specific task ids,
 private paths, internal document links, production logs, and metric values
-belong in project-local payloads, not in the public Goal Harness repo.
+belong in project-local payloads, not in the public LoopX repo.
 
 ## 1. Authority Registry
 
@@ -33,7 +33,7 @@ A useful authority registry names:
 - update rules: when changing a canonical document also requires updating the
   registry.
 
-Goal Harness should treat this as a first-class complex-project mechanism:
+LoopX should treat this as a first-class complex-project mechanism:
 
 ```json
 {
@@ -102,7 +102,7 @@ This is different from a chronological task dump. Historical work should be
 kept, but it should be compressed into archives, diagnostic reports, or
 appendices once it no longer drives the next decision.
 
-Goal Harness should absorb this pattern into active goal state and
+LoopX should absorb this pattern into active goal state and
 read-only-map summaries:
 
 - `current_judgment`: compact belief;
@@ -130,7 +130,7 @@ A managed external-source manifest should track:
   preserved;
 - fetch-before-write rules.
 
-Goal Harness should not blindly copy external material into public status. The
+LoopX should not blindly copy external material into public status. The
 public compact record should say that a managed external source exists and
 whether it is fresh enough. The private payload can keep richer evidence.
 
@@ -154,7 +154,7 @@ different surfaces:
 | PR/CI | branch status, CI checks, review comments |
 | Public release | sensitive scan, README quickstart, examples |
 
-Goal Harness should require each complex-project map to name validation
+LoopX should require each complex-project map to name validation
 surfaces before proposing implementation work. This lets the dashboard show
 "ready for Codex" only when the next action has a credible verification path.
 
@@ -176,7 +176,7 @@ The most important lesson is to anchor the goal identity in the decisive
 evidence. If the real objective is a long-window metric, a runtime cache risk,
 training-only movement, or one failed task should not become the goal identity.
 
-Goal Harness should model this as:
+LoopX should model this as:
 
 ```json
 {
@@ -197,7 +197,7 @@ from training-only guardrails.
 
 ## 6. Gate Order
 
-Several field failures become simpler if Goal Harness applies gates in a stable
+Several field failures become simpler if LoopX applies gates in a stable
 order:
 
 1. health and public/private safety;
@@ -242,12 +242,12 @@ claims are explicit:
 - shared canonical sources such as TODO, authority registry, and global schema
   should normally be changed by the controller, not by independent children.
 
-Goal Harness should record these as proposed sub-agent scopes in read-only
+LoopX should record these as proposed sub-agent scopes in read-only
 maps, then let the controller accept, edit, or reject them.
 
 ## 9. Anti-Patterns To Block
 
-Goal Harness should actively prevent these patterns:
+LoopX should actively prevent these patterns:
 
 - treating a chat thread as the source of truth;
 - using automation cadence as the only expression of project priority;
@@ -265,7 +265,7 @@ Goal Harness should actively prevent these patterns:
 
 ## Near-Term Implementation Implications
 
-These field patterns imply four concrete Goal Harness surfaces:
+These field patterns imply four concrete LoopX surfaces:
 
 1. **Authority/material registry support**: `connect` and `read-only-map`
    should accept or discover a project authority registry, including external

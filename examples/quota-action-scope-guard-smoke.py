@@ -11,10 +11,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.boundary_authority import build_checkpointed_boundary_authority_entry  # noqa: E402
-from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
-from goal_harness.status import compact_todo_group, project_asset_todo_summary  # noqa: E402
-from goal_harness.todo_contract import format_todo_metadata_line, parse_todo_metadata_line  # noqa: E402
+from loopx.boundary_authority import build_checkpointed_boundary_authority_entry  # noqa: E402
+from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from loopx.status import compact_todo_group, project_asset_todo_summary  # noqa: E402
+from loopx.todo_contract import format_todo_metadata_line, parse_todo_metadata_line  # noqa: E402
 
 
 GOAL_ID = "action-scope-guard-fixture"

@@ -49,141 +49,141 @@ def main() -> int:
     assert "--cwd /workspace -- pwd" in prompt
     assert "Synthetic Harbor instruction placeholder." in prompt
     assert "/Users/" not in prompt
-    assert "/data/goal-harness-bench" not in prompt
-    assert "/root/goal-harness-bench" not in prompt
+    assert "/data/loopx-bench" not in prompt
+    assert "/root/loopx-bench" not in prompt
 
-    disabled_packet = module.build_goal_harness_access_packet(
+    disabled_packet = module.build_loopx_access_packet(
         mode="codex_goal_mode_baseline",
         packet_mode="none",
     )
     assert disabled_packet == ""
 
-    treatment_packet = module.build_goal_harness_access_packet(
-        mode="codex_goal_harness",
+    treatment_packet = module.build_loopx_access_packet(
+        mode="codex_loopx",
         packet_mode="compact",
-        goal_id="goal-harness-meta",
+        goal_id="loopx-meta",
         cli_bridge_enabled="true",
-        command_prefix="goal-harness",
+        command_prefix="loopx",
         registry_arg="/tmp/gh/registry.global.json",
         runtime_root_arg="/tmp/gh/runtime",
-        scan_path="/workspace/goal_harness/benchmark.py",
+        scan_path="/workspace/loopx/benchmark.py",
         classification="swe_marathon_rust_c_compiler_treatment",
     )
-    assert "Goal Harness Access Packet V0" in treatment_packet
+    assert "LoopX Access Packet V0" in treatment_packet
     assert "benchmark_family: harbor" in treatment_packet
-    assert "mode: codex_goal_harness" in treatment_packet
-    assert "goal_harness_cli_bridge_available: true" in treatment_packet
-    assert "goal_harness_product_path_primary_route: prompt_driven_case_local_goal_harness_cli" in treatment_packet
-    assert "goal_harness_case_local_cli_installed_before_agent: true" in treatment_packet
-    assert "goal_harness_case_cli_path: /app/.local/bin/goal-harness" in treatment_packet
-    assert "goal_harness_case_todo_id: todo_benchmark_case_main" in treatment_packet
-    assert "goal_harness_case_command_quota_should_run:" in treatment_packet
-    assert "/app/.local/bin/goal-harness --format json quota should-run" in treatment_packet
-    assert "goal_harness_case_command_claim_todo:" in treatment_packet
-    assert "goal_harness_global_command_check_optional_context:" in treatment_packet
+    assert "mode: codex_loopx" in treatment_packet
+    assert "loopx_cli_bridge_available: true" in treatment_packet
+    assert "loopx_product_path_primary_route: prompt_driven_case_local_loopx_cli" in treatment_packet
+    assert "loopx_case_local_cli_installed_before_agent: true" in treatment_packet
+    assert "loopx_case_cli_path: /app/.local/bin/loopx" in treatment_packet
+    assert "loopx_case_todo_id: todo_benchmark_case_main" in treatment_packet
+    assert "loopx_case_command_quota_should_run:" in treatment_packet
+    assert "/app/.local/bin/loopx --format json quota should-run" in treatment_packet
+    assert "loopx_case_command_claim_todo:" in treatment_packet
+    assert "loopx_global_command_check_optional_context:" in treatment_packet
     assert "do_not_upload_or_submit_to_leaderboard: true" in treatment_packet
     assert "benchmark_loop_contract:" in treatment_packet
     assert "protocol_id: packet_only_observation" in treatment_packet
     assert "benchmark_case_lifecycle_contract:" in treatment_packet
     assert "case_isolation_scope: per_benchmark_case_arm" in treatment_packet
-    assert "benchmark_case_goal_id: swe-marathon-current-case-codex-goal-harness-treatment-case" in treatment_packet
-    assert "case_state_path: /app/.codex/goals/swe-marathon-current-case-codex-goal-harness-treatment-case/ACTIVE_GOAL_STATE.md" in treatment_packet
+    assert "benchmark_case_goal_id: swe-marathon-current-case-codex-loopx-treatment-case" in treatment_packet
+    assert "case_state_path: /app/.codex/goals/swe-marathon-current-case-codex-loopx-treatment-case/ACTIVE_GOAL_STATE.md" in treatment_packet
     assert "required_lifecycle_steps: quota_should_run,todo_claim_or_update,bounded_agent_turn,validation_or_case_result,refresh_state,quota_spend" in treatment_packet
     assert "required_rollout_event_kinds: quota_should_run,todo_claim,todo_update,validation,refresh_state,quota_spend,compact_case_result,failure_attribution" in treatment_packet
-    assert "strict_goal_harness_treatment_claim_allowed: false" in treatment_packet
-    assert "goal_harness_treatment_claim_blocker:" in treatment_packet
-    polling_packet = module.build_goal_harness_access_packet(
-        mode="codex_goal_harness",
+    assert "strict_loopx_treatment_claim_allowed: false" in treatment_packet
+    assert "loopx_treatment_claim_blocker:" in treatment_packet
+    polling_packet = module.build_loopx_access_packet(
+        mode="codex_loopx",
         packet_mode="compact",
         cli_bridge_enabled=True,
-        goal_id="goal-harness-meta",
+        goal_id="loopx-meta",
         experiment_protocol="max5_blind_loop_no_feedback",
         max_rounds=5,
     )
     assert "protocol_id: max5_blind_loop_no_feedback" in polling_packet
-    assert "route: goal-harness-prompt-polling-test" in polling_packet
-    assert "strict_goal_harness_treatment_claim_allowed: false" in polling_packet
+    assert "route: loopx-prompt-polling-test" in polling_packet
+    assert "strict_loopx_treatment_claim_allowed: false" in polling_packet
     assert "controller_trace_absent" in polling_packet
     missing_prompt_lifecycle_claim = (
-        module.classify_goal_harness_treatment_claim(
+        module.classify_loopx_treatment_claim(
             {
                 "benchmark_loop_contract": {
                     "protocol_id": "max5_blind_loop_no_feedback",
                     "max_rounds_budget": 5,
                     "official_feedback_forwarded": False,
                     "blind_loop": True,
-                    "route": "goal-harness-prompt-polling-test",
+                    "route": "loopx-prompt-polling-test",
                 },
                 "controller_trace_present": True,
-                "goal_harness_product_path_primary_route": (
-                    "prompt_driven_case_local_goal_harness_cli"
+                "loopx_product_path_primary_route": (
+                    "prompt_driven_case_local_loopx_cli"
                 ),
-                "goal_harness_prompt_driven_loop_required": True,
+                "loopx_prompt_driven_loop_required": True,
             }
         )
     )
     assert (
         missing_prompt_lifecycle_claim[
-            "strict_goal_harness_treatment_claim_allowed"
+            "strict_loopx_treatment_claim_allowed"
         ]
         is False
     ), missing_prompt_lifecycle_claim
     assert (
-        "prompt_driven_goal_harness_lifecycle_absent"
-        in missing_prompt_lifecycle_claim["goal_harness_treatment_claim_blocker"]
+        "prompt_driven_loopx_lifecycle_absent"
+        in missing_prompt_lifecycle_claim["loopx_treatment_claim_blocker"]
     ), missing_prompt_lifecycle_claim
     observed_prompt_lifecycle_claim = (
-        module.classify_goal_harness_treatment_claim(
+        module.classify_loopx_treatment_claim(
             {
                 "benchmark_loop_contract": {
                     "protocol_id": "max5_blind_loop_no_feedback",
                     "max_rounds_budget": 5,
                     "official_feedback_forwarded": False,
                     "blind_loop": True,
-                    "route": "goal-harness-prompt-polling-test",
+                    "route": "loopx-prompt-polling-test",
                 },
                 "controller_trace_present": True,
-                "goal_harness_product_path_primary_route": (
-                    "prompt_driven_case_local_goal_harness_cli"
+                "loopx_product_path_primary_route": (
+                    "prompt_driven_case_local_loopx_cli"
                 ),
-                "goal_harness_prompt_driven_loop_required": True,
-                "goal_harness_prompt_driven_lifecycle_observed": True,
+                "loopx_prompt_driven_loop_required": True,
+                "loopx_prompt_driven_lifecycle_observed": True,
             }
         )
     )
     assert (
         observed_prompt_lifecycle_claim[
-            "strict_goal_harness_treatment_claim_allowed"
+            "strict_loopx_treatment_claim_allowed"
         ]
         is True
     ), observed_prompt_lifecycle_claim
     init_payload = module.build_case_goal_state_init_payload(
         benchmark_id="swe-marathon",
         case_id="find-network-alignments",
-        arm_id="goal_harness_prompt_polling_test",
-        route="goal-harness-prompt-polling-test",
+        arm_id="loopx_prompt_polling_test",
+        route="loopx-prompt-polling-test",
         max_rounds=5,
     )
-    assert init_payload["schema_version"] == "goal_harness_benchmark_case_active_state_v1", init_payload
+    assert init_payload["schema_version"] == "loopx_benchmark_case_active_state_v1", init_payload
     assert (
         init_payload["benchmark_case_goal_id"]
-        == "swe-marathon-find-network-alignments-goal-harness-prompt-polling-test-case"
+        == "swe-marathon-find-network-alignments-loopx-prompt-polling-test-case"
     ), init_payload
     assert init_payload["case_state_path"].startswith("/app/.codex/goals/"), init_payload
     assert init_payload["case_state_path"].endswith("/ACTIVE_GOAL_STATE.md"), init_payload
-    assert init_payload["install_flow_schema_version"] == "goal_harness_benchmark_case_install_flow_v0", init_payload
-    assert init_payload["case_cli_path"] == "/app/.local/bin/goal-harness", init_payload
+    assert init_payload["install_flow_schema_version"] == "loopx_benchmark_case_install_flow_v0", init_payload
+    assert init_payload["case_cli_path"] == "/app/.local/bin/loopx", init_payload
     assert init_payload["case_todo_id"] == "todo_benchmark_case_main", init_payload
     assert init_payload["case_agent_id"] == "codex-benchmark-agent", init_payload
-    assert init_payload["product_path_primary_route"] == "prompt_driven_case_local_goal_harness_cli", init_payload
+    assert init_payload["product_path_primary_route"] == "prompt_driven_case_local_loopx_cli", init_payload
     assert init_payload["prompt_driven_route_required"] is True, init_payload
     init_command = init_payload["command"]
     assert "mkdir -p" in init_command, init_command
     assert "mv \"$tmp\"" in init_command, init_command
     assert "## Agent Todo" in init_command, init_command
-    assert "goal-harness-prompt-polling-test" in init_command, init_command
+    assert "loopx-prompt-polling-test" in init_command, init_command
     assert "find-network-alignments" in init_command, init_command
-    assert "/app/.local/bin/goal-harness" in init_command, init_command
+    assert "/app/.local/bin/loopx" in init_command, init_command
     assert "quota_should_run" in init_command, init_command
     assert "todo_claim" in init_command, init_command
     assert "rollout-event-log.jsonl" in init_command, init_command
@@ -197,13 +197,13 @@ def main() -> int:
     assert init_compact["case_goal_state_initialized_before_agent"] is True, init_compact
     assert init_compact["case_goal_state_init_status"] == "initialized", init_compact
     assert init_compact["case_goal_state_path"] == init_payload["case_state_path"], init_compact
-    assert init_compact["goal_harness_install_flow_required"] is True, init_compact
-    assert init_compact["goal_harness_install_flow_status"] == "initialized", init_compact
-    assert init_compact["goal_harness_case_cli_installed_before_agent"] is True, init_compact
-    assert init_compact["goal_harness_case_cli_path"] == "/app/.local/bin/goal-harness", init_compact
-    assert init_compact["goal_harness_case_todo_id"] == "todo_benchmark_case_main", init_compact
-    assert init_compact["goal_harness_product_path_primary_route"] == "prompt_driven_case_local_goal_harness_cli", init_compact
-    assert init_compact["goal_harness_prompt_driven_route_required"] is True, init_compact
+    assert init_compact["loopx_install_flow_required"] is True, init_compact
+    assert init_compact["loopx_install_flow_status"] == "initialized", init_compact
+    assert init_compact["loopx_case_cli_installed_before_agent"] is True, init_compact
+    assert init_compact["loopx_case_cli_path"] == "/app/.local/bin/loopx", init_compact
+    assert init_compact["loopx_case_todo_id"] == "todo_benchmark_case_main", init_compact
+    assert init_compact["loopx_product_path_primary_route"] == "prompt_driven_case_local_loopx_cli", init_compact
+    assert init_compact["loopx_prompt_driven_route_required"] is True, init_compact
     assert init_compact["case_goal_state_raw_output_recorded"] is False, init_compact
     assert (
         module._case_cli_command(
@@ -212,7 +212,7 @@ def main() -> int:
             "should-run",
             "--goal-id",
             init_payload["benchmark_case_goal_id"],
-        ).startswith("/app/.local/bin/goal-harness --format json quota should-run")
+        ).startswith("/app/.local/bin/loopx --format json quota should-run")
     )
 
     class _FakeExecResult:
@@ -246,7 +246,7 @@ def main() -> int:
     async def _exercise_case_scheduler() -> dict:
         fake_environment = _FakeEnvironment()
         trace = module._new_case_scheduler_trace(init_payload)
-        ok = await module._run_case_goal_harness_cli(
+        ok = await module._run_case_loopx_cli(
             fake_environment,
             payload=init_payload,
             trace=trace,
@@ -271,7 +271,7 @@ def main() -> int:
         return trace
 
     scheduler_trace = asyncio.run(_exercise_case_scheduler())
-    assert scheduler_trace["route"] == "cli_scheduler_case_local_goal_harness_cli", scheduler_trace
+    assert scheduler_trace["route"] == "cli_scheduler_case_local_loopx_cli", scheduler_trace
     assert scheduler_trace["commands"][0]["stdout_summary"]["should_run"] is True, scheduler_trace
     assert scheduler_trace["event_kind_counts"] == {
         "install": 1,
@@ -285,12 +285,12 @@ def main() -> int:
         bridge_command=Path("/tmp/gh-harbor/bin/harbor-env-exec"),
         marker_path=Path("/tmp/gh-harbor/done.marker"),
         task_workdir="/workspace",
-        goal_harness_access_packet=treatment_packet,
+        loopx_access_packet=treatment_packet,
     )
-    assert "Goal Harness treatment access packet:" in treatment_prompt
-    assert "case-local Goal Harness CLI" in treatment_prompt
+    assert "LoopX treatment access packet:" in treatment_prompt
+    assert "case-local LoopX CLI" in treatment_prompt
     assert "part of the treatment proof" in treatment_prompt
-    assert "mode: codex_goal_harness" in treatment_prompt
+    assert "mode: codex_loopx" in treatment_prompt
 
     with tempfile.TemporaryDirectory(prefix="gh-harbor-host-agent-") as tmp:
         request_dir = Path(tmp) / "requests"
@@ -317,13 +317,13 @@ def main() -> int:
         for index, command in enumerate(
             [
                 (
-                    "/app/.local/bin/goal-harness --format json quota "
+                    "/app/.local/bin/loopx --format json quota "
                     "should-run --goal-id "
                     f"{init_payload['benchmark_case_goal_id']} "
                     "--agent-id codex-benchmark-agent"
                 ),
                 (
-                    "/app/.local/bin/goal-harness --format json todo claim "
+                    "/app/.local/bin/loopx --format json todo claim "
                     "--goal-id "
                     f"{init_payload['benchmark_case_goal_id']} "
                     "--todo-id todo_benchmark_case_main "
@@ -344,10 +344,10 @@ def main() -> int:
         asyncio.run(agent._serve_bridge_requests(_FakeEnvironment(), request_dir))
         prompt_trace = module._summarize_prompt_driven_case_trace(
             init_payload,
-            agent._prompt_driven_goal_harness_commands,
+            agent._prompt_driven_loopx_commands,
         )
         assert prompt_trace["route"] == (
-            "prompt_driven_case_local_goal_harness_cli"
+            "prompt_driven_case_local_loopx_cli"
         ), prompt_trace
         assert prompt_trace["command_count"] == 2, prompt_trace
         assert prompt_trace["event_kind_counts"] == {
@@ -365,10 +365,10 @@ def main() -> int:
         assert agent.reasoning_effort == "high"
         assert agent.app_server_wait_for_completion is False
         assert agent.app_server_response_timeout_sec == 4.0
-        assert agent.goal_harness_mode == "codex_goal_mode_baseline"
-        assert agent.goal_harness_access_packet_mode == "none"
-        assert agent.goal_harness_experiment_protocol == "packet_only_observation"
-        assert agent.goal_harness_max_rounds == 5
+        assert agent.loopx_mode == "codex_goal_mode_baseline"
+        assert agent.loopx_access_packet_mode == "none"
+        assert agent.loopx_experiment_protocol == "packet_only_observation"
+        assert agent.loopx_max_rounds == 5
 
         no_wait_agent = module.HarborHostCodexGoalAgent(
             logs_dir=Path(tmp) / "no-wait-logs",
@@ -381,49 +381,49 @@ def main() -> int:
         treatment_agent = module.HarborHostCodexGoalAgent(
             logs_dir=Path(tmp) / "treatment-logs",
             goal_surface="app_server",
-            goal_harness_mode="codex_goal_harness",
-            goal_harness_access_packet_mode="compact",
-            goal_harness_cli_bridge_enabled="true",
+            loopx_mode="codex_loopx",
+            loopx_access_packet_mode="compact",
+            loopx_cli_bridge_enabled="true",
         )
-        assert treatment_agent.goal_harness_mode == "codex_goal_harness"
-        assert treatment_agent.goal_harness_access_packet_mode == "compact"
-        assert treatment_agent.goal_harness_cli_bridge_enabled is True
-        assert treatment_agent.goal_harness_experiment_protocol == "packet_only_observation"
-        assert treatment_agent.goal_harness_prompt_polling_rounds == 1
-        assert treatment_agent.goal_harness_benchmark_id == "swe-marathon"
-        assert treatment_agent.goal_harness_case_id == "current-case"
-        assert treatment_agent.goal_harness_arm_id == "codex_goal_harness_treatment"
+        assert treatment_agent.loopx_mode == "codex_loopx"
+        assert treatment_agent.loopx_access_packet_mode == "compact"
+        assert treatment_agent.loopx_cli_bridge_enabled is True
+        assert treatment_agent.loopx_experiment_protocol == "packet_only_observation"
+        assert treatment_agent.loopx_prompt_polling_rounds == 1
+        assert treatment_agent.loopx_benchmark_id == "swe-marathon"
+        assert treatment_agent.loopx_case_id == "current-case"
+        assert treatment_agent.loopx_arm_id == "codex_loopx_treatment"
         polling_agent = module.HarborHostCodexGoalAgent(
             logs_dir=Path(tmp) / "polling-logs",
             goal_surface="app_server",
-            goal_harness_mode="codex_goal_harness",
-            goal_harness_access_packet_mode="compact",
-            goal_harness_experiment_protocol="max5_blind_loop_no_feedback",
-            goal_harness_max_rounds=5,
-            goal_harness_case_id="find-network-alignments",
+            loopx_mode="codex_loopx",
+            loopx_access_packet_mode="compact",
+            loopx_experiment_protocol="max5_blind_loop_no_feedback",
+            loopx_max_rounds=5,
+            loopx_case_id="find-network-alignments",
         )
-        assert polling_agent.goal_harness_prompt_polling_rounds == 5
-        assert polling_agent.goal_harness_prompt_polling_round_timeout_sec == 10800.0
-        assert polling_agent.goal_harness_case_id == "find-network-alignments"
+        assert polling_agent.loopx_prompt_polling_rounds == 5
+        assert polling_agent.loopx_prompt_polling_round_timeout_sec == 10800.0
+        assert polling_agent.loopx_case_id == "find-network-alignments"
         long_polling_agent = module.HarborHostCodexGoalAgent(
             logs_dir=Path(tmp) / "long-polling-logs",
             goal_surface="app_server",
             goal_timeout_sec=18000,
-            goal_harness_mode="codex_goal_harness",
-            goal_harness_access_packet_mode="compact",
-            goal_harness_experiment_protocol="max5_blind_loop_no_feedback",
-            goal_harness_max_rounds=5,
+            loopx_mode="codex_loopx",
+            loopx_access_packet_mode="compact",
+            loopx_experiment_protocol="max5_blind_loop_no_feedback",
+            loopx_max_rounds=5,
         )
-        assert long_polling_agent.goal_harness_prompt_polling_round_timeout_sec == 18000.0
+        assert long_polling_agent.loopx_prompt_polling_round_timeout_sec == 18000.0
         explicit_timeout_agent = module.HarborHostCodexGoalAgent(
             logs_dir=Path(tmp) / "explicit-timeout-logs",
             goal_surface="app_server",
-            goal_harness_mode="codex_goal_harness",
-            goal_harness_access_packet_mode="compact",
-            goal_harness_experiment_protocol="max5_blind_loop_no_feedback",
-            goal_harness_prompt_polling_round_timeout_sec=120,
+            loopx_mode="codex_loopx",
+            loopx_access_packet_mode="compact",
+            loopx_experiment_protocol="max5_blind_loop_no_feedback",
+            loopx_prompt_polling_round_timeout_sec=120,
         )
-        assert explicit_timeout_agent.goal_harness_prompt_polling_round_timeout_sec == 120.0
+        assert explicit_timeout_agent.loopx_prompt_polling_round_timeout_sec == 120.0
 
     print("harbor host Codex Goal agent smoke passed")
     return 0

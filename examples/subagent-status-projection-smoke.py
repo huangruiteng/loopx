@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import (  # noqa: E402
+from loopx.status import (  # noqa: E402
     collect_status,
     project_asset_summary_is_public_safe,
     render_status_markdown,
@@ -28,7 +28,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     run_dir = runtime / "goals" / GOAL_ID / "runs"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
@@ -122,7 +122,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
             "agent_role": "implementation",
             "classification": "subagent_progress",
             "result_status": "queued",
-            "work_scope": ["goal_harness/status.py"],
+            "work_scope": ["loopx/status.py"],
             "quota_spend": 2,
             "handoff_summary": "Waiting for controller merge decision before writing.",
         },
@@ -134,7 +134,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-subagent-status-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-subagent-status-") as tmp:
         registry_path, runtime = write_fixture(Path(tmp))
         payload = collect_status(
             registry_path=registry_path,

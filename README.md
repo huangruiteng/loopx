@@ -1,4 +1,4 @@
-# Goal Harness
+# LoopX
 
 **Always-on agent teams, governed by human judgment.**
 
@@ -8,18 +8,18 @@
 
 **让多个 agent 昼夜接力，把人的判断留在控制面。**
 
-Goal Harness 把目标、用户决策、agent todo、认领关系、scope、safe fallback、
+LoopX 把目标、用户决策、agent todo、认领关系、scope、safe fallback、
 run history 和 quota 放进同一层状态：该等人的地方明确等人，不该空等的
 安全侧路继续推进。
 
-Goal Harness is a local control plane for long-running AI agent projects. It
+LoopX is a local control plane for long-running AI agent projects. It
 turns a static agent goal into a dynamic, reviewable state layer: goals, gates,
 todos, claims, scopes, run history, quota, evidence, and human decisions stay
 visible across many turns, so primary and side agents can keep working on safe
 lanes while gated work waits for the person.
 
 [Quick Start](#quick-start) · [Getting Started](docs/guides/getting-started.md) ·
-[Showcases](docs/showcases/README.md) · [Hosted Frontstage](https://huangruiteng.github.io/goal-harness/frontstage/) ·
+[Showcases](docs/showcases/README.md) · [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
 [Community](#community--feedback) · [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
 [Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
 
@@ -27,12 +27,12 @@ lanes while gated work waits for the person.
 
 ## What Is It?
 
-Goal Harness does not replace Codex, Claude Code, Cursor, or another agent
+LoopX does not replace Codex, Claude Code, Cursor, or another agent
 runtime. It sits above them and gives humans and agents a shared state layer for
 long-running work.
 
-Short answer: Goal Harness is not replacing Codex goal mode. Codex goal,
-Codex App automation, and CLI scripts can trigger executor loops; Goal Harness
+Short answer: LoopX is not replacing Codex goal mode. Codex goal,
+Codex App automation, and CLI scripts can trigger executor loops; LoopX
 preserves the dynamic goal state those loops need to keep working across
 turns.
 
@@ -40,34 +40,34 @@ turns.
 | --- | --- |
 | Codex / Claude Code / Cursor | Execute an agent loop: read, write, run commands, and respond. |
 | Codex goal / automation / CLI scripts | Trigger or schedule the next executor loop. |
-| Goal Harness | Preserve the dynamic goal state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
+| LoopX | Preserve the dynamic goal state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
 
 The product promise is not "more todo lists." It is a better
 human-in-the-loop control surface: keep human judgment at high-value decision
 points, keep safe fallback work moving when one lane is gated, and stop compute
 spend when a turn cannot produce a verified transition.
 
-Put differently: Goal Harness lets a user's agent team keep working across
+Put differently: LoopX lets a user's agent team keep working across
 tools, turns, and off-hours without losing the goal boundary. The technical
 contract underneath that promise is explicit: agent identity, todo ownership,
 scope, capability gates, quota, evidence writeback, and public/private
 boundaries stay visible to the next turn.
 
-![Goal Harness control-plane board](docs/assets/control-plane-board.svg)
+![LoopX control-plane board](docs/assets/control-plane-board.svg)
 
 ## See It In Action
 
 | Case | What It Shows | Public Surface |
 | --- | --- | --- |
 | [Blocked P0 with safe P1/P2 rotation](docs/showcases/cases/0617-blocked-p0-safe-rotation.md) | A user-gated high-priority lane stays visible while safe fallback work continues. | Reproducible synthetic demo |
-| [Goal Harness self-iteration loop](docs/showcases/cases/0619-goal-harness-self-iteration.md) | A side agent improved Goal Harness itself while the primary agent stayed focused on benchmark work. | Commit-backed public evidence case |
+| [LoopX self-iteration loop](docs/showcases/cases/0619-loopx-self-iteration.md) | A side agent improved LoopX itself while the primary agent stayed focused on benchmark work. | Commit-backed public evidence case |
 | [Dynamic workflow for hardware-agent development](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md) | A fuzzy multi-agent engineering workflow can converge through one shared control plane. | Redacted public-safe stub |
 
 Start with the [showcase catalog](docs/showcases/README.md): public-safe
-cases that show where Goal Harness helps, with reproducible demos where the
+cases that show where LoopX helps, with reproducible demos where the
 evidence allows.
 
-Open the [hosted frontstage](https://huangruiteng.github.io/goal-harness/frontstage/)
+Open the [hosted frontstage](https://huangruiteng.github.io/loopx/frontstage/)
 for the product-facing view: case cards, narrative motion, efficiency evidence,
 and public/private boundary notes rendered from `docs/showcases/`. Live registry
 or local status projections are separate ops-mode surfaces, not public demo
@@ -76,12 +76,12 @@ content.
 <table>
   <tr>
     <td width="62%">
-      <img src="docs/assets/frontstage-showcase-first-screen.png" alt="Hosted Goal Harness frontstage showing public-safe showcase cases">
+      <img src="docs/assets/frontstage-showcase-first-screen.png" alt="Hosted LoopX frontstage showing public-safe showcase cases">
     </td>
     <td width="38%">
       <strong>From AI assist to async agent work.</strong><br><br>
       Traditional AI-assisted development speeds up the active coding session.
-      Goal Harness changes the operating model: humans set gates, scope, and
+      LoopX changes the operating model: humans set gates, scope, and
       evidence, while primary and side agents keep safe lanes moving across
       turns and off-hours.<br><br>
       <strong>从“人带着 AI 写代码”，到“agent 团队异步接力”。</strong><br>
@@ -107,7 +107,7 @@ become:
   private-data, or publication boundaries?
 - How does human feedback survive into the next run?
 
-Goal Harness makes those questions machine-readable enough for agents and
+LoopX makes those questions machine-readable enough for agents and
 legible enough for operators.
 
 ## What You Get
@@ -131,7 +131,7 @@ legible enough for operators.
 
 ## Good Fits
 
-Use Goal Harness when agent work spans time, people, projects, or safety
+Use LoopX when agent work spans time, people, projects, or safety
 boundaries:
 
 - multi-day or multi-week engineering and research goals;
@@ -144,7 +144,7 @@ boundaries:
 - public/private boundary checks before publishing artifacts;
 - local dashboards that should foreground user decisions before raw logs.
 
-Do not use Goal Harness as an autonomous production controller. It is a local
+Do not use LoopX as an autonomous production controller. It is a local
 coordination substrate; project ownership and dangerous permissions stay with
 the human/operator.
 
@@ -163,20 +163,20 @@ Use this when you are working in Codex App or a Codex App heartbeat-capable
 thread. Paste from the project repo:
 
 ```text
-Install and connect Goal Harness for this project end to end. Do not stop at a
-plan. If `goal-harness` is missing, install it with the official no-clone
+Install and connect LoopX for this project end to end. Do not stop at a
+plan. If `loopx` is missing, install it with the official no-clone
 GitHub installer. Then run doctor, connect or bootstrap this repo, ensure local
-Goal Harness state is ignored, and report the goal id, current user gate, top
+LoopX state is ignored, and report the goal id, current user gate, top
 agent todo, and next safe action before longer work. After the project is
 connected, set or refresh this thread's heartbeat automation from
-`goal-harness heartbeat-prompt --thin`.
+`loopx heartbeat-prompt --thin`.
 ```
 
 For recurring Codex App automation, generate the heartbeat body after the
 project is connected:
 
 ```bash
-goal-harness heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
+loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
 ```
 
 ### Codex CLI
@@ -193,8 +193,8 @@ codex
 2. In the TUI, paste one setup message:
 
 ```text
-Install and connect Goal Harness for this repo from this visible Codex CLI TUI.
-If `goal-harness` is missing, install it with the official no-clone GitHub
+Install and connect LoopX for this repo from this visible Codex CLI TUI.
+If `loopx` is missing, install it with the official no-clone GitHub
 installer; if it is already installed, reuse it. Bootstrap or connect this
 project, then generate the thin heartbeat prompt and set the current Codex CLI
 goal to `/goal <thin task_body>`. Show me the current goal, concrete user gate
@@ -218,10 +218,10 @@ details live in [Getting Started](docs/guides/getting-started.md) and the
 
 A successful connection looks like this for every surface:
 
-- `goal-harness doctor` passes;
-- the project has `.goal-harness/registry.json`;
+- `loopx doctor` passes;
+- the project has `.loopx/registry.json`;
 - the project has `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`;
-- `goal-harness status` shows who should act next;
+- `loopx status` shows who should act next;
 - local runtime state is ignored, not committed.
 
 ### Other Agents And Manual Shell
@@ -230,16 +230,16 @@ For Claude Code, Cursor, another terminal agent, or a manual shell, use the
 same no-clone installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
 export PATH="$HOME/.local/bin:$PATH"
-goal-harness doctor
+loopx doctor
 ```
 
 Then ask the agent to connect or run the command yourself:
 
 ```bash
 cd /path/to/your-project
-goal-harness bootstrap \
+loopx bootstrap \
   --goal-id your-project-goal \
   --objective "Improve this project through bounded, verified goal segments." \
   --goal-doc GOAL.md
@@ -248,9 +248,9 @@ goal-harness bootstrap \
 Clone-based install is only for contributors who want the live canary wrapper:
 
 ```bash
-git clone https://github.com/huangruiteng/goal-harness ~/goal-harness
-~/goal-harness/scripts/install-local.sh
-goal-harness doctor
+git clone https://github.com/huangruiteng/loopx ~/loopx
+~/loopx/scripts/install-local.sh
+loopx doctor
 ```
 
 For the full install, diagnose, connect, heartbeat, dashboard, development, and
@@ -259,11 +259,11 @@ command-reference workflow, read
 
 ## Community & Feedback
 
-Goal Harness is still early. The most useful feedback comes from real
+LoopX is still early. The most useful feedback comes from real
 long-running agent projects: where the control plane helped, where it felt
 heavy, and which user gates or handoffs still disappeared from view.
 
-- Use [GitHub Issues](https://github.com/huangruiteng/goal-harness/issues) for
+- Use [GitHub Issues](https://github.com/huangruiteng/loopx/issues) for
   reproducible bugs, install problems, and feature requests.
 - Open PRs for docs fixes, showcase writeups, and small public-safe examples.
 - For Chinese-speaking early users, scan the Lark group first for fast
@@ -274,11 +274,11 @@ heavy, and which user gates or handoffs still disappeared from view.
 <table>
   <tr>
     <td align="center" width="240">
-      <img src="docs/assets/goal-harness-lark-user-group.png" alt="Goal Harness Lark user group QR code" width="200"><br>
+      <img src="docs/assets/loopx-lark-user-group.png" alt="LoopX Lark user group QR code" width="200"><br>
       Lark group
     </td>
     <td align="center" width="240">
-      <img src="docs/assets/goal-harness-wechat-user-group.png" alt="Goal Harness WeChat user group QR code" width="200"><br>
+      <img src="docs/assets/loopx-wechat-user-group.png" alt="LoopX WeChat user group QR code" width="200"><br>
       WeChat group, may expire
     </td>
   </tr>
@@ -289,17 +289,17 @@ heavy, and which user gates or handoffs still disappeared from view.
 After a project is connected, the daily loop is intentionally small:
 
 ```bash
-goal-harness status
-goal-harness history --goal-id your-project-goal
-goal-harness quota should-run --goal-id your-project-goal
+loopx status
+loopx history --goal-id your-project-goal
+loopx quota should-run --goal-id your-project-goal
 ```
 
-Users should not need to diagnose Goal Harness by hand. Ask your agent to run
+Users should not need to diagnose LoopX by hand. Ask your agent to run
 the diagnostic packet and reason from it:
 
 ```text
-Diagnose Goal Harness for this project end to end. Do not ask me to run shell
-commands. Run goal-harness diagnose, tell me whether the project can
+Diagnose LoopX for this project end to end. Do not ask me to run shell
+commands. Run loopx diagnose, tell me whether the project can
 self-drive, what blocks it, the exact user/controller question if one exists,
 and what you will do next.
 ```
@@ -307,31 +307,50 @@ and what you will do next.
 Common operator actions:
 
 ```bash
-goal-harness todo add --goal-id your-project-goal --role agent --text "Run the next bounded validation slice."
-goal-harness review-packet --goal-id your-project-goal
-goal-harness refresh-state --goal-id your-project-goal
+loopx todo add --goal-id your-project-goal --role agent --text "Run the next bounded validation slice."
+loopx review-packet --goal-id your-project-goal
+loopx refresh-state --goal-id your-project-goal
 ```
 
 Automatic turns should check quota before work and spend exactly once after
 validated writeback:
 
 ```bash
-goal-harness quota should-run --goal-id your-project-goal
-goal-harness heartbeat-prompt --thin --goal-id your-project-goal
-goal-harness quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat --execute
+loopx quota should-run --goal-id your-project-goal
+loopx heartbeat-prompt --thin --goal-id your-project-goal
+loopx quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat --execute
 ```
+
+The `next_automatic_turn` reported by `quota plan` is only an advisory
+scheduling hint: it chooses the highest-compute eligible goal. operator-gated, focus-waiting, waiting, throttled, paused, and health-blocked goals stay out of the eligible lane. When a control-plane repair is explicitly enabled,
+`control_plane.self_repair.enabled=true` lets `quota should-run` return a
+bounded `decision=self_repair` contract instead of normal delivery; missing
+policy defaults off.
+
+If quota returns a `gate_prompt` or `operator_question`, the target heartbeat
+should proactively ask that concrete user/controller gate. If open user todos
+are projected, do not call the turn "no new user action" while they remain open;
+even during safe bypass, its report still has to list existing open user todos.
+When `notify_user_on_open_todo=true`, skip delivery work and quota spend for
+that blocker-push turn. With `safe_bypass_allowed=true`, the heartbeat may
+still do one bounded read-only steering or analysis step. See
+`docs/quota-allocation.md` for the full allocation contract.
+
+After an automatic turn actually spends delivery compute, append one spend
+event. Do not append spend for quiet `should_run=false` skips, preflight
+failures, or pure dry-run previews.
 
 The dashboard is optional and local:
 
 ```bash
-goal-harness serve-status --global-registry --port 8766 --limit 80
-cd ~/goal-harness/apps/dashboard && npm install && npm run dev
+loopx serve-status --global-registry --port 8766 --limit 80
+cd ~/loopx/apps/dashboard && npm install && npm run dev
 ```
 
 Before publishing docs or examples, keep the public/private boundary explicit:
 
 ```bash
-goal-harness check \
+loopx check \
   --scan-path README.md \
   --scan-path docs/ \
   --scan-path examples/
@@ -344,7 +363,7 @@ contracts live in [Status Data](docs/status-data-contract.md),
 
 ## Product Vision
 
-Goal Harness starts with AI coding, research, and benchmark loops because those
+LoopX starts with AI coding, research, and benchmark loops because those
 workflows make state drift easy to see. The broader product direction is a
 dynamic goal control plane for any long-running agent work where humans need
 clear progress, gates, feedback, and recovery without reading raw logs.
@@ -391,14 +410,14 @@ External contributors should start with
 [CONTRIBUTOR_TASKS.md](CONTRIBUTOR_TASKS.md) for public, claimable work and
 [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and boundary rules.
 
-Goal Harness keeps local active goal state separate from the public repository:
-do not commit `.goal-harness/`, `.codex/goals/`, live
+LoopX keeps local active goal state separate from the public repository:
+do not commit `.loopx/`, `.codex/goals/`, live
 `ACTIVE_GOAL_STATE.md`, raw benchmark traces, or private operator artifacts.
 
 Before publishing docs or examples, run:
 
 ```bash
-goal-harness check \
+loopx check \
   --scan-path README.md \
   --scan-path docs/ \
   --scan-path examples/
@@ -406,7 +425,7 @@ goal-harness check \
 
 ## Current Status
 
-Goal Harness is early. It is not a full agent platform and not an autonomous
+LoopX is early. It is not a full agent platform and not an autonomous
 production controller.
 
 The current milestone is a useful local substrate for goal state, run history,

@@ -18,7 +18,7 @@ def write_planned_registry(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / "README.md").write_text("# Planned Project\n", encoding="utf-8")
     (project / "docs" / "meta").mkdir(parents=True, exist_ok=True)
@@ -109,7 +109,7 @@ def run_cli(root: Path, registry_path: Path, *args: str, check: bool = True) -> 
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -126,7 +126,7 @@ def run_cli(root: Path, registry_path: Path, *args: str, check: bool = True) -> 
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-project-map-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-project-map-") as tmp:
         root = Path(tmp)
         registry_path = write_planned_registry(root)
         before = json.loads(

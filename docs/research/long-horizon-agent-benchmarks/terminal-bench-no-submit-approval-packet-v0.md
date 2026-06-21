@@ -46,8 +46,8 @@ git ls-remote https://github.com/laude-institute/harbor HEAD
 git ls-remote https://github.com/harbor-framework/terminal-bench HEAD
 harbor --help
 tb --help
-goal-harness history append-benchmark-run --benchmark-run-json <benchmark-run-v0.json>
-goal-harness history append-benchmark-result --benchmark-result-json <benchmark-result-v0.json>
+loopx history append-benchmark-run --benchmark-run-json <benchmark-run-v0.json>
+loopx history append-benchmark-result --benchmark-result-json <benchmark-result-v0.json>
 ```
 
 The `harbor --help` and `tb --help` checks are allowed only as CLI surface
@@ -55,7 +55,7 @@ inspection after approval. They must not be replaced by `harbor run`, `tb run`,
 or any command that starts a benchmark task, sandbox, agent, evaluator, or
 submission path.
 
-The Goal Harness append commands are allowed only after a compact public-safe
+The LoopX append commands are allowed only after a compact public-safe
 JSON object exists. They must not ingest raw runner logs, private traces, host
 absolute paths, raw session histories, credentials, or local artifact paths.
 
@@ -95,7 +95,7 @@ public-safe artifacts:
 
 - `terminal_bench_no_submit_setup_check_v0.json`
 - `benchmark_run_v0` shell for `bare_codex_cli_no_submit_setup`
-- `benchmark_run_v0` shell for `passive_goal_harness_wrapper_no_submit_setup`
+- `benchmark_run_v0` shell for `passive_loopx_wrapper_no_submit_setup`
 - optional `benchmark_result_v0` readiness shell with
   `official_task_score.kind = not_run`
 
@@ -106,7 +106,7 @@ outputs, official scores, or leaderboard eligibility claims.
 
 ## Ingestion Plan
 
-The future no-submit setup check enters Goal Harness only as compact history:
+The future no-submit setup check enters LoopX only as compact history:
 
 1. A `benchmark_run_v0` row records each no-submit setup mode with
    `runner_mode = setup_check_no_submit`, `real_run = false`,
@@ -124,7 +124,7 @@ Stop and ask the operator again if:
 
 - any command needs a runner execution, Docker, model call, cloud sandbox, paid
   compute, or external evaluator;
-- any command would write outside compact public-safe Goal Harness history;
+- any command would write outside compact public-safe LoopX history;
 - any artifact would include a host absolute path, credential, private trace,
   raw log, or raw session history;
 - the benchmark terms, Harbor protocol, Terminal-Bench protocol, or submission

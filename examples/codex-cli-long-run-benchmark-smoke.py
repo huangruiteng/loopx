@@ -123,7 +123,7 @@ def active_state_source() -> str:
 def write_fixture(root: Path, scenario_id: str) -> dict[str, Any]:
     home = root / scenario_id / "home"
     project = root / scenario_id / "project"
-    runtime = home / ".codex" / "goal-harness"
+    runtime = home / ".codex" / "loopx"
     state_rel = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     (project / "docs").mkdir(parents=True)
     (project / "src").mkdir(parents=True)
@@ -144,7 +144,7 @@ def write_fixture(root: Path, scenario_id: str) -> dict[str, Any]:
     (project / "state" / "ACTIVE_GOAL_STATE.md").write_text(active_state_source(), encoding="utf-8")
     (project / state_rel).write_text(active_state_source(), encoding="utf-8")
 
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(
         json.dumps(
@@ -184,7 +184,7 @@ def run_cli(fixture: dict[str, Any], args: list[str], *, scan_root: bool = False
     command = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(fixture["registry"]),
         "--runtime-root",
@@ -349,13 +349,13 @@ def goal_tick_protocol(phases: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def base_result(scenario_id: str, *, task_id: str = TASK_ID) -> dict[str, Any]:
-    with_harness = scenario_id.startswith("with_goal_harness")
+    with_harness = scenario_id.startswith("with_loopx")
     return {
         "schema_version": RESULT_SCHEMA,
         "task_id": task_id,
         "scenario_id": scenario_id,
         "worker_mode": "deterministic",
-        "harness_identity": "goal_harness" if with_harness else "none",
+        "harness_identity": "loopx" if with_harness else "none",
         "worker_surface": "deterministic_shim",
         "codex_goal_mode_enabled": True,
         "terminal_state": "failure",
@@ -391,7 +391,7 @@ def base_result(scenario_id: str, *, task_id: str = TASK_ID) -> dict[str, Any]:
 
 def run_harness_scenario(fixture: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     started = time.perf_counter()
-    result = base_result("with_goal_harness")
+    result = base_result("with_loopx")
     rows: list[dict[str, Any]] = []
     changed: list[str] = []
     actions: list[tuple[str, Callable[[Path], list[str]]]] = [
@@ -447,7 +447,7 @@ def run_harness_scenario(fixture: dict[str, Any]) -> tuple[dict[str, Any], list[
         rows.append(
             {
                 "step_index": step_index,
-                "scenario_id": "with_goal_harness",
+                "scenario_id": "with_loopx",
                 "action_kind": action_kind,
                 "should_run_before": should_run,
                 "validation": validation,
@@ -520,7 +520,7 @@ def run_harness_scenario(fixture: dict[str, Any]) -> tuple[dict[str, Any], list[
     rows.append(
         {
             "step_index": 3,
-            "scenario_id": "with_goal_harness",
+            "scenario_id": "with_loopx",
             "action_kind": "write_final_report",
             "should_run_before": bool(quota.get("should_run")),
             "validation": validation,
@@ -560,7 +560,7 @@ def run_harness_scenario(fixture: dict[str, Any]) -> tuple[dict[str, Any], list[
 
 def run_without_harness_scenario(fixture: dict[str, Any]) -> dict[str, Any]:
     started = time.perf_counter()
-    result = base_result("without_goal_harness")
+    result = base_result("without_loopx")
     changed: list[str] = []
     for action in (repair_queue, archive_todos):
         changed.extend(action(fixture["project"]))
@@ -720,7 +720,7 @@ def active_state_text(project: Path) -> str:
 
 def run_interrupt_harness_scenario(fixture: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     started = time.perf_counter()
-    result = base_result("with_goal_harness_interrupt", task_id=INTERRUPT_TASK_ID)
+    result = base_result("with_loopx_interrupt", task_id=INTERRUPT_TASK_ID)
     rows: list[dict[str, Any]] = []
     changed: list[str] = []
     interrupt_events: list[str] = []
@@ -887,8 +887,8 @@ def run_interrupt_harness_scenario(fixture: dict[str, Any]) -> tuple[dict[str, A
 
 def comparison(results: list[dict[str, Any]]) -> dict[str, Any]:
     by_id = {result["scenario_id"]: result for result in results}
-    with_harness = by_id["with_goal_harness"]
-    without = by_id["without_goal_harness"]
+    with_harness = by_id["with_loopx"]
+    without = by_id["without_loopx"]
     return {
         "schema_version": COMPARISON_SCHEMA,
         "task_id": TASK_ID,
@@ -900,9 +900,9 @@ def comparison(results: list[dict[str, Any]]) -> dict[str, Any]:
         "control_plane_score_delta": round(
             with_harness["control_plane_score"]["value"] - without["control_plane_score"]["value"], 3
         ),
-        "with_goal_harness_overhead_ms": round(with_harness["wall_time_ms"] - without["wall_time_ms"], 3),
-        "with_goal_harness_extra_writebacks": with_harness["writeback_count"] - without["writeback_count"],
-        "with_goal_harness_extra_spends": with_harness["spend_count"] - without["spend_count"],
+        "with_loopx_overhead_ms": round(with_harness["wall_time_ms"] - without["wall_time_ms"], 3),
+        "with_loopx_extra_writebacks": with_harness["writeback_count"] - without["writeback_count"],
+        "with_loopx_extra_spends": with_harness["spend_count"] - without["spend_count"],
         "interrupt_fixture_markers": interrupt_fixture_markers(),
         "metrics_compared": [
             "terminal_state",
@@ -926,7 +926,7 @@ def comparison(results: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def assert_result_contract(results: list[dict[str, Any]], rows: list[dict[str, Any]], summary: dict[str, Any]) -> None:
-    assert {result["scenario_id"] for result in results} == {"with_goal_harness", "without_goal_harness"}
+    assert {result["scenario_id"] for result in results} == {"with_loopx", "without_loopx"}
     for result in results:
         assert result["schema_version"] == RESULT_SCHEMA, result
         assert result["task_id"] == TASK_ID, result
@@ -951,9 +951,9 @@ def assert_result_contract(results: list[dict[str, Any]], rows: list[dict[str, A
         assert result["archive_hygiene_passed"] is True, result
         assert result["queue_contract_passed"] is True, result
         assert result["summary_quality_score"] >= 2, result
-    with_harness = next(result for result in results if result["scenario_id"] == "with_goal_harness")
-    without = next(result for result in results if result["scenario_id"] == "without_goal_harness")
-    assert with_harness["harness_identity"] == "goal_harness", with_harness
+    with_harness = next(result for result in results if result["scenario_id"] == "with_loopx")
+    without = next(result for result in results if result["scenario_id"] == "without_loopx")
+    assert with_harness["harness_identity"] == "loopx", with_harness
     assert with_harness["goal_tick_phase_coverage"] == 1.0, with_harness
     assert with_harness["control_plane_score"]["value"] > without["control_plane_score"]["value"], (
         with_harness,
@@ -985,7 +985,7 @@ def assert_result_contract(results: list[dict[str, Any]], rows: list[dict[str, A
 def assert_interrupt_contract(interrupt_result: dict[str, Any], interrupt_rows: list[dict[str, Any]]) -> None:
     assert interrupt_result["schema_version"] == RESULT_SCHEMA, interrupt_result
     assert interrupt_result["task_id"] == INTERRUPT_TASK_ID, interrupt_result
-    assert interrupt_result["scenario_id"] == "with_goal_harness_interrupt", interrupt_result
+    assert interrupt_result["scenario_id"] == "with_loopx_interrupt", interrupt_result
     assert interrupt_result["terminal_state"] == "success", interrupt_result
     assert interrupt_result["official_task_score"]["value"] == 1.0, interrupt_result
     assert interrupt_result["control_plane_score"]["kind"] == "core_v0", interrupt_result
@@ -1021,11 +1021,11 @@ def assert_interrupt_contract(interrupt_result: dict[str, Any], interrupt_rows: 
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-long-run-benchmark-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-long-run-benchmark-") as raw_tmp:
         root = Path(raw_tmp)
-        with_fixture = write_fixture(root, "with_goal_harness")
-        without_fixture = write_fixture(root, "without_goal_harness")
-        interrupt_fixture = write_fixture(root, "with_goal_harness_interrupt")
+        with_fixture = write_fixture(root, "with_loopx")
+        without_fixture = write_fixture(root, "without_loopx")
+        interrupt_fixture = write_fixture(root, "with_loopx_interrupt")
         with_result, rows = run_harness_scenario(with_fixture)
         without_result = run_without_harness_scenario(without_fixture)
         interrupt_result, interrupt_rows = run_interrupt_harness_scenario(interrupt_fixture)

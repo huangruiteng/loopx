@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     build_agents_last_exam_local_source_readiness,
 )
 
@@ -24,13 +24,13 @@ def make_source_root(root: Path, *, remote: str = OFFICIAL_REPO) -> Path:
     (source_root / "ale_run" / "__init__.py").write_text("", encoding="utf-8")
     subprocess.run(["git", "init"], cwd=source_root, check=True, capture_output=True)
     subprocess.run(
-        ["git", "config", "user.email", "goal-harness@example.invalid"],
+        ["git", "config", "user.email", "loopx@example.invalid"],
         cwd=source_root,
         check=True,
         capture_output=True,
     )
     subprocess.run(
-        ["git", "config", "user.name", "Goal Harness Smoke"],
+        ["git", "config", "user.name", "LoopX Smoke"],
         cwd=source_root,
         check=True,
         capture_output=True,
@@ -221,7 +221,7 @@ def run_cli_smoke() -> None:
         base_cmd = [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",

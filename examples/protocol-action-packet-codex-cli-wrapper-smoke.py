@@ -28,7 +28,7 @@ def load_comparison_module() -> Any:
 def compact_prompt(report: dict[str, Any]) -> str:
     aggregate = report["aggregate"]
     return (
-        "Summarize this synthetic Goal Harness protocol comparison. "
+        "Summarize this synthetic LoopX protocol comparison. "
         "Use one sentence. Preserve actor/action/no_api facts. "
         "Do not request external context. "
         f"schema={report['schema_version']} "
@@ -185,7 +185,7 @@ def main() -> None:
     prompt = compact_prompt(comparison)
     assert "protocol_router_comparison_v0" in prompt, prompt
     assert len(prompt) < 260, prompt
-    with tempfile.TemporaryDirectory(prefix="goal-harness-protocol-codex-wrapper-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-protocol-codex-wrapper-") as tmp:
         root = Path(tmp)
         project = root / "project"
         project.mkdir()

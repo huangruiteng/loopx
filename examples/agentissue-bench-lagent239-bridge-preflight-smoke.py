@@ -234,7 +234,7 @@ def reduce_to_benchmark_result(packet: dict[str, Any]) -> dict[str, Any]:
         "task_id": "agentissue_bench_lagent_239",
         "scenario_id": "lagent239_bridge_preflight_no_run",
         "worker_mode": "host_metadata_and_manifest_preflight",
-        "harness_identity": "goal_harness",
+        "harness_identity": "loopx",
         "terminal_state": "bridge_ready_before_execution_gates",
         "official_task_score": {
             "kind": "agentissue_bench_official_score",

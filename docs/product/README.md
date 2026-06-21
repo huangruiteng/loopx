@@ -3,14 +3,14 @@
 This folder keeps stable product-direction notes that are broader than one
 runtime contract, benchmark route, or launch draft.
 
-- [Product vision](vision.md): how Goal Harness grows from an engineering
+- [Product vision](vision.md): how LoopX grows from an engineering
   control plane into a human-friendly dynamic goal control plane for
   long-running agent work, including the creator-operator productization case.
 - [Server-client product shape](server-client-product-shape.md): the medium-term
   product model where the server owns durable state, delivery/planning queue
   boundaries, and governed proposal promotion, the client acts as the user's
   intent proxy, and executor loops perform bounded work with evidence writeback.
-- [Codex CLI TUI-first Goal Harness loop](codex-cli-tui-loop.md): the
+- [Codex CLI TUI-first LoopX loop](codex-cli-tui-loop.md): the
   first-class Codex CLI product contract where one TUI message starts the Goal
   Harness loop, later automation tries to steer the same visible session, and
   headless `codex exec` remains an explicit fallback rather than the default
@@ -58,6 +58,9 @@ runtime contract, benchmark route, or launch draft.
 - [Codex CLI TUI continuation priority](codex-cli-tui-continuation-priority.md):
   the current scheduling guard that keeps same-open-TUI continuation ahead of
   frontstage/showcase polish when both are runnable.
+- [LoopX rename migration](loopx-rename-migration.md): the compatibility-first
+  plan for moving product, CLI, install, docs, state paths, and GitHub repo
+  naming from LoopX to LoopX.
 - [Codex CLI same-open-TUI continuation observation](codex-cli-same-open-tui-continuation-observation.md):
   the live-session observation that one-message TUI bootstrap can continue
   visibly through the first guard and steering decision, while scheduled
@@ -77,10 +80,9 @@ runtime contract, benchmark route, or launch draft.
   design for turning explicit reward, corrections, and steering feedback into
   compact candidate-ranking hints without raw chat, hidden profiling, or hard
   gate semantics.
-- [Domain capability packs](domain-capability-packs.md): why Goal Harness
+- [Domain capability packs](domain-capability-packs.md): why LoopX
   stays a generic control plane by default, how domain packs such as
   `ml_experiment` are detected but default-off, and which evidence/result
   protocols belong in the default surface versus an explicit pack.
-- [Naming decision packet](naming-decision-packet.md): why the project should
-  keep `Goal Harness` as the brand while testing `dynamic goal control plane`
-  as category/tagline language.
+- [Naming decision packet](naming-decision-packet.md): historical naming
+  context before the LoopX rename.

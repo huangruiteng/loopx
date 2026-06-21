@@ -88,7 +88,7 @@ No upload, submit, or public ranking path is allowed by this packet.
 ```bash
 python3 examples/agentissue-bench-lagent239-bridge-preflight-smoke.py
 python3 -m py_compile examples/agentissue-bench-lagent239-bridge-preflight-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/agentissue-bench-lagent239-bridge-preflight-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-lagent239-bridge-preflight-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

@@ -40,7 +40,7 @@ def assert_public_safe(payload: object) -> None:
 
 def run_cli_json(args: list[str], *, check: bool = True) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -56,9 +56,9 @@ def assert_contract(payload: dict[str, Any]) -> None:
     assert payload["ok"] is True, payload
     assert (
         payload["schema_version"]
-        == "goal_harness_active_user_intervention_channel_contract_v0"
+        == "loopx_active_user_intervention_channel_contract_v0"
     ), payload
-    assert payload["channel_surface"] == "goal_harness_active_user_external_update_loop_v0", payload
+    assert payload["channel_surface"] == "loopx_active_user_external_update_loop_v0", payload
     assert payload["mode"] == "audited_external_update_loop", payload
     assert payload["worker_start_marker"]["kind"] == "worker_start_seq", payload
     assert "active-user-observe" in payload["worker_observe_command"], payload
@@ -75,8 +75,8 @@ def assert_contract(payload: dict[str, Any]) -> None:
 
 
 def assert_intervention(payload: dict[str, Any], *, seq: int, after_start: bool) -> None:
-    assert payload["schema_version"] == "goal_harness_active_user_intervention_v0", payload
-    assert payload["channel_surface"] == "goal_harness_active_user_external_update_loop_v0", payload
+    assert payload["schema_version"] == "loopx_active_user_intervention_v0", payload
+    assert payload["channel_surface"] == "loopx_active_user_external_update_loop_v0", payload
     assert payload["seq"] == seq, payload
     assert payload["channel"] == "simulator_proactive_user_message", payload
     assert payload["type"] == "active_user_instruction", payload
@@ -93,9 +93,9 @@ def assert_observation(payload: dict[str, Any], *, observed: bool) -> None:
     assert payload["ok"] is True, payload
     assert (
         payload["schema_version"]
-        == "goal_harness_active_user_intervention_observation_v0"
+        == "loopx_active_user_intervention_observation_v0"
     ), payload
-    assert payload["channel_surface"] == "goal_harness_active_user_external_update_loop_v0", payload
+    assert payload["channel_surface"] == "loopx_active_user_external_update_loop_v0", payload
     assert payload["feed_present"] is True, payload
     assert payload["feed_path_recorded"] is False, payload
     assert payload["observed_after_worker_start"] is observed, payload
@@ -117,7 +117,7 @@ def assert_observation(payload: dict[str, Any], *, observed: bool) -> None:
 
 
 def main() -> int:
-    from goal_harness.worker_bridge import (
+    from loopx.worker_bridge import (
         active_user_simulator_output_json_schema,
         build_active_user_intervention,
         build_active_user_intervention_channel_contract,
@@ -164,7 +164,7 @@ def main() -> int:
     )
     assert_intervention(after_start, seq=2, after_start=True)
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-active-user-feed-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-active-user-feed-") as tmp:
         root = Path(tmp)
         feed = root / "feed.jsonl"
         observation_path = root / "observation.json"
@@ -225,8 +225,8 @@ def main() -> int:
                 "classification": "active_user_observe_checkpoint",
                 "command": "active_user_observe",
                 "goal_id": "worker-bridge-active-user",
-                "kind": "goal_harness_cli_call",
-                "mode": "codex_goal_harness_active_worker",
+                "kind": "loopx_cli_call",
+                "mode": "codex_loopx_active_worker",
                 "observed_after_worker_start": True,
                 "ok": True,
                 "worker_observation_proof": True,
@@ -235,7 +235,7 @@ def main() -> int:
         checkpoint = json.loads(benchmark_run_path.read_text(encoding="utf-8"))
         assert checkpoint["schema_version"] == "benchmark_run_v0", checkpoint
         assert checkpoint["source_runner"] == "worker_bridge_active_user_observe", checkpoint
-        assert checkpoint["worker_goal_harness_cli_call_total"] == 1, checkpoint
+        assert checkpoint["worker_loopx_cli_call_total"] == 1, checkpoint
         assert checkpoint["worker_bridge_outcome"]["worker_bridge_verified"] is True, checkpoint
         assert (
             checkpoint["worker_bridge_checkpoint"]["checkpoint_kind"]
@@ -261,7 +261,7 @@ def main() -> int:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "worker-bridge",
             "active-user-intervention",
             "--seq",
@@ -287,7 +287,7 @@ def main() -> int:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "worker-bridge",
             "active-user-intervention",
             "--seq",

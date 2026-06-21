@@ -7,25 +7,25 @@ This is a sanitized shape, not a copy of a private local setup.
 ```text
 CS-Notes/
   .local/ACTIVE_GOAL_STATE.md
-  .local/GOAL_HARNESS_REGISTRY.json
+  .local/LOOPX_REGISTRY.json
   Notes/snippets/codex-goal-pre-tick.py
 ```
 
 ## Pre-Tick Pattern
 
-The project pre-tick reads project-specific state, then adds Goal Harness
+The project pre-tick reads project-specific state, then adds LoopX
 signals:
 
 ```bash
-goal-harness --registry .local/GOAL_HARNESS_REGISTRY.json --format json history
-goal-harness --registry .local/GOAL_HARNESS_REGISTRY.json --format json check --scan-root Notes/snippets
+loopx --registry .local/LOOPX_REGISTRY.json --format json history
+loopx --registry .local/LOOPX_REGISTRY.json --format json check --scan-root Notes/snippets
 ```
 
 The returned compact signal can be exposed as:
 
 ```json
 {
-  "goal_harness_contract_health": {
+  "loopx_contract_health": {
     "ok": true,
     "errors": 0,
     "warnings": 0,

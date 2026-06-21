@@ -15,11 +15,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     build_benchmark_attempt_learning_gate,
     build_benchmark_learning_ledger,
 )
-from goal_harness.status import (  # noqa: E402
+from loopx.status import (  # noqa: E402
     compact_benchmark_learning_ledger,
     compact_benchmark_run,
 )
@@ -37,7 +37,7 @@ def comparison(
         "comparison_id": comparison_id,
         "benchmark_id": "terminal-bench@2.0",
         "baseline_scenario_id": "hardened-codex",
-        "treatment_scenario_id": "codex-goal-harness",
+        "treatment_scenario_id": "codex-loopx",
         "official_task_score_delta": delta,
         "control_plane_score_delta": 0.0,
         "claim_boundary": {
@@ -53,7 +53,7 @@ def comparison(
 
 
 def benchmark_run(
-    mode: str = "codex-goal-harness",
+    mode: str = "codex-loopx",
     score: float = 0.0,
     *,
     first_blocker: str = "pre_worker_agent_setup_failed",
@@ -126,7 +126,7 @@ def no_signal_ledger() -> dict[str, Any]:
         benchmark_runs=[
             benchmark_run("hardened-codex", 1.0, first_blocker="", failure_labels=[]),
             benchmark_run(
-                "codex-goal-harness",
+                "codex-loopx",
                 1.0,
                 first_blocker="",
                 failure_labels=[],
@@ -190,7 +190,7 @@ def test_nonactionable_learning_row_still_blocks_budget_count() -> None:
     payload = build_benchmark_attempt_learning_gate(
         compact_run(
             benchmark_run(
-                "codex-goal-harness",
+                "codex-loopx",
                 1.0,
                 first_blocker="",
                 failure_labels=[],
@@ -223,7 +223,7 @@ def test_cli_attempt_learning_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -251,7 +251,7 @@ def test_cli_attempt_learning_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -277,7 +277,7 @@ def test_cli_attempt_learning_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",

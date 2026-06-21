@@ -17,20 +17,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.cli_commands.status import review_packet_handoff_only_payload  # noqa: E402
-from goal_harness.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
-from goal_harness.review_packet import build_review_packet  # noqa: E402
+from loopx.cli_commands.status import review_packet_handoff_only_payload  # noqa: E402
+from loopx.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
+from loopx.review_packet import build_review_packet  # noqa: E402
 
 STATUS_DATA_CONTRACT_PATH = REPO_ROOT / "docs" / "status-data-contract.md"
 GOAL_ID = "planned-main-control"
-APPROVED_COMMAND = f"goal-harness read-only-map --goal-id {GOAL_ID} --dry-run"
+APPROVED_COMMAND = f"loopx read-only-map --goal-id {GOAL_ID} --dry-run"
 APPROVED_COMMAND_TAIL = f"read-only-map --goal-id {GOAL_ID} --dry-run"
 FOCUS_WAIT_GOAL_ID = "focus-wait-owner-blocker"
 LOCAL_ABSOLUTE_PATH_PATTERN = re.compile(
     r"(^|[\s`'\"=:(])(?:/[A-Za-z0-9._-]+(?:/[^\s`'\",)]+)+|[A-Za-z]:[\\/][^\s`'\",)]+)"
 )
 PROJECT_AGENT_HANDOFF_FORBIDDEN_MARKERS = (
-    "【Goal Harness Review Packet】",
+    "【LoopX Review Packet】",
     "【人只需判断】",
     "【用户本地 Gate 记录草稿】",
     "问题：",
@@ -113,7 +113,7 @@ def write_planned_registry(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
         "---\n"
@@ -194,7 +194,7 @@ def write_planned_registry(root: Path) -> Path:
 
 def approved_command_with_local_paths(root: Path) -> str:
     return (
-        f"goal-harness --registry {root / 'project' / '.goal-harness' / 'registry.json'} "
+        f"loopx --registry {root / 'project' / '.loopx' / 'registry.json'} "
         f"--runtime-root {root / 'runtime'} read-only-map --goal-id {GOAL_ID} --dry-run"
     )
 
@@ -242,7 +242,7 @@ def run_cli(root: Path, registry_path: Path, *args: str) -> subprocess.Completed
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -324,7 +324,7 @@ def assert_attention_queue_drives_approved_handoff_over_stale_history() -> None:
                             "recommended_action": "ask the stale operator gate again",
                             "operator_gate": {
                                 "decision": "defer",
-                                "agent_command": "goal-harness stale-command --dry-run",
+                                "agent_command": "loopx stale-command --dry-run",
                             },
                         }
                     ],
@@ -363,7 +363,7 @@ def assert_attention_queue_drives_approved_handoff_over_stale_history() -> None:
     assert "operator gate 已批准" in packet, packet
     assert "【用户本地 Gate 记录草稿】" not in packet, packet
     assert "ask the stale operator gate again" not in packet, packet
-    assert "goal-harness stale-command" not in packet, packet
+    assert "loopx stale-command" not in packet, packet
     assert APPROVED_COMMAND in packet, packet
 
     readiness = status_payload["attention_queue"]["items"][0]["handoff_readiness"]
@@ -394,7 +394,7 @@ def assert_attention_queue_drives_approved_handoff_over_stale_history() -> None:
 
 
 def assert_project_agent_handoff_prioritizes_advancement_todos() -> None:
-    goal_id = "goal-harness-meta"
+    goal_id = "loopx-meta"
     status_payload = {
         "registry": "./fixtures/registry.json",
         "runtime_root": "./fixtures/runtime",
@@ -406,7 +406,7 @@ def assert_project_agent_handoff_prioritizes_advancement_todos() -> None:
                     "waiting_on": "codex",
                     "severity": "action",
                     "recommended_action": "Continue the benchmark evidence lane.",
-                    "agent_command": f"goal-harness --format json quota should-run --goal-id {goal_id}",
+                    "agent_command": f"loopx --format json quota should-run --goal-id {goal_id}",
                     "project_asset": {
                         "owner": "codex",
                         "gate": "none",
@@ -735,7 +735,7 @@ def assert_missing_project_asset_review_packet_fallback() -> None:
                     "waiting_on": "codex",
                     "severity": "action",
                     "recommended_action": "Continue only through raw status fallback.",
-                    "agent_command": "goal-harness status --goal-id legacy-status-only",
+                    "agent_command": "loopx status --goal-id legacy-status-only",
                     "source": "latest_run",
                 }
             ]
@@ -943,7 +943,7 @@ def assert_dense_handoff_stays_within_budget() -> None:
     )
     assert_handoff_interface_budget(payload, "dense project-agent handoff")
     assert (
-        "goal-harness --registry ./fixtures/registry.json --runtime-root "
+        "loopx --registry ./fixtures/registry.json --runtime-root "
         "./fixtures/runtime history --goal-id dense-handoff-budget --limit 3"
     ) in handoff, handoff
     assert_no_local_paths(payload, "dense project-agent handoff")
@@ -960,7 +960,7 @@ def assert_dense_handoff_stays_within_budget() -> None:
 
 def main() -> int:
     help_result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", "review-packet", "--help"],
+        [sys.executable, "-m", "loopx.cli", "review-packet", "--help"],
         cwd=REPO_ROOT,
         check=True,
         text=True,
@@ -978,7 +978,7 @@ def main() -> int:
     assert_missing_project_asset_review_packet_fallback()
     assert_decision_freshness_warning_packet()
     assert_dense_handoff_stays_within_budget()
-    with tempfile.TemporaryDirectory(prefix="goal-harness-review-packet-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-review-packet-") as tmp:
         root = Path(tmp)
         registry_path = write_planned_registry(root)
         run_dir = root / "runtime" / "goals" / GOAL_ID / "runs"
@@ -994,7 +994,7 @@ def main() -> int:
             str(root / "project"),
         )
         packet = markdown_result.stdout
-        assert "【Goal Harness Review Packet】" in packet, packet
+        assert "【LoopX Review Packet】" in packet, packet
         assert "类型：Controller" in packet, packet
         assert "材料：authority/material: topics=2, materials=4, repositories=2, owner_review_required=1, stale=1, current_authority=1, risk=low（仅脱敏计数；不含内部链接、路径或正文。）" in packet, packet
         assert "待办：Read owner review worksheet first.（先处理/暂缓再判 gate）" in packet, packet
@@ -1171,7 +1171,7 @@ def main() -> int:
         )
         handoff_only = handoff_only_result.stdout
         assert handoff_only.startswith(f"目标校验：本段只适用于 goal_id=`{GOAL_ID}`"), handoff_only
-        assert "【Goal Harness Review Packet】" not in handoff_only, handoff_only
+        assert "【LoopX Review Packet】" not in handoff_only, handoff_only
         assert "【人只需判断】" not in handoff_only, handoff_only
         assert "【用户本地 Gate 记录草稿】" not in handoff_only, handoff_only
         assert "operator gate 已记录为 approve" in handoff_only, handoff_only

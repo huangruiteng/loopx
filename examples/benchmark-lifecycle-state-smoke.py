@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     TERMINAL_BENCH_HARBOR_REF,
     build_benchmark_claim_review,
     build_benchmark_learning_ledger,
@@ -44,14 +44,14 @@ def wrapped_preflight_event() -> dict[str, Any]:
         "schema_version": "benchmark_run_append_preview_v0",
         "benchmark_run": {
             "schema_version": "benchmark_run_v0",
-            "source_runner": "goal_harness_terminal_bench_preflight_fixture",
+            "source_runner": "loopx_terminal_bench_preflight_fixture",
             "benchmark_id": "terminal-bench@2.0",
-            "mode": "codex_goal_harness_active_cli_bridge_preflight",
+            "mode": "codex_loopx_active_cli_bridge_preflight",
             "real_run": False,
             "submit_eligible": False,
             "first_blocker": "ready_for_private_managed_no_upload_pilot_review",
             "preflight_guard": {
-                "schema_version": "terminal_bench_codex_goal_harness_active_cli_bridge_preflight_v0",
+                "schema_version": "terminal_bench_codex_loopx_active_cli_bridge_preflight_v0",
                 "first_blocker": "ready_for_private_managed_no_upload_pilot_review",
             },
             "private_runner_launch_summary": {
@@ -202,7 +202,7 @@ def benchmark_run(
 
 
 def environment_setup_failed_benchmark_run() -> dict[str, Any]:
-    payload = benchmark_run("codex-goal-harness", 0.0)
+    payload = benchmark_run("codex-loopx", 0.0)
     context = {
         "schema_version": "terminal_bench_environment_setup_failure_context_v0",
         "surface": "harbor_environment_setup",
@@ -284,7 +284,7 @@ def comparison() -> dict[str, Any]:
         "comparison_id": "lifecycle-startup-failure",
         "benchmark_id": "terminal-bench@2.0",
         "baseline_scenario_id": "hardened-codex",
-        "treatment_scenario_id": "codex-goal-harness",
+        "treatment_scenario_id": "codex-loopx",
         "official_task_score_delta": -1.0,
         "control_plane_score_delta": 0.0,
         "failure_attribution_labels": ["treatment_pre_worker_agent_setup_failed"],
@@ -421,7 +421,7 @@ def test_terminal_bench_result_finalization_gate_accepts_ended_active_marker() -
 def test_budget_count_requires_compact_ledger_gate() -> None:
     baseline = benchmark_run("hardened-codex", 1.0)
     treatment = benchmark_run(
-        "codex-goal-harness",
+        "codex-loopx",
         0.0,
         failure_labels=["treatment_pre_worker_agent_setup_failed"],
     )
@@ -560,7 +560,7 @@ def test_cli_lifecycle_state_budget_gate() -> None:
 
         baseline = benchmark_run("hardened-codex", 1.0)
         treatment = benchmark_run(
-            "codex-goal-harness",
+            "codex-loopx",
             0.0,
             failure_labels=["treatment_pre_worker_agent_setup_failed"],
         )
@@ -590,7 +590,7 @@ def test_cli_lifecycle_state_budget_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -619,7 +619,7 @@ def test_cli_lifecycle_state_budget_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -655,7 +655,7 @@ def test_cli_lifecycle_state_budget_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -688,7 +688,7 @@ def test_cli_lifecycle_state_budget_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -729,7 +729,7 @@ def test_cli_lifecycle_state_budget_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -763,7 +763,7 @@ def test_cli_lifecycle_state_budget_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -798,7 +798,7 @@ def test_cli_lifecycle_state_budget_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -831,7 +831,7 @@ def test_cli_lifecycle_state_budget_gate() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",

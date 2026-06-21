@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import parse_active_state_todos  # noqa: E402
+from loopx.status import parse_active_state_todos  # noqa: E402
 
 
 GOAL_ID = "todo-cli-goal"
@@ -27,7 +27,7 @@ def write_fixture(root: Path, *, register_agents: bool = True) -> tuple[Path, Pa
     project = root / "project"
     runtime = root / "runtime"
     state_file = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_file.parent.mkdir(parents=True)
     state_file.write_text(
         "---\n"
@@ -78,7 +78,7 @@ def run_cli(registry_path: Path, *args: str) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--format",
@@ -98,7 +98,7 @@ def run_cli_error(registry_path: Path, *args: str) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--format",
@@ -115,7 +115,7 @@ def run_cli_error(registry_path: Path, *args: str) -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-todo-cli-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-todo-cli-smoke-") as tmp:
         root = Path(tmp)
         registry_path, state_file = write_fixture(root)
         legacy_registry_path, _ = write_fixture(root / "legacy", register_agents=False)
@@ -202,7 +202,7 @@ def main() -> int:
         after_metadata = state_file.read_text(encoding="utf-8")
         assert after_metadata.count("- [ ] Summarize the read-only evidence after the user") == 1, after_metadata
         agent_block_start = after_metadata.index("- [ ] Summarize the read-only evidence after the user")
-        agent_metadata_start = after_metadata.index("<!-- goal-harness:todo", agent_block_start)
+        agent_metadata_start = after_metadata.index("<!-- loopx:todo", agent_block_start)
         assert after_metadata.index("checklist is done.", agent_block_start) < agent_metadata_start, after_metadata
         assert "status=open task_class=advancement_task action_kind=run_eval" in after_metadata
         assert "required_capabilities=shell%2Cbenchmark_runner" in after_metadata

@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 FORBIDDEN_USAGE_KEYS = {
@@ -32,7 +32,7 @@ FORBIDDEN_USAGE_KEYS = {
 def write_registry(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     goals = []
     for goal_id in ("project-a", "project-b"):
@@ -134,7 +134,7 @@ def assert_no_forbidden_keys(value: Any) -> None:
 
 def main() -> int:
     now = datetime.now(timezone.utc)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-usage-summary-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-usage-summary-") as tmp:
         root = Path(tmp)
         registry_path = write_registry(root)
         runtime = root / "runtime"
@@ -192,7 +192,7 @@ def main() -> int:
         status_contract = payload["status_contract"]
         assert status_contract["schema_version"] == 2, status_contract
         assert status_contract["minimum_dashboard_schema_version"] == 2, status_contract
-        assert status_contract["producer"] == "goal-harness status", status_contract
+        assert status_contract["producer"] == "loopx status", status_contract
         assert status_contract["reload_hint"] == "scripts/macos-dashboard-launchagent.sh restart", status_contract
 
         usage = payload["usage_summary"]

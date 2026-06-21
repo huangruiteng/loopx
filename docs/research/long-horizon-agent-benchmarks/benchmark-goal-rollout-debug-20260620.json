@@ -11,8 +11,8 @@
     "private_or_absolute_paths_copied": false,
     "notes": "This file records compact rollout/control-plane metadata only. Raw benchmark artifacts stay on the private cloud host or ignored local runtime state."
   },
-  "goal_harness_control_plane": {
-    "goal_id": "goal-harness-meta",
+  "loopx_control_plane": {
+    "goal_id": "loopx-meta",
     "pre_debug_recommended_action": {
       "todo_id": "todo_9b33c85f5b7c",
       "action_kind": "benchmark_case_rotation",
@@ -192,7 +192,7 @@
       "debug_read": "This is useful runner/verifier evidence, but it is not the native app-server Goal baseline the benchmark program now wants as the primary comparison target.",
       "next_debug_questions": [
         "Should SkillsBench get a native app-server Goal worker before more score claims?",
-        "Is the case a poor canary for Goal Harness lift, or is the blind-loop policy too weak?",
+        "Is the case a poor canary for LoopX lift, or is the blind-loop policy too weak?",
         "Can reduce-only preserve persisted runtime prerequisites to avoid stale setup blockers?"
       ]
     },
@@ -223,7 +223,7 @@
         "official_score_zero_for_both_arms",
         "paired_no_score_uplift_ledger_decision"
       ],
-      "debug_read": "The run validates that setup/prewarm no longer blocks this case, but not that the current Goal Harness policy improves task outcome.",
+      "debug_read": "The run validates that setup/prewarm no longer blocks this case, but not that the current LoopX policy improves task outcome.",
       "next_debug_questions": [
         "Is this case suitable as a stability canary only?",
         "Should future SkillsBench treatment wait for native app-server Goal rather than another blind-loop repeat?",

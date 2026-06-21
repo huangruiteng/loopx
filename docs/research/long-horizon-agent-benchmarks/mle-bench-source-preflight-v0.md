@@ -72,7 +72,7 @@ declares heavy or gated dependencies such as `docker`, `kaggle`, `openai`,
 `tensorflow`, and `pymongo`.
 
 This is a useful wrapper finding rather than a benchmark failure: a future
-Goal Harness MLE-bench runner should either use an isolated dependency
+LoopX MLE-bench runner should either use an isolated dependency
 environment or inspect CLI syntax through source/AST until the owner approves
 real setup.
 

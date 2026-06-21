@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.registry import inspect_registry_boundary  # noqa: E402
+from loopx.registry import inspect_registry_boundary  # noqa: E402
 
 DOC = REPO_ROOT / "docs" / "authority-source-registration.md"
 
@@ -41,7 +41,7 @@ def registry_payload(project: Path, runtime: Path, *, registry_role: str | None 
                     "status": "connected-read-only",
                 },
                 "authority_registry": {
-                    "path": ".goal-harness/authority.registry-boundary.json",
+                    "path": ".loopx/authority.registry-boundary.json",
                     "read_status": "registered",
                     "topic_authority": {
                         "registry_boundary": "public-registry-boundary-note",
@@ -96,7 +96,7 @@ def run_cli(path: Path, *extra: str) -> dict[str, Any]:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "registry-boundary",
@@ -127,19 +127,19 @@ def assert_doc_contract() -> None:
 
 
 def run() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-registry-boundary-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-registry-boundary-") as tmp:
         root = Path(tmp) / "project"
         runtime = root / "runtime"
         root.mkdir(parents=True)
         subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
         (root / ".gitignore").write_text(
-            ".goal-harness/\n"
+            ".loopx/\n"
             "runtime/\n"
             "registry.public.json\n",
             encoding="utf-8",
         )
 
-        local_registry = root / ".goal-harness" / "registry.json"
+        local_registry = root / ".loopx" / "registry.json"
         write_json(local_registry, registry_payload(root, runtime))
         local_payload = inspect_registry_boundary(local_registry)
         assert local_payload["ok"] is True, local_payload

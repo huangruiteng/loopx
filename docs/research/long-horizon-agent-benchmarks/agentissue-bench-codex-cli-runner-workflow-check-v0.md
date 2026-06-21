@@ -4,7 +4,7 @@ This packet adds one no-execute workflow invariant check for the selected
 AgentIssue-Bench tag `lagent_239`:
 
 ```bash
-goal-harness benchmark agentissue-codex-runner-flow \
+loopx benchmark agentissue-codex-runner-flow \
   --goal-id <goal-id> \
   --tag lagent_239 \
   --workflow-check-root <private-check-root>
@@ -50,7 +50,7 @@ git, or take production action.
 ```bash
 python3 examples/agentissue-bench-codex-cli-runner-workflow-check-smoke.py
 python3 -m py_compile examples/agentissue-bench-codex-cli-runner-workflow-check-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/agentissue-bench-codex-cli-runner-workflow-check-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-workflow-check-v0.md
 ```

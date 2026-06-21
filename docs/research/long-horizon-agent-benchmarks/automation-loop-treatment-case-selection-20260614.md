@@ -1,25 +1,25 @@
 # Automation Loop Treatment Case Selection 2026-06-14
 
 This note updates the benchmark route after the treatment definition changed.
-It uses compact Goal Harness ledger summaries plus public SkillsBench metadata
+It uses compact LoopX ledger summaries plus public SkillsBench metadata
 only. It does not read raw task prompts, hidden tests, trajectories, raw logs,
 credentials, Docker logs, or local private run contents.
 
 ## Treatment Definition
 
-The first real treatment route is no longer "Codex goal mode plus Goal Harness
+The first real treatment route is no longer "Codex goal mode plus LoopX
 packet." It is:
 
-- outer controller: Goal Harness automation heartbeat loop;
+- outer controller: LoopX automation heartbeat loop;
 - inner case actor: ordinary/non-goal-mode Codex CLI execution;
-- control-plane surface: Goal Harness CLI status, quota, todo, ledger,
+- control-plane surface: LoopX CLI status, quota, todo, ledger,
   compact observation, self-repair, and termination writeback;
 - result record: benchmark ledger row containing baseline result, treatment
   result, compact artifacts, heartbeat count, per-heartbeat observation class,
   and termination reason.
 
 Codex goal mode remains useful as a failure-mining baseline. The separate
-experiment "Codex goal mode plus Goal Harness skill/CLI" stays parked until the
+experiment "Codex goal mode plus LoopX skill/CLI" stays parked until the
 automation-loop route has clean evidence.
 
 ## Terminal-Bench Candidate Set
@@ -53,7 +53,7 @@ be counted as case-capability failures until the worker reaches the task:
 
 ## SkillsBench Candidate Plan
 
-Goal Harness now has a public-safe SkillsBench compact adapter skeleton and
+LoopX now has a public-safe SkillsBench compact adapter skeleton and
 ledger route. The adapter does not run SkillsBench by itself; it defines the
 family, arm, route, redaction boundary, and `benchmark_run_v0` shape so that a
 real runner can later write compact baseline/treatment outcomes into the same
@@ -81,13 +81,13 @@ surface rather than picking by domain popularity:
 
 Implemented adapter boundary:
 
-- `goal-harness benchmark run skillsbench` builds a no-run
+- `loopx benchmark run skillsbench` builds a no-run
   `benchmark_run_v0` skeleton for route planning and dry-run inspection.
 - Supported routes are `codex-goal-mode-baseline`,
   `automation-loop-treatment`, and `curated-skills-baseline`.
-- The automation-loop treatment route means outer Goal Harness heartbeat
+- The automation-loop treatment route means outer LoopX heartbeat
   automation plus ordinary/non-goal-mode Codex CLI inside the case.
-- `benchmark_run_ledger_v0` infers `goal_harness_automation_loop_treatment`
+- `benchmark_run_ledger_v0` infers `loopx_automation_loop_treatment`
   and `curated_skills_baseline` arms from compact run modes.
 - The smoke `examples/skillsbench-benchmark-run-smoke.py` verifies that
   compact SkillsBench baseline/treatment rows can produce a paired improvement
@@ -101,7 +101,7 @@ Before any real treatment, the next runner step must:
 - mark credential-dependent or integration-incompatible tasks as excluded
   rather than failed;
 - preserve the route distinction between no-skill baseline, curated-skill
-  baseline, and Goal Harness automation-loop treatment;
+  baseline, and LoopX automation-loop treatment;
 - launch automation-loop treatment only after the baseline failure is
   attributable and control-plane-addressable.
 

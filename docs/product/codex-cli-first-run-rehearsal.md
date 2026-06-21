@@ -2,10 +2,10 @@
 
 Status: product route and release rehearsal.
 
-Goal Harness should feel easy before it feels powerful. A fresh Codex CLI user
+LoopX should feel easy before it feels powerful. A fresh Codex CLI user
 should be able to stay in the TUI, paste one message, and see current goal
 state, gates, todos, and the next safe action without cloning this repository
-or reading Goal Harness internals first.
+or reading LoopX internals first.
 
 This route connects three shipped surfaces:
 
@@ -21,20 +21,20 @@ From the user's project repo:
 2. Paste one start message:
 
    ```text
-   Start Goal Harness for this repo. If `goal-harness` is missing, install it
+   Start LoopX for this repo. If `loopx` is missing, install it
    with the official no-clone GitHub installer, then connect this project. Show
    me the current goal, concrete user gate if any, top todos, and next safe
    action before running longer work. Keep me in this Codex CLI TUI unless I
    explicitly accept a headless fallback. After I paste this, begin the Goal
-   Harness loop; do not stop after only explaining what Goal Harness is.
+   Harness loop; do not stop after only explaining what LoopX is.
    ```
 
-3. The agent installs or repairs Goal Harness when needed, using:
+3. The agent installs or repairs LoopX when needed, using:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/huangruiteng/goal-harness/main/scripts/install-from-github.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
    export PATH="$HOME/.local/bin:$PATH"
-   goal-harness doctor
+   loopx doctor
    ```
 
 4. The agent connects the repo, runs quota/status, surfaces any concrete user
@@ -50,16 +50,16 @@ The user's first useful response should fit on one screen:
 
 ## After Install
 
-Once `goal-harness` is on PATH, generate a stricter project-specific TUI message:
+Once `loopx` is on PATH, generate a stricter project-specific TUI message:
 
 ```bash
-goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
+loopx codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only
 ```
 
 For release rehearsal without running Codex or reading session material:
 
 ```bash
-goal-harness codex-cli-tui-bootstrap-smoke-bundle \
+loopx codex-cli-tui-bootstrap-smoke-bundle \
   --project . \
   --goal-id <goal-id> \
   --agent-id <agent-id>
@@ -85,7 +85,7 @@ return to Codex CLI only after all of these are true:
 Rehearse the proof path with public fixtures:
 
 ```bash
-goal-harness --format json codex-cli-visible-attach-acceptance \
+loopx --format json codex-cli-visible-attach-acceptance \
   --project . \
   --goal-id public-codex-cli-goal \
   --agent-id codex-side-bypass \
@@ -103,7 +103,7 @@ fallbacks.
 
 The first real [live TUI first-message pilot](codex-cli-live-tui-first-message-pilot.md)
 confirmed that the generated message can launch Codex CLI through
-`codex [PROMPT]`, but it did not prove that the Goal Harness loop started
+`codex [PROMPT]`, but it did not prove that the LoopX loop started
 successfully. The process stayed active, no bounded first-response marker was
 available, and passing the message as argv would leak project-specific prompt
 text through the process command line in real repos.
@@ -115,11 +115,11 @@ TUI. Automated live launch needs a bounded visible completion proof first.
 
 This first-run route must not:
 
-- require cloning the Goal Harness repo;
+- require cloning the LoopX repo;
 - launch Codex as part of the rehearsal bundle;
 - read raw Codex transcripts, session files, stdout, stderr, credentials, or
   private paths;
-- spend Goal Harness quota before validated writeback;
+- spend LoopX quota before validated writeback;
 - treat headless `codex exec` as the default user experience;
 - promote same-TUI automation without visible proof and idle evidence.
 

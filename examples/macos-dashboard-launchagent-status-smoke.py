@@ -25,7 +25,7 @@ def run_script(fake_bin: Path, home: Path, args: list[str], *, schema_version: i
         "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
         "FAKE_STATUS_CONTRACT_SCHEMA_VERSION": str(schema_version),
         "FAKE_CONTROL_PLANE_WRITE_ENABLED": "true" if write_enabled else "false",
-        "GOAL_HARNESS_STATUS_CONTRACT_MIN_VERSION": "2",
+        "LOOPX_STATUS_CONTRACT_MIN_VERSION": "2",
         **(extra_env or {}),
     }
     return subprocess.run(
@@ -43,7 +43,7 @@ def run_status(fake_bin: Path, home: Path, *, schema_version: int, write_enabled
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-launchagent-status-smoke-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-launchagent-status-smoke-") as raw_tmp:
         tmp = Path(raw_tmp)
         fake_bin = tmp / "bin"
         home = tmp / "home"
@@ -51,7 +51,7 @@ def main() -> int:
         fake_bin.mkdir()
         home.mkdir()
         dashboard_dist.mkdir()
-        (dashboard_dist / "index.html").write_text("<!doctype html><title>Goal Harness</title>\n", encoding="utf-8")
+        (dashboard_dist / "index.html").write_text("<!doctype html><title>LoopX</title>\n", encoding="utf-8")
 
         write_executable(
             fake_bin / "uname",
@@ -70,9 +70,9 @@ def main() -> int:
             "exit 2\n",
         )
         write_executable(
-            fake_bin / "goal-harness-canary",
+            fake_bin / "loopx-canary",
             "#!/usr/bin/env bash\n"
-            "echo goal-harness-canary \"$@\"\n",
+            "echo loopx-canary \"$@\"\n",
         )
         write_executable(
             fake_bin / "curl",
@@ -80,20 +80,20 @@ def main() -> int:
             "version=\"${FAKE_STATUS_CONTRACT_SCHEMA_VERSION:-0}\"\n"
             "write_enabled=\"${FAKE_CONTROL_PLANE_WRITE_ENABLED:-false}\"\n"
             "cat <<EOF\n"
-            "{\"ok\":true,\"status_contract\":{\"schema_version\":${version},\"producer\":\"goal-harness status\"},\"local_dashboard_api\":{\"control_plane_write_enabled\":${write_enabled}}}\n"
+            "{\"ok\":true,\"status_contract\":{\"schema_version\":${version},\"producer\":\"loopx status\"},\"local_dashboard_api\":{\"control_plane_write_enabled\":${write_enabled}}}\n"
             "EOF\n",
         )
 
         old_output = run_status(fake_bin, home, schema_version=1)
-        assert "- com.goal-harness.status: loaded" in old_output, old_output
-        assert "- com.goal-harness.dashboard: loaded" in old_output, old_output
-        assert "- status_contract: schema_version=1 producer=goal-harness status expected>=2" in old_output, old_output
+        assert "- com.loopx.status: loaded" in old_output, old_output
+        assert "- com.loopx.dashboard: loaded" in old_output, old_output
+        assert "- status_contract: schema_version=1 producer=loopx status expected>=2" in old_output, old_output
         assert "- control_plane_write_api: disabled" in old_output, old_output
         assert "warning: status feed is using an old contract; run:" in old_output, old_output
         assert "macos-dashboard-launchagent.sh restart" in old_output, old_output
 
         current_output = run_status(fake_bin, home, schema_version=2, write_enabled=True)
-        assert "- status_contract: schema_version=2 producer=goal-harness status expected>=2" in current_output, current_output
+        assert "- status_contract: schema_version=2 producer=loopx status expected>=2" in current_output, current_output
         assert "- control_plane_write_api: enabled" in current_output, current_output
         assert "warning: control-plane registry writes are enabled" in current_output, current_output
         assert "warning: status feed is using an old contract" not in current_output, current_output
@@ -101,9 +101,9 @@ def main() -> int:
         assert "URLs:" in current_output, current_output
         assert "Logs:" in current_output, current_output
 
-        install_env = {"GOAL_HARNESS_DASHBOARD_DIST_DIR": str(dashboard_dist)}
+        install_env = {"LOOPX_DASHBOARD_DIST_DIR": str(dashboard_dist)}
         run_script(fake_bin, home, ["install"], schema_version=2, extra_env=install_env)
-        status_plist = home / "Library" / "LaunchAgents" / "com.goal-harness.status.plist"
+        status_plist = home / "Library" / "LaunchAgents" / "com.loopx.status.plist"
         default_plist = status_plist.read_text(encoding="utf-8")
         assert "--enable-control-plane-write-api" not in default_plist, default_plist
 

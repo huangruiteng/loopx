@@ -1,4 +1,0 @@
-interface:
-  display_name: "Goal Harness Self Repair"
-  short_description: "Diagnose and repair Goal Harness control-plane drift"
-  default_prompt: "Use the Goal Harness self-repair workflow to diagnose the current stuck or surprising project state, identify the likely control-plane gap, and propose or implement the smallest durable repair."

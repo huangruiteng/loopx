@@ -53,7 +53,7 @@ def write_index_fixture(root: Path, goal_id: str, duplicate_kind: str) -> None:
                 "health_check": "benchmark_run_v0 compact event public-safe",
                 "benchmark_run": {
                     "schema_version": "benchmark_run_v0",
-                    "mode": "codex_goal_harness",
+                    "mode": "codex_loopx",
                     "official_task_score": {"kind": "fixture"},
                 },
             },
@@ -79,7 +79,7 @@ def write_index_fixture(root: Path, goal_id: str, duplicate_kind: str) -> None:
 def write_registry(root: Path) -> Path:
     project = root / "project"
     project.mkdir()
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     registry_path.parent.mkdir()
     goals = []
     for goal_id, kind in (
@@ -124,7 +124,7 @@ def run_cli(registry_path: Path, *args: str) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--format",

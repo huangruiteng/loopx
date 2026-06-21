@@ -15,9 +15,9 @@ records compact attempts and scores; this file records why a result matters.
 ## Summary
 
 The table now prefers the current benchmark protocol when it exists:
-SkillsBench main rows use raw Codex autonomous max5 versus Goal Harness
+SkillsBench main rows use raw Codex autonomous max5 versus LoopX
 product-mode, and Terminal-Bench rows must distinguish legacy
-`codex_goal_harness` evidence from the current Goal Harness managed route.
+`codex_loopx` evidence from the current LoopX managed route.
 Legacy positives stay in the case notes as assets, but should not be counted as
 current main-table uplift until a current-protocol rerun closes.
 
@@ -84,7 +84,7 @@ This is a single-arm monitor closeout asset, not uplift evidence.
 Compact evidence:
 
 - benchmark: `terminal-bench@2.0`
-- treatment arm: `codex_goal_harness_treatment`
+- treatment arm: `codex_loopx_treatment`
 - treatment run id: `5a8f56f61908`
 - treatment score: `0.0`
 - failure: `official_verifier_solution_failure`
@@ -115,7 +115,7 @@ Good-case conclusion:
   positive-control pair. In both cases the baseline reached official scoring
   and received `0.0`; the automation-loop treatment observed failed reward,
   sent one follow-up, and reached official `1.0`.
-- The help signal is therefore not "Goal Harness is globally better". The
+- The help signal is therefore not "LoopX is globally better". The
   durable signal is narrower and more useful: a compact outer loop with one
   reward-aware follow-up can recover some clean, solver-scoped SkillsBench
   baseline failures. This is now classified as a reward-feedback ablation, not
@@ -126,7 +126,7 @@ Interaction-count assessment:
 - The current SkillsBench baseline records use the legacy arm name
   `codex_goal_mode_baseline`, but the audited runs do not prove native Codex
   `/goal` invocation. Their compact/config evidence shows official BenchFlow
-  `codex-acp` execution with no Goal Harness controller user, no `user_rounds`
+  `codex-acp` execution with no LoopX controller user, no `user_rounds`
   file, and no true slash-goal prompt candidate. Treat the current uplift
   evidence as `codex-acp` baseline versus outer reward-feedback loop, not as a
   confirmed native `/goal` baseline.
@@ -141,8 +141,8 @@ Interaction-count assessment:
   counters. Both observed cases still classify as `skillsbench_runner_error`
   with no public worker trace directory, so they are runner/observation repair
   assets rather than model-quality or uplift evidence.
-- The treatment route is `goal_harness_automation_loop_treatment`, still with
-  `goal_harness_inside_case=false`; Goal Harness is the outer automation loop,
+- The treatment route is `loopx_automation_loop_treatment`, still with
+  `loopx_inside_case=false`; LoopX is the outer automation loop,
   not an in-case solver skill. Current positive, neutral, and regression
   treatment runs all use the same shape: two controller decisions, meaning an
   initial prompt plus one follow-up after failed reward.
@@ -152,14 +152,14 @@ Interaction-count assessment:
   diagnostics into the treatment and should stay disabled by default.
 - Blind-loop max5 remains the fair prompt/continuation guard: compare
   `codex-acp-blind-loop-baseline` against
-  `goal-harness-blind-loop-treatment`, with ordinary Codex ACP/CLI inside both
+  `loopx-blind-loop-treatment`, with ordinary Codex ACP/CLI inside both
   arms, no `/goal` mode, identical `max_rounds`/timeout budgets, and no
   official reward, pass/fail status, verifier error, verifier output, or
   verifier tail returned to the agent during the loop. Scheduled continuations
   must explicitly say they are pre-set, do not imply verifier success/failure,
   and re-project durable round-1 controller constraints and protected paths.
 - Main-table comparison should collapse to one base+test pair: base is raw
-  Codex autonomous max5, test is Goal Harness product-mode with state,
+  Codex autonomous max5, test is LoopX product-mode with state,
   todos, replanning, and GH CLI. Both arms receive no official verifier
   feedback during execution and stop on reward `1.0` or agent-declared done/no
   remaining goals; all other prompt/loop variants are ablations or guards.
@@ -172,21 +172,21 @@ Interaction-count assessment:
   `paratransit-routing`. Earlier raw-Codex-autonomous-max5 reruns compact-closed
   before agent rounds as `skillsbench_docker_compose_setup_failure` and then
   `skillsbench_docker_daemon_unavailable`; correct Colima/Lima daemon cleanup
-  and restart brought `goal-harness-bench` back to a healthy Docker context.
+  and restart brought `loopx-bench` back to a healthy Docker context.
   The docker-ready rerun
   `skillsbench-product-mode-paratransit-routing-main-dockerready-20260616T2156CST`
   reached Codex ACP, agent round 1, verifier, and official result, with raw
   Codex autonomous max5 scoring `0.0` and declaring done in round 1. The
-  matching `goal-harness-product-mode` treatment also reached agent round 1,
+  matching `loopx-product-mode` treatment also reached agent round 1,
   verifier, and official result, but scored `0.0` and declared done in round 1.
   Product-mode `paratransit-routing` is therefore a clean `paired_no_score_uplift`
   under the current base+test definition. Keep the older blind-loop `0.0 -> 1.0`
   positive asset separate from this product-mode recheck.
   The public-safe attribution is now stable at the mechanism level: the
-  blind-loop positive treatment succeeded in round 1 with zero Goal Harness CLI
+  blind-loop positive treatment succeeded in round 1 with zero LoopX CLI
   calls and stopped only after offline official success; the product-mode
-  treatment failed in round 1, made only one non-substantive Goal Harness CLI
-  call (`goal-harness which goal`), performed no state reads/writes, and stopped
+  treatment failed in round 1, made only one non-substantive LoopX CLI
+  call (`loopx which goal`), performed no state reads/writes, and stopped
   on `agent_declared_done` at score `0.0`. The product-mode miss is therefore
   not explained by extra interactions, reward leakage, protected-path edits, or
   Docker readiness. It is currently best attributed to the changed product-mode
@@ -288,7 +288,7 @@ Interaction-count assessment:
   reward/pass/fail/verifier feedback. This is the first clean primary
   blind-loop positive control, not a reward-feedback ablation win.
 - Trace-backed positive attribution: the treatment's public-safe ACP trajectory
-  summary records 1 round, 16 tool calls, `goal_harness_cli_call_count=0`, and
+  summary records 1 round, 16 tool calls, `loopx_cli_call_count=0`, and
   no protected-path edit signals. This makes the current explanation narrower:
   the uplift is not from in-case GH CLI interaction or extra rounds, but from
   first-round treatment framing plus stop-at-1 discipline.
@@ -410,7 +410,7 @@ Policy gate:
   case passing, and avoid counting setup/materialization blockers as case
   outcomes.
 - Primary SkillsBench main-table claims should use the single product-mode
-  base+test pair: raw Codex autonomous max5 versus Goal Harness
+  base+test pair: raw Codex autonomous max5 versus LoopX
   state/todo/replan/CLI product-mode. Blind-loop pairs with
   `reward_feedback_forwarded=false` and `official_feedback_blinded=true` remain
   prompt/continuation guards, and reward-aware routes remain ablations.
@@ -432,7 +432,7 @@ current-protocol baseline-solved/non-regression control. The old evidence is
 strong that the historical treatment route could pass a real case, but it is
 weaker evidence that the treatment solver is intrinsically better than baseline
 on this task. Under the current Terminal-Bench protocol, both the hardened Codex
-baseline and Goal Harness managed treatment scored `1.0`.
+baseline and LoopX managed treatment scored `1.0`.
 
 Compact evidence:
 
@@ -441,7 +441,7 @@ Compact evidence:
 - baseline run id: `232721f7caf1`
 - baseline score: `0.0`
 - baseline failure: `official_verifier_solution_failure`
-- treatment arm: `codex_goal_harness_treatment`
+- treatment arm: `codex_loopx_treatment`
 - treatment run id: `2986c373a314`
 - treatment score: `1.0`
 - treatment failure: `none`
@@ -449,14 +449,14 @@ Compact evidence:
 Current protocol rerun:
 
 - route pair: Terminal-Bench `hardened-codex` baseline vs.
-  `goal-harness-managed-codex` treatment
+  `loopx-managed-codex` treatment
 - run group: `terminal-bench-multi-source-data-merger-current-protocol-20260617T201625CST`
 - baseline job:
   `terminal_bench_multi_source_data_merger_hardened_codex_current_protocol_20260617T202500CST`
 - baseline run id: `37d3587daf12`
 - baseline score: `1.0`
 - treatment job:
-  `terminal_bench_multi_source_data_merger_goal_harness_managed_codex_current_protocol_20260617T201625CST`
+  `terminal_bench_multi_source_data_merger_loopx_managed_codex_current_protocol_20260617T201625CST`
 - treatment run id: `76cbfb57f1ea`
 - treatment score: `1.0`
 - official score delta: `0.0`
@@ -465,7 +465,7 @@ Current protocol rerun:
 
 Interpretation:
 
-Goal Harness treatment produced correct artifacts that the official verifier
+LoopX treatment produced correct artifacts that the official verifier
 scored `1.0`. The trajectory shows a useful harness pattern: bridge preflight,
 schema inspection, reproducible script generation, and local validation before
 final closeout.
@@ -481,8 +481,8 @@ Why it matters:
 
 - It proves the treatment route can reach official `1.0` on a real
   Terminal-Bench case.
-- It anchors the migration from historical `codex_goal_harness` evidence to the
-  newer Goal Harness managed route: the current route preserves success, but
+- It anchors the migration from historical `codex_loopx` evidence to the
+  newer LoopX managed route: the current route preserves success, but
   the comparable baseline now also passes.
 - It proves the distinction between runner readiness, self-validation, and
   verifier success matters; baseline self-validation and official score
@@ -514,7 +514,7 @@ Compact evidence:
 - baseline run id: `c9e583310242`
 - baseline score: `1.0`
 - baseline failure: `none`
-- treatment arm: `codex_goal_harness_treatment`
+- treatment arm: `codex_loopx_treatment`
 - treatment run id: `2a6a46cfb953`
 - treatment score: `1.0`
 - treatment failure: `none`
@@ -528,7 +528,7 @@ Compact evidence:
 
 Interpretation:
 
-The Goal Harness treatment arm reached official verifier pass, and after the
+The LoopX treatment arm reached official verifier pass, and after the
 worker materialization route was repaired the hardened Codex baseline also
 reached official verifier pass. The current comparable conclusion is therefore
 `1.0 -> 1.0`: treatment preserved success, but there is no current-protocol
@@ -543,7 +543,7 @@ remeasure runner setup rather than case solving.
 This distinction matters because earlier `nginx-request-logging` evidence had
 unstable runner/setup shape: at one point treatment was setup-blocked; later a
 hardened baseline was setup-blocked while treatment passed. The useful durable
-signal is therefore not "Goal Harness always helps this case"; it is that
+signal is therefore not "LoopX always helps this case"; it is that
 runner/materialization state must be fixed before the case can be used for a
 fair treatment comparison.
 
@@ -553,7 +553,7 @@ Why it matters:
 - It converts nginx into a current-protocol success-preservation guard.
 - It prevents a false uplift claim from a baseline worker/setup blocker.
 - It records that access-packet presence is not the same as observed
-  worker-side Goal Harness CLI use.
+  worker-side LoopX CLI use.
 - It turns the baseline blocker into a concrete repair target: materialize
   `codex` on worker `PATH` before solver start.
 
@@ -577,7 +577,7 @@ Compact evidence:
 - baseline run id: `1e0e7327d18a`
 - baseline score: `0.0`
 - baseline failure: `agent_timeout_before_solution_completion`
-- treatment arm: `codex_goal_harness_treatment`
+- treatment arm: `codex_loopx_treatment`
 - treatment run id: `1caa8b39f0a4`
 - treatment score: `0.0`
 - treatment failure: `score_failure_unattributed`
@@ -612,7 +612,7 @@ Follow-up guidance:
 Latest case-first managed run, 2026-06-17:
 
 - run group: `terminal-bench-make-doom-managed-20260617T193035CST`
-- arm: `goal-harness-managed-codex`
+- arm: `loopx-managed-codex`
 - compact result: completed, official score `0.0`
 - compact attribution: `official_verifier_solution_failure`
 - control-plane signal: the launcher and post-launch closeout are now usable;
@@ -620,9 +620,9 @@ Latest case-first managed run, 2026-06-17:
   verifier-facing official score without reading raw task text, logs, or
   trajectories.
 - product-mode gap: this run is not a clean treatment claim. The compact
-  counters show `worker_goal_harness_cli_call_total=0` and no worker bridge
+  counters show `worker_loopx_cli_call_total=0` and no worker bridge
   trace, so it proves the managed Terminal-Bench route can run and close out,
-  not that the in-case Goal Harness product experience improved the task.
+  not that the in-case LoopX product experience improved the task.
 
 Updated guidance:
 
@@ -643,7 +643,7 @@ Compact evidence:
 - baseline arm: `codex_goal_mode_baseline`
 - baseline run id: `f51ed0bc44ef`
 - baseline compact failure: `environment_setup_failed_before_worker`
-- treatment arm: `codex_goal_harness_treatment`
+- treatment arm: `codex_loopx_treatment`
 - treatment run id: `4dca7e651fac`
 - treatment compact failure: `environment_setup_failed_before_worker`
 - setup probe arm: `harbor_observed`
@@ -704,7 +704,7 @@ Compact evidence:
 - baseline compact failure: `agent_exception_before_solution_completion`
 - baseline exception type: `RuntimeError`
 - baseline verifier reward: absent
-- treatment arm: `codex_goal_harness_treatment`
+- treatment arm: `codex_loopx_treatment`
 - treatment run id: `9ba1b6872167`
 - treatment compact failure: `agent_exception_before_solution_completion`
 - treatment exception type: `RuntimeError`
@@ -757,7 +757,7 @@ Compact evidence:
 - baseline run id: `7eb47e9e7f35`
 - baseline score: `0.0`
 - baseline failure: `official_verifier_solution_failure`
-- treatment arm: `goal_harness_automation_loop_treatment`
+- treatment arm: `loopx_automation_loop_treatment`
 - treatment run id: `cf8da5bd77a2`
 - treatment score: `1.0`
 - treatment failure: `none`
@@ -765,7 +765,7 @@ Compact evidence:
   `skillsbench-llm-prefix-cache-replay-blind-loop-max5-20260616T1531CST`
 - max-5 blind-loop baseline: `codex-acp-blind-loop-baseline`, score `0.0`,
   rounds `1:0,2:0,3:0,4:0,5:0`, `first_success_round=null`
-- max-5 blind-loop treatment: `goal-harness-blind-loop-treatment`, score `0.0`,
+- max-5 blind-loop treatment: `loopx-blind-loop-treatment`, score `0.0`,
   rounds `1:0,2:0,3:0,4:0,5:0`, `first_success_round=null`
 - native app-server Goal canary run group:
   `skillsbench-native-goal-post353-20260620T220003Z`
@@ -799,7 +799,7 @@ Why it matters:
 - It proves the reward-feedback automation-loop route can convert a clean
   baseline `0.0` into an official `1.0` without relying on setup repair as the
   outcome.
-- It does not prove blind no-reward Goal Harness uplift: under protocol v10 and
+- It does not prove blind no-reward LoopX uplift: under protocol v10 and
   the max-5 rerun, the same case completed both blind-loop arms and stayed at
   `0.0`.
 - It gives a positive control to pair with `debug-trl-grpo` regression and
@@ -877,7 +877,7 @@ Compact evidence:
 - baseline run id: `da0d9b235bee`
 - baseline score: `0.0`
 - baseline failure: `official_verifier_solution_failure`
-- treatment arm: `goal_harness_automation_loop_treatment`
+- treatment arm: `loopx_automation_loop_treatment`
 - treatment run id: `8f4799261e11`
 - treatment score: `1.0`
 - treatment failure: `none`
@@ -931,30 +931,30 @@ Compact evidence:
 - baseline run id: `9db0404df80b`
 - baseline score: `0.25`
 - baseline failure: `none`
-- treatment arm: `goal_harness_automation_loop_treatment`
+- treatment arm: `loopx_automation_loop_treatment`
 - treatment run id: `ef452ac2450b`
 - treatment score: `0.0`
 - treatment failure: `official_verifier_solution_failure`
 - blind-loop run group: `skillsbench-debug-trl-grpo-blind-loop-v0`
 - blind-loop baseline: `codex-acp-blind-loop-baseline`, score `0.25`, rounds
   `1:0.25,2:0.25`
-- blind-loop treatment: `goal-harness-blind-loop-treatment`, score `0.0`,
+- blind-loop treatment: `loopx-blind-loop-treatment`, score `0.0`,
   rounds `1:0.25,2:0`, `first_success_round=null`
 - max-5 blind-loop run group:
   `skillsbench-debug-trl-grpo-blind-loop-max5-20260616T144124CST`
 - max-5 blind-loop baseline: `codex-acp-blind-loop-baseline`, score `0.25`,
   rounds `1:0.25,2:0.25,3:0.25,4:0.25,5:0.25`
-- max-5 blind-loop treatment: `goal-harness-blind-loop-treatment`, score
+- max-5 blind-loop treatment: `loopx-blind-loop-treatment`, score
   `0.0`, rounds `1:0.25,2:0.25,3:0,4:0,5:0`,
   `first_success_round=null`
 - max-5 scoring view: baseline best `0.25`, treatment best `0.25`,
   `best_round_score_delta=0.0`; baseline final `0.25`, treatment final `0.0`,
   `final_round_score_delta=-0.25`
-- prompt ablation: `goal-harness-blind-loop-treatment` with
+- prompt ablation: `loopx-blind-loop-treatment` with
   `treatment_prompt_style=baseline-safe`, run `f37b0a3e9654`, score `0.25`,
   rounds `1:0.25,2:0.25`
 - max-5 treatment public trajectory summary: 5 rounds, 112 tool calls,
-  `goal_harness_cli_call_count=0`, protected edit signals on
+  `loopx_cli_call_count=0`, protected edit signals on
   `/app/train_grpo.py` in rounds 3 and 4
 
 Interpretation:
@@ -976,8 +976,8 @@ continuation needs a partial-credit stabilization rule.
 Trace-backed attribution:
 
 - The max-5 treatment's public-safe ACP trajectory summary records zero in-case
-  Goal Harness CLI calls. The regression is therefore not explained by
-  treatment talking to the Goal Harness CLI more often than baseline.
+  LoopX CLI calls. The regression is therefore not explained by
+  treatment talking to the LoopX CLI more often than baseline.
 - The same summary records protected-path edit signals in rounds 3 and 4, both
   on `/app/train_grpo.py`. This strengthens the scope-drift diagnosis: the
   harmful factor is scheduled continuation plus structured treatment framing
@@ -1023,7 +1023,7 @@ Trajectory comparison:
 
 Why it matters:
 
-- It prevents us from making a broad "Goal Harness treatment is better" claim
+- It prevents us from making a broad "LoopX treatment is better" claim
   based only on the Terminal-Bench uplift case.
 - It points specifically at automation-loop behavior: prompt shape, polling
   cadence, round budget, termination policy, and scope-preservation rules.
@@ -1058,7 +1058,7 @@ Compact evidence:
 - baseline run id: `8eccae2d04d6`
 - baseline score: `0.0`
 - baseline failure: `official_verifier_solution_failure`
-- treatment arm: `goal_harness_automation_loop_treatment`
+- treatment arm: `loopx_automation_loop_treatment`
 - treatment run id: `978868092e84`
 - treatment score: `0.0`
 - treatment failure: `official_verifier_solution_failure`
@@ -1066,7 +1066,7 @@ Compact evidence:
   `skillsbench-civ6-adjacency-optimizer-blind-loop-v0`
 - blind-loop baseline: `codex-acp-blind-loop-baseline`, run id
   `973d9618d7f6`, score `0.0`, rounds `1:0,2:0`
-- blind-loop treatment: `goal-harness-blind-loop-treatment`, run id
+- blind-loop treatment: `loopx-blind-loop-treatment`, run id
   `8d21a5cc42f2`, score `0.0`, rounds `1:0,2:0`,
   `first_success_round=null`
 
@@ -1079,7 +1079,7 @@ compact controller trace was present, two heartbeat/action decisions were
 recorded, and the second round followed failed reward/verifier feedback.
 
 The treatment still scored `0.0`. The stable conclusion is therefore not
-"Goal Harness regressed", but "generic two-round feedback did not help this
+"LoopX regressed", but "generic two-round feedback did not help this
 task family."
 
 The blind-loop repeat preserves that conclusion without returning official
@@ -1117,7 +1117,7 @@ Compact evidence:
 - baseline run id: `c76c8bed6a8a`
 - baseline score: `0.0`
 - baseline failure: `official_verifier_solution_failure`
-- treatment arm: `goal_harness_automation_loop_treatment`
+- treatment arm: `loopx_automation_loop_treatment`
 - treatment run id: `e85065a9c230`
 - treatment score: `0.0`
 - treatment failure: `official_verifier_solution_failure`
@@ -1125,7 +1125,7 @@ Compact evidence:
   `skillsbench-manufacturing-codebook-normalization-blind-loop-v0`
 - blind-loop baseline: `codex-acp-blind-loop-baseline`, score `0.0`, rounds
   `1:0,2:0`
-- blind-loop treatment: `goal-harness-blind-loop-treatment`, score `0.0`,
+- blind-loop treatment: `loopx-blind-loop-treatment`, score `0.0`,
   rounds `1:0,2:0`, `first_success_round=null`
 
 Interpretation:
@@ -1177,7 +1177,7 @@ Compact evidence:
 - baseline run id: `885b7647488b`
 - baseline score: `0.0`
 - baseline failure: `official_verifier_solution_failure`
-- treatment arm: `goal_harness_automation_loop_treatment`
+- treatment arm: `loopx_automation_loop_treatment`
 - treatment run id: `6cf96cd0b19a`
 - treatment score: `0.0`
 - treatment failure: `official_verifier_solution_failure`
@@ -1185,7 +1185,7 @@ Compact evidence:
   `skillsbench-software-dependency-audit-blind-loop-v0`
 - blind-loop baseline: `codex-acp-blind-loop-baseline`, run id
   `42be7dc4459e`, score `0.0`, rounds `1:0,2:0`
-- blind-loop treatment: `goal-harness-blind-loop-treatment`, run id
+- blind-loop treatment: `loopx-blind-loop-treatment`, run id
   `173a02eb893d`, score `0.0`, rounds `1:0,2:0`,
   `first_success_round=null`
 
@@ -1228,14 +1228,14 @@ Compact evidence:
 - baseline arm: `codex_goal_mode_baseline`
 - baseline score: `0.0`
 - baseline failure: `official_verifier_solution_failure`
-- treatment arm: `goal_harness_automation_loop_treatment`
+- treatment arm: `loopx_automation_loop_treatment`
 - treatment score: `0.0`
 - treatment failure: `official_verifier_solution_failure`
 - blind-loop run group:
   `skillsbench-react-performance-debugging-blind-loop-v0`
 - blind-loop baseline: `codex-acp-blind-loop-baseline`, run id
   `851ca794f780`, score `0.0`, rounds `1:0,2:0`
-- blind-loop treatment: `goal-harness-blind-loop-treatment`, run id
+- blind-loop treatment: `loopx-blind-loop-treatment`, run id
   `8efed51d81e5`, score `0.0`, rounds `1:0,2:0`,
   `first_success_round=null`
 
@@ -1275,14 +1275,14 @@ Compact evidence:
 - baseline arm: `codex_goal_mode_baseline`
 - baseline score: `0.0`
 - baseline failure: `official_verifier_solution_failure`
-- treatment arm: `goal_harness_automation_loop_treatment`
+- treatment arm: `loopx_automation_loop_treatment`
 - treatment score: `0.0`
 - treatment failure: `official_verifier_solution_failure`
 - blind-loop run group:
   `skillsbench-pddl-airport-planning-blind-loop-v0`
 - blind-loop baseline: `codex-acp-blind-loop-baseline`, run id
   `adf46f67374c`, score `0.0`, rounds `1:0,2:0`
-- blind-loop treatment: `goal-harness-blind-loop-treatment`, run id
+- blind-loop treatment: `loopx-blind-loop-treatment`, run id
   `1564d6cfc2fb`, score `0.0`, rounds `1:0,2:0`,
   `first_success_round=null`
 
@@ -1325,7 +1325,7 @@ Compact evidence:
 - baseline run id: `7d919631a765`
 - baseline score: `1.0`
 - baseline first success round: `1`
-- treatment arm: `goal-harness-blind-loop-treatment`
+- treatment arm: `loopx-blind-loop-treatment`
 - treatment run id: `52a934d39c59`
 - treatment score: `1.0`
 - treatment first success round: `1`
@@ -1371,7 +1371,7 @@ Compact evidence:
 - baseline run id: `f25208ace86a`
 - baseline score: `1.0`
 - baseline first success round: `1`
-- treatment arm: `goal-harness-blind-loop-treatment`
+- treatment arm: `loopx-blind-loop-treatment`
 - treatment prompt style: `baseline-safe`
 - treatment run id: `60878623ceca`
 - treatment score: `1.0`
@@ -1417,7 +1417,7 @@ Compact evidence:
 - baseline run id: `9b4df14b3ed8`
 - baseline score: `1.0`
 - baseline first success round: `1`
-- treatment arm: `goal-harness-blind-loop-treatment`
+- treatment arm: `loopx-blind-loop-treatment`
 - treatment prompt style: `baseline-safe`
 - treatment run id: `d553e635f00c`
 - treatment score: `1.0`
@@ -1464,7 +1464,7 @@ Compact evidence:
 - baseline run id: `9b1d8be29eb4`
 - baseline score: `1.0`
 - baseline first success round: `1`
-- treatment arm: `goal-harness-blind-loop-treatment`
+- treatment arm: `loopx-blind-loop-treatment`
 - treatment prompt style: `baseline-safe`
 - treatment run id: `306537fca3ac`
 - treatment score: `1.0`
@@ -1475,7 +1475,7 @@ Compact evidence:
 Interpretation:
 
 The old record said the case was solvable by baseline, but it did not answer
-whether the current Goal Harness treatment wrapper preserves that success under
+whether the current LoopX treatment wrapper preserves that success under
 the no-reward primary protocol. The new blind-loop baseline and baseline-safe
 treatment both reached official verifier pass at `1.0` in the first completed
 agent round. Official feedback stayed blinded, reward feedback was not
@@ -1517,7 +1517,7 @@ Compact evidence:
 - repaired baseline score: `1.0`
 - repaired baseline rounds: `1:1`
 - repaired baseline first success round: `1`
-- treatment arm: `goal-harness-blind-loop-treatment`
+- treatment arm: `loopx-blind-loop-treatment`
 - treatment prompt style: `baseline-safe`
 - treatment run id: `239aecc4f3a3`
 - treatment score: `1.0`
@@ -1566,7 +1566,7 @@ Compact evidence:
 - baseline run id: `ed2c390f39b9`
 - baseline score: `0.0`
 - baseline rounds: `1:0,2:0`
-- treatment arm: `goal-harness-blind-loop-treatment`
+- treatment arm: `loopx-blind-loop-treatment`
 - treatment run id: `8d9511cee40f`
 - treatment score: `0.0`
 - treatment rounds: `1:0,2:0`
@@ -1586,7 +1586,7 @@ Compact evidence:
 - product-mode baseline rounds: `1:0`
 - product-mode baseline stop: agent declared done in round 1 with no remaining
   goals
-- product-mode treatment route: `goal-harness-product-mode`
+- product-mode treatment route: `loopx-product-mode`
 - product-mode treatment run id: `4002396acce9`
 - product-mode treatment score: `0.0`
 - product-mode treatment rounds: `1:0,2:0,3:0,4:0,5:0`
@@ -1608,7 +1608,7 @@ Both the two-round pair and the later max-5 pair scored `0.0`, with official
 reward/pass/fail/verifier feedback blinded during the agent loop and rewards
 recorded only after each completed round. The subsequent product-mode pair also
 stayed `0.0 -> 0.0`: the raw Codex autonomous baseline stopped after round 1
-when the agent declared done, while the Goal Harness product-mode treatment kept
+when the agent declared done, while the LoopX product-mode treatment kept
 the case alive for all 5 rounds through case-local active-state reads/writes.
 The result is therefore a real neutral pair and a depth-control proof: useful
 for runner readiness, product-mode parity, and stop-policy analysis, not for
@@ -1623,7 +1623,7 @@ Why it matters:
 - It preserves a no-uplift guard for BGP/network-analysis style tasks.
 - It demonstrates that local Docker capacity can masquerade as runner or apt
   setup failure unless recorded separately from case outcome.
-- It shows a real product-mode difference: Goal Harness prevented premature
+- It shows a real product-mode difference: LoopX prevented premature
   "done" collapse and drove five compact-safe rounds, but that extra depth did
   not solve this case.
 
@@ -1747,7 +1747,7 @@ Compact evidence:
 - baseline wall limit: `3600s`
 - baseline actual wall time: `1071.022472s`
 - baseline official-timeout comparable: `false`
-- treatment arm: `swe_marathon_goal_harness_prompt_polling_treatment`
+- treatment arm: `swe_marathon_loopx_prompt_polling_treatment`
 - treatment run id: `1252c5786080`
 - treatment score: `0.0`
 - treatment wall limit: `900s`
@@ -1757,19 +1757,19 @@ Compact evidence:
 - treatment follow-up prompts observed: `0`
 - treatment failure: `official_verifier_solution_failure`
 - first blocker: `harbor_prompt_polling_round_timeout_before_completion`
-- product path: `goal_harness_inside_case=true`, worker bridge `verified`,
+- product path: `loopx_inside_case=true`, worker bridge `verified`,
   public GH lifecycle/trace observed, and 12 GH CLI calls
 
 Interpretation:
 
 The native app-server Goal baseline can solve this CPU/no-CUA SWE-Marathon case
-under the current runner. The prompt-driven Goal Harness treatment also
+under the current runner. The prompt-driven LoopX treatment also
 exercised the intended case-local GH lifecycle and reached official scoring,
 but scored `0.0` after a first-round prompt-polling timeout. The score delta is
 therefore real but not causally clean: baseline used a larger wall-clock budget
 and treatment stopped under the official 900s envelope before any continuation
 prompt. The remaining issue is timeout/driver policy, treatment behavior, or
-solution-phase quality, not missing Goal Harness installation or a dead worker
+solution-phase quality, not missing LoopX installation or a dead worker
 bridge.
 
 Follow-up guidance:
@@ -1806,8 +1806,8 @@ Follow-up guidance:
 | Docker capacity can masquerade as apt/signature failure. | `organize-messy-files` first hit `skillsbench_docker_compose_setup_failure`; after runner staging/resource repair, the primary blind-loop baseline and treatment both scored `1.0`. | Track Docker free space as runner readiness, and update setup-blocked cases after a clean rerun instead of leaving stale blocker classifications. |
 | Task staging can repair app-mount setup failures. | `citation-check` first hit `skillsbench_environment_app_mount_missing`; after staged task preparation, the primary blind-loop baseline and treatment both scored `1.0`. | Treat staging/setup blockers as infra facts until a clean comparable pair supersedes them. |
 | Apt retry/no-cache staging is not enough for every Docker apt setup. | `setup-fuzzing-py`, `adaptive-cruise-control`, and the product-mode `debug-trl-grpo` raw baseline rerun all recorded apt hardening metadata but still ended before agent rounds with `skillsbench_docker_compose_apt_repository_failure`. A setup-shape scan found only 8 of 87 local SkillsBench tasks are no-apt Docker candidates. | Add a task-selection filter for apt-risk Docker tasks or materially change the apt setup route before spending more full SkillsBench probes on the same blocker. |
-| Product-mode pair can stay neutral even when blind-loop treatment was positive. | After Docker readiness repair, `paratransit-routing` raw-Codex-autonomous-max5 baseline and `goal-harness-product-mode` treatment both reached agent round 1, verifier, and official result at `0.0`, with both agents declaring done in round 1. The treatment recorded one public-safe Goal Harness CLI interaction (`goal-harness which goal`) but no score gain. | Treat the host-readiness blocker as repaired and record this as `paired_no_score_uplift` for product-mode. Do not transfer the older blind-loop `0.0 -> 1.0` uplift claim into the product-mode main table; next analyze the public-safe trajectory summaries to understand why product-mode lost the blind-loop positive behavior. |
-| Compact counters can explain product-mode loss only at the mechanism layer. | `paratransit-routing` blind-loop treatment: score `1.0`, round `1`, `goal_harness_cli_call_count=0`, `last_decision=stop_after_blind_loop_official_success_observed_without_feedback`. Product-mode treatment: score `0.0`, round `1`, `goal_harness_cli_call_count=1` for `goal-harness which goal`, `goal_harness_state_reads=0`, `goal_harness_state_writes=0`, and `last_decision=stop_after_agent_declared_done`. | The loss is not from interaction count, reward leakage, protected-path editing, or runner setup. The likely mechanism is product-mode stop/goal-state semantics: the treatment declared done at `0.0` before any replan or substantive Goal Harness state use. For content-level root cause, add a stronger public-safe trajectory summarizer or request an explicit raw-trace gate. |
+| Product-mode pair can stay neutral even when blind-loop treatment was positive. | After Docker readiness repair, `paratransit-routing` raw-Codex-autonomous-max5 baseline and `loopx-product-mode` treatment both reached agent round 1, verifier, and official result at `0.0`, with both agents declaring done in round 1. The treatment recorded one public-safe LoopX CLI interaction (`loopx which goal`) but no score gain. | Treat the host-readiness blocker as repaired and record this as `paired_no_score_uplift` for product-mode. Do not transfer the older blind-loop `0.0 -> 1.0` uplift claim into the product-mode main table; next analyze the public-safe trajectory summaries to understand why product-mode lost the blind-loop positive behavior. |
+| Compact counters can explain product-mode loss only at the mechanism layer. | `paratransit-routing` blind-loop treatment: score `1.0`, round `1`, `loopx_cli_call_count=0`, `last_decision=stop_after_blind_loop_official_success_observed_without_feedback`. Product-mode treatment: score `0.0`, round `1`, `loopx_cli_call_count=1` for `loopx which goal`, `loopx_state_reads=0`, `loopx_state_writes=0`, and `last_decision=stop_after_agent_declared_done`. | The loss is not from interaction count, reward leakage, protected-path editing, or runner setup. The likely mechanism is product-mode stop/goal-state semantics: the treatment declared done at `0.0` before any replan or substantive LoopX state use. For content-level root cause, add a stronger public-safe trajectory summarizer or request an explicit raw-trace gate. |
 | Apt-risk preflight should happen before full case execution. | A plan-only probe for `setup-fuzzing-py` now emits `skillsbench_task_setup_preflight` with `apt_setup_risk_detected=true` and no raw task text, raw logs, or raw trajectory reads. | Use `--fail-fast-on-apt-risk` or select a non-apt-risk task before launching blind-loop baseline/treatment pairs. |
 | Docker capacity and runtime-tools setup are runner readiness, not case quality. | `azure-bgp-oscillation-route-leak` moved from runtime apt/cache and Docker capacity failures to a complete baseline/treatment pair only after staged Codex ACP runtime-tools setup plus bounded dangling-layer cleanup. | Record setup/capacity repairs separately and do not count pre-materialization failures as case attempts. |
 | Product-path verification does not prove causal regression. | `zstd-decoder` baseline passed at `1.0`; the GH prompt-driven treatment reached official scoring with verified case-local GH lifecycle and 12 CLI calls, but scored `0.0` after a first-round timeout. Baseline used a 3600s wall limit while treatment used the official 900s limit. | Separate "GH path exercised" from "treatment improved outcome" and "GH caused regression"; match timeout envelopes or add solution/timeout phase counters before repeating or claiming value. |

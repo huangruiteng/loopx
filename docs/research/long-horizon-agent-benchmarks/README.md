@@ -1,6 +1,6 @@
 # Long-Horizon Agent Benchmark Research
 
-This topic folder owns Goal Harness research on public long-horizon agent
+This topic folder owns LoopX research on public long-horizon agent
 benchmarks, external leaderboard strategy, operator-simulator study design, and
 paper-oriented experiment planning.
 
@@ -12,13 +12,13 @@ Keep this folder focused on research artifacts:
   experiment plans;
 - result summaries, failure taxonomies, and publication-readiness notes.
 
-Do not implement Goal Harness product capability here. Foundational capability
+Do not implement LoopX product capability here. Foundational capability
 work still belongs in the existing code, examples, and contract documents:
 
 - CLI, quota, status, history, registry, and dashboard behavior belongs under
-  `goal_harness/`, `scripts/`, and the existing contract docs.
+  `loopx/`, `scripts/`, and the existing contract docs.
 - Deterministic smoke or regression coverage belongs under `examples/`.
-- General Goal Harness control-plane specs belong under top-level `docs/`.
+- General LoopX control-plane specs belong under top-level `docs/`.
 - This folder may link to those artifacts, but should not become a parallel
   implementation or a second product-spec tree.
 
@@ -26,7 +26,7 @@ work still belongs in the existing code, examples, and contract documents:
 
 - `codex-cli-long-run-benchmark-design.md`: public-safe design contract for the
   deterministic Codex CLI long-run benchmark fixture, result schema, scoring
-  split, and Goal Harness comparison protocol.
+  split, and LoopX comparison protocol.
 - `codex-cli-long-run-regression.md`: regression spec for the deterministic
   long-run worker shim, Goal Tick output protocol, and opt-in real Codex CLI
   worker contract.
@@ -40,10 +40,10 @@ work still belongs in the existing code, examples, and contract documents:
   that pauses Agents' Last Exam until a local/non-GCP route is documented,
   records the upstream Mainland-China/GCP issue, and ranks SWE-Marathon,
   AgentIssue-Bench, PerfBench, SWE-Bench Pro, MLE-bench, TheAgentCompany, and
-  APEX-Agents by Goal Harness leverage before any fresh quota spend.
+  APEX-Agents by LoopX leverage before any fresh quota spend.
 - `wildclawbench-dossier-20260617.md`: public-safe no-run WildClawBench route
   dossier. It records why harness comparison and side-effect auditing are a
-  stronger next Goal Harness hypothesis source than another same-policy
+  stronger next LoopX hypothesis source than another same-policy
   SkillsBench rerun, while blocking any official run until setup-readiness
   proves a local no-upload slice without unauthorized API/search/judge calls.
 - `benchmark-rotation-product-mode-protocol-20260617.md`: updated
@@ -53,7 +53,7 @@ work still belongs in the existing code, examples, and contract documents:
   readiness blocker without running Docker, reading task material, or claiming
   score evidence.
 - `benchmark-split-control-remote-executor-v0.md`: shared route contract for
-  running Docker-heavy benchmarks with Codex/Goal Harness/auth/model invocation
+  running Docker-heavy benchmarks with Codex/LoopX/auth/model invocation
   kept local while the remote development host only provides Docker, runner
   dependencies, task-data staging, bounded execution, and compact result
   reduction. It is now retained as fallback/research evidence rather than the
@@ -132,7 +132,7 @@ work still belongs in the existing code, examples, and contract documents:
 - `remote-gpu-noauth-readiness-probe-plan-v0.md`: no-auth probe plan for the
   `to` route. It defines SSH options, private remote workspace shape, redacted
   readiness commands, compact output fields, sync dry-run exclusions, isolated
-  Goal Harness install env vars, and stop rules before any remote sync,
+  LoopX install env vars, and stop rules before any remote sync,
   install, Docker task, Codex/model call, credential transfer, upload, or
   benchmark execution.
 - `remote-gpu-noauth-provider-probe-v0.md`: first redacted execution of the
@@ -152,11 +152,11 @@ work still belongs in the existing code, examples, and contract documents:
 - `remote-gpu-route-b-sync-install-plan-v0.md`: one-time Route B real-sync and
   isolated-install plan. It preserves the redacted rsync excludes, defines
   compact-only real-sync evidence, adds a remote post-sync absence scan for
-  forbidden private paths, and installs Goal Harness only under the private
+  forbidden private paths, and installs LoopX only under the private
   remote workspace with `CODEX_HOME` pointed at an empty isolated directory.
 - `remote-gpu-route-b-sync-install-proof-v0.md`: first controlled Route B
   real-sync and isolated-install proof. It records compact-only sync counts,
-  clean manifest and remote forbidden-path scans, isolated Goal Harness
+  clean manifest and remote forbidden-path scans, isolated LoopX
   install success, passing same-environment remote doctor, and no Codex auth
   sync or benchmark start.
 - `remote-gpu-route-b-runner-plumbing-preflight-v0.md`: first Route B
@@ -247,7 +247,7 @@ work still belongs in the existing code, examples, and contract documents:
   fixed/oracle material, or current-HEAD patch generation.
 - `agentissue-bench-codex-cli-runner-dry-run-wrapper-v0.md`: CLI
   materialization of that flow as
-  `goal-harness benchmark agentissue-codex-runner-flow --tag lagent_239`.
+  `loopx benchmark agentissue-codex-runner-flow --tag lagent_239`.
   It defaults to dry-run and `--execute` appends only compact no-run
   `benchmark_run_v0` readiness, while still avoiding Codex/model execution,
   Docker starts, auth sync, patch generation/evaluation, uploads, submits,
@@ -323,12 +323,12 @@ work still belongs in the existing code, examples, and contract documents:
 - `agentissue-bench-codex-cli-runner-publication-change-set-v0.md`: staging
   and review packet for publishing only the AgentIssue runner-flow change set.
   It lists the docs and smokes that should move together, marks
-  `goal_harness/benchmark.py`, `goal_harness/cli.py`, and this README as mixed
+  `loopx/benchmark.py`, `loopx/cli.py`, and this README as mixed
   tracked files that need careful staging, and excludes unrelated benchmark
   lanes, runtime state, credentials, raw artifacts, uploads, submits, and
   public ranking paths.
 - `perfbench-setup-readiness-v0.md`: public-safe setup-readiness scan for
-  PerfBench. It records the low public success rates and strong Goal Harness
+  PerfBench. It records the low public success rates and strong LoopX
   fit for .NET performance-bug validation, but blocks local/Docker setup today
   because the advertised `glGarg/PerfBench` repository is visible in browser
   metadata yet unavailable through git, raw GitHub, and GitHub API transport.
@@ -375,7 +375,7 @@ work still belongs in the existing code, examples, and contract documents:
 - `swe-bench-pro-prelaunch-blocker-v0.md`: post-approval compact blocker
   evidence for the selected SWE-Bench Pro pilot. It confirms host Codex CLI
   availability and Docker reachability, but blocks launch because private
-  sample, attempt patch, evaluator scripts, and a Goal Harness launch wrapper
+  sample, attempt patch, evaluator scripts, and a LoopX launch wrapper
   are not ready, while the current local provider remains `aarch64` with tight
   CPU/memory/disk headroom for the selected `linux/amd64` image.
 - `swe-bench-pro-launch-wrapper-contract-v0.md`: public-safe wrapper/preflight
@@ -420,7 +420,7 @@ work still belongs in the existing code, examples, and contract documents:
   official runner/docs surfaces while excluding `workspaces/tasks`, task
   instructions, evaluator/checkpoint/scenario files, configs, outputs, Docker
   actions, model calls, uploads, and raw artifacts; it also records why the
-  official all-task OpenHands script is not a safe first Goal Harness runner
+  official all-task OpenHands script is not a safe first LoopX runner
   and sketches the gated host-Codex single-task wrapper shape.
 - `theagentcompany-single-task-host-codex-gate-v0.md`: no-run single-task
   host-Codex gate packet for TheAgentCompany. It refreshes public source
@@ -464,13 +464,13 @@ work still belongs in the existing code, examples, and contract documents:
   probe slice.
 - `terminal-bench-probe-v0.md`: first public-safe runner-boundary probe for
   Terminal-Bench and Harbor, including Codex CLI integration surfaces, output
-  files for passive Goal Harness ingestion, and the stop condition before paid
+  files for passive LoopX ingestion, and the stop condition before paid
   or leaderboard execution.
 - `benchmark-run-v0-ingest.md`: first passive `benchmark_run_v0` ingestion
   contract for Harbor job outputs, with deterministic fixture coverage and no
   default Docker, model, cloud, or leaderboard execution.
 - `passive-baseline-protocol-v0.md`: paired Codex CLI goal-mode baseline
-  versus passive Goal Harness wrapper protocol, connecting local
+  versus passive LoopX wrapper protocol, connecting local
   `benchmark_result_v0` comparison evidence to compact `benchmark_run_v0`
   history rows without operator simulation.
 - `operator-simulator-overlay-v0.md`: assisted operator-simulator overlay
@@ -536,63 +536,63 @@ work still belongs in the existing code, examples, and contract documents:
   repeated re-derivation justifies a compact hot-path projection.
 - `terminal-bench-treatment-arm-taxonomy-v0.md`: no-run taxonomy correction
   separating `hardened_codex_baseline`, Codex runtime `codex_goal_mode`,
-  true `codex_goal_harness`, and `passive_goal_harness_observer`. It records
+  true `codex_loopx`, and `passive_loopx_observer`. It records
   that `create_goal` / `update_goal` are Codex runtime goal-tool calls, not
-  Goal Harness CLI calls, and requires future results to count
-  `codex_runtime_goal_tool_calls`, `goal_harness_cli_calls`,
-  `goal_harness_state_reads`, and `goal_harness_state_writes` separately.
+  LoopX CLI calls, and requires future results to count
+  `codex_runtime_goal_tool_calls`, `loopx_cli_calls`,
+  `loopx_state_reads`, and `loopx_state_writes` separately.
 - `public-safe-trajectory-summary-v0.md`: cross-benchmark compact trajectory
   summary contract. It exposes event/tool/action category counts, normalized
-  Goal Harness CLI state-usage buckets, and protected-path edit signals without
+  LoopX CLI state-usage buckets, and protected-path edit signals without
   copying raw task text, prompts, verifier output, tool output, or trajectory
   bodies.
-- `terminal-bench-goal-harness-access-packet-v0.md`: no-run access-packet and
-  interaction-counter fixture for the true `codex_goal_harness` arm. It defines
+- `terminal-bench-loopx-access-packet-v0.md`: no-run access-packet and
+  interaction-counter fixture for the true `codex_loopx` arm. It defines
   the public worker packet, keeps Codex runtime goal tools separate from Goal
   Harness CLI/state calls, and adds compact `benchmark_run_v0` counter
   projection before any fake-worker or real benchmark repeat.
-- `terminal-bench-goal-harness-cli-bridge-contract-v0.md`: host-agent bridge
-  contract for the future true `codex_goal_harness` arm. It maps
+- `terminal-bench-loopx-cli-bridge-contract-v0.md`: host-agent bridge
+  contract for the future true `codex_loopx` arm. It maps
   `status`, `quota_should_run`, `todo_list`, `history`, `check`, and
-  `append_benchmark_run` to executable Goal Harness CLI templates, with a smoke
+  `append_benchmark_run` to executable LoopX CLI templates, with a smoke
   that runs those templates against a temporary registry. The same contract is
-  now wired into `goal-harness benchmark run terminal-bench --mode
-  codex-goal-harness --cli-bridge-contract`, producing compact runner-side
-  bridge availability and `goal_harness_cli_calls.total=6` counters while
+  now wired into `loopx benchmark run terminal-bench --mode
+  codex-loopx --cli-bridge-contract`, producing compact runner-side
+  bridge availability and `loopx_cli_calls.total=6` counters while
   keeping Terminal-Bench/Codex/model execution disabled.
-- `terminal-bench-codex-goal-harness-active-cli-bridge-v0.md`: core
-  `codex_goal_harness` treatment surface. It adds
-  `goal_harness_cli_bridge_enabled=true` to `GoalHarnessManagedCodex`, injects
-  worker-side `goal-harness ... status/quota/todo/history/check/append` command
+- `terminal-bench-codex-loopx-active-cli-bridge-v0.md`: core
+  `codex_loopx` treatment surface. It adds
+  `loopx_cli_bridge_enabled=true` to `GoalHarnessManagedCodex`, injects
+  worker-side `loopx ... status/quota/todo/history/check/append` command
   templates into the Codex instruction, and keeps worker in-case
-  `goal_harness_cli_calls.total=6` separate from runner-side bridge probes. It
+  `loopx_cli_calls.total=6` separate from runner-side bridge probes. It
   also exposes the no-run `--preflight-guard --active-cli-bridge` route for the
   next private repeat and records a claim gate requiring nonzero worker-side
-  Goal Harness CLI calls before any in-case use claim.
-- `terminal-bench-codex-goal-harness-fake-worker-v0.md`: first executable
-  fixture mode for the true `codex_goal_harness` arm:
-  `goal-harness benchmark run terminal-bench --mode codex-goal-harness
+  LoopX CLI calls before any in-case use claim.
+- `terminal-bench-codex-loopx-fake-worker-v0.md`: first executable
+  fixture mode for the true `codex_loopx` arm:
+  `loopx benchmark run terminal-bench --mode codex-loopx
   --fake-worker`. It appends a no-run/no-submit `benchmark_run_v0` event with
-  nonzero Goal Harness CLI/state interaction counters, while keeping Codex
+  nonzero LoopX CLI/state interaction counters, while keeping Codex
   runtime goal-tool calls separate and preserving no-uplift/no-leaderboard
   boundaries.
-- `terminal-bench-codex-goal-harness-custom-agent-v0.md`: custom-agent prompt
-  surface for the true `codex_goal_harness` arm. It wires the Goal Harness
+- `terminal-bench-codex-loopx-custom-agent-v0.md`: custom-agent prompt
+  surface for the true `codex_loopx` arm. It wires the LoopX
   access packet into `GoalHarnessManagedCodex` through
-  `goal_harness_mode=codex_goal_harness`, adds compact trace-audited counter
+  `loopx_mode=codex_loopx`, adds compact trace-audited counter
   extraction, and verifies the Harbor command preview before any real repeat.
-- `terminal-bench-codex-goal-harness-preflight-guard-v0.md`: no-upload
-  preflight guard for `goal-harness benchmark run terminal-bench --mode
-  codex-goal-harness --preflight-guard`. It checks runner/Codex/local execution
+- `terminal-bench-codex-loopx-preflight-guard-v0.md`: no-upload
+  preflight guard for `loopx benchmark run terminal-bench --mode
+  codex-loopx --preflight-guard`. It checks runner/Codex/local execution
   surfaces, access-packet prompt injection, trace-counter contract availability,
   and compact preflight/status projection without running Harbor tasks, Codex
   workers, model APIs, uploads, or leaderboard paths.
 - `terminal-bench-runner-mode-contract-v0.md`: no-run mode contract for the
-  future `goal-harness benchmark run terminal-bench ...` wrapper, separating
+  future `loopx benchmark run terminal-bench ...` wrapper, separating
   parent runner control-plane behavior from per-case worker modes
-  `codex-goal-mode` and `codex-goal-harness`. The contract treats Codex CLI
+  `codex-goal-mode` and `codex-loopx`. The contract treats Codex CLI
   goal mode as the true paired baseline for this experiment and
-  `codex-goal-harness` as the core `goal-mode model + harness` pair; hardened
+  `codex-loopx` as the core `goal-mode model + harness` pair; hardened
   or bare Codex evidence is calibration only. The current no-upload launch
   summary records the baseline as `/goal` slash-command surface with
   `access_packet=none` and no worker bridge.
@@ -615,7 +615,7 @@ work still belongs in the existing code, examples, and contract documents:
   to official `terminal-bench@2.0`, selects a three-case hard/long-horizon
   primary batch (`fix-code-vulnerability`, `modernize-scientific-stack`, and
   `llm-inference-batching-scheduler`), defines a backup queue, and preserves
-  paired-run invariants for `codex-goal-mode` versus `codex-goal-harness`,
+  paired-run invariants for `codex-goal-mode` versus `codex-loopx`,
   claim boundaries, metrics, goal-mode invocation preflight, and stop
   conditions before any full 89-task run or leaderboard path.
 - `terminal-bench-next-candidate-selection-20260614.md`: no-run P0 routing
@@ -634,32 +634,32 @@ work still belongs in the existing code, examples, and contract documents:
   result. It records the baseline verifier-attribution caveat, blocks
   same-task repeat or treatment claims, selects `financial-document-processor`
   as the next material-ready case, and preserves the no-upload paired protocol
-  for Codex goal-mode versus `codex-goal-harness`.
+  for Codex goal-mode versus `codex-loopx`.
 - `terminal-bench-next-candidate-after-financial-document-processor-20260614.md`:
   public-safe P0 routing packet after the `financial-document-processor` paired
   compact result. It records the both-pass/no-uplift outcome, blocks same-task
   repeat or treatment claims, selects `multi-source-data-merger` as the next
   material-ready case, and preserves the no-upload paired protocol for Codex
-  goal-mode versus `codex-goal-harness`.
+  goal-mode versus `codex-loopx`.
 - `terminal-bench-next-candidate-after-multi-source-data-merger-20260614.md`:
   public-safe P0 routing packet after the `multi-source-data-merger` paired
   compact result. It records the both-pass/no-uplift outcome, rejects exhausted
   backup candidates, selects `db-wal-recovery` as a protocol-calibration case
-  for Codex goal-mode versus `codex-goal-harness`, and preserves the no-upload
+  for Codex goal-mode versus `codex-loopx`, and preserves the no-upload
   paired protocol.
 - `terminal-bench-next-candidate-after-db-wal-recovery-20260614.md`:
   public-safe P0 routing packet after the `db-wal-recovery` paired compact
   review. It records the baseline-pass/treatment-fail outcome, blocks same-task
   repeat or treatment claims, selects `build-cython-ext` as the next
   material-ready setup-heavy case, and preserves the no-upload paired protocol
-  for Codex goal-mode versus `codex-goal-harness`.
+  for Codex goal-mode versus `codex-loopx`.
 - `terminal-bench-next-candidate-after-build-cython-ext-20260614.md`:
   public-safe P0 routing packet after the `build-cython-ext` paired compact
   review. It records the both-pass/no-uplift outcome, excludes recently
   consumed material-ready candidates and old paired/blocker evidence, selects
   `pytorch-model-recovery` as a current-protocol calibration case with old
   bare-Codex failure signal, and preserves the no-upload paired protocol for
-  Codex goal-mode versus `codex-goal-harness`.
+  Codex goal-mode versus `codex-loopx`.
 - `terminal-bench-next-candidate-after-pytorch-env-setup-20260614.md`:
   public-safe P0 routing packet after the `pytorch-model-recovery`
   environment setup gate. It records the repeated pre-worker setup blocker,
@@ -667,21 +667,21 @@ work still belongs in the existing code, examples, and contract documents:
   current paired compact closeout, strict-preflights `make-doom-for-mips` and
   `regex-log`, selects `make-doom-for-mips` as the next material-ready
   system/build candidate, and preserves the no-upload paired protocol for Codex
-  goal mode versus `codex-goal-harness`.
+  goal mode versus `codex-loopx`.
 - `terminal-bench-next-candidate-after-regex-log-20260614.md`: public-safe P0
   routing packet after the restarted `regex-log` paired compact closeout. It
   runs the candidate-source-boundary guard before selection, uses a name-only
   cached task-id scan plus strict no-upload preflights, selects
   `large-scale-text-editing` as a fresh long-context editing candidate, and
   preserves the no-upload paired protocol for Codex goal mode versus
-  `codex-goal-harness`.
+  `codex-loopx`.
 - `terminal-bench-next-candidate-after-large-scale-text-editing-20260614.md`:
   public-safe P0 routing packet after the `large-scale-text-editing` compact
   paired closeout and follow-up `require_existing_codex` worker-startup
   blocker. It blocks immediate same-task repeat, reruns strict no-run
   preflights for the first fallback candidates, selects `git-multibranch` as
   the next material-ready case, and preserves the no-upload paired protocol
-  for Codex goal mode versus `codex-goal-harness`.
+  for Codex goal mode versus `codex-loopx`.
 - `agents-last-exam-triage-v0.md`: source-backed triage note adding Agents'
   Last Exam to the benchmark backlog. It records the Xiaohongshu discovery
   signal, verifies the arXiv and public GitHub surfaces, and keeps ALE behind
@@ -725,24 +725,24 @@ work still belongs in the existing code, examples, and contract documents:
   dry-run matrix readiness, optional launch packet readiness, and compact
   reducer readiness before allowing a local/no-upload validation run.
 - `terminal-bench-cli-dry-run-fake-worker-v0.md`: public CLI skeleton for
-  `goal-harness benchmark run terminal-bench`. The command defaults to dry-run,
-  exposes `codex-goal-mode`, `codex-goal-harness`, `hardened-codex`, passive
-  observation, and `goal-harness-managed-codex`, and can append only compact
+  `loopx benchmark run terminal-bench`. The command defaults to dry-run,
+  exposes `codex-goal-mode`, `codex-loopx`, `hardened-codex`, passive
+  observation, and `loopx-managed-codex`, and can append only compact
   fixture `benchmark_run_v0` rows when `--execute` is passed. The current
   fake-worker path is allowed only for managed mode and records
-  `goal_harness_managed_codex_fake_worker_wrapper` without invoking real
+  `loopx_managed_codex_fake_worker_wrapper` without invoking real
   Harbor, Terminal-Bench, Docker, Codex, model APIs, uploads, or leaderboard
   paths.
 - `terminal-bench-managed-real-run-preflight-guard-v0.md`: no-run guard packet
-  for the first managed Goal Harness Terminal-Bench case. It rechecks runner,
+  for the first managed LoopX Terminal-Bench case. It rechecks runner,
   local Docker/Colima, Codex CLI, auth-surface-name, no-upload, and artifact
   redaction boundaries, appends only a compact readiness `benchmark_run_v0`
   when executed, and stops before Harbor, Terminal-Bench, Codex worker,
   benchmark task container, model API, uploads, or leaderboard paths.
 - `terminal-bench-managed-codex-custom-agent-v0.md`: first concrete Harbor
   custom-agent bridge for the core managed treatment, using
-  `--agent-import-path goal_harness.terminal_bench_agent:GoalHarnessManagedCodex`
-  to subclass Harbor's built-in Codex adapter, inject a minimal Goal Harness
+  `--agent-import-path loopx.terminal_bench_agent:GoalHarnessManagedCodex`
+  to subclass Harbor's built-in Codex adapter, inject a minimal LoopX
   policy envelope, defer public-safe managed metadata until Codex post-run
   session ingestion, and preserve no-upload/private pilot boundaries while
   stopping before leaderboard, uplift, or paper-ready claims.
@@ -752,7 +752,7 @@ work still belongs in the existing code, examples, and contract documents:
   replay-decision, next-run-mode, and stop-condition state without raw logs,
   private traces, local artifact paths, chat history, or extra hot-path keys.
 - `benchmark-result-control-plane-score-v0.md`: compact score and attribution
-  boundary contract. It keeps official task score separate from Goal Harness
+  boundary contract. It keeps official task score separate from LoopX
   control-plane value and defines `benchmark_verifier_attribution_review_v0`
   routing fields so verifier dependency/platform failures block treatment and
   same-task repeat while still allowing a new material-ready candidate.
@@ -767,14 +767,14 @@ work still belongs in the existing code, examples, and contract documents:
   repeated re-derivation justifies a compact hot-path projection.
 - `codex-app-parity-posthoc-check-v0.md`: lightweight posthoc check for compact
   `benchmark_run_v0` rows. It verifies canonical case active-state evidence,
-  Goal Harness CLI call counters, public-safe Codex trajectory summaries, and
+  LoopX CLI call counters, public-safe Codex trajectory summaries, and
   reward/verifier/raw-material non-leakage before allowing a full Codex App
   product-path attribution claim.
 
-## Relationship To Goal Harness Work
+## Relationship To LoopX Work
 
 The research track should discover what to measure and which public benchmark
-protocols are credible. Once the work requires a Goal Harness feature, that
+protocols are credible. Once the work requires a LoopX feature, that
 feature should be split into a normal product todo and implemented in the
 existing public capability surface, with this folder retaining only the research
 motivation, protocol, and result evidence.

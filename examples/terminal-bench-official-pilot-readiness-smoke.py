@@ -25,7 +25,7 @@ REQUIRED_DOC_SNIPPETS = [
     "benchmark_comparison_v0",
     "benchmark_run_v0",
     "bare_codex_cli_readiness",
-    "passive_goal_harness_wrapper_readiness",
+    "passive_loopx_wrapper_readiness",
     "official_task_score.kind = not_run",
     "readiness_checklist_v0",
     "no real benchmark",
@@ -45,7 +45,7 @@ CHECKLIST_ITEMS = [
     "task_id_or_split_placeholder",
     "agent_command_boundary",
     "official_score_fields",
-    "goal_harness_control_plane_score_fields",
+    "loopx_control_plane_score_fields",
     "benchmark_run_pairing_rule",
     "public_artifact_manifest",
     "side_effect_audit",
@@ -112,7 +112,7 @@ def result_shell(scenario_id: str, harness_identity: str) -> dict[str, Any]:
         },
         "benchmark_run_pairing_rule": {
             "schema_version": "benchmark_run_v0",
-            "future_modes": ["bare_codex_cli", "passive_goal_harness_wrapper"],
+            "future_modes": ["bare_codex_cli", "passive_loopx_wrapper"],
             "one_compact_row_per_mode": True,
             "append_runtime_history_now": False,
         },
@@ -209,7 +209,7 @@ def main() -> None:
     assert_doc_contract()
     results = [
         result_shell("bare_codex_cli_readiness", "none"),
-        result_shell("passive_goal_harness_wrapper_readiness", "goal_harness_passive_wrapper"),
+        result_shell("passive_loopx_wrapper_readiness", "loopx_passive_wrapper"),
     ]
     summary = comparison(results)
     assert_result_contract(results, summary)

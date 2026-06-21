@@ -1,6 +1,6 @@
 # Benchmark Developer Workflow
 
-Goal Harness treats benchmark execution as a developer workflow, not only as a
+LoopX treats benchmark execution as a developer workflow, not only as a
 research activity. A benchmark runner should be something a contributor can
 inspect, dry-run, diagnose, and improve without reading maintainer `.local`
 state or raw benchmark trajectories.
@@ -8,7 +8,7 @@ state or raw benchmark trajectories.
 This document is the stable product entry point for benchmark work. Research
 packets and dated route notes still live under
 `docs/research/long-horizon-agent-benchmarks/`, but reusable runner behavior
-belongs in `goal_harness/`, `examples/`, and this guide.
+belongs in `loopx/`, `examples/`, and this guide.
 
 ## Product Shape
 
@@ -24,7 +24,7 @@ The benchmark workflow has four layers:
    cloud host is available.
 3. **Observe** the run through compact handles: pid or job state, readiness
    re-check, materialization, result or blocker, and cleanup state.
-4. **Ingest** only public-safe evidence into Goal Harness history, ledger, and
+4. **Ingest** only public-safe evidence into LoopX history, ledger, and
    case analysis.
 
 The user-facing product promise is simple: a developer should be able to tell
@@ -36,9 +36,9 @@ without seeing credentials, raw logs, raw trajectories, or local machine paths.
 From a fresh checkout:
 
 ```bash
-python3 -m py_compile goal_harness/*.py goal_harness/benchmark_core/*.py
+python3 -m py_compile loopx/*.py loopx/benchmark_core/*.py
 python3 examples/benchmark-split-control-remote-executor-smoke.py
-goal-harness benchmark --help
+loopx benchmark --help
 ```
 
 For a real benchmark slice, use this sequence:
@@ -56,16 +56,16 @@ For a real benchmark slice, use this sequence:
    A/B baseline and continue only readiness, runner, or blocker work.
 4. Produce a launch plan or runner batch only after a fresh readiness re-check.
 5. Build benchmark-specific command-adapter facts when the route still needs a
-   Goal Harness adapter, such as
-   `goal-harness benchmark terminal-bench-command-adapter terminal-bench`.
+   LoopX adapter, such as
+   `loopx benchmark terminal-bench-command-adapter terminal-bench`.
    When Terminal-Bench uses a remote executor, first reduce the local-driver
    request plus private remote launch result through the launch adapter:
-   `goal-harness benchmark terminal-bench-remote-launch-adapter terminal-bench --request-json <private-json> --launch-result-json <private-json>`.
+   `loopx benchmark terminal-bench-remote-launch-adapter terminal-bench --request-json <private-json> --launch-result-json <private-json>`.
    The launch adapter emits only field presence and compact blocker state; it
    never executes SSH, Docker, Codex, model calls, uploads, or submits. If a
    lower-level private runner already produced remote-executor handles, reduce
    them through a materializer such as
-   `goal-harness benchmark terminal-bench-remote-materializer terminal-bench --handle-manifest-json <private-json>`.
+   `loopx benchmark terminal-bench-remote-materializer terminal-bench --handle-manifest-json <private-json>`.
    The materializer emits only handle field presence, never handle values. For
    Terminal-Bench, handle presence is still not enough: the payload must prove
    that a local Codex driver owns agent/model/auth and that the remote executor
@@ -78,7 +78,7 @@ For a real benchmark slice, use this sequence:
 6. Run the smallest no-upload dry-run or mini-pair that can answer the current
    product question.
 7. Ingest a compact result or precise blocker.
-8. Update Goal Harness todo/state so the next developer sees the current route.
+8. Update LoopX todo/state so the next developer sees the current route.
 
 Do not start from a raw shell command hidden in a local note. If a benchmark
 cannot be launched through a documented route, the next product task is to
@@ -113,7 +113,7 @@ python3 scripts/benchmark_run_status_snapshot.py \
   --label <skillsbench-run-label> \
   --label <swe-marathon-run-label> \
   --record-rollout-event \
-  --goal-id goal-harness-meta \
+  --goal-id loopx-meta \
   --agent-id codex-main-control \
   --pattern Working \
   --pattern timed\ out \
@@ -144,7 +144,7 @@ for another developer or heartbeat to resume polling without chat memory.
 
 ### Goal Rollout Event Log
 
-Each benchmark case should leave a compact Goal Harness rollout trail, separate
+Each benchmark case should leave a compact LoopX rollout trail, separate
 from raw Codex sessions or benchmark runner logs. Use the rollout event log when
 you need to explain the lifecycle of a case or an agent workflow:
 
@@ -153,32 +153,32 @@ you need to explain the lifecycle of a case or an agent workflow:
 - `benchmark_launch` / `benchmark_status`: a case was launched or polled.
 - `validation`: a smoke, reducer, or official verifier finished.
 - `compact_case_result` / `compact_blocker`: public-safe case outcome.
-- `refresh_state` / `quota_spend`: Goal Harness writeback and spend.
+- `refresh_state` / `quota_spend`: LoopX writeback and spend.
 - `codex_session_observed`: a private Codex session source exists, but raw
   session contents and file paths are not recorded.
 
-Core Goal Harness CLI lifecycle commands append compact events automatically:
+Core LoopX CLI lifecycle commands append compact events automatically:
 `todo` transitions, `refresh-state`, and `quota should-run` /
 `quota monitor-poll` / `quota spend-slot` / `quota void-slot` all write to the
 rollout event log when they run through the CLI. This makes the log closer to a
-Codex session ledger for Goal Harness itself: agents do not need to remember to
+Codex session ledger for LoopX itself: agents do not need to remember to
 record routine GH control-plane transitions by hand.
 
 Compact benchmark history writes also append automatically when they are
-executed through the CLI. `goal-harness history append-benchmark-run
---execute`, `goal-harness history append-benchmark-result --execute`, and the
-`goal-harness benchmark ... --execute` fixture/ingest path write
+executed through the CLI. `loopx history append-benchmark-run
+--execute`, `loopx history append-benchmark-result --execute`, and the
+`loopx benchmark ... --execute` fixture/ingest path write
 `compact_case_result` or `compact_blocker` events derived only from the compact
 `benchmark_run_v0` / `benchmark_result_v0` payload. This is the default path for
 case-level observation: launch/poll scripts may keep their own private raw
-artifacts, but Goal Harness should observe the public-safe compact writeback.
+artifacts, but LoopX should observe the public-safe compact writeback.
 
 Use the script for external benchmark transitions, backfills, or operator-side
 facts that happen outside those core CLI paths:
 
 ```bash
 python3 scripts/goal_rollout_event_log.py append \
-  --goal-id goal-harness-meta \
+  --goal-id loopx-meta \
   --event-kind compact_case_result \
   --agent-id codex-main-control \
   --todo-id todo_406bb256efd8 \
@@ -193,7 +193,7 @@ Summarize the current trail without reading private sources:
 
 ```bash
 python3 scripts/goal_rollout_event_log.py summarize \
-  --goal-id goal-harness-meta \
+  --goal-id loopx-meta \
   --limit 12 \
   --pretty
 ```
@@ -204,11 +204,11 @@ paths, prompts, tool output, or token-bearing content:
 
 ```bash
 python3 scripts/goal_rollout_event_log.py observe-codex-sessions \
-  --goal-id goal-harness-meta \
+  --goal-id loopx-meta \
   --agent-id codex-main-control
 ```
 
-The canonical log lives under the Goal Harness runtime root for the goal, for
+The canonical log lives under the LoopX runtime root for the goal, for
 example `goals/<goal-id>/rollout-event-log.jsonl`. It is a local control-plane
 artifact, not a raw evidence file to commit. Public docs and ledgers may cite
 compact event ids, case ids, run ids, and artifact refs, but must keep raw task
@@ -222,16 +222,16 @@ SkillsBench, ALE, and other Docker-heavy benchmark families when a dedicated
 ECS-style cloud VM is available. This is a developer operations pattern: put
 Codex CLI, benchmark source, container runtime, task data, raw artifacts, and
 compact reducers on one isolated cloud host, then publish only public-safe
-control-plane evidence back to Goal Harness.
+control-plane evidence back to LoopX.
 
 | Owner | Responsibility |
 | --- | --- |
 | Cloud ECS benchmark host | Codex CLI, benchmark source checkout, runner dependencies, container runtime, task-data staging, no-upload run execution, compact result reduction, and private raw artifacts. |
-| Goal Harness repo | Public-safe route contracts, reducer schemas, benchmark ledger ingestion, todo/state writeback, public docs, and focused smokes. |
+| LoopX repo | Public-safe route contracts, reducer schemas, benchmark ledger ingestion, todo/state writeback, public docs, and focused smokes. |
 | Operator | Codex login on the cloud host, benchmark data gates, upload/leaderboard decisions, and any private-material or credential approval. |
 
 The route is intentionally simpler than split-control: SSH reaches the ECS
-host, then Codex CLI runs there like a normal developer would. Goal Harness
+host, then Codex CLI runs there like a normal developer would. LoopX
 should not need to understand SSH internals, jump hosts, or remote file bridges
 in the hot path. It should only record compact route readiness, result handles,
 blockers, and no-upload boundaries.
@@ -248,7 +248,7 @@ of three reusable surfaces:
 
 Runtime-only tweaks such as Docker registry mirrors, loopback proxy sessions,
 cached base images, source tarballs, dependency prewarm, and run directories
-are useful operator substrate. Do not let them become hidden Goal Harness
+are useful operator substrate. Do not let them become hidden LoopX
 truth. Record only the compact fact: ready, blocked, or needs operator setup.
 The concrete mirror URL, proxy port, shell history, raw logs, and local host
 paths stay outside public evidence.
@@ -262,7 +262,7 @@ metadata another developer needs: upstream repo/ref, patch purpose, files
 touched by category, whether scoring/task truth changed, validation command,
 and rollback command. Do not publish the raw patched checkout, task text, raw
 logs, private paths, or internal hostnames. Once a patch repeats, promote it to
-one of three durable surfaces: an upstreamable PR, a Goal Harness wrapper, or a
+one of three durable surfaces: an upstreamable PR, a LoopX wrapper, or a
 documented benchmark-host SOP.
 
 When the host has both a system disk and a data disk, move every large runner
@@ -284,7 +284,7 @@ runtime still sees existing images.
 Recommended cloud host layout:
 
 ```text
-goal-harness-bench/
+loopx-bench/
   sources/
   runs/
   cache/
@@ -296,7 +296,7 @@ Run the bootstrap probe on the cloud host before a benchmark slice:
 
 ```bash
 python3 scripts/benchmark_ecs_bootstrap.py \
-  --workspace ~/goal-harness-bench \
+  --workspace ~/loopx-bench \
   --min-free-gib 80 \
   --create-dirs \
   --pretty
@@ -310,7 +310,7 @@ benchmark scorer. Generate the public-safe profile plan:
 ```bash
 python3 scripts/benchmark_agent_runtime_layer.py \
   --benchmark all \
-  --workspace ~/goal-harness-bench \
+  --workspace ~/loopx-bench \
   --pretty
 ```
 
@@ -329,7 +329,7 @@ agent-tools path:
 
 ```bash
 python3 scripts/harbor_agent_tools_bundle.py \
-  --output ~/goal-harness-bench/harbor-agent-tools \
+  --output ~/loopx-bench/harbor-agent-tools \
   --pretty
 ```
 
@@ -340,7 +340,7 @@ environment:
   type: docker
   mounts:
     - type: bind
-      source: ~/goal-harness-bench/harbor-agent-tools
+      source: ~/loopx-bench/harbor-agent-tools
       target: /opt/harbor-agent-tools
       read_only: true
 ```
@@ -372,7 +372,7 @@ Harbor reducer and pass the benchmark id explicitly:
 python3 scripts/harbor_job_result_reducer.py \
   --job-dir <jobs-dir>/<job-name> \
   --benchmark-id swe-marathon \
-  --output-json <jobs-dir>/<job-name>/goal_harness_harbor_result.compact.json \
+  --output-json <jobs-dir>/<job-name>/loopx_harbor_result.compact.json \
   --pretty
 ```
 
@@ -386,7 +386,7 @@ solution attempt, switch to the host Codex Goal custom agent instead of
 continuing to rebuild or reinstall Codex in every case container:
 
 ```bash
-export PYTHONPATH=<goal-harness-checkout>:<goal-harness-checkout>/scripts:${PYTHONPATH:-}
+export PYTHONPATH=<loopx-checkout>:<loopx-checkout>/scripts:${PYTHONPATH:-}
 UV_LINK_MODE=copy uv run --no-default-groups harbor run \
   --env docker \
   --agent-import-path harbor_host_codex_goal_agent:HarborHostCodexGoalAgent \
@@ -399,7 +399,7 @@ UV_LINK_MODE=copy uv run --no-default-groups harbor run \
 Use the same long timeout envelope for base and treatment arms while measuring
 capability ceilings. The host Goal agents default to `10800` seconds; pass an
 explicit shorter value only for a timeout-cost experiment and record that tier
-in the compact result. Goal Harness prompt-polling treatments use the same
+in the compact result. LoopX prompt-polling treatments use the same
 envelope for each observed round by default, so the controller does not cut off
 a still-running Codex Goal turn at the older `900s` official timeout before
 continuation evidence exists.
@@ -414,11 +414,11 @@ wrapper should look like:
 #!/usr/bin/env bash
 set -euo pipefail
 
-export PYTHONPATH=<goal-harness-checkout>:<goal-harness-checkout>/scripts:${PYTHONPATH:-}
+export PYTHONPATH=<loopx-checkout>:<loopx-checkout>/scripts:${PYTHONPATH:-}
 python3 - <<'PY'
 import importlib
 importlib.import_module("harbor_host_codex_goal_agent")
-importlib.import_module("goal_harness.benchmark_core.loop_protocol")
+importlib.import_module("loopx.benchmark_core.loop_protocol")
 PY
 
 cd <harbor-checkout>
@@ -432,7 +432,7 @@ set -e
 printf "exit_status=%s\n" "$status" > <run-dir>/status.env
 
 if [ -d <run-dir>/jobs/<job-name> ]; then
-  python3 <goal-harness-checkout>/scripts/harbor_job_result_reducer.py \
+  python3 <loopx-checkout>/scripts/harbor_job_result_reducer.py \
     --job-dir <run-dir>/jobs/<job-name> \
     --benchmark-id swe-marathon \
     --output-json <run-dir>/jobs/<job-name>/harbor_job_result.compact.json \
@@ -466,15 +466,15 @@ For the current SWE-Marathon experiment axis, keep the same task, model,
 timeout, environment, jobs directory shape, and no-upload boundary across arms:
 
 - baseline: native Codex app-server Goal mode;
-- test: Goal Harness prompt-driven polling with scheduled continuations.
+- test: LoopX prompt-driven polling with scheduled continuations.
 
-A single Goal Harness access-packet run is not the test arm by itself. It adds
+A single LoopX access-packet run is not the test arm by itself. It adds
 planning/checkpoint context to the same host app-server Goal worker, but remains
 packet-only observation unless an outer polling controller records the scheduled
 rounds:
 
 ```bash
-export PYTHONPATH=<goal-harness-checkout>:<goal-harness-checkout>/scripts:${PYTHONPATH:-}
+export PYTHONPATH=<loopx-checkout>:<loopx-checkout>/scripts:${PYTHONPATH:-}
 UV_LINK_MODE=copy uv run --no-default-groups harbor run \
   --env docker \
   --agent-import-path harbor_host_codex_goal_agent:HarborHostCodexGoalAgent \
@@ -484,16 +484,16 @@ UV_LINK_MODE=copy uv run --no-default-groups harbor run \
   --agent-kwarg app_server_response_timeout_sec=90 \
   --agent-kwarg goal_timeout_sec=<seconds> \
   --agent-kwarg task_workdir=/app \
-  --agent-kwarg goal_harness_mode=codex_goal_harness \
-  --agent-kwarg goal_harness_access_packet_mode=compact \
-  --agent-kwarg goal_harness_cli_bridge_enabled=true \
-  --agent-kwarg goal_harness_goal_id=<goal-id> \
-  --agent-kwarg goal_harness_registry_arg=<registry.global.json> \
-  --agent-kwarg goal_harness_runtime_root_arg=<runtime-root> \
-  --agent-kwarg goal_harness_scan_path=<public-scan-path> \
-  --agent-kwarg goal_harness_classification=<public-classification> \
-  --agent-kwarg goal_harness_experiment_protocol=packet_only_observation \
-  --agent-kwarg goal_harness_max_rounds=5 \
+  --agent-kwarg loopx_mode=codex_loopx \
+  --agent-kwarg loopx_access_packet_mode=compact \
+  --agent-kwarg loopx_cli_bridge_enabled=true \
+  --agent-kwarg loopx_goal_id=<goal-id> \
+  --agent-kwarg loopx_registry_arg=<registry.global.json> \
+  --agent-kwarg loopx_runtime_root_arg=<runtime-root> \
+  --agent-kwarg loopx_scan_path=<public-scan-path> \
+  --agent-kwarg loopx_classification=<public-classification> \
+  --agent-kwarg loopx_experiment_protocol=packet_only_observation \
+  --agent-kwarg loopx_max_rounds=5 \
   --jobs-dir <run-dir>/jobs \
   --job-name <matched-treatment-job-name> \
   -p <task-dir>
@@ -506,7 +506,7 @@ remains authoritative. It is useful as route-safety evidence, but on its own it
 must be labeled `packet_only_observation`, not the prompt-driven test arm.
 
 The prompt-driven test contract is shared in
-`goal_harness.benchmark_core.loop_protocol` so SkillsBench historical rows,
+`loopx.benchmark_core.loop_protocol` so SkillsBench historical rows,
 SWE-Marathon tests, and future Terminal-Bench tests use one semantics instead of
 parallel old/new definitions. The contract requires:
 
@@ -521,23 +521,23 @@ parallel old/new definitions. The contract requires:
   as packet-only route-safety evidence and do not compare it as test.
 
 When launching the actual test arm, the outer controller should set
-`goal_harness_experiment_protocol=max5_blind_loop_no_feedback`, inject a fresh
-Goal Harness packet before each scheduled prompt, keep official feedback
+`loopx_experiment_protocol=max5_blind_loop_no_feedback`, inject a fresh
+LoopX packet before each scheduled prompt, keep official feedback
 blinded, and record the public-safe controller trace. The route name for new
-SWE-Marathon/Terminal-Bench work is `goal-harness-prompt-polling-test`; the old
-SkillsBench route name `goal-harness-blind-loop-treatment` is a backward-
+SWE-Marathon/Terminal-Bench work is `loopx-prompt-polling-test`; the old
+SkillsBench route name `loopx-blind-loop-treatment` is a backward-
 compatible alias for the same no-feedback polling semantics.
 
 For Harbor-family runners, the host agent enables this controller when the
 experiment protocol is explicit:
 
 ```bash
---agent-kwarg goal_harness_mode=codex_goal_harness \
---agent-kwarg goal_harness_access_packet_mode=compact \
---agent-kwarg goal_harness_experiment_protocol=max5_blind_loop_no_feedback \
---agent-kwarg goal_harness_max_rounds=5 \
---agent-kwarg goal_harness_prompt_polling_rounds=5 \
---agent-kwarg goal_harness_prompt_polling_round_timeout_sec=900
+--agent-kwarg loopx_mode=codex_loopx \
+--agent-kwarg loopx_access_packet_mode=compact \
+--agent-kwarg loopx_experiment_protocol=max5_blind_loop_no_feedback \
+--agent-kwarg loopx_max_rounds=5 \
+--agent-kwarg loopx_prompt_polling_rounds=5 \
+--agent-kwarg loopx_prompt_polling_round_timeout_sec=900
 ```
 
 That path starts native Codex app-server Goal once, then uses follow-up
@@ -550,10 +550,10 @@ must close out with a compact
 waiting for the whole job timeout. If these controller fields are missing from
 compact evidence, classify the run as packet-only observation.
 
-The treatment path must also install a case-local Goal Harness surface before
+The treatment path must also install a case-local LoopX surface before
 the worker starts. Harbor's host agent seeds
 `/app/.codex/goals/<benchmark-case-goal-id>/ACTIVE_GOAL_STATE.md`, installs a
-task-environment CLI at `/app/.local/bin/goal-harness`, seeds
+task-environment CLI at `/app/.local/bin/loopx`, seeds
 `todo_benchmark_case_main`, and writes public-safe lifecycle events to the
 case-local `rollout-event-log.jsonl`. The product-path treatment proof is
 prompt-driven: before planning or editing, the worker should call the
@@ -565,16 +565,16 @@ as deterministic preflight, scheduler, and closeout fallback:
 `status`, `refresh-state`, and `quota spend-slot` during closeout. That
 scheduler route is not sufficient for a strict treatment claim by itself.
 Compact evidence must distinguish both surfaces:
-`goal_harness_prompt_driven_case_cli_call_count`,
-`goal_harness_prompt_driven_event_counts`,
-`goal_harness_prompt_driven_lifecycle_observed`, and
-`goal_harness_prompt_driven_trace.public.json` for worker self-calls, plus
-`goal_harness_case_scheduler_command_count`,
-`goal_harness_case_rollout_event_counts`, and
-`goal_harness_case_rollout_trace.public.json` for controller fallback. If the
+`loopx_prompt_driven_case_cli_call_count`,
+`loopx_prompt_driven_event_counts`,
+`loopx_prompt_driven_lifecycle_observed`, and
+`loopx_prompt_driven_trace.public.json` for worker self-calls, plus
+`loopx_case_scheduler_command_count`,
+`loopx_case_rollout_event_counts`, and
+`loopx_case_rollout_trace.public.json` for controller fallback. If the
 prompt-driven lifecycle is absent, classify the run with
-`prompt_driven_goal_harness_lifecycle_absent` instead of claiming uplift.
-Global Goal Harness commands are optional context only; they must not select
+`prompt_driven_loopx_lifecycle_absent` instead of claiming uplift.
+Global LoopX commands are optional context only; they must not select
 todos for the benchmark case. This keeps parallel cases isolated and prevents
 the main project goal or side-agent lane from leaking into benchmark treatment
 control.
@@ -613,9 +613,9 @@ Use the SkillsBench materializer with host-side cached sources:
 
 ```bash
 python3 scripts/skillsbench_agent_runtime_layer.py \
-  --output ~/goal-harness-bench/benchflow-agent-runtime \
-  --node-root ~/goal-harness-bench/cache/node-v22.20.0-linux-x64 \
-  --codex-acp-bin ~/goal-harness-bench/cache/codex-acp \
+  --output ~/loopx-bench/benchflow-agent-runtime \
+  --node-root ~/loopx-bench/cache/node-v22.20.0-linux-x64 \
+  --codex-acp-bin ~/loopx-bench/cache/codex-acp \
   --pretty
 ```
 
@@ -632,7 +632,7 @@ Benchmark source materialization should stay close to upstream:
 
 - prefer a real git checkout or fork when the benchmark source must be patched
   or rebased;
-- if a source tree is only a materialized copy, add a `.goal-harness-upstream`
+- if a source tree is only a materialized copy, add a `.loopx-upstream`
   marker with upstream repo and commit, and do not treat it as a fork branch;
 - keep wrapper scripts, reducer sidecars, and runbooks in this repository
   unless the change is clearly upstreamable;
@@ -649,7 +649,7 @@ checkout patch, not as a hidden shell edit:
    repo and commit. Do not patch task text, prompts, scorers, hidden tests, or
    official result parsing.
 2. Apply the patch only to a run-work checkout or a clearly marked remote
-   checkout. The patch must be generated by a Goal Harness script or a compact
+   checkout. The patch must be generated by a LoopX script or a compact
    patch artifact that another developer can re-run after a fresh checkout.
 3. Record the patch command, upstream commit, patch purpose, and validation
    smoke in this repo. Record only compact handles in public docs; raw panes,
@@ -684,13 +684,13 @@ small-file transfers, and on macOS disable copyfile metadata and xattrs:
 
 ```bash
 COPYFILE_DISABLE=1 tar --no-xattrs -C /tmp -czf benchmark-source.tgz upstream-checkout
-scp benchmark-source.tgz "$BENCHMARK_HOST_ALIAS":~/goal-harness-bench/cache/
+scp benchmark-source.tgz "$BENCHMARK_HOST_ALIAS":~/loopx-bench/cache/
 ```
 
 After extraction, verify the upstream commit and clean status. If the staged
 archive includes `.git` and Git reports a dubious ownership boundary, add a
 bounded remote `safe.directory` entry for that checkout or restage it as a
-source-only archive with a `.goal-harness-upstream` marker. Do not commit the
+source-only archive with a `.loopx-upstream` marker. Do not commit the
 host-specific path or exception.
 
 When a benchmark pins a runner dependency to a public Git repository and the
@@ -721,8 +721,8 @@ probe-only:
 ```bash
 python3 scripts/terminal_bench_no_upload_smoke.py \
   --task-id hello-world \
-  --jobs-dir ~/goal-harness-bench/runs/terminal-bench/jobs \
-  --run-root ~/goal-harness-bench/runs/terminal-bench/no-upload-smoke \
+  --jobs-dir ~/loopx-bench/runs/terminal-bench/jobs \
+  --run-root ~/loopx-bench/runs/terminal-bench/no-upload-smoke \
   --pretty
 ```
 
@@ -791,8 +791,8 @@ When the task image is ready but Codex auth and runtime should stay on the
 benchmark host, run Terminal-Bench through the host Codex Goal custom agent:
 
 ```bash
-export PYTHONPATH=<goal-harness-checkout>/scripts:${PYTHONPATH:-}
-RUN_ID=$(python3 <goal-harness-checkout>/scripts/terminal_bench_safe_run_id.py \
+export PYTHONPATH=<loopx-checkout>/scripts:${PYTHONPATH:-}
+RUN_ID=$(python3 <loopx-checkout>/scripts/terminal_bench_safe_run_id.py \
   --prefix <task-id>-host-codex-goal | python3 -c 'import json,sys; print(json.load(sys.stdin)["safe_run_id"])')
 tb run \
   --dataset-path <tasks-dir> \
@@ -814,7 +814,7 @@ official tests. The TUI `/goal` surface is a manual fallback only; do not count
 it as the default baseline when app-server `thread/goal/set`,
 `thread/goal/get`, and `turn/start` are available.
 
-For a Goal Harness prompt-polling treatment arm, keep the same host agent and
+For a LoopX prompt-polling treatment arm, keep the same host agent and
 explicitly request the case lifecycle packet:
 
 ```bash
@@ -823,16 +823,16 @@ tb run \
   --agent-import-path terminal_bench_host_codex_goal_agent:HostCodexGoalAgent \
   --agent-kwarg goal_surface=app_server \
   --agent-kwarg goal_timeout_sec=10800 \
-  --agent-kwarg goal_harness_mode=codex_goal_harness \
-  --agent-kwarg goal_harness_access_packet_mode=compact \
-  --agent-kwarg goal_harness_case_id=<task-id> \
-  --agent-kwarg goal_harness_arm_id=goal_harness_prompt_polling_test \
-  --agent-kwarg goal_harness_max_rounds=5
+  --agent-kwarg loopx_mode=codex_loopx \
+  --agent-kwarg loopx_access_packet_mode=compact \
+  --agent-kwarg loopx_case_id=<task-id> \
+  --agent-kwarg loopx_arm_id=loopx_prompt_polling_test \
+  --agent-kwarg loopx_max_rounds=5
 ```
 
 This injects the shared `benchmark_case_lifecycle_contract` into the worker
 prompt and compact app-server metadata. A Terminal-Bench treatment run remains
-incomplete evidence until the per-case Goal Harness lifecycle can be observed:
+incomplete evidence until the per-case LoopX lifecycle can be observed:
 `quota_should_run`, `todo_claim_or_update`, bounded work/continuation, official
 case result or validation, `refresh_state`, and `quota_spend`.
 The app-server host agent treats the benchmark completion marker and official
@@ -845,11 +845,11 @@ terminating a still-running Goal turn before the marker or verifier has a chance
 to reflect the case outcome.
 
 When a Terminal-Bench launch produces only startup or materialization state,
-reduce it before writing Goal Harness evidence:
+reduce it before writing LoopX evidence:
 
 ```bash
 python3 scripts/terminal_bench_compose_startup_reducer.py \
-  --post-launch-json ~/goal-harness-bench/runs/terminal-bench/no-upload-smoke/post_launch_summary.public.json \
+  --post-launch-json ~/loopx-bench/runs/terminal-bench/no-upload-smoke/post_launch_summary.public.json \
   --pretty
 ```
 
@@ -875,7 +875,7 @@ python3 scripts/terminal_bench_official_result_reducer.py \
 
 The reducer emits both `terminal_bench_official_result_reducer_v0` and a
 compact `benchmark_run_v0` projection suitable for
-`goal-harness benchmark run-ledger-upsert`. If a run needs `results.json`, pass
+`loopx benchmark run-ledger-upsert`. If a run needs `results.json`, pass
 it explicitly and rely only on the reducer's top-level summary / allowlisted
 trial counters; never publish trial instruction, parser output, recording
 paths, raw logs, task text, trajectories, or command argv.
@@ -957,7 +957,7 @@ With both flags, the plan should show
 `SkillsBenchNativeGoalWorkerIntegrationPending`.
 
 A real remote launch also has a single-checkout invariant: the wrapper must use
-the same Goal Harness checkout for `cd`, `PYTHONPATH`, and the executable
+the same LoopX checkout for `cd`, `PYTHONPATH`, and the executable
 script path. Do not rely on `PYTHONPATH` alone to override a relative
 `scripts/skillsbench_automation_loop.py` from an older current directory; that
 can produce official results while silently dropping the public controller and
@@ -967,7 +967,7 @@ worker traces. Prefer an immutable tool snapshot and an absolute script path:
 #!/usr/bin/env bash
 set -euo pipefail
 
-TOOL_ROOT=<goal-harness-tool-snapshot>
+TOOL_ROOT=<loopx-tool-snapshot>
 cd "$TOOL_ROOT"
 export PYTHONPATH="$TOOL_ROOT:$TOOL_ROOT/scripts:${PYTHONPATH:-}"
 
@@ -982,7 +982,7 @@ python3 "$TOOL_ROOT/scripts/skillsbench_automation_loop.py" \
 ```
 
 Before comparing scores, confirm that the public closeout contains
-`goal_harness_controller_trace.public.json` and
+`loopx_controller_trace.public.json` and
 `app_server_goal_worker_traces/*.compact.json`. A valid native app-server
 Goal baseline must show at least `goal_get_present=true` and
 `turn_id_present=true` in a public worker trace, or it must close with a precise
@@ -1001,12 +1001,12 @@ python3 scripts/skillsbench_host_codex_goal_worker.py \
 ```
 
 When the worker is launched from a benchmark host wrapper rather than from the
-Goal Harness checkout, set the import path explicitly so shared driver modules
+LoopX checkout, set the import path explicitly so shared driver modules
 are resolved from the shipped checkout:
 
 ```bash
-PYTHONPATH=<goal-harness-checkout>:<goal-harness-checkout>/scripts \
-  python3 <goal-harness-checkout>/scripts/skillsbench_host_codex_goal_worker.py \
+PYTHONPATH=<loopx-checkout>:<loopx-checkout>/scripts \
+  python3 <loopx-checkout>/scripts/skillsbench_host_codex_goal_worker.py \
     --task-id <task-id> \
     --contract-only
 ```
@@ -1016,7 +1016,7 @@ workspace path on the benchmark host, invokes Codex app-server Goal mode, waits
 for `turn/completed`, and writes the assistant response only to a private
 response file for the surrounding runner. The public JSON records compact turn
 proof, assistant-message hash/size, and method counters only. Do not copy raw
-task text, raw assistant response, raw trajectory, raw logs, Goal Harness state,
+task text, raw assistant response, raw trajectory, raw logs, LoopX state,
 credentials, or host paths into the compact result. Keep
 `codex-goal-mode-baseline` for historical slash-prefix probes only; it is not a
 scored Codex Goal baseline.
@@ -1033,7 +1033,7 @@ python3 scripts/skillsbench_host_codex_goal_worker.py \
   --output-json <private-compact-worker-json>
 ```
 
-For the Goal Harness treatment arm, pass the same private files plus the
+For the LoopX treatment arm, pass the same private files plus the
 per-case/arm lifecycle packet parameters. The packet is public-safe control
 context only: it names the isolated case goal, required lifecycle events, and
 round budget, while the official SkillsBench verifier remains authoritative
@@ -1046,18 +1046,18 @@ python3 scripts/skillsbench_host_codex_goal_worker.py \
   --prompt-file <private-prompt-file> \
   --response-text-file <private-agent-response-file> \
   --output-json <private-compact-worker-json> \
-  --goal-harness-mode codex_goal_harness \
-  --goal-harness-access-packet-mode compact \
-  --goal-harness-case-id <task-id> \
-  --goal-harness-arm-id goal_harness_prompt_polling_test \
-  --goal-harness-max-rounds 5
+  --loopx-mode codex_loopx \
+  --loopx-access-packet-mode compact \
+  --loopx-case-id <task-id> \
+  --loopx-arm-id loopx_prompt_polling_test \
+  --loopx-max-rounds 5
 ```
 
 The compact worker JSON must then show
-`goal_harness_case_lifecycle_packet_injected=true` and a
+`loopx_case_lifecycle_packet_injected=true` and a
 `benchmark_case_lifecycle_contract` with
 `case_isolation_scope=per_benchmark_case_arm`. A baseline run should keep
-`goal_harness_access_packet_mode=none` and should not include Goal Harness
+`loopx_access_packet_mode=none` and should not include LoopX
 lifecycle state.
 
 The compact worker JSON is safe to inspect for lifecycle debugging, but the
@@ -1120,7 +1120,7 @@ Keep these boundaries:
 
 Open an upstream benchmark issue only after ruling out local route mistakes:
 wrong current directory, wrong config schema, missing data-root migration,
-missing runner dependency prewarm, stale Goal Harness tool copy, missing Codex
+missing runner dependency prewarm, stale LoopX tool copy, missing Codex
 auth, or a launcher that failed to write status. The issue should include a
 compact reproduction command shape, upstream commit, runner version, no-upload
 boundary, and sanitized blocker label. Do not paste raw task text, raw logs,
@@ -1137,7 +1137,7 @@ When the benchmark host is reached through a jump host, GSSAPI, or another
 access path with expensive handshakes, do not make every probe open a fresh SSH
 session. Keep one SSH multiplexed master warm for the benchmark slice and run
 remote commands through that connection. This is an operator workflow
-convention, not a Goal Harness protocol requirement.
+convention, not a LoopX protocol requirement.
 
 For repeated benchmark work, prefer a host-local SSH config stanza instead of
 spelling the multiplexing flags on every command:
@@ -1218,25 +1218,25 @@ evidence for all of the following:
   manual fallback, not the preferred benchmark automation seam;
 - the run evidence shows a persistent goal attached to the active thread, not
   only a prompt string whose first token is `/goal`;
-- the route does not add Goal Harness state, access packets, reward feedback,
+- the route does not add LoopX state, access packets, reward feedback,
   or polling semantics to the baseline arm.
 
-### Goal Harness Prompt-Polling Test Gate
+### LoopX Prompt-Polling Test Gate
 
-The comparable Goal Harness test arm is **not** the native Codex Goal baseline
+The comparable LoopX test arm is **not** the native Codex Goal baseline
 with one extra packet. It is a prompt-driven polling route: an outer controller
-injects Goal Harness context, schedules bounded continuation prompts, withholds
+injects LoopX context, schedules bounded continuation prompts, withholds
 official reward/pass-fail/verifier output from the agent, and records a
 public-safe controller trace.
 
-Use the shared protocol in `goal_harness.benchmark_core.loop_protocol` across
+Use the shared protocol in `loopx.benchmark_core.loop_protocol` across
 benchmarks:
 
 | Benchmark family | Baseline arm | Test arm | Shared surface | Benchmark-specific glue |
 | --- | --- | --- | --- | --- |
-| SkillsBench | `codex-app-server-goal-baseline` for native Goal, or historical `codex-acp-blind-loop-baseline` for old ACP studies | `goal-harness-prompt-polling-test` (`goal-harness-blind-loop-treatment` is a historical alias) | `max5_blind_loop_no_feedback`, `round_rewards`, `official_feedback_blinded_count`, controller trace | BenchFlow `BaseUser` schedules continuation prompts and observes verifier reward only outside the agent-facing prompt |
-| SWE-Marathon | host Codex app-server Goal baseline through Harbor | Goal Harness prompt-polling test through the same Harbor task/workdir/no-upload boundary | same protocol id, max-round budget, packet-only blocker classification | host/Harbor controller must restart or continue app-server turns and re-inject prompts without exposing official verifier feedback |
-| Terminal-Bench | host Codex app-server Goal baseline or official no-upload runner baseline | Goal Harness prompt-polling test through the same official result/reducer path | same protocol id, max-round budget, compact official result fields | terminal runner glue must use official scorer/reducer after each attempt and keep raw panes/logs private |
+| SkillsBench | `codex-app-server-goal-baseline` for native Goal, or historical `codex-acp-blind-loop-baseline` for old ACP studies | `loopx-prompt-polling-test` (`loopx-blind-loop-treatment` is a historical alias) | `max5_blind_loop_no_feedback`, `round_rewards`, `official_feedback_blinded_count`, controller trace | BenchFlow `BaseUser` schedules continuation prompts and observes verifier reward only outside the agent-facing prompt |
+| SWE-Marathon | host Codex app-server Goal baseline through Harbor | LoopX prompt-polling test through the same Harbor task/workdir/no-upload boundary | same protocol id, max-round budget, packet-only blocker classification | host/Harbor controller must restart or continue app-server turns and re-inject prompts without exposing official verifier feedback |
+| Terminal-Bench | host Codex app-server Goal baseline or official no-upload runner baseline | LoopX prompt-polling test through the same official result/reducer path | same protocol id, max-round budget, compact official result fields | terminal runner glue must use official scorer/reducer after each attempt and keep raw panes/logs private |
 
 The shared layer is intentionally small: route ids, max-round budget, feedback
 blinding fields, packet-only classification, and public trace counters. Do not
@@ -1247,13 +1247,13 @@ single access packet without scheduled controller trace is only
 `packet_only_observation`.
 
 For the test arm, also require the shared per-case lifecycle contract from
-`goal_harness.benchmark_case_state`. Each benchmark/case/arm must have an
+`loopx.benchmark_case_state`. Each benchmark/case/arm must have an
 isolated `benchmark_case_lifecycle_contract` with
 `case_isolation_scope=per_benchmark_case_arm`, a canonical
 `/app/.codex/goals/<case-arm>/ACTIVE_GOAL_STATE.md` state path, and the public
 lifecycle sequence `quota_should_run -> todo_claim_or_update ->
 bounded_agent_turn -> validation_or_case_result -> refresh_state ->
-quota_spend`. Harbor-family agents inject this contract into the Goal Harness
+quota_spend`. Harbor-family agents inject this contract into the LoopX
 access packet and compact metadata; other adapters should reuse the same
 contract rather than inventing benchmark-specific state markers. A runner that
 only performs internal prompt polling without this lifecycle remains
@@ -1266,7 +1266,7 @@ Goal baseline without `thread/goal/get` or equivalent persistent-goal evidence.
 
 If these facts are not available, classify the result as a runner/readiness
 probe or unverified slash-goal prompt experiment, not as a Codex Goal baseline.
-In that state, do not launch matched Goal Harness treatment for uplift claims;
+In that state, do not launch matched LoopX treatment for uplift claims;
 instead record the exact trigger gap and keep working on cloud host, runner,
 task-data, or compact-result readiness.
 
@@ -1274,7 +1274,7 @@ For Terminal-Bench launcher work, use the fail-closed app-server Goal surface
 when validating this boundary:
 
 ```bash
-python3 -m goal_harness.cli --format json benchmark launch-terminal-bench-run \
+python3 -m loopx.cli --format json benchmark launch-terminal-bench-run \
   terminal-bench \
   --mode codex-app-server-goal \
   --include-task-name hello-world \
@@ -1322,7 +1322,7 @@ the benchmark runner, prove three layers in order:
 
 The reusable trick is the shape, not the private wiring: keep the concrete SSH
 jump path, local ports, auth-cache handling, and proxy process command in a
-local-private runbook, then expose only these public-safe facts to Goal Harness:
+local-private runbook, then expose only these public-safe facts to LoopX:
 auth ready, network route ready or blocked, `codex exec` smoke result, and the
 next benchmark-family blocker. Prefer per-command tunnels or short-lived
 operator-managed proxy sessions for benchmark slices; long-running unattended
@@ -1336,7 +1336,7 @@ Keep upstream benchmark sources clean:
   upstream benchmark logic.
 - Fork only when we need to preserve a small reusable patch set; keep the fork
   close enough that upstream pulls remain routine.
-- Do not mix Goal Harness runner experiments, local bridge probes, raw logs, or
+- Do not mix LoopX runner experiments, local bridge probes, raw logs, or
   credential setup into benchmark forks.
 
 ## Split-Control Route
@@ -1345,12 +1345,12 @@ The split-control route is now a fallback and research route, not the default
 when a dedicated cloud host exists.
 
 Use it when Codex auth cannot live on the execution host, when the host is
-shared, or when the product question is specifically about a local Goal Harness
+shared, or when the product question is specifically about a local LoopX
 controller using a separate Docker substrate.
 
 | Owner | Responsibility |
 | --- | --- |
-| Local agent | Codex CLI, auth, model invocation, planning, patch generation, Goal Harness state, quota, todo, and evidence filtering. |
+| Local agent | Codex CLI, auth, model invocation, planning, patch generation, LoopX state, quota, todo, and evidence filtering. |
 | Remote executor | Docker runtime, runner dependencies, task-data or image staging, bounded command/file execution, and compact result reduction. |
 
 The remote executor is not an agent-auth environment. Missing remote Codex,
@@ -1385,9 +1385,9 @@ for the split-control retention, branch-hygiene, and retirement runbook.
 
 | Family | Product-path target | Current maturity |
 | --- | --- | --- |
-| Terminal-Bench | Cloud Codex CLI runs the task on a dedicated benchmark host; Goal Harness ingests compact no-upload evidence. | Prior split-control adapters remain useful reducers, but the next run should prefer direct cloud-host Codex plus container runtime. |
-| SkillsBench | Cloud Codex CLI and BenchFlow run on the same dedicated host; Goal Harness records compact base/test mini-pair evidence. | Prior host-local ACP relay work is historical route-repair evidence. Do not add more bridge layers before trying the cloud-host path. |
-| Agents' Last Exam | Cloud Codex CLI drives the local-Docker-capable ALE route on the dedicated host; Goal Harness ingests compact no-upload evidence. | Formal task runs still need task-data and public-claim gates, but Docker/Codex colocation should replace the earlier local-host split-control assumption. |
+| Terminal-Bench | Cloud Codex CLI runs the task on a dedicated benchmark host; LoopX ingests compact no-upload evidence. | Prior split-control adapters remain useful reducers, but the next run should prefer direct cloud-host Codex plus container runtime. |
+| SkillsBench | Cloud Codex CLI and BenchFlow run on the same dedicated host; LoopX records compact base/test mini-pair evidence. | Prior host-local ACP relay work is historical route-repair evidence. Do not add more bridge layers before trying the cloud-host path. |
+| Agents' Last Exam | Cloud Codex CLI drives the local-Docker-capable ALE route on the dedicated host; LoopX ingests compact no-upload evidence. | Formal task runs still need task-data and public-claim gates, but Docker/Codex colocation should replace the earlier local-host split-control assumption. |
 
 This table is intentionally about runner maturity, not leaderboard score.
 Score claims require separate public-safe result ingestion and review.
@@ -1479,7 +1479,7 @@ Before a PR that changes benchmark behavior:
 - Keep benchmark-specific runner details inside the adapter.
 - Preserve the split-control boundary when a remote executor is involved.
 - Add or update a focused smoke for the durable contract.
-- Run `goal-harness check --scan-path <changed-public-path>` for public docs or
+- Run `loopx check --scan-path <changed-public-path>` for public docs or
   examples.
 - Do not commit `.local`, raw logs, private run directories, active state, or
   local runner configs.

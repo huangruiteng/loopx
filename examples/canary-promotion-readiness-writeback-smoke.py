@@ -19,7 +19,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install-local.sh"
-GOAL_ID = "goal-harness-meta"
+GOAL_ID = "loopx-meta"
 
 
 def load_canary_smoke_module():
@@ -36,7 +36,7 @@ def run_install(env: dict[str, str], release_id: str) -> subprocess.CompletedPro
     return subprocess.run(
         [str(INSTALL_SCRIPT)],
         cwd=REPO_ROOT,
-        env={**env, "GOAL_HARNESS_RELEASE_ID": release_id},
+        env={**env, "LOOPX_RELEASE_ID": release_id},
         check=True,
         capture_output=True,
         text=True,
@@ -48,7 +48,7 @@ def run_promotion_gate(env: dict[str, str], runtime: Path) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--runtime-root",
             str(runtime),
             "--format",
@@ -67,10 +67,10 @@ def run_promotion_gate(env: dict[str, str], runtime: Path) -> dict:
 def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
     home = root / "home"
     project = root / "project"
-    runtime = home / ".codex" / "goal-harness"
+    runtime = home / ".codex" / "loopx"
     state_file = f"goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     home.mkdir(parents=True, exist_ok=True)
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -97,7 +97,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
                 "goals": [
                     {
                         "id": GOAL_ID,
-                        "domain": "goal-harness-meta",
+                        "domain": "loopx-meta",
                         "status": "active-read-only",
                         "repo": str(project),
                         "state_file": state_file,
@@ -121,18 +121,18 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
 
 def main() -> int:
     module = load_canary_smoke_module()
-    with tempfile.TemporaryDirectory(prefix="goal-harness-canary-writeback-smoke-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-canary-writeback-smoke-") as raw_tmp:
         root = Path(raw_tmp)
         registry_path, runtime, state_path, home = write_fixture(root)
         env = {
             **os.environ,
             "HOME": str(home),
             "CODEX_HOME": str(home / ".codex"),
-            "GOAL_HARNESS_BIN_DIR": str(home / ".local" / "bin"),
-            "GOAL_HARNESS_INSTALL_SKILL": "0",
-            "GOAL_HARNESS_RELEASES_DIR": str(root / "releases"),
-            "GOAL_HARNESS_SHELL_PROFILE": str(home / ".zshrc"),
-            "GOAL_HARNESS_REGISTRY": str(registry_path),
+            "LOOPX_BIN_DIR": str(home / ".local" / "bin"),
+            "LOOPX_INSTALL_SKILL": "0",
+            "LOOPX_RELEASES_DIR": str(root / "releases"),
+            "LOOPX_SHELL_PROFILE": str(home / ".zshrc"),
+            "LOOPX_REGISTRY": str(registry_path),
             "PYTHONPATH": str(REPO_ROOT),
             "SHELL": "/bin/zsh",
         }
@@ -147,7 +147,7 @@ def main() -> int:
         assert "promotion-readiness evidence is missing" in missing_gate["warning_message"], missing_gate
 
         preflight_install = run_install(env, "before-readiness-evidence")
-        assert "goal-harness installed locally" in preflight_install.stdout, preflight_install.stdout
+        assert "loopx installed locally" in preflight_install.stdout, preflight_install.stdout
         assert "promotion-readiness evidence is missing" in preflight_install.stderr, preflight_install.stderr
         assert "non-blocking" in preflight_install.stderr, preflight_install.stderr
 
@@ -198,13 +198,13 @@ def main() -> int:
         assert ready_gate["readiness"]["classification"] == module.READINESS_CLASSIFICATION, ready_gate
 
         post_install = run_install(env, "after-readiness-evidence")
-        assert "goal-harness installed locally" in post_install.stdout, post_install.stdout
+        assert "loopx installed locally" in post_install.stdout, post_install.stdout
         assert "promotion-readiness evidence is missing" not in post_install.stderr, post_install.stderr
         assert "promotion-readiness evidence is stale" not in post_install.stderr, post_install.stderr
-        assert "goal-harness install warning: promotion-readiness evidence" not in post_install.stderr, post_install.stderr
+        assert "loopx install warning: promotion-readiness evidence" not in post_install.stderr, post_install.stderr
 
         doctor = subprocess.run(
-            [str(home / ".local" / "bin" / "goal-harness"), "--format", "json", "doctor"],
+            [str(home / ".local" / "bin" / "loopx"), "--format", "json", "doctor"],
             cwd=REPO_ROOT,
             env={**env, "PATH": f"{home / '.local' / 'bin'}:{env.get('PATH', '')}"},
             check=True,

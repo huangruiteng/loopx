@@ -1,5 +1,5 @@
 {
-  "schema_version": "goal_harness_showcase_catalog_v0",
+  "schema_version": "loopx_showcase_catalog_v0",
   "updated_at": "2026-06-20",
   "redaction_policy": {
     "public_repo_may_include": [
@@ -42,7 +42,7 @@
       ],
       "headline": "A gated P0 lane should not stall a whole long-running goal when safe fallback work exists.",
       "problem": "A benchmark lane needed a large local dependency before it could continue, while other no-upload benchmark work remained safe.",
-      "goal_harness_behavior": [
+      "loopx_behavior": [
         "surface the P0 dependency as a concrete user gate",
         "avoid spending on the gated lane",
         "select a non-dependent fallback lane",
@@ -60,7 +60,7 @@
         ],
         "story_beats": [
           "P0 lane is blocked by a user decision",
-          "Goal Harness projects the decision as a user todo",
+          "LoopX projects the decision as a user todo",
           "agent continues safe fallback work",
           "state records blocker, fallback, validation, and spend policy"
         ]
@@ -88,7 +88,7 @@
       ],
       "headline": "A fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate.",
       "problem": "Specialized engineering work can require multiple agents to split work and converge without losing ownership or state.",
-      "goal_harness_behavior": [
+      "loopx_behavior": [
         "keep durable goal state outside any one chat thread",
         "make ownership and review handoff explicit",
         "project evidence and convergence state for the operator",
@@ -106,18 +106,18 @@
         ],
         "story_beats": [
           "fuzzy engineering goal needs multiple workers",
-          "Goal Harness provides shared state and ownership",
+          "LoopX provides shared state and ownership",
           "work converges through evidence and primary review",
           "public demo waits for safe abstraction"
         ]
       }
     },
     {
-      "id": "2026-06-19-goal-harness-self-iteration",
+      "id": "2026-06-19-loopx-self-iteration",
       "date": "2026-06-19",
-      "title": "Goal Harness self-iteration loop",
+      "title": "LoopX self-iteration loop",
       "status": "public_evidence_case",
-      "case_page": "docs/showcases/cases/0619-goal-harness-self-iteration.md",
+      "case_page": "docs/showcases/cases/0619-loopx-self-iteration.md",
       "demo_command": null,
       "domain": "agent-platform-self-improvement",
       "audience": [
@@ -134,9 +134,9 @@
         "evidence_writeback",
         "efficiency_evidence_model"
       ],
-      "headline": "A high-churn Goal Harness repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel.",
+      "headline": "A high-churn LoopX repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel.",
       "problem": "A long-running agent engineering repo needed to keep many public commits, benchmark routes, planning lanes, user gates, docs, smokes, and side-agent changes reviewable without relying on private chat memory.",
-      "goal_harness_behavior": [
+      "loopx_behavior": [
         "preserve durable goal, todo, gate, quota, evidence, and run-history state across high repository churn",
         "separate benchmark, productization, documentation, planning, and side-agent lanes into reviewable obligations",
         "register primary and side-agent identities and project side-agent scope through automation prompts",
@@ -219,7 +219,7 @@
         ],
         "story_beats": [
           "whole repo moves quickly across benchmark, runtime, docs, dashboard, planning, and smoke surfaces",
-          "Goal Harness keeps durable goals, todos, gates, quota, evidence, and run history visible",
+          "LoopX keeps durable goals, todos, gates, quota, evidence, and run history visible",
           "side-agent lane progresses beside the primary benchmark lane",
           "validated side changes can self-merge while risky work stays on primary review",
           "public Git history is converted into conservative product requirement clusters",
@@ -253,7 +253,7 @@
       ],
       "headline": "A creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated.",
       "problem": "Content research, preference mapping, insight extraction, draft queues, and material libraries can all blur together when the user only sees chat logs or raw agent traces.",
-      "goal_harness_behavior": [
+      "loopx_behavior": [
         "represent the creative objective as durable goal state",
         "separate publishing decisions from safe research and organization work",
         "turn feedback into preference hints, gate decisions, todo updates, or boundary corrections",
@@ -273,7 +273,7 @@
         "story_beats": [
           "creator-operator wants recurring trend research and content planning",
           "agent proposes synthetic trend candidates and maps them to preference hints",
-          "Goal Harness keeps publishing gated while safe side work continues",
+          "LoopX keeps publishing gated while safe side work continues",
           "user feedback becomes structured control-plane state",
           "next run starts from visible goals, todos, boundaries, and feedback"
         ]

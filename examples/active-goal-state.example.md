@@ -25,7 +25,7 @@ Improve this project through bounded, verified goal segments.
 
 ## Next Action
 
-- Run `goal-harness check` and add the first project-specific read-only health signal.
+- Run `loopx check` and add the first project-specific read-only health signal.
 
 ## Recent User Feedback
 

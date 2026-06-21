@@ -21,9 +21,9 @@ benchmark cases:
 - multiple agents need a shared view of ownership, state, and convergence;
 - the product story is "dynamic workflow" rather than a single CLI command.
 
-## Goal Harness Behavior To Highlight
+## LoopX Behavior To Highlight
 
-When the public write-up is ready, it should explain how Goal Harness helped
+When the public write-up is ready, it should explain how LoopX helped
 with:
 
 - durable state across a long-running fuzzy goal;
@@ -47,7 +47,7 @@ hardware-specific implementation details.
 ## Website Story Beats
 
 1. A fuzzy engineering goal needs more than one worker agent.
-2. Goal Harness gives the agents a shared state and ownership surface.
+2. LoopX gives the agents a shared state and ownership surface.
 3. Work converges through claimed todos, evidence, and a primary review path.
 4. The public demo remains pending until the private domain details are safely
    abstracted.

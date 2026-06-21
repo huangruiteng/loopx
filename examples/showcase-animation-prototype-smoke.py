@@ -24,7 +24,7 @@ PRIVATE_MARKERS = tuple(
         ("internal", "-api-drive"),
         ("bytedance.com", "/wiki"),
         ("/", "Users/"),
-        (".codex", "/goal-harness"),
+        (".codex", "/loopx"),
         ("BEGIN", " PRIVATE ", "KEY"),
         ("Author", "ization:"),
         ("to", "ken="),
@@ -46,7 +46,7 @@ def main() -> int:
     cases = catalog["cases"]
     duration = scenes[-1]["time_seconds"][1]
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-showcase-animation-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-showcase-animation-") as tmp:
         output = Path(tmp) / "showcase-animation.html"
         result = subprocess.run(
             [sys.executable, str(PROTOTYPE), "--output", str(output)],

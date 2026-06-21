@@ -11,7 +11,7 @@ compute, or leaderboard upload paths.
 
 The probe answers one question before any real benchmark work:
 
-Can Goal Harness record the public runner identity, planned agent command
+Can LoopX record the public runner identity, planned agent command
 boundary, submit eligibility, expected output surface, and stop conditions for a
 Terminal-Bench pilot without crossing the execution boundary?
 
@@ -25,7 +25,7 @@ evidence and must keep all official score fields as `not_run`.
 - Record command templates with placeholders such as `<model>` and
   `<private-output-dir>`.
 - Record the two comparison modes: `bare_codex_cli` and
-  `passive_goal_harness_wrapper`.
+  `passive_loopx_wrapper`.
 - Record the expected passive output files for future `benchmark_run_v0`
   ingestion.
 - Record that every command template is `execution_authorized = false`,
@@ -59,11 +59,11 @@ Every no-submit boundary probe should contain:
 | `submit_eligible` | `false`. |
 | `trace_publicness` | `public_boundary_probe_only`. |
 | `runner_sources` | Public runner name, role, repo URL, and inspected commit. |
-| `mode_boundaries` | One entry each for `bare_codex_cli` and `passive_goal_harness_wrapper`. |
+| `mode_boundaries` | One entry each for `bare_codex_cli` and `passive_loopx_wrapper`. |
 | `expected_future_events` | `benchmark_run_v0` per mode and one `benchmark_result_v0` comparison. |
 | `stop_conditions` | All forbidden surfaces listed above. |
 
-`passive_goal_harness_wrapper` means Goal Harness reads already-produced
+`passive_loopx_wrapper` means LoopX reads already-produced
 official runner outputs after a validated run exists. It does not mean a custom
 agent wrapper is authorized. The custom `--agent-import-path` path remains a
 later local-only experiment gate.

@@ -7,7 +7,7 @@
   "status_contract": {
     "schema_version": 2,
     "minimum_dashboard_schema_version": 2,
-    "producer": "goal-harness status",
+    "producer": "loopx status",
     "reload_hint": "scripts/macos-dashboard-launchagent.sh restart"
   },
   "usage_summary": {
@@ -132,7 +132,7 @@
   "promotion_readiness_summary": {
     "available": true,
     "source": "run_history",
-    "goal_id": "goal-harness-meta",
+    "goal_id": "loopx-meta",
     "generated_at": "2026-06-01T00:08:00+00:00",
     "classification": "canary_promotion_readiness_smoke_group",
     "delivery_batch_scale": "multi_surface",
@@ -163,7 +163,7 @@
     "readiness": {
       "available": true,
       "source": "run_history",
-      "goal_id": "goal-harness-meta",
+      "goal_id": "loopx-meta",
       "generated_at": "2026-06-01T00:08:00+00:00",
       "classification": "canary_promotion_readiness_smoke_group",
       "delivery_batch_scale": "multi_surface",
@@ -254,7 +254,7 @@
         "kind": "current_registry_scope_excludes_global_goals",
         "severity": "info",
         "message": "current registry excludes 1 global goal(s)",
-        "recommended_action": "for multi-project dashboard/controller status, run `goal-harness status` without `--registry` or pass the global registry",
+        "recommended_action": "for multi-project dashboard/controller status, run `loopx status` without `--registry` or pass the global registry",
         "goal_ids": [
           "platform-migration-goal"
         ]

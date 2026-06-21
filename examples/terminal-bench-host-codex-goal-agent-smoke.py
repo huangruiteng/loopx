@@ -37,7 +37,7 @@ def main() -> int:
         "gpt-5.5",
     ], command
 
-    marker = Path("/tmp/goal-harness-terminal-bench/done.marker")
+    marker = Path("/tmp/loopx-terminal-bench/done.marker")
     prompt = module.build_host_goal_prompt(
         container_name="example-container",
         instruction="Synthetic instruction placeholder.",
@@ -52,28 +52,28 @@ def main() -> int:
     assert "Synthetic instruction placeholder." in prompt
     assert str(marker) in prompt
     assert "/Users/" not in prompt
-    assert "/data/goal-harness-bench" not in prompt
-    assert "/root/goal-harness-bench" not in prompt
+    assert "/data/loopx-bench" not in prompt
+    assert "/root/loopx-bench" not in prompt
     assert "benchmark_case_lifecycle_contract:" not in prompt
 
-    lifecycle_packet, lifecycle_contract = module.build_goal_harness_case_lifecycle_packet(
-        mode="codex_goal_harness",
+    lifecycle_packet, lifecycle_contract = module.build_loopx_case_lifecycle_packet(
+        mode="codex_loopx",
         packet_mode="compact",
         benchmark_id="terminal-bench",
         case_id="build-cython-ext",
-        arm_id="goal_harness_prompt_polling_test",
+        arm_id="loopx_prompt_polling_test",
         max_rounds=5,
     )
     assert lifecycle_contract is not None
-    assert "terminal_bench_goal_harness_case_lifecycle_packet_v0:" in lifecycle_packet
+    assert "terminal_bench_loopx_case_lifecycle_packet_v0:" in lifecycle_packet
     assert "packet_mode: compact" in lifecycle_packet
     assert "benchmark_family: harbor" in lifecycle_packet
     assert "benchmark_case_lifecycle_contract:" in lifecycle_packet
     assert "benchmark_id: terminal-bench" in lifecycle_packet
     assert "case_id: build-cython-ext" in lifecycle_packet
-    assert "arm_id: goal_harness_prompt_polling_test" in lifecycle_packet
+    assert "arm_id: loopx_prompt_polling_test" in lifecycle_packet
     assert (
-        "benchmark_case_goal_id: terminal-bench-build-cython-ext-goal-harness-prompt-polling-test-case"
+        "benchmark_case_goal_id: terminal-bench-build-cython-ext-loopx-prompt-polling-test-case"
         in lifecycle_packet
     )
     assert "case_state_path: /app/.codex/goals/" in lifecycle_packet
@@ -86,9 +86,9 @@ def main() -> int:
         instruction="Synthetic instruction placeholder.",
         marker_path=marker,
         task_workdir="/app",
-        goal_harness_case_lifecycle_packet=lifecycle_packet,
+        loopx_case_lifecycle_packet=lifecycle_packet,
     )
-    assert "Goal Harness case lifecycle packet:" in treatment_prompt
+    assert "LoopX case lifecycle packet:" in treatment_prompt
     assert "benchmark_case_lifecycle_contract:" in treatment_prompt
     assert "official Terminal-Bench scorer authoritative" in treatment_prompt
     assert "/Users/" not in treatment_prompt
@@ -107,27 +107,27 @@ def main() -> int:
     assert agent.reasoning_effort == "high"
     assert agent.app_server_wait_for_completion is False
     assert agent.app_server_response_timeout_sec == 4.0
-    assert str(agent.work_root) == "/tmp/goal-harness-terminal-bench"
+    assert str(agent.work_root) == "/tmp/loopx-terminal-bench"
     assert agent.network_bootstrap_script is None
-    assert agent.goal_harness_mode == "codex_goal_mode_baseline"
-    assert agent.goal_harness_access_packet_mode == "none"
-    assert agent.goal_harness_benchmark_id == "terminal-bench"
-    assert agent.goal_harness_case_id == "current-case"
-    assert agent.goal_harness_arm_id == "codex_goal_harness_treatment"
-    assert agent.goal_harness_max_rounds == 5
+    assert agent.loopx_mode == "codex_goal_mode_baseline"
+    assert agent.loopx_access_packet_mode == "none"
+    assert agent.loopx_benchmark_id == "terminal-bench"
+    assert agent.loopx_case_id == "current-case"
+    assert agent.loopx_arm_id == "codex_loopx_treatment"
+    assert agent.loopx_max_rounds == 5
 
     treatment_agent = module.HostCodexGoalAgent(
         goal_surface="app_server",
-        goal_harness_mode="codex_goal_harness",
-        goal_harness_access_packet_mode="compact",
-        goal_harness_case_id="build-cython-ext",
-        goal_harness_arm_id="goal_harness_prompt_polling_test",
-        goal_harness_max_rounds="5",
+        loopx_mode="codex_loopx",
+        loopx_access_packet_mode="compact",
+        loopx_case_id="build-cython-ext",
+        loopx_arm_id="loopx_prompt_polling_test",
+        loopx_max_rounds="5",
     )
-    assert treatment_agent.goal_harness_mode == "codex_goal_harness"
-    assert treatment_agent.goal_harness_access_packet_mode == "compact"
-    assert treatment_agent.goal_harness_case_id == "build-cython-ext"
-    assert treatment_agent.goal_harness_arm_id == "goal_harness_prompt_polling_test"
+    assert treatment_agent.loopx_mode == "codex_loopx"
+    assert treatment_agent.loopx_access_packet_mode == "compact"
+    assert treatment_agent.loopx_case_id == "build-cython-ext"
+    assert treatment_agent.loopx_arm_id == "loopx_prompt_polling_test"
 
     no_wait_agent = module.HostCodexGoalAgent(
         goal_surface="app_server",

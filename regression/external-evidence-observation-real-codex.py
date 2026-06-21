@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Opt-in real Codex CLI regression for external-evidence observation.
 
-The default path builds a Goal Harness quota payload and verifies the machine
+The default path builds a LoopX quota payload and verifies the machine
 contract locally. Pass --real-codex to also invoke the host Codex CLI in an
 isolated read-only fixture and verify that it interprets the quota contract as
 an observation/blocker task rather than a quiet no-op or benchmark execution.
@@ -49,12 +49,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_goal_harness(root: Path, *args: str, registry: Path, runtime: Path) -> dict[str, Any]:
+def run_loopx(root: Path, *args: str, registry: Path, runtime: Path) -> dict[str, Any]:
     result = subprocess.run(
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry),
             "--runtime-root",
@@ -76,7 +76,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
@@ -152,7 +152,7 @@ def write_launched_poll_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID_LAUNCHED_POLL}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
@@ -172,7 +172,7 @@ def write_launched_poll_fixture(root: Path) -> tuple[Path, Path, Path]:
         "- [ ] [P0] Launch exactly one private no-upload paired pilot; ingest "
         "compact results and run verifier attribution review before any repeat "
         "or claim.\n"
-        "  <!-- goal-harness:todo todo_id=todo_fixturelaunched status=open "
+        "  <!-- loopx:todo todo_id=todo_fixturelaunched status=open "
         "task_class=advancement_task action_kind=run_eval "
         "note=Launched%20paired%20private%20no-upload%20pilot%3B%20both%20arms%20alive%20and%20materialized%20to%20ready_for_compact_polling%3B%20compact%20result%20ingest%20not%20ready%20yet. "
         "evidence=local_private_run_id%3Dfixture-run-001%3B%20poll_status.public.json "
@@ -285,7 +285,7 @@ def write_output_schema(path: Path) -> None:
 
 def codex_prompt(guard: dict[str, Any]) -> str:
     return (
-        "You are a Codex executor compatibility probe for Goal Harness.\n"
+        "You are a Codex executor compatibility probe for LoopX.\n"
         "Use only the JSON quota guard below. Do not read files, run shell "
         "commands, start Docker, invoke benchmark/model APIs, upload, submit, "
         "or inspect credentials.\n\n"
@@ -440,10 +440,10 @@ def assert_real_codex_decision(decision: dict[str, Any]) -> None:
 
 def main() -> int:
     args = parse_args()
-    with tempfile.TemporaryDirectory(prefix="goal-harness-real-codex-observation-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-real-codex-observation-") as raw_tmp:
         root = Path(raw_tmp)
         project, runtime, registry = write_fixture(root)
-        guard = run_goal_harness(
+        guard = run_loopx(
             root,
             "quota",
             "should-run",
@@ -457,7 +457,7 @@ def main() -> int:
         assert_contract(guard)
         assert_compact_blocker_codex_input_contract(guard)
         launched_project, launched_runtime, launched_registry = write_launched_poll_fixture(root / "launched-poll")
-        launched_guard = run_goal_harness(
+        launched_guard = run_loopx(
             root,
             "quota",
             "should-run",

@@ -18,7 +18,7 @@ const privateTrapFixtureName = "status.frontstage.private-trap.json";
 const privateTrapFixturePath = resolve(dashboardDir, "public", privateTrapFixtureName);
 const privateTrapSourcePath = resolve(repoRoot, "examples/fixtures/frontstage-private-status-trap.public.json");
 const visualOutputDir = resolve(repoRoot, "output/playwright/dashboard-frontstage-visual-acceptance");
-const port = Number(process.env.GOAL_HARNESS_DASHBOARD_FRONTSTAGE_SMOKE_PORT ?? "5197");
+const port = Number(process.env.LOOPX_DASHBOARD_FRONTSTAGE_SMOKE_PORT ?? "5197");
 const fakePrivateTrapMarkers = [
   "GH_FAKE_PRIVATE_STATUS_ALPHA",
   "GH_FAKE_PRIVATE_PLAN_SUMMARY_ALPHA",
@@ -148,7 +148,7 @@ const statusFixture = {
   status_contract: {
     schema_version: 2,
     minimum_dashboard_schema_version: 2,
-    producer: "goal-harness status",
+    producer: "loopx status",
     reload_hint: "scripts/macos-dashboard-launchagent.sh restart",
   },
   local_dashboard_api: {
@@ -210,7 +210,7 @@ const statusFixture = {
 
 function loadPlaywright() {
   const candidates = [
-    process.env.GOAL_HARNESS_PLAYWRIGHT_PACKAGE,
+    process.env.LOOPX_PLAYWRIGHT_PACKAGE,
     resolve(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"),
   ].filter(Boolean);
 
@@ -231,7 +231,7 @@ function loadPlaywright() {
     }
   }
 
-  throw new Error("Playwright package not found; install playwright or set GOAL_HARNESS_PLAYWRIGHT_PACKAGE");
+  throw new Error("Playwright package not found; install playwright or set LOOPX_PLAYWRIGHT_PACKAGE");
 }
 
 async function launchBrowser(chromium) {
@@ -266,7 +266,7 @@ function startDashboardServer() {
     throw new Error(`Vite package not installed: ${viteBin}`);
   }
   const nodeBin = [
-    process.env.GOAL_HARNESS_NODE_BIN,
+    process.env.LOOPX_NODE_BIN,
     "/opt/homebrew/bin/node",
     "/usr/local/bin/node",
     process.execPath,
@@ -335,7 +335,7 @@ async function captureFrontstage(page, url, label, requiredText = [], options = 
 
   const body = await page.locator("body").innerText();
   const frontstageRequired = [
-    "Goal Harness",
+    "LoopX",
     "Frontstage channel",
     "Projection is read-only",
     "Efficiency Evidence",
@@ -351,7 +351,7 @@ async function captureFrontstage(page, url, label, requiredText = [], options = 
     "Showcase Cases",
     "Public-safe case pack",
     "Blocked P0 with safe P1/P2 rotation",
-    "Goal Harness self-iteration loop",
+    "LoopX self-iteration loop",
     "Creator-operator long-running agent case",
     "Boundary Warnings",
   ];
@@ -399,7 +399,7 @@ async function captureDeveloperFrontstage(page, url, label) {
     "developer mode",
     "Developer mode ignores statusUrl",
     "Developer Onboarding",
-    "Open the project and send one Goal Harness bootstrap message in Codex CLI.",
+    "Open the project and send one LoopX bootstrap message in Codex CLI.",
     "workspace_guard blocks side-agent edits",
     "quota/status agree on user todos",
     "TUI steering stays visible",
@@ -458,7 +458,7 @@ async function main() {
     desktopPage.on("pageerror", (error) => pageErrors.push(error.message));
     try {
       await captureFrontstage(desktopPage, `${baseUrl}/frontstage`, "desktop-frontstage", [
-        "Goal Harness Showcase Frontstage",
+        "LoopX Showcase Frontstage",
         "Async agent teams, governed by human judgment",
         "public cases",
         "story beats",
@@ -507,13 +507,13 @@ async function main() {
       const spotlightCaseHref = await desktopPage
         .locator('[data-testid="frontstage-showcase-spotlight-case-page"]')
         .getAttribute("href");
-      if (!spotlightCaseHref?.includes("github.com/huangruiteng/goal-harness/blob/main/docs/showcases/")) {
+      if (!spotlightCaseHref?.includes("github.com/huangruiteng/loopx/blob/main/docs/showcases/")) {
         throw new Error(`Showcase spotlight case link points outside public showcases: ${spotlightCaseHref}`);
       }
       await desktopPage.locator('[data-testid="frontstage-showcase-search"]').fill("self-iteration");
       await desktopPage.waitForFunction(() => document.body.innerText.includes("Showing 1 of 4 public-safe cases"));
       const filteredCaseText = await desktopPage.locator('[data-testid="frontstage-showcase-cases"]').innerText();
-      if (!filteredCaseText.includes("Goal Harness self-iteration loop")) {
+      if (!filteredCaseText.includes("LoopX self-iteration loop")) {
         throw new Error("Showcase search did not keep the self-iteration case visible");
       }
       if (filteredCaseText.includes("Blocked P0 with safe P1/P2 rotation")) {
@@ -528,7 +528,7 @@ async function main() {
         `${baseUrl}/frontstage?statusUrl=/${fixtureName}&goalId=live-goal-a`,
         "desktop-frontstage-showcase-ignores-status-url",
         [
-          "Goal Harness Showcase Frontstage",
+          "LoopX Showcase Frontstage",
           "showcase mode",
           "Showcase mode ignores statusUrl",
           "statusUrl ignored",
@@ -560,7 +560,7 @@ async function main() {
         `${baseUrl}/frontstage?statusUrl=/${privateTrapFixtureName}&goalId=fake-private-trap-goal`,
         "desktop-frontstage-showcase-private-trap-ignored",
         [
-          "Goal Harness Showcase Frontstage",
+          "LoopX Showcase Frontstage",
           "showcase mode",
           "Showcase mode ignores statusUrl",
           "statusUrl ignored",
@@ -601,7 +601,7 @@ async function main() {
         `${baseUrl}/frontstage/developer`,
         "desktop-frontstage-developer-cockpit",
         [
-          "Goal Harness Projection Developer Cockpit",
+          "LoopX Projection Developer Cockpit",
           "Status Contract Explorer",
           "Projection Diffing",
           "Fixture Generation",
@@ -611,7 +611,7 @@ async function main() {
           "apps/dashboard/src/data/status.ts",
           "apps/dashboard/src/data/goal-channel-frontstage.ts",
           "examples/status.example.json",
-          "goal-harness check --scan-path apps/dashboard",
+          "loopx check --scan-path apps/dashboard",
           "read-only contributor workbench",
           "live status feeds, registry files, and browser write APIs stay outside",
         ],
@@ -703,7 +703,7 @@ async function main() {
       }
       await desktopPage.locator('[data-testid="frontstage-reset-demo"]').click();
       await captureFrontstage(desktopPage, `${baseUrl}/frontstage`, "desktop-frontstage-after-ops-reset", [
-        "Goal Harness Showcase Frontstage",
+        "LoopX Showcase Frontstage",
         "showcase mode",
         "Showcase mode ignores statusUrl",
         "Public Boundary",
@@ -733,7 +733,7 @@ async function main() {
     mobilePage.on("pageerror", (error) => pageErrors.push(`mobile: ${error.message}`));
     try {
       await captureFrontstage(mobilePage, `${baseUrl}/frontstage`, "mobile-frontstage", [
-        "Goal Harness Showcase Frontstage",
+        "LoopX Showcase Frontstage",
         "Async agent teams, governed by human judgment",
         "showcase mode",
         "Showcase mode ignores statusUrl",

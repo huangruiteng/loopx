@@ -12,12 +12,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import build_agents_last_exam_local_launch_packet  # noqa: E402
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import build_agents_last_exam_local_launch_packet  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     AGENTS_LAST_EXAM_CASE_GOAL_ID,
     AGENTS_LAST_EXAM_CASE_STATE_PATH,
 )
-from goal_harness.benchmark_case_state import (  # noqa: E402
+from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
 )
 
@@ -37,13 +37,13 @@ def make_source_root(root: Path) -> Path:
         check=True,
     )
     subprocess.run(
-        ["git", "config", "user.email", "goal-harness@example.invalid"],
+        ["git", "config", "user.email", "loopx@example.invalid"],
         cwd=source_root,
         check=True,
         capture_output=True,
     )
     subprocess.run(
-        ["git", "config", "user.name", "Goal Harness Smoke"],
+        ["git", "config", "user.name", "LoopX Smoke"],
         cwd=source_root,
         check=True,
         capture_output=True,
@@ -195,7 +195,7 @@ def assert_no_execution(payload: dict[str, object]) -> None:
     assert case_state["surrogate_state_files_allowed"] is False
     assert case_state["raw_task_text_required_for_init"] is False
     assert case_state["local_paths_recorded"] is False
-    assert ".goal-harness-case-state.md" not in json.dumps(case_state, sort_keys=True)
+    assert ".loopx-case-state.md" not in json.dumps(case_state, sort_keys=True)
     for field in (
         "case_goal_state_init_required",
         "case_goal_state_initialized_before_agent",
@@ -231,7 +231,7 @@ def run_fixture_smoke() -> None:
         assert payload["experiment_spec"]["exists"] is True
         assert_no_execution(payload)
 
-        external_spec_root = Path(tmp) / "goal-harness-ale-wrapper"
+        external_spec_root = Path(tmp) / "loopx-ale-wrapper"
         external_spec_root.mkdir()
         (external_spec_root / "host_codex_spec.yaml").write_text(
             "name: host_codex_fixture\n",
@@ -313,7 +313,7 @@ def run_cli_smoke() -> None:
     tmp = tempfile.mkdtemp()
     try:
         source_root = make_source_root(Path(tmp))
-        external_spec_root = Path(tmp) / "goal-harness-ale-wrapper"
+        external_spec_root = Path(tmp) / "loopx-ale-wrapper"
         external_spec_root.mkdir()
         (external_spec_root / "host_codex_spec.yaml").write_text(
             "name: host_codex_fixture\n",
@@ -322,7 +322,7 @@ def run_cli_smoke() -> None:
         base_cmd = [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",

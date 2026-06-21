@@ -256,7 +256,7 @@ def reduce_to_benchmark_result(packet: dict[str, Any]) -> dict[str, Any]:
         "task_id": "agentissue_bench_lagent_239",
         "scenario_id": "local_execution_gate_no_run",
         "worker_mode": "deterministic_fixture",
-        "harness_identity": "goal_harness",
+        "harness_identity": "loopx",
         "terminal_state": "blocked_before_execution_gate",
         "official_task_score": {
             "kind": "agentissue_bench_official_score",

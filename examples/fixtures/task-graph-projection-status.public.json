@@ -4,14 +4,14 @@
   "status_contract": {
     "schema_version": 2,
     "minimum_dashboard_schema_version": 2,
-    "producer": "goal-harness status"
+    "producer": "loopx status"
   },
   "attention_queue": {
     "available": true,
     "item_count": 1,
     "items": [
       {
-        "goal_id": "goal-harness-meta",
+        "goal_id": "loopx-meta",
         "status": "active",
         "waiting_on": "codex",
         "severity": "action",
@@ -19,7 +19,7 @@
         "task_graph_projection": {
           "schema_version": "task_graph_projection_v0",
           "mode": "read_only",
-          "goal_id": "goal-harness-meta",
+          "goal_id": "loopx-meta",
           "generated_at": "2026-06-21T12:00:00Z",
           "derived_from": {
             "source_of_truth": [
@@ -30,7 +30,7 @@
               "leases",
               "run_history"
             ],
-            "status_item_goal_id": "goal-harness-meta",
+            "status_item_goal_id": "loopx-meta",
             "active_state_updated_at": "2026-06-21T11:55:00Z",
             "run_history_window": "compact_latest_runs"
           },

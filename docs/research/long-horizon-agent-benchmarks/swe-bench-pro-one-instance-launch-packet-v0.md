@@ -45,7 +45,7 @@ Public image metadata from the Docker Hub tag API:
 
 Metadata-only local Docker provider check:
 
-- Docker context: `colima-goal-harness-bench`
+- Docker context: `colima-loopx-bench`
 - Client version: `29.2.0`
 - Server version: `28.4.0`
 - Server OS: `linux`
@@ -121,7 +121,7 @@ Targeted validation:
 ```bash
 python3 examples/swe-bench-pro-one-instance-launch-packet-smoke.py
 python3 -m py_compile examples/swe-bench-pro-one-instance-launch-packet-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/swe-bench-pro-one-instance-launch-packet-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/swe-bench-pro-one-instance-launch-packet-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

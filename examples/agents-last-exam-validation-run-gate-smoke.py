@@ -13,13 +13,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     AGENTS_LAST_EXAM_CASE_GOAL_ID,
     AGENTS_LAST_EXAM_CASE_STATE_PATH,
     build_agents_last_exam_task_material_readiness,
     build_agents_last_exam_validation_run_gate,
 )
-from goal_harness.benchmark_case_state import (  # noqa: E402
+from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
     benchmark_case_active_state_init_contract,
 )
@@ -27,7 +27,7 @@ from goal_harness.benchmark_case_state import (  # noqa: E402
 TASK_ID = "computing_math/os_log_permission_guard_v1"
 TASK_LABEL = "computing_math__os_log_permission_guard_v1"
 HYPOTHESIS = (
-    "Goal Harness should improve ALE validation by requiring task material, "
+    "LoopX should improve ALE validation by requiring task material, "
     "host Codex route, exact dry-run, and compact result reducer readiness."
 )
 
@@ -170,7 +170,7 @@ def assert_public_safe(payload: dict[str, object], temp_root: Path) -> None:
     assert run_boundary["model_api_invoked_by_this_gate"] is False
     assert run_boundary["codex_prompt_sent_by_this_gate"] is False
     assert run_boundary["raw_trajectory_read"] is False
-    assert run_boundary["task_body_read_by_goal_harness"] is False
+    assert run_boundary["task_body_read_by_loopx"] is False
     assert run_boundary["credential_values_recorded"] is False
     assert run_boundary["local_paths_recorded"] is False
 
@@ -334,7 +334,7 @@ def run_cli_smoke() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -381,7 +381,7 @@ def run_cli_smoke() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",

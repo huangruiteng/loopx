@@ -44,7 +44,7 @@ REQUIRED_DOC_SNIPPETS = [
     "benchmark_run_v0",
     "benchmark_result_v0",
     "bare_codex_cli",
-    "passive_goal_harness_wrapper",
+    "passive_loopx_wrapper",
     "execution_authorized = false",
     "submit_eligible = false",
     "real_run = false",
@@ -106,10 +106,10 @@ def probe_payload() -> dict[str, Any]:
                 "expected_future_event": "benchmark_run_v0",
             },
             {
-                "mode": "passive_goal_harness_wrapper",
+                "mode": "passive_loopx_wrapper",
                 "runner": "harbor",
                 "agent_surface": "passive_observer_after_official_outputs_exist",
-                "command_template": "goal-harness history append-benchmark-run --benchmark-run-json <benchmark-run-v0.json>",
+                "command_template": "loopx history append-benchmark-run --benchmark-run-json <benchmark-run-v0.json>",
                 "execution_authorized": False,
                 "submit_eligible": False,
                 "real_run": False,
@@ -124,7 +124,7 @@ def probe_payload() -> dict[str, Any]:
         },
         "expected_future_events": [
             "benchmark_run_v0:bare_codex_cli",
-            "benchmark_run_v0:passive_goal_harness_wrapper",
+            "benchmark_run_v0:passive_loopx_wrapper",
             "benchmark_result_v0:paired_comparison",
         ],
         "official_task_score": {
@@ -180,7 +180,7 @@ def assert_payload_contract(payload: dict[str, Any]) -> None:
     assert {source["name"] for source in payload["runner_sources"]} == {"harbor", "terminal-bench"}, payload
 
     boundaries = {item["mode"]: item for item in payload["mode_boundaries"]}
-    assert set(boundaries) == {"bare_codex_cli", "passive_goal_harness_wrapper"}, payload
+    assert set(boundaries) == {"bare_codex_cli", "passive_loopx_wrapper"}, payload
     assert all(item["execution_authorized"] is False for item in boundaries.values()), payload
     assert all(item["submit_eligible"] is False for item in boundaries.values()), payload
     assert all(item["real_run"] is False for item in boundaries.values()), payload

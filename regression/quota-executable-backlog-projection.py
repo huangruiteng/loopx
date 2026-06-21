@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regression for quota should-run executable-backlog projection.
 
-The fixture exercises the real Goal Harness CLI over an isolated registry,
+The fixture exercises the real LoopX CLI over an isolated registry,
 runtime root, and active state. It protects the control-plane path where a P0
 external monitor remains open but has no material transition while a P1
 advancement todo is executable. In that state, the hot-path recommendation must
@@ -27,16 +27,16 @@ POLL_ACTION = (
 )
 EXECUTABLE_TODO = (
     "[P1] Behavior regression suite lane: maintain `regression/` as the home "
-    "for Goal Harness CLI plus real Codex CLI interaction regressions."
+    "for LoopX CLI plus real Codex CLI interaction regressions."
 )
 
 
-def run_goal_harness(*args: str, registry: Path, runtime: Path) -> dict[str, Any]:
+def run_loopx(*args: str, registry: Path, runtime: Path) -> dict[str, Any]:
     result = subprocess.run(
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry),
             "--runtime-root",
@@ -64,7 +64,7 @@ def write_fixture(
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
@@ -80,11 +80,11 @@ def write_fixture(
         "## Agent Todo\n\n"
         "- [ ] [P0] [P0 monitor] Observe no-upload Terminal-Bench train-fasttext "
         "using compact process/result markers only.\n"
-        "  <!-- goal-harness:todo todo_id=todo_monitor status=open "
+        "  <!-- loopx:todo todo_id=todo_monitor status=open "
         "task_class=continuous_monitor action_kind=monitor "
         "updated_at=2026-01-01T00%3A00%3A00%2B00%3A00 -->\n"
         f"- [ ] {EXECUTABLE_TODO}\n"
-        "  <!-- goal-harness:todo todo_id=todo_executable status=open "
+        "  <!-- loopx:todo todo_id=todo_executable status=open "
         "task_class=advancement_task action_kind=regression "
         "updated_at=2026-01-01T00%3A00%3A00%2B00%3A00 -->\n",
         encoding="utf-8",
@@ -173,7 +173,7 @@ def assert_refresh_state_prefers_open_agent_todo(
     registry: Path,
     runtime: Path,
 ) -> None:
-    refresh = run_goal_harness(
+    refresh = run_loopx(
         "refresh-state",
         "--goal-id",
         GOAL_ID,
@@ -189,13 +189,13 @@ def assert_refresh_state_prefers_open_agent_todo(
 
 def assert_latest_run_action_does_not_create_false_projection_gap() -> None:
     with tempfile.TemporaryDirectory(
-        prefix="goal-harness-quota-executable-backlog-synced-"
+        prefix="loopx-quota-executable-backlog-synced-"
     ) as tmp:
         runtime, registry = write_fixture(
             Path(tmp),
             state_next_action=EXECUTABLE_TODO,
         )
-        guard = run_goal_harness(
+        guard = run_loopx(
             "quota",
             "should-run",
             "--goal-id",
@@ -210,9 +210,9 @@ def assert_latest_run_action_does_not_create_false_projection_gap() -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-quota-executable-backlog-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-executable-backlog-") as tmp:
         runtime, registry = write_fixture(Path(tmp))
-        guard = run_goal_harness(
+        guard = run_loopx(
             "quota",
             "should-run",
             "--goal-id",

@@ -30,7 +30,7 @@ def write_fixture(root: Path) -> Path:
         "- Verify documented CLI command ordering remains runnable.\n",
         encoding="utf-8",
     )
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(
         json.dumps(
@@ -67,7 +67,7 @@ def cli_json(registry_path: Path, *args: str) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             *args,
@@ -86,7 +86,7 @@ def cli_json(registry_path: Path, *args: str) -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-subcommand-format-smoke-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-subcommand-format-smoke-") as raw_tmp:
         registry_path = write_fixture(Path(raw_tmp))
 
         heartbeat = cli_json(

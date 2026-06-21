@@ -4,10 +4,10 @@ This note defines the first public-facing showcase surface that can consume
 `docs/showcases/showcase-catalog.json`. It is a product explanation surface,
 not the local operator dashboard.
 
-The goal is to help a new user understand Goal Harness in one screen:
+The goal is to help a new user understand LoopX in one screen:
 
 - Codex, Claude Code, Cursor, and similar tools execute agent loops.
-- Goal Harness keeps the long-running goal control plane visible across those
+- LoopX keeps the long-running goal control plane visible across those
   loops: gates, todos, ownership, safe fallback, run history, quota, and
   evidence.
 - A case is useful only when it shows a reusable control-plane behavior, not
@@ -30,8 +30,8 @@ Use these catalog fields directly:
 | `feedback_contract_path` | Link to feedback/source-status rules when a case includes user steering. |
 | `domain`, `audience`, `pattern_tags` | Filters and grouping. |
 | `headline` | Main card copy. |
-| `problem` | Situation before Goal Harness helped. |
-| `goal_harness_behavior` | Timeline or behavior list. |
+| `problem` | Situation before LoopX helped. |
+| `loopx_behavior` | Timeline or behavior list. |
 | `user_value` | Outcome in plain language. |
 | `evidence_boundary` | Redaction and claim boundary drawer. |
 | `frontend_card.visual_metaphor` | Suggested visual treatment. |
@@ -50,7 +50,7 @@ Use a compact comparison block:
 | Surface | Role |
 | --- | --- |
 | Codex goal / automation / CLI loop | Executes bounded work inside an agent session or scheduled turn. |
-| Goal Harness | Preserves the lifetime-goal control plane across turns, tools, agents, gates, evidence, and quota. |
+| LoopX | Preserves the lifetime-goal control plane across turns, tools, agents, gates, evidence, and quota. |
 
 Recommended headline stack for Chinese-first material:
 
@@ -63,7 +63,7 @@ Gate-aware human-in-the-loop control plane
 Recommended English explanation:
 
 ```text
-Goal Harness keeps goals, gates, todos, claims, scopes, safe fallback, run
+LoopX keeps goals, gates, todos, claims, scopes, safe fallback, run
 history, quota, and evidence in one shared state layer: the gated route waits
 clearly, while independent safe side work can keep moving with evidence.
 ```
@@ -111,7 +111,7 @@ pattern, not a transcript.
 A case detail view should be a short visual story:
 
 1. **Trigger**: what made the long-running goal hard to manage.
-2. **Visible State**: which Goal Harness objects made the situation explicit.
+2. **Visible State**: which LoopX objects made the situation explicit.
 3. **Agent Move**: what bounded action remained safe.
 4. **Human Role**: what the user did or did not need to decide.
 5. **Evidence**: what public-safe validation supports the case.
@@ -163,7 +163,7 @@ The first implementation should be static and catalog-driven:
    prototype until a real frontend app exists.
 7. Run `python3 examples/showcase-catalog-smoke.py`,
    `python3 examples/showcase-frontstage-prototype-smoke.py`, and
-   `goal-harness check --scan-path docs/showcases --scan-path docs/assets`.
+   `loopx check --scan-path docs/showcases --scan-path docs/assets`.
 
 This keeps the marketing surface honest: if a case is not in the catalog, it
 does not appear on the public showcase frontend.

@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import (  # noqa: E402
+from loopx.status import (  # noqa: E402
     TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
     project_asset_todo_projection_gap,
@@ -30,7 +30,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         "---\n"
@@ -83,7 +83,7 @@ def run_cli(
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -139,7 +139,7 @@ def main() -> int:
     gap = project_asset_todo_projection_gap(user_todos=None, agent_todos=empty_summary)
     assert gap and gap["missing_roles"] == ["user"], gap
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-project-asset-todo-gap-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-project-asset-todo-gap-") as raw_tmp:
         registry_path, runtime = write_fixture(Path(raw_tmp))
         payload = run_cli(registry_path, runtime, "status")
         item = attention_item(payload)  # type: ignore[arg-type]

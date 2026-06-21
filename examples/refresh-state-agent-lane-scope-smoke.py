@@ -10,9 +10,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import goal_harness.state_refresh as state_refresh
-from goal_harness.history import collect_history
-from goal_harness.status import collect_status
+import loopx.state_refresh as state_refresh
+from loopx.history import collect_history
+from loopx.status import collect_status
 
 
 GOAL_ID = "refresh-state-agent-lane-goal"
@@ -25,7 +25,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     state_path.parent.mkdir(parents=True)
     state_path.write_text(
@@ -38,10 +38,10 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         "# Agent Lane Refresh Fixture\n\n"
         "## Agent Todo\n\n"
         f"- [ ] [P0] {PRIMARY_ACTION}\n"
-        "  <!-- goal-harness:todo todo_id=todo_primary status=open "
+        "  <!-- loopx:todo todo_id=todo_primary status=open "
         "task_class=advancement_task claimed_by=codex-main-control -->\n"
         f"- [ ] [P1] {SIDE_ACTION}\n"
-        "  <!-- goal-harness:todo todo_id=todo_side status=open "
+        "  <!-- loopx:todo todo_id=todo_side status=open "
         "task_class=advancement_task claimed_by=codex-side-bypass -->\n\n"
         "## Next Action\n\n"
         f"- {PRIMARY_ACTION}\n",
@@ -82,7 +82,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
 def main() -> None:
     original_now_local = state_refresh.now_local
     try:
-        with tempfile.TemporaryDirectory(prefix="goal-harness-agent-lane-refresh-") as raw_tmp:
+        with tempfile.TemporaryDirectory(prefix="loopx-agent-lane-refresh-") as raw_tmp:
             registry_path, runtime, project = write_fixture(Path(raw_tmp))
 
             state_refresh.now_local = lambda: "2026-06-20T00:00:00+00:00"

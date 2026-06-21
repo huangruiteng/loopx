@@ -14,8 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.feedback import append_human_reward, compact_reward  # noqa: E402
-from goal_harness.operator_gate import OPERATOR_GATE_RESUME_CONTRACT_VERSION, record_operator_gate  # noqa: E402
+from loopx.feedback import append_human_reward, compact_reward  # noqa: E402
+from loopx.operator_gate import OPERATOR_GATE_RESUME_CONTRACT_VERSION, record_operator_gate  # noqa: E402
 
 
 GOAL_ID = "reward-gate-direct-write-goal"
@@ -122,7 +122,7 @@ def assert_reward_preview(registry: Path, runtime_root: Path, state_file: Path) 
     assert payload["active_state_update"]["written"] is False, payload
     visibility = payload["project_agent_visibility"]
     assert visibility["source_of_truth"] == "run_bound_human_reward_overlay", visibility
-    assert visibility["history_command"] == f"goal-harness history --goal-id {GOAL_ID} --limit 3", visibility
+    assert visibility["history_command"] == f"loopx history --goal-id {GOAL_ID} --limit 3", visibility
     assert "human_reward" not in state_file.read_text(encoding="utf-8"), "dry-run must not write state"
 
 
@@ -136,7 +136,7 @@ def assert_operator_gate_preview(registry: Path, runtime_root: Path) -> None:
         operator_question="Approve the public-safe handoff for the fixture goal?",
         reason_summary="handoff evidence is compact and public-safe",
         follow_up="forward only the approved handoff packet",
-        agent_command=f"goal-harness review-packet --goal-id {GOAL_ID} --handoff-only",
+        agent_command=f"loopx review-packet --goal-id {GOAL_ID} --handoff-only",
         recommended_action=None,
         recorded_at="2026-01-01T00:20:00+00:00",
         dry_run=True,
@@ -177,7 +177,7 @@ def assert_contract_doc() -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-reward-gate-write-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-reward-gate-write-") as raw_tmp:
         registry, runtime_root, state_file = write_fixture(Path(raw_tmp))
         assert_reward_preview(registry, runtime_root, state_file)
         assert_operator_gate_preview(registry, runtime_root)

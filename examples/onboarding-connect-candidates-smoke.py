@@ -14,8 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.onboarding import ONBOARDING_SCAN_SCHEMA_VERSION  # noqa: E402
-from goal_harness.status import parse_active_state_todos  # noqa: E402
+from loopx.onboarding import ONBOARDING_SCAN_SCHEMA_VERSION  # noqa: E402
+from loopx.status import parse_active_state_todos  # noqa: E402
 
 
 def run(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -30,7 +30,7 @@ def run(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProces
 
 def run_cli(*args: str) -> dict:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", "--format", "json", *args],
+        [sys.executable, "-m", "loopx.cli", "--format", "json", *args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -52,9 +52,9 @@ def make_project(root: Path, name: str) -> Path:
     run(
         "git",
         "-c",
-        "user.email=goal-harness-smoke@example.com",
+        "user.email=loopx-smoke@example.com",
         "-c",
-        "user.name=Goal Harness Smoke",
+        "user.name=LoopX Smoke",
         "commit",
         "-m",
         "Initial fixture project",
@@ -108,7 +108,7 @@ def assert_default_onboarding(project: Path, runtime: Path) -> None:
     assert payload["onboarding_todos_written"] is True, payload
     assert len(payload["accept_candidate_commands"]) == len(candidates), payload
 
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     status_payload = run_cli("--registry", str(registry_path), "status")
     status_item = status_payload["attention_queue"]["items"][0]
     assert "Present the onboarding scan" in status_item["recommended_action"], status_item
@@ -179,7 +179,7 @@ def assert_preauthorized_onboarding(project: Path, runtime: Path) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-onboarding-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-onboarding-smoke-") as tmp:
         root = Path(tmp)
         runtime = root / "runtime"
         project = make_project(root, "fixture-project")

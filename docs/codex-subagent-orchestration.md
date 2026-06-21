@@ -1,6 +1,6 @@
 # Codex Sub-Agent Orchestration
 
-Goal Harness should support Codex-style work where one main controller starts
+LoopX should support Codex-style work where one main controller starts
 multiple sub-agents. This is useful for large repos, multi-surface validation,
 and parallel exploration, but it needs a stronger contract than a single-agent
 goal tick.
@@ -36,7 +36,7 @@ shipping changes. Broad exploration, slow memory consolidation, refactor
 warnings, and cross-project pattern mining are useful, but they create scope
 pressure when mixed into the delivery lane.
 
-Goal Harness should model this as a separate dreaming / exploration lane:
+LoopX should model this as a separate dreaming / exploration lane:
 
 - it reads run history and project state over a wider time window;
 - it has its own compute quota so background exploration cannot starve delivery
@@ -99,14 +99,14 @@ Instead, register the agent id, give the child that `agent_id` and scope, then
 have it claim only matching open todos:
 
 ```bash
-goal-harness configure-goal \
+loopx configure-goal \
   --goal-id <goal-id> \
   --registered-agent codex-main-control \
   --registered-agent codex-side-bypass \
   --primary-agent codex-main-control \
   --execute
 
-goal-harness todo claim \
+loopx todo claim \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by codex-side-bypass
@@ -120,7 +120,7 @@ another agent or is outside the child's scope, the child should pick another
 in-scope unclaimed todo or report that no in-scope work is available.
 The controller goal should declare exactly one primary agent. Side agents use
 independent git worktrees/branches for repository edits. They may self-merge
-small AGENTS-eligible validated changes with explicit Goal Harness evidence;
+small AGENTS-eligible validated changes with explicit LoopX evidence;
 otherwise they finish by adding a primary-agent review todo so the main
 controller can review, verify, and merge.
 When this becomes a server-backed pending/lease path, the contention unit should
@@ -211,13 +211,13 @@ For a child goal:
 ```
 
 These fields describe permission and coordination expectations. They do not
-turn Goal Harness into a lock service. They do make compute quota explicit so
+turn LoopX into a lock service. They do make compute quota explicit so
 the main controller and automations do not encode priority only through timer
 cadence.
 
 ## Run Record Shape
 
-Goal Harness run history should eventually record sub-agent activity as first
+LoopX run history should eventually record sub-agent activity as first
 class evidence:
 
 ```json

@@ -2,9 +2,9 @@
 
 Status: design target.
 
-Principle: Goal Harness defaults to a generic control plane. It should
+Principle: LoopX defaults to a generic control plane. It should
 guarantee state, evidence, boundaries, handoff, and validation routing before it
-tries to make domain judgments. Domain packs can make Goal Harness smarter, but
+tries to make domain judgments. Domain packs can make LoopX smarter, but
 they must be explicit about capability and permission.
 
 ## Why This Exists
@@ -21,7 +21,7 @@ The default control plane should therefore do two things:
   records that permission.
 
 This avoids a quiet escalation from "track my goal" into "interpret and launch
-domain work." It also keeps Goal Harness useful for ordinary engineering todos
+domain work." It also keeps LoopX useful for ordinary engineering todos
 that do not have experiment boards, primary metrics, guardrails, or production
 job handles.
 
@@ -72,7 +72,7 @@ boundary.
 ## Generic Capabilities
 
 These capabilities are not ML-specific and should be available in the default
-Goal Harness control plane.
+LoopX control plane.
 
 | Capability | Default Role |
 | --- | --- |

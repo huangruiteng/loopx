@@ -103,7 +103,7 @@ Targeted validation:
 ```bash
 python3 examples/benchmark-e2e-owner-decision-smoke.py
 python3 -m py_compile examples/benchmark-e2e-owner-decision-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/benchmark-e2e-owner-decision-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/benchmark-e2e-owner-decision-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

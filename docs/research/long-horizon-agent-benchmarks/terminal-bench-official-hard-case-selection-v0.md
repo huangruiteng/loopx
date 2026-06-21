@@ -2,7 +2,7 @@
 
 Checked at: 2026-06-09T13:30:00+08:00.
 
-This note switches the Goal Harness benchmark research lane from
+This note switches the LoopX benchmark research lane from
 `terminal-bench-sample@2.0` to the official `terminal-bench@2.0` benchmark
 surface. It is a selection and run-order contract only. It does not run Harbor,
 Terminal-Bench, Docker, Codex, model APIs, paid compute, uploads, shares, or
@@ -16,7 +16,7 @@ research conclusions. The official Harbor registry lists `terminal-bench@2.0`
 as Terminal-Bench version 2.0 with 89 tasks, and describes it as a harder and
 higher-quality successor to 1.0.
 
-Goal Harness should therefore stop using sample-only tasks as the next evidence
+LoopX should therefore stop using sample-only tasks as the next evidence
 target. The sample results remain valuable as adapter readiness and ingest
 evidence, but future model-plus-harness claims should be grounded in selected
 official `terminal-bench@2.0` cases.
@@ -45,9 +45,9 @@ Selection criteria:
 
 | Rank | Task | Why this belongs in the first official batch | First comparison |
 | --- | --- | --- | --- |
-| 1 | `fix-code-vulnerability` | Security debugging is long-horizon: the agent must inspect code, infer exploit/failure mechanics, patch narrowly, and verify. The sample metadata for this same task family marked it hard and long. | Run Codex goal-mode baseline and Codex+Goal Harness treatment in parallel. |
+| 1 | `fix-code-vulnerability` | Security debugging is long-horizon: the agent must inspect code, infer exploit/failure mechanics, patch narrowly, and verify. The sample metadata for this same task family marked it hard and long. | Run Codex goal-mode baseline and Codex+LoopX treatment in parallel. |
 | 2 | `modernize-scientific-stack` | Dependency modernization is close to the `build-cython-ext` readiness lane but broader and more failure-prone: version constraints, scientific packages, compile/runtime errors, and repeated verification. | Run after `fix-code-vulnerability` unless the first pair exposes a runner blocker. |
-| 3 | `llm-inference-batching-scheduler` | ML systems scheduling is likely to require code comprehension, performance/shape reasoning, and careful tests. It is aligned with Goal Harness's intended long-horizon engineering niche. | Run as the third paired case or replace a blocked case. |
+| 3 | `llm-inference-batching-scheduler` | ML systems scheduling is likely to require code comprehension, performance/shape reasoning, and careful tests. It is aligned with LoopX's intended long-horizon engineering niche. | Run as the third paired case or replace a blocked case. |
 
 ## Backup Queue
 
@@ -65,9 +65,9 @@ Use these if the primary batch is blocked by environment or verifier issues:
 For each selected task, run the same official task id under two cells:
 
 1. `codex-goal-mode`: Harbor launches Codex with its native goal-mode surface,
-   the original task prompt, and no Goal Harness packet, bridge, or state.
-2. `codex-goal-harness`: Harbor launches the same goal-mode Codex worker with
-   the Goal Harness access packet and active worker bridge enabled.
+   the original task prompt, and no LoopX packet, bridge, or state.
+2. `codex-loopx`: Harbor launches the same goal-mode Codex worker with
+   the LoopX access packet and active worker bridge enabled.
 
 Keep the two cells aligned on:
 
@@ -83,12 +83,12 @@ Keep the two cells aligned on:
 The treatment cell is a model-plus-harness pair, not a native Codex baseline.
 Its official verifier reward is still useful, but any comparison must carry
 `case_semantics_changed_by_harness=true`,
-`goal_harness_inside_case=true`, and
+`loopx_inside_case=true`, and
 `official_score_comparable_to_native_codex=false`.
 
 The Codex goal-mode baseline is the paired baseline for this experiment because
-it answers whether Goal Harness adds value beyond Codex's own goal execution
-mode while withholding Goal Harness state. Hardened or bare Codex evidence may
+it answers whether LoopX adds value beyond Codex's own goal execution
+mode while withholding LoopX state. Hardened or bare Codex evidence may
 still be recorded as startup/install calibration, but it is not the primary
 paired baseline.
 
@@ -100,8 +100,8 @@ Each compact `benchmark_run_v0` must record:
 - runner return status and timeout/interruption policy;
 - wall time and timeout tier;
 - Codex token/cost metrics when Harbor exposes them;
-- Goal Harness CLI calls inside the worker;
-- Codex runtime goal-tool calls, kept separate from Goal Harness CLI calls;
+- LoopX CLI calls inside the worker;
+- Codex runtime goal-tool calls, kept separate from LoopX CLI calls;
 - worker benchmark-run writeback and schema validity;
 - pre-worker setup failure count;
 - verifier dependency failure attribution when reward is zero or missing;
@@ -127,8 +127,8 @@ Run a private no-upload official paired pilot on
 1. launch `codex-goal-mode` after verifying the local Codex goal-mode
    invocation surface and its private no-upload launch summary
    (`codex_goal_mode_invocation_surface=slash_command`,
-   `goal_harness_access_packet_mode=none`, no worker bridge);
-2. launch `codex-goal-harness` with the active worker bridge in parallel;
+   `loopx_access_packet_mode=none`, no worker bridge);
+2. launch `codex-loopx` with the active worker bridge in parallel;
 3. ingest compact Harbor results for both arms;
 4. write one paired comparison event with reward, wall time, usage, worker
    interaction counters, and failure attribution.

@@ -13,14 +13,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import build_benchmark_candidate_source_boundary  # noqa: E402
+from loopx.benchmark import build_benchmark_candidate_source_boundary  # noqa: E402
 
 
 PRIVATE_ROOT = "/private/example/project/.local/private-benchmark-jobs/job-a"
 ALLOWED_SOURCES = [
     "docs/research/long-horizon-agent-benchmarks/terminal-bench-next-candidate-selection-20260614.md",
     "examples/terminal-bench-candidate-routing-packets-smoke.py",
-    ".local/goals/goal-harness-meta/ACTIVE_GOAL_STATE.md",
+    ".local/goals/loopx-meta/ACTIVE_GOAL_STATE.md",
     f"{PRIVATE_ROOT}/paired_comparison.compact.json",
     f"{PRIVATE_ROOT}/launch_observation.public.json",
 ]
@@ -80,7 +80,7 @@ def main() -> None:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",
@@ -104,7 +104,7 @@ def main() -> None:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",

@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_core import (  # noqa: E402
+from loopx.benchmark_core import (  # noqa: E402
     CODEX_APP_PARITY_POSTHOC_CHECK_SCHEMA_VERSION,
     build_codex_app_parity_posthoc_check,
 )
@@ -25,8 +25,8 @@ def full_product_run() -> dict[str, object]:
         "source_runner": "fixture",
         "benchmark_id": "terminal-bench@2.0",
         "job_name": "parity-posthoc-fixture",
-        "mode": "codex_goal_harness",
-        "route": "codex-goal-harness",
+        "mode": "codex_loopx",
+        "route": "codex-loopx",
         "agent": {"name": "codex", "model": "fixture"},
         "progress": {},
         "metrics": {},
@@ -36,7 +36,7 @@ def full_product_run() -> dict[str, object]:
             "case_goal_state_init_required": True,
             "case_goal_state_initialized_before_agent": True,
             "case_goal_state_path": "/app/.codex/goals/terminal-bench-case/ACTIVE_GOAL_STATE.md",
-            "goal_harness_cli_calls": {
+            "loopx_cli_calls": {
                 "status": 1,
                 "quota_should_run": 1,
                 "todo_list": 1,
@@ -67,7 +67,7 @@ def surrogate_run() -> dict[str, object]:
         {
             "case_goal_state_initialized_before_agent": False,
             "case_goal_state_path": "",
-            "goal_harness_cli_calls": {"total": 0},
+            "loopx_cli_calls": {"total": 0},
             "private_trajectory_summary_present": False,
         }
     )
@@ -94,7 +94,7 @@ def assert_direct_checks() -> None:
     assert surrogate["full_product_claim_allowed"] is False, surrogate
     assert surrogate["claim_level"] == "product_mode_surrogate_missing_posthoc_evidence"
     assert "canonical_case_active_state_path" in surrogate["missing_evidence"]
-    assert "goal_harness_cli_trace_present" in surrogate["missing_evidence"]
+    assert "loopx_cli_trace_present" in surrogate["missing_evidence"]
     assert "codex_cli_trajectory_summary_present" in surrogate["missing_evidence"]
 
     leaky = build_codex_app_parity_posthoc_check(leaky_run())
@@ -114,7 +114,7 @@ def assert_cli_check() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",

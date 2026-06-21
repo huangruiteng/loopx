@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import goal_harness.state_refresh as state_refresh
+import loopx.state_refresh as state_refresh
 
 
 GOAL_ID = "refresh-state-unique-path-goal"
@@ -22,7 +22,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     runs_dir = runtime / "goals" / GOAL_ID / "runs"
 
     state_path.parent.mkdir(parents=True)

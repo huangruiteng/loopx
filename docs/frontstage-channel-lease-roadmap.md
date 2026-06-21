@@ -1,6 +1,6 @@
 # Frontstage Channel And Lease Roadmap
 
-Goal Harness should not become a chat product. Its durable value is the
+LoopX should not become a chat product. Its durable value is the
 backstage control plane: registry, active state, append-only event history,
 quota, gates, leases, and auditable recovery. The missing product layer is a
 frontstage projection that lets people understand and coordinate that control
@@ -9,14 +9,14 @@ plane without reading raw CLI dumps.
 This note frames the product direction as:
 
 ```text
-frontstage channel UX + backstage Goal Harness ledger
+frontstage channel UX + backstage LoopX ledger
 ```
 
 The channel is a view. The ledger is truth.
 
 ## Product Boundary
 
-Goal Harness should borrow collaboration language without moving the source of
+LoopX should borrow collaboration language without moving the source of
 truth into chat history:
 
 - A **goal can project as a channel**: one timeline with latest state, next
@@ -37,7 +37,7 @@ history, quota, gates, and leases.
 
 ### `goal_channel_projection_v0`
 
-This is a read-only, human-facing projection over existing Goal Harness state.
+This is a read-only, human-facing projection over existing LoopX state.
 It lets a frontstage render a goal as a channel without making the channel a
 new source of truth. The append-only run ledger, active state, and registry
 remain authoritative; the projection only carries compact source references and
@@ -46,8 +46,8 @@ freshness metadata.
 ```json
 {
   "schema_version": "goal_channel_projection_v0",
-  "goal_id": "goal-harness-meta",
-  "display_name": "Goal Harness Meta",
+  "goal_id": "loopx-meta",
+  "display_name": "LoopX Meta",
   "generated_at": "2026-06-20T00:00:00Z",
   "source_refs": {
     "status_generated_at": "2026-06-20T00:00:00Z",
@@ -123,7 +123,7 @@ The v0 source map should stay boring and inspectable:
 
 | Projection field | Source surface |
 | --- | --- |
-| `goal_id`, `display_name`, `waiting_on`, `latest_status` | `goal-harness status` project asset and registry metadata |
+| `goal_id`, `display_name`, `waiting_on`, `latest_status` | `loopx status` project asset and registry metadata |
 | `next_action`, `user_todos`, `agent_todos`, `open_gates` | active state todo/gate sections plus `review-packet` summaries |
 | `decision_frame` | `interaction_contract` from `quota should-run` and review-packet routing |
 | `quota` | `quota should-run`, including the spend policy and capability/workspace guards when present |
@@ -140,7 +140,7 @@ copying the raw material.
 
 Frontstage consumers should treat this as an input snapshot:
 
-- refresh it from Goal Harness rather than editing it in the UI;
+- refresh it from LoopX rather than editing it in the UI;
 - render controlled actions as links to CLI/review-packet flows, not as hidden
   write authority;
 - show stale or missing-source warnings near the affected card;
@@ -148,7 +148,7 @@ Frontstage consumers should treat this as an input snapshot:
 - never let the channel view override `goal_boundary`, operator gates, quota,
   required capabilities, workspace guards, or task leases.
 
-The first product-path fixture lives in `goal_harness.frontstage` and is covered
+The first product-path fixture lives in `loopx.frontstage` and is covered
 by `examples/goal-channel-projection-smoke.py` plus
 `examples/goal-channel-frontstage-fixture-smoke.py`. It intentionally stays
 read-only: callers pass already-compact status, quota, run-history,
@@ -157,7 +157,7 @@ review-packet, artifact, and lease/claim payloads; the builder emits
 those values into the channel. The static HTML fixture in
 `examples/goal-channel-frontstage-fixture.py` renders that projection into
 semantic panels with `data-panel` markers, no write controls, and a visible
-truth contract. `goal-harness --format json status` and the loopback
+truth contract. `loopx --format json status` and the loopback
 `serve-status` feed now expose the same read-only projection on
 `attention_queue.items[].goal_channel_projection`, so a dashboard can render the
 channel without recomputing project truth.
@@ -178,8 +178,8 @@ goal:
   "schema_version": "agent_member_v0",
   "agent_id": "codex-local-controller",
   "role": "controller",
-  "goal_id": "goal-harness-meta",
-  "write_scope": ["docs/**", "examples/**", "goal_harness/**"],
+  "goal_id": "loopx-meta",
+  "write_scope": ["docs/**", "examples/**", "loopx/**"],
   "last_action": "refresh_state",
   "claim_id": null
 }
@@ -196,7 +196,7 @@ This is the concurrency contract that should eventually back task claim. The
 pending key is per todo: `(goal_id, todo_id)`. Do not serialize an entire
 goal just because one todo is claimed; independent todos under the same goal
 should remain independently claimable when gates and write scopes allow it.
-Goal Harness does not have a separate issue object in this runtime model:
+LoopX does not have a separate issue object in this runtime model:
 `goal_id` names the control-plane boundary, and `todo_id` names the work item
 inside that boundary.
 The v0.1 control plane still keeps role assignment simple: one
@@ -210,10 +210,10 @@ otherwise they add a primary-agent review todo when finishing.
   "schema_version": "task_lease_v0",
   "todo_id": "todo_123",
   "owner_agent": "codex-local-controller",
-  "goal_id": "goal-harness-meta",
+  "goal_id": "loopx-meta",
   "lease_until": "2026-06-15T12:30:00Z",
   "write_scope": ["docs/frontstage-channel-lease-roadmap.md"],
-  "idempotency_key": "goal-harness-meta:todo_123:20260615T1230Z",
+  "idempotency_key": "loopx-meta:todo_123:20260615T1230Z",
   "conflict_policy": "fail_closed_on_scope_overlap",
   "status": "active"
 }
@@ -245,10 +245,10 @@ P2:
 - Add agent-member projection to status/review packets after leases exist, so
   agent identity is useful rather than decorative.
 - Build a Raft-style local frontstage view that renders channel timelines and
-  member activity from Goal Harness projections.
+  member activity from LoopX projections.
 - Let dreaming/planning proposals appear as a separate channel lane or badge.
 - Add bridge adapters that can post channel summaries to collaboration tools,
-  while preserving Goal Harness as the ledger of record.
+  while preserving LoopX as the ledger of record.
 
 ## Non-Goals
 

@@ -42,7 +42,7 @@ def write_state(project: Path, goal_id: str, title: str) -> str:
 
 def write_project_registry(project: Path, runtime: Path, goal_id: str, title: str) -> Path:
     state_file = write_state(project, goal_id, title)
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(
         json.dumps(
@@ -85,7 +85,7 @@ def wait_for_status(url: str) -> dict:
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-serve-status-global-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-serve-status-global-") as raw_tmp:
         root = Path(raw_tmp)
         runtime = root / "runtime"
         local_project = root / "local-project"
@@ -103,7 +103,7 @@ def main() -> None:
         command = [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--runtime-root",
             str(runtime),
             "serve-status",

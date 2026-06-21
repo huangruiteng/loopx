@@ -1,6 +1,6 @@
 # Integration Guide
 
-Goal Harness should be used as a shared local base, not copied into every
+LoopX should be used as a shared local base, not copied into every
 project.
 
 ## Local Base
@@ -8,28 +8,28 @@ project.
 Clone or symlink one copy:
 
 ```bash
-git clone <repo-url> ~/goal-harness
-~/goal-harness/scripts/install-local.sh
-goal-harness doctor
+git clone <repo-url> ~/loopx
+~/loopx/scripts/install-local.sh
+loopx doctor
 ```
 
 The installer publishes the current checkout as a local release snapshot and
-links that snapshot into `~/.local/bin/goal-harness`. It also installs a
-`goal-harness-canary` wrapper that points at the live checkout for selected
+links that snapshot into `~/.local/bin/loopx`. It also installs a
+`loopx-canary` wrapper that points at the live checkout for selected
 gray-rollout goal controllers. This keeps default automations stable while
 allowing one canary goal to validate prompt/runtime changes before promotion.
 The installer adds the bin directory to the current shell profile when it is
-missing from `PATH`, and installs a snapshot of the `goal-harness-project` Codex
+missing from `PATH`, and installs a snapshot of the `loopx-project` Codex
 skill into `~/.codex/skills` so future project agents use the same connection
-workflow. Use `goal-harness doctor` from any project folder to inspect the
+workflow. Use `loopx doctor` from any project folder to inspect the
 resolved command path, symlink target, release snapshot, canary wrapper,
 installed skill delivery-hint state, wrapper script, and Python import health.
 
 ## Global Skill Policy
 
-Goal Harness product behavior belongs in installed global Codex skills, not in
+LoopX product behavior belongs in installed global Codex skills, not in
 one repository's `AGENTS.md`. Keep the global skills narrow and versioned:
-they should teach Goal Harness connection, quota/state/todo writeback,
+they should teach LoopX connection, quota/state/todo writeback,
 self-repair, and generic product contracts such as todo succession. Project
 state, benchmark-specific choices, private material, and one-off operator
 decisions stay in the registry, active state, run history, or project docs.
@@ -41,24 +41,24 @@ Gray rollout flow:
 
 ```bash
 # Generate a heartbeat body for a canary goal controller only.
-goal-harness-canary heartbeat-prompt \
+loopx-canary heartbeat-prompt \
   --brief \
-  --cli-bin goal-harness-canary \
+  --cli-bin loopx-canary \
   --goal-id <CANARY_GOAL_ID>
 
 # After canary observation looks healthy, promote the checkout to default.
-~/goal-harness/scripts/install-local.sh
-goal-harness doctor
+~/loopx/scripts/install-local.sh
+loopx doctor
 ```
 
 Then projects can call:
 
 ```bash
-goal-harness --registry <private-registry> registry
-goal-harness --registry <private-registry> history
-goal-harness --registry <private-registry> status
-goal-harness --registry <private-registry> check --scan-root <project-root>
-goal-harness doctor
+loopx --registry <private-registry> registry
+loopx --registry <private-registry> history
+loopx --registry <private-registry> status
+loopx --registry <private-registry> check --scan-root <project-root>
+loopx doctor
 ```
 
 ## One-Command Project Connect
@@ -67,20 +67,20 @@ For a new project, start with:
 
 ```bash
 cd /path/to/project
-goal-harness bootstrap \
+loopx bootstrap \
   --goal-id project-goal \
   --objective "Improve this project through bounded, verified goal segments." \
   --goal-doc GOAL.md
 ```
 
-`goal-harness connect` is an alias for the same operation. The command is
+`loopx connect` is an alias for the same operation. The command is
 safe to rerun: by default it keeps an existing state file and existing registry
 entry; pass `--force` only when you intentionally want to replace them.
 
 The default files are:
 
 ```text
-.goal-harness/registry.json
+.loopx/registry.json
 .codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md
 ```
 
@@ -130,7 +130,7 @@ source-level delivery contract for the project, not a one-off heartbeat hint:
 }
 ```
 
-`goal-harness status`, `quota should-run`, and `review-packet --handoff-only`
+`loopx status`, `quota should-run`, and `review-packet --handoff-only`
 all read this same profile through `project_asset`. When recent follow-through
 keeps shrinking into test-only, single-surface, or unknown-scale runs, the
 handoff delivery contract is generated from the profile: the next agent must
@@ -146,20 +146,20 @@ at the same time. Connect each lane with a distinct stable `goal_id`:
 
 ```bash
 cd /path/to/project
-goal-harness connect \
+loopx connect \
   --goal-id main-control \
   --objective "Run the main project control lane." \
   --adapter-kind read_only_project_map_v0 \
   --adapter-status connected-read-only
 
-goal-harness connect \
+loopx connect \
   --goal-id side-bypass \
   --objective "Run the low-conflict side bypass lane." \
   --adapter-kind read_only_project_map_v0 \
   --adapter-status connected-read-only
 ```
 
-Both entries live in the same local `.goal-harness/registry.json`, but each goal
+Both entries live in the same local `.loopx/registry.json`, but each goal
 must own its own ignored active state under
 `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`.
 Sharing the same `state_file` across two goal ids is treated as a registry
@@ -170,9 +170,9 @@ compact projection instead when a public example is needed.
 Use `--goal-id` on every status-changing command:
 
 ```bash
-goal-harness read-only-map --goal-id main-control
-goal-harness read-only-map --goal-id side-bypass --dry-run
-goal-harness quota should-run --goal-id side-bypass
+loopx read-only-map --goal-id main-control
+loopx read-only-map --goal-id side-bypass --dry-run
+loopx quota should-run --goal-id side-bypass
 ```
 
 `read-only-map` is goal-aware for same-repo setups. In addition to the generic
@@ -194,7 +194,7 @@ as the handoff prompt.
 You can generate that handoff prompt:
 
 ```bash
-goal-harness new-project-prompt \
+loopx new-project-prompt \
   --project /path/to/project \
   --goal-doc /path/to/project/GOAL.md
 ```
@@ -204,7 +204,7 @@ heartbeat, generate the heartbeat task body instead of hand-copying the quota
 guard and spend protocol:
 
 ```bash
-goal-harness heartbeat-prompt \
+loopx heartbeat-prompt \
   --goal-id project-goal
 ```
 
@@ -213,11 +213,11 @@ from the registry goal `state_file`. Keep `--active-state` only as an explicit
 override for detached state files, migration checks, or compatibility tests.
 
 For live Codex App automations, use the thin form as the local machine-default
-dispatcher when the target Codex agent can inspect Goal Harness state and CLI
+dispatcher when the target Codex agent can inspect LoopX state and CLI
 output itself:
 
 ```bash
-goal-harness heartbeat-prompt --thin \
+loopx heartbeat-prompt --thin \
   --goal-id project-goal
 ```
 
@@ -225,19 +225,19 @@ Use the compact form after reviewing the full contract when the installed
 prompt should carry more lifecycle detail inline:
 
 ```bash
-goal-harness heartbeat-prompt --compact \
+loopx heartbeat-prompt --compact \
   --goal-id project-goal
 ```
 
 If an installed automation still needs to be smaller, use the brief body:
 
 ```bash
-goal-harness heartbeat-prompt --brief \
+loopx heartbeat-prompt --brief \
   --goal-id project-goal
 ```
 
 Copy the generated task body into the heartbeat automation. The timer only
-wakes Codex; the task body asks Goal Harness whether the goal should spend
+wakes Codex; the task body asks LoopX whether the goal should spend
 delivery compute on that tick. The thin body keeps the Codex thread as a
 replaceable worker: every wakeup should re-read registry/global quota truth,
 active state, status/run history, repo state, and project signals instead of
@@ -249,14 +249,14 @@ preflight/guard, core invariants, and spend accounting while delegating detailed
 branches back to the generated contracts.
 
 The Codex App visible goal text can stay short, such as
-`按 ACTIVE_GOAL_STATE.md，基于 Goal Harness 体系，推进项目`. It is only a label for
+`按 ACTIVE_GOAL_STATE.md，基于 LoopX 体系，推进项目`. It is only a label for
 the human and the executor. The recurring automation prompt should use the
 generated heartbeat body above, so every project shares the same quota, gate,
 steering-audit, writeback, refresh, and spend lifecycle.
 Project-specific behavior should live in the registry, active-state sections,
 adapter output, or narrow boundary rules. Do not hand-edit one-off automation
 prompt branches for a single project; when a lifecycle rule is broadly useful,
-add it to `goal-harness heartbeat-prompt` and its smoke contract.
+add it to `loopx heartbeat-prompt` and its smoke contract.
 The quota guard's `heartbeat_recommendation` covers the common onboarding
 cases: `run_first_read_only_map` for a newly connected read-only goal, and
 `mapped_noop_if_unchanged` for an already mapped goal with no new instruction,
@@ -275,7 +275,7 @@ In most real projects these files should be private. If they contain current
 work state or local evidence, add them to `.gitignore`:
 
 ```gitignore
-.goal-harness/
+.loopx/
 .codex/goals/
 ```
 
@@ -310,7 +310,7 @@ sub-agent scopes, boundary findings, and a short controller handoff packet. See
 
 ## Controller / Sub-Agent Coordination
 
-Some Codex goal runs should use multiple sub-agents. Goal Harness should keep
+Some Codex goal runs should use multiple sub-agents. LoopX should keep
 that parallelism explicit:
 
 - child runs declare `work_scope` before acting;
@@ -367,7 +367,7 @@ the same goal can still run in parallel when scopes permit.
 All adapters should save compact run history under:
 
 ```text
-~/.codex/goal-harness/goals/<goal-id>/runs/index.jsonl
+~/.codex/loopx/goals/<goal-id>/runs/index.jsonl
 ```
 
 This gives the app, CLI, heartbeats, and future UI one place to inspect goal
@@ -376,10 +376,10 @@ history.
 Project-local registries should also sync into the shared global registry:
 
 ```text
-~/.codex/goal-harness/registry.global.json
+~/.codex/loopx/registry.global.json
 ```
 
-`goal-harness connect` and `goal-harness refresh-state` do this automatically.
+`loopx connect` and `loopx refresh-state` do this automatically.
 The global registry is local-private because it contains project paths, but it
 strips raw authority-source details and keeps only enough information for
 multi-project status. If a command is run outside any project registry, Goal
@@ -388,7 +388,7 @@ Harness falls back to the global registry when it exists.
 Use the explicit sync command only for diagnosis or recovery:
 
 ```bash
-goal-harness sync-global
+loopx sync-global
 ```
 
 If a controller updates `ACTIVE_GOAL_STATE.md`, a progress ledger, or an
@@ -397,7 +397,7 @@ state-only refresh run so status and dashboards do not keep showing the older
 adapter run:
 
 ```bash
-goal-harness refresh-state --goal-id project-goal
+loopx refresh-state --goal-id project-goal
 ```
 
 The command reads the registered state file, writes a private JSON/Markdown
@@ -414,7 +414,7 @@ artifact, add explicit delivery hints so handoff readiness does not have to
 infer scale from a classification name:
 
 ```bash
-goal-harness refresh-state \
+loopx refresh-state \
   --goal-id project-goal \
   --classification dashboard_home_browser_smoke_regression \
   --delivery-batch-scale multi_surface \
@@ -441,7 +441,7 @@ For a newly connected read-only project, append a generic map run before
 building a custom adapter:
 
 ```bash
-goal-harness read-only-map --goal-id project-goal
+loopx read-only-map --goal-id project-goal
 ```
 
 The command accepts goals whose adapter kind is `read_only_project_map_v0` or a
@@ -462,7 +462,7 @@ Record the operator's answer as a durable gate decision before treating the
 handoff as approved:
 
 ```bash
-goal-harness operator-gate \
+loopx operator-gate \
   --goal-id project-goal \
   --decision approve \
   --reason-summary "同意先执行 read-only map opt-in" \
@@ -480,7 +480,7 @@ After approval, use the minimal handoff form when the only remaining action is
 to relay the target project-agent instruction:
 
 ```bash
-goal-harness review-packet --goal-id project-goal --handoff-only
+loopx review-packet --goal-id project-goal --handoff-only
 ```
 
 This is still read-only packaging. It strips the human decision wrapper from
@@ -493,7 +493,7 @@ If a runtime directory belongs to an old goal that is no longer in the registry,
 preview archive cleanup before changing anything:
 
 ```bash
-goal-harness archive-runtime --goal-id old-experiment-goal
+loopx archive-runtime --goal-id old-experiment-goal
 ```
 
 The command defaults to dry-run. After review, pass `--execute` to move the
@@ -507,7 +507,7 @@ When an operator judges a run, append a compact reward overlay instead of
 editing the run JSON by hand:
 
 ```bash
-goal-harness reward \
+loopx reward \
   --goal-id project-goal \
   --decision continue_route \
   --reward positive \
@@ -518,16 +518,16 @@ goal-harness reward \
 By default the command attaches feedback to the latest compact run for the
 goal. Pass `--run-generated-at <timestamp>` to target an older run. The writer
 appends a JSONL overlay to the same `index.jsonl`; it does not mutate private
-run payloads. `goal-harness status` exports only the compact `human_reward`
+run payloads. `loopx status` exports only the compact `human_reward`
 fields, so raw evidence should stay in private artifacts.
 
-`goal-harness reward --dry-run` and the real append response both include two
+`loopx reward --dry-run` and the real append response both include two
 coordination fields:
 
 - `active_state_summary`: a short Chinese summary Codex can copy into the
   active goal state after the operator judgment is recorded.
 - `project_agent_visibility`: the standard way another project agent should
-  find the reward, including the `goal-harness history --goal-id ... --limit 3`
+  find the reward, including the `loopx history --goal-id ... --limit 3`
   command.
 
 The run-bound `human_reward` overlay remains the source of truth. Active state
@@ -542,7 +542,7 @@ When the operator has explicitly approved recording the reward, Codex can close
 the durable loop in one CLI call:
 
 ```bash
-goal-harness reward \
+loopx reward \
   --goal-id project-goal \
   --decision continue_route \
   --reward positive \
@@ -558,15 +558,15 @@ the command records only the run-bound reward overlay.
 
 ## First-Screen Status
 
-Use `goal-harness status` as the entrypoint for the next controller tick or UI
+Use `loopx status` as the entrypoint for the next controller tick or UI
 refresh:
 
 ```bash
-goal-harness --format json status
-goal-harness status --scan-path README.md --scan-path docs/
+loopx --format json status
+loopx status --scan-path README.md --scan-path docs/
 ```
 
-The default contract scan uses the Goal Harness install root, so running status
+The default contract scan uses the LoopX install root, so running status
 from a private project directory does not accidentally scan local `.local`
 state. Pass `--scan-root` or `--scan-path` for a project only when that path is
 intended to be public-safe.
@@ -574,7 +574,7 @@ intended to be public-safe.
 For the React dashboard, serve that same status contract over loopback HTTP:
 
 ```bash
-goal-harness serve-status --global-registry --port 8766 --limit 80
+loopx serve-status --global-registry --port 8766 --limit 80
 ```
 
 Then load `http://127.0.0.1:8766/status.json` from the dashboard source
@@ -594,7 +594,7 @@ status server with `--enable-reward-write-api` to expose `POST /reward/append`
 on loopback only. The dashboard can then submit the dry-run `preview_id`; a
 successful append writes one run-bound `human_reward` overlay and refreshes
 status, so future project agents can discover the feedback through
-`goal-harness status` or `goal-harness history`.
+`loopx status` or `loopx history`.
 
 The status command combines contract health and run history into an attention
 queue. Each queue item says which goal needs attention, who it is waiting on,
@@ -623,5 +623,5 @@ Keep in the project repo:
 - private registry,
 - domain-specific health checks.
 
-This split lets many local projects share one stable Goal Harness base while
+This split lets many local projects share one stable LoopX base while
 keeping their real evidence and safety policies local.

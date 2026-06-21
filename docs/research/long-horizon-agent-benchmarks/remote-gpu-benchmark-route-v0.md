@@ -28,7 +28,7 @@ after confirming the environment variables are present.
 
 ## Why This Route Helps
 
-The local `goal-harness-bench` Colima profile currently has 4 CPUs, 8 GiB
+The local `loopx-bench` Colima profile currently has 4 CPUs, 8 GiB
 memory, and 30 GiB virtual disk; `rust-c-compiler` declares 4 CPUs, 16 GiB
 memory, and 20 GiB storage. A remote GPU development host is likely to have
 more CPU, memory, storage, Docker/NVIDIA runtime, and bandwidth for long
@@ -50,7 +50,7 @@ Never sync these paths or values to the remote host:
 - OpenAI/OpenRouter/API keys
 - `.env`, shell histories, private config files, and session logs
 - SSH private keys
-- Goal Harness runtime history under `~/.codex/goal-harness/`
+- LoopX runtime history under `~/.codex/loopx/`
 - raw benchmark trajectories, screenshots, hidden refs, or task solution/test
   bodies
 
@@ -81,7 +81,7 @@ Prefer a clean public source sync over copying the live local runtime:
 Option A: clone/pull the public repository on the remote host.
 
 ```bash
-git clone https://github.com/huangruiteng/goal-harness "$REMOTE_WORK/goal-harness"
+git clone https://github.com/huangruiteng/loopx "$REMOTE_WORK/loopx"
 ```
 
 Option B: rsync the local checkout with an allowlist-style exclude set.
@@ -89,7 +89,7 @@ Option B: rsync the local checkout with an allowlist-style exclude set.
 ```bash
 rsync -az --delete \
   --exclude '.git/' \
-  --exclude '.goal-harness/' \
+  --exclude '.loopx/' \
   --exclude '.local/' \
   --exclude '.env' \
   --exclude '.env.*' \
@@ -97,22 +97,22 @@ rsync -az --delete \
   --exclude '*.pyc' \
   --exclude 'node_modules/' \
   --exclude '.venv/' \
-  ./ "$REMOTE_WORK/goal-harness/"
+  ./ "$REMOTE_WORK/loopx/"
 ```
 
-Do not sync `~/.codex`, local Goal Harness global registry, local active goal
+Do not sync `~/.codex`, local LoopX global registry, local active goal
 runtime, or local benchmark run artifacts.
 
-On the remote host, install Goal Harness into the isolated workspace rather
+On the remote host, install LoopX into the isolated workspace rather
 than a shared home-level release:
 
 ```bash
-cd "$REMOTE_WORK/goal-harness"
-GOAL_HARNESS_BIN_DIR="$REMOTE_WORK/bin" \
-GOAL_HARNESS_RELEASES_DIR="$REMOTE_WORK/releases" \
-GOAL_HARNESS_INSTALL_SKILL=0 \
-GOAL_HARNESS_INSTALL_CANARY=0 \
-GOAL_HARNESS_SHELL_PROFILE=/dev/null \
+cd "$REMOTE_WORK/loopx"
+LOOPX_BIN_DIR="$REMOTE_WORK/bin" \
+LOOPX_RELEASES_DIR="$REMOTE_WORK/releases" \
+LOOPX_INSTALL_SKILL=0 \
+LOOPX_INSTALL_CANARY=0 \
+LOOPX_SHELL_PROFILE=/dev/null \
 CODEX_HOME="$REMOTE_WORK/codex-empty" \
 ./scripts/install-local.sh
 ```
@@ -143,7 +143,7 @@ workloads.
 Do not run a real benchmark remotely until all are true:
 
 - remote workspace is isolated and synced without credentials;
-- Goal Harness CLI runs remotely from the isolated release path;
+- LoopX CLI runs remotely from the isolated release path;
 - Docker/provider capacity satisfies the selected benchmark envelope;
 - no-upload/no-leaderboard command boundary is documented;
 - Codex credential strategy is explicit and approved;

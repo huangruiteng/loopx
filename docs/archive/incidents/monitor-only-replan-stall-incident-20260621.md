@@ -2,7 +2,7 @@
 
 Date: 2026-06-21
 
-Audience: Goal Harness maintainers, heartbeat prompt generator owners,
+Audience: LoopX maintainers, heartbeat prompt generator owners,
 status/quota owners, self-repair skill owners, and side-agent controller
 authors.
 
@@ -67,7 +67,7 @@ control plane made the real next step obvious.
    silently, write a concrete blocker, or supersede the monitor with a runnable
    route.
 
-5. **Agent behavior was the near cause, but Goal Harness carried the product
+5. **Agent behavior was the near cause, but LoopX carried the product
    responsibility.** A stronger agent could have stopped earlier or written a
    blocker. A stronger control plane should make the correct behavior easier
    than the wrong one.
@@ -95,7 +95,7 @@ next turn should not spend another delivery slot on the same loop.
 
 ## Desired Semantics
 
-Goal Harness should separate three states that look similar in prose but have
+LoopX should separate three states that look similar in prose but have
 different execution meaning:
 
 | State | User Channel | Agent Channel | Expected Writeback |

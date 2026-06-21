@@ -20,7 +20,7 @@ PRIVATE_MARKERS = tuple(
         ("internal", "-api-drive"),
         ("bytedance.com", "/wiki"),
         ("/", "Users/"),
-        (".codex", "/goal-harness"),
+        (".codex", "/loopx"),
         ("BEGIN", " PRIVATE ", "KEY"),
         ("Author", "ization:"),
         ("to", "ken="),
@@ -32,7 +32,7 @@ PRIVATE_MARKERS = tuple(
 def main() -> int:
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
     cases = catalog["cases"]
-    with tempfile.TemporaryDirectory(prefix="goal-harness-showcase-frontstage-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-showcase-frontstage-") as tmp:
         output = Path(tmp) / "frontstage.html"
         result = subprocess.run(
             [sys.executable, str(PROTOTYPE), "--output", str(output)],

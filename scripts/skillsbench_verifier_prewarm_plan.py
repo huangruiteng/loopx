@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_adapters.skillsbench import (  # noqa: E402
+from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
     SKILLSBENCH_DEFAULT_DATASET,
     build_skillsbench_verifier_dependency_prewarm_plan,
 )

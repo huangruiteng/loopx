@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_OUTPUT = "~/goal-harness-bench/harbor-agent-tools"
+DEFAULT_OUTPUT = "~/loopx-bench/harbor-agent-tools"
 CODEX_VENDOR_CANDIDATES = (
     "/usr/local/lib/node_modules/@openai/codex/node_modules/"
     "@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",

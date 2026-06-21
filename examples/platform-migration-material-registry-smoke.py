@@ -28,7 +28,7 @@ def write_platform_migration_fixture(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / "docs" / "meta").mkdir(parents=True, exist_ok=True)
@@ -157,7 +157,7 @@ def run_cli(root: Path, registry_path: Path, *args: str) -> subprocess.Completed
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -252,7 +252,7 @@ def assert_no_evidence_handoff_readiness(readiness: dict[str, object]) -> None:
     assert readiness["handoff_status"] == "ready_waiting_for_run", readiness
     assert readiness["post_handoff_run_seen"] is False, readiness
     assert "post_handoff_latest_run" not in readiness, readiness
-    assert readiness["next_probe"] == f"goal-harness review-packet --goal-id {GOAL_ID} --handoff-only", readiness
+    assert readiness["next_probe"] == f"loopx review-packet --goal-id {GOAL_ID} --handoff-only", readiness
     checks = readiness["checks"]
     assert checks["project_asset_backed"] is True, readiness
     assert checks["same_source_should_run"] is True, readiness
@@ -279,7 +279,7 @@ def assert_status_markdown_no_evidence_projection(status_markdown: str) -> None:
             "handoff_has_stop_condition,handoff_sanitized_surface fail=-"
         ),
         "handoff_state: status=ready_waiting_for_run post_handoff_run_seen=False",
-        f"handoff_probe: `goal-harness review-packet --goal-id {GOAL_ID} --handoff-only`",
+        f"handoff_probe: `loopx review-packet --goal-id {GOAL_ID} --handoff-only`",
         "authority_material: entries=0/3 topics=3 materials=6 repositories=2",
         "owner_review_required=1 stale=1 current_authority=1 risk=medium",
     ]
@@ -306,7 +306,7 @@ def assert_handoff_only_no_evidence_projection(handoff: str) -> None:
     assert handoff.startswith(f"目标校验：本段只适用于 goal_id=`{GOAL_ID}`"), handoff
     assert len(handoff.splitlines()) == 16, handoff
     assert len(handoff) <= 900, handoff
-    assert "【Goal Harness Review Packet】" not in handoff, handoff
+    assert "【LoopX Review Packet】" not in handoff, handoff
     assert "【人只需判断】" not in handoff, handoff
     assert "【用户本地 Gate 记录草稿】" not in handoff, handoff
     expected_lines = [
@@ -336,7 +336,7 @@ def assert_handoff_only_json_projection(payload: dict[str, object]) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-platform-migration-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-platform-migration-") as tmp:
         root = Path(tmp)
         registry_path = write_platform_migration_fixture(root)
         state_text = (registry_path.parent.parent / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md").read_text(
@@ -421,7 +421,7 @@ def main() -> int:
         assert "ready; codex_ready True; source project_asset; quota eligible" in html, html
         assert "<b>Failed checks</b> none" in html, html
         assert "<b>Handoff state</b> status ready_waiting_for_run; post_handoff_run_seen False" in html, html
-        assert f"<b>Probe</b> goal-harness review-packet --goal-id {GOAL_ID} --handoff-only" in html, html
+        assert f"<b>Probe</b> loopx review-packet --goal-id {GOAL_ID} --handoff-only" in html, html
         assert_public_safe(html)
 
     print("platform-migration-material-registry-smoke ok")

@@ -3,7 +3,7 @@
 Date: 2026-06-12
 
 Purpose: decide whether SWE-Marathon is a plausible next long-horizon
-benchmark lane for Goal Harness after the Agents' Last Exam local/non-GCP
+benchmark lane for LoopX after the Agents' Last Exam local/non-GCP
 route was paused.
 
 This note is a setup-readiness scan only. It does not execute any benchmark
@@ -41,14 +41,14 @@ model behind another harness.
 SWE-Marathon is the strongest next candidate among the scanned benchmarks, but
 the next safe step is still a runner preflight, not a scored run.
 
-Reasons it fits Goal Harness:
+Reasons it fits LoopX:
 
 - Horizon is real: task metadata spans roughly 4 to 400 expert-hours, and
   agent timeouts range from 2 hours to 10 hours for many tasks.
 - Scoring is concrete: task verifiers write reward artifacts, and the
   contributor guide requires binary `reward.txt` plus normalized
   `metrics.json.partial_score` for partial diagnostics.
-- Failure attribution is rich enough for Goal Harness: tasks encode verifier
+- Failure attribution is rich enough for LoopX: tasks encode verifier
   timeouts, agent timeouts, resource requirements, network policy, CUA stages,
   and metadata explanations.
 - Codex is a first-class runner target in the Harbor fork's review guide and
@@ -60,11 +60,11 @@ Current blockers before a useful run:
 - The official path requires the RishiDesai Harbor fork, so stock Harbor parity
   is not enough.
 - CUA-stage tasks require Anthropic-backed verifier judging. Those are not good
-  first pilots for a local Codex-only Goal Harness comparison.
+  first pilots for a local Codex-only LoopX comparison.
 - GPU tasks require T4, A100, or H100 resources. Those should be deferred until
   the CPU shell-only path is proven.
 - Logs are public-bucket based but the README says to message for S3
-  credentials. Goal Harness should not depend on those logs for the first
+  credentials. LoopX should not depend on those logs for the first
   reproducible local lane.
 
 ## Runner Surface
@@ -98,7 +98,7 @@ and lists these relevant knobs:
 
 The fork's agent tools layer installs `@openai/codex@latest` inside hosted
 agent environments, which means the benchmark expects a Codex CLI-like
-surface. The local Goal Harness route should still prefer the already
+surface. The local LoopX route should still prefer the already
 authorized host Codex CLI and prove the exact command/config bridge before any
 model run.
 
@@ -166,13 +166,13 @@ Defer for first run:
   `biofabric-rust-rewrite` until runner, writeback, and cost controls are
   proven.
 
-## Goal Harness Experiment Shape
+## LoopX Experiment Shape
 
 First real experiment should be a local/no-upload paired pilot:
 
 1. Hardened Codex baseline: Harbor `codex` agent, same task and model, with
-   Goal Harness only observing runner-side compact artifacts.
-2. Goal Harness treatment: same Codex model and task, but with Goal Harness
+   LoopX only observing runner-side compact artifacts.
+2. LoopX treatment: same Codex model and task, but with LoopX
    access packet, todo/status/history/check commands, compact writeback, and
    explicit interruption/recovery evidence.
 3. Compare official task reward separately from control-plane score. Do not

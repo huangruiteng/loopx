@@ -15,9 +15,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import build_benchmark_learning_ledger  # noqa: E402
-from goal_harness.review_packet import build_review_packet  # noqa: E402
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.benchmark import build_benchmark_learning_ledger  # noqa: E402
+from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 GOAL_ID = "benchmark-learning-ledger-fixture"
@@ -41,7 +41,7 @@ def comparison(
         "comparison_id": comparison_id,
         "benchmark_id": "terminal-bench@2.0",
         "baseline_scenario_id": "hardened-codex",
-        "treatment_scenario_id": "codex-goal-harness",
+        "treatment_scenario_id": "codex-loopx",
         "official_task_score_delta": delta,
         "control_plane_score_delta": 0.0,
         "claim_boundary": {
@@ -80,7 +80,7 @@ def benchmark_run(
             "value": score,
             "passed": score >= 1,
         },
-        "worker_goal_harness_cli_call_total": worker_calls,
+        "worker_loopx_cli_call_total": worker_calls,
         "worker_benchmark_run_schema_ok_count": 1 if worker_calls else 0,
         "failure_attribution_labels": failure_labels or [],
         "active_user_observation": {
@@ -107,7 +107,7 @@ def test_startup_failure_routes_to_adapter_contract() -> None:
         benchmark_runs=[
             benchmark_run("hardened-codex", 1.0),
             benchmark_run(
-                "codex-goal-harness",
+                "codex-loopx",
                 0.0,
                 first_blocker="pre_worker_agent_setup_failed",
                 failure_labels=["treatment_pre_worker_agent_setup_failed"],
@@ -116,7 +116,7 @@ def test_startup_failure_routes_to_adapter_contract() -> None:
     )
 
     assert payload["schema_version"] == "benchmark_learning_ledger_v0", payload
-    assert payload["learning_status"] == "generic_goal_harness_repair_or_attribution_required", payload
+    assert payload["learning_status"] == "generic_loopx_repair_or_attribution_required", payload
     assert "adapter_startup_argument_contract" in payload["repair_candidates"], payload
     assert payload["learning_quota_gate"]["spend_allowed"] is True, payload
     assert payload["routing"]["new_candidate_allowed"] is False, payload
@@ -134,7 +134,7 @@ def test_environment_setup_failure_routes_to_benchmark_environment_contract() ->
         benchmark_runs=[
             benchmark_run("hardened-codex", 0.0),
             benchmark_run(
-                "codex-goal-harness",
+                "codex-loopx",
                 0.0,
                 first_blocker="environment_setup_failed_before_worker",
                 failure_labels=["environment_setup_failed_before_worker"],
@@ -143,7 +143,7 @@ def test_environment_setup_failure_routes_to_benchmark_environment_contract() ->
     )
 
     assert payload["schema_version"] == "benchmark_learning_ledger_v0", payload
-    assert payload["learning_status"] == "generic_goal_harness_repair_or_attribution_required", payload
+    assert payload["learning_status"] == "generic_loopx_repair_or_attribution_required", payload
     assert "benchmark_environment_setup_contract" in payload["repair_candidates"], payload
     assert "adapter_startup_argument_contract" not in payload["repair_candidates"], payload
     assert payload["learning_quota_gate"]["spend_allowed"] is True, payload
@@ -165,7 +165,7 @@ def test_materialization_blocker_is_countable_but_not_repeatable() -> None:
         ),
         benchmark_runs=[
             benchmark_run(
-                "codex-goal-harness",
+                "codex-loopx",
                 0.0,
                 first_blocker="runner_compact_result_missing",
                 failure_labels=["runner_compact_result_missing"],
@@ -185,7 +185,7 @@ def test_extra_cost_without_gain_routes_to_overhead_guard() -> None:
         comparison(0.0, comparison_id="costly-no-gain", cost_delta_usd=1.25),
         benchmark_runs=[
             benchmark_run("hardened-codex", 1.0),
-            benchmark_run("codex-goal-harness", 1.0, worker_calls=3),
+            benchmark_run("codex-loopx", 1.0, worker_calls=3),
         ],
     )
 
@@ -206,7 +206,7 @@ def test_no_learning_signal_blocks_learning_spend() -> None:
         comparison(0.0, comparison_id="no-gh-signal"),
         benchmark_runs=[
             benchmark_run("hardened-codex", 1.0),
-            benchmark_run("codex-goal-harness", 1.0),
+            benchmark_run("codex-loopx", 1.0),
         ],
     )
 
@@ -214,7 +214,7 @@ def test_no_learning_signal_blocks_learning_spend() -> None:
     assert payload["learning_quota_gate"]["spend_allowed"] is False, payload
     assert (
         payload["learning_quota_gate"]["blocked_reason"]
-        == "compact_result_has_no_goal_harness_learning_signal"
+        == "compact_result_has_no_loopx_learning_signal"
     ), payload
     assert payload["routing"]["repeat_allowed"] is False, payload
     assert payload["routing"]["new_candidate_allowed"] is False, payload
@@ -241,7 +241,7 @@ def test_cli_learning_ledger() -> None:
         treatment_path.write_text(
             json.dumps(
                 benchmark_run(
-                    "codex-goal-harness",
+                    "codex-loopx",
                     0.0,
                     first_blocker="pre_worker_agent_setup_failed",
                     failure_labels=["treatment_pre_worker_agent_setup_failed"],
@@ -254,7 +254,7 @@ def test_cli_learning_ledger() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -290,13 +290,13 @@ def test_cli_require_actionable_learning_blocks_no_signal() -> None:
             encoding="utf-8",
         )
         baseline_path.write_text(json.dumps(benchmark_run("hardened-codex", 1.0)), encoding="utf-8")
-        treatment_path.write_text(json.dumps(benchmark_run("codex-goal-harness", 1.0)), encoding="utf-8")
+        treatment_path.write_text(json.dumps(benchmark_run("codex-loopx", 1.0)), encoding="utf-8")
 
         result = subprocess.run(
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",
@@ -318,7 +318,7 @@ def test_cli_require_actionable_learning_blocks_no_signal() -> None:
         assert result.returncode == 1, result.stdout
         assert payload["ok"] is False, payload
         assert payload["learning_quota_gate"]["spend_allowed"] is False, payload
-        assert payload["error"] == "compact_result_has_no_goal_harness_learning_signal", payload
+        assert payload["error"] == "compact_result_has_no_loopx_learning_signal", payload
         assert str(root) not in result.stdout, result.stdout
 
 
@@ -326,7 +326,7 @@ def write_append_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     ledger_path = root / "benchmark_learning_ledger.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
@@ -372,7 +372,7 @@ def write_append_fixture(root: Path) -> tuple[Path, Path, Path]:
         benchmark_runs=[
             benchmark_run("hardened-codex", 1.0),
             benchmark_run(
-                "codex-goal-harness",
+                "codex-loopx",
                 0.0,
                 first_blocker="pre_worker_agent_setup_failed",
                 failure_labels=["treatment_pre_worker_agent_setup_failed"],
@@ -426,7 +426,7 @@ def test_cli_append_learning_ledger_to_history() -> None:
         ]
 
         dry_run = subprocess.run(
-            [sys.executable, "-m", "goal_harness.cli", *args],
+            [sys.executable, "-m", "loopx.cli", *args],
             cwd=REPO_ROOT,
             check=True,
             text=True,
@@ -440,7 +440,7 @@ def test_cli_append_learning_ledger_to_history() -> None:
         assert_no_private_surface(dry_payload["benchmark_learning_ledger"])
 
         appended = subprocess.run(
-            [sys.executable, "-m", "goal_harness.cli", *args, "--execute"],
+            [sys.executable, "-m", "loopx.cli", *args, "--execute"],
             cwd=REPO_ROOT,
             check=True,
             text=True,
@@ -476,7 +476,7 @@ def test_cli_append_learning_ledger_to_history() -> None:
         )
         summary = ledger_run["benchmark_learning_ledger_summary"]
         assert summary["schema_version"] == "benchmark_learning_ledger_v0", summary
-        assert summary["learning_status"] == "generic_goal_harness_repair_or_attribution_required", summary
+        assert summary["learning_status"] == "generic_loopx_repair_or_attribution_required", summary
         assert "adapter_startup_argument_contract" in summary["repair_candidates"], summary
         assert summary["learning_quota_gate"]["spend_allowed"] is True, summary
         assert summary["routing"]["new_candidate_allowed"] is False, summary
@@ -488,7 +488,7 @@ def test_cli_append_learning_ledger_to_history() -> None:
 
         packet = build_review_packet(status, goal_id=GOAL_ID)
         handoff = packet["project_agent_handoff"]
-        assert "learning=generic_goal_harness_repair_or_attribution_required" in handoff, handoff
+        assert "learning=generic_loopx_repair_or_attribution_required" in handoff, handoff
         assert "repair=adapter_startup_argument_contract" in handoff, handoff
         assert "next=repair_or_validate_adapter_startup_argument_contract" in handoff, handoff
         assert_no_private_surface({"handoff": handoff})

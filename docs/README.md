@@ -1,4 +1,4 @@
-# Goal Harness Documentation
+# LoopX Documentation
 
 This directory is intentionally split by audience. New contributors should be
 able to find the stable product contracts without reading every research note,

@@ -16,12 +16,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.rollout_event_log import (  # noqa: E402
+from loopx.rollout_event_log import (  # noqa: E402
     append_rollout_event,
     build_rollout_event,
     rollout_event_log_path,
 )
-from goal_harness.benchmark_core import (  # noqa: E402
+from loopx.benchmark_core import (  # noqa: E402
     build_benchmark_observable_handle_policy,
 )
 
@@ -337,13 +337,13 @@ def main() -> int:
     parser.add_argument(
         "--record-rollout-event",
         action="store_true",
-        help="Append a public-safe benchmark_status event to the Goal Harness rollout log.",
+        help="Append a public-safe benchmark_status event to the LoopX rollout log.",
     )
     parser.add_argument("--goal-id", help="Goal id for --record-rollout-event.")
     parser.add_argument(
         "--runtime-root",
-        default=str(Path.home() / ".codex" / "goal-harness"),
-        help="Goal Harness runtime root for --record-rollout-event.",
+        default=str(Path.home() / ".codex" / "loopx"),
+        help="LoopX runtime root for --record-rollout-event.",
     )
     parser.add_argument("--agent-id", help="Optional public-safe agent id.")
     parser.add_argument("--todo-id", help="Optional structured todo id.")

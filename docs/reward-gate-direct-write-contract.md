@@ -1,6 +1,6 @@
 # Reward And Gate Direct-Write Contract
 
-Goal Harness has two operator decision writes that must stay distinct:
+LoopX has two operator decision writes that must stay distinct:
 run-bound `human_reward` overlays and `operator_gate` decision runs. Both turn a
 human decision into durable runtime evidence, but neither grants write-control,
 production access, or permission to skip the next state/registry/quota read.
@@ -50,7 +50,7 @@ permission, or permission to skip a fresh registry/state/quota read.
 ## Human Reward
 
 `human_reward` judges one exact run or route outcome. The canonical writer is
-`goal-harness reward`; local dashboards may validate the same compact payload via
+`loopx reward`; local dashboards may validate the same compact payload via
 `POST /reward/dry-run`.
 
 Browser append is allowed only when all of these are true:
@@ -67,7 +67,7 @@ may carry a summary, but the run overlay remains the durable source of truth.
 ## Operator Gate
 
 `operator_gate` answers whether a gated handoff or command may proceed. The
-canonical writer is `goal-harness operator-gate`. The review packet may show a
+canonical writer is `loopx operator-gate`. The review packet may show a
 local `operator_gate_dry_run_command`, but that command belongs to the operator
 or controller, not to the target project agent.
 

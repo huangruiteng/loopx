@@ -3,12 +3,12 @@
 This benchmark design extends the long-run regression runner from a control-plane
 contract smoke into a capability and coordination comparison. The current runner
 proves isolated state, Goal Tick rows, writeback, and quota accounting. This
-design defines the next task family and the with/without Goal Harness metrics.
+design defines the next task family and the with/without LoopX metrics.
 
 ## Current Regression Coverage
 
 - `codex-cli-long-run-regression-runner-smoke.py` is a deterministic shim by
-  default. It runs three isolated Goal Harness worker steps, validates one
+  default. It runs three isolated LoopX worker steps, validates one
   artifact per step, writes durable run events, and spends exactly once after
   validation/writeback.
 - `--worker-mode real-codex` is opt-in. It invokes `codex exec` inside an
@@ -57,10 +57,10 @@ bounded implementation, state hygiene, validation, and safety boundaries.
 
 ## A/B Modes
 
-### With Goal Harness
+### With LoopX
 
 The runner creates an isolated registry/runtime/active-state fixture and gives
-Codex only a short wakeup prompt plus the Goal Harness CLI. The worker must:
+Codex only a short wakeup prompt plus the LoopX CLI. The worker must:
 
 - run `quota should-run` before work;
 - use the project asset or review packet as the current task packet;
@@ -70,33 +70,33 @@ Codex only a short wakeup prompt plus the Goal Harness CLI. The worker must:
 - call `quota spend-slot` only after validation/writeback;
 - stop with a public-safe blocker row if it cannot continue.
 
-### Without Goal Harness
+### Without LoopX
 
-The runner creates the same project fixture but no Goal Harness registry,
+The runner creates the same project fixture but no LoopX registry,
 runtime, quota, or review packet. Codex runs through its declared goal-mode
 baseline surface and must manage task state with Codex's own goal affordances
-rather than Goal Harness state. The worker may still use normal shell/git/test
+rather than LoopX state. The worker may still use normal shell/git/test
 tools, but the runner records only external observations and produced
 artifacts.
 
 This mode is not a punishment baseline. It measures what Codex can do without a
-Goal Harness durable control plane, so the comparison can show which
-coordination failures Goal Harness actually prevents beyond Codex goal mode.
+LoopX durable control plane, so the comparison can show which
+coordination failures LoopX actually prevents beyond Codex goal mode.
 
 ## Metrics
 
 Every run writes `benchmark_result_v0`. The result has two scoring layers:
 
 - `official_task_score`: the benchmark-native pass/fail, reward, or task score.
-  For local Goal Harness fixtures this is the deterministic validation result;
+  For local LoopX fixtures this is the deterministic validation result;
   for Terminal-Bench or Harbor runs it is the official verifier reward or
   runner result.
-- `control_plane_score`: Goal Harness-specific coordination value, including
+- `control_plane_score`: LoopX-specific coordination value, including
   restartability, stale-state avoidance, evidence discipline, boundary safety,
   writeback quality, policy or gate compliance, failure attribution, and
   overhead.
 
-This split keeps Goal Harness honest. It can improve control-plane reliability
+This split keeps LoopX honest. It can improve control-plane reliability
 before any official leaderboard uplift is claimed, and it prevents a plain
 pass/fail score from hiding whether the worker ignored stale state, read a
 forbidden surface, or failed to leave a restartable trail.
@@ -111,10 +111,10 @@ Core v0 fields:
 
 | Field | Meaning |
 | --- | --- |
-| `scenario_id` | `with_goal_harness` or `without_goal_harness`. |
+| `scenario_id` | `with_loopx` or `without_loopx`. |
 | `task_id` | `mini_control_plane_repair_v0`. |
 | `worker_mode` | `shim`, `fake_real_codex`, or `real_codex`. |
-| `harness_identity` | Harness name, such as `none` or `goal_harness`. |
+| `harness_identity` | Harness name, such as `none` or `loopx`. |
 | `worker_surface` | Execution surface, such as Codex CLI, fake worker, or deterministic shim. |
 | `codex_goal_mode_enabled` | Whether the baseline/treatment declares Codex goal mode as the worker surface. |
 | `terminal_state` | `success`, `public_safe_blocker`, or `failure`. |
@@ -168,7 +168,7 @@ constraints, not as a reason to add every benchmark at once:
 - SWE-Marathon is a later heavy SWE lane because hours-to-days tasks and runner
   boundaries are more expensive.
 - LongCLI-Bench contributes step-level stall, fail-to-pass, pass-to-pass, and
-  human-guidance measurements for local Goal Harness fixtures.
+  human-guidance measurements for local LoopX fixtures.
 - WildClawBench motivates evaluating the model and harness as a pair, including
   `harness_identity`, `trace_publicness`, and side-effect audit fields.
 - HORIZON-style reports motivate richer failure attribution instead of only
@@ -178,7 +178,7 @@ constraints, not as a reason to add every benchmark at once:
   queues, audit records, and executable policy cases.
 
 The near-term priority is not to run more benchmarks horizontally. It is to
-prove the Goal Harness control-plane increment on small public fixtures, then
+prove the LoopX control-plane increment on small public fixtures, then
 carry the same metrics into official runner probes.
 
 ## Interrupt Variant
@@ -210,8 +210,8 @@ The first useful report should answer:
 - Which mode produced fewer forbidden/private-surface touches?
 - Which mode spent only after validation and writeback?
 - Which mode left a better restart surface after deleting the worker process?
-- How much overhead did Goal Harness add in steps and wall time?
-- Did Goal Harness improve `control_plane_score` even when
+- How much overhead did LoopX add in steps and wall time?
+- Did LoopX improve `control_plane_score` even when
   `official_task_score` was unchanged?
 - Which first failed phase or stall step explains the outcome?
 
@@ -238,12 +238,12 @@ python3 examples/codex-cli-long-run-benchmark-smoke.py
 ```
 
 It generates the same `mini_control_plane_repair_v0` fixture for
-`with_goal_harness` and `without_goal_harness`, runs deterministic workers by
+`with_loopx` and `without_loopx`, runs deterministic workers by
 default, and emits `benchmark_result_v0` for both scenarios plus a
 `benchmark_comparison_v0` summary. The with-harness path records Goal Tick
 phase coverage, refresh-state writebacks, and quota spend after validation. The
 without-harness path performs the same public fixture repairs as a Codex
-goal-mode baseline without Goal Harness quota/writeback surfaces, giving the
+goal-mode baseline without LoopX quota/writeback surfaces, giving the
 comparison a real A/B baseline while keeping CI deterministic.
 
 The current smoke emits the core v0 score layers. Both scenarios can reach the

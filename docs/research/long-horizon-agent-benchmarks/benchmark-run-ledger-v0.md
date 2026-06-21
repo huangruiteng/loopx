@@ -4,7 +4,7 @@
 evidence. It answers four questions without reading raw benchmark artifacts:
 
 - which benchmark cases have been run;
-- which arm ran (`codex_goal_mode_baseline`, `codex_goal_harness_treatment`,
+- which arm ran (`codex_goal_mode_baseline`, `codex_loopx_treatment`,
   calibration baselines, or another benchmark adapter arm);
 - what compact score/failure class was recorded;
 - where the compact run artifact and local private run root can be found.
@@ -34,15 +34,15 @@ view is for humans; the JSON is the source of truth.
 Every completed benchmark case ingest should upsert one run row:
 
 ```bash
-PYTHONPATH=<goal-harness-repo> python3 -m goal_harness.cli \
+PYTHONPATH=<loopx-repo> python3 -m loopx.cli \
   benchmark run terminal-bench \
-  --goal-id goal-harness-meta \
+  --goal-id loopx-meta \
   --harbor-job-dir <private-job-dir> \
   --update-run-ledger \
   --execute
 ```
 
-The command appends the compact run to Goal Harness history and updates the
+The command appends the compact run to LoopX history and updates the
 ledger in the same operator action. Dry-runs preview the ledger row but do not
 write it.
 
@@ -51,7 +51,7 @@ history or a benchmark adapter closeout artifact, upsert the ledger without
 reopening raw runner artifacts:
 
 ```bash
-PYTHONPATH=<goal-harness-repo> python3 -m goal_harness.cli \
+PYTHONPATH=<loopx-repo> python3 -m loopx.cli \
   benchmark run-ledger-upsert \
   --benchmark-run-json <compact-benchmark-run-v0.json> \
   --run-group-id <stable-run-group-id> \
@@ -62,9 +62,9 @@ Closeout agents should also run the compact drift check before deciding a case
 is fully recorded:
 
 ```bash
-PYTHONPATH=<goal-harness-repo> python3 -m goal_harness.cli \
+PYTHONPATH=<loopx-repo> python3 -m loopx.cli \
   benchmark run-ledger-check \
-  --goal-id goal-harness-meta \
+  --goal-id loopx-meta \
   --history-limit 500
 ```
 
@@ -81,7 +81,7 @@ has produced a terminal compact failure marker, upsert that marker directly
 instead of faking an official score:
 
 ```bash
-PYTHONPATH=<goal-harness-repo> python3 -m goal_harness.cli \
+PYTHONPATH=<loopx-repo> python3 -m loopx.cli \
   benchmark run-ledger-upsert \
   --post-launch-json <terminal-bench-post-launch-compact-json> \
   --run-group-id <stable-run-group-id> \
@@ -105,9 +105,9 @@ SkillsBench uses the same compact ledger route. The no-run adapter skeleton is
 available for route inspection:
 
 ```bash
-PYTHONPATH=<goal-harness-repo> python3 -m goal_harness.cli \
+PYTHONPATH=<loopx-repo> python3 -m loopx.cli \
   benchmark run skillsbench \
-  --goal-id goal-harness-meta \
+  --goal-id loopx-meta \
   --skillsbench-route codex-goal-mode-baseline \
   --include-task-name citation-check
 ```
@@ -116,7 +116,7 @@ This command is not case evidence: it does not run BenchFlow, Docker, Codex, a
 model API, or leaderboard upload. Real SkillsBench runner closeout should write
 or provide a compact `benchmark_run_v0`, then call `benchmark run-ledger-upsert`.
 The ledger infers route arms such as `codex_goal_mode_baseline`,
-`goal_harness_automation_loop_treatment`, and `curated_skills_baseline` from
+`loopx_automation_loop_treatment`, and `curated_skills_baseline` from
 compact run modes.
 
 ## Schema
@@ -135,7 +135,7 @@ Each run row records:
 - `run_group_id`, `arm_id`, `mode`, `job_name`.
 - `status`, `score_status`, `official_score`, `official_passed`.
 - `failure_class`, `failure_scope`, optional `failure_labels`.
-- `goal_harness_inside_case`, `worker_bridge_status`, `agent_model`.
+- `loopx_inside_case`, `worker_bridge_status`, `agent_model`.
 - `artifact_refs`: relative references to compact/private artifacts.
 
 Each case also has `latest_decision`, derived from the current rows:
@@ -165,7 +165,7 @@ older durable signal. Current routing classes include:
 - `timeout_tier_policy_candidate`: repeated solver-timeout signals indicate the
   case needs an explicit timeout tier or continuation-cadence decision before
   another run.
-- `bridge_connected_no_uplift`: the Goal Harness bridge reached the worker, but
+- `bridge_connected_no_uplift`: the LoopX bridge reached the worker, but
   the official score still did not improve; reruns should analyze solution
   quality or case fit rather than treat the route as a bridge repair.
 

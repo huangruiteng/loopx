@@ -11,20 +11,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import build_benchmark_lifecycle_state  # noqa: E402
-from goal_harness.benchmark_adapters.agents_last_exam import (  # noqa: E402
+from loopx.benchmark import build_benchmark_lifecycle_state  # noqa: E402
+from loopx.benchmark_adapters.agents_last_exam import (  # noqa: E402
     AGENTS_LAST_EXAM_CASE_STATE_PATH,
     AGENTS_LAST_EXAM_DEFAULT_DOCKER_IMAGE,
     build_agents_last_exam_local_launch_packet,
     build_agents_last_exam_local_preflight,
 )
-from goal_harness.benchmark_adapters.terminal_bench import (  # noqa: E402
+from loopx.benchmark_adapters.terminal_bench import (  # noqa: E402
     TERMINAL_BENCH_DEFAULT_DATASET,
     TERMINAL_BENCH_DEFAULT_TASK,
     build_terminal_bench_private_runner_launch,
-    build_terminal_bench_goal_harness_access_packet,
+    build_terminal_bench_loopx_access_packet,
 )
-from goal_harness.benchmark_core import (  # noqa: E402
+from loopx.benchmark_core import (  # noqa: E402
     AdapterClassification,
     BenchmarkAdapter,
     BenchmarkRequest,
@@ -150,28 +150,28 @@ def test_benchmark_adapter_modules_own_public_config() -> None:
 def test_benchmark_adapter_modules_own_helper_surfaces() -> None:
     assert (
         build_terminal_bench_private_runner_launch.__module__
-        == "goal_harness.benchmark_adapters.terminal_bench"
+        == "loopx.benchmark_adapters.terminal_bench"
     )
     assert (
-        build_terminal_bench_goal_harness_access_packet.__module__
-        == "goal_harness.benchmark_adapters.terminal_bench"
+        build_terminal_bench_loopx_access_packet.__module__
+        == "loopx.benchmark_adapters.terminal_bench"
     )
     assert (
         build_agents_last_exam_local_preflight.__module__
-        == "goal_harness.benchmark_adapters.agents_last_exam"
+        == "loopx.benchmark_adapters.agents_last_exam"
     )
     assert (
         build_agents_last_exam_local_launch_packet.__module__
-        == "goal_harness.benchmark_adapters.agents_last_exam"
+        == "loopx.benchmark_adapters.agents_last_exam"
     )
-    assert load_json_object.__module__ == "goal_harness.benchmark_core.io"
-    assert optional_float.__module__ == "goal_harness.benchmark_core.io"
+    assert load_json_object.__module__ == "loopx.benchmark_core.io"
+    assert optional_float.__module__ == "loopx.benchmark_core.io"
 
 
 def test_benchmark_facade_has_no_shadowed_top_level_definitions() -> None:
     import ast
 
-    source = (REPO_ROOT / "goal_harness" / "benchmark.py").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "loopx" / "benchmark.py").read_text(encoding="utf-8")
     module = ast.parse(source)
     seen: set[str] = set()
     duplicates: list[str] = []

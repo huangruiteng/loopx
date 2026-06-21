@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_adapters.terminal_bench import (  # noqa: E402
+from loopx.benchmark_adapters.terminal_bench import (  # noqa: E402
     TERMINAL_BENCH_DEFAULT_DATASET,
     TERMINAL_BENCH_DEFAULT_MODEL,
     TERMINAL_BENCH_DEFAULT_TASK,

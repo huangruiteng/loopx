@@ -270,7 +270,7 @@ function waitForBodyText(requiredText, { timeout = 20000 } = {}) {
 
 async function main() {
   assert(existsSync(pwcli), `Playwright CLI wrapper not found at ${pwcli}`);
-  const tempRoot = await mkdtemp(resolve(tmpdir(), "goal-harness-reward-browser-smoke-"));
+  const tempRoot = await mkdtemp(resolve(tmpdir(), "loopx-reward-browser-smoke-"));
   let dashboardServer;
   let statusServer;
   try {
@@ -282,7 +282,7 @@ async function main() {
 
     statusServer = startProcess("python3", [
       "-m",
-      "goal_harness.cli",
+      "loopx.cli",
       "--registry",
       registryPath,
       "--runtime-root",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the first isolated long-run regression shim.
 
-This intentionally uses Goal Harness CLI commands, not Codex CLI, so the
+This intentionally uses LoopX CLI commands, not Codex CLI, so the
 fixture, JSONL log, quota, writeback, and spend contracts can stabilize before a
 real worker process is introduced.
 """
@@ -70,9 +70,9 @@ def iso_now() -> str:
 def write_registry(root: Path) -> tuple[Path, Path, Path]:
     home = root / "home"
     project = root / "project"
-    runtime = home / ".codex" / "goal-harness"
+    runtime = home / ".codex" / "loopx"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -133,7 +133,7 @@ def run_cli(
     command = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(registry_path),
         "--runtime-root",
@@ -173,7 +173,7 @@ def append_progress(project: Path, *, step_index: int, artifact_path: str) -> No
 
 def real_codex_prompt(*, step_index: int, artifact_rel: str, marker: str) -> str:
     return (
-        "You are running a Goal Harness isolated long-run regression step. "
+        "You are running a LoopX isolated long-run regression step. "
         "Use only the current working directory. Do not read session history, "
         "user config, external services, or files outside this fixture. "
         f"Step {step_index}: create or overwrite `{artifact_rel}` with exactly "
@@ -210,11 +210,11 @@ def run_real_codex_worker(
         **os.environ,
         "HOME": str(home),
         "CODEX_HOME": str(home / ".codex"),
-        "GOAL_HARNESS_LONG_RUN_GOAL_ID": GOAL_ID,
-        "GOAL_HARNESS_LONG_RUN_PROJECT": str(project),
-        "GOAL_HARNESS_LONG_RUN_STEP_INDEX": str(step_index),
-        "GOAL_HARNESS_LONG_RUN_ARTIFACT_REL": artifact_rel,
-        "GOAL_HARNESS_LONG_RUN_MARKER": marker,
+        "LOOPX_LONG_RUN_GOAL_ID": GOAL_ID,
+        "LOOPX_LONG_RUN_PROJECT": str(project),
+        "LOOPX_LONG_RUN_STEP_INDEX": str(step_index),
+        "LOOPX_LONG_RUN_ARTIFACT_REL": artifact_rel,
+        "LOOPX_LONG_RUN_MARKER": marker,
     }
     started = time.perf_counter()
     try:
@@ -348,7 +348,7 @@ def assert_public_log(rows: list[dict[str, Any]]) -> None:
 def main() -> int:
     args = parse_args()
     assert 3 <= int(args.step_count) <= 5, args.step_count
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-long-run-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-long-run-") as tmp:
         root = Path(tmp)
         registry_path, project, runtime_root = write_registry(root)
         home = root / "home"

@@ -288,7 +288,7 @@ def reduce_to_benchmark_result(packet: dict[str, Any]) -> dict[str, Any]:
         "task_id": "theagentcompany_single_task_not_selected",
         "scenario_id": "single_task_host_codex_gate_no_run",
         "worker_mode": "deterministic_fixture",
-        "harness_identity": "goal_harness",
+        "harness_identity": "loopx",
         "worker_surface": "host_codex_cli_gate_packet",
         "terminal_state": "blocked_before_single_task_execution_scope",
         "official_task_score": {

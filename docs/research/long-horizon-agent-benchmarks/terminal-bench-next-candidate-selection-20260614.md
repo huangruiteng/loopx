@@ -51,7 +51,7 @@ screen.
 Five cached candidates were strict-preflighted with the correct paired baseline
 shape:
 
-| Candidate | Codex goal-mode baseline | Goal Harness treatment | Notes |
+| Candidate | Codex goal-mode baseline | LoopX treatment | Notes |
 | --- | --- | --- | --- |
 | `compile-compcert` | ready | ready | Rejected after cross-history audit: already closed as a true-long paired case. |
 | `install-windows-3.11` | ready | ready | System-state recovery; likely high environment friction. |
@@ -115,13 +115,13 @@ order:
 Run exactly one private no-upload paired pilot for
 `terminal-bench@2.0` / `install-windows-3.11`:
 
-1. run the Codex goal-mode baseline, with no Goal Harness access packet or
+1. run the Codex goal-mode baseline, with no LoopX access packet or
    worker bridge;
-2. run the `codex-goal-harness` treatment with the active worker bridge and
+2. run the `codex-loopx` treatment with the active worker bridge and
    active-user assisted treatment path;
 3. ingest only compact Harbor results after completion or compact blocker;
 4. write one compact comparison with official score, failure attribution,
-   worker writeback, Goal Harness call counters, claim boundary, no-upload
+   worker writeback, LoopX call counters, claim boundary, no-upload
    boundary, and submit-disabled status.
 
 Use the `benchmark_verifier_attribution_review_v0` routing after the run before

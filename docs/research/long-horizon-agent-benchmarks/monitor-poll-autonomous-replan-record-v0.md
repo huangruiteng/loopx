@@ -2,7 +2,7 @@
 
 ## Trigger
 
-- Goal: `goal-harness-meta`
+- Goal: `loopx-meta`
 - Trigger kind: `run_history_no_progress_repeat`
 - Evidence: two public `quota_monitor_poll` records
   (`2026-06-13T18:34:25+08:00` and `2026-06-13T18:55:10+08:00`)

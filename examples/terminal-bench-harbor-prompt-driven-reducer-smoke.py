@@ -13,10 +13,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_adapters.terminal_bench import (  # noqa: E402
+from loopx.benchmark_adapters.terminal_bench import (  # noqa: E402
     build_terminal_bench_harbor_result_benchmark_run,
 )
-from goal_harness.status import compact_benchmark_run  # noqa: E402
+from loopx.status import compact_benchmark_run  # noqa: E402
 
 
 def write_json(path: Path, payload: dict) -> None:
@@ -29,13 +29,13 @@ def write_prompt_driven_fixture(root: Path) -> Path:
     job_dir = run_root / "jobs" / "swe-marathon-zstd-decoder-gh-treatment"
     trial_dir = job_dir / "zstd-decoder__prompt"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_access_packet_mode": "full",
-            "goal_harness_cli_bridge_enabled": True,
-            "goal_harness_goal_id": "benchmark-case-terminal-bench-zstd-decoder-test",
+            "loopx_mode": "codex_loopx",
+            "loopx_access_packet_mode": "full",
+            "loopx_cli_bridge_enabled": True,
+            "loopx_goal_id": "benchmark-case-terminal-bench-zstd-decoder-test",
         },
     }
     write_json(
@@ -127,9 +127,9 @@ def write_prompt_driven_fixture(root: Path) -> Path:
     }
     work_dir = trial_dir / "agent" / "host-codex-goal-fixture"
     write_json(
-        work_dir / "goal_harness_prompt_driven_trace.public.json",
+        work_dir / "loopx_prompt_driven_trace.public.json",
         {
-            "schema_version": "goal_harness_prompt_driven_case_trace_v0",
+            "schema_version": "loopx_prompt_driven_case_trace_v0",
             "command_count": sum(prompt_counts.values()),
             "event_kind_counts": prompt_counts,
             "lifecycle_observed": True,
@@ -138,7 +138,7 @@ def write_prompt_driven_fixture(root: Path) -> Path:
         },
     )
     write_json(
-        work_dir / "goal_harness_controller_trace.public.json",
+        work_dir / "loopx_controller_trace.public.json",
         controller_trace,
     )
     write_json(
@@ -147,13 +147,13 @@ def write_prompt_driven_fixture(root: Path) -> Path:
             "schema_version": "codex_app_server_goal_turn_driver_v0",
             "first_blocker": "harbor_prompt_polling_round_timeout_before_completion",
             "turn_completed_observed": False,
-            "goal_harness_controller_trace_present": True,
-            "goal_harness_controller_trace": controller_trace,
-            "goal_harness_prompt_driven_case_cli_call_count": sum(prompt_counts.values()),
-            "goal_harness_prompt_driven_event_counts": prompt_counts,
-            "goal_harness_prompt_driven_lifecycle_observed": True,
-            "strict_goal_harness_treatment_claim_allowed": True,
-            "goal_harness_treatment_claim_blocker": "none",
+            "loopx_controller_trace_present": True,
+            "loopx_controller_trace": controller_trace,
+            "loopx_prompt_driven_case_cli_call_count": sum(prompt_counts.values()),
+            "loopx_prompt_driven_event_counts": prompt_counts,
+            "loopx_prompt_driven_lifecycle_observed": True,
+            "strict_loopx_treatment_claim_allowed": True,
+            "loopx_treatment_claim_blocker": "none",
         },
     )
     return job_dir
@@ -162,11 +162,11 @@ def write_prompt_driven_fixture(root: Path) -> Path:
 def assert_prompt_driven_result(payload: dict) -> None:
     assert payload["worker_bridge_materialization_status"] == "verified", payload
     assert payload["worker_bridge_materialization_blocker"] == "none", payload
-    assert payload["goal_harness_worker_cli_bridge_trace_observed"] is True, payload
-    assert payload["goal_harness_prompt_driven_lifecycle_observed"] is True, payload
-    assert payload["goal_harness_prompt_driven_case_cli_call_count"] == 6, payload
-    assert payload["goal_harness_controller_trace_present"] is True, payload
-    assert payload["goal_harness_controller_trace_public_safe"] is True, payload
+    assert payload["loopx_worker_cli_bridge_trace_observed"] is True, payload
+    assert payload["loopx_prompt_driven_lifecycle_observed"] is True, payload
+    assert payload["loopx_prompt_driven_case_cli_call_count"] == 6, payload
+    assert payload["loopx_controller_trace_present"] is True, payload
+    assert payload["loopx_controller_trace_public_safe"] is True, payload
     assert payload["controller_max_rounds_budget"] == 5, payload
     assert payload["controller_max_round_observed"] == 1, payload
     assert payload["controller_followup_prompt_count"] == 0, payload
@@ -176,41 +176,41 @@ def assert_prompt_driven_result(payload: dict) -> None:
         payload["controller_last_decision"]
         == "harbor_prompt_polling_round_timeout_before_completion"
     ), payload
-    assert payload["worker_goal_harness_cli_call_total"] == 6, payload
+    assert payload["worker_loopx_cli_call_total"] == 6, payload
     assert (
         payload["first_blocker"]
         == "harbor_prompt_polling_round_timeout_before_completion"
     ), payload
-    assert payload["strict_goal_harness_treatment_claim_allowed"] is True, payload
-    assert payload["goal_harness_treatment_claim_blocker"] == "none", payload
+    assert payload["strict_loopx_treatment_claim_allowed"] is True, payload
+    assert payload["loopx_treatment_claim_blocker"] == "none", payload
     validation = payload["validation"]
     assert validation["worker_counter_trace_loaded"] is True, validation
     assert validation["worker_benchmark_run_file_present"] is True, validation
     assert validation["worker_benchmark_run_schema_ok"] is True, validation
     assert validation["worker_bridge_materialized_when_required"] is True, validation
-    assert validation["goal_harness_controller_trace_present"] is True, validation
-    assert validation["goal_harness_controller_trace_public_safe"] is True, validation
+    assert validation["loopx_controller_trace_present"] is True, validation
+    assert validation["loopx_controller_trace_public_safe"] is True, validation
     overhead = payload["overhead_attribution_counters"]
     assert (
         overhead["attribution_granularity"]
         == "prompt_driven_case_local_cli_counts"
     ), overhead
-    assert overhead["goal_harness_cli_call_total"] == 6, overhead
+    assert overhead["loopx_cli_call_total"] == 6, overhead
     outcome = payload["worker_bridge_outcome"]
     assert outcome["worker_bridge_verified"] is True, outcome
-    assert outcome["prompt_driven_goal_harness_lifecycle_observed"] is True, outcome
+    assert outcome["prompt_driven_loopx_lifecycle_observed"] is True, outcome
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-prompt-driven-reducer-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-prompt-driven-reducer-") as tmp:
         job_dir = write_prompt_driven_fixture(Path(tmp))
         payload = build_terminal_bench_harbor_result_benchmark_run(job_dir)
         assert_prompt_driven_result(payload)
         compact = compact_benchmark_run(payload)
         assert compact is not None
         assert compact["worker_bridge_materialization_status"] == "verified", compact
-        assert compact["goal_harness_prompt_driven_lifecycle_observed"] is True, compact
-        assert compact["goal_harness_controller_trace_present"] is True, compact
+        assert compact["loopx_prompt_driven_lifecycle_observed"] is True, compact
+        assert compact["loopx_controller_trace_present"] is True, compact
         assert compact["controller_max_round_observed"] == 1, compact
         assert compact["controller_followup_prompt_count"] == 0, compact
         assert compact["controller_round_timeout_sec"] == 900.0, compact
@@ -228,7 +228,7 @@ def main() -> int:
                 "--benchmark-id",
                 "terminal-bench",
                 "--mode",
-                "codex_goal_harness",
+                "codex_loopx",
                 "--output-json",
                 str(output_path),
             ],
@@ -246,9 +246,9 @@ def main() -> int:
             == "harbor_prompt_polling_round_timeout_before_completion"
         ), reduced_compact
         assert (
-            reduced_compact["goal_harness_prompt_driven_case_cli_call_count"] == 6
+            reduced_compact["loopx_prompt_driven_case_cli_call_count"] == 6
         ), reduced_compact
-        assert reduced_compact["goal_harness_controller_trace_present"] is True, (
+        assert reduced_compact["loopx_controller_trace_present"] is True, (
             reduced_compact
         )
         assert reduced_compact["controller_max_round_observed"] == 1, reduced_compact

@@ -3,12 +3,12 @@
 Checked at: 2026-06-08T19:38:00+08:00.
 
 This note defines the no-run preflight guard before the first real
-`goal-harness-managed-codex` Terminal-Bench case:
+`loopx-managed-codex` Terminal-Bench case:
 
 ```bash
-goal-harness benchmark run terminal-bench \
+loopx benchmark run terminal-bench \
   --goal-id <goal-id> \
-  --mode goal-harness-managed-codex \
+  --mode loopx-managed-codex \
   --preflight-guard
 ```
 
@@ -40,13 +40,13 @@ The compact event uses:
 | Field | Value |
 | --- | --- |
 | `schema_version` | `benchmark_run_v0` |
-| `source_runner` | `goal_harness_terminal_bench_managed_real_run_preflight_guard` |
-| `mode` | `goal_harness_managed_codex_real_run_preflight_guard` |
-| `worker_mode` | `goal_harness_managed_codex_cli` |
+| `source_runner` | `loopx_terminal_bench_managed_real_run_preflight_guard` |
+| `mode` | `loopx_managed_codex_real_run_preflight_guard` |
+| `worker_mode` | `loopx_managed_codex_cli` |
 | `real_run` | `false` |
 | `submit_eligible` | `false` |
 | `official_task_score.kind` | `not_run` |
-| `goal_harness_inside_case` | `true` |
+| `loopx_inside_case` | `true` |
 | `official_score_comparable_to_native_codex` | `false` |
 | `model_plus_harness_pair` | `true` |
 | `leaderboard_evidence` | `false` |
@@ -69,7 +69,7 @@ This guard may claim:
 It must not claim:
 
 - official Terminal-Bench task success;
-- managed Goal Harness uplift;
+- managed LoopX uplift;
 - native Codex baseline comparability for the managed case;
 - token/cost reduction;
 - benchmark leaderboard readiness;

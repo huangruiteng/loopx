@@ -115,10 +115,10 @@ Harbor exposes upload as an explicit `--upload` option. A local pilot must:
 - omit leaderboard/publish/submission commands;
 - avoid `harbor upload`, `harbor publish`, `harbor leaderboard`, and any
   external artifact sync;
-- keep artifacts local and reduce them to compact metadata before Goal Harness
+- keep artifacts local and reduce them to compact metadata before LoopX
   ingestion.
 
-## Goal Harness Evidence Path
+## LoopX Evidence Path
 
 A future approved run should reduce output to these compact fields only:
 
@@ -129,7 +129,7 @@ A future approved run should reduce output to these compact fields only:
 - elapsed wall time and timeout class;
 - failure taxonomy: setup, Docker, agent, model, verifier, resource, boundary,
   or reward;
-- Goal Harness control-plane counters: status reads, todo reads, state writes,
+- LoopX control-plane counters: status reads, todo reads, state writes,
   validation checks, restarts, stale-state avoidance, and boundary stops.
 
 Do not ingest raw terminal logs, trajectories, screenshots, hidden refs, task

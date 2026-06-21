@@ -12,7 +12,7 @@ import sys
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.codex_goal_baseline import (  # noqa: E402
+from loopx.codex_goal_baseline import (  # noqa: E402
     build_codex_app_server_goal_baseline_plan,
     build_codex_app_server_goal_baseline_proof,
     build_codex_app_server_goal_worker_plan,
@@ -106,7 +106,7 @@ def assert_proof_contract() -> None:
         set_response=set_response,
         get_response=get_response,
         expected_objective=OBJECTIVE,
-        included_goal_harness_state=True,
+        included_loopx_state=True,
     )
     assert leaked_state["persistent_goal_evidence"] is True, leaked_state
     assert leaked_state["baseline_claim_allowed"] is False, leaked_state

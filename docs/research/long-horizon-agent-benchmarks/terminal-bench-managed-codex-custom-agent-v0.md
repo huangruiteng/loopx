@@ -3,9 +3,9 @@
 Checked at: 2026-06-08T19:52:00+08:00.
 
 This note records the first concrete Harbor custom-agent bridge for the core
-Goal Harness managed Terminal-Bench treatment. It is still a private
+LoopX managed Terminal-Bench treatment. It is still a private
 single-task pilot surface, not a full benchmark run, not leaderboard evidence,
-not a public score claim, and not proof of Goal Harness uplift.
+not a public score claim, and not proof of LoopX uplift.
 
 ## What Changed
 
@@ -15,16 +15,16 @@ Harbor exposes a custom agent hook through:
 --agent-import-path
 ```
 
-Goal Harness now provides the import target:
+LoopX now provides the import target:
 
 ```text
-goal_harness.terminal_bench_agent:GoalHarnessManagedCodex
+loopx.terminal_bench_agent:GoalHarnessManagedCodex
 ```
 
 The custom agent subclasses Harbor's built-in Codex adapter. It keeps the
 native Codex setup, auth handoff, execution, session ingestion, and token/cost
 backfill behavior, while wrapping the benchmark task instruction with a minimal
-Goal Harness managed policy envelope. Managed metadata is deferred until
+LoopX managed policy envelope. Managed metadata is deferred until
 `populate_context_post_run()` so Harbor still sees an empty `AgentContext` and
 can run the built-in Codex session ingestion path.
 
@@ -34,11 +34,11 @@ The managed worker records:
 
 | Field | Value |
 | --- | --- |
-| Mode | `goal_harness_managed_codex` |
-| Policy version | `goal_harness_terminal_bench_policy_v0` |
-| Behavior spec | `terminal_bench_goal_harness_managed_codex_v0` |
+| Mode | `loopx_managed_codex` |
+| Policy version | `loopx_terminal_bench_policy_v0` |
+| Behavior spec | `terminal_bench_loopx_managed_codex_v0` |
 | Trace publicness | `private_raw_trace_compact_public_summary` |
-| `goal_harness_inside_case` | `true` |
+| `loopx_inside_case` | `true` |
 | `case_semantics_changed_by_harness` | `true` |
 | `official_score_comparable_to_native_codex` | `false` |
 | `model_plus_harness_pair` | `true` |
@@ -48,7 +48,7 @@ The managed worker records:
 The adapter records only compact metadata such as policy/version ids, booleans,
 prompt length, and a short task-instruction hash. It does not store raw task
 prompts, raw managed prompts, raw Codex sessions, credential values, auth files,
-Docker logs, host-local paths, or task artifacts in public Goal Harness notes.
+Docker logs, host-local paths, or task artifacts in public LoopX notes.
 
 ## Usage Ingestion Guard
 
@@ -56,7 +56,7 @@ Harbor only calls an agent's post-run context backfill when the trial
 `AgentContext` is still empty after `run()`. The managed adapter therefore does
 not write metadata into the context during `run()`. After the runner downloads
 agent logs, the adapter lets Harbor parse Codex session JSONL and then appends
-Goal Harness metadata. If Harbor trajectory conversion fails, the adapter has a
+LoopX metadata. If Harbor trajectory conversion fails, the adapter has a
 public-safe fallback that reads only the last session `event_msg/token_count`
 totals and copies compact usage fields into `AgentContext`.
 
@@ -72,11 +72,11 @@ local paths, or credential material.
 
 ## Private Pilot Command Shape
 
-Run from the Goal Harness repository root, or otherwise make the repository
+Run from the LoopX repository root, or otherwise make the repository
 package importable to the Harbor process. The command shape is:
 
 ```text
-uvx --from git+https://github.com/harbor-framework/harbor@a56546feb7d2da0b3196bbd7b05adacb72449391 harbor run --dataset terminal-bench@2.0 --agent-import-path goal_harness.terminal_bench_agent:GoalHarnessManagedCodex --model gpt-5.5 --env docker --n-attempts 1 --n-concurrent 1 --jobs-dir <private-jobs-dir> --job-name terminal-bench_2_0_build_cython_ext_goal_harness_managed_codex_cli_dry_run --agent-env CODEX_FORCE_AUTH_JSON=true --agent-kwarg goal_harness_policy_version=goal_harness_terminal_bench_policy_v0 --agent-kwarg goal_harness_behavior_spec_id=terminal_bench_goal_harness_managed_codex_v0 --agent-kwarg goal_harness_mode=goal_harness_managed_codex --agent-kwarg goal_harness_goal_id=<goal-id> --agent-kwarg goal_harness_ablation_mode=goal_harness_managed --include-task-name build-cython-ext
+uvx --from git+https://github.com/harbor-framework/harbor@a56546feb7d2da0b3196bbd7b05adacb72449391 harbor run --dataset terminal-bench@2.0 --agent-import-path loopx.terminal_bench_agent:GoalHarnessManagedCodex --model gpt-5.5 --env docker --n-attempts 1 --n-concurrent 1 --jobs-dir <private-jobs-dir> --job-name terminal-bench_2_0_build_cython_ext_loopx_managed_codex_cli_dry_run --agent-env CODEX_FORCE_AUTH_JSON=true --agent-kwarg loopx_policy_version=loopx_terminal_bench_policy_v0 --agent-kwarg loopx_behavior_spec_id=terminal_bench_loopx_managed_codex_v0 --agent-kwarg loopx_mode=loopx_managed_codex --agent-kwarg loopx_goal_id=<goal-id> --agent-kwarg loopx_ablation_mode=loopx_managed --include-task-name build-cython-ext
 ```
 
 No upload, publish, share, public, private upload-visibility, or leaderboard flag
@@ -87,7 +87,7 @@ belongs in the first managed pilot. The raw jobs directory remains private.
 This custom-agent bridge may support the claim:
 
 ```text
-Harbor can import a Goal Harness managed Codex agent for the official private
+Harbor can import a LoopX managed Codex agent for the official private
 no-upload Terminal-Bench pilot surface.
 ```
 
@@ -96,7 +96,7 @@ It must not support these claims yet:
 - managed pilot success or failure;
 - Terminal-Bench official score;
 - leaderboard readiness;
-- Goal Harness score uplift;
+- LoopX score uplift;
 - token/cost improvement;
 - paper-ready evidence.
 

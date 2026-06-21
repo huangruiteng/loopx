@@ -2,7 +2,7 @@
 
 Checked at: 2026-06-10T15:52:00+08:00.
 
-This protocol defines the Goal Harness assisted operator-simulator overlay for
+This protocol defines the LoopX assisted operator-simulator overlay for
 long-horizon benchmark research. It is not an official benchmark mode, not a
 leaderboard claim, and not a replacement for the passive control-plane
 baseline. It should start only after the passive baseline has produced a
@@ -26,9 +26,9 @@ official `benchmark_run_v0` and `benchmark_result_v0` rows.
 
 Report these modes separately:
 
-- `official_or_native`: benchmark-native worker behavior with no Goal Harness
+- `official_or_native`: benchmark-native worker behavior with no LoopX
   policy changes and no simulated operator intervention.
-- `passive_goal_harness_wrapper`: Goal Harness observes and writes control
+- `passive_loopx_wrapper`: LoopX observes and writes control
   state, but the worker receives no operator-simulator guidance.
 - `assisted_operator_simulator`: the worker may receive bounded proactive
   user-style interventions from the simulator under the visibility, frequency,
@@ -79,7 +79,7 @@ research, not official benchmark evidence.
 The simulator may see only:
 
 - public task statement and benchmark-visible worker context;
-- public-safe Goal Harness state summaries, todos, gates, review packets, and
+- public-safe LoopX state summaries, todos, gates, review packets, and
   Goal Tick phases;
 - validation output that the worker is allowed to inspect;
 - public-safe artifact manifests and compact run summaries.
@@ -148,7 +148,7 @@ row with:
 - intervention count and allowed-type counts;
 - proactive intervention count and frequency-budget audit;
 - official task score reference, if a benchmark run exists;
-- Goal Harness control-plane score reference;
+- LoopX control-plane score reference;
 - failure labels and simulator-induced error count;
 - cost, wall-time, and extra-turn overhead;
 - trace publicness and side-effect audit.

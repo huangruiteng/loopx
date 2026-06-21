@@ -1,6 +1,6 @@
 # State Interaction Model
 
-Goal Harness should not grow by adding commands one at a time. New capabilities
+LoopX should not grow by adding commands one at a time. New capabilities
 must fit a clear state model between the goal, the Codex App executor, the
 human operator, and the dashboard.
 
@@ -44,7 +44,7 @@ Goal-owned state:
 ### Codex App Executor
 
 The Codex App executor is an actor that can read goal state, run commands, edit
-files, spawn or coordinate child work, and write new state through Goal Harness
+files, spawn or coordinate child work, and write new state through LoopX
 commands.
 
 The executor is ephemeral. It should not be the source of truth. Its job is to
@@ -88,7 +88,7 @@ it as a candidate operating lesson: write it into active state or a compact
 run-bound/user-reward event, add or update the concrete agent todo that will
 make the lesson executable, and refresh state so `quota should-run` can project
 the corrected rule. The model may still use the richer conversational context
-to interpret the lesson, but Goal Harness must carry the durable hook that
+to interpret the lesson, but LoopX must carry the durable hook that
 future agents can see.
 
 ### Dashboard
@@ -120,7 +120,7 @@ details.
 
 The dashboard may eventually look like a channel workspace: one goal timeline,
 agent/member presence, task claims, approvals, and artifacts in one place. That
-frontstage view must remain a projection over durable Goal Harness events. A
+frontstage view must remain a projection over durable LoopX events. A
 channel message can help a person collaborate, but the event ledger decides
 what is current, who owns a task, which lease is active, and whether a later
 agent may resume work.
@@ -142,11 +142,11 @@ can wait for a thread that was never launched, ask the user for small public
 gates, stop a healthy automation because the top lane is blocked, or spend a
 turn on a monitor that had no material transition.
 
-Goal Harness should therefore expose one machine-readable interaction contract
+LoopX should therefore expose one machine-readable interaction contract
 per selected goal:
 
 ```text
-goal-harness --format json quota should-run --goal-id <goal-id>
+loopx --format json quota should-run --goal-id <goal-id>
 ```
 
 The guard's `interaction_contract` is the first-class protocol. Older fields
@@ -167,13 +167,13 @@ proposal lane that suggests structured `User Todo`, `decision_scope`, or
 | --- | --- | --- |
 | User/operator | Boundary decisions, reward, private material, credentials, paid/cloud resources, destructive git, production actions, public submissions/claims, explicit product-direction changes. | Routine public reads, task-row access, todo splitting, local state writeback, public-safe validation, or choosing among already-authorized P1/P2 work. |
 | Agent/Codex executor | One bounded transition per turn: inspect current state, choose the highest safe lane, implement or observe, validate, write back, and spend only after delivery. | Durable truth, implicit approval, unrecorded reward, hidden long-term memory, silent cancellation, or credential copying. |
-| Goal Harness CLI | Projection of goal truth, waiting owner, quota, interaction mode, machine obligations, spend policy, liveness, and compatible next commands. | Human judgment, private evidence interpretation beyond compact projections, or project-specific branching inside automation prompts. |
+| LoopX CLI | Projection of goal truth, waiting owner, quota, interaction mode, machine obligations, spend policy, liveness, and compatible next commands. | Human judgment, private evidence interpretation beyond compact projections, or project-specific branching inside automation prompts. |
 | Skill | Procedural operator/agent manual for using the CLI safely. | Runtime routing authority or a second state machine that overrides `quota should-run`. |
 | Automation prompt | Thin bootstrap: wake, preflight, run the CLI guard, use the skill if available, follow `interaction_contract`, and stop for global safety boundaries. | Long project-specific control flow, stale TODO memory, or handwritten exceptions. |
 
 Agent-visible follow-up work belongs in `Agent Todo`, not in prompt branches.
 When the agent knows whether a todo is executable work or watch-only work, it
-should register that fact through `goal-harness todo add --task-class ...`
+should register that fact through `loopx todo add --task-class ...`
 and optional `--action-kind ...`. The active-state metadata then feeds status,
 quota, dashboard, and review-packet consumers through the same CLI projection.
 Legacy todo text classification exists only to keep older states readable.
@@ -183,14 +183,14 @@ Harness should not need many feature states to know whether work remains. The
 agent should complete the current implementation slice, then immediately create
 the next concrete todo for rollout, product-path audit, docs, telemetry,
 benchmark proof, or operator decision. If no follow-up is needed, the completion
-note should say why. This keeps Goal Harness responsible for durable checklist
+note should say why. This keeps LoopX responsible for durable checklist
 truth while leaving the semantic judgment about "what should happen next" to
 the model/executor.
 
 ### Operational Control Loop
 
 The reusable product loop is user / agent / state, not agent / chat alone.
-Goal Harness owns the shared control state; the operator supplies decisions,
+LoopX owns the shared control state; the operator supplies decisions,
 reward, and priority; the agent worker turns observation packets into bounded
 work; external systems supply evidence; and the guard decides whether the next
 transition is delivery, decision, evidence waiting, or boundary repair.
@@ -203,7 +203,7 @@ decisions; it does not mean every bounded agent step waits for manual approval.
 
 ```mermaid
 flowchart TB
-  U["User / operator"] -->|"gate / reward / priority"| GH["Goal Harness state"]
+  U["User / operator"] -->|"gate / reward / priority"| GH["LoopX state"]
   GH -->|"operator view / concrete todo"| U
   GH --> C{"can continue?"}
   C -->|"needs decision"| U
@@ -285,12 +285,12 @@ unbounded "continue the last thing" loop:
    compact truth.
 
 This keeps the user's role high-value: the user resolves real boundaries and
-reward judgments, while Goal Harness prevents the agent from stalling on
+reward judgments, while LoopX prevents the agent from stalling on
 routine routing choices.
 
 ## Agentic RL Boundary Model
 
-Goal Harness should be the external control plane around an agentic RL-style
+LoopX should be the external control plane around an agentic RL-style
 worker, not the policy itself. Its job is to turn partial, long-running project
 history into a current, auditable observation packet. The model's job is to
 turn that packet plus the live workspace context into an internal belief state
@@ -321,25 +321,25 @@ belief_t = model.update(
 )
 
 action_t = model.policy(belief_t)
-checked_action_t = goal_harness.guard(action_t, observation_t)
+checked_action_t = loopx.guard(action_t, observation_t)
 event_or_reward_t+1 = append_after_validation(checked_action_t, outcome_t)
 ```
 
 In this model, `event replay` is input material for `observation_t`, and
 `human_reward` is a later evaluation signal. Neither one is the model's full
 execution state. The execution state is the model's current belief, which is
-allowed to be richer than the Goal Harness projection but must not silently
-override Goal Harness boundaries, authority, freshness warnings, or user gates.
+allowed to be richer than the LoopX projection but must not silently
+override LoopX boundaries, authority, freshness warnings, or user gates.
 
 | Layer | Owns | Must not own |
 | --- | --- | --- |
-| Goal Harness control plane | Durable facts, event ledger, active-state projection, authority source registration, decision freshness, quota, gates, restartability, public/private boundary checks, run-bound reward overlays. | Semantic planning, hidden preference learning, task-specific policy, unrecorded approvals, or model-internal belief. |
+| LoopX control plane | Durable facts, event ledger, active-state projection, authority source registration, decision freshness, quota, gates, restartability, public/private boundary checks, run-bound reward overlays. | Semantic planning, hidden preference learning, task-specific policy, unrecorded approvals, or model-internal belief. |
 | Agentic model / executor | Belief synthesis, uncertainty handling, action selection, semantic rebase of old decisions against current evidence, bounded implementation, validation choice, and asking the user when ambiguity is real. | Durable source of truth, implicit write authorization, permanent user preference storage outside goal events, or treating chat memory as stronger than current status. |
-| Human/operator | Reward, approval, private-material access, production/destructive/external-resource decisions, and high-level tradeoff judgment. | Routine public reads, ordinary local validation, or reconstructing current state by hand when Goal Harness can project it. |
+| Human/operator | Reward, approval, private-material access, production/destructive/external-resource decisions, and high-level tradeoff judgment. | Routine public reads, ordinary local validation, or reconstructing current state by hand when LoopX can project it. |
 
 This keeps checkpointed decisions narrow. A checkpointed approval, reward, or
 resume contract is an audit anchor with a validity check, not an instruction to
-replay the old chat. Before a worker reuses it, Goal Harness should indicate
+replay the old chat. Before a worker reuses it, LoopX should indicate
 whether the decision point needs a rebase against current registry, active
 state, quota, policy, repo/run status, and newer evidence. The model then
 interprets whether the old decision still applies, asks the user if the answer
@@ -358,7 +358,7 @@ user/controller gate instead of letting the agent perform the protected write.
 
 ```mermaid
 flowchart TB
-  subgraph Harness["Goal Harness control plane"]
+  subgraph Harness["LoopX control plane"]
     Registry["Registry and authority sources"]
     ActiveState["Active goal state"]
     Ledger["Append-only event ledger"]
@@ -401,13 +401,13 @@ Harness must still add value when the worker is a black-box CLI, hosted agent,
 benchmark runner, or third-party loop that cannot be modified. The control
 plane should therefore support three adapter depths:
 
-| Mode | When available | Goal Harness responsibilities |
+| Mode | When available | LoopX responsibilities |
 | --- | --- | --- |
-| `in_loop` | The worker can call Goal Harness APIs or tools during its own loop. | Inject observation packets, expose freshness/gate/quota checks before actions, require writeback after validated transitions, and let the worker use current status as first-class context. |
-| `wrapper` | Goal Harness can launch or wrap the worker command, prompt, workspace, or environment, but cannot alter the internal loop. | Run pre-flight status/freshness checks, prepend or mount a compact state packet, guard high-risk external actions where hooks exist, collect stdout/artifacts/diffs, and reduce the result into durable events. |
-| `passive_posthoc` | Goal Harness cannot launch or intercept the worker; it can only inspect observable outputs after the fact. | Read repo diffs, logs, run artifacts, benchmark outputs, or user notes; classify work/evidence/blocker/decision targets; append compact events; and produce restart packets for the next run. |
+| `in_loop` | The worker can call LoopX APIs or tools during its own loop. | Inject observation packets, expose freshness/gate/quota checks before actions, require writeback after validated transitions, and let the worker use current status as first-class context. |
+| `wrapper` | LoopX can launch or wrap the worker command, prompt, workspace, or environment, but cannot alter the internal loop. | Run pre-flight status/freshness checks, prepend or mount a compact state packet, guard high-risk external actions where hooks exist, collect stdout/artifacts/diffs, and reduce the result into durable events. |
+| `passive_posthoc` | LoopX cannot launch or intercept the worker; it can only inspect observable outputs after the fact. | Read repo diffs, logs, run artifacts, benchmark outputs, or user notes; classify work/evidence/blocker/decision targets; append compact events; and produce restart packets for the next run. |
 
-The invariant across all three depths is the same: Goal Harness produces and
+The invariant across all three depths is the same: LoopX produces and
 validates control-plane context around the agent loop, whether or not the loop
 natively cooperates. If the loop cannot be trusted to stop on a boundary, the
 boundary must move outward to the wrapper, submit path, PR gate, benchmark
@@ -429,7 +429,7 @@ flowchart LR
 This makes passive and wrapper modes first-class product surfaces, not
 fallbacks. The passive baseline should prove that even a non-cooperative worker
 gets better restartability, stale-state avoidance, evidence discipline, and
-reward attribution from Goal Harness before deeper agent-loop cooperation is
+reward attribution from LoopX before deeper agent-loop cooperation is
 treated as required.
 
 ## State Stores
@@ -442,12 +442,12 @@ treated as required.
 | Run payloads | Goal runtime | Executor, local reviewer | Adapters, `refresh-state`, `read-only-map` | Rich private evidence for one run. |
 | Compact run index | Goal runtime | Status, dashboard, heartbeats | Adapters, reward overlay writer | Public-safe timeline and latest status. |
 | Compute quota / spend ledger | Goal runtime or registry | Status, dashboard, automations | `quota` commands, controller writeback, operator decisions | Local duty-cycle or weighted-share policy for automatic agent turns. |
-| Status export | CLI/status layer | Dashboard, pre-tick, heartbeats | `goal-harness status` | Agent-facing machine contract and dashboard input. |
+| Status export | CLI/status layer | Dashboard, pre-tick, heartbeats | `loopx status` | Agent-facing machine contract and dashboard input. |
 | Dashboard UI state | Browser session | User | Browser URL/search state | Filters, selected goal, selected run; not durable goal truth. |
 
 ## Event Ledger Contract
 
-Goal Harness should treat the compact run index plus reward / quota overlays as
+LoopX should treat the compact run index plus reward / quota overlays as
 the append-only event ledger for long-running work. Chat threads, browser
 filters, and local tool outputs may help a worker decide what to do in the
 moment, but they are not the durable source of truth.
@@ -466,16 +466,16 @@ Current state is a projection over those events plus the active goal state and
 registry policy. That projection may compact old detail for prompts and
 dashboards, but it should not silently replace or rewrite the event that made a
 decision auditable.
-`goal-harness status` exposes this boundary through `event_ledger_summary`: a
+`loopx status` exposes this boundary through `event_ledger_summary`: a
 compact count of sampled accounting, decision, evidence, state, and work events.
 Dashboards and heartbeat prompts can use that projection to understand recent
 control-plane shape while still drilling into `run_history` for exact events.
 
-This gives Goal Harness a durable-execution boundary:
+This gives LoopX a durable-execution boundary:
 
 - Codex threads are replaceable workers. They execute bounded transitions, then
   write validated events.
-- The Goal Harness control plane orchestrates task dispatch, quota, gates, and
+- The LoopX control plane orchestrates task dispatch, quota, gates, and
   latest-state projections from the event ledger.
 - Heartbeat prompts should stay thin. They should query status, quota, review
   packets, and active state rather than carrying project-specific history.
@@ -488,7 +488,7 @@ This gives Goal Harness a durable-execution boundary:
 
 Some complex goals need a graph-shaped view: independent deliverables, ordered
 dependencies, acceptance gates, repair loops, and handoff points are easier to
-reason about as nodes and edges than as a flat todo list. Goal Harness should
+reason about as nodes and edges than as a flat todo list. LoopX should
 support that view as a derived projection over durable goal truth, not as a
 second source of truth.
 
@@ -505,14 +505,14 @@ stores when it helps an agent or operator answer:
 The projection should also preserve a useful distinction between durable
 control state and transient work state:
 
-- **Control state** belongs to Goal Harness: objective, constraints, task
+- **Control state** belongs to LoopX: objective, constraints, task
   dependencies, gates, leases, run summaries, accepted evidence, and current
   dispatch state.
 - **Work state** belongs to an executor turn or child worker: code snippets,
   raw tool output, temporary hypotheses, local implementation details, and
   verbose logs.
 
-This lets Goal Harness borrow graph-native recovery where it matters without
+This lets LoopX borrow graph-native recovery where it matters without
 forcing every goal into a multi-agent DAG. Small or linear goals can stay as
 ordinary todos. Multi-stage goals can project a graph for dispatch, review, and
 repair, while the append-only ledger still decides what happened and which
@@ -610,7 +610,7 @@ flowchart LR
   ActiveState -->|"refresh-state / adapter read"| RunPayload["Run payload"]
   Executor -->|"adapter tick"| RunPayload
   RunPayload -->|"compact fields"| RunIndex["Run index"]
-  User -->|"goal-harness reward"| RunIndex
+  User -->|"loopx reward"| RunIndex
   User -->|"compute share, pause, burst"| Quota["Compute quota"]
   GlobalRegistry --> Status["Status export"]
   RunIndex --> Status
@@ -630,7 +630,7 @@ directly mutate goal state unless a future explicit write boundary is enabled.
 
 Purpose: make a project visible to the local control plane.
 
-Writer: executor through `goal-harness connect` or `bootstrap`.
+Writer: executor through `loopx connect` or `bootstrap`.
 
 Writes:
 
@@ -647,7 +647,7 @@ clear.
 Purpose: turn a generic connection into a useful project map without granting
 write authority.
 
-Writer: executor through `goal-harness read-only-map`.
+Writer: executor through `loopx read-only-map`.
 
 Writes:
 
@@ -662,7 +662,7 @@ not proof that the project is fully automated.
 
 Purpose: make state-only work visible when no adapter ran.
 
-Writer: executor through `goal-harness refresh-state`.
+Writer: executor through `loopx refresh-state`.
 
 Writes:
 
@@ -689,7 +689,7 @@ Writes:
 
 Dashboard effect: the operator can see why a project is active, throttled,
 waiting, paused, or asking for a burst. Automations should treat timer cadence
-as an execution detail and read Goal Harness compute quota before running work.
+as an execution detail and read LoopX compute quota before running work.
 
 See [quota-allocation.md](quota-allocation.md).
 
@@ -711,7 +711,7 @@ Codex-ready, external-watch, or blocked health.
 
 Purpose: capture high-quality operator judgment near the decision being judged.
 
-Writer: user-authorized `goal-harness reward`.
+Writer: user-authorized `loopx reward`.
 
 Writes:
 
@@ -850,7 +850,7 @@ CLI surface:
 - The global registry is synced from project-local registries; agents should
   not manually paste project entries into a separate queue.
 - Automation cadence is not the compute quota source of truth. It may wake an
-  executor, but Goal Harness should decide whether the goal is eligible,
+  executor, but LoopX should decide whether the goal is eligible,
   throttled, paused, or waiting.
 - UI filters and selected rows are browser state, not goal state.
 - Unknown status fields are additive; changing the meaning of existing compact

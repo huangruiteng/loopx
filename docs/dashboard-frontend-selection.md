@@ -1,6 +1,6 @@
 # Dashboard Frontend Selection
 
-Goal Harness should keep the no-dependency static HTML renderer as a diagnostic
+LoopX should keep the no-dependency static HTML renderer as a diagnostic
 fallback, but the product dashboard should use a real frontend stack.
 
 The target UI is a local control plane for agent goals: status lanes, run
@@ -33,11 +33,11 @@ The useful reference products cluster around three product surfaces:
   local agent daemon, shared UI package, Base UI/shadcn-style components,
   TanStack Query/Table, resizable panels, command menus, agent boards, agent
   profiles, runtimes, squads, task timelines, and reusable skill surfaces.
-  Goal Harness should borrow the dense agent-board and workspace-member
-  grammar while keeping the control-plane source of truth in Goal Harness
+  LoopX should borrow the dense agent-board and workspace-member
+  grammar while keeping the control-plane source of truth in LoopX
   status/quota/run history rather than in a chat or issue board.
 
-For Goal Harness, the common lesson is not "more charts." The first screen
+For LoopX, the common lesson is not "more charts." The first screen
 needs an action-oriented queue and trustworthy drill-downs:
 
 - at-a-glance health and attention lanes,
@@ -68,7 +68,7 @@ frontend:
   of only loading static JSON files.
 - **Recharts through shadcn chart patterns** for first-pass trend and summary
   panels.
-- **Zod** for validating `goal-harness --format json status` payloads at the UI
+- **Zod** for validating `loopx --format json status` payloads at the UI
   boundary.
 - **Vitest + Playwright** for component and browser-level checks.
 
@@ -79,7 +79,7 @@ typed data boundaries.
 
 ## Two Frontstage Surfaces
 
-Goal Harness should keep two product surfaces separate even when they share the
+LoopX should keep two product surfaces separate even when they share the
 same React app, visual tokens, and small components.
 
 The **public showcase frontstage** is the homepage-style surface. It should be
@@ -110,7 +110,7 @@ reads JSON. Server rendering, auth, and hosted deployment are not yet product
 requirements.
 
 shadcn/ui is preferable to a heavy all-in component library because the
-dashboard needs strong defaults but should still own the code. Goal Harness can
+dashboard needs strong defaults but should still own the code. LoopX can
 adapt cards, sidebars, tables, command menus, charts, and badges without
 fighting a closed design system.
 
@@ -132,7 +132,7 @@ added only when controller/sub-agent relationships need a dedicated graph view.
 - **Keep extending the Python static renderer**: good for smoke tests and
   offline diagnostics, but it will become hard to maintain once filters, detail
   views, responsive layout, and accessible interactions matter.
-- **Use Grafana directly**: excellent for metrics dashboards, but Goal Harness
+- **Use Grafana directly**: excellent for metrics dashboards, but LoopX
   needs an action queue and goal/run semantics rather than generic data-source
   panels.
 - **Use Next.js now**: strong framework, but premature for a local static
@@ -143,7 +143,7 @@ added only when controller/sub-agent relationships need a dedicated graph view.
 - **Build with Tailwind alone**: visually flexible, but slower to reach
   accessible menus, dialogs, tabs, tables, tooltips, and charts.
 - **Adopt a prebuilt admin template as the primary product**: fast initially,
-  but the generic CRM/SaaS look would fight the Goal Harness model of queue,
+  but the generic CRM/SaaS look would fight the LoopX model of queue,
   run history, contract health, and controller handoff.
 
 ## UX Direction

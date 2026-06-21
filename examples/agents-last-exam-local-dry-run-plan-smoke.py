@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import build_agents_last_exam_local_dry_run_plan  # noqa: E402
+from loopx.benchmark import build_agents_last_exam_local_dry_run_plan  # noqa: E402
 
 
 def assert_no_execution(payload: dict[str, object]) -> None:
@@ -101,7 +101,7 @@ def run_fixture_smoke() -> None:
     assert ready["decision"]["next_allowed_action"] == "run_operator_authorized_no_upload_ale_adapter_dry_run"
     assert ready["paired_run_requirements"]["same_task"] is True
     assert ready["paired_run_requirements"]["baseline_arm"] == "hardened-codex"
-    assert ready["paired_run_requirements"]["treatment_arm"] == "codex-goal-harness"
+    assert ready["paired_run_requirements"]["treatment_arm"] == "codex-loopx"
     assert_no_execution(ready)
 
     blocked_preflight = ready_preflight()
@@ -119,7 +119,7 @@ def run_cli_smoke() -> None:
     base_cmd = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--format",
         "json",
         "benchmark",

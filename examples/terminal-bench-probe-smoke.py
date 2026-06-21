@@ -39,7 +39,7 @@ REQUIRED_SNIPPETS = [
     "run_metadata.json",
     "benchmark_run_v0",
     "terminal_bench_probe_v0_codex_builtin",
-    "terminal_bench_probe_v0_goal_harness_wrapper",
+    "terminal_bench_probe_v0_loopx_wrapper",
     "Do not run these automatically in a heartbeat.",
     "Stop before any of the following",
     "paid model execution",

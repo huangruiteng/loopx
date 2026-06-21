@@ -231,7 +231,7 @@ def reduce_to_benchmark_result(packet: dict[str, Any]) -> dict[str, Any]:
         "task_id": "agentissue_bench_lagent_239",
         "scenario_id": "local_codex_patch_producer_no_run",
         "worker_mode": "deterministic_fixture",
-        "harness_identity": "goal_harness",
+        "harness_identity": "loopx",
         "worker_surface": packet["codex_patch_producer"]["surface"],
         "terminal_state": "blocked_before_patch_generation",
         "official_task_score": {

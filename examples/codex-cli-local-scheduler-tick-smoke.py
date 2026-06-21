@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.codex_cli_probe import (  # noqa: E402
+from loopx.codex_cli_probe import (  # noqa: E402
     build_codex_cli_local_scheduler_tick,
     classify_codex_cli_session_surface,
 )
@@ -61,7 +61,7 @@ Resume a previous interactive session.
 
 VISIBLE_PROOF_FIXTURE = {
     "observed_surface": "visible_resume_prompt",
-    "recommended_command": "codex resume public-session-id 'Goal Harness visible steering turn'",
+    "recommended_command": "codex resume public-session-id 'LoopX visible steering turn'",
     "user_opt_in": True,
     "quota_guard": {"passed": True},
     "idle_guard": {
@@ -121,8 +121,8 @@ def assert_boundary(payload: dict[str, object]) -> None:
     assert boundary["reads_credentials"] is False, payload
     assert boundary["reads_session_files"] is False, payload
     assert boundary["mutates_codex_session"] is False, payload
-    assert boundary["spends_goal_harness_quota"] is False, payload
-    assert boundary["writes_goal_harness_state"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
+    assert boundary["writes_loopx_state"] is False, payload
     assert boundary["visible_candidate_requires_runtime_idle_detector"] is True, payload
     assert boundary["headless_execution_disabled"] is True, payload
 
@@ -138,7 +138,7 @@ def build_tick(
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         codex_bin="codex",
         probe_payload=classify_codex_cli_session_surface(command_outputs=command_outputs),
         proof_payload=proof_payload,
@@ -149,7 +149,7 @@ def build_tick(
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -196,7 +196,7 @@ def main() -> int:
     assert "codex resume public-session-id" in visible_candidate["candidate_command"], visible_candidate
     assert visible_candidate["runtime_idle_detector"]["approved"] is True, visible_candidate
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-scheduler-tick-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-scheduler-tick-") as tmp:
         tmp_path = Path(tmp)
         help_fixture = tmp_path / "codex-remote-help.json"
         help_fixture.write_text(json.dumps({"command_outputs": REMOTE_RESUME_HELP_FIXTURE}))

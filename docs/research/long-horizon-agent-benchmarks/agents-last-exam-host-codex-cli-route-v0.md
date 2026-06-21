@@ -1,6 +1,6 @@
 # Agents Last Exam Host Codex CLI Route V0
 
-This note records the first Goal Harness execution route for a future local
+This note records the first LoopX execution route for a future local
 Agents' Last Exam (ALE) run that uses the host machine's already authorized
 Codex CLI instead of treating ALE as an OpenRouter or API-key-only integration.
 
@@ -23,7 +23,7 @@ The desired path is:
 
 The upstream ALE `codex` agent is not this route today: it runs inside the
 sandbox executor and expects provider-key configuration such as OpenRouter or
-direct OpenAI keys. Goal Harness should therefore gate a host-side wrapper
+direct OpenAI keys. LoopX should therefore gate a host-side wrapper
 before any task-level ALE run.
 
 ## Public Gate
@@ -31,7 +31,7 @@ before any task-level ALE run.
 The public-safe gate is:
 
 ```bash
-goal-harness benchmark ale-host-codex-cli-route \
+loopx benchmark ale-host-codex-cli-route \
   --codex-binary codex \
   --cua-mcp-assets-root <local-cua-mcp-assets-root> \
   --ale-sandbox-cua-smoke-ready \
@@ -51,7 +51,7 @@ The next allowed action after a ready route gate is a no-task host Codex CLI
 CUA/MCP E2E preflight:
 
 ```bash
-goal-harness benchmark ale-host-codex-cua-no-task-e2e \
+loopx benchmark ale-host-codex-cua-no-task-e2e \
   --codex-binary codex \
   --host-auth-cache-present \
   --host-config-present \
@@ -73,7 +73,7 @@ artifact is ready.
 This gate may claim only that the selected execution route is public-safe and
 ready for a no-task E2E preflight, or that the preflight is ready for a
 separate task-level ALE dry-run gate. It must not claim ALE reward, task
-success, Goal Harness uplift, leaderboard evidence, or benchmark performance
+success, LoopX uplift, leaderboard evidence, or benchmark performance
 improvement.
 
 ## Smoke

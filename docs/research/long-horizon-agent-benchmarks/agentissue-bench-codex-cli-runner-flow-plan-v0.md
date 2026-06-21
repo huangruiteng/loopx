@@ -113,7 +113,7 @@ The smoke fixture emits:
 ```bash
 python3 examples/agentissue-bench-codex-cli-runner-flow-smoke.py
 python3 -m py_compile examples/agentissue-bench-codex-cli-runner-flow-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/agentissue-bench-codex-cli-runner-flow-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-flow-plan-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

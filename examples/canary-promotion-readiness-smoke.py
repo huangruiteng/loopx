@@ -5,7 +5,7 @@ This command is a preflight for promoting the live checkout into the default
 local release snapshot. It validates the public boundary, status projections,
 installer wrappers, and dashboard demo-readiness path without mutating the
 installed release. By default, a successful run appends one public-safe
-promotion-readiness evidence event to the Goal Harness run history so status,
+promotion-readiness evidence event to the LoopX run history so status,
 doctor, and quota guards can clear stale or missing readiness warnings from the
 append-only ledger.
 """
@@ -25,7 +25,7 @@ COMMON_NODE_PATHS = [
     "/opt/homebrew/bin",
     "/usr/local/bin",
 ]
-READINESS_GOAL_ID = "goal-harness-meta"
+READINESS_GOAL_ID = "loopx-meta"
 READINESS_CLASSIFICATION = "canary_promotion_readiness_smoke_group"
 READINESS_RECOMMENDED_ACTION = (
     "Canary promotion-readiness smoke passed; promotion may proceed after doctor/status reports fresh evidence."
@@ -34,7 +34,7 @@ READINESS_RECOMMENDED_ACTION = (
 BASE_COMMANDS = [
     (
         "public boundary contract",
-        [sys.executable, "-m", "goal_harness.cli", "check", "--scan-path", str(REPO_ROOT)],
+        [sys.executable, "-m", "loopx.cli", "check", "--scan-path", str(REPO_ROOT)],
     ),
     ("status markdown projection", [sys.executable, "examples/status-markdown-smoke.py"]),
     ("usage/event/decision projections", [sys.executable, "examples/usage-summary-smoke.py"]),
@@ -78,7 +78,7 @@ def write_readiness_evidence(env: dict[str, str]) -> None:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "refresh-state",
             "--goal-id",
             READINESS_GOAL_ID,

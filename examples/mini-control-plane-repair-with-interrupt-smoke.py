@@ -88,7 +88,7 @@ def report_slice(result: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str
 def main() -> int:
     module = load_benchmark_smoke()
     with tempfile.TemporaryDirectory(prefix="mini-control-plane-interrupt-") as raw_tmp:
-        fixture = module.write_fixture(Path(raw_tmp), "with_goal_harness_interrupt")
+        fixture = module.write_fixture(Path(raw_tmp), "with_loopx_interrupt")
         result, rows = module.run_interrupt_harness_scenario(fixture)
         module.assert_interrupt_contract(result, rows)
         compact = report_slice(result, rows)

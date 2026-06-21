@@ -124,7 +124,7 @@ def comparison_summary(module: ModuleType, baseline: dict[str, Any], interrupt: 
 
 def assert_summary_contract(summary: dict[str, Any]) -> None:
     assert summary["schema_version"] == SUMMARY_SCHEMA, summary
-    assert summary["mode_pair"] == ["with_goal_harness", "with_goal_harness_interrupt"], summary
+    assert summary["mode_pair"] == ["with_loopx", "with_loopx_interrupt"], summary
     assert summary["baseline_task_id"] == "mini_control_plane_repair_v0", summary
     assert summary["interrupt_task_id"] == "mini_control_plane_repair_with_interrupt_v0", summary
     assert summary["official_task_score_delta"] == 0.0, summary
@@ -165,9 +165,9 @@ def main() -> int:
     module = load_benchmark_smoke()
     with tempfile.TemporaryDirectory(prefix="mini-control-plane-interrupt-comparison-") as raw_tmp:
         root = Path(raw_tmp)
-        baseline_fixture = module.write_fixture(root, "with_goal_harness")
-        without_fixture = module.write_fixture(root, "without_goal_harness")
-        interrupt_fixture = module.write_fixture(root, "with_goal_harness_interrupt")
+        baseline_fixture = module.write_fixture(root, "with_loopx")
+        without_fixture = module.write_fixture(root, "without_loopx")
+        interrupt_fixture = module.write_fixture(root, "with_loopx_interrupt")
         baseline, baseline_rows = module.run_harness_scenario(baseline_fixture)
         without = module.run_without_harness_scenario(without_fixture)
         interrupt, interrupt_rows = module.run_interrupt_harness_scenario(interrupt_fixture)

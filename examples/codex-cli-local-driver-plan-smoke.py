@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.codex_cli_probe import (  # noqa: E402
+from loopx.codex_cli_probe import (  # noqa: E402
     build_codex_cli_local_driver_plan,
     classify_codex_cli_session_surface,
 )
@@ -75,7 +75,7 @@ Commands:
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -109,7 +109,7 @@ def assert_common_contract(payload: dict[str, object]) -> None:
     assert boundary["reads_credentials"] is False, payload
     assert boundary["reads_session_files"] is False, payload
     assert boundary["mutates_codex_session"] is False, payload
-    assert boundary["spends_goal_harness_quota"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
 
 
 def build_plan(command_outputs: dict[str, str]) -> dict[str, object]:
@@ -117,7 +117,7 @@ def build_plan(command_outputs: dict[str, str]) -> dict[str, object]:
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         codex_bin="codex",
         probe_payload=classify_codex_cli_session_surface(command_outputs=command_outputs),
     )
@@ -139,7 +139,7 @@ def main() -> int:
     assert attach_plan["driver_mode"] == "session_attached_visible_turn", attach_plan
     assert attach_plan["decision"] == "attempt_visible_session_attach_after_idle_guard", attach_plan
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-local-driver-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-local-driver-") as tmp:
         fixture = Path(tmp) / "codex-remote-help.json"
         fixture.write_text(json.dumps({"command_outputs": REMOTE_RESUME_HELP_FIXTURE}))
         cli_json = json.loads(

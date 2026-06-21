@@ -20,7 +20,7 @@ def run_cli(root: Path, *args: str, registry_path: Path, runtime: Path) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -42,7 +42,7 @@ def run_cli_result(root: Path, *args: str, registry_path: Path, runtime: Path) -
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -63,7 +63,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
@@ -86,7 +86,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         "  intact, and finish " + LONG_NEXT_ACTION_TAIL + "\n\n"
         "## Agent Todo\n\n"
         "- [ ] [P1] Run one bounded heartbeat marker and validate the compact result.\n"
-        "  <!-- goal-harness:todo todo_id=todo_fixture_heartbeat_marker status=open "
+        "  <!-- loopx:todo todo_id=todo_fixture_heartbeat_marker status=open "
         "task_class=advancement_task action_kind=validate -->\n\n"
         "## Progress Ledger\n\n"
         "- Initialized fixture.\n",
@@ -151,7 +151,7 @@ def write_monitor_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime = root / "monitor-runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         "---\n"
@@ -239,7 +239,7 @@ def write_external_evidence_fixture(
     runtime = root / "external-evidence-runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         "---\n"
@@ -313,7 +313,7 @@ def write_external_monitor_advancement_fixture(root: Path) -> tuple[Path, Path, 
     runtime = root / "external-monitor-advancement-runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         "---\n"
@@ -327,14 +327,14 @@ def write_external_monitor_advancement_fixture(root: Path) -> tuple[Path, Path, 
         "- Observe active Terminal-Bench headless-terminal treatment run_group=fixture-headless "
         "via compact process/result markers; ingest compact result and update the ledger when available.\n\n"
         "## Agent Todo\n\n"
-        "- [ ] [P0] Observe active Terminal-Bench headless-terminal Goal Harness treatment "
+        "- [ ] [P0] Observe active Terminal-Bench headless-terminal LoopX treatment "
         "(run_group=fixture-headless; pid=12345): poll process plus compact result markers only, "
         "avoid raw task/log/trajectory reads, then ingest result, update ledger, and compare against baseline "
         "without claiming uplift unless official score improves.\n"
-        "  <!-- goal-harness:todo todo_id=todo_fixture_headless status=open "
+        "  <!-- loopx:todo todo_id=todo_fixture_headless status=open "
         "task_class=advancement_task action_kind=monitor_running_benchmark_case -->\n"
         "- [ ] [P1] Re-rank follow-on benchmark lanes after the active case produces a compact result.\n"
-        "  <!-- goal-harness:todo todo_id=todo_fixture_followup status=open "
+        "  <!-- loopx:todo todo_id=todo_fixture_followup status=open "
         "task_class=advancement_task action_kind=planning_refresh -->\n",
         encoding="utf-8",
     )
@@ -397,7 +397,7 @@ def write_operator_gate_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime = root / "operator-gate-runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         "---\n"
@@ -494,7 +494,7 @@ def fake_codex_executor_decision(guard: dict) -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-heartbeat-quota-flow-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-heartbeat-quota-flow-") as tmp:
         root = Path(tmp)
         project, runtime, registry_path = write_fixture(root)
         registry_before = registry_path.read_text(encoding="utf-8")
@@ -514,7 +514,7 @@ def main() -> int:
         assert guard["quota"]["spent_slots"] == 0, guard
         assert guard["quota"]["allowed_slots"] == 2, guard
         interaction = guard["interaction_contract"]
-        assert interaction["schema_version"] == "goal_harness_interaction_contract_v0", interaction
+        assert interaction["schema_version"] == "loopx_interaction_contract_v0", interaction
         assert interaction["mode"] == "bounded_delivery", interaction
         assert interaction["user_channel"]["action_required"] is False, interaction
         assert interaction["agent_channel"]["must_attempt"] is True, interaction
@@ -598,7 +598,7 @@ def main() -> int:
         assert "agent_action=" + expected_action in follow_up["protocol_action_packet"]["summary"], follow_up
         assert registry_path.read_text(encoding="utf-8") == registry_before
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-heartbeat-operator-gate-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-heartbeat-operator-gate-") as tmp:
         root = Path(tmp)
         project, runtime, registry_path = write_operator_gate_fixture(root)
         gate_guard = run_cli(
@@ -624,7 +624,7 @@ def main() -> int:
         assert interaction["cli_channel"]["spend_after_validation"] is False, interaction
         assert interaction["fallback_policy"]["do_not_cancel_on_block"] is True, interaction
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-heartbeat-monitor-poll-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-heartbeat-monitor-poll-") as tmp:
         root = Path(tmp)
         project, runtime, registry_path = write_monitor_fixture(root)
         first_guard = run_cli(
@@ -834,7 +834,7 @@ def main() -> int:
             == "monitor_quiet_until_material_transition"
         ), post_ack_guard
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-external-evidence-observation-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-external-evidence-observation-") as tmp:
         root = Path(tmp)
         project, runtime, registry_path = write_external_evidence_fixture(root)
         guard = run_cli(
@@ -912,7 +912,7 @@ def main() -> int:
         assert count_spend_events(runtime) == 0, poll
         assert count_events(runtime, "quota_monitor_poll") == 1, poll
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-external-monitor-advancement-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-external-monitor-advancement-") as tmp:
         root = Path(tmp)
         project, runtime, registry_path = write_external_monitor_advancement_fixture(root)
         guard = run_cli(
@@ -963,7 +963,7 @@ def main() -> int:
         assert count_spend_events(runtime) == 0, poll
         assert count_events(runtime, "quota_monitor_poll") == 1, poll
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-external-evidence-projection-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-external-evidence-projection-") as tmp:
         root = Path(tmp)
         project, runtime, registry_path = write_external_evidence_fixture(
             root,

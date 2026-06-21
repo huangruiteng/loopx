@@ -16,7 +16,7 @@ import sys
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import (  # noqa: E402
+from loopx.status import (  # noqa: E402
     build_project_asset,
     enrich_project_asset,
     project_asset_summary_is_public_safe,
@@ -28,7 +28,7 @@ AGENT_TODO = "Run the read-only map after the owner decision is recorded."
 NEXT_ACTION = "Use the current project asset to choose one bounded delivery step."
 STOP_CONDITION = "stop until the user or controller decision is recorded"
 VALIDATION_SUMMARY = "fixture validation passed; authority_sources 1"
-SAFE_AGENT_COMMAND = "goal-harness read-only-map --goal-id next-eye-fixture --dry-run"
+SAFE_AGENT_COMMAND = "loopx read-only-map --goal-id next-eye-fixture --dry-run"
 
 
 def assert_status_project_asset_next_eye() -> None:

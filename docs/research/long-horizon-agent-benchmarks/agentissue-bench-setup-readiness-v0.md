@@ -23,11 +23,11 @@ consume task body, solution, or test-body material.
 
 ## Readiness Findings
 
-AgentIssue-Bench is a strong Goal Harness candidate, but not ready for a direct
+AgentIssue-Bench is a strong LoopX candidate, but not ready for a direct
 shared-host execution without a safer wrapper.
 
 The benchmark is relevant because it targets agent-system bugs, the same class
-of failures Goal Harness is meant to reduce: provider integration, tool use,
+of failures LoopX is meant to reduce: provider integration, tool use,
 memory, workflow, dependencies, and agent-runtime maintenance. Public difficulty
 is also low enough to be useful: the paper and OpenReview summary report only
 `0.67%` to `4.67%` correct resolution across studied SE agents on the current
@@ -65,7 +65,7 @@ remote machine:
 - `remove_images.py` removes benchmark images and containers by tag; it is
   safer than the global removal command but still needs scoped invocation.
 
-These properties make the benchmark feasible, but they require a Goal Harness
+These properties make the benchmark feasible, but they require a LoopX
 launch packet that replaces global Docker cleanup, disables credential prompts,
 restricts to one explicit public tag, and records no-upload/no-submit evidence.
 
@@ -100,9 +100,9 @@ authorizes the next bounded execution step.
 ## Decision
 
 AgentIssue-Bench remains on the shortlist and is more directly aligned with
-Goal Harness than generic SWE benchmarks, but the next automatic step should
+LoopX than generic SWE benchmarks, but the next automatic step should
 be a no-run one-tag launch packet and wrapper contract, not an immediate e2e
 run. It is especially attractive because low public success rates leave room
-for Goal Harness to demonstrate value through restartability, evidence
+for LoopX to demonstrate value through restartability, evidence
 discipline, wrapper safety, scoped validation, and failure attribution rather
 than only raw coding strength.

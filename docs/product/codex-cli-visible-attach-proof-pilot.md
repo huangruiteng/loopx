@@ -3,13 +3,13 @@
 Status: blocker recorded, TUI bootstrap remains primary.
 Recorded: 2026-06-21.
 
-This note records the first public-safe proof pilot for Goal Harness steering a
+This note records the first public-safe proof pilot for LoopX steering a
 later Codex CLI turn without taking the user out of the visible TUI. It uses the
 `codex-cli-visible-attach-acceptance` packet added in PR #383.
 
 ## Question
 
-Can Goal Harness safely add a later steering turn to the same open Codex CLI TUI
+Can LoopX safely add a later steering turn to the same open Codex CLI TUI
 session today?
 
 ## Result
@@ -37,12 +37,12 @@ This pilot did not:
 - read stdout/stderr streams;
 - read credentials;
 - mutate a Codex session;
-- spend Goal Harness quota by itself.
+- spend LoopX quota by itself.
 
 ## Interpretation
 
 `resume [PROMPT]` and `remote-control` are not enough on their own. They may be
-usable as a visible spike, but Goal Harness should not call them
+usable as a visible spike, but LoopX should not call them
 same-TUI automation until a public-safe proof shows:
 
 - the resulting turn is visible to the user;

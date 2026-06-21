@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.codex_cli_probe import (  # noqa: E402
+from loopx.codex_cli_probe import (  # noqa: E402
     build_codex_cli_runtime_idle_detector,
     build_codex_cli_runtime_idle_observation_payload,
 )
@@ -52,7 +52,7 @@ def build_idle(payload: dict[str, object] | None) -> dict[str, object]:
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         idle_payload=payload,
     )
 
@@ -65,12 +65,12 @@ def assert_boundary(payload: dict[str, object]) -> None:
     assert boundary["reads_stdout_stderr"] is False, payload
     assert boundary["reads_credentials"] is False, payload
     assert boundary["mutates_codex_session"] is False, payload
-    assert boundary["spends_goal_harness_quota"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
 
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -81,7 +81,7 @@ def run_cli(*extra_args: str) -> str:
 
 def run_cli_fail_closed(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=False,
         capture_output=True,
@@ -173,7 +173,7 @@ def main() -> int:
     assert local_recent_input["decision"] == "runtime_idle_detector_incomplete", local_recent_input
     assert "idle_no_human_typing" in local_recent_input["failures"], local_recent_input
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-runtime-idle-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-runtime-idle-") as tmp:
         fixture = Path(tmp) / "runtime-idle.json"
         fixture.write_text(json.dumps(PASSING_IDLE_FIXTURE))
 

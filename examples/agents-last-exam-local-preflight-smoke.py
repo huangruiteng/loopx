@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import build_agents_last_exam_local_preflight  # noqa: E402
+from loopx.benchmark import build_agents_last_exam_local_preflight  # noqa: E402
 
 
 def assert_boundary(payload: dict[str, object]) -> None:
@@ -97,7 +97,7 @@ def run_cli_smoke() -> None:
     base_cmd = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--format",
         "json",
         "benchmark",

@@ -15,8 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
-from goal_harness.worker_bridge import (  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
+from loopx.worker_bridge import (  # noqa: E402
     build_active_user_intervention,
     observe_active_user_intervention_feed,
     write_active_user_observation_file,
@@ -94,8 +94,8 @@ def build_benchmark_run(observation: dict[str, Any]) -> dict[str, Any]:
         "source_runner": "active_user_observation_ingest_smoke",
         "benchmark_id": "terminal-bench@2.0",
         "job_name": "active_user_observation_ingest_fixture",
-        "mode": "codex_goal_harness_active_user_assisted_observation_fixture",
-        "worker_mode": "codex_goal_harness_cli",
+        "mode": "codex_loopx_active_user_assisted_observation_fixture",
+        "worker_mode": "codex_loopx_cli",
         "real_run": False,
         "submit_eligible": False,
         "leaderboard_evidence": False,
@@ -142,7 +142,7 @@ def build_benchmark_run(observation: dict[str, Any]) -> dict[str, Any]:
             }
         ],
         "evidence_files": [
-            "worker:goal-harness-active-user-observation.json",
+            "worker:loopx-active-user-observation.json",
             "smoke:benchmark-run-v0-active-user-observation-ingest-smoke.py",
         ],
         "stop_conditions": [
@@ -156,7 +156,7 @@ def build_benchmark_run(observation: dict[str, Any]) -> dict[str, Any]:
 def write_fixture(root: Path, benchmark_run: dict[str, Any]) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     benchmark_run_path = project / "benchmark-run.json"
 
@@ -202,7 +202,7 @@ def write_fixture(root: Path, benchmark_run: dict[str, Any]) -> tuple[Path, Path
 
 def run_cli(args: list[str]) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=True,
         text=True,

@@ -1,21 +1,21 @@
 # Dashboard Reward Write Boundary
 
-Goal Harness can already validate a dashboard reward draft through
+LoopX can already validate a dashboard reward draft through
 `POST /reward/dry-run`. A browser-side append path is a separate capability and
 must stay opt-in. The default dashboard must remain read-mostly: status export,
 run-history inspection, and dry-run validation are allowed; writing compact
 reward overlays is not enabled by loading the dashboard.
 
 This document defines the boundary for the opt-in `POST /reward/append`
-endpoint. It is implemented only for loopback `goal-harness serve-status`
+endpoint. It is implemented only for loopback `loopx serve-status`
 sessions started with the explicit write flag.
 
 ## Current State
 
-- `goal-harness reward` is the canonical writer.
-- `goal-harness serve-status` serves `GET /status.json` and
+- `loopx reward` is the canonical writer.
+- `loopx serve-status` serves `GET /status.json` and
   `POST /reward/dry-run` on loopback by default.
-- `goal-harness serve-status --enable-reward-write-api` also serves
+- `loopx serve-status --enable-reward-write-api` also serves
   `POST /reward/append` on loopback.
 - The dry-run endpoint validates goal id, selected run timestamp, reward value,
   public-safe text, and run artifact availability.
@@ -73,7 +73,7 @@ Future append requests should accept only compact fields:
 
 The endpoint should reject unknown or private-looking fields rather than ignore
 them silently. Rejected text should reuse the same private-pattern checks as
-`goal-harness reward`.
+`loopx reward`.
 
 ## Origin And Capability Checks
 
@@ -100,7 +100,7 @@ The dashboard should not make reward writes feel like ordinary form submission:
 - The confirmation copy should say that the action appends one compact
   `human_reward` row to the selected run index.
 - After append, the dashboard should refresh status and show the new compact
-  reward signal from `goal-harness status`.
+  reward signal from `loopx status`.
 
 ## Validation Before Implementation
 

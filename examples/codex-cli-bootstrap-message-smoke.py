@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.project_prompt import build_codex_cli_bootstrap_message  # noqa: E402
+from loopx.project_prompt import build_codex_cli_bootstrap_message  # noqa: E402
 
 
 PROJECT = Path("/tmp/public-codex-cli-project")
@@ -32,7 +32,7 @@ MUST_HAVE = (
     "top user todo",
     "top agent todo",
     "next safe action",
-    "goal-harness bootstrap",
+    "loopx bootstrap",
     "heartbeat-prompt --thin",
     "quota should-run",
     "--agent-id codex-side-bypass",
@@ -68,11 +68,11 @@ def assert_message_contract(payload: dict[str, object]) -> None:
     assert any("no raw Codex transcripts" in item for item in checklist), payload
     message = str(payload["message"])
     normalized = " ".join(message.split())
-    assert message.startswith("Install and connect Goal Harness for this repo"), message
+    assert message.startswith("Install and connect LoopX for this repo"), message
     assert not message.startswith("/goal "), message
     for phrase in MUST_HAVE:
         assert phrase in normalized, (phrase, message)
-    assert normalized.index("install or repair Goal Harness") < normalized.index("bootstrap/connect this project"), message
+    assert normalized.index("install or repair LoopX") < normalized.index("bootstrap/connect this project"), message
     assert normalized.index("bootstrap/connect this project") < normalized.index("heartbeat-prompt --thin"), message
     assert normalized.index("quota should-run") < normalized.index("interaction_contract"), message
     assert normalized.index("refresh-state") < normalized.index("quota spend-slot"), message
@@ -83,7 +83,7 @@ def assert_message_contract(payload: dict[str, object]) -> None:
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -99,9 +99,9 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
 
     for text in (readme, getting_started, product_contract):
         assert "Codex CLI" in text and "TUI" in text, text[:500]
-        assert "Install and connect Goal Harness" in text, text[:500]
+        assert "Install and connect LoopX" in text, text[:500]
     for text in (getting_started, product_contract):
-        assert "goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>" in text, text[:500]
+        assert "loopx codex-cli-bootstrap-message --project . --goal-id <goal-id>" in text, text[:500]
 
     normalized_readme = " ".join(readme.split())
     normalized_getting_started = " ".join(getting_started.split())
@@ -112,7 +112,7 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     assert "reuse it" in normalized_readme, readme
     assert "You do not need to run a separate setup command first or paste a second prompt" in normalized_readme, readme
     assert "template generators" in normalized_readme, readme
-    assert "goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id>" not in readme, readme
+    assert "loopx codex-cli-bootstrap-message --project . --goal-id <goal-id>" not in readme, readme
     assert "show the current goal, user gate, top todos, and next safe action" in normalized_readme, readme
     assert "first-run path should not require you to understand registry paths" in normalized_getting_started, getting_started
     assert "setup-first rewrite of the App onboarding experience" in normalized_getting_started, getting_started
@@ -121,8 +121,8 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     assert "optional automation checks after the setup path works" in normalized_getting_started, getting_started
     assert "first useful TUI response should be a control-plane snapshot" in normalized_product_contract, product_contract
     assert "setup-only work" in normalized_product_contract, product_contract
-    assert "goal-harness codex-cli-session-probe" in getting_started, getting_started
-    assert "goal-harness codex-cli-exec-handoff --project . --goal-id <goal-id>" in getting_started, getting_started
+    assert "loopx codex-cli-session-probe" in getting_started, getting_started
+    assert "loopx codex-cli-exec-handoff --project . --goal-id <goal-id>" in getting_started, getting_started
     assert "headless-disabled boundary" in normalized_getting_started, getting_started
     assert "This command no longer prints a runnable `codex exec` handoff script" in product_contract, product_contract
 
@@ -132,7 +132,7 @@ def main() -> int:
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
     )
     assert_message_contract(payload)
 
@@ -160,7 +160,7 @@ def main() -> int:
         "--agent-id",
         AGENT_ID,
     )
-    assert "# Codex CLI Goal Harness Bootstrap Message" in cli_markdown, cli_markdown
+    assert "# Codex CLI LoopX Bootstrap Message" in cli_markdown, cli_markdown
     assert "Copy the block below into Codex CLI TUI" in cli_markdown, cli_markdown
     assert "setup message, not the reusable heartbeat body" in cli_markdown, cli_markdown
     assert "`/goal <thin task_body>`" in cli_markdown, cli_markdown
@@ -181,9 +181,9 @@ def main() -> int:
         "--message-only",
     )
     assert cli_message_only == str(payload["message"]) + "\n", cli_message_only
-    assert "# Codex CLI Goal Harness Bootstrap Message" not in cli_message_only, cli_message_only
+    assert "# Codex CLI LoopX Bootstrap Message" not in cli_message_only, cli_message_only
     assert "Fresh Repo Install Repair" not in cli_message_only, cli_message_only
-    assert cli_message_only.startswith("Install and connect Goal Harness for this repo"), cli_message_only
+    assert cli_message_only.startswith("Install and connect LoopX for this repo"), cli_message_only
     assert not cli_message_only.startswith("/goal "), cli_message_only
 
     cli_copy_only = run_cli(

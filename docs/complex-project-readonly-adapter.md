@@ -2,7 +2,7 @@
 
 Some projects are too large for a single goal tick to understand safely. They
 may have many docs, TODO systems, reports, tests, external sync surfaces, and
-active branches. For these projects, the first Goal Harness adapter should not
+active branches. For these projects, the first LoopX adapter should not
 edit files. It should build a read-only map.
 
 The adapter's job is to answer:
@@ -179,10 +179,10 @@ Use staged adapter status:
 1. `planned`: goal exists in registry, no run yet.
 2. `read-only-map-ready`: adapter can produce a current map.
 3. `connected-read-only`: project controller has opted in to read-only runs.
-4. `selective-assist`: controller may ask Goal Harness for bounded edits with
+4. `selective-assist`: controller may ask LoopX for bounded edits with
    explicit write scopes.
 
-`goal-harness read-only-map --dry-run` is allowed at `planned` as a controller
+`loopx read-only-map --dry-run` is allowed at `planned` as a controller
 opt-in preview. It reads only registry metadata, active-state sections, and the
 bounded file inventory, returns `opt_in_required=true`, and appends no run.
 Running without `--dry-run` still requires `read-only-map-ready`,

@@ -43,11 +43,11 @@ is capable:
 
 The bottleneck is product experience, not only model ability.
 
-## Goal Harness Behavior
+## LoopX Behavior
 
-Goal Harness turns the workflow into visible control-plane objects:
+LoopX turns the workflow into visible control-plane objects:
 
-| Workflow concern | Goal Harness object |
+| Workflow concern | LoopX object |
 | --- | --- |
 | Long-running creative objective | goal state |
 | "Can this be published?" | user gate |
@@ -87,7 +87,7 @@ The user has compact preference hints:
 - wants evidence boundaries stated plainly;
 - likes examples that show what the agent will not do.
 
-These are preferences, not hard safety gates. Goal Harness should keep them
+These are preferences, not hard safety gates. LoopX should keep them
 separate from permission decisions such as publish/no-publish.
 
 ### 3. Insight Board
@@ -124,7 +124,7 @@ The agent maintains structured public-safe material:
 - rejected angles and why they were rejected;
 - boundary notes for private drafts or unpublished ideas.
 
-This library is not a raw memory dump. Goal Harness should keep it governed by
+This library is not a raw memory dump. LoopX should keep it governed by
 source status and user feedback.
 
 ### 6. Human Feedback
@@ -157,7 +157,7 @@ value is that the work remains legible:
 - feedback becomes a durable planning signal;
 - the agent's next move is visible before it spends another run.
 
-For a potential Goal Harness user, the reusable pattern is broader: a
+For a potential LoopX user, the reusable pattern is broader: a
 long-running agent loop becomes easier to trust when goals, gates, todos,
 evidence, boundaries, feedback, and next actions appear in one control plane.
 
@@ -180,7 +180,7 @@ keep no-autopublish gates visible.
 1. A creator-operator has a long-running research and content-planning goal.
 2. The agent proposes trend candidates, maps them to preferences, and drafts
    insight options using synthetic data.
-3. Goal Harness separates the publishing gate from safe side work.
+3. LoopX separates the publishing gate from safe side work.
 4. The user gives feedback that becomes structured control-plane state.
 5. The next agent run starts from visible goals, todos, boundaries, and
    feedback instead of a hidden chat transcript.

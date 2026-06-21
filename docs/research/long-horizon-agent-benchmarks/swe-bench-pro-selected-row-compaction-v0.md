@@ -97,7 +97,7 @@ Targeted validation:
 ```bash
 python3 examples/swe-bench-pro-selected-row-compaction-smoke.py
 python3 -m py_compile examples/swe-bench-pro-selected-row-compaction-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/swe-bench-pro-selected-row-compaction-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/swe-bench-pro-selected-row-compaction-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

@@ -19,12 +19,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.cli_commands.status import review_packet_handoff_only_payload  # noqa: E402
-from goal_harness.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
-from goal_harness.interface_budget import build_interface_budget_cadence  # noqa: E402
-from goal_harness.quota import build_quota_should_run  # noqa: E402
-from goal_harness.review_packet import build_review_packet  # noqa: E402
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.cli_commands.status import review_packet_handoff_only_payload  # noqa: E402
+from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
+from loopx.interface_budget import build_interface_budget_cadence  # noqa: E402
+from loopx.quota import build_quota_should_run  # noqa: E402
+from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 GOAL_ID = "interface-budget-goal"
@@ -71,7 +71,7 @@ def write_registry(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -269,7 +269,7 @@ def assert_cadence_projection(
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-hot-path-budget-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-hot-path-budget-") as tmp:
         root = Path(tmp)
         registry_path, project = write_registry(root)
         append_run(root)

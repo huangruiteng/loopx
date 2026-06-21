@@ -40,7 +40,7 @@ def assert_public_safe(payload: object) -> None:
 
 def run_json(args: list[str]) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -96,12 +96,12 @@ def assert_worker_observation(payload: dict[str, Any]) -> None:
 
 
 def main() -> int:
-    from goal_harness.benchmark import build_terminal_bench_goal_harness_access_packet
-    from goal_harness.worker_bridge import (
+    from loopx.benchmark import build_terminal_bench_loopx_access_packet
+    from loopx.worker_bridge import (
         build_active_user_intervention_channel_contract,
     )
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-active-user-after-start-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-active-user-after-start-") as tmp:
         root = Path(tmp)
         feed = root / "active-user-feed.jsonl"
         observation = root / "active-user-observation.json"
@@ -121,12 +121,12 @@ def main() -> int:
         assert "--counter-trace-json" in contract["worker_observe_command"], contract
         assert "--benchmark-run-json" in contract["worker_observe_command"], contract
 
-        access_packet = build_terminal_bench_goal_harness_access_packet(
+        access_packet = build_terminal_bench_loopx_access_packet(
             cli_bridge_available=True,
-            command_prefix="goal-harness",
+            command_prefix="loopx",
             active_user_intervention_enabled=True,
-            active_user_feed_jsonl="/logs/agent/goal-harness-active-user-interventions.jsonl",
-            active_user_observation_json="/logs/agent/goal-harness-active-user-observation.json",
+            active_user_feed_jsonl="/logs/agent/loopx-active-user-interventions.jsonl",
+            active_user_observation_json="/logs/agent/loopx-active-user-observation.json",
             active_user_observe_command=contract["worker_observe_command"],
         )
         assert "active_user_worker_must_poll_after_start: true" in access_packet
@@ -196,7 +196,7 @@ def main() -> int:
         assert trace_rows[-1]["command"] == "active_user_observe", trace_rows
         checkpoint = json.loads(benchmark_run.read_text(encoding="utf-8"))
         assert checkpoint["schema_version"] == "benchmark_run_v0", checkpoint
-        assert checkpoint["worker_goal_harness_cli_call_total"] == 2, checkpoint
+        assert checkpoint["worker_loopx_cli_call_total"] == 2, checkpoint
         assert checkpoint["worker_bridge_outcome"]["worker_bridge_verified"] is True, checkpoint
         assert (
             checkpoint["worker_bridge_checkpoint"]["checkpoint_kind"]

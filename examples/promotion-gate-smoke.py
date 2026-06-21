@@ -14,15 +14,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.promotion_gate import build_promotion_gate, render_promotion_gate_markdown  # noqa: E402
+from loopx.promotion_gate import build_promotion_gate, render_promotion_gate_markdown  # noqa: E402
 
 
-GOAL_ID = "goal-harness-meta"
+GOAL_ID = "loopx-meta"
 
 
 def write_registry(root: Path) -> tuple[Path, Path]:
     runtime = root / "runtime"
-    registry_path = root / "project" / ".goal-harness" / "registry.json"
+    registry_path = root / "project" / ".loopx" / "registry.json"
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(
         json.dumps(
@@ -33,7 +33,7 @@ def write_registry(root: Path) -> tuple[Path, Path]:
                 "goals": [
                     {
                         "id": GOAL_ID,
-                        "domain": "goal-harness-meta",
+                        "domain": "loopx-meta",
                         "status": "active-read-only",
                         "repo": str(root / "project"),
                         "state_file": "ACTIVE_GOAL_STATE.md",
@@ -128,7 +128,7 @@ def assert_fresh_gate(registry_path: Path, runtime: Path) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-promotion-gate-smoke-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-promotion-gate-smoke-") as raw_tmp:
         registry_path, runtime = write_registry(Path(raw_tmp))
         assert_missing_gate(registry_path)
         assert_stale_gate(registry_path, runtime)

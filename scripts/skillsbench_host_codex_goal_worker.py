@@ -20,17 +20,17 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_adapters.skillsbench import (  # noqa: E402
+from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
     SKILLSBENCH_DEFAULT_DATASET,
     SKILLSBENCH_DEFAULT_MODEL,
     SKILLSBENCH_DEFAULT_TASK,
     build_skillsbench_app_server_goal_worker_contract,
 )
-from goal_harness.benchmark_case_state import (  # noqa: E402
+from loopx.benchmark_case_state import (  # noqa: E402
     benchmark_case_lifecycle_contract,
     render_benchmark_case_lifecycle_contract_lines,
 )
-from goal_harness.codex_goal_baseline import stable_text_digest  # noqa: E402
+from loopx.codex_goal_baseline import stable_text_digest  # noqa: E402
 from scripts.codex_app_server_goal_driver import (  # noqa: E402
     compact_turn_metadata,
     observe_codex_app_server_goal_turn,
@@ -63,33 +63,33 @@ def build_contract_payload(args: argparse.Namespace) -> dict[str, Any]:
 
 def _completion_marker_path(work_dir: Path, prompt: str) -> Path:
     digest = stable_text_digest(prompt)[:12]
-    return work_dir / f".goal_harness_app_server_goal_worker_response_{digest}.txt"
+    return work_dir / f".loopx_app_server_goal_worker_response_{digest}.txt"
 
 
-def build_goal_harness_case_lifecycle_packet(
+def build_loopx_case_lifecycle_packet(
     args: argparse.Namespace,
 ) -> tuple[str, dict[str, object] | None]:
-    if args.goal_harness_mode != "codex_goal_harness":
+    if args.loopx_mode != "codex_loopx":
         return "", None
-    if args.goal_harness_access_packet_mode == "none":
+    if args.loopx_access_packet_mode == "none":
         return "", None
-    case_id = args.goal_harness_case_id or args.task_id
+    case_id = args.loopx_case_id or args.task_id
     contract = benchmark_case_lifecycle_contract(
         benchmark_id=args.dataset,
         case_id=case_id,
-        arm_id=args.goal_harness_arm_id,
-        max_rounds=args.goal_harness_max_rounds,
+        arm_id=args.loopx_arm_id,
+        max_rounds=args.loopx_max_rounds,
     )
     lines = [
-        "skillsbench_goal_harness_case_lifecycle_packet_v0:",
-        f"  packet_mode: {args.goal_harness_access_packet_mode}",
+        "skillsbench_loopx_case_lifecycle_packet_v0:",
+        f"  packet_mode: {args.loopx_access_packet_mode}",
         "  benchmark_family: benchflow",
     ]
     lines.extend(render_benchmark_case_lifecycle_contract_lines(contract))
     return "\n".join(lines), contract
 
 
-def _prompt_with_goal_harness_case_lifecycle_packet(
+def _prompt_with_loopx_case_lifecycle_packet(
     prompt: str,
     packet: str,
 ) -> str:
@@ -99,13 +99,13 @@ def _prompt_with_goal_harness_case_lifecycle_packet(
     return (
         prompt.rstrip()
         + "\n\n"
-        + "Goal Harness case lifecycle packet:\n"
+        + "LoopX case lifecycle packet:\n"
         + packet_text
         + "\n\n"
         + "Use this packet as observational control-plane context. Keep the "
         + "official SkillsBench/BenchFlow verifier authoritative, do not expose "
         + "reward or verifier output during the agent loop, and do not rely on "
-        + "runner-internal polling alone when claiming Goal Harness treatment "
+        + "runner-internal polling alone when claiming LoopX treatment "
         + "evidence."
     )
 
@@ -114,7 +114,7 @@ def _prompt_with_completion_marker(prompt: str, marker_name: str) -> str:
     return (
         prompt.rstrip()
         + "\n\n"
-        + "Goal Harness worker coordination: after you have completed the task, "
+        + "LoopX worker coordination: after you have completed the task, "
         + f"write a concise final status message to ./{marker_name} and then stop. "
         + "This hidden file is a temporary harness marker and will be removed before "
         + "verification; do not include raw task text or credential material in it."
@@ -164,8 +164,8 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
     work_dir.mkdir(parents=True, exist_ok=True)
     if marker_path.exists():
         marker_path.unlink()
-    lifecycle_packet, lifecycle_contract = build_goal_harness_case_lifecycle_packet(args)
-    effective_prompt = _prompt_with_goal_harness_case_lifecycle_packet(
+    lifecycle_packet, lifecycle_contract = build_loopx_case_lifecycle_packet(args)
+    effective_prompt = _prompt_with_loopx_case_lifecycle_packet(
         prompt,
         lifecycle_packet,
     )
@@ -207,9 +207,9 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                 "completion_marker_requested": True,
                 "completion_marker_observed": marker_observed,
                 "completion_marker_deleted": marker_deleted,
-                "goal_harness_mode": args.goal_harness_mode,
-                "goal_harness_access_packet_mode": args.goal_harness_access_packet_mode,
-                "goal_harness_case_lifecycle_packet_injected": bool(lifecycle_packet),
+                "loopx_mode": args.loopx_mode,
+                "loopx_access_packet_mode": args.loopx_access_packet_mode,
+                "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
                 "benchmark_case_lifecycle_contract": lifecycle_contract,
             }
         )
@@ -232,9 +232,9 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         "route": "codex-app-server-goal-baseline",
         "benchmark_id": args.dataset,
         "task_id": args.task_id,
-        "goal_harness_mode": args.goal_harness_mode,
-        "goal_harness_access_packet_mode": args.goal_harness_access_packet_mode,
-        "goal_harness_case_lifecycle_packet_injected": bool(lifecycle_packet),
+        "loopx_mode": args.loopx_mode,
+        "loopx_access_packet_mode": args.loopx_access_packet_mode,
+        "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
         "benchmark_case_lifecycle_contract": lifecycle_contract,
         "worker_contract": build_contract_payload(args),
         "prompt": {
@@ -299,30 +299,30 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Mark the surrounding BenchFlow worker integration as ready.",
     )
     parser.add_argument(
-        "--goal-harness-mode",
+        "--loopx-mode",
         default="codex_goal_mode_baseline",
         help=(
-            "Goal Harness benchmark arm mode. Use codex_goal_harness only for "
+            "LoopX benchmark arm mode. Use codex_loopx only for "
             "treatment runs that intentionally receive a case lifecycle packet."
         ),
     )
     parser.add_argument(
-        "--goal-harness-access-packet-mode",
+        "--loopx-access-packet-mode",
         default="none",
         help="Set to compact to inject the public-safe case lifecycle packet.",
     )
     parser.add_argument(
-        "--goal-harness-case-id",
+        "--loopx-case-id",
         default="",
-        help="Public case id for the per-case/arm Goal Harness lifecycle contract.",
+        help="Public case id for the per-case/arm LoopX lifecycle contract.",
     )
     parser.add_argument(
-        "--goal-harness-arm-id",
+        "--loopx-arm-id",
         default="codex_app_server_goal_baseline",
-        help="Public arm id for the per-case/arm Goal Harness lifecycle contract.",
+        help="Public arm id for the per-case/arm LoopX lifecycle contract.",
     )
     parser.add_argument(
-        "--goal-harness-max-rounds",
+        "--loopx-max-rounds",
         type=int,
         default=5,
         help="Maximum public prompt-polling round budget for treatment metadata.",
@@ -343,14 +343,14 @@ def main(argv: list[str] | None = None) -> int:
             "contract_only": True,
             "worker_contract": build_contract_payload(args),
         }
-        lifecycle_packet, lifecycle_contract = build_goal_harness_case_lifecycle_packet(
+        lifecycle_packet, lifecycle_contract = build_loopx_case_lifecycle_packet(
             args
         )
         payload.update(
             {
-                "goal_harness_mode": args.goal_harness_mode,
-                "goal_harness_access_packet_mode": args.goal_harness_access_packet_mode,
-                "goal_harness_case_lifecycle_packet_injected": bool(lifecycle_packet),
+                "loopx_mode": args.loopx_mode,
+                "loopx_access_packet_mode": args.loopx_access_packet_mode,
+                "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
                 "benchmark_case_lifecycle_contract": lifecycle_contract,
             }
         )

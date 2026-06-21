@@ -5,7 +5,7 @@ evidence. It sits above `benchmark_run_ledger_v0`.
 
 The run ledger is the inventory: which case ran, which arm ran, score/failure
 class, and compact artifact references. Case analysis is the interpretation:
-why a result matters, what it says about Goal Harness, and which optimization
+why a result matters, what it says about LoopX, and which optimization
 or routing decision it should inform.
 
 ## Files

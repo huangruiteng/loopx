@@ -4,7 +4,7 @@ Status: route-transition retrospective; no benchmark score evidence.
 
 ## Summary
 
-Goal Harness moved the near-term benchmark program from local-Codex /
+LoopX moved the near-term benchmark program from local-Codex /
 remote-executor split-control to a dedicated cloud-host Codex route.
 
 The new default is simple:
@@ -12,7 +12,7 @@ The new default is simple:
 1. Codex CLI runs on the dedicated benchmark host.
 2. Benchmark runners, Docker-compatible runtime, task data, raw artifacts, and
    compact reducers stay on that host.
-3. Goal Harness records only control-plane truth: todos, gates, quota, compact
+3. LoopX records only control-plane truth: todos, gates, quota, compact
    evidence handles, ledger updates, docs, and public/private boundaries.
 
 The old split-control path remains useful as a research asset for
@@ -23,7 +23,7 @@ question directly.
 ## Why Split-Control Was Hard
 
 Split-control solved a real safety problem: keep Codex auth, model invocation,
-and Goal Harness state local while a remote machine provides Docker, runner
+and LoopX state local while a remote machine provides Docker, runner
 dependencies, task-data staging, bounded execution, and compact result
 reduction.
 
@@ -87,13 +87,13 @@ For external benchmark repositories:
   source tree;
 - do not patch scorer logic, task definitions, prompts, or official runner
   behavior unless the patch is upstreamable and separately reviewed;
-- do not mix Goal Harness bridge probes, raw logs, credentials, local paths,
+- do not mix LoopX bridge probes, raw logs, credentials, local paths,
   or private host details into benchmark forks.
 
 For internal benchmark workspaces:
 
 - keep private raw artifacts on the benchmark host;
-- write compact public-safe handles back to Goal Harness;
+- write compact public-safe handles back to LoopX;
 - label runs by route, for example `cloud_codex_default` or
   `split_control_fallback`;
 - keep upload, leaderboard, and public-claim decisions as explicit gates.
@@ -113,5 +113,5 @@ For internal benchmark workspaces:
 
 This retrospective may claim only that the benchmark execution route changed
 and that split-control is now fallback/research. It must not claim benchmark
-uplift, official task success, or Goal Harness effectiveness until compact
+uplift, official task success, or LoopX effectiveness until compact
 benchmark evidence exists.

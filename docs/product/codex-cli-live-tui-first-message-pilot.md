@@ -3,14 +3,14 @@
 Status: blocker recorded; manual TUI bootstrap remains primary.
 Recorded: 2026-06-21.
 
-This note records a real Codex CLI TUI pilot for the one-message Goal Harness
+This note records a real Codex CLI TUI pilot for the one-message LoopX
 bootstrap path. The pilot used only a disposable public-safe repo and kept raw
 TUI output, Codex transcripts, session files, credentials, and private project
 paths out of the repository.
 
 ## Question
 
-Can Goal Harness launch a real visible Codex CLI TUI with the generated start
+Can LoopX launch a real visible Codex CLI TUI with the generated start
 message and prove that the loop starts, remains observable, and stays steerable
 by the user?
 
@@ -20,8 +20,8 @@ The pilot used a temporary public repo with a small `README.md`, a small
 `GOAL.md`, and a generated start message:
 
 ```bash
-goal-harness codex-cli-bootstrap-message \
-  --project /tmp/goal-harness-live-tui-pilot.<suffix> \
+loopx codex-cli-bootstrap-message \
+  --project /tmp/loopx-live-tui-pilot.<suffix> \
   --goal-id public-live-tui-pilot-goal \
   --agent-id codex-side-bypass \
   --message-only
@@ -43,8 +43,8 @@ Two bounded probes were attempted:
 
    ```bash
    codex --no-alt-screen --ask-for-approval never --sandbox workspace-write \
-     -C /tmp/goal-harness-live-tui-pilot.<suffix> \
-     "$(cat goal-harness-start-message.txt)"
+     -C /tmp/loopx-live-tui-pilot.<suffix> \
+     "$(cat loopx-start-message.txt)"
    ```
 
 The second probe launched Codex CLI, but it did not produce a compact,
@@ -58,7 +58,7 @@ Not proven yet.
 
 The generated message can start a real Codex CLI TUI through `codex [PROMPT]`,
 but the current automation-side proof is insufficient for claiming that the
-Goal Harness loop started successfully.
+LoopX loop started successfully.
 
 Observed blockers:
 
@@ -79,10 +79,10 @@ Decision:
 The public user path should still be:
 
 1. the user opens Codex CLI TUI in the project repo;
-2. the user pastes one Goal Harness start message;
+2. the user pastes one LoopX start message;
 3. Codex keeps the visible TUI as the live control surface.
 
-Goal Harness should not advertise automated `codex [PROMPT]` launch as a
+LoopX should not advertise automated `codex [PROMPT]` launch as a
 verified first-run path until a bounded visible pilot adapter exists.
 
 That adapter needs to prove all of these without raw transcript or session-file
@@ -116,8 +116,8 @@ first-response fixture plus runtime-idle evidence, but it does not start Codex,
 read transcripts, read session files, capture stdout/stderr, or mutate the TUI.
 
 ```bash
-goal-harness codex-cli-bounded-visible-pilot-adapter \
-  --project /tmp/goal-harness-live-tui-pilot.<suffix> \
+loopx codex-cli-bounded-visible-pilot-adapter \
+  --project /tmp/loopx-live-tui-pilot.<suffix> \
   --goal-id public-live-tui-pilot-goal \
   --agent-id codex-side-bypass \
   --first-response-fixture public-first-response.json \
@@ -136,8 +136,8 @@ success claim.
 Use this packet before a real user-visible rehearsal:
 
 ```bash
-goal-harness codex-cli-visible-first-response-capture-plan \
-  --project /tmp/goal-harness-live-tui-pilot.<suffix> \
+loopx codex-cli-visible-first-response-capture-plan \
+  --project /tmp/loopx-live-tui-pilot.<suffix> \
   --goal-id public-live-tui-pilot-goal \
   --agent-id codex-side-bypass
 ```

@@ -134,7 +134,7 @@ resolved single-tag result or a compact hard blocker.
 ```bash
 python3 examples/agentissue-bench-lagent239-controlled-pilot-result-smoke.py
 python3 -m py_compile examples/agentissue-bench-lagent239-controlled-pilot-result-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/agentissue-bench-lagent239-controlled-pilot-result-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-lagent239-controlled-pilot-result-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

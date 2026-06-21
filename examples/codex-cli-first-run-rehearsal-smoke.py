@@ -23,7 +23,7 @@ def normalize(text: str) -> str:
 
 def run_cli(*args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=True,
         text=True,
@@ -41,17 +41,17 @@ def assert_doc() -> None:
         "no-clone install/update through the GitHub archive installer",
         "one-message Codex CLI TUI bootstrap",
         "proof-capture fixtures for later visible automation",
-        "Start Goal Harness for this repo",
+        "Start LoopX for this repo",
         "install-from-github.sh",
-        "goal-harness codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only",
-        "goal-harness codex-cli-tui-bootstrap-smoke-bundle",
-        "goal-harness --format json codex-cli-visible-attach-acceptance",
+        "loopx codex-cli-bootstrap-message --project . --goal-id <goal-id> --message-only",
+        "loopx codex-cli-tui-bootstrap-smoke-bundle",
+        "loopx --format json codex-cli-visible-attach-acceptance",
         "does not prove same-open-TUI automation",
         "Same-TUI automation stays optional until the proof path passes",
         "must not:",
-        "require cloning the Goal Harness repo",
+        "require cloning the LoopX repo",
         "read raw Codex transcripts, session files, stdout, stderr, credentials, or private paths",
-        "spend Goal Harness quota before validated writeback",
+        "spend LoopX quota before validated writeback",
         "treat headless `codex exec` as the default user experience",
     )
     for phrase in must_have:
@@ -88,7 +88,7 @@ def assert_cli_surfaces_align() -> None:
         "--message-only",
     )
     normalized = normalize(message)
-    assert message.startswith("Install and connect Goal Harness for this repo"), message
+    assert message.startswith("Install and connect LoopX for this repo"), message
     assert not message.startswith("/goal "), message
     assert "setup/bootstrap instruction" in normalized, message
     assert "/goal <thin task_body>" in normalized, message
@@ -110,7 +110,7 @@ def assert_cli_surfaces_align() -> None:
     normalized_bundle = normalize(bundle)
     assert "Codex CLI TUI Bootstrap Smoke Bundle" in normalized_bundle, bundle
     assert "runs_codex: `False`" in normalized_bundle, bundle
-    assert "requires_goal_harness_repo_clone: `False`" in normalized_bundle, bundle
+    assert "requires_loopx_repo_clone: `False`" in normalized_bundle, bundle
 
 
 def main() -> int:

@@ -8,11 +8,11 @@
 
 **让多个 agent 昼夜接力，把人的判断留在控制面。**
 
-Goal Harness 把目标、用户决策、agent todo、认领关系、scope、safe fallback、run history 和 quota 放进同一层状态：该等人的地方明确等人，不该空等的安全侧路继续推进。
+LoopX 把目标、用户决策、agent todo、认领关系、scope、safe fallback、run history 和 quota 放进同一层状态：该等人的地方明确等人，不该空等的安全侧路继续推进。
 
 ## Current Positioning
 
-Goal Harness 的发布重点不是“又做了一个 agent 框架”，而是一个更小、更真实的产品问题：
+LoopX 的发布重点不是“又做了一个 agent 框架”，而是一个更小、更真实的产品问题：
 
 > 当 Codex / Claude Code / Cursor 这类 agent runtime 已经足够强，下一步缺的是一层 human-in-the-loop 控制面：让人的多个 agent 可以昼夜接力，同时在等待人类判断时不空等、不越界，并且把每一次 fallback、验证和边界都留下证据。
 
@@ -30,14 +30,14 @@ Goal Harness 的发布重点不是“又做了一个 agent 框架”，而是一
 ## Title Options
 
 1. AI Agent 最怕的不是不会干活，而是被一个确认卡住
-2. 我给 Codex 做了一层 Goal Harness：让它等待人时也不空等
+2. 我给 Codex 做了一层 LoopX：让它等待人时也不空等
 3. 长程任务里，Agent 需要的不是更长聊天，而是控制面
-4. 开源 Goal Harness：让 AI Agent 的目标、证据和人类决策不再散落在聊天里
+4. 开源 LoopX：让 AI Agent 的目标、证据和人类决策不再散落在聊天里
 5. 我越来越确定：AI Coding 产品会从 prompt 竞争走向 control plane 竞争
 
 ## Draft
 
-最近我在做一个小工具：`goal-harness`。
+最近我在做一个小工具：`loopx`。
 
 它不是新的 agent 框架，也不替代 Codex / Claude Code / Cursor。它解决的是另一个问题：当 agent 已经能长时间干活，人类不应该继续做手动调度器。
 
@@ -51,7 +51,7 @@ Goal Harness 的发布重点不是“又做了一个 agent 框架”，而是一
 - 这轮有没有越过私有材料、生产环境、公开 claim 或 leaderboard 边界？
 - 下一轮 agent 怎么知道这次 fallback 只是 fallback，而不是新的主线？
 
-Goal Harness 把这些问题抽成一层本地控制面：
+LoopX 把这些问题抽成一层本地控制面：
 
 ```text
 goal state
@@ -71,7 +71,7 @@ Codex / Claude Code / Cursor / benchmark runner
 
 很多 agent 产品在这里会停住：等用户点选项，或者反复提醒“需要确认”。
 
-Goal Harness 的做法是：
+LoopX 的做法是：
 
 1. 把 ALE 大镜像获取写成具体 user todo；
 2. 说明这是核心 lane 的 gate，不消耗 delivery quota；
@@ -94,13 +94,13 @@ Goal Harness 的做法是：
 
 它应该知道什么时候继续，什么时候闭嘴，什么时候把人的决策显式投影出来，什么时候把安全 fallback 暴露成 fallback。
 
-这也是我现在对 Goal Harness 的定位：
+这也是我现在对 LoopX 的定位：
 
 - Prompt engineering 解决“怎么说”；
 - Context engineering 解决“给模型看什么”；
-- Goal Harness 解决“这个 agent 如何在受控边界里长期行动、被观察、被评估、被接手”。
+- LoopX 解决“这个 agent 如何在受控边界里长期行动、被观察、被评估、被接手”。
 
-仓库：`github.com/huangruiteng/goal-harness`
+仓库：`github.com/huangruiteng/loopx`
 
 如果你也在用 AI coding 工具做长期项目，我更想知道：你现在最大的痛点是模型不够强，还是目标、状态、验证和交接不够稳？
 
@@ -117,4 +117,4 @@ Goal Harness 的做法是：
 - AI agent 产品下一阶段：从 prompt / context 到 control plane。
 - Human-in-the-loop 不是“每次都问人”，而是把人类判断变成可继承的控制面信号。
 - 一个 good case 如何沉淀成 run history、case analysis 和产品改进。
-- 为什么 Goal Harness 不是 agent framework，而是 agent loop 的 backstage control plane。
+- 为什么 LoopX 不是 agent framework，而是 agent loop 的 backstage control plane。

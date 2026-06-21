@@ -33,7 +33,7 @@ Current public leaderboard evidence includes:
   such as OpenHands with `gpt-4o-2024-08-06` at `4.89%` All and MLAB with
   `gpt-4o-2024-08-06` at `1.60%` All.
 
-This is useful for Goal Harness only if the experiment question is about
+This is useful for LoopX only if the experiment question is about
 long-horizon ML workflow management, artifact discipline, data/compute
 planning, and failure attribution. It is less ideal if the immediate goal is a
 cheap local Codex CLI win/loss signal, because public SOTA has climbed and the

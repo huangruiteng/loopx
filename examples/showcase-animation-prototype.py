@@ -54,11 +54,11 @@ def validate(
     storyboard: dict[str, Any],
     catalog: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], int]:
-    if storyboard.get("schema_version") != "goal_harness_showcase_animation_storyboard_v0":
+    if storyboard.get("schema_version") != "loopx_showcase_animation_storyboard_v0":
         raise ValueError("storyboard schema_version mismatch")
     if storyboard.get("source_catalog") != "docs/showcases/showcase-catalog.json":
         raise ValueError("storyboard must point to docs/showcases/showcase-catalog.json")
-    if catalog.get("schema_version") != "goal_harness_showcase_catalog_v0":
+    if catalog.get("schema_version") != "loopx_showcase_catalog_v0":
         raise ValueError("catalog schema_version mismatch")
 
     target = storyboard.get("duration_seconds_target")
@@ -246,7 +246,7 @@ def render(storyboard: dict[str, Any], catalog: dict[str, Any]) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Goal Harness Showcase Animation Prototype</title>
+  <title>LoopX Showcase Animation Prototype</title>
   <style>
     :root {{
       color-scheme: light;
@@ -521,7 +521,7 @@ def render(storyboard: dict[str, Any], catalog: dict[str, Any]) -> str:
 <body>
   <main>
     <section class="intro" aria-label="Prototype overview">
-      <p class="eyebrow">Goal Harness public showcase animation</p>
+      <p class="eyebrow">LoopX public showcase animation</p>
       <h1>{esc(hero_line)}</h1>
       <p>{esc(supporting_line)}</p>
       <div class="source-box">

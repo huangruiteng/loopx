@@ -1,9 +1,9 @@
 # Reward-Style Replanning Hints
 
-Goal Harness already records exact run-bound `human_reward` overlays and
+LoopX already records exact run-bound `human_reward` overlays and
 operator gates. The next product problem is not "train on the user's chat".
 It is smaller and safer: when a human repeatedly rewards, corrects, or steers a
-long-running agent, Goal Harness should convert that explicit feedback into
+long-running agent, LoopX should convert that explicit feedback into
 compact replanning hints that help the next bounded turn choose a better todo.
 
 This note defines the product shape for public-safe reward-style learning. It
@@ -36,7 +36,7 @@ Only explicit and compact sources should feed this lane:
   reward reasons, or refresh-state notes;
 - repeated steering patterns already summarized in run history, such as
   "surface-only progress loop" or "missing validation evidence";
-- explicit owner decisions recorded through Goal Harness commands.
+- explicit owner decisions recorded through LoopX commands.
 
 Excluded inputs:
 
@@ -53,7 +53,7 @@ A future implementation can project compact hints as `replan_hint_v0` records:
 ```json
 {
   "schema_version": "replan_hint_v0",
-  "goal_id": "goal-harness-meta",
+  "goal_id": "loopx-meta",
   "source_refs": [
     {"kind": "human_reward", "run_generated_at": "2026-06-20T04:16:49+08:00"},
     {"kind": "todo", "todo_id": "todo_abc123"}
@@ -84,7 +84,7 @@ permission rule.
 
 ## Replanning Use
 
-During the steering audit, Goal Harness can combine candidate todos with active
+During the steering audit, LoopX can combine candidate todos with active
 hints:
 
 1. Build candidate todos from the current active state and status projection.

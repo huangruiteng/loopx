@@ -124,7 +124,7 @@ def run_cli(registry: Path, runtime_root: Path, *args: str) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry),
             "--runtime-root",
@@ -142,7 +142,7 @@ def run_cli(registry: Path, runtime_root: Path, *args: str) -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-blocker-push-runtime-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-blocker-push-runtime-") as tmp:
         root = Path(tmp)
         registry, runtime_root, project, state_file = write_fixture(root)
 

@@ -13,7 +13,7 @@ Replace the placeholders before sending it to Codex.
 Generate the same handoff prompt locally:
 
 ```bash
-goal-harness new-project-prompt \
+loopx new-project-prompt \
   --project <PROJECT_ROOT> \
   --goal-doc <GOAL_DOC_PATH>
 ```
@@ -21,7 +21,7 @@ goal-harness new-project-prompt \
 If the project needs a controller that can split scoped sub-agent probes:
 
 ```bash
-goal-harness new-project-prompt \
+loopx new-project-prompt \
   --project <PROJECT_ROOT> \
   --goal-doc <GOAL_DOC_PATH> \
   --spawn-allowed \
@@ -33,7 +33,7 @@ goal-harness new-project-prompt \
 ## Copy-Paste Prompt
 
 ````text
-我有一个新项目要接入 Goal Harness。
+我有一个新项目要接入 LoopX。
 
 项目文件夹：
 <PROJECT_ROOT>
@@ -43,29 +43,29 @@ goal-harness new-project-prompt \
 
 请你按下面步骤推进，不要停在方案讨论：
 
-重要：`goal-harness connect` 默认会做一次快速 onboarding scan，基于 git status、
+重要：`loopx connect` 默认会做一次快速 onboarding scan，基于 git status、
 最近 commit、顶层项目信号生成候选 agent todo。接入后不要直接开始 delivery；
 先把候选 todo 展示给我，并问我两件事：
 
 1. 接受、编辑或拒绝哪些候选 agent todo；
 2. 是否允许你从接受的 todo 开始自主推进。
 
-0. 先确认当前 shell 能调用 Goal Harness CLI；如果提示 `goal-harness`
+0. 先确认当前 shell 能调用 LoopX CLI；如果提示 `loopx`
    不在 PATH，运行本机安装脚本再继续：
 
    ```bash
    export PATH="$HOME/.local/bin:$PATH"
-   install_script="$HOME/goal-harness/scripts/install-local.sh"
-   if ! command -v goal-harness >/dev/null 2>&1; then
+   install_script="$HOME/loopx/scripts/install-local.sh"
+   if ! command -v loopx >/dev/null 2>&1; then
      if [ -x "$install_script" ]; then
        "$install_script"
        export PATH="$HOME/.local/bin:$PATH"
      else
-       echo "goal-harness is not on PATH; clone the Goal Harness repo and run scripts/install-local.sh" >&2
+       echo "loopx is not on PATH; clone the LoopX repo and run scripts/install-local.sh" >&2
        exit 1
      fi
    fi
-   goal-harness doctor >/dev/null
+   loopx doctor >/dev/null
    ```
 
 1. 再只读检查项目文件夹和目标文档，抽取：
@@ -77,10 +77,10 @@ goal-harness new-project-prompt \
    - validation surfaces；
    - private/public boundary；
    - 第一个 recommended_action。
-2. 运行 Goal Harness 接入命令。优先使用：
+2. 运行 LoopX 接入命令。优先使用：
 
    cd <PROJECT_ROOT>
-   goal-harness connect \
+   loopx connect \
      --goal-id <STABLE_GOAL_ID> \
      --objective "<OBJECTIVE_FROM_GOAL_DOC>" \
      --domain <DOMAIN> \
@@ -99,7 +99,7 @@ goal-harness new-project-prompt \
    --allowed-domain validation-map \
    --write-scope "<SAFE_WRITE_SCOPE>"
 
-3. 确认 `.goal-harness/registry.json` 和
+3. 确认 `.loopx/registry.json` 和
    `.codex/goals/<STABLE_GOAL_ID>/ACTIVE_GOAL_STATE.md` 已创建或更新。
    阅读输出里的 `Onboarding Scan`、`Proposed Onboarding Candidates`、
    `Accept Candidate Commands` 和 `Autonomy Choice`。不要让我手动执行这些命令；
@@ -107,13 +107,13 @@ goal-harness new-project-prompt \
    - 接受哪些编号，是否需要改写；
    - 是否 `autonomous=yes`，允许你在 quota guard 通过后开始执行第一个接受的
      agent todo。
-   如果我接受候选 todo，用输出里的 `goal-harness todo add ...` 命令写入
+   如果我接受候选 todo，用输出里的 `loopx todo add ...` 命令写入
    agent todo；如果我允许自主推进，先运行 quota guard，再执行第一个已接受
    agent todo。如果我不允许自主推进，只写入接受的 todo 并运行
-   `goal-harness refresh-state --goal-id <STABLE_GOAL_ID>`，然后停下来汇报。
-   如果目标状态包含私有证据，把 `.goal-harness/` 和 `.codex/goals/`
+   `loopx refresh-state --goal-id <STABLE_GOAL_ID>`，然后停下来汇报。
+   如果目标状态包含私有证据，把 `.loopx/` 和 `.codex/goals/`
    加入该项目 `.gitignore`。
-   `goal-harness connect` 默认会同步到共享全局 registry；不要手动编辑其他
+   `loopx connect` 默认会同步到共享全局 registry；不要手动编辑其他
    项目的 registry。
    接入后检查 registry 里的 `execution_profile`：它是本项目后续 heartbeat /
    adapter 的执行画像。默认 cadence 是 `bounded_progress_segment`，连续小步达到
@@ -124,7 +124,7 @@ goal-harness new-project-prompt \
    先问 compute guard：
 
    ```bash
-   goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id <STABLE_GOAL_ID>
+   loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <STABLE_GOAL_ID>
    ```
 
    如果返回 `state=operator_gate`，把它当成人/控制器交互，而不是安静 skip：优先读取
@@ -156,26 +156,26 @@ goal-harness new-project-prompt \
    `recommended_action` / `goal_boundary` 选择下一个安全 bounded 动作；只读目标保持只读，
    delivery 目标按已授权 write scope 执行。
    如果命令非零，fail closed，先修
-   `goal-harness doctor` / `goal-harness status`。这个 guard 不等于写权限、
+   `loopx doctor` / `loopx status`。这个 guard 不等于写权限、
    不绕过 operator gate、也不替代 human reward。
    任何时候，如果你通过 read-only 分析、review doc、gate checklist 或 P0/P1 steering
    发现新的用户/owner 待办，不要只写在 `Next Action`、外部 review 文档或聊天里。
    立刻把它写进 active state 的 user todo 权威区：
 
    ```bash
-   goal-harness todo add --goal-id <STABLE_GOAL_ID> --role user --text "<public-safe user/owner action>"
+   loopx todo add --goal-id <STABLE_GOAL_ID> --role user --text "<public-safe user/owner action>"
    ```
 
    agent 自己的后续动作写成 `--role agent`。写入后如果 dashboard 需要看到最新状态，
-   运行 `goal-harness refresh-state --goal-id <STABLE_GOAL_ID>`。
-   完整契约见 Goal Harness 仓库里的 `docs/project-agent-todo-contract.md`。
+   运行 `loopx refresh-state --goal-id <STABLE_GOAL_ID>`。
+   完整契约见 LoopX 仓库里的 `docs/project-agent-todo-contract.md`。
 5. 如果需要把当前 packet 或已批准命令交给项目 agent，优先生成最小 handoff，
    不要从旧聊天、旧 review packet 或 `run_history.latest_runs` 拼当前状态。当前权威状态来自
    `attention_queue.items` / `project_asset`；如果缺少 `project_asset` 或标记为
    `legacy/raw fallback`，不要把 raw queue 字段当作 owner/gate/stop authority：
 
    ```bash
-   goal-harness review-packet --goal-id <STABLE_GOAL_ID> --handoff-only
+   loopx review-packet --goal-id <STABLE_GOAL_ID> --handoff-only
    ```
 
    只把输出的 handoff 交给目标项目 agent；完整 review packet 留给 operator view /
@@ -184,7 +184,7 @@ goal-harness new-project-prompt \
    spend 协议；先生成 task body，再把输出复制进 automation：
 
    ```bash
-   goal-harness heartbeat-prompt \
+   loopx heartbeat-prompt \
      --goal-id <STABLE_GOAL_ID> \
      --active-state .codex/goals/<STABLE_GOAL_ID>/ACTIVE_GOAL_STATE.md
    ```
@@ -193,7 +193,7 @@ goal-harness new-project-prompt \
    不同步外部系统、不要写生产状态，除非目标文档明确授权。通用接入优先跑：
 
    ```bash
-   goal-harness read-only-map --goal-id <STABLE_GOAL_ID>
+   loopx read-only-map --goal-id <STABLE_GOAL_ID>
    ```
 8. 如果本轮只更新了 active state、ledger 或外部规划文档，没有产生新的
    adapter run，或者 dashboard 仍显示旧 run，追加一个 state-only refresh
@@ -201,22 +201,22 @@ goal-harness new-project-prompt \
    quota spend 之后，避免 state refresh 先关闭 active delivery lane：
 
    ```bash
-   goal-harness refresh-state --goal-id <STABLE_GOAL_ID>
+   loopx refresh-state --goal-id <STABLE_GOAL_ID>
    ```
 
    这个命令也会自动同步全局 registry。
 
 9. 跑验证：
-   - `goal-harness registry`
-   - `goal-harness status`（在没有项目局部 registry 的目录里也应自动读共享全局 registry）
-   - `goal-harness check --scan-path <PUBLIC_SAFE_FILE_OR_DIR>`
+   - `loopx registry`
+   - `loopx status`（在没有项目局部 registry 的目录里也应自动读共享全局 registry）
+   - `loopx check --scan-path <PUBLIC_SAFE_FILE_OR_DIR>`
 10. 如果本轮实际花了 automatic delivery compute（例如 read-only map、adapter tick、
    实现推进或验证推进），在 validation / writeback 完成后、任何可能关闭 active delivery
    lane 的 state-only `refresh-state` 之前，只 append 一次 quota spend；需要 dashboard
    或 controller 看到新状态时，再在 spend 后 refresh：
 
    ```bash
-   goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id <STABLE_GOAL_ID> --slots 1 --source adapter --execute
+   loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <STABLE_GOAL_ID> --slots 1 --source adapter --execute
    ```
 
    不要为 quiet `should_run=false` skip、preflight 失败、或纯 dry-run preview 记账；
@@ -236,7 +236,7 @@ If the goal is simple and does not need a project-specific adapter yet:
 
 ```bash
 cd <PROJECT_ROOT>
-goal-harness connect \
+loopx connect \
   --goal-id <STABLE_GOAL_ID> \
   --objective "<OBJECTIVE_FROM_GOAL_DOC>" \
   --domain <DOMAIN> \
@@ -246,9 +246,9 @@ goal-harness connect \
 Then inspect:
 
 ```bash
-goal-harness registry
-goal-harness status
-goal-harness check --scan-root .
+loopx registry
+loopx status
+loopx check --scan-root .
 ```
 
 ## What Good Looks Like
@@ -257,7 +257,7 @@ The first connection is successful when:
 
 - the project has a stable `ACTIVE_GOAL_STATE.md`;
 - the registry points to that state file;
-- the goal appears in `goal-harness status`;
+- the goal appears in `loopx status`;
 - the attention queue says exactly who should act next;
 - private evidence is kept in the project or local runtime, not in public docs;
 - the next Codex tick can continue from saved state instead of re-reading the

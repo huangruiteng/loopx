@@ -5,12 +5,12 @@ Checked at: 2026-06-08T02:18:00+08:00
 ## Purpose
 
 `mini_control_plane_repair_with_interrupt_v0` is the deterministic recovery
-slice for the local Goal Harness benchmark program. It keeps the same
+slice for the local LoopX benchmark program. It keeps the same
 implementation puzzle as `mini_control_plane_repair_v0`, but adds controlled
 long-horizon failure pressure around the worker instead of making the coding
 task harder.
 
-The slice exists to prove Goal Harness control-plane value before any real
+The slice exists to prove LoopX control-plane value before any real
 Terminal-Bench, Harbor, Docker, Codex/model API, cloud, paid-compute, private
 trace, raw benchmark log, local artifact path, or leaderboard path is used.
 

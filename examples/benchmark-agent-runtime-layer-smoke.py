@@ -27,7 +27,7 @@ def _run_json(args: list[str]) -> dict:
 
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="gh-runtime-layer-") as tmp:
-        workspace = Path(tmp) / "goal-harness-bench"
+        workspace = Path(tmp) / "loopx-bench"
         public = _run_json(
             [
                 "--benchmark",
@@ -125,7 +125,7 @@ def main() -> None:
         assert "--mounts" in terminal_args, terminal_args
         assert "--agent-env" in terminal_args, terminal_args
         assert (
-            "goal_harness_codex_install_strategy=require_existing_codex"
+            "loopx_codex_install_strategy=require_existing_codex"
             in terminal_args
         ), terminal_args
         assert terminal["container_contract"]["required_commands"] == [

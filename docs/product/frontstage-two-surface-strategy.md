@@ -1,6 +1,6 @@
 # Frontstage Two-Surface Strategy
 
-Goal Harness frontstage work has two different products sharing some dashboard
+LoopX frontstage work has two different products sharing some dashboard
 code. Treating them as one surface makes the next UI pass ambiguous: public
 showcase pages want visual storytelling, while the real operator control plane
 wants dense, local, stateful inspection. This note is the route and validation
@@ -12,7 +12,7 @@ The frontstage family has two first-class surfaces:
 
 | Surface | Job | Primary routes | Owner |
 | --- | --- | --- | --- |
-| Public showcase and homepage | Explain Goal Harness through public-safe cases, demos, animation, and product narrative. | `/frontstage`, hosted `/frontstage/`, future homepage entry points. | Product, outreach, and frontstage showcase work. |
+| Public showcase and homepage | Explain LoopX through public-safe cases, demos, animation, and product narrative. | `/frontstage`, hosted `/frontstage/`, future homepage entry points. | Product, outreach, and frontstage showcase work. |
 | Real ops control plane | Help the operator inspect current goals, gates, todos, claims, quota, run history, and safe local actions. | `/`, `?view=ops`, `/frontstage?mode=ops&statusUrl=<relative-or-loopback>`. | Runtime, status contract, dashboard, and control-plane work. |
 
 The public surface is the default when a URL can be copied or hosted. The ops
@@ -27,11 +27,11 @@ safe for GitHub Pages, Lark shares, screenshots, and public demos.
 
 `/frontstage?mode=ops&statusUrl=...` belongs to local ops inspection. The
 `statusUrl` must be relative or loopback. This route may read
-`goal_channel_projection_v0` from a local `goal-harness serve-status` feed, but
+`goal_channel_projection_v0` from a local `loopx serve-status` feed, but
 it is not a public link and must not be used as hosted showcase material.
 
 `/` is the operator home. It should answer the first-screen operational
-questions for the shared Goal Harness registry: current goal, concrete user
+questions for the shared LoopX registry: current goal, concrete user
 gate, top user todo, top agent todo, quota or guard judgment, and recent
 evidence. `?view=ops` remains the detailed workbench for debugging status
 contracts, reward previews, and individual queue items.
@@ -56,16 +56,16 @@ The public showcase surface may read:
 
 The public showcase surface must not read:
 
-- `.codex/goals`, `.goal-harness`, or `registry.global.json`;
-- live `goal-harness status` exports;
+- `.codex/goals`, `.loopx`, or `registry.global.json`;
+- live `loopx status` exports;
 - loopback `serve-status` feeds;
 - raw run logs, transcripts, benchmark task text, trajectories, verifier tails,
   credentials, internal links, local paths, or unpublished project evidence.
 
 The ops control-plane surface may read:
 
-- `goal-harness --format json status`;
-- `goal-harness serve-status --global-registry` or project-local
+- `loopx --format json status`;
+- `loopx serve-status --global-registry` or project-local
   `serve-status`;
 - `goal_channel_projection_v0` and other versioned projections;
 - run-bound reward preview data when the local server explicitly exposes it.
@@ -79,7 +79,7 @@ contract. Public hosted bundles must not contain those capabilities.
 The public showcase surface can be expressive. It may use case-first
 composition, kinetic lanes, motion, public product imagery, generated bitmap
 assets, and strong narrative hierarchy. It should optimize for understanding:
-what Goal Harness is, why long-running agent work needs a control plane, and
+what LoopX is, why long-running agent work needs a control plane, and
 which public cases prove reusable behavior.
 
 The ops surface should be quieter and denser. It should optimize for scanning,
@@ -99,7 +99,7 @@ Public showcase changes should validate:
 - static prototype or animation contracts when changed;
 - share/export privacy with `npm run smoke:frontstage-share-bundle`;
 - Pages workflow safety with `examples/frontstage-pages-workflow-smoke.py`;
-- public boundary scans with `goal-harness check` over changed docs/examples.
+- public boundary scans with `loopx check` over changed docs/examples.
 
 Ops control-plane changes should validate:
 

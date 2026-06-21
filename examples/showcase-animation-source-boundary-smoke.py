@@ -32,7 +32,7 @@ FORBIDDEN_SOURCE_PROMOTIONS = (
     "status.frontstage-share.json",
     "status.local.json",
     "registry.global.json",
-    ".goal-harness/registry.json",
+    ".loopx/registry.json",
     ".codex/goals/",
     "ACTIVE_GOAL_STATE.md",
 )
@@ -63,7 +63,7 @@ def assert_no_live_source_promotion() -> None:
 
 def assert_catalog_is_frontstage_ready() -> None:
     catalog = json.loads(read(CATALOG))
-    assert catalog.get("schema_version") == "goal_harness_showcase_catalog_v0", catalog
+    assert catalog.get("schema_version") == "loopx_showcase_catalog_v0", catalog
     cases = catalog.get("cases")
     assert isinstance(cases, list) and len(cases) >= 4, catalog
     for case in cases:
@@ -81,7 +81,7 @@ def assert_storyboard_uses_public_catalog() -> None:
     catalog_ids = {case["id"] for case in catalog["cases"]}
 
     storyboard = json.loads(read(STORYBOARD))
-    assert storyboard.get("schema_version") == "goal_harness_showcase_animation_storyboard_v0", storyboard
+    assert storyboard.get("schema_version") == "loopx_showcase_animation_storyboard_v0", storyboard
     assert storyboard.get("source_catalog") == "docs/showcases/showcase-catalog.json", storyboard
     assert storyboard.get("duration_seconds_target") == {"min": 20, "max": 30}, storyboard
 

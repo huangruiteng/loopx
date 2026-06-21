@@ -21,7 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
+from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_REQUEST_SCHEMA_VERSION,
     build_skillsbench_remote_command_file_bridge_probe_response,
 )
@@ -67,7 +67,7 @@ def serve_probe(*, fail_operation: str | None = None) -> int:
         print(json.dumps(response, sort_keys=True))
         return 0
 
-    content = "goal-harness-skillsbench-bridge-probe\n"
+    content = "loopx-skillsbench-bridge-probe\n"
     operations: list[dict[str, Any]] = []
     with tempfile.TemporaryDirectory(prefix="gh-skillsbench-bridge-") as tmp:
         marker = Path(tmp) / "marker.txt"

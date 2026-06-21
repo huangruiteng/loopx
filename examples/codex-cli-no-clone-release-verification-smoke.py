@@ -50,9 +50,9 @@ def add_tree(tar: tarfile.TarFile, root: Path, name: str) -> None:
         for child in sorted(path.rglob("*")):
             if ".git" in child.parts or "__pycache__" in child.parts:
                 continue
-            tar.add(child, arcname=str(Path("goal-harness-main") / child.relative_to(root)))
+            tar.add(child, arcname=str(Path("loopx-main") / child.relative_to(root)))
     else:
-        tar.add(path, arcname=str(Path("goal-harness-main") / name))
+        tar.add(path, arcname=str(Path("loopx-main") / name))
 
 
 def assert_docs() -> None:
@@ -91,10 +91,14 @@ def assert_installed_release(
     fresh_repo: Path,
     codex_called_marker: Path,
 ) -> None:
-    doctor = run([str(installed), "doctor"], env=env, cwd=fresh_repo)
+    runtime_env = {
+        **env,
+        "PATH": f"{installed.parent}:{env.get('PATH', '')}",
+    }
+    doctor = run([str(installed), "doctor"], env=runtime_env, cwd=fresh_repo)
     assert "ok: `True`" in doctor.stdout, doctor.stdout
 
-    help_text = run([str(installed), "--help"], env=env, cwd=fresh_repo).stdout
+    help_text = run([str(installed), "--help"], env=runtime_env, cwd=fresh_repo).stdout
     for command in FIRST_RUN_COMMANDS:
         assert command in help_text, help_text
 
@@ -115,11 +119,11 @@ def assert_installed_release(
             AGENT_ID,
             "--message-only",
         ],
-        env=env,
+        env=runtime_env,
         cwd=fresh_repo,
     ).stdout
     normalized_message = normalize(message)
-    assert message.startswith("Install and connect Goal Harness for this repo"), message
+    assert message.startswith("Install and connect LoopX for this repo"), message
     assert not message.startswith("/goal "), message
     assert "setup/bootstrap instruction" in normalized_message, message
     assert "/goal <thin task_body>" in normalized_message, message
@@ -143,14 +147,14 @@ def assert_installed_release(
                 "--agent-id",
                 AGENT_ID,
             ],
-            env=env,
+            env=runtime_env,
             cwd=fresh_repo,
         ).stdout
     )
     assert bundle["schema_version"] == "codex_cli_tui_bootstrap_smoke_bundle_v0", bundle
     assert bundle["boundary"]["runs_codex"] is False, bundle
-    assert bundle["boundary"]["requires_goal_harness_repo_clone"] is False, bundle
-    assert bundle["boundary"]["spends_goal_harness_quota"] is False, bundle
+    assert bundle["boundary"]["requires_loopx_repo_clone"] is False, bundle
+    assert bundle["boundary"]["spends_loopx_quota"] is False, bundle
     assert str(fresh_repo) in bundle["message_only_command"], bundle
 
     acceptance = json.loads(
@@ -173,7 +177,7 @@ def assert_installed_release(
                 "--idle-fixture",
                 str(fixture_dir / "runtime-idle-visible-resume.public.json"),
             ],
-            env=env,
+            env=runtime_env,
             cwd=fresh_repo,
         ).stdout
     )
@@ -193,13 +197,13 @@ def main() -> None:
     install_script = REPO_ROOT / "scripts" / "install-from-github.sh"
     subprocess.run(["bash", "-n", str(install_script)], check=True)
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-no-clone-release-") as td:
+    with tempfile.TemporaryDirectory(prefix="loopx-no-clone-release-") as td:
         tmp = Path(td)
-        archive = tmp / "goal-harness.tar.gz"
+        archive = tmp / "loopx.tar.gz"
         home = tmp / "home"
         fake_bin = tmp / "fake-bin"
         fresh_repo = tmp / "public-fresh-project"
-        releases_dir = home / ".local" / "share" / "goal-harness" / "releases"
+        releases_dir = home / ".local" / "share" / "loopx" / "releases"
         codex_called_marker = tmp / "codex-called"
         home.mkdir()
         fake_bin.mkdir()
@@ -217,7 +221,7 @@ def main() -> None:
 
         with tarfile.open(archive, "w:gz") as tar:
             for name in (
-                "goal_harness",
+                "loopx",
                 "scripts",
                 "skills",
                 "docs",
@@ -233,20 +237,20 @@ def main() -> None:
             {
                 "HOME": str(home),
                 "CODEX_HOME": str(home / ".codex"),
-                "GOAL_HARNESS_BIN_DIR": str(home / ".local" / "bin"),
-                "GOAL_HARNESS_RELEASES_DIR": str(releases_dir),
-                "GOAL_HARNESS_SHELL_PROFILE": str(home / ".profile"),
-                "GOAL_HARNESS_ARCHIVE_URL": f"file://{archive}",
-                "GOAL_HARNESS_INSTALL_CANARY": "0",
+                "LOOPX_BIN_DIR": str(home / ".local" / "bin"),
+                "LOOPX_RELEASES_DIR": str(releases_dir),
+                "LOOPX_SHELL_PROFILE": str(home / ".profile"),
+                "LOOPX_ARCHIVE_URL": f"file://{archive}",
+                "LOOPX_INSTALL_CANARY": "0",
                 "CODEX_CALLED_MARKER": str(codex_called_marker),
                 "PATH": f"{fake_bin}:{env.get('PATH', '')}",
             }
         )
         install = run(["bash", str(install_script)], env=env, cwd=tmp)
-        assert "goal-harness installed locally" in install.stdout, install.stdout
+        assert "loopx installed locally" in install.stdout, install.stdout
         assert "canary executable: skipped" in install.stdout, install.stdout
 
-        installed = home / ".local" / "bin" / "goal-harness"
+        installed = home / ".local" / "bin" / "loopx"
         assert installed.exists(), installed
         release_dirs = [path for path in releases_dir.iterdir() if path.is_dir()]
         assert len(release_dirs) == 1, release_dirs

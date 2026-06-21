@@ -21,7 +21,7 @@ const packet = buildActionPacket({
   boundary: "不要执行配置写入、metadata upsert、workflow creation 或生产状态变化。",
   durableRecordRule: "记录规则：先用 operator-gate dry-run 预览；确认写入时去掉 --dry-run。",
   safePathLabel: "Read-only map dry-run",
-  command: "goal-harness read-only-map --goal-id showcase-safe-route --dry-run",
+  command: "loopx read-only-map --goal-id showcase-safe-route --dry-run",
   quotaShortLine: "Operator gate; 0/1440 slots",
   authorityShortLine: "default entries 10/10; topic 10; materials 6; owner review 1; stale 1; risk medium",
   projectOwner: "user_or_controller",
@@ -56,7 +56,7 @@ assert(
 
 const approvedHandoff = buildApprovedAgentHandoff({
   goalId: "planned-main-control",
-  command: "goal-harness read-only-map --goal-id planned-main-control --dry-run --approved",
+  command: "loopx read-only-map --goal-id planned-main-control --dry-run --approved",
   agentTodoText: "Run the read-only map dry-run after owner todo resolution.",
   projectNextAction: "Approved project asset next action.",
   projectStopCondition: "Stop if execution needs write authority.",
@@ -70,7 +70,7 @@ assert(approvedHandoff.includes("Project Asset Stop：Stop if execution needs wr
 assert(approvedHandoff.includes("Agent 待办：Run the read-only map dry-run after owner todo resolution."), "missing approved agent todo");
 assert(approvedHandoff.includes("operator gate 已记录为 approve"), "missing approved forwarding condition");
 assert(approvedHandoff.includes("只执行下面命令"), "missing execution boundary");
-assert(approvedHandoff.includes("goal-harness read-only-map --goal-id planned-main-control --dry-run --approved"), "missing approved command");
+assert(approvedHandoff.includes("loopx read-only-map --goal-id planned-main-control --dry-run --approved"), "missing approved command");
 assert(!approvedHandoff.includes("【GH Packet】"), "handoff-only payload must not include packet wrapper");
 assert(!approvedHandoff.includes("【用户/Gate】"), "handoff-only payload must not include user gate wrapper");
 assert(!approvedHandoff.includes("建议："), "handoff-only payload must not include human suggestion text");
@@ -87,7 +87,7 @@ const legacyFallbackPacket = buildActionPacket({
   gateFallbackDecision: "保持 status inspection；补 project_asset 后再恢复 delivery。",
   boundary: "This is a legacy/raw fallback; do not infer owner, gate, or stop condition authority.",
   safePathLabel: "Legacy status inspection",
-  command: "goal-harness status --goal-id legacy-status-only",
+  command: "loopx status --goal-id legacy-status-only",
   projectNextAction: "Continue from raw status field.",
   projectStopCondition: "Stop before any delivery claim.",
   projectAssetSource: "legacy_raw_fallback",
@@ -111,7 +111,7 @@ const focusWaitPacket = buildActionPacket({
   gateFallbackDecision: "继续保持 focus wait；有新 owner evidence、clean baseline 或外部 eval 后再恢复 delivery。",
   boundary: "这不是 delivery approval；项目 Agent 只做 status/history inspection，不执行交付路径、写入、reward append 或生产动作。",
   safePathLabel: "Status/history inspection only",
-  command: "goal-harness --registry ./examples/registry.example.json --runtime-root ./tmp/runtime status --goal-id focus-wait-owner-blocker",
+  command: "loopx --registry ./examples/registry.example.json --runtime-root ./tmp/runtime status --goal-id focus-wait-owner-blocker",
 });
 
 assert(focusWaitPacket.includes("目标：focus-wait-owner-blocker"), "missing focus-wait goal id");
@@ -135,7 +135,7 @@ const platformMigrationNoEvidencePacket = buildActionPacket({
   boundary: "Use only sanitized status/history/material counts; do not read private evidence, internal links, raw paths, or production state.",
   durableRecordRule: null,
   safePathLabel: "No-evidence status/packet sanity",
-  command: "goal-harness status --goal-id platform-migration-material-registry --limit 20",
+  command: "loopx status --goal-id platform-migration-material-registry --limit 20",
   quotaShortLine: "Eligible; 0/1440 slots",
   authorityShortLine: "entries 0/3; topics 3; materials 6; repos 2; owner review 1; stale 1; risk medium",
   projectOwner: "codex",

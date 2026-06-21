@@ -26,7 +26,7 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_cloud_hello_world_uv_prewarm_oracle_sanity",
               "leaderboard_evidence": false,
               "ledger_attempt_kind": "oracle_sanity_attempt",
@@ -86,7 +86,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_3d_scan_calc_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -117,7 +117,7 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_3d_scan_calc_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -150,9 +150,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-3d-scan-calc-blind-treatment-baseline-safe-v0/3d-scan-calc__goal_harness_blind_loop_baseline_safe_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-3d-scan-calc-blind-treatment-baseline-safe-v0/3d-scan-calc__loopx_blind_loop_baseline_safe_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "3d-scan-calc",
@@ -162,13 +162,13 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_3d_scan_calc_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_3d_scan_calc_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": true,
               "official_score": 1.0,
@@ -223,7 +223,7 @@
                 "skillsbench_runner_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_ada_bathroom_plan_repair_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -270,7 +270,7 @@
                 "skillsbench_runner_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_ada_bathroom_plan_repair_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -314,7 +314,7 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_ada_bathroom_plan_repair_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -347,9 +347,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-blind-treatment-v0/ada-bathroom-plan-repair__goal_harness_blind_loop_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-blind-treatment-v0/ada-bathroom-plan-repair__loopx_blind_loop_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "ada-bathroom-plan-repair",
@@ -359,13 +359,13 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_ada_bathroom_plan_repair_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_ada_bathroom_plan_repair_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": true,
               "official_score": 1.0,
@@ -419,7 +419,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_adaptive_cruise_control_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -482,7 +482,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -535,7 +535,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -588,7 +588,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -643,7 +643,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -697,7 +697,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -754,9 +754,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-azure-bgp-route-leak-blind-treatment-20260616T104200CST/azure-bgp-oscillation-route-leak__goal_harness_blind_loop/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-azure-bgp-route-leak-blind-treatment-20260616T104200CST/azure-bgp-oscillation-route-leak__loopx_blind_loop/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "azure-bgp-oscillation-route-leak",
@@ -768,13 +768,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -839,7 +839,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -916,9 +916,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-azure-bgp-oscillation-route-leak-blind-treatment-max5-popen-20260616T1710CST/azure-bgp-oscillation-route-leak__goal_harness_blind_loop_max5/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-azure-bgp-oscillation-route-leak-blind-treatment-max5-popen-20260616T1710CST/azure-bgp-oscillation-route-leak__loopx_blind_loop_max5/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "azure-bgp-oscillation-route-leak",
@@ -930,13 +930,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -1032,7 +1032,7 @@
               "final_round": 1,
               "final_round_passed": false,
               "final_round_reward": 0.0,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_raw_codex_autonomous_max5",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
@@ -1086,9 +1086,9 @@
               "actual_model_verified": false,
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-azure-bgp-product-mode-20260617T195844CST/azure-bgp-oscillation-route-leak__goal_harness_product_mode/azure-bgp-oscillation-route-leak__goal_harness_product_mode/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-azure-bgp-product-mode-20260617T195844CST/azure-bgp-oscillation-route-leak__loopx_product_mode/azure-bgp-oscillation-route-leak__loopx_product_mode/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "best_reward_round": 1,
@@ -1108,14 +1108,14 @@
               "final_round": 5,
               "final_round_passed": false,
               "final_round_reward": 0.0,
-              "goal_harness_inside_case": true,
-              "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_goal_harness_product_mode",
+              "loopx_inside_case": true,
+              "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_loopx_product_mode",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_product_mode_treatment",
+              "mode": "skillsbench_loopx_product_mode_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -1201,9 +1201,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal-harness-blind-loop-treatment-baseline-safe",
+              "arm_id": "loopx-blind-loop-treatment-baseline-safe",
               "artifact_refs": {
-                "compact_artifact_ref": "private-benchmark-jobs/skillsbench-bike-rebalance-treatment-blind-20260616T082339CST-popen/bike-rebalance__goal_harness_blind_loop/benchmark_run.compact.json"
+                "compact_artifact_ref": "private-benchmark-jobs/skillsbench-bike-rebalance-treatment-blind-20260616T082339CST-popen/bike-rebalance__loopx_blind_loop/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "bike-rebalance",
@@ -1213,11 +1213,11 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_bike_rebalance_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_bike_rebalance_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
               "notes": "bike-rebalance treatment compact: baseline-safe blind-loop route passed official score in round 1 with reward feedback blinded",
               "official_feedback_blinded": true,
@@ -1260,7 +1260,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_bike_rebalance_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -1294,7 +1294,7 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_bike_rebalance_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -1356,7 +1356,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_citation_check_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -1384,7 +1384,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_citation_check_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -1414,7 +1414,7 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_citation_check_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -1447,9 +1447,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-citation-check-blind-treatment-baseline-safe-v0/citation-check__goal_harness_blind_loop_baseline_safe_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-citation-check-blind-treatment-baseline-safe-v0/citation-check__loopx_blind_loop_baseline_safe_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "citation-check",
@@ -1459,13 +1459,13 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_citation_check_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_citation_check_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": true,
               "official_score": 1.0,
@@ -1516,7 +1516,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_civ6_adjacency_optimizer_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -1535,7 +1535,7 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal_harness_automation_loop_treatment",
+              "arm_id": "loopx_automation_loop_treatment",
               "benchmark_id": "skillsbench@1.1",
               "case_id": "civ6-adjacency-optimizer",
               "case_ids": [
@@ -1546,12 +1546,12 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_civ6_adjacency_optimizer_automation_loop_treatment",
               "leaderboard_evidence": false,
-              "mode": "skillsbench_goal_harness_automation_loop_treatment",
+              "mode": "skillsbench_loopx_automation_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_passed": false,
               "official_score": 0.0,
               "recorded_at": "2026-06-15T18:49:11+08:00",
@@ -1579,7 +1579,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_civ6_adjacency_optimizer_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -1618,9 +1618,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-civ6-adjacency-optimizer-blind-treatment-v0/civ6-adjacency-optimizer__goal_harness_blind_loop_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-civ6-adjacency-optimizer-blind-treatment-v0/civ6-adjacency-optimizer__loopx_blind_loop_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "civ6-adjacency-optimizer",
@@ -1632,13 +1632,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_civ6_adjacency_optimizer_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_civ6_adjacency_optimizer_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -1699,7 +1699,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_dapt_intrusion_detection_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -1718,7 +1718,7 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal_harness_automation_loop_treatment",
+              "arm_id": "loopx_automation_loop_treatment",
               "benchmark_id": "skillsbench@1.1",
               "case_id": "dapt-intrusion-detection",
               "case_ids": [
@@ -1726,12 +1726,12 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_dapt_intrusion_detection_automation_loop_treatment",
               "leaderboard_evidence": false,
-              "mode": "skillsbench_goal_harness_automation_loop_treatment",
+              "mode": "skillsbench_loopx_automation_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_passed": true,
               "official_score": 1.0,
               "recorded_at": "2026-06-15T22:39:42+08:00",
@@ -1759,7 +1759,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_dapt_intrusion_detection_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -1798,9 +1798,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-dapt-intrusion-detection-blind-treatment-v0/dapt-intrusion-detection__goal_harness_blind_loop_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-dapt-intrusion-detection-blind-treatment-v0/dapt-intrusion-detection__loopx_blind_loop_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "dapt-intrusion-detection",
@@ -1812,13 +1812,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_dapt_intrusion_detection_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_dapt_intrusion_detection_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -1874,7 +1874,7 @@
                 "fingerprint_matched_patterns": [
                   "apt_failure"
                 ],
-                "goal_harness_cli_call_count": 0,
+                "loopx_cli_call_count": 0,
                 "heartbeat_count": 0,
                 "next_diagnostic_action": "repair_runner_setup_before_case_accounting",
                 "official_result_json_materialized": false,
@@ -1907,7 +1907,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench-dapt-intrusion-detection-codex-acp-blind-loop-baseline-20260616T230958CST",
               "leaderboard_evidence": false,
               "mode": "skillsbench_codex_acp_blind_loop_baseline",
@@ -1962,7 +1962,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_debug_trl_grpo_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -1981,7 +1981,7 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal_harness_automation_loop_treatment",
+              "arm_id": "loopx_automation_loop_treatment",
               "benchmark_id": "skillsbench@1.1",
               "case_id": "debug-trl-grpo",
               "case_ids": [
@@ -1992,12 +1992,12 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_debug_trl_grpo_automation_loop_treatment",
               "leaderboard_evidence": false,
-              "mode": "skillsbench_goal_harness_automation_loop_treatment",
+              "mode": "skillsbench_loopx_automation_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_passed": false,
               "official_score": 0.0,
               "recorded_at": "2026-06-15T17:45:33+08:00",
@@ -2022,7 +2022,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_debug_trl_grpo_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -2061,9 +2061,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-debug-trl-grpo-blind-treatment-v0/debug-trl-grpo__goal_harness_blind_loop_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-debug-trl-grpo-blind-treatment-v0/debug-trl-grpo__loopx_blind_loop_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "debug-trl-grpo",
@@ -2075,13 +2075,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_debug_trl_grpo_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_debug_trl_grpo_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -2114,9 +2114,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-debug-trl-grpo-blind-treatment-baseline-safe-v0/debug-trl-grpo__goal_harness_blind_loop_baseline_safe_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-debug-trl-grpo-blind-treatment-baseline-safe-v0/debug-trl-grpo__loopx_blind_loop_baseline_safe_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "debug-trl-grpo",
@@ -2125,13 +2125,13 @@
               ],
               "failure_class": "none",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_debug_trl_grpo_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_debug_trl_grpo_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.25,
@@ -2175,7 +2175,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_debug_trl_grpo_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -2255,9 +2255,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-debug-trl-grpo-blind-treatment-max5-launchd-20260616T150011CST/debug-trl-grpo__goal_harness_blind_loop_max5/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-debug-trl-grpo-blind-treatment-max5-launchd-20260616T150011CST/debug-trl-grpo__loopx_blind_loop_max5/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "debug-trl-grpo",
@@ -2269,13 +2269,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_debug_trl_grpo_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_debug_trl_grpo_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -2366,7 +2366,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_debug_trl_grpo_raw_codex_autonomous_max5",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -2420,7 +2420,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_debug_trl_grpo_raw_codex_autonomous_max5",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -2483,7 +2483,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_fix_build_agentops_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -2549,7 +2549,7 @@
                   "docker_compose_command_failed",
                   "apt_failure"
                 ],
-                "goal_harness_cli_call_count": 0,
+                "loopx_cli_call_count": 0,
                 "heartbeat_count": 0,
                 "next_diagnostic_action": "repair_runner_setup_before_product_treatment",
                 "official_result_json_materialized": true,
@@ -2582,7 +2582,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_fix_build_agentops_raw_codex_autonomous_max5",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -2648,7 +2648,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -2667,7 +2667,7 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal_harness_automation_loop_treatment",
+              "arm_id": "loopx_automation_loop_treatment",
               "benchmark_id": "skillsbench@1.1",
               "case_id": "llm-prefix-cache-replay",
               "case_ids": [
@@ -2675,12 +2675,12 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_automation_loop_treatment",
               "leaderboard_evidence": false,
-              "mode": "skillsbench_goal_harness_automation_loop_treatment",
+              "mode": "skillsbench_loopx_automation_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_passed": true,
               "official_score": 1.0,
               "recorded_at": "2026-06-15T22:06:01+08:00",
@@ -2707,7 +2707,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench-llm-prefix-cache-replay-blind-baseline-protocol-v0",
               "leaderboard_evidence": false,
               "mode": "skillsbench_codex_acp_blind_loop_baseline",
@@ -2740,7 +2740,7 @@
                 "skillsbench_runner_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -2792,7 +2792,7 @@
                 "skillsbench_runner_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -2844,7 +2844,7 @@
                 "skillsbench_runner_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -2895,7 +2895,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -2931,7 +2931,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -2970,9 +2970,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-protocol-v5/llm-prefix-cache-replay__goal_harness_blind_loop_protocol_v5/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-protocol-v5/llm-prefix-cache-replay__loopx_blind_loop_protocol_v5/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "llm-prefix-cache-replay",
@@ -2984,13 +2984,13 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "recorded_at": "2026-06-16T02:40:17+08:00",
               "reward_feedback_forwarded": false,
@@ -3013,9 +3013,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-protocol-v6/llm-prefix-cache-replay__goal_harness_blind_loop_protocol_v6/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-protocol-v6/llm-prefix-cache-replay__loopx_blind_loop_protocol_v6/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "llm-prefix-cache-replay",
@@ -3027,13 +3027,13 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "recorded_at": "2026-06-16T02:41:59+08:00",
               "reward_feedback_forwarded": false,
@@ -3056,9 +3056,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-protocol-v7/llm-prefix-cache-replay__goal_harness_blind_loop_protocol_v7/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-protocol-v7/llm-prefix-cache-replay__loopx_blind_loop_protocol_v7/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "llm-prefix-cache-replay",
@@ -3070,13 +3070,13 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "recorded_at": "2026-06-16T02:43:58+08:00",
               "reward_feedback_forwarded": false,
@@ -3099,9 +3099,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-protocol-v8-baseline-safe/llm-prefix-cache-replay__goal_harness_blind_loop_protocol_v8_baseline_safe/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-protocol-v8-baseline-safe/llm-prefix-cache-replay__loopx_blind_loop_protocol_v8_baseline_safe/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "llm-prefix-cache-replay",
@@ -3113,13 +3113,13 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "recorded_at": "2026-06-16T02:46:43+08:00",
               "reward_feedback_forwarded": false,
@@ -3156,7 +3156,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -3185,9 +3185,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-protocol-v10/llm-prefix-cache-replay__goal_harness_blind_loop_protocol_v10/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-protocol-v10/llm-prefix-cache-replay__loopx_blind_loop_protocol_v10/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "llm-prefix-cache-replay",
@@ -3199,13 +3199,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -3252,7 +3252,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -3306,7 +3306,7 @@
                 "skillsbench_runner_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -3357,7 +3357,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -3410,7 +3410,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -3488,9 +3488,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-max5-popen-20260616T155346CST/llm-prefix-cache-replay__goal_harness_blind_loop_max5/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-llm-prefix-cache-replay-blind-treatment-max5-popen-20260616T155346CST/llm-prefix-cache-replay__loopx_blind_loop_max5/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "llm-prefix-cache-replay",
@@ -3502,13 +3502,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -3597,7 +3597,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_raw_codex_autonomous_max5",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -3658,7 +3658,7 @@
               "final_round": 4,
               "final_round_passed": false,
               "final_round_reward": 0.0,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
@@ -3720,7 +3720,7 @@
               "actual_model_verified": false,
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "skillsbench_goal_harness_blind_loop_treatment",
+              "arm_id": "skillsbench_loopx_blind_loop_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-llm-prefix-treatment-r1/benchmark_run.compact.json"
               },
@@ -3743,12 +3743,12 @@
               "final_round": 4,
               "final_round_passed": false,
               "final_round_reward": 0.0,
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_llm_prefix_cache_replay_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
               "notes": "cloud ECS llm-prefix-cache-replay treatment after runtime-layer refactor; compact official score only; no raw task/log/trajectory copied",
               "official_feedback_blinded": true,
@@ -3820,7 +3820,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_app_server_goal_baseline",
               "leaderboard_evidence": false,
               "mode": "skillsbench_codex_app_server_goal_baseline",
@@ -3857,7 +3857,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_app_server_goal_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -3898,7 +3898,7 @@
                 "official_score_zero_case_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_llm_prefix_cache_replay_codex_app_server_goal_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -3962,7 +3962,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_manufacturing_codebook_normalization_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -3981,7 +3981,7 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal_harness_automation_loop_treatment",
+              "arm_id": "loopx_automation_loop_treatment",
               "benchmark_id": "skillsbench@1.1",
               "case_id": "manufacturing-codebook-normalization",
               "case_ids": [
@@ -3992,12 +3992,12 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_manufacturing_codebook_normalization_automation_loop_treatment",
               "leaderboard_evidence": false,
-              "mode": "skillsbench_goal_harness_automation_loop_treatment",
+              "mode": "skillsbench_loopx_automation_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_passed": false,
               "official_score": 0.0,
               "recorded_at": "2026-06-15T23:24:19+08:00",
@@ -4025,7 +4025,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_manufacturing_codebook_normalization_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -4064,9 +4064,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-manufacturing-codebook-normalization-blind-treatment-v0/manufacturing-codebook-normalization__goal_harness_blind_loop_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-manufacturing-codebook-normalization-blind-treatment-v0/manufacturing-codebook-normalization__loopx_blind_loop_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "manufacturing-codebook-normalization",
@@ -4078,13 +4078,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_manufacturing_codebook_normalization_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_manufacturing_codebook_normalization_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -4142,7 +4142,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_organize_messy_files_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -4171,7 +4171,7 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_organize_messy_files_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -4204,9 +4204,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-organize-messy-files-blind-treatment-baseline-safe-v0/organize-messy-files__goal_harness_blind_loop_baseline_safe_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-organize-messy-files-blind-treatment-baseline-safe-v0/organize-messy-files__loopx_blind_loop_baseline_safe_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "organize-messy-files",
@@ -4216,13 +4216,13 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_organize_messy_files_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_organize_messy_files_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": true,
               "official_score": 1.0,
@@ -4276,7 +4276,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_paratransit_routing_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -4354,9 +4354,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-paratransit-routing-blind-treatment-20260616T140130CST/paratransit-routing__goal_harness_blind_loop/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-paratransit-routing-blind-treatment-20260616T140130CST/paratransit-routing__loopx_blind_loop/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "paratransit-routing",
@@ -4366,13 +4366,13 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_paratransit_routing_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_paratransit_routing_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": true,
               "official_score": 1.0,
@@ -4433,7 +4433,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_paratransit_routing_raw_codex_autonomous_max5",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -4495,7 +4495,7 @@
                   "docker_compose_command_failed",
                   "docker_daemon_unavailable"
                 ],
-                "goal_harness_cli_call_count": 0,
+                "loopx_cli_call_count": 0,
                 "heartbeat_count": 0,
                 "next_diagnostic_action": "repair_runner_setup_before_product_treatment",
                 "official_result_json_materialized": true,
@@ -4528,7 +4528,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_paratransit_routing_raw_codex_autonomous_max5",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -4586,7 +4586,7 @@
               "final_round": 1,
               "final_round_passed": false,
               "final_round_reward": 0.0,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_paratransit_routing_raw_codex_autonomous_max5",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
@@ -4640,9 +4640,9 @@
               "actual_model_verified": false,
               "agent_declared_done": true,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-product-mode-paratransit-routing-treatment-dockerready-20260616T2222CST/skillsbench-paratransit-routing-goal-harness-product-mode-20260616T222233CST/paratransit-routing__goal_harness_product_mode/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-product-mode-paratransit-routing-treatment-dockerready-20260616T2222CST/skillsbench-paratransit-routing-loopx-product-mode-20260616T222233CST/paratransit-routing__loopx_product_mode/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "best_reward_round": 1,
@@ -4663,14 +4663,14 @@
               "final_round": 1,
               "final_round_passed": false,
               "final_round_reward": 0.0,
-              "goal_harness_inside_case": true,
-              "job_name": "skillsbench_1_1_paratransit_routing_goal_harness_product_mode",
+              "loopx_inside_case": true,
+              "job_name": "skillsbench_1_1_paratransit_routing_loopx_product_mode",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_product_mode_treatment",
+              "mode": "skillsbench_loopx_product_mode_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -4717,9 +4717,9 @@
               "actual_model_verified": false,
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-paratransit-routing-goal-harness-product-mode-depth-rerun-20260617T113221CST/paratransit-routing__goal_harness_product_mode_depth_rerun/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-paratransit-routing-loopx-product-mode-depth-rerun-20260617T113221CST/paratransit-routing__loopx_product_mode_depth_rerun/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "paratransit-routing",
@@ -4741,7 +4741,7 @@
                   "docker_compose_command_failed",
                   "docker_daemon_unavailable"
                 ],
-                "goal_harness_cli_call_count": 0,
+                "loopx_cli_call_count": 0,
                 "heartbeat_count": 0,
                 "next_diagnostic_action": "repair_runner_setup_before_product_treatment",
                 "official_result_json_materialized": true,
@@ -4754,7 +4754,7 @@
                 "raw_trajectory_read": false,
                 "resource_cap_applied": false,
                 "round_reward_count": 0,
-                "route": "goal-harness-product-mode",
+                "route": "loopx-product-mode",
                 "runner_error_len_bucket": "1000_1999",
                 "runner_launch_preflight_passed": false,
                 "runner_prerequisite_status": "pending",
@@ -4774,13 +4774,13 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": true,
-              "job_name": "skillsbench_1_1_paratransit_routing_goal_harness_product_mode",
+              "loopx_inside_case": true,
+              "job_name": "skillsbench_1_1_paratransit_routing_loopx_product_mode",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_product_mode_treatment",
+              "mode": "skillsbench_loopx_product_mode_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "recorded_at": "2026-06-17T11:32:24+08:00",
               "reward_feedback_forwarded": false,
@@ -4812,9 +4812,9 @@
               "actual_model_verified": false,
               "agent_declared_done": true,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-paratransit-routing-goal-harness-product-mode-depth-rerun-20260617T113439CST/paratransit-routing__goal_harness_product_mode_depth_rerun/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-paratransit-routing-loopx-product-mode-depth-rerun-20260617T113439CST/paratransit-routing__loopx_product_mode_depth_rerun/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "best_reward_round": 1,
@@ -4835,14 +4835,14 @@
               "final_round": 1,
               "final_round_passed": false,
               "final_round_reward": 0.0,
-              "goal_harness_inside_case": true,
-              "job_name": "skillsbench_1_1_paratransit_routing_goal_harness_product_mode",
+              "loopx_inside_case": true,
+              "job_name": "skillsbench_1_1_paratransit_routing_loopx_product_mode",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_product_mode_treatment",
+              "mode": "skillsbench_loopx_product_mode_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -4883,9 +4883,9 @@
               "actual_model_verified": false,
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-paratransit-routing-goal-harness-product-mode-depth-gate-20260617T1229CST/paratransit-routing__goal_harness_product_mode_depth_gate/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-paratransit-routing-loopx-product-mode-depth-gate-20260617T1229CST/paratransit-routing__loopx_product_mode_depth_gate/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "best_reward_round": 5,
@@ -4902,14 +4902,14 @@
               "final_round_passed": true,
               "final_round_reward": 1.0,
               "first_success_round": 5,
-              "goal_harness_inside_case": true,
-              "job_name": "skillsbench_1_1_paratransit_routing_goal_harness_product_mode",
+              "loopx_inside_case": true,
+              "job_name": "skillsbench_1_1_paratransit_routing_loopx_product_mode",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_product_mode_treatment",
+              "mode": "skillsbench_loopx_product_mode_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": true,
               "official_score": 1.0,
@@ -5004,7 +5004,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_pddl_airport_planning_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -5037,7 +5037,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_pddl_airport_planning_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -5070,7 +5070,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_pddl_airport_planning_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -5100,7 +5100,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_pddl_airport_planning_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -5133,7 +5133,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_pddl_airport_planning_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -5151,7 +5151,7 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal_harness_automation_loop_treatment",
+              "arm_id": "loopx_automation_loop_treatment",
               "benchmark_id": "skillsbench@1.1",
               "case_id": "pddl-airport-planning",
               "case_ids": [
@@ -5162,10 +5162,10 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_pddl_airport_planning_automation_loop_treatment",
               "leaderboard_evidence": false,
-              "mode": "skillsbench_goal_harness_automation_loop_treatment",
+              "mode": "skillsbench_loopx_automation_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
               "notes": "official SkillsBench BenchFlow automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_passed": false,
@@ -5194,7 +5194,7 @@
                 "skillsbench_runner_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench-pddl-airport-planning-baseline-20260615T2134CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -5224,7 +5224,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_pddl_airport_planning_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -5263,9 +5263,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-pddl-airport-planning-blind-treatment-v0/pddl-airport-planning__goal_harness_blind_loop_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-pddl-airport-planning-blind-treatment-v0/pddl-airport-planning__loopx_blind_loop_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "pddl-airport-planning",
@@ -5277,13 +5277,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_pddl_airport_planning_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_pddl_airport_planning_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -5344,7 +5344,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_react_performance_debugging_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -5361,7 +5361,7 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal_harness_automation_loop_treatment",
+              "arm_id": "loopx_automation_loop_treatment",
               "benchmark_id": "skillsbench@1.1",
               "case_id": "react-performance-debugging",
               "case_ids": [
@@ -5372,10 +5372,10 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_react_performance_debugging_automation_loop_treatment",
               "leaderboard_evidence": false,
-              "mode": "skillsbench_goal_harness_automation_loop_treatment",
+              "mode": "skillsbench_loopx_automation_loop_treatment",
               "model_control_status": "requested_model_not_enforced_by_acp",
               "model_warning_labels": [
                 "codex_acp_set_model_unsupported"
@@ -5407,7 +5407,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_react_performance_debugging_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -5446,9 +5446,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-react-performance-debugging-blind-treatment-v0/react-performance-debugging__goal_harness_blind_loop_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-react-performance-debugging-blind-treatment-v0/react-performance-debugging__loopx_blind_loop_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "react-performance-debugging",
@@ -5460,13 +5460,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_react_performance_debugging_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_react_performance_debugging_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -5515,7 +5515,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_react_performance_debugging_codex_app_server_goal_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -5562,7 +5562,7 @@
                 "skillsbench_runner_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_setup_fuzzing_py_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -5610,7 +5610,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_setup_fuzzing_py_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -5648,7 +5648,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_setup_fuzzing_py_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -5706,7 +5706,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_software_dependency_audit_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -5733,7 +5733,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_software_dependency_audit_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -5751,7 +5751,7 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal_harness_automation_loop_treatment",
+              "arm_id": "loopx_automation_loop_treatment",
               "benchmark_id": "skillsbench@1.1",
               "case_id": "software-dependency-audit",
               "case_ids": [
@@ -5762,12 +5762,12 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_software_dependency_audit_automation_loop_treatment",
               "leaderboard_evidence": false,
-              "mode": "skillsbench_goal_harness_automation_loop_treatment",
+              "mode": "skillsbench_loopx_automation_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_passed": false,
               "official_score": 0.0,
               "recorded_at": "2026-06-15T07:10:25+08:00",
@@ -5780,9 +5780,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal_harness_automation_loop_treatment",
+              "arm_id": "loopx_automation_loop_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-software-dependency-audit-automation-loop-treatment-tracefix-20260615T070234CST/software-dependency-audit__goal_harness_automation_loop/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-software-dependency-audit-automation-loop-treatment-tracefix-20260615T070234CST/software-dependency-audit__loopx_automation_loop/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "software-dependency-audit",
@@ -5794,12 +5794,12 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_software_dependency_audit_automation_loop_treatment",
               "leaderboard_evidence": false,
-              "mode": "skillsbench_goal_harness_automation_loop_treatment",
+              "mode": "skillsbench_loopx_automation_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX automation-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_passed": false,
               "official_score": 0.0,
               "recorded_at": "2026-06-15T07:15:32+08:00",
@@ -5826,7 +5826,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_software_dependency_audit_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -5865,9 +5865,9 @@
             {
               "actual_model_verified": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-software-dependency-audit-blind-treatment-v0/software-dependency-audit__goal_harness_blind_loop_v0/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-software-dependency-audit-blind-treatment-v0/software-dependency-audit__loopx_blind_loop_v0/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "software-dependency-audit",
@@ -5879,13 +5879,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_software_dependency_audit_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_software_dependency_audit_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX blind-loop treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "official_passed": false,
               "official_score": 0.0,
@@ -5960,7 +5960,7 @@
                   "docker_compose_command_failed",
                   "apt_failure"
                 ],
-                "goal_harness_cli_call_count": 0,
+                "loopx_cli_call_count": 0,
                 "heartbeat_count": 0,
                 "next_diagnostic_action": "repair_runner_setup_before_product_treatment",
                 "official_result_json_materialized": true,
@@ -5993,7 +5993,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_suricata_custom_exfil_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -6053,7 +6053,7 @@
               "final_round_passed": true,
               "final_round_reward": 1.0,
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_suricata_custom_exfil_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
@@ -6107,9 +6107,9 @@
               "actual_model_verified": false,
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-suricata-custom-exfil-goal-harness-product-mode-20260617T1420CST/suricata-custom-exfil__goal_harness_product_mode/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-suricata-custom-exfil-loopx-product-mode-20260617T1420CST/suricata-custom-exfil__loopx_product_mode/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "case_id": "suricata-custom-exfil",
@@ -6131,7 +6131,7 @@
                   "docker_compose_command_failed",
                   "volume_mount_failure"
                 ],
-                "goal_harness_cli_call_count": 0,
+                "loopx_cli_call_count": 0,
                 "heartbeat_count": 0,
                 "next_diagnostic_action": "repair_task_volume_mount_setup_before_product_treatment",
                 "official_result_json_materialized": true,
@@ -6144,7 +6144,7 @@
                 "raw_trajectory_read": false,
                 "resource_cap_applied": false,
                 "round_reward_count": 0,
-                "route": "goal-harness-product-mode",
+                "route": "loopx-product-mode",
                 "runner_error_len_bucket": "2000_plus",
                 "runner_launch_preflight_passed": false,
                 "runner_prerequisite_status": "pending",
@@ -6165,13 +6165,13 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": true,
-              "job_name": "skillsbench_1_1_suricata_custom_exfil_goal_harness_product_mode",
+              "loopx_inside_case": true,
+              "job_name": "skillsbench_1_1_suricata_custom_exfil_loopx_product_mode",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_product_mode_treatment",
+              "mode": "skillsbench_loopx_product_mode_treatment",
               "model_control_status": "reported_model_from_result_metadata",
-              "notes": "official SkillsBench BenchFlow Goal Harness product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "notes": "official SkillsBench BenchFlow LoopX product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
               "official_feedback_blinded": true,
               "recorded_at": "2026-06-17T14:26:09+08:00",
               "reward_feedback_forwarded": false,
@@ -6200,9 +6200,9 @@
               "actual_model_verified": false,
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-suricata-custom-exfil-goal-harness-product-mode-mountfix-20260617T1508CST/suricata-custom-exfil__goal_harness_product_mode/benchmark_run.compact.json"
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-suricata-custom-exfil-loopx-product-mode-mountfix-20260617T1508CST/suricata-custom-exfil__loopx_product_mode/benchmark_run.compact.json"
               },
               "benchmark_id": "skillsbench@1.1",
               "best_reward_round": 1,
@@ -6224,12 +6224,12 @@
               "final_round_passed": true,
               "final_round_reward": 1.0,
               "first_success_round": 1,
-              "goal_harness_inside_case": true,
-              "job_name": "skillsbench_1_1_suricata_custom_exfil_goal_harness_product_mode",
+              "loopx_inside_case": true,
+              "job_name": "skillsbench_1_1_suricata_custom_exfil_loopx_product_mode",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_product_mode_treatment",
+              "mode": "skillsbench_loopx_product_mode_treatment",
               "model_control_status": "reported_model_from_result_metadata",
               "official_feedback_blinded": true,
               "official_passed": true,
@@ -6271,7 +6271,7 @@
               "actual_model_verified": false,
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "benchmark_id": "skillsbench@1.1",
               "case_id": "suricata-custom-exfil",
               "case_ids": [
@@ -6284,13 +6284,13 @@
                 "skillsbench_codex_acp_transport_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": true,
-              "job_name": "skillsbench_1_1_suricata_custom_exfil_goal_harness_product_mode",
+              "loopx_inside_case": true,
+              "job_name": "skillsbench_1_1_suricata_custom_exfil_loopx_product_mode",
               "leaderboard_evidence": false,
-              "mode": "skillsbench_goal_harness_product_mode_treatment",
+              "mode": "skillsbench_loopx_product_mode_treatment",
               "model_control_status": "reported_model_from_result_metadata",
               "next_action": "prove the Codex ACP runtime can start inside the SkillsBench sandbox before rerunning or launching treatment; require compact dependency and launch preflight evidence instead of a generic ACP launch failure",
-              "notes": "Current remote-migration rotation compact ingest of existing SkillsBench product-mode result; no raw trajectory/log/task material read by Goal Harness.",
+              "notes": "Current remote-migration rotation compact ingest of existing SkillsBench product-mode result; no raw trajectory/log/task material read by LoopX.",
               "recorded_at": "2026-06-18T22:54:59+08:00",
               "repair_class": "skillsbench_codex_acp_runtime_preflight",
               "repair_priority": "P0",
@@ -6308,7 +6308,7 @@
               },
               "round_reward_count": 0,
               "round_success_observed": false,
-              "run_group_id": "skillsbench_1_1_suricata_custom_exfil_goal_harness_product_mode",
+              "run_group_id": "skillsbench_1_1_suricata_custom_exfil_loopx_product_mode",
               "run_id": "d9949ec296f1",
               "score_status": "missing",
               "source_event_schema": "benchmark_run_v0",
@@ -6348,7 +6348,7 @@
                 "skillsbench_environment_setup_error"
               ],
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_raw_codex_autonomous_max5",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -6409,7 +6409,7 @@
               "final_round": 4,
               "final_round_passed": false,
               "final_round_reward": 0.0,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
@@ -6471,7 +6471,7 @@
               "actual_model_verified": false,
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "skillsbench_goal_harness_blind_loop_treatment",
+              "arm_id": "skillsbench_loopx_blind_loop_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T131254Z/skillsbench-tictoc-treatment-r2/benchmark_run.compact.json"
               },
@@ -6494,12 +6494,12 @@
               "final_round": 4,
               "final_round_passed": false,
               "final_round_reward": 0.0,
-              "goal_harness_inside_case": false,
-              "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_goal_harness_blind_loop_treatment",
+              "loopx_inside_case": false,
+              "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_loopx_blind_loop_treatment",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
               "max_rounds_budget": 5,
-              "mode": "skillsbench_goal_harness_blind_loop_treatment",
+              "mode": "skillsbench_loopx_blind_loop_treatment",
               "model_control_status": "reported_model_from_result_metadata",
               "notes": "cloud ECS app-server/ACP treatment compact result; official score completed at 0.0; compact only, no raw task/log/trajectory recorded",
               "official_feedback_blinded": true,
@@ -6571,7 +6571,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_codex_app_server_goal_baseline",
               "leaderboard_evidence": false,
               "mode": "skillsbench_codex_app_server_goal_baseline",
@@ -6608,7 +6608,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_codex_app_server_goal_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -6664,7 +6664,7 @@
                 "skillsbench_runner_error"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_tictoc_unnecessary_abort_detection_codex_app_server_goal_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 5,
@@ -6710,7 +6710,7 @@
               "failure_class": "none",
               "failure_scope": "passed",
               "first_success_round": 1,
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_travel_planning_codex_acp_blind_loop_baseline",
               "leaderboard_evidence": false,
               "max_rounds_budget": 2,
@@ -6778,7 +6778,7 @@
                 "official_score_zero_case_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "skillsbench_1_1_travel_planning_raw_codex_autonomous_max5",
               "leaderboard_evidence": false,
               "loop_score_policy": "best_round_for_offline_controller_analysis",
@@ -6859,7 +6859,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "gh-swe-find-network-alignments-host-app-server-goal-r6-20260620t1516z",
               "leaderboard_evidence": false,
               "mode": "swe_marathon_host_codex_app_server_goal",
@@ -6903,7 +6903,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "swe-marathon-rust-c-compiler-app-server-r2",
               "leaderboard_evidence": false,
               "mode": "swe_marathon_host_codex_app_server_goal_prewarmed_rerun",
@@ -6923,7 +6923,7 @@
             },
             {
               "agent_declared_done": false,
-              "arm_id": "swe_marathon_host_codex_goal_harness_packet_only_observation",
+              "arm_id": "swe_marathon_host_codex_loopx_packet_only_observation",
               "artifact_refs": {
                 "compact_artifact_ref": "cloud-ecs/swe-marathon-rust-c-compiler-treatment-20260621T060729Z/jobs/swe-marathon-rust-c-compiler-gh-treatment-r1/harbor_job_result.compact.json"
               },
@@ -6936,7 +6936,7 @@
                 "official_feedback_forwarded": false,
                 "product_mode": false,
                 "protocol_id": "packet_only_observation",
-                "route": "goal-harness-packet-only-observation",
+                "route": "loopx-packet-only-observation",
                 "schema_version": "benchmark_loop_protocol_v0",
                 "strict_treatment_claim_allowed": false
               },
@@ -6950,13 +6950,13 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
-              "goal_harness_treatment_claim_blocker": "missing_max5_blind_loop_protocol,controller_trace_absent,route_not_prompt_polling_test",
-              "goal_harness_treatment_evidence_tier": "packet_or_incomplete",
+              "loopx_inside_case": true,
+              "loopx_treatment_claim_blocker": "missing_max5_blind_loop_protocol,controller_trace_absent,route_not_prompt_polling_test",
+              "loopx_treatment_evidence_tier": "packet_or_incomplete",
               "job_name": "swe-marathon-rust-c-compiler-gh-treatment-r1",
               "leaderboard_evidence": false,
-              "mode": "swe_marathon_host_codex_goal_harness_packet_only_observation",
-              "notes": "SWE-Marathon rust-c-compiler Goal Harness packet-only observation completed under the same no-upload Harbor host app-server Goal route as baseline; official score remained 0.0 with official_verifier_solution_failure. The access packet and bridge requests provide route-safety evidence, but no prompt-driven polling controller trace was recorded, so do not classify this as the comparable Goal Harness test arm or as uplift/no-uplift evidence.",
+              "mode": "swe_marathon_host_codex_loopx_packet_only_observation",
+              "notes": "SWE-Marathon rust-c-compiler LoopX packet-only observation completed under the same no-upload Harbor host app-server Goal route as baseline; official score remained 0.0 with official_verifier_solution_failure. The access packet and bridge requests provide route-safety evidence, but no prompt-driven polling controller trace was recorded, so do not classify this as the comparable LoopX test arm or as uplift/no-uplift evidence.",
               "official_passed": false,
               "official_score": 0.0,
               "recorded_at": "2026-06-21T14:31:29+08:00",
@@ -6967,7 +6967,7 @@
               "score_status": "failed",
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
-              "strict_goal_harness_treatment_claim_allowed": false,
+              "strict_loopx_treatment_claim_allowed": false,
               "submit_eligible": false,
               "worker_bridge_status": "not_materialized"
             }
@@ -6998,11 +6998,11 @@
               "codex_acp_runtime_preflight_passed": false,
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "swe-marathon-zstd-decoder-app-server-baseline-r2",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
-              "notes": "SWE-Marathon zstd-decoder native Codex app-server Goal baseline r2 completed with official score 1.0; no Goal Harness packet/test semantics; compact-only public evidence.",
+              "notes": "SWE-Marathon zstd-decoder native Codex app-server Goal baseline r2 completed with official score 1.0; no LoopX packet/test semantics; compact-only public evidence.",
               "official_passed": true,
               "official_score": 1.0,
               "recorded_at": "2026-06-21T14:59:11+08:00",
@@ -7018,7 +7018,7 @@
             },
             {
               "agent_declared_done": false,
-              "arm_id": "swe_marathon_goal_harness_prompt_polling_treatment",
+              "arm_id": "swe_marathon_loopx_prompt_polling_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": "cloud-ecs/swe-marathon-zstd-decoder-gh-prompt-polling-pr433-20260621T110515Z/harbor_job_result.pr438.compact.json"
               },
@@ -7033,11 +7033,11 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
+              "loopx_inside_case": true,
               "job_name": "swe-marathon-zstd-decoder-gh-prompt-polling-pr433-r1",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
-              "notes": "SWE-Marathon zstd-decoder prompt-driven Goal Harness treatment completed through case-local GH CLI lifecycle; official score 0.0, first blocker harbor_prompt_polling_round_timeout_before_completion; compact-only publi...",
+              "mode": "codex_loopx",
+              "notes": "SWE-Marathon zstd-decoder prompt-driven LoopX treatment completed through case-local GH CLI lifecycle; official score 0.0, first blocker harbor_prompt_polling_round_timeout_before_completion; compact-only publi...",
               "official_passed": false,
               "official_score": 0.0,
               "recorded_at": "2026-06-21T19:59:10+08:00",
@@ -7081,7 +7081,7 @@
               ],
               "failure_class": "not_applicable_worker_materialization_probe",
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_nginx_request_logging_hardened_worker_materialization_runtime_probe_20260616T113050CST",
               "leaderboard_evidence": false,
               "mode": "hardened_codex_baseline_worker_materialization_probe",
@@ -7107,7 +7107,7 @@
               ],
               "failure_class": "not_applicable_worker_materialization_probe",
               "failure_scope": "startup_surface",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_nginx_request_logging_hardened_worker_materialization_runtime_probe_20260616T113050CST",
               "leaderboard_evidence": false,
               "mode": "hardened_codex_baseline_worker_materialization_probe",
@@ -7160,7 +7160,7 @@
                 "codex_model_access_unsupported_for_account"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_build_cython_ext_codex_goal_mode_baseline_real_no_upload_20260614T175604CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -7208,7 +7208,7 @@
                 "agent_setup_timeout_before_worker_start"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_build_cython_ext_codex_goal_mode_baseline_model_route_repair_no_upload_20260614T204441CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -7260,7 +7260,7 @@
                 "agent_setup_failed_before_worker_start"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_build_cython_ext_codex_goal_mode_baseline_setup_repair_no_upload_20260614T221533CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -7314,7 +7314,7 @@
                 "pre_worker_startup_blocker_recorded"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_build_cython_ext_codex_goal_mode_baseline_setup_diagnostic_no_upload_20260614T223153CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -7367,7 +7367,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_build_cython_ext_codex_goal_mode_baseline_runtime_extended_no_upload_20260614T2257CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -7399,7 +7399,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "build-cython-ext-host-codex-app-server-goal-r9-20260620t1516z",
               "leaderboard_evidence": false,
               "mode": "terminal_bench_host_codex_app_server_goal",
@@ -7430,7 +7430,7 @@
               "codex_acp_runtime_preflight_passed": false,
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "build-cython-ext-host-app-server-goal-20260620t181051z",
               "leaderboard_evidence": false,
               "mode": "terminal_bench_host_codex_app_server_goal",
@@ -7464,7 +7464,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "build-cython-ext-host-app-server-goal-20260620t182136z",
               "leaderboard_evidence": false,
               "mode": "terminal_bench_host_codex_app_server_goal_completion_aware",
@@ -7495,7 +7495,7 @@
               "codex_acp_runtime_preflight_passed": false,
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "build-cython-ext-host-app-server-goal-20260620t181051z",
               "leaderboard_evidence": false,
               "mode": "terminal_bench_host_codex_app_server_goal",
@@ -7529,7 +7529,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "build-cython-ext-host-app-server-goal-20260620t182136z",
               "leaderboard_evidence": false,
               "mode": "terminal_bench_host_codex_app_server_goal_completion_aware",
@@ -7560,7 +7560,7 @@
               "codex_acp_runtime_preflight_passed": false,
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "build-cython-ext-host-app-server-goal-observe-20260620t203545z",
               "leaderboard_evidence": false,
               "mode": "terminal_bench_host_codex_app_server_goal_observe_only",
@@ -7603,7 +7603,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_cobol_modernization_hardened_codex_baseline_real_no_upload_20260611T0903Z",
               "leaderboard_evidence": false,
               "mode": "hardened_codex_baseline",
@@ -7619,7 +7619,7 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": ".local/private-benchmark-jobs/terminal-bench-cobol-modernization-paired-20260611T0903Z/treatment.compact.json"
               },
@@ -7630,10 +7630,10 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_2_0_cobol_modernization_codex_goal_harness_active_user_real_no_upload_20260611T0903Z",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_2_0_cobol_modernization_codex_loopx_active_user_real_no_upload_20260611T0903Z",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "notes": "historical compact/public benchmark_run_v0 ledger backfill",
               "official_passed": true,
               "official_score": 1.0,
@@ -7668,7 +7668,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_compile_compcert_codex_goal_mode_baseline_2h_20260615T1934CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -7714,7 +7714,7 @@
                 "codex_model_access_unsupported_for_account"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_financial_document_processor_codex_goal_mode_baseline_real_no_upload_20260614T175604CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -7758,7 +7758,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_financial_document_processor_codex_goal_mode_baseline_2h_20260615T2018CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -7798,7 +7798,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_fix_code_vulnerability_codex_goal_mode_baseline_2h_20260615T1924CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -7829,7 +7829,7 @@
           "runs": [
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": ".local/private-benchmark-jobs/terminal-bench-git-multibranch-runtime-install-20260614T085007Z/treatment_benchmark_run.compact.json"
               },
@@ -7840,10 +7840,10 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": true,
+              "loopx_inside_case": true,
               "job_name": "terminal-bench-git-multibranch-runtime-install-20260614T085007Z-treatment",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "notes": "historical compact/public benchmark_run_v0 ledger backfill",
               "official_passed": true,
               "official_score": 1.0,
@@ -7873,7 +7873,7 @@
                 "agent_setup_failed_before_worker_start"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal-bench-git-multibranch-paired-20260614T160815-baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -7913,7 +7913,7 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-git-multibranch-paired-20260614T160815/treatment/terminal-bench-git-multibranch-paired-20260614T160815-treatment",
                 "result_ref": ".local/private-benchmark-jobs/terminal-bench-git-multibranch-paired-20260614T160815/treatment/terminal-bench-git-multibranch-paired-20260614T160815-treatment/result.json"
@@ -7930,10 +7930,10 @@
                 "pre_worker_startup_blocker_recorded"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": true,
+              "loopx_inside_case": true,
               "job_name": "terminal-bench-git-multibranch-paired-20260614T160815-treatment",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "materialize an existing Codex CLI on the worker PATH or provide an equivalent launcher before rerunning; require a compact setup diagnostic that proves the Codex preflight reached ok instead of only a generic pre-worker agent failure",
               "notes": "git-multibranch treatment compact ingest from existing completed paired run; no raw logs/task text; completing pair ledger",
               "official_passed": false,
@@ -7983,7 +7983,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_git_multibranch_codex_goal_mode_baseline_runtime_extended_20260615T032713CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8000,10 +8000,10 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-git-multibranch-treatment-runtime-extended-20260615T0337CST/treatment/jobs/terminal_bench_git_multibranch_codex_goal_harness_treatment_runtime_extended_20260615T0337CST",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-git-multibranch-treatment-runtime-extended-20260615T0337CST/treatment/jobs/terminal_bench_git_multibranch_codex_goal_harness_treatment_runtime_extended_20260615T0337CST/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-git-multibranch-treatment-runtime-extended-20260615T0337CST/treatment/jobs/terminal_bench_git_multibranch_codex_loopx_treatment_runtime_extended_20260615T0337CST",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-git-multibranch-treatment-runtime-extended-20260615T0337CST/treatment/jobs/terminal_bench_git_multibranch_codex_loopx_treatment_runtime_extended_20260615T0337CST/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "git-multibranch",
@@ -8012,11 +8012,11 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_git_multibranch_codex_goal_harness_treatment_runtime_extended_20260615T0337CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_git_multibranch_codex_loopx_treatment_runtime_extended_20260615T0337CST",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
-              "notes": "git-multibranch runtime-extended Goal Harness treatment compact ingest after baseline af14bc3210c8; no raw logs/task text; compare setup-fixed treatment against setup-fixed baseline.",
+              "mode": "codex_loopx",
+              "notes": "git-multibranch runtime-extended LoopX treatment compact ingest after baseline af14bc3210c8; no raw logs/task text; compare setup-fixed treatment against setup-fixed baseline.",
               "official_passed": true,
               "official_score": 1.0,
               "recorded_at": "2026-06-15T03:49:09+08:00",
@@ -8060,7 +8060,7 @@
               ],
               "failure_class": "score_failure_unattributed",
               "failure_scope": "attribution_required",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_headless_terminal_codex_goal_mode_baseline_real_no_upload_20260614T191617CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8094,7 +8094,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
+              "loopx_inside_case": true,
               "job_name": "terminal_bench_headless_terminal_codex_goal_mode_baseline_runtime_extended_20260615T045301CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8111,10 +8111,10 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-headless-terminal-treatment-runtime-extended-20260615T055104CST/treatment/jobs/terminal_bench_headless_terminal_codex_goal_harness_treatment_runtime_extended_20260615T055104CST",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-headless-terminal-treatment-runtime-extended-20260615T055104CST/treatment/jobs/terminal_bench_headless_terminal_codex_goal_harness_treatment_runtime_extended_20260615T055104CST/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-headless-terminal-treatment-runtime-extended-20260615T055104CST/treatment/jobs/terminal_bench_headless_terminal_codex_loopx_treatment_runtime_extended_20260615T055104CST",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-headless-terminal-treatment-runtime-extended-20260615T055104CST/treatment/jobs/terminal_bench_headless_terminal_codex_loopx_treatment_runtime_extended_20260615T055104CST/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "headless-terminal",
@@ -8127,10 +8127,10 @@
                 "worker_bridge_connected_official_score_failure"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_headless_terminal_codex_goal_harness_treatment_runtime_extended_20260615T055104CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_headless_terminal_codex_loopx_treatment_runtime_extended_20260615T055104CST",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "align worker self-validation with verifier-facing compact evidence before repeating",
               "notes": "ingested compact Harbor treatment result after external-monitor no-spend poll",
               "official_passed": false,
@@ -8147,7 +8147,7 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "headless-terminal",
               "case_ids": [
@@ -8159,10 +8159,10 @@
                 "worker_bridge_connected_official_score_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_headless_terminal_codex_goal_harness_treatment_runtime_extended_20260615T055104CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_headless_terminal_codex_loopx_treatment_runtime_extended_20260615T055104CST",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "notes": "paired closeout: verified bridge plus official zero routes to no-uplift case evidence; no immediate repeat",
               "official_passed": false,
               "official_score": 0.0,
@@ -8191,7 +8191,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
+              "loopx_inside_case": true,
               "job_name": "terminal_bench_headless_terminal_codex_goal_mode_baseline_runtime_extended_20260615T045301CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8226,7 +8226,7 @@
           "runs": [
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": ".local/private-benchmark-jobs/terminal-bench-install-windows-3-11-paired-20260614T0422Z/treatment_benchmark_run_v0.public.json"
               },
@@ -8237,10 +8237,10 @@
               ],
               "failure_class": "none",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_2_0_install_windows_3_11_codex_goal_harness_active_bridge_real_no_upload_20260614T0422Z",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_2_0_install_windows_3_11_codex_loopx_active_bridge_real_no_upload_20260614T0422Z",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "notes": "historical compact/public benchmark_run_v0 ledger backfill",
               "official_passed": false,
               "official_score": 0.0,
@@ -8265,7 +8265,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_install_windows_3_11_codex_goal_mode_baseline_real_no_upload_20260614T0422Z",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8282,7 +8282,7 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": ".local/private-benchmark-jobs/terminal-bench-install-windows-3-11-paired-20260614T0422Z/treatment_benchmark_run_v0.after-mismatch-attribution.public.json"
               },
@@ -8296,10 +8296,10 @@
                 "worker_self_validation_official_score_mismatch"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_2_0_install_windows_3_11_codex_goal_harness_active_bridge_real_no_upload_20260614T0422Z",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_2_0_install_windows_3_11_codex_loopx_active_bridge_real_no_upload_20260614T0422Z",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "align worker self-validation with verifier-facing compact evidence before repeating",
               "notes": "historical compact/public benchmark_run_v0 ledger backfill",
               "official_passed": false,
@@ -8316,7 +8316,7 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": ".local/private-benchmark-jobs/terminal-bench-install-windows-3-11-paired-20260614T0422Z/treatment_benchmark_run_v0.after-validation-scope.public.json"
               },
@@ -8330,10 +8330,10 @@
                 "worker_validation_scope_ambiguous_official_score_failure"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_2_0_install_windows_3_11_codex_goal_harness_active_bridge_real_no_upload_20260614T0422Z",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_2_0_install_windows_3_11_codex_loopx_active_bridge_real_no_upload_20260614T0422Z",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "align worker self-validation with verifier-facing compact evidence before repeating",
               "notes": "historical compact/public benchmark_run_v0 ledger backfill",
               "official_passed": false,
@@ -8363,7 +8363,7 @@
           "runs": [
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "large-scale-text-editing",
               "case_ids": [
@@ -8371,10 +8371,10 @@
               ],
               "failure_class": "agent_setup_timeout_before_worker_start",
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_2_0_large_scale_text_editing_codex_goal_harness",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_2_0_large_scale_text_editing_codex_loopx",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "repair the Codex worker setup path before rerunning this case; do not rely on runtime Codex install inside Harbor setup; use a materialized launcher or require_existing_codex fail-fast probe with compact setup-readiness proof",
               "notes": "backfill from compact run history; treatment setup timeout attribution; compact-only/no raw artifacts",
               "official_passed": false,
@@ -8419,7 +8419,7 @@
               ],
               "failure_class": "agent_setup_timeout_before_worker_start",
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_large_scale_text_editing_codex_goal_mode_baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8475,7 +8475,7 @@
                 "agent_setup_timeout_before_worker_start"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_large_scale_text_editing_codex_goal_mode_baseline_setup_repair_no_upload_20260614T204441CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8527,7 +8527,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_large_scale_text_editing_codex_goal_mode_baseline_2h_20260615T175131CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8545,10 +8545,10 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-large-scale-text-editing-treatment-2h-20260615T175131CST/jobs/terminal_bench_large_scale_text_editing_codex_goal_harness_treatment_2h_20260615T175131CST",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-large-scale-text-editing-treatment-2h-20260615T175131CST/jobs/terminal_bench_large_scale_text_editing_codex_goal_harness_treatment_2h_20260615T175131CST/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-large-scale-text-editing-treatment-2h-20260615T175131CST/jobs/terminal_bench_large_scale_text_editing_codex_loopx_treatment_2h_20260615T175131CST",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-large-scale-text-editing-treatment-2h-20260615T175131CST/jobs/terminal_bench_large_scale_text_editing_codex_loopx_treatment_2h_20260615T175131CST/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "large-scale-text-editing",
@@ -8557,10 +8557,10 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_large_scale_text_editing_codex_goal_harness_treatment_2h_20260615T175131CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_large_scale_text_editing_codex_loopx_treatment_2h_20260615T175131CST",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "notes": "2h repaired materialization rerun; treatment official 1.0; compact-only/no raw artifacts",
               "official_passed": true,
               "official_score": 1.0,
@@ -8594,7 +8594,7 @@
           "runs": [
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "make-doom-for-mips",
               "case_ids": [
@@ -8602,10 +8602,10 @@
               ],
               "failure_class": "agent_timeout_before_solution_completion",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_make_doom_for_mips_codex_goal_harness_treatment_20260614T085536",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_make_doom_for_mips_codex_loopx_treatment_20260614T085536",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "inspect compact timeout context and decide whether the run needs a private long-horizon timeout tier",
               "notes": "backfill from compact run history; treatment AgentTimeoutError with worker bridge evidence; compact-only/no raw artifacts",
               "official_passed": false,
@@ -8630,7 +8630,7 @@
               ],
               "failure_class": "agent_timeout_before_solution_completion",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_make_doom_for_mips_codex_goal_mode_baseline_20260614T085536",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8665,7 +8665,7 @@
                 "agent_timeout_before_solution_completion"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_make_doom_for_mips_codex_goal_mode_baseline_20260614T085536",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8685,10 +8685,10 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-paired-20260614T085536/treatment/terminal_bench_make_doom_for_mips_codex_goal_harness_treatment_20260614T085536",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-paired-20260614T085536/treatment/terminal_bench_make_doom_for_mips_codex_goal_harness_treatment_20260614T085536/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-paired-20260614T085536/treatment/terminal_bench_make_doom_for_mips_codex_loopx_treatment_20260614T085536",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-paired-20260614T085536/treatment/terminal_bench_make_doom_for_mips_codex_loopx_treatment_20260614T085536/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "make-doom-for-mips",
@@ -8700,10 +8700,10 @@
                 "agent_timeout_before_solution_completion"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_make_doom_for_mips_codex_goal_harness_treatment_20260614T085536",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_make_doom_for_mips_codex_loopx_treatment_20260614T085536",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "inspect compact timeout context and decide whether the run needs a private long-horizon timeout tier",
               "notes": "make-doom-for-mips treatment compact ingest: bridge verified but official 0.0 agent timeout under default 900s",
               "official_passed": false,
@@ -8736,7 +8736,7 @@
                 "agent_setup_timeout_before_worker_start"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_make_doom_for_mips_codex_goal_mode_baseline_2h_relaunch_20260614T235608CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8776,10 +8776,10 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-2h-relaunch-20260614T235608CST/treatment/terminal_bench_make_doom_for_mips_codex_goal_harness_treatment_2h_relaunch_20260614T235608CST",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-2h-relaunch-20260614T235608CST/treatment/terminal_bench_make_doom_for_mips_codex_goal_harness_treatment_2h_relaunch_20260614T235608CST/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-2h-relaunch-20260614T235608CST/treatment/terminal_bench_make_doom_for_mips_codex_loopx_treatment_2h_relaunch_20260614T235608CST",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-2h-relaunch-20260614T235608CST/treatment/terminal_bench_make_doom_for_mips_codex_loopx_treatment_2h_relaunch_20260614T235608CST/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "make-doom-for-mips",
@@ -8792,10 +8792,10 @@
                 "agent_setup_timeout_before_worker_start"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_make_doom_for_mips_codex_goal_harness_treatment_2h_relaunch_20260614T235608CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_make_doom_for_mips_codex_loopx_treatment_2h_relaunch_20260614T235608CST",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "repair the Codex worker setup path before rerunning this case; do not rely on runtime Codex install inside Harbor setup; use a materialized launcher or require_existing_codex fail-fast probe with compact setup-readiness proof",
               "notes": "make-doom-for-mips treatment compact ingest: 2h private timeout tier relaunch exposed setup-timeout gap before worker start",
               "official_passed": false,
@@ -8832,10 +8832,10 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-setup8-2h-relaunch-20260615T001118CST/treatment/terminal_bench_make_doom_for_mips_codex_goal_harness_treatment_setup8_2h_20260615T001118CST",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-setup8-2h-relaunch-20260615T001118CST/treatment/terminal_bench_make_doom_for_mips_codex_goal_harness_treatment_setup8_2h_20260615T001118CST/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-setup8-2h-relaunch-20260615T001118CST/treatment/terminal_bench_make_doom_for_mips_codex_loopx_treatment_setup8_2h_20260615T001118CST",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-for-mips-setup8-2h-relaunch-20260615T001118CST/treatment/terminal_bench_make_doom_for_mips_codex_loopx_treatment_setup8_2h_20260615T001118CST/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "make-doom-for-mips",
@@ -8844,10 +8844,10 @@
               ],
               "failure_class": "score_failure_unattributed",
               "failure_scope": "attribution_required",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_make_doom_for_mips_codex_goal_harness_treatment_setup8_2h_20260615T001118CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_make_doom_for_mips_codex_loopx_treatment_setup8_2h_20260615T001118CST",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "collect finer compact failure attribution before launching treatment",
               "notes": "setup8+2h treatment closeout: official mean 0.0, worker bridge treatment closed without runner error; compact no-upload ingest only",
               "official_passed": false,
@@ -8876,7 +8876,7 @@
               ],
               "failure_class": "agent_timeout_before_solution_completion",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_make_doom_for_mips_codex_goal_mode_baseline_setup8_2h_20260615T001118CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8897,10 +8897,10 @@
             {
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal-harness-managed-codex",
+              "arm_id": "loopx-managed-codex",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-managed-20260617T193035CST/jobs/terminal_bench_make_doom_for_mips_goal_harness_managed_codex_20260617T193035CST",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-managed-20260617T193035CST/jobs/terminal_bench_make_doom_for_mips_goal_harness_managed_codex_20260617T193035CST/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-managed-20260617T193035CST/jobs/terminal_bench_make_doom_for_mips_loopx_managed_codex_20260617T193035CST",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-make-doom-managed-20260617T193035CST/jobs/terminal_bench_make_doom_for_mips_loopx_managed_codex_20260617T193035CST/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "make-doom-for-mips",
@@ -8913,11 +8913,11 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_make_doom_for_mips_goal_harness_managed_codex_20260617T193035CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_make_doom_for_mips_loopx_managed_codex_20260617T193035CST",
               "leaderboard_evidence": false,
-              "mode": "goal_harness_managed_codex",
-              "notes": "make-doom-for-mips goal-harness-managed-codex compact ingest from case-first run; no raw task/log/trajectory read",
+              "mode": "loopx_managed_codex",
+              "notes": "make-doom-for-mips loopx-managed-codex compact ingest from case-first run; no raw task/log/trajectory read",
               "official_passed": false,
               "official_score": 0.0,
               "recorded_at": "2026-06-17T19:53:23+08:00",
@@ -8955,7 +8955,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_merge_diff_arc_agi_task_codex_goal_mode_baseline_2h_20260615T191008CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -8990,10 +8990,10 @@
           "runs": [
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-mteb-retrieve-paired-2h-20260615T072331CST/treatment/jobs/terminal_bench_mteb_retrieve_codex_goal_harness_treatment_2h_20260615T072331CST",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-mteb-retrieve-paired-2h-20260615T072331CST/treatment/jobs/terminal_bench_mteb_retrieve_codex_goal_harness_treatment_2h_20260615T072331CST/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-mteb-retrieve-paired-2h-20260615T072331CST/treatment/jobs/terminal_bench_mteb_retrieve_codex_loopx_treatment_2h_20260615T072331CST",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-mteb-retrieve-paired-2h-20260615T072331CST/treatment/jobs/terminal_bench_mteb_retrieve_codex_loopx_treatment_2h_20260615T072331CST/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "mteb-retrieve",
@@ -9005,10 +9005,10 @@
                 "environment_setup_failed_before_worker"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_mteb_retrieve_codex_goal_harness_treatment_2h_20260615T072331CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_mteb_retrieve_codex_loopx_treatment_2h_20260615T072331CST",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "repair or preflight the benchmark environment setup layer before rerunning this case; the failure occurred before Codex/worker startup, so require compact environment setup readiness evidence instead of treating it as an adapter startup issue",
               "notes": "Terminal-Bench mteb-retrieve treatment compact re-ingest after environment setup contract repair routing; no raw prompt/log/trajectory read.",
               "official_passed": false,
@@ -9052,7 +9052,7 @@
                 "environment_setup_failed_before_worker"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_mteb_retrieve_codex_goal_mode_baseline_2h_20260615T072331CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -9095,7 +9095,7 @@
               ],
               "failure_class": "not_applicable_environment_setup_probe",
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_mteb_retrieve_environment_setup_probe",
               "leaderboard_evidence": false,
               "mode": "harbor_observed",
@@ -9122,7 +9122,7 @@
               ],
               "failure_class": "not_applicable_environment_setup_probe",
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_mteb_retrieve_environment_setup_probe",
               "leaderboard_evidence": false,
               "mode": "harbor_observed",
@@ -9173,7 +9173,7 @@
                 "codex_model_access_unsupported_for_account"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_multi_source_data_merger_codex_goal_mode_baseline_real_no_upload_20260614T175604CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -9205,10 +9205,10 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-multi-source-data-merger-paired-2h-20260615T081233CST/treatment/jobs/terminal_bench_multi_source_data_merger_codex_goal_harness_treatment_2h_20260615T081233CST",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-multi-source-data-merger-paired-2h-20260615T081233CST/treatment/jobs/terminal_bench_multi_source_data_merger_codex_goal_harness_treatment_2h_20260615T081233CST/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-multi-source-data-merger-paired-2h-20260615T081233CST/treatment/jobs/terminal_bench_multi_source_data_merger_codex_loopx_treatment_2h_20260615T081233CST",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-multi-source-data-merger-paired-2h-20260615T081233CST/treatment/jobs/terminal_bench_multi_source_data_merger_codex_loopx_treatment_2h_20260615T081233CST/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "multi-source-data-merger",
@@ -9220,10 +9220,10 @@
                 "agent_process_nonzero_exit_before_solution_attempt"
               ],
               "failure_scope": "passed",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_multi_source_data_merger_codex_goal_harness_treatment_2h_20260615T081233CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_multi_source_data_merger_codex_loopx_treatment_2h_20260615T081233CST",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "notes": "Treatment arm compact result ingested while baseline arm still running; no raw logs or trajectories read.",
               "official_passed": true,
               "official_score": 1.0,
@@ -9255,7 +9255,7 @@
                 "worker_install_failed"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_multi_source_data_merger_codex_goal_mode_baseline_2h_20260615T081233CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -9588,7 +9588,7 @@
                 "worker_install_failed"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_multi_source_data_merger_codex_goal_mode_baseline_result_finalization_rerun_20260615T151022CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -9648,7 +9648,7 @@
                 "pre_worker_startup_blocker_recorded"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_multi_source_data_merger_codex_goal_mode_worker_materialization_probe_20260615T164435CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -9708,7 +9708,7 @@
                 "worker_install_failed"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_multi_source_data_merger_codex_goal_mode_runtime_materialization_baseline_20260615T165020CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -9768,7 +9768,7 @@
                 "worker_install_failed_agent_codex_install"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_multi_source_data_merger_codex_goal_mode_runtime_materialization_baseline_20260615T165535CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -9828,7 +9828,7 @@
                 "worker_install_failed_agent_codex_install"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_multi_source_data_merger_codex_goal_mode_runtime_materialization_baseline_20260615T165935CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -9888,7 +9888,7 @@
                 "worker_install_failed_agent_codex_install"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_multi_source_data_merger_codex_goal_mode_runtime_materialization_baseline_20260615T170133CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -9945,7 +9945,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_multi_source_data_merger_codex_goal_mode_runtime_materialization_baseline_20260615T170847CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -9964,10 +9964,10 @@
             {
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-multi-source-data-merger-current-protocol-20260617T201625CST/jobs/terminal_bench_multi_source_data_merger_goal_harness_managed_codex_current_protocol_20260617T201625CST",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-multi-source-data-merger-current-protocol-20260617T201625CST/jobs/terminal_bench_multi_source_data_merger_goal_harness_managed_codex_current_protocol_20260617T201625CST/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-multi-source-data-merger-current-protocol-20260617T201625CST/jobs/terminal_bench_multi_source_data_merger_loopx_managed_codex_current_protocol_20260617T201625CST",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-multi-source-data-merger-current-protocol-20260617T201625CST/jobs/terminal_bench_multi_source_data_merger_loopx_managed_codex_current_protocol_20260617T201625CST/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "multi-source-data-merger",
@@ -9977,11 +9977,11 @@
               "codex_acp_runtime_preflight_passed": false,
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_multi_source_data_merger_goal_harness_managed_codex_current_protocol_20260617T201625CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_multi_source_data_merger_loopx_managed_codex_current_protocol_20260617T201625CST",
               "leaderboard_evidence": false,
-              "mode": "goal_harness_managed_codex",
-              "notes": "Terminal-Bench multi-source-data-merger current-protocol Goal Harness managed Codex rerun; compact result only; no raw task/log/trajectory read.",
+              "mode": "loopx_managed_codex",
+              "notes": "Terminal-Bench multi-source-data-merger current-protocol LoopX managed Codex rerun; compact result only; no raw task/log/trajectory read.",
               "official_passed": true,
               "official_score": 1.0,
               "recorded_at": "2026-06-17T20:24:33+08:00",
@@ -10011,7 +10011,7 @@
               "codex_acp_runtime_preflight_passed": false,
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_multi_source_data_merger_hardened_codex_current_protocol_20260617T202500CST",
               "leaderboard_evidence": false,
               "mode": "hardened_codex_baseline",
@@ -10046,7 +10046,7 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "multi-source-data-merger-host-app-server-goal-20260620t235333z",
               "leaderboard_evidence": false,
               "mode": "terminal_bench_host_codex_app_server_goal",
@@ -10090,7 +10090,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal-bench-nginx-request-logging-paired-20260614T184054CST-baseline",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -10107,7 +10107,7 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-nginx-request-logging-paired-20260614T184054CST/treatment/terminal-bench-nginx-request-logging-paired-20260614T184054CST-treatment",
                 "result_ref": ".local/private-benchmark-jobs/terminal-bench-nginx-request-logging-paired-20260614T184054CST/treatment/terminal-bench-nginx-request-logging-paired-20260614T184054CST-treatment/result.json"
@@ -10123,10 +10123,10 @@
                 "agent_setup_timeout_before_worker_start"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": true,
+              "loopx_inside_case": true,
               "job_name": "terminal-bench-nginx-request-logging-paired-20260614T184054CST-treatment",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "repair the Codex worker setup path before rerunning this case; do not rely on runtime Codex install inside Harbor setup; use a materialized launcher or require_existing_codex fail-fast probe with compact setup-readiness proof",
               "notes": "treatment compact ingest after process close; compact-only/no raw logs",
               "official_passed": false,
@@ -10181,7 +10181,7 @@
                 "worker_install_failed_agent_codex_install_nvm_node"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal-bench-nginx-request-logging-hardened-blind-pair-20260616T110017CST-baseline",
               "leaderboard_evidence": false,
               "mode": "hardened_codex_baseline",
@@ -10225,7 +10225,7 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-nginx-request-logging-hardened-blind-pair-20260616T110017CST/treatment/terminal-bench-nginx-request-logging-hardened-blind-pair-20260616T110017CST-treatment",
                 "result_ref": ".local/private-benchmark-jobs/terminal-bench-nginx-request-logging-hardened-blind-pair-20260616T110017CST/treatment/terminal-bench-nginx-request-logging-hardened-blind-pair-20260616T110017CST-treatment/result.json"
@@ -10237,11 +10237,11 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": true,
+              "loopx_inside_case": true,
               "job_name": "terminal-bench-nginx-request-logging-hardened-blind-pair-20260616T110017CST-treatment",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
-              "notes": "nginx-request-logging Goal Harness treatment compact ingest after hardened baseline worker Codex materialization blocker; access packet present but worker CLI bridge absent",
+              "mode": "codex_loopx",
+              "notes": "nginx-request-logging LoopX treatment compact ingest after hardened baseline worker Codex materialization blocker; access packet present but worker CLI bridge absent",
               "official_passed": true,
               "official_score": 1.0,
               "recorded_at": "2026-06-16T11:09:13+08:00",
@@ -10275,7 +10275,7 @@
                 "pre_worker_startup_blocker_recorded"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_nginx_request_logging_hardened_worker_materialization_probe_20260616T111726CST",
               "leaderboard_evidence": false,
               "mode": "hardened_codex_baseline",
@@ -10335,7 +10335,7 @@
                 "pre_worker_startup_blocker_recorded"
               ],
               "failure_scope": "runner_or_setup",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_nginx_request_logging_hardened_worker_materialization_runtime_probe_20260616T113050CST",
               "leaderboard_evidence": false,
               "mode": "hardened_codex_baseline",
@@ -10370,7 +10370,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_nginx_request_logging_hardened_baseline_real_no_upload_20260616T115916CST",
               "leaderboard_evidence": false,
               "mode": "hardened_codex_baseline",
@@ -10402,7 +10402,7 @@
               "codex_acp_runtime_preflight_passed": false,
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "nginx-request-logging-host-app-server-goal-20260621t001123z",
               "leaderboard_evidence": false,
               "mode": "terminal_bench_host_codex_app_server_goal",
@@ -10443,7 +10443,7 @@
               ],
               "failure_class": "score_missing",
               "failure_scope": "score_missing",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_path_tracing_codex_goal_mode_baseline_real_no_upload_20260614T200518CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -10473,7 +10473,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_path_tracing_codex_goal_mode_baseline_real_no_upload_20260614T201017CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -10524,7 +10524,7 @@
               ],
               "failure_class": "agent_exception_before_solution_completion",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_pytorch_model_recovery_codex_goal_mode_baseline_real_no_upload_20260614T0659Z",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -10543,7 +10543,7 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": ".local/private-benchmark-jobs/terminal-bench-pytorch-model-recovery-paired-repair-20260614T0659Z/treatment.benchmark-run.public.json"
               },
@@ -10554,10 +10554,10 @@
               ],
               "failure_class": "agent_exception_before_solution_completion",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_2_0_pytorch_model_recovery_codex_goal_harness_active_user_repair_real_no_upload_20260614T0659Z",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_2_0_pytorch_model_recovery_codex_loopx_active_user_repair_real_no_upload_20260614T0659Z",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "inspect compact exception attribution and form a case-level intervention hypothesis",
               "notes": "historical compact/public benchmark_run_v0 ledger backfill",
               "official_passed": false,
@@ -10573,7 +10573,7 @@
             },
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": ".local/private-benchmark-jobs/terminal-bench-pytorch-model-recovery-paired-repair-20260614T0659Z/treatment.bridge-materialization-blocker.public.json"
               },
@@ -10584,10 +10584,10 @@
               ],
               "failure_class": "agent_exception_before_solution_completion",
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_2_0_pytorch_model_recovery_codex_goal_harness_active_user_repair_real_no_upload_20260614T0659Z",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_2_0_pytorch_model_recovery_codex_loopx_active_user_repair_real_no_upload_20260614T0659Z",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "next_action": "inspect compact exception attribution and form a case-level intervention hypothesis",
               "notes": "historical compact/public benchmark_run_v0 ledger backfill",
               "official_passed": false,
@@ -10617,7 +10617,7 @@
           "runs": [
             {
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "artifact_refs": {
                 "compact_artifact_ref": ".local/private-benchmark-jobs/terminal-bench-regex-log-paired-20260614T1232CST/treatment_benchmark_run.compact.json"
               },
@@ -10628,10 +10628,10 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_2_0_regex_log_codex_goal_harness_active_bridge_real_no_upload_20260614T1232CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_2_0_regex_log_codex_loopx_active_bridge_real_no_upload_20260614T1232CST",
               "leaderboard_evidence": false,
-              "mode": "codex_goal_harness",
+              "mode": "codex_loopx",
               "notes": "historical compact/public benchmark_run_v0 ledger backfill",
               "official_passed": true,
               "official_score": 1.0,
@@ -10656,7 +10656,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_2_0_regex_log_codex_goal_mode_baseline_real_no_upload_20260614T1232CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -10695,7 +10695,7 @@
               ],
               "failure_class": "none",
               "failure_scope": "passed",
-              "goal_harness_inside_case": false,
+              "loopx_inside_case": false,
               "job_name": "terminal_bench_sqlite_db_truncate_codex_goal_mode_baseline_2h_20260615T185855CST",
               "leaderboard_evidence": false,
               "mode": "codex_goal_mode_baseline",
@@ -10723,7 +10723,7 @@
             {
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "codex_goal_harness_treatment",
+              "arm_id": "codex_loopx_treatment",
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "train-fasttext",
               "case_ids": [
@@ -10735,17 +10735,17 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_train_fasttext_goal_harness_managed_codex_20260618T035534CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_train_fasttext_loopx_managed_codex_20260618T035534CST",
               "leaderboard_evidence": false,
-              "mode": "goal_harness_managed_codex",
+              "mode": "loopx_managed_codex",
               "notes": "Canonical catch-up for train-fasttext monitor closeout using compact benchmark_run_v0 history event; no raw task/log/trajectory/verifier body read.",
               "official_passed": false,
               "official_score": 0.0,
               "recorded_at": "2026-06-18T12:31:16+08:00",
               "round_reward_count": 0,
               "round_success_observed": false,
-              "run_group_id": "terminal_bench_train_fasttext_goal_harness_managed_codex_20260618T035534CST",
+              "run_group_id": "terminal_bench_train_fasttext_loopx_managed_codex_20260618T035534CST",
               "run_id": "5a8f56f61908",
               "score_status": "failed",
               "source_event_schema": "benchmark_run_v0",
@@ -10756,10 +10756,10 @@
             {
               "agent_declared_done": false,
               "agent_model": "gpt-5.5",
-              "arm_id": "goal_harness_managed_codex",
+              "arm_id": "loopx_managed_codex",
               "artifact_refs": {
-                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-train-fasttext-managed-20260618T035534CST/jobs/terminal_bench_train_fasttext_goal_harness_managed_codex_20260618T035534CST",
-                "result_ref": ".local/private-benchmark-jobs/terminal-bench-train-fasttext-managed-20260618T035534CST/jobs/terminal_bench_train_fasttext_goal_harness_managed_codex_20260618T035534CST/result.json"
+                "artifact_ref": ".local/private-benchmark-jobs/terminal-bench-train-fasttext-managed-20260618T035534CST/jobs/terminal_bench_train_fasttext_loopx_managed_codex_20260618T035534CST",
+                "result_ref": ".local/private-benchmark-jobs/terminal-bench-train-fasttext-managed-20260618T035534CST/jobs/terminal_bench_train_fasttext_loopx_managed_codex_20260618T035534CST/result.json"
               },
               "benchmark_id": "terminal-bench@2.0",
               "case_id": "train-fasttext",
@@ -10772,10 +10772,10 @@
                 "official_verifier_solution_failure"
               ],
               "failure_scope": "case_or_solution",
-              "goal_harness_inside_case": true,
-              "job_name": "terminal_bench_train_fasttext_goal_harness_managed_codex_20260618T035534CST",
+              "loopx_inside_case": true,
+              "job_name": "terminal_bench_train_fasttext_loopx_managed_codex_20260618T035534CST",
               "leaderboard_evidence": false,
-              "mode": "goal_harness_managed_codex",
+              "mode": "loopx_managed_codex",
               "notes": "Current rotation closeout: compact ingest for train-fasttext managed run after prior ready_for_compact_polling state.",
               "official_passed": false,
               "official_score": 0.0,

@@ -16,7 +16,7 @@ GOAL_ID = "demo-smoke-goal"
 
 def run_cli(*args: str) -> dict:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", "--format", "json", *args],
+        [sys.executable, "-m", "loopx.cli", "--format", "json", *args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -26,7 +26,7 @@ def run_cli(*args: str) -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-demo-cli-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-demo-cli-smoke-") as tmp:
         project = Path(tmp) / "demo-project"
         runtime = Path(tmp) / "runtime"
         resolved_project = project.resolve()
@@ -41,7 +41,7 @@ def main() -> int:
         )
         assert payload["ok"] is True, payload
         assert payload["goal_id"] == GOAL_ID, payload
-        assert payload["registry"] == str(resolved_project / ".goal-harness" / "registry.json"), payload
+        assert payload["registry"] == str(resolved_project / ".loopx" / "registry.json"), payload
         assert payload["goal_doc_action"] == "created", payload
         assert payload["bootstrap"]["state_action"] == "created", payload
         assert payload["todos"]["user_added"] is True, payload
@@ -56,7 +56,7 @@ def main() -> int:
         dashboard_status_commands = "\n".join(payload["dashboard_status_commands"])
         dashboard_app_commands = "\n".join(payload["dashboard_app_commands"])
         assert f"cd {resolved_project}" in dashboard_status_commands, payload
-        assert 'goal-harness --registry "$registry" serve-status --scan-root "$PWD" --port 8765' in dashboard_status_commands, payload
+        assert 'loopx --registry "$registry" serve-status --scan-root "$PWD" --port 8765' in dashboard_status_commands, payload
         assert payload["dashboard_status_scope"] == "project-local-demo", payload
         assert "npm run dev" in dashboard_app_commands, payload
         assert payload["dashboard_status_url"] == "http://127.0.0.1:8765/status.json", payload
@@ -64,7 +64,7 @@ def main() -> int:
         assert "serve-status --global-registry --port 8766 --limit 80" in canonical_commands, payload
         assert payload["canonical_dashboard_status_url"] == "http://127.0.0.1:8766/status.json", payload
 
-        registry = json.loads((project / ".goal-harness" / "registry.json").read_text(encoding="utf-8"))
+        registry = json.loads((project / ".loopx" / "registry.json").read_text(encoding="utf-8"))
         assert len(registry["goals"]) == 1, registry
         assert not (runtime / "registry.global.json").exists(), "demo should not sync into global registry"
         assert (runtime / "goals" / GOAL_ID / "runs" / "index.jsonl").exists(), payload

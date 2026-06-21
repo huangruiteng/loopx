@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.codex_cli_probe import (  # noqa: E402
+from loopx.codex_cli_probe import (  # noqa: E402
     build_codex_cli_local_scheduler_executor,
     classify_codex_cli_session_surface,
     execute_codex_cli_local_scheduler_tick_result,
@@ -134,7 +134,7 @@ def build_exec(
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         codex_bin="codex",
         probe_payload=classify_codex_cli_session_surface(command_outputs=REMOTE_RESUME_HELP_FIXTURE),
         proof_payload=proof_payload,
@@ -161,12 +161,12 @@ def assert_executor_boundary(payload: dict[str, object]) -> None:
     assert boundary["mutates_codex_session"] is False, payload
     assert boundary["candidate_output_captured"] is False, payload
     assert boundary["blocker_output_captured"] is False, payload
-    assert boundary["spends_goal_harness_quota"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
 
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -210,14 +210,14 @@ def main() -> int:
         "project": str(PROJECT),
         "goal_id": GOAL_ID,
         "agent_id": AGENT_ID,
-        "cli_bin": "goal-harness",
+        "cli_bin": "loopx",
         "codex_bin": "codex",
         "scheduler_phase": "tick_packet_no_execution",
         "scheduler_action": "external_visible_command_candidate",
         "decision": "visible_session_turn_candidate",
         "next_safe_step": "tampered visible candidate",
         "candidate_command": f"{shlex.quote(sys.executable)} -c 'pass'",
-        "commands": {"scheduler_tick": "goal-harness codex-cli-local-scheduler-tick"},
+        "commands": {"scheduler_tick": "loopx codex-cli-local-scheduler-tick"},
         "visible_driver_run_packet": {
             "visible_session_proof": {"supplied": True, "approved": True}
         },
@@ -272,11 +272,11 @@ def main() -> int:
     assert blocker["ok"] is True, blocker
     assert blocker["execution"]["kind"] == "blocker_writeback", blocker
     assert "refresh-state" in calls[-1]["command"], calls
-    assert blocker["boundary"]["writes_goal_harness_state"] is True, blocker
-    assert blocker["boundary"]["spends_goal_harness_quota"] is False, blocker
+    assert blocker["boundary"]["writes_loopx_state"] is True, blocker
+    assert blocker["boundary"]["spends_loopx_quota"] is False, blocker
     assert calls[-1]["capture_output"] is False, calls
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-scheduler-exec-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-scheduler-exec-") as tmp:
         tmp_path = Path(tmp)
         help_fixture = tmp_path / "codex-remote-help.json"
         help_fixture.write_text(json.dumps({"command_outputs": REMOTE_RESUME_HELP_FIXTURE}))

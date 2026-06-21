@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
@@ -27,8 +27,8 @@ README = TOPIC_DIR / "README.md"
 GOAL_ID = "terminal-bench-active-user-assisted-treatment-preflight-fixture"
 BENCHMARK_ID = "terminal-bench@2.0"
 TASK_ID = "train-fasttext"
-RUN_MODE = "codex_goal_harness_active_user_assisted_treatment_preflight"
-WORKER_MODE = "codex_goal_harness_cli"
+RUN_MODE = "codex_loopx_active_user_assisted_treatment_preflight"
+WORKER_MODE = "codex_loopx_cli"
 CLASSIFICATION = "terminal_bench_active_user_assisted_treatment_preflight_v0"
 FIRST_BLOCKER = "missing_real_assisted_worker_observation"
 LAUNCHER_PLAN_SCHEMA = "terminal_bench_active_user_private_launcher_plan_v0"
@@ -74,7 +74,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -96,7 +96,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
             "goals": [
                 {
                     "id": GOAL_ID,
-                    "domain": "goal-harness-platform",
+                    "domain": "loopx-platform",
                     "status": "active-read-only",
                     "state_file": state_file,
                     "repo": str(project),
@@ -130,7 +130,7 @@ def write_fake_surface_commands(root: Path) -> Path:
 
 def run_cli(args: list[str], *, env: dict[str, str], check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=check,
         text=True,
@@ -161,7 +161,7 @@ def common_args(registry_path: Path, runtime: Path) -> list[str]:
         "--goal-id",
         GOAL_ID,
         "--mode",
-        "codex-goal-harness",
+        "codex-loopx",
         "--dataset",
         BENCHMARK_ID,
         "--include-task-name",
@@ -202,7 +202,7 @@ def assert_preflight_guard(guard: dict[str, Any]) -> None:
     assert guard["no_oracle_audit_required"] is True, guard
     assert guard["assisted_score_kept_separate_from_official"] is True, guard
     assert guard["claim_requires_worker_cli_calls"] is True, guard
-    assert guard["required_worker_goal_harness_cli_call_total_min"] == 1, guard
+    assert guard["required_worker_loopx_cli_call_total_min"] == 1, guard
 
 
 def assert_channel_probe(channel: dict[str, Any]) -> None:
@@ -210,7 +210,7 @@ def assert_channel_probe(channel: dict[str, Any]) -> None:
     assert channel["channel_available"] is True, channel
     assert channel["first_blocker"] == FIRST_BLOCKER, channel
     assert channel["required_capability"] == "worker_observes_simulator_message_after_start", channel
-    assert channel["current_agent_surface"] == "goal_harness_active_user_external_update_loop_v0", channel
+    assert channel["current_agent_surface"] == "loopx_active_user_external_update_loop_v0", channel
     assert channel["direct_codex_chat_injection_available"] is False, channel
     assert channel["audited_external_update_loop_available"] is True, channel
     assert channel["initial_prompt_only_is_not_active_intervention"] is True, channel
@@ -221,13 +221,13 @@ def assert_channel_probe(channel: dict[str, Any]) -> None:
     checked = channel["checked_channels"]
     assert [item["channel"] for item in checked] == [
         "initial_prompt_instruction_append",
-        "worker_goal_harness_cli_pull",
+        "worker_loopx_cli_pull",
         "audited_external_update_loop",
         "interactive_worker_session_bridge",
     ], channel
     verdicts = {item["channel"]: item["verdict"] for item in checked}
     assert verdicts["initial_prompt_instruction_append"] == "rejected_for_active_intervention", channel
-    assert verdicts["worker_goal_harness_cli_pull"] == "partial_worker_pull_not_user_push", channel
+    assert verdicts["worker_loopx_cli_pull"] == "partial_worker_pull_not_user_push", channel
     assert verdicts["audited_external_update_loop"] == "available_worker_pull_channel", channel
     assert verdicts["interactive_worker_session_bridge"] == "optional_direct_chat_missing", channel
     assert channel["next_channel_requirement"] == (
@@ -245,7 +245,7 @@ def assert_compact_channel_probe(channel: dict[str, Any]) -> None:
     assert channel["checked_channel_count"] == 4, channel
     assert channel["checked_channel_names"] == [
         "initial_prompt_instruction_append",
-        "worker_goal_harness_cli_pull",
+        "worker_loopx_cli_pull",
         "audited_external_update_loop",
         "interactive_worker_session_bridge",
     ], channel
@@ -288,13 +288,13 @@ def assert_private_launcher_plan(plan: dict[str, Any]) -> None:
     assert plan["first_blocker"] == "ready_for_private_no_upload_assisted_worker_sample", plan
     assert plan["required_capability"] == "worker_observes_simulator_message_after_start", plan
     assert plan["worker_start_marker"] == "worker_start_seq", plan
-    assert "goal-harness-active-user-interventions.jsonl" in plan["active_user_feed_jsonl"], plan
-    assert "goal-harness-active-user-observation.json" in plan["active_user_observation_json"], plan
+    assert "loopx-active-user-interventions.jsonl" in plan["active_user_feed_jsonl"], plan
+    assert "loopx-active-user-observation.json" in plan["active_user_observation_json"], plan
     assert plan["simulator_setting"] == SIMULATOR_SETTING, plan
     contract = plan["codex_simulator_contract"]
     assert (
         contract["schema_version"]
-        == "goal_harness_active_user_codex_cli_simulator_contract_v0"
+        == "loopx_active_user_codex_cli_simulator_contract_v0"
     ), plan
     assert contract["simulator_kind"] == "codex_cli", plan
     assert contract["manual_controller_feed_allowed"] is False, plan
@@ -304,10 +304,10 @@ def assert_private_launcher_plan(plan: dict[str, Any]) -> None:
     assert "active-user-simulator-output" in contract["append_validated_output_command"], plan
     assert (
         contract["simulator_output_schema_version"]
-        == "goal_harness_active_user_simulator_output_v0"
+        == "loopx_active_user_simulator_output_v0"
     ), plan
     assert plan["sequence_steps"] == [
-        "launch_single_codex_goal_harness_worker_with_no_upload",
+        "launch_single_codex_loopx_worker_with_no_upload",
         "record_worker_start_seq_before_first_poll",
         "build_public_simulator_context_without_hidden_tests_or_solutions",
         "run_codex_cli_user_simulator_with_output_schema",
@@ -340,7 +340,7 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
 
     cli = payload["benchmark_cli"]
     assert cli["benchmark"] == "terminal-bench", cli
-    assert cli["requested_mode"] == "codex-goal-harness", cli
+    assert cli["requested_mode"] == "codex-loopx", cli
     assert cli["mode"] == RUN_MODE, cli
     assert cli["preflight_guard"] is True, cli
     assert cli["active_cli_bridge"] is True, cli
@@ -351,7 +351,7 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
 
     event = payload["benchmark_run"]
     assert event["schema_version"] == "benchmark_run_v0", event
-    assert event["source_runner"] == "goal_harness_terminal_bench_active_user_assisted_treatment_preflight", event
+    assert event["source_runner"] == "loopx_terminal_bench_active_user_assisted_treatment_preflight", event
     assert event["benchmark_id"] == BENCHMARK_ID, event
     assert event["mode"] == RUN_MODE, event
     assert event["worker_mode"] == WORKER_MODE, event
@@ -359,10 +359,10 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert event["real_run"] is False, event
     assert event["submit_eligible"] is False, event
     assert event["official_task_score"]["kind"] == "not_run", event
-    assert event["goal_harness_worker_cli_bridge_available"] is True, event
-    assert event["goal_harness_worker_cli_bridge_trace_observed"] is False, event
-    assert event["planned_worker_goal_harness_cli_call_total"] == 2, event
-    assert event["worker_goal_harness_cli_call_total"] == 0, event
+    assert event["loopx_worker_cli_bridge_available"] is True, event
+    assert event["loopx_worker_cli_bridge_trace_observed"] is False, event
+    assert event["planned_worker_loopx_cli_call_total"] == 2, event
+    assert event["worker_loopx_cli_call_total"] == 0, event
     assert event["assisted_collaboration_claim_allowed"] is True, event
     assert event["official_score_claim_allowed"] is False, event
     assert event["active_user_simulator_injection_channel_available"] is True, event
@@ -372,8 +372,8 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert launch_summary["ready"] is True, launch_summary
     assert event["first_blocker"] == "missing_real_assisted_worker_observation", event
     assert launch_summary["agent_import_path_present"] is True, launch_summary
-    assert launch_summary["goal_harness_agent_kwargs_present"] is True, launch_summary
-    assert launch_summary["goal_harness_worker_bridge_requested"] is True, launch_summary
+    assert launch_summary["loopx_agent_kwargs_present"] is True, launch_summary
+    assert launch_summary["loopx_worker_bridge_requested"] is True, launch_summary
     assert launch_summary["active_user_writable_mount_requested"] is True, launch_summary
     assert launch_summary["active_user_writable_mount_count"] == 1, launch_summary
     assert launch_summary["raw_paths_recorded"] is False, launch_summary
@@ -391,7 +391,7 @@ def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
     assert event["validation"]["assisted_score_kept_separate_from_official"] is True, event
 
     counters = event["interaction_counters"]
-    assert counters["goal_harness_cli_calls"]["total"] == 0, counters
+    assert counters["loopx_cli_calls"]["total"] == 0, counters
     assert counters["case_result_writeback"] == "not_observed_active_user_assisted_treatment_preflight", counters
     assert (
         counters["counter_trust_level"]
@@ -430,7 +430,7 @@ def assert_help_exposes_active_user_flag() -> None:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "benchmark",
             "run",
             "terminal-bench",

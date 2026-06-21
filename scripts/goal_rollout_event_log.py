@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Append or summarize public-safe Goal Harness rollout events."""
+"""Append or summarize public-safe LoopX rollout events."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.paths import DEFAULT_RUNTIME_ROOT  # noqa: E402
-from goal_harness.rollout_event_log import (  # noqa: E402
+from loopx.paths import DEFAULT_RUNTIME_ROOT  # noqa: E402
+from loopx.rollout_event_log import (  # noqa: E402
     build_rollout_event,
     append_rollout_event,
     load_rollout_events,

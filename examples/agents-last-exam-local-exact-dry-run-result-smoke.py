@@ -13,12 +13,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     build_agents_last_exam_local_exact_dry_run_result,
 )
 
 
-STDOUT = """experiment: goal_harness_ale_docker_no_cloud_dry_run_os_log_permission_guard_v1
+STDOUT = """experiment: loopx_ale_docker_no_cloud_dry_run_os_log_permission_guard_v1
 environment: docker (cpu-free-ubuntu->docker)
 output:     /private/example/.local/ale-logs/should-not-leak
 concurrency: 1
@@ -85,7 +85,7 @@ def main() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "benchmark",

@@ -14,7 +14,7 @@ leaderboard claims.
 The compact paired run for `financial-document-processor` closed with:
 
 - Codex goal-mode baseline official score `1.0`;
-- Codex goal-harness treatment official score `1.0`;
+- Codex loopx treatment official score `1.0`;
 - compact-only verifier-attribution review;
 - `raw_artifacts_read=false`;
 - no same-task uplift claim;
@@ -39,7 +39,7 @@ Rationale:
 - It is an integration/data-merging task, which is a better fit for long-horizon
   control-plane value than repeating an already both-pass case.
 - Strict no-run preflight was ready for both the Codex goal-mode baseline and
-  the Goal Harness treatment.
+  the LoopX treatment.
 
 ## Strict Preflight Summary
 
@@ -48,9 +48,9 @@ For `terminal-bench@2.0` / `multi-source-data-merger`:
 | Arm | ready | task material | no upload | submit eligible | auth values recorded | raw paths recorded | worker bridge |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Codex goal-mode baseline | true | ready | true | false | false | false | false |
-| Codex goal-harness treatment | true | ready | true | false | false | false | true |
+| Codex loopx treatment | true | ready | true | false | false | false | true |
 
-The preflight used the Goal Harness Terminal-Bench preflight guard with
+The preflight used the LoopX Terminal-Bench preflight guard with
 `--require-task-material-ready`. It records booleans and task ids only.
 
 ## Next Allowed Action
@@ -58,9 +58,9 @@ The preflight used the Goal Harness Terminal-Bench preflight guard with
 Run exactly one private no-upload paired pilot for
 `terminal-bench@2.0` / `multi-source-data-merger`:
 
-1. run the Codex goal-mode baseline with no Goal Harness access packet or
+1. run the Codex goal-mode baseline with no LoopX access packet or
    worker bridge;
-2. run the `codex-goal-harness` treatment with the active worker bridge;
+2. run the `codex-loopx` treatment with the active worker bridge;
 3. ingest only compact Harbor results after both arms close or emit compact
    blockers;
 4. run `benchmark_verifier_attribution_review_v0` before any same-task repeat

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the generic Goal Harness worker bridge/install contract."""
+"""Smoke-test the generic LoopX worker bridge/install contract."""
 
 from __future__ import annotations
 
@@ -39,8 +39,8 @@ def assert_public_safe(payload: object) -> None:
 
 def assert_contract(payload: dict) -> None:
     assert payload["ok"] is True, payload
-    assert payload["schema_version"] == "goal_harness_worker_bridge_install_contract_v0", payload
-    assert payload["bridge_surface"] == "goal_harness_worker_bridge_source_mount_v0", payload
+    assert payload["schema_version"] == "loopx_worker_bridge_install_contract_v0", payload
+    assert payload["bridge_surface"] == "loopx_worker_bridge_source_mount_v0", payload
     assert payload["install_mode"] == "source_mount_read_only_pythonpath", payload
     assert payload["runtime_policy"] == "ensure_python3_before_worker_cli_bridge", payload
     assert "apt-get install -y python3" in payload["runtime_preflight_command"], payload
@@ -48,63 +48,63 @@ def assert_contract(payload: dict) -> None:
     assert payload["mounts"] == [
         {
             "read_only": True,
-            "source": "<goal-harness-project-root>",
-            "target": "<goal-harness-project-root>",
+            "source": "<loopx-project-root>",
+            "target": "<loopx-project-root>",
             "type": "bind",
         },
         {
             "read_only": True,
-            "source": "<goal-harness-runtime-root>",
-            "target": "<goal-harness-runtime-root>",
+            "source": "<loopx-runtime-root>",
+            "target": "<loopx-runtime-root>",
             "type": "bind",
         },
     ], payload
     agent_kwargs = payload["agent_kwargs"]
     assert (
-        agent_kwargs["goal_harness_command_prefix"]
-        == "PYTHONPATH='<goal-harness-project-root>' python3 -m goal_harness.cli"
+        agent_kwargs["loopx_command_prefix"]
+        == "PYTHONPATH='<loopx-project-root>' python3 -m loopx.cli"
     ), payload
     assert (
-        agent_kwargs["goal_harness_runtime_preflight_command"]
+        agent_kwargs["loopx_runtime_preflight_command"]
         == payload["runtime_preflight_command"]
     ), payload
     assert (
-        agent_kwargs["goal_harness_registry_arg"]
-        == "<goal-harness-runtime-root>/registry.global.json"
+        agent_kwargs["loopx_registry_arg"]
+        == "<loopx-runtime-root>/registry.global.json"
     ), payload
     assert (
-        agent_kwargs["goal_harness_counter_trace_json"]
-        == "/logs/agent/goal-harness-counter-trace.jsonl"
+        agent_kwargs["loopx_counter_trace_json"]
+        == "/logs/agent/loopx-counter-trace.jsonl"
     ), payload
     assert (
-        agent_kwargs["goal_harness_active_user_feed_jsonl"]
-        == "/logs/agent/goal-harness-active-user-interventions.jsonl"
+        agent_kwargs["loopx_active_user_feed_jsonl"]
+        == "/logs/agent/loopx-active-user-interventions.jsonl"
     ), payload
     assert (
-        agent_kwargs["goal_harness_active_user_observation_json"]
-        == "/logs/agent/goal-harness-active-user-observation.json"
+        agent_kwargs["loopx_active_user_observation_json"]
+        == "/logs/agent/loopx-active-user-observation.json"
     ), payload
     assert (
-        agent_kwargs["goal_harness_active_user_channel_surface"]
-        == "goal_harness_active_user_external_update_loop_v0"
+        agent_kwargs["loopx_active_user_channel_surface"]
+        == "loopx_active_user_external_update_loop_v0"
     ), payload
-    assert "active-user-observe" in agent_kwargs["goal_harness_active_user_observe_command"], payload
+    assert "active-user-observe" in agent_kwargs["loopx_active_user_observe_command"], payload
     assert payload["active_user_external_update_mount"] == {
         "enabled": False,
         "target": None,
         "read_only": None,
         "raw_host_path_recorded": False,
     }, payload
-    assert agent_kwargs["goal_harness_benchmark_run_schema_version"] == "benchmark_run_v0", payload
+    assert agent_kwargs["loopx_benchmark_run_schema_version"] == "benchmark_run_v0", payload
     assert (
-        agent_kwargs["goal_harness_benchmark_run_writeback_contract"]
-        == "goal_harness_worker_benchmark_run_writeback_contract_v0"
+        agent_kwargs["loopx_benchmark_run_writeback_contract"]
+        == "loopx_worker_benchmark_run_writeback_contract_v0"
     ), payload
     writeback = payload["benchmark_run_writeback_contract"]
-    assert writeback["schema_version"] == "goal_harness_worker_benchmark_run_writeback_contract_v0", payload
+    assert writeback["schema_version"] == "loopx_worker_benchmark_run_writeback_contract_v0", payload
     assert writeback["benchmark_run_schema_version"] == "benchmark_run_v0", payload
-    assert writeback["benchmark_run_json"] == "/logs/agent/goal-harness-worker-benchmark-run.json", payload
-    assert writeback["counter_trace_json"] == "/logs/agent/goal-harness-counter-trace.jsonl", payload
+    assert writeback["benchmark_run_json"] == "/logs/agent/loopx-worker-benchmark-run.json", payload
+    assert writeback["counter_trace_json"] == "/logs/agent/loopx-counter-trace.jsonl", payload
     assert set(writeback["required_top_level_fields"]) == {
         "schema_version",
         "source_runner",
@@ -157,7 +157,7 @@ def assert_contract(payload: dict) -> None:
 
 
 def assert_active_user_writable_mount_contract() -> None:
-    from goal_harness.worker_bridge import build_worker_bridge_install_contract
+    from loopx.worker_bridge import build_worker_bridge_install_contract
 
     payload = build_worker_bridge_install_contract(
         active_user_host_dir="<active-user-host-dir>",
@@ -166,37 +166,37 @@ def assert_active_user_writable_mount_contract() -> None:
     assert mounts[-1] == {
         "read_only": False,
         "source": "<active-user-host-dir>",
-        "target": "/goal-harness-active-user",
+        "target": "/loopx-active-user",
         "type": "bind",
     }, payload
     assert payload["active_user_external_update_mount"] == {
         "enabled": True,
-        "target": "/goal-harness-active-user",
+        "target": "/loopx-active-user",
         "read_only": False,
         "raw_host_path_recorded": False,
     }, payload
     agent_kwargs = payload["agent_kwargs"]
     assert (
-        agent_kwargs["goal_harness_active_user_feed_jsonl"]
-        == "/goal-harness-active-user/goal-harness-active-user-interventions.jsonl"
+        agent_kwargs["loopx_active_user_feed_jsonl"]
+        == "/loopx-active-user/loopx-active-user-interventions.jsonl"
     ), payload
     assert (
-        agent_kwargs["goal_harness_active_user_observation_json"]
-        == "/goal-harness-active-user/goal-harness-active-user-observation.json"
+        agent_kwargs["loopx_active_user_observation_json"]
+        == "/loopx-active-user/loopx-active-user-observation.json"
     ), payload
     assert (
-        "--feed-jsonl /goal-harness-active-user/goal-harness-active-user-interventions.jsonl"
-        in agent_kwargs["goal_harness_active_user_observe_command"]
+        "--feed-jsonl /loopx-active-user/loopx-active-user-interventions.jsonl"
+        in agent_kwargs["loopx_active_user_observe_command"]
     ), payload
     assert_public_safe(payload)
     active_user_channel = payload["active_user_intervention_channel_contract"]
     assert (
         active_user_channel["schema_version"]
-        == "goal_harness_active_user_intervention_channel_contract_v0"
+        == "loopx_active_user_intervention_channel_contract_v0"
     ), payload
     assert (
         active_user_channel["channel_surface"]
-        == "goal_harness_active_user_external_update_loop_v0"
+        == "loopx_active_user_external_update_loop_v0"
     ), payload
     assert active_user_channel["mode"] == "audited_external_update_loop", payload
     assert active_user_channel["frequency_budget"]["max_interventions_per_task"] == 3, payload
@@ -208,19 +208,19 @@ def assert_active_user_writable_mount_contract() -> None:
 
 def assert_outcome(payload: dict) -> None:
     assert payload["ok"] is True, payload
-    assert payload["schema_version"] == "goal_harness_worker_bridge_outcome_v0", payload
-    assert payload["bridge_surface"] == "goal_harness_worker_bridge_source_mount_v0", payload
+    assert payload["schema_version"] == "loopx_worker_bridge_outcome_v0", payload
+    assert payload["bridge_surface"] == "loopx_worker_bridge_source_mount_v0", payload
     assert payload["worker_bridge_verified"] is True, payload
     assert payload["runner_return_status"] == "interrupted_after_worker_bridge_success", payload
     assert payload["official_score_status"] == "blocked_pending_runner_return", payload
-    assert payload["worker_goal_harness_cli_call_total"] == 4, payload
-    assert payload["required_worker_goal_harness_cli_call_total_min"] == 1, payload
+    assert payload["worker_loopx_cli_call_total"] == 4, payload
+    assert payload["required_worker_loopx_cli_call_total_min"] == 1, payload
     assert payload["counter_trace_present"] is True, payload
     assert payload["runner_return_completed"] is False, payload
     assert payload["official_score_completed"] is False, payload
     assert payload["side_effect_audit_passed"] is True, payload
     policy = payload["wall_time_policy"]
-    assert policy["schema_version"] == "goal_harness_worker_bridge_wall_time_policy_v0", payload
+    assert policy["schema_version"] == "loopx_worker_bridge_wall_time_policy_v0", payload
     assert policy["interrupted"] is True, payload
     assert policy["wall_time_seconds"] == 720.0, payload
     assert policy["wall_time_limit_seconds"] == 900.0, payload
@@ -245,16 +245,16 @@ def assert_outcome(payload: dict) -> None:
 
 
 def assert_benchmark_run(payload: dict) -> None:
-    from goal_harness.status import compact_benchmark_run
+    from loopx.status import compact_benchmark_run
 
     assert payload["ok"] is True, payload
     assert payload["schema_version"] == "benchmark_run_v0", payload
     assert payload["source_runner"] == "worker_bridge_runner", payload
-    assert payload["mode"] == "codex_goal_harness_active_worker", payload
-    assert payload["goal_harness_inside_case"] is True, payload
+    assert payload["mode"] == "codex_loopx_active_worker", payload
+    assert payload["loopx_inside_case"] is True, payload
     assert payload["submit_eligible"] is False, payload
     assert payload["leaderboard_evidence"] is False, payload
-    assert payload["worker_goal_harness_cli_call_total"] == 4, payload
+    assert payload["worker_loopx_cli_call_total"] == 4, payload
     assert payload["validation_scope"] == "worker_bridge_connectivity", payload
     assert payload["case_success_claimed"] is False, payload
     assert payload["official_verifier_validation_present"] is False, payload
@@ -274,14 +274,14 @@ def assert_benchmark_run(payload: dict) -> None:
     compact = compact_benchmark_run(payload)
     assert compact is not None, payload
     assert compact["worker_bridge_outcome"]["worker_bridge_verified"] is True, compact
-    assert compact["worker_bridge_outcome"]["worker_goal_harness_cli_call_total"] == 4, compact
+    assert compact["worker_bridge_outcome"]["worker_loopx_cli_call_total"] == 4, compact
     assert compact["validation"]["all_passed"] is True, compact
     assert_public_safe(payload)
     assert_public_safe(compact)
 
 
 def assert_module_contract() -> None:
-    from goal_harness.worker_bridge import (
+    from loopx.worker_bridge import (
         build_worker_bridge_benchmark_run,
         build_worker_bridge_benchmark_run_from_counters,
         build_worker_bridge_benchmark_run_writeback_contract,
@@ -292,7 +292,7 @@ def assert_module_contract() -> None:
 
     assert_contract(build_worker_bridge_install_contract())
     writeback_contract = build_worker_bridge_benchmark_run_writeback_contract()
-    assert writeback_contract["schema_version"] == "goal_harness_worker_benchmark_run_writeback_contract_v0", writeback_contract
+    assert writeback_contract["schema_version"] == "loopx_worker_benchmark_run_writeback_contract_v0", writeback_contract
     assert writeback_contract["benchmark_run_schema_version"] == "benchmark_run_v0", writeback_contract
     assert writeback_contract["required_fixed_fields"] == {
         "real_run": True,
@@ -302,7 +302,7 @@ def assert_module_contract() -> None:
     assert_public_safe(writeback_contract)
     assert_outcome(
         build_worker_bridge_outcome(
-            worker_goal_harness_cli_call_total=4,
+            worker_loopx_cli_call_total=4,
             counter_trace_present=True,
             interrupted=True,
             interrupt_reason="controller_interrupt_after_wall_time_limit",
@@ -311,21 +311,21 @@ def assert_module_contract() -> None:
         )
     )
     generic_payload = build_worker_bridge_benchmark_run_from_counters(
-        {"goal_harness_cli_calls": {"total": 3}},
+        {"loopx_cli_calls": {"total": 3}},
         counter_trace_present=True,
     )
-    assert generic_payload["worker_goal_harness_cli_call_total"] == 3, generic_payload
+    assert generic_payload["worker_loopx_cli_call_total"] == 3, generic_payload
     assert generic_payload["worker_bridge_outcome"]["worker_bridge_verified"] is True, generic_payload
-    with tempfile.TemporaryDirectory(prefix="goal-harness-worker-bridge-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-worker-bridge-") as tmp:
         output_path = Path(tmp) / "worker-benchmark-run.json"
         assert write_worker_bridge_benchmark_run_file(output_path, generic_payload)
         written_payload = json.loads(output_path.read_text(encoding="utf-8"))
         assert written_payload["schema_version"] == "benchmark_run_v0", written_payload
-        assert written_payload["worker_goal_harness_cli_call_total"] == 3, written_payload
+        assert written_payload["worker_loopx_cli_call_total"] == 3, written_payload
         assert_public_safe(written_payload)
     assert_benchmark_run(
         build_worker_bridge_benchmark_run(
-            worker_goal_harness_cli_call_total=4,
+            worker_loopx_cli_call_total=4,
             counter_trace_present=True,
             interrupted=True,
             interrupt_reason="controller_interrupt_after_wall_time_limit",
@@ -340,7 +340,7 @@ def assert_cli_contract() -> None:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "worker-bridge",
             "contract",
             "--format",
@@ -361,7 +361,7 @@ def assert_cli_outcome() -> None:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "worker-bridge",
             "outcome",
             "--format",
@@ -392,7 +392,7 @@ def assert_cli_benchmark_run() -> None:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "worker-bridge",
             "benchmark-run",
             "--format",
@@ -419,20 +419,20 @@ def assert_cli_benchmark_run() -> None:
 
 
 def assert_terminal_bench_adapter_consumes_contract() -> None:
-    from goal_harness.benchmark import build_terminal_bench_managed_harbor_command
+    from loopx.benchmark import build_terminal_bench_managed_harbor_command
 
     command = build_terminal_bench_managed_harbor_command(
-        goal_harness_mode="codex_goal_harness",
-        goal_harness_cli_bridge_enabled=True,
+        loopx_mode="codex_loopx",
+        loopx_cli_bridge_enabled=True,
     )
     active_user_command = build_terminal_bench_managed_harbor_command(
-        goal_harness_mode="codex_goal_harness",
-        goal_harness_cli_bridge_enabled=True,
-        goal_harness_active_user_intervention_enabled=True,
+        loopx_mode="codex_loopx",
+        loopx_cli_bridge_enabled=True,
+        loopx_active_user_intervention_enabled=True,
     )
     extended_timeout_command = build_terminal_bench_managed_harbor_command(
-        goal_harness_mode="codex_goal_harness",
-        goal_harness_cli_bridge_enabled=True,
+        loopx_mode="codex_loopx",
+        loopx_cli_bridge_enabled=True,
         agent_timeout_multiplier=2.0,
     )
     assert "--mounts" in command, command
@@ -442,33 +442,33 @@ def assert_terminal_bench_adapter_consumes_contract() -> None:
         extended_timeout_command.index("--agent-timeout-multiplier") + 1
     ] == "2", extended_timeout_command
     mounts = json.loads(command[command.index("--mounts") + 1])
-    assert mounts[0]["source"] == "<goal-harness-project-root>", command
-    assert mounts[1]["source"] == "<goal-harness-runtime-root>", command
+    assert mounts[0]["source"] == "<loopx-project-root>", command
+    assert mounts[1]["source"] == "<loopx-runtime-root>", command
     active_user_mounts = json.loads(
         active_user_command[active_user_command.index("--mounts") + 1]
     )
     assert active_user_mounts[-1] == {
         "read_only": False,
         "source": "<active-user-host-dir>",
-        "target": "/goal-harness-active-user",
+        "target": "/loopx-active-user",
         "type": "bind",
     }, active_user_mounts
     assert (
-        "goal_harness_active_user_feed_jsonl="
-        "/goal-harness-active-user/goal-harness-active-user-interventions.jsonl"
+        "loopx_active_user_feed_jsonl="
+        "/loopx-active-user/loopx-active-user-interventions.jsonl"
     ) in active_user_command, active_user_command
     assert (
-        "goal_harness_command_prefix="
-        "PYTHONPATH='<goal-harness-project-root>' python3 -m goal_harness.cli"
+        "loopx_command_prefix="
+        "PYTHONPATH='<loopx-project-root>' python3 -m loopx.cli"
     ) in command, command
     assert any(
-        item.startswith("goal_harness_runtime_preflight_command=")
+        item.startswith("loopx_runtime_preflight_command=")
         and "apt-get install -y python3" in item
         for item in command
     ), command
     assert (
-        "goal_harness_registry_arg="
-        "<goal-harness-runtime-root>/registry.global.json"
+        "loopx_registry_arg="
+        "<loopx-runtime-root>/registry.global.json"
     ) in command, command
     assert_public_safe(" ".join(command))
 

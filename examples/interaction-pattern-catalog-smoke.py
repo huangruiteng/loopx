@@ -12,7 +12,7 @@ STATE_MODEL = REPO_ROOT / "docs" / "state-interaction-model.md"
 SELF_REPAIR_PATTERNS = (
     REPO_ROOT
     / "skills"
-    / "goal-harness-self-repair"
+    / "loopx-self-repair"
     / "references"
     / "repair-patterns.md"
 )

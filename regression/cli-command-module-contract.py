@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Regression for the first modular CLI command seam.
 
-This protects the initial extraction from ``goal_harness.cli`` into
-``goal_harness.cli_commands``. The old public invocation should keep working
+This protects the initial extraction from ``loopx.cli`` into
+``loopx.cli_commands``. The old public invocation should keep working
 while command registration/handling moves behind a small module contract.
 """
 
@@ -22,7 +22,7 @@ def run_cli(*args: str) -> dict[str, object]:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             *args,
@@ -39,7 +39,7 @@ def run_cli(*args: str) -> dict[str, object]:
 
 def main() -> int:
     sys.path.insert(0, str(REPO_ROOT))
-    from goal_harness.cli_commands import (
+    from loopx.cli_commands import (
         handle_demo_command,
         handle_check_command,
         handle_doctor_command,
@@ -68,7 +68,7 @@ def main() -> int:
     prompt = run_cli(
         "new-project-prompt",
         "--project",
-        "/tmp/goal-harness-command-module-fixture",
+        "/tmp/loopx-command-module-fixture",
         "--goal-doc",
         "GOAL.md",
         "--goal-id",
@@ -78,7 +78,7 @@ def main() -> int:
     assert prompt.get("goal_id") == "command-module-fixture", prompt
     assert "prompt" in prompt, prompt
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-cli-command-module-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-cli-command-module-") as raw_tmp:
         root = Path(raw_tmp)
         demo = run_cli(
             "--runtime-root",
@@ -101,9 +101,9 @@ def main() -> int:
     assert status.get("ok") is True, status
     assert "attention_queue" in status, status
 
-    review = run_cli("review-packet", "--goal-id", "goal-harness-meta", "--limit", "1")
+    review = run_cli("review-packet", "--goal-id", "loopx-meta", "--limit", "1")
     assert review.get("ok") is True, review
-    assert review.get("goal_id") == "goal-harness-meta", review
+    assert review.get("goal_id") == "loopx-meta", review
 
     print("cli-command-module-contract-regression ok")
     return 0

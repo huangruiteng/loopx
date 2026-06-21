@@ -115,7 +115,7 @@ Targeted validation:
 ```bash
 python3 examples/agentissue-bench-lagent239-code-source-sync-smoke.py
 python3 -m py_compile examples/agentissue-bench-lagent239-code-source-sync-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/agentissue-bench-lagent239-code-source-sync-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-lagent239-code-source-sync-plan-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

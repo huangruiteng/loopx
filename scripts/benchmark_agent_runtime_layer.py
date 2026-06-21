@@ -16,7 +16,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "benchmark_agent_runtime_layer_plan_v0"
-DEFAULT_WORKSPACE = "~/goal-harness-bench"
+DEFAULT_WORKSPACE = "~/loopx-bench"
 HARBOR_TARGET = "/opt/harbor-agent-tools"
 BENCHFLOW_TARGET = "/opt/benchflow"
 
@@ -73,10 +73,10 @@ def _harbor_profile(
             "--agent-env",
             f"PATH={HARBOR_TARGET}/bin:${{PATH}}",
             "--agent-kwarg",
-            "goal_harness_codex_install_strategy=require_existing_codex",
+            "loopx_codex_install_strategy=require_existing_codex",
             "--agent-kwarg",
             (
-                "goal_harness_worker_codex_materialization_strategy="
+                "loopx_worker_codex_materialization_strategy="
                 "worker_path_preprovisioned"
             ),
         ],
@@ -370,7 +370,7 @@ def build_plan(
         "contract": {
             "case_container_rule": "agent_runtime_preinstalled_before_case_start",
             "preflight_required_before_official_case_attempt": True,
-            "goal_harness_role": (
+            "loopx_role": (
                 "produce public-safe runtime-layer plans and compact evidence; "
                 "benchmark runners still own task execution and scoring"
             ),

@@ -29,7 +29,7 @@ const shareGoalIds = [...shareGoalSpecBlock.matchAll(/id: "([^"]+)"/g)].map((mat
 assert(shareGoalIds.length >= 4, "expected public showcase goal specs");
 for (const goalId of shareGoalIds) {
   assert(
-    goalId.startsWith("showcase-") || goalId === "goal-harness-meta",
+    goalId.startsWith("showcase-") || goalId === "loopx-meta",
     `public dashboard goal spec must use showcase/meta id: ${goalId}`,
   );
 }

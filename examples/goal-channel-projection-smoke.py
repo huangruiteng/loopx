@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.frontstage import (  # noqa: E402
+from loopx.frontstage import (  # noqa: E402
     GOAL_CHANNEL_PROJECTION_SCHEMA_VERSION,
     build_goal_channel_projection,
 )

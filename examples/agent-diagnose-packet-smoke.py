@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test Goal Harness agent-facing diagnosis packets."""
+"""Smoke-test LoopX agent-facing diagnosis packets."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ GOAL_ID = "diagnose-smoke-goal"
 
 def run_cli(*args: str, cwd: Path = REPO_ROOT) -> dict:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", "--format", "json", *args],
+        [sys.executable, "-m", "loopx.cli", "--format", "json", *args],
         cwd=cwd,
         check=True,
         capture_output=True,
@@ -27,7 +27,7 @@ def run_cli(*args: str, cwd: Path = REPO_ROOT) -> dict:
 
 def run_markdown(*args: str, cwd: Path = REPO_ROOT) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", "--format", "markdown", *args],
+        [sys.executable, "-m", "loopx.cli", "--format", "markdown", *args],
         cwd=cwd,
         check=True,
         capture_output=True,
@@ -53,7 +53,7 @@ def bootstrap_project(project: Path, runtime: Path, goal_id: str, *, onboarding:
         "--goal-id",
         goal_id,
         "--objective",
-        "Exercise Goal Harness diagnosis packets.",
+        "Exercise LoopX diagnosis packets.",
         "--goal-doc",
         "README.md",
         "--no-global-sync",
@@ -64,13 +64,13 @@ def bootstrap_project(project: Path, runtime: Path, goal_id: str, *, onboarding:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-agent-diagnose-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-agent-diagnose-smoke-") as tmp:
         root = Path(tmp)
         runtime = root / "runtime"
 
         ready_project = write_project(root, "ready-project")
         bootstrap_project(ready_project, runtime, GOAL_ID, onboarding=False)
-        registry = ready_project / ".goal-harness" / "registry.json"
+        registry = ready_project / ".loopx" / "registry.json"
         added = run_cli(
             "--registry",
             str(registry),
@@ -91,7 +91,7 @@ def main() -> int:
 
         packet = run_cli("--registry", str(registry), "diagnose", "--goal-id", GOAL_ID)
         assert packet["ok"] is True, packet
-        assert packet["schema_version"] == "goal_harness_agent_diagnosis_packet_v0", packet
+        assert packet["schema_version"] == "loopx_agent_diagnosis_packet_v0", packet
         assert packet["packet_kind"] == "agent_reasoning_evidence_packet", packet
         assert packet["agent_must_reason"] is True, packet
         selected = packet["selected"]
@@ -103,14 +103,14 @@ def main() -> int:
         assert selected["agent_reasoning_checklist"], selected
 
         markdown = run_markdown("--registry", str(registry), "diagnose", "--goal-id", GOAL_ID)
-        assert "Goal Harness is not making the final diagnosis" in markdown, markdown
+        assert "LoopX is not making the final diagnosis" in markdown, markdown
         assert "Agent Reasoning Checklist" in markdown, markdown
         assert "These are for the agent to run" in markdown, markdown
 
         gated_project = write_project(root, "gated-project")
         gated_goal_id = "diagnose-smoke-gated"
         bootstrap_project(gated_project, runtime, gated_goal_id, onboarding=True)
-        gated_registry = gated_project / ".goal-harness" / "registry.json"
+        gated_registry = gated_project / ".loopx" / "registry.json"
         gated_packet = run_cli("--registry", str(gated_registry), "diagnose", "--goal-id", gated_goal_id)
         gated_selected = gated_packet["selected"]
         assert gated_selected["machine_signal"] == "user_or_controller_attention", gated_selected

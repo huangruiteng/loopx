@@ -13,14 +13,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import filter_public_benchmark_artifact_paths  # noqa: E402
+from loopx.benchmark import filter_public_benchmark_artifact_paths  # noqa: E402
 
 
 PRIVATE_ROOT = "/private/example/project/.local/private-benchmark-jobs/job-a"
 PATHS = [
     f"{PRIVATE_ROOT}/paired_comparison.compact.json",
     f"{PRIVATE_ROOT}/launch_status.public.json",
-    f"{PRIVATE_ROOT}/treatment/active-user-feed/goal-harness-active-user-observation.json",
+    f"{PRIVATE_ROOT}/treatment/active-user-feed/loopx-active-user-observation.json",
     f"{PRIVATE_ROOT}/agent/trajectory.json",
     f"{PRIVATE_ROOT}/launch_private_manifest.local.json",
     f"{PRIVATE_ROOT}/tasks/demo/instruction.md",
@@ -68,7 +68,7 @@ def main() -> None:
     assert payload["allowed_artifact_basenames"] == [
         "paired_comparison.compact.json",
         "launch_status.public.json",
-        "goal-harness-active-user-observation.json",
+        "loopx-active-user-observation.json",
     ], payload
     assert payload["blocked_reasons"]["raw_private_surface"] == 2, payload
     assert payload["blocked_reasons"]["private_or_local_manifest"] == 1, payload
@@ -123,7 +123,7 @@ def main() -> None:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "benchmark",

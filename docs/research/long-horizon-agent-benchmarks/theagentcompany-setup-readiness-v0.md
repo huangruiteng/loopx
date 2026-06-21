@@ -35,7 +35,7 @@ communicate with coworkers inside a self-contained company-like environment.
 The same abstract reports that the most competitive tested agent completes
 30% of tasks autonomously.
 
-This is a strong Goal Harness fit because the failure modes are not just patch
+This is a strong LoopX fit because the failure modes are not just patch
 generation. A run has to coordinate service readiness, task initialization,
 browser/workspace actions, communication tools, result collection, grading,
 trajectory storage, screenshots, and checkpoint recovery.
@@ -135,7 +135,7 @@ explicitly selected and approved:
 
 ## Decision
 
-TheAgentCompany is high-value for Goal Harness, but it is not an immediate
+TheAgentCompany is high-value for LoopX, but it is not an immediate
 heartbeat-run candidate. It is local/cloud runnable in principle, yet the first
 real execution would cross several meaningful operational boundaries:
 Docker service bootstrap, task-image execution, root/OpenHands runtime,

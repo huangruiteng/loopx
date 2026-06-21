@@ -195,7 +195,7 @@ Stop the runner before public writeback if any of these happens:
 ```bash
 python3 examples/agentissue-bench-codex-cli-runner-contract-smoke.py
 python3 -m py_compile examples/agentissue-bench-codex-cli-runner-contract-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/agentissue-bench-codex-cli-runner-contract-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-contract-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

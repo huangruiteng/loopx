@@ -30,7 +30,7 @@ REQUIRED_SNIPPETS = [
     "https://arxiv.org/abs/2406.12045",
     "https://github.com/sierra-research/tau2-bench",
     "https://arxiv.org/abs/2601.11868",
-    "Goal Harness Operator Simulator Program",
+    "LoopX Operator Simulator Program",
     "Official leaderboard mode",
     "Passive control-plane mode",
     "helps without any operator simulator",
@@ -41,8 +41,8 @@ REQUIRED_SNIPPETS = [
     "H1: Restartability",
     "H2: Stale-state avoidance",
     "H3: Continuation quality",
-    "Passive Goal Harness Baseline",
-    "Codex CLI goal mode without Goal Harness state",
+    "Passive LoopX Baseline",
+    "Codex CLI goal mode without LoopX state",
     "No operator-simulator intervention",
     "Autonomous Planning Triggers",
     "Periodic research review",
@@ -67,8 +67,8 @@ REQUIRED_SNIPPETS = [
 
 def main() -> None:
     readme = README.read_text(encoding="utf-8")
-    assert "This topic folder owns Goal Harness research" in readme
-    assert "Do not implement Goal Harness product capability here." in readme
+    assert "This topic folder owns LoopX research" in readme
+    assert "Do not implement LoopX product capability here." in readme
     assert "Foundational capability" in readme
     assert "existing code, examples, and contract documents" in readme
     assert "`roadmap.md`" in readme

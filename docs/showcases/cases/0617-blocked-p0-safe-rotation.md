@@ -4,7 +4,7 @@
 
 A benchmark rotation had three active lanes. The highest-priority lane needed a
 large local image before it could run. Instead of silently spending compute or
-stalling the whole goal, Goal Harness surfaced the concrete user decision,
+stalling the whole goal, LoopX surfaced the concrete user decision,
 kept that lane gated, and allowed safe no-upload fallback work on the other
 benchmark families.
 
@@ -26,9 +26,9 @@ large local dependency. The correct behavior was not "keep trying" and not
 2. avoid spending delivery compute on that gated lane;
 3. continue safe fallback work that does not depend on the decision.
 
-## Goal Harness Behavior
+## LoopX Behavior
 
-Goal Harness turns that situation into a structured control-plane decision:
+LoopX turns that situation into a structured control-plane decision:
 
 - the user todo names the blocked P0 decision;
 - the agent todo still contains lower-priority safe work;
@@ -52,7 +52,7 @@ The demo builds a sanitized status payload with:
 - a P0 agent item blocked by that user gate;
 - a P1 safe fallback item for another benchmark lane.
 
-It verifies that Goal Harness projects `scoped_user_gate_fallback`, marks the
+It verifies that LoopX projects `scoped_user_gate_fallback`, marks the
 turn as actionable, requires user notification, and selects the non-gated
 fallback.
 
@@ -66,7 +66,7 @@ control-plane pattern, not the original private artifact.
 ## Website Story Beats
 
 1. A P0 lane becomes blocked by a concrete user decision.
-2. Goal Harness keeps that decision visible as a user todo.
+2. LoopX keeps that decision visible as a user todo.
 3. The agent selects a safe P1/P2 fallback instead of spending on the blocked
    lane.
 4. The state records both facts: what is blocked and why progress can continue.

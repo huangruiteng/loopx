@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.codex_cli_probe import (  # noqa: E402
+from loopx.codex_cli_probe import (  # noqa: E402
     build_codex_cli_one_message_loop_pilot,
     classify_codex_cli_session_surface,
 )
@@ -48,7 +48,7 @@ Resume a previous interactive session.
 
 VISIBLE_PROOF_FIXTURE = {
     "observed_surface": "visible_resume_prompt",
-    "recommended_command": "codex resume public-session-id 'Goal Harness visible steering turn'",
+    "recommended_command": "codex resume public-session-id 'LoopX visible steering turn'",
     "user_opt_in": True,
     "quota_guard": {"passed": True},
     "idle_guard": {
@@ -105,7 +105,7 @@ def build_pilot(
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         codex_bin="codex",
         probe_payload=classify_codex_cli_session_surface(command_outputs=REMOTE_RESUME_HELP_FIXTURE),
         proof_payload=proof_payload,
@@ -124,14 +124,14 @@ def assert_pilot_boundary(payload: dict[str, object]) -> None:
     assert boundary["reads_credentials"] is False, payload
     assert boundary["reads_session_files"] is False, payload
     assert boundary["mutates_codex_session"] is False, payload
-    assert boundary["spends_goal_harness_quota"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
     assert boundary["requires_user_visible_start"] is True, payload
     assert boundary["headless_execution_disabled"] is True, payload
 
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -145,13 +145,13 @@ def main() -> int:
     assert_pilot_boundary(no_proof)
     assert no_proof["start_surface"] == "codex_cli_tui_one_message", no_proof
     assert no_proof["pilot_decision"] == "first_message_then_visible_blocker_writeback", no_proof
-    assert no_proof["first_turn"]["autostarts_goal_harness_loop"] is True, no_proof
+    assert no_proof["first_turn"]["autostarts_loopx_loop"] is True, no_proof
     assert no_proof["first_turn"]["setup_then_loop_activation"] is True, no_proof
     assert no_proof["first_turn"]["loop_activation"]["codex_cli"] == "/goal <thin task_body>", no_proof
     assert no_proof["first_turn"]["loop_activation"]["codex_app"] == "<thin task_body> heartbeat automation", no_proof
     assert no_proof["first_turn"]["preserve_tui"] is True, no_proof
     assert "workspace_guard" in no_proof["first_turn"]["stop_only_for"], no_proof
-    assert no_proof["first_turn"]["message"].startswith("Install and connect Goal Harness for this repo"), no_proof
+    assert no_proof["first_turn"]["message"].startswith("Install and connect LoopX for this repo"), no_proof
     assert not no_proof["first_turn"]["message"].startswith("/goal "), no_proof
     assert "Codex CLI TUI" in no_proof["first_turn"]["message"], no_proof
     assert "headless `codex exec`" in no_proof["first_turn"]["message"], no_proof
@@ -179,7 +179,7 @@ def main() -> int:
     assert with_proof_and_idle["automation_bridge"]["scheduler_action"] == "external_visible_command_candidate", with_proof_and_idle
     assert with_proof_and_idle["scheduler_executor"]["scheduler_tick"]["runtime_idle_detector"]["approved"] is True, with_proof_and_idle
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-one-message-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-one-message-") as tmp:
         tmp_path = Path(tmp)
         help_fixture = tmp_path / "codex-remote-help.json"
         help_fixture.write_text(json.dumps({"command_outputs": REMOTE_RESUME_HELP_FIXTURE}))

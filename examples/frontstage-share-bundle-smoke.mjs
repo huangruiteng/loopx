@@ -8,7 +8,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const outDir = resolve("/tmp", "goal-harness-frontstage-share-bundle-smoke");
+const outDir = resolve("/tmp", "loopx-frontstage-share-bundle-smoke");
 const privateTrapFixturePath = resolve(repoRoot, "examples/fixtures/frontstage-private-status-trap.public.json");
 
 function run(command, args, cwd = repoRoot) {
@@ -79,7 +79,7 @@ run(process.execPath, [
   "--out-dir",
   outDir,
   "--base",
-  "/goal-harness/",
+  "/loopx/",
 ]);
 
 const siteDir = resolve(outDir, "site");
@@ -103,7 +103,7 @@ if (status.attention_queue.items[0].goal_channel_projection.truth_contract.proje
 }
 
 const manifest = JSON.parse(await readFile(resolve(outDir, "frontstage-share-manifest.json"), "utf8"));
-if (manifest.base !== "/goal-harness/") {
+if (manifest.base !== "/loopx/") {
   throw new Error(`manifest base mismatch: ${manifest.base}`);
 }
 if (manifest.public_boundary.write_api !== false || manifest.public_boundary.live_registry_state !== false) {

@@ -60,7 +60,7 @@ const projectionDiffRows = [
     axis: "privacy",
     current: "compact source refs and warnings",
     proposed: "public-safe fixture field",
-    gate: "goal-harness check and browser fake-private fixture",
+    gate: "loopx check and browser fake-private fixture",
   },
   {
     axis: "interaction",
@@ -90,14 +90,14 @@ const smokeChecklist = [
   "npm --prefix apps/dashboard run smoke:frontstage-browser",
   "npm --prefix apps/dashboard run smoke:frontstage-share-bundle",
   "npm --prefix apps/dashboard run build",
-  "goal-harness check --scan-path apps/dashboard --scan-path docs/status-data-contract.md",
+  "loopx check --scan-path apps/dashboard --scan-path docs/status-data-contract.md",
 ];
 
 const componentExamples = [
   {
     name: "Projection lane",
     badges: ["read-only", "schema v0"],
-    body: "Summarizes one compact projection lane without mutating the underlying Goal Harness state.",
+    body: "Summarizes one compact projection lane without mutating the underlying LoopX state.",
   },
   {
     name: "Capability badge",
@@ -274,7 +274,7 @@ export function FrontstageDeveloperPage() {
                   <Badge variant="neutral">no browser writes</Badge>
                 </div>
                 <h1 className="mt-3 text-3xl font-semibold tracking-normal text-slate-950">
-                  Goal Harness Projection Developer Cockpit
+                  LoopX Projection Developer Cockpit
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
                   A read-only contributor workbench for adding dashboard/frontstage projections without reverse-engineering the large operator page.

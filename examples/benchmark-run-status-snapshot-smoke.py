@@ -15,7 +15,7 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from goal_harness.rollout_event_log import (  # noqa: E402
+from loopx.rollout_event_log import (  # noqa: E402
     load_rollout_events,
     rollout_event_log_path,
 )

@@ -8,8 +8,8 @@ This packet adds a no-execute materializer for the trusted-local
 AgentIssue-Bench `lagent_239` runner script:
 
 ```bash
-goal-harness benchmark agentissue-codex-runner-flow \
-  --goal-id goal-harness-meta \
+loopx benchmark agentissue-codex-runner-flow \
+  --goal-id loopx-meta \
   --tag lagent_239 \
   --private-runner-root <private-runner-root>
 ```
@@ -119,14 +119,14 @@ low-frequency real Codex CLI regression.
 ```bash
 python3 examples/agentissue-bench-codex-cli-runner-private-script-smoke.py
 python3 -m py_compile \
-  goal_harness/benchmark.py \
-  goal_harness/cli.py \
-  goal_harness/status.py \
+  loopx/benchmark.py \
+  loopx/cli.py \
+  loopx/status.py \
   examples/agentissue-bench-codex-cli-runner-private-script-smoke.py
-goal-harness check \
-  --scan-path goal_harness/benchmark.py \
-  --scan-path goal_harness/cli.py \
-  --scan-path goal_harness/status.py \
+loopx check \
+  --scan-path loopx/benchmark.py \
+  --scan-path loopx/cli.py \
+  --scan-path loopx/status.py \
   --scan-path examples/agentissue-bench-codex-cli-runner-private-script-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-private-script-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

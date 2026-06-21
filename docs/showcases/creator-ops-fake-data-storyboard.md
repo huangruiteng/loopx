@@ -4,7 +4,7 @@ This storyboard turns the creator-operator case into a frontend-ready public
 demo flow. It uses only synthetic data. It is not a crawler, publishing tool,
 or claim about real creator performance.
 
-The goal is to show how Goal Harness makes a long-running creator-agent loop
+The goal is to show how LoopX makes a long-running creator-agent loop
 legible:
 
 - research can continue;

@@ -15,15 +15,15 @@ import sys
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark import (  # noqa: E402
+from loopx.benchmark import (  # noqa: E402
     TERMINAL_BENCH_CODEX_GOAL_MODE_BASELINE_SURFACE,
-    TERMINAL_BENCH_GOAL_HARNESS_ACCESS_PACKET_MODE_NONE,
+    TERMINAL_BENCH_LOOPX_ACCESS_PACKET_MODE_NONE,
     TERMINAL_BENCH_WORKER_SETUP_DIAGNOSTIC_FILE,
     TERMINAL_BENCH_WORKER_SETUP_DIAGNOSTIC_SCHEMA,
     _iso_duration_seconds,
     build_terminal_bench_harbor_result_benchmark_run,
 )
-from goal_harness.status import (  # noqa: E402
+from loopx.status import (  # noqa: E402
     compact_benchmark_run,
     worker_bridge_ingest_health_note,
 )
@@ -42,7 +42,7 @@ def write_fixture(root: Path, *, agent_timeout_multiplier: float | None = None) 
         if agent_timeout_multiplier is not None
         else "official_default_timeout"
     )
-    job_dir = root / f"terminal_bench_sample_build_cython_ext_codex_goal_harness_active_e2e_{suffix}"
+    job_dir = root / f"terminal_bench_sample_build_cython_ext_codex_loopx_active_e2e_{suffix}"
     trial_dir = job_dir / "build-cython-ext__sample"
     setup_failure_trial_dir = job_dir / "fix-code-vulnerability__setupfail"
     invocation = [
@@ -53,23 +53,23 @@ def write_fixture(root: Path, *, agent_timeout_multiplier: float | None = None) 
         "--include-task-name",
         "build-cython-ext",
         "--agent-import-path",
-        "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "--model",
         "gpt-5.5",
         "--agent-env",
         "CODEX_FORCE_AUTH_JSON=****",
         "--agent-kwarg",
-        "goal_harness_mode=codex_goal_harness",
+        "loopx_mode=codex_loopx",
         "--agent-kwarg",
-        "goal_harness_cli_bridge_enabled=true",
+        "loopx_cli_bridge_enabled=true",
     ]
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
-            "goal_harness_goal_id": "goal-harness-meta",
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
+            "loopx_goal_id": "loopx-meta",
         },
     }
     write_json(
@@ -159,7 +159,7 @@ def write_fixture(root: Path, *, agent_timeout_multiplier: float | None = None) 
     write_json(setup_failure_trial_dir / "artifacts" / "manifest.json", {"files": ["redacted"]})
     (trial_dir / "agent").mkdir(parents=True, exist_ok=True)
     (trial_dir / "agent" / "trajectory.json").write_text("{}\n", encoding="utf-8")
-    write_json(trial_dir / "agent" / "goal-harness-worker-benchmark-run.json", {"schema_version": "benchmark_run_v0"})
+    write_json(trial_dir / "agent" / "loopx-worker-benchmark-run.json", {"schema_version": "benchmark_run_v0"})
     trace_rows = [
         {"command": "status", "ok": True},
         {"command": "quota_should_run", "ok": True},
@@ -168,7 +168,7 @@ def write_fixture(root: Path, *, agent_timeout_multiplier: float | None = None) 
         {"command": "append_benchmark_run", "ok": False, "error_kind": "schema_rejected"},
         {"command": "append_benchmark_run", "ok": True, "dry_run": True},
     ]
-    (trial_dir / "agent" / "goal-harness-counter-trace.jsonl").write_text(
+    (trial_dir / "agent" / "loopx-counter-trace.jsonl").write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in trace_rows),
         encoding="utf-8",
     )
@@ -187,14 +187,14 @@ def write_baseline_setup_diagnostic_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_baseline_setup_diagnostic"
     trial_dir = job_dir / "build-cython-ext__setupdiag"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_mode_baseline",
-            "goal_harness_access_packet_mode": (
-                TERMINAL_BENCH_GOAL_HARNESS_ACCESS_PACKET_MODE_NONE
+            "loopx_mode": "codex_goal_mode_baseline",
+            "loopx_access_packet_mode": (
+                TERMINAL_BENCH_LOOPX_ACCESS_PACKET_MODE_NONE
             ),
-            "goal_harness_cli_bridge_enabled": False,
+            "loopx_cli_bridge_enabled": False,
         },
     }
     write_json(
@@ -260,8 +260,8 @@ def write_baseline_setup_diagnostic_fixture(root: Path) -> Path:
             "interrupted": True,
             "first_blocker": "codex_cli_not_on_path",
             "pre_worker_startup_blocker": "codex_cli_not_on_path",
-            "goal_harness_mode": "codex_goal_mode_baseline",
-            "goal_harness_access_packet_mode": "none",
+            "loopx_mode": "codex_goal_mode_baseline",
+            "loopx_access_packet_mode": "none",
             "codex_install_strategy": "require_existing_codex",
             "raw_paths_recorded": False,
             "raw_logs_read": False,
@@ -278,12 +278,12 @@ def write_worker_bridge_not_materialized_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_worker_bridge_not_materialized"
     trial_dir = job_dir / "build-cython-ext__bridge_missing"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
-            "goal_harness_goal_id": "goal-harness-meta",
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
+            "loopx_goal_id": "loopx-meta",
         },
     }
     write_json(
@@ -298,7 +298,7 @@ def write_worker_bridge_not_materialized_fixture(root: Path) -> Path:
                 "--include-task-name",
                 "build-cython-ext",
                 "--agent-import-path",
-                "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+                "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
             ],
             "trials": [
                 {
@@ -354,17 +354,17 @@ def write_agent_setup_timeout_before_worker_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_agent_setup_timeout_before_worker"
     trial_dir = job_dir / "large-scale-text-editing__setup_timeout"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
-            "goal_harness_goal_id": "goal-harness-meta",
-            "goal_harness_benchmark_run_json": (
-                "/logs/agent/goal-harness-worker-benchmark-run.json"
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
+            "loopx_goal_id": "loopx-meta",
+            "loopx_benchmark_run_json": (
+                "/logs/agent/loopx-worker-benchmark-run.json"
             ),
-            "goal_harness_counter_trace_json": (
-                "/logs/agent/goal-harness-counter-trace.jsonl"
+            "loopx_counter_trace_json": (
+                "/logs/agent/loopx-counter-trace.jsonl"
             ),
         },
     }
@@ -380,7 +380,7 @@ def write_agent_setup_timeout_before_worker_fixture(root: Path) -> Path:
                 "--include-task-name",
                 "large-scale-text-editing",
                 "--agent-import-path",
-                "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+                "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
             ],
             "trials": [
                 {
@@ -434,17 +434,17 @@ def write_worker_startup_blocker_fixture(root: Path) -> Path:
     trial_dir = job_dir / "large-scale-text-editing__startup_blocker"
     startup_blocker = "codex_cli_not_on_path"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
-            "goal_harness_goal_id": "goal-harness-meta",
-            "goal_harness_benchmark_run_json": (
-                "/logs/agent/goal-harness-worker-benchmark-run.json"
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
+            "loopx_goal_id": "loopx-meta",
+            "loopx_benchmark_run_json": (
+                "/logs/agent/loopx-worker-benchmark-run.json"
             ),
-            "goal_harness_counter_trace_json": (
-                "/logs/agent/goal-harness-counter-trace.jsonl"
+            "loopx_counter_trace_json": (
+                "/logs/agent/loopx-counter-trace.jsonl"
             ),
         },
     }
@@ -460,7 +460,7 @@ def write_worker_startup_blocker_fixture(root: Path) -> Path:
                 "--include-task-name",
                 "large-scale-text-editing",
                 "--agent-import-path",
-                "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+                "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
             ],
             "trials": [
                 {
@@ -504,11 +504,11 @@ def write_worker_startup_blocker_fixture(root: Path) -> Path:
         },
     )
     write_json(
-        trial_dir / "agent" / "goal-harness-worker-benchmark-run.json",
+        trial_dir / "agent" / "loopx-worker-benchmark-run.json",
         {
             "schema_version": "benchmark_run_v0",
             "source_runner": "codex_worker",
-            "mode": "codex_goal_harness",
+            "mode": "codex_loopx",
             "real_run": True,
             "submit_eligible": False,
             "pre_worker_startup_blocker": startup_blocker,
@@ -538,17 +538,17 @@ def write_environment_setup_failure_before_worker_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_environment_setup_before_worker"
     trial_dir = job_dir / "pytorch-model-recovery__env_setup_failed"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
-            "goal_harness_goal_id": "goal-harness-meta",
-            "goal_harness_benchmark_run_json": (
-                "/logs/agent/goal-harness-worker-benchmark-run.json"
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
+            "loopx_goal_id": "loopx-meta",
+            "loopx_benchmark_run_json": (
+                "/logs/agent/loopx-worker-benchmark-run.json"
             ),
-            "goal_harness_counter_trace_json": (
-                "/logs/agent/goal-harness-counter-trace.jsonl"
+            "loopx_counter_trace_json": (
+                "/logs/agent/loopx-counter-trace.jsonl"
             ),
         },
     }
@@ -564,7 +564,7 @@ def write_environment_setup_failure_before_worker_fixture(root: Path) -> Path:
                 "--include-task-name",
                 "pytorch-model-recovery",
                 "--agent-import-path",
-                "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+                "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
             ],
             "trials": [
                 {
@@ -689,7 +689,7 @@ def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -711,7 +711,7 @@ def write_cli_fixture(root: Path) -> tuple[Path, Path, Path]:
             "goals": [
                 {
                     "id": GOAL_ID,
-                    "domain": "goal-harness-platform",
+                    "domain": "loopx-platform",
                     "status": "active-read-only",
                     "state_file": state_file,
                     "repo": str(project),
@@ -736,7 +736,7 @@ def run_cli_harbor_ingest_dry_run(root: Path) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -767,11 +767,11 @@ def write_verifier_dependency_failure_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_verifier_dependency_failure"
     trial_dir = job_dir / "build-cython-ext__verifierfail"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
         },
     }
     write_json(
@@ -823,10 +823,10 @@ def write_verifier_dependency_failure_fixture(root: Path) -> Path:
     (trial_dir / "agent").mkdir(parents=True, exist_ok=True)
     (trial_dir / "agent" / "trajectory.json").write_text("{}\n", encoding="utf-8")
     write_json(
-        trial_dir / "agent" / "goal-harness-worker-benchmark-run.json",
+        trial_dir / "agent" / "loopx-worker-benchmark-run.json",
         {"schema_version": "benchmark_run_v0"},
     )
-    (trial_dir / "agent" / "goal-harness-counter-trace.jsonl").write_text(
+    (trial_dir / "agent" / "loopx-counter-trace.jsonl").write_text(
         json.dumps({"command": "status", "ok": True}, sort_keys=True) + "\n",
         encoding="utf-8",
     )
@@ -845,11 +845,11 @@ def write_verifier_platform_probe_failure_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_verifier_platform_probe_failure"
     trial_dir = job_dir / "make-mips-interpreter__platformfail"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
         },
     }
     write_json(
@@ -901,14 +901,14 @@ def write_verifier_platform_probe_failure_fixture(root: Path) -> Path:
     (trial_dir / "agent").mkdir(parents=True, exist_ok=True)
     (trial_dir / "agent" / "trajectory.json").write_text("{}\n", encoding="utf-8")
     write_json(
-        trial_dir / "agent" / "goal-harness-worker-benchmark-run.json",
+        trial_dir / "agent" / "loopx-worker-benchmark-run.json",
         {
             "schema_version": "benchmark_run_v0",
             "submit_eligible": True,
             "leaderboard_evidence": False,
         },
     )
-    (trial_dir / "agent" / "goal-harness-counter-trace.jsonl").write_text(
+    (trial_dir / "agent" / "loopx-counter-trace.jsonl").write_text(
         json.dumps({"command": "check", "ok": True}, sort_keys=True) + "\n",
         encoding="utf-8",
     )
@@ -925,12 +925,12 @@ def write_worker_trace_timeout_writeback_loss_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_worker_trace_timeout_writeback_loss"
     trial_dir = job_dir / "qemu-alpine-ssh__timeout"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
-            "goal_harness_active_user_intervention_enabled": True,
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
+            "loopx_active_user_intervention_enabled": True,
         },
     }
     write_json(
@@ -1004,7 +1004,7 @@ def write_worker_trace_timeout_writeback_loss_fixture(root: Path) -> Path:
         {"command": "active_user_observe", "ok": True},
         {"command": "check", "ok": True},
     ]
-    (trial_dir / "agent" / "goal-harness-counter-trace.jsonl").write_text(
+    (trial_dir / "agent" / "loopx-counter-trace.jsonl").write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in trace_rows),
         encoding="utf-8",
     )
@@ -1023,11 +1023,11 @@ def write_worker_self_validation_mismatch_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_worker_self_validation_mismatch"
     trial_dir = job_dir / "install-windows-3.11__mismatch"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
         },
     }
     write_json(
@@ -1078,14 +1078,14 @@ def write_worker_self_validation_mismatch_fixture(root: Path) -> Path:
     )
     (trial_dir / "agent").mkdir(parents=True, exist_ok=True)
     write_json(
-        trial_dir / "agent" / "goal-harness-worker-benchmark-run.json",
+        trial_dir / "agent" / "loopx-worker-benchmark-run.json",
         {
             "schema_version": "benchmark_run_v0",
-            "source_runner": "goal_harness_managed_codex",
+            "source_runner": "loopx_managed_codex",
             "benchmark_id": "terminal-bench-sample@2.0",
             "job_name": "install-windows-3.11__mismatch",
-            "mode": "codex_goal_harness",
-            "worker_mode": "goal_harness_managed",
+            "mode": "codex_loopx",
+            "worker_mode": "loopx_managed",
             "real_run": True,
             "submit_eligible": False,
             "leaderboard_evidence": False,
@@ -1105,7 +1105,7 @@ def write_worker_self_validation_mismatch_fixture(root: Path) -> Path:
         {"command": "check", "ok": True},
         {"command": "append_benchmark_run", "ok": True, "dry_run": True},
     ]
-    (trial_dir / "agent" / "goal-harness-counter-trace.jsonl").write_text(
+    (trial_dir / "agent" / "loopx-counter-trace.jsonl").write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in trace_rows),
         encoding="utf-8",
     )
@@ -1120,11 +1120,11 @@ def write_worker_validation_scope_ambiguous_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_worker_validation_scope_ambiguous"
     trial_dir = job_dir / "install-windows-3.11__ambiguous"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
         },
     }
     write_json(
@@ -1175,14 +1175,14 @@ def write_worker_validation_scope_ambiguous_fixture(root: Path) -> Path:
     )
     (trial_dir / "agent").mkdir(parents=True, exist_ok=True)
     write_json(
-        trial_dir / "agent" / "goal-harness-worker-benchmark-run.json",
+        trial_dir / "agent" / "loopx-worker-benchmark-run.json",
         {
             "schema_version": "benchmark_run_v0",
-            "source_runner": "goal_harness_managed_codex",
+            "source_runner": "loopx_managed_codex",
             "benchmark_id": "terminal-bench-sample@2.0",
             "job_name": "install-windows-3.11__ambiguous",
-            "mode": "codex_goal_harness",
-            "worker_mode": "goal_harness_managed",
+            "mode": "codex_loopx",
+            "worker_mode": "loopx_managed",
             "real_run": True,
             "submit_eligible": False,
             "leaderboard_evidence": False,
@@ -1195,7 +1195,7 @@ def write_worker_validation_scope_ambiguous_fixture(root: Path) -> Path:
         {"command": "check", "ok": True},
         {"command": "append_benchmark_run", "ok": True, "dry_run": True},
     ]
-    (trial_dir / "agent" / "goal-harness-counter-trace.jsonl").write_text(
+    (trial_dir / "agent" / "loopx-counter-trace.jsonl").write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in trace_rows),
         encoding="utf-8",
     )
@@ -1324,12 +1324,12 @@ def write_no_packet_runtime_goal_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_no_packet_runtime_goal_tools"
     trial_dir = job_dir / "build-cython-ext__nopacket"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_access_packet_mode": "none",
-            "goal_harness_goal_id": "goal-harness-meta",
+            "loopx_mode": "codex_loopx",
+            "loopx_access_packet_mode": "none",
+            "loopx_goal_id": "loopx-meta",
         },
     }
     write_json(
@@ -1344,7 +1344,7 @@ def write_no_packet_runtime_goal_fixture(root: Path) -> Path:
                 "--include-task-name",
                 "build-cython-ext",
                 "--agent-import-path",
-                "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+                "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
             ],
             "trials": [
                 {
@@ -1441,9 +1441,9 @@ def write_codex_goal_mode_baseline_fixture(root: Path) -> Path:
     def rewrite_agent(agent: dict) -> dict:
         updated = dict(agent)
         kwargs = dict(updated.get("kwargs") or {})
-        kwargs["goal_harness_mode"] = "codex_goal_mode_baseline"
-        kwargs["goal_harness_ablation_mode"] = "codex_goal_mode_baseline"
-        kwargs["goal_harness_access_packet_mode"] = "none"
+        kwargs["loopx_mode"] = "codex_goal_mode_baseline"
+        kwargs["loopx_ablation_mode"] = "codex_goal_mode_baseline"
+        kwargs["loopx_access_packet_mode"] = "none"
         updated["kwargs"] = kwargs
         return updated
 
@@ -1467,11 +1467,11 @@ def write_codex_goal_mode_baseline_fixture(root: Path) -> Path:
 def write_partial_harbor_stats_fixture(root: Path) -> Path:
     job_dir = root / "terminal_bench_sample_partial_harbor_stats"
     agent = {
-        "import_path": "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+        "import_path": "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
         "model_name": "gpt-5.5",
         "kwargs": {
-            "goal_harness_mode": "codex_goal_harness",
-            "goal_harness_cli_bridge_enabled": True,
+            "loopx_mode": "codex_loopx",
+            "loopx_cli_bridge_enabled": True,
         },
     }
     write_json(
@@ -1484,7 +1484,7 @@ def write_partial_harbor_stats_fixture(root: Path) -> Path:
                 "--path",
                 "terminal-bench-sample-gh-e2e-subset",
                 "--agent-import-path",
-                "goal_harness.terminal_bench_agent:GoalHarnessManagedCodex",
+                "loopx.terminal_bench_agent:GoalHarnessManagedCodex",
             ],
             "trials": [
                 {
@@ -1513,7 +1513,7 @@ def write_partial_harbor_stats_fixture(root: Path) -> Path:
                 "n_cancelled_trials": 0,
                 "n_retries": 0,
                 "evals": {
-                    "goal-harness-managed-codex__gpt-5.5__sample": {
+                    "loopx-managed-codex__gpt-5.5__sample": {
                         "n_trials": 2,
                         "n_errors": 1,
                         "metrics": [{"mean": 2 / 3}],
@@ -1572,11 +1572,11 @@ def write_partial_harbor_stats_fixture(root: Path) -> Path:
         )
         (trial_dir / "agent").mkdir(parents=True, exist_ok=True)
         write_json(
-            trial_dir / "agent" / "goal-harness-worker-benchmark-run.json",
+            trial_dir / "agent" / "loopx-worker-benchmark-run.json",
             {"schema_version": "benchmark_run_v0"},
         )
         if reward is not None:
-            (trial_dir / "agent" / "goal-harness-counter-trace.jsonl").write_text(
+            (trial_dir / "agent" / "loopx-counter-trace.jsonl").write_text(
                 json.dumps({"command": "status", "ok": True}, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
@@ -1612,15 +1612,15 @@ def main() -> None:
         "2026-06-10T17:50:03+00:00",
     ) == 3.0
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-runner-ingest-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-runner-ingest-") as tmp:
         payload = build_terminal_bench_harbor_result_benchmark_run(write_fixture(Path(tmp)))
 
     assert payload["schema_version"] == "benchmark_run_v0", payload
     assert payload["source_runner"] == "harbor", payload
     assert payload["benchmark_id"] == "terminal-bench-sample@2.0", payload
-    assert payload["mode"] == "codex_goal_harness", payload
-    assert payload["goal_harness_inside_case"] is True, payload
-    assert payload["worker_goal_harness_cli_call_total"] == 6, payload
+    assert payload["mode"] == "codex_loopx", payload
+    assert payload["loopx_inside_case"] is True, payload
+    assert payload["worker_loopx_cli_call_total"] == 6, payload
     assert payload["worker_counter_trace_trial_count"] == 1, payload
     assert payload["worker_benchmark_run_file_count"] == 1, payload
     assert payload["worker_benchmark_run_schema_ok_count"] == 1, payload
@@ -1634,7 +1634,7 @@ def main() -> None:
         payload["worker_submit_eligible_mismatch_reason"] == "none"
     ), payload
     assert payload["pre_worker_agent_setup_failure_count"] == 1, payload
-    assert payload["interaction_counters"]["goal_harness_cli_calls"]["append_benchmark_run"] == 2, payload
+    assert payload["interaction_counters"]["loopx_cli_calls"]["append_benchmark_run"] == 2, payload
     assert payload["interaction_counters"]["append_benchmark_run_success_count"] == 1, payload
     assert payload["interaction_counters"]["append_benchmark_run_schema_rejected_count"] == 1, payload
     assert payload["interaction_counters"]["worker_counter_trace_trial_count"] == 1, payload
@@ -1665,9 +1665,9 @@ def main() -> None:
     assert overhead["wall_time_seconds"] == 997.0, overhead
     assert overhead["input_tokens"] == 5850995, overhead
     assert overhead["worker_bridge_event_count"] == 6, overhead
-    assert overhead["goal_harness_cli_call_total"] == 6, overhead
-    assert overhead["goal_harness_required_cli_call_total"] == 3, overhead
-    assert overhead["goal_harness_optional_context_cli_call_total"] == 3, overhead
+    assert overhead["loopx_cli_call_total"] == 6, overhead
+    assert overhead["loopx_required_cli_call_total"] == 3, overhead
+    assert overhead["loopx_optional_context_cli_call_total"] == 3, overhead
     assert overhead["append_benchmark_run_success_count"] == 1, overhead
     assert overhead["worker_submit_eligible_mismatch_count"] == 0, overhead
     assert overhead["worker_submit_eligible_mismatch_reason"] == "none", overhead
@@ -1688,7 +1688,7 @@ def main() -> None:
         trial for trial in payload["trials"] if trial["task_id"] == "fix-code-vulnerability"
     )
     assert setup_trial["worker_start_status"] == "pre_worker_agent_setup_failed", setup_trial
-    with tempfile.TemporaryDirectory(prefix="goal-harness-baseline-setup-diag-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-baseline-setup-diag-") as tmp:
         baseline_setup_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_baseline_setup_diagnostic_fixture(Path(tmp))
         )
@@ -1732,7 +1732,7 @@ def main() -> None:
     ), payload
     episode_policy = payload["episode_policy"]
     assert (
-        episode_policy["mode"] == "single_codex_agent_goal_harness_assisted_checkpoints"
+        episode_policy["mode"] == "single_codex_agent_loopx_assisted_checkpoints"
     ), episode_policy
     assert episode_policy["worker_topology"] == "single_codex_agent", episode_policy
     assert episode_policy["runner_side_guaranteed_writeback"] is True, episode_policy
@@ -1756,7 +1756,7 @@ def main() -> None:
         is True
     ), payload
     compact = compact_benchmark_run(payload)
-    assert compact and compact["worker_goal_harness_cli_call_total"] == 6, compact
+    assert compact and compact["worker_loopx_cli_call_total"] == 6, compact
     assert compact["worker_counter_trace_trial_count"] == 1, compact
     assert compact["worker_benchmark_run_file_count"] == 1, compact
     assert compact["worker_benchmark_run_schema_ok_count"] == 1, compact
@@ -1776,7 +1776,7 @@ def main() -> None:
         compact_overhead["attribution_granularity"]
         == "coarse_worker_bridge_event_counts"
     ), compact_overhead
-    assert compact_overhead["goal_harness_cli_call_total"] == 6, compact_overhead
+    assert compact_overhead["loopx_cli_call_total"] == 6, compact_overhead
     assert compact_overhead["worker_bridge_event_count"] == 6, compact_overhead
     assert compact_overhead["worker_submit_eligible_mismatch_count"] == 0, compact_overhead
     assert compact["trials"][0]["exception_type"] == "AgentTimeoutError", compact
@@ -1787,7 +1787,7 @@ def main() -> None:
     assert compact["official_task_score"]["passed"] is True, compact
     assert (
         compact["episode_policy"]["mode"]
-        == "single_codex_agent_goal_harness_assisted_checkpoints"
+        == "single_codex_agent_loopx_assisted_checkpoints"
     ), compact
     assert compact["episode_policy"]["does_not_change_task_solution_actor"] is True, compact
     compact_policy = compact["worker_bridge_outcome"]["wall_time_policy"]
@@ -1805,7 +1805,7 @@ def main() -> None:
     ), compact
     assert_public_safe(payload)
     assert_public_safe(compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-bridge-not-materialized-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-bridge-not-materialized-") as tmp:
         bridge_missing_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_worker_bridge_not_materialized_fixture(Path(tmp))
         )
@@ -1873,7 +1873,7 @@ def main() -> None:
     ), bridge_missing_health
     assert_public_safe(bridge_missing_payload)
     assert_public_safe(bridge_missing_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-agent-setup-timeout-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-agent-setup-timeout-") as tmp:
         setup_timeout_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_agent_setup_timeout_before_worker_fixture(Path(tmp))
         )
@@ -1935,7 +1935,7 @@ def main() -> None:
     ), setup_timeout_health
     assert_public_safe(setup_timeout_payload)
     assert_public_safe(setup_timeout_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-startup-blocker-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-startup-blocker-") as tmp:
         startup_blocker_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_worker_startup_blocker_fixture(Path(tmp))
         )
@@ -1969,7 +1969,7 @@ def main() -> None:
         "codex_cli_not_on_path"
     ), startup_blocker_payload
     assert startup_blocker_payload["worker_startup_blocker_count"] == 1, startup_blocker_payload
-    assert startup_blocker_payload["worker_goal_harness_cli_call_total"] == 0, startup_blocker_payload
+    assert startup_blocker_payload["worker_loopx_cli_call_total"] == 0, startup_blocker_payload
     assert startup_blocker_payload["worker_counter_trace_trial_count"] == 0, startup_blocker_payload
     assert startup_blocker_payload["worker_benchmark_run_file_count"] == 1, startup_blocker_payload
     assert startup_blocker_payload["worker_benchmark_run_schema_ok_count"] == 1, startup_blocker_payload
@@ -2025,7 +2025,7 @@ def main() -> None:
     ), startup_blocker_health
     assert_public_safe(startup_blocker_payload)
     assert_public_safe(startup_blocker_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-env-setup-failed-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-env-setup-failed-") as tmp:
         env_setup_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_environment_setup_failure_before_worker_fixture(Path(tmp))
         )
@@ -2127,7 +2127,7 @@ def main() -> None:
     ), env_setup_health
     assert_public_safe(env_setup_payload)
     assert_public_safe(env_setup_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-env-probe-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-env-probe-") as tmp:
         env_probe_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_environment_setup_probe_materialized_fixture(Path(tmp))
         )
@@ -2164,31 +2164,31 @@ def main() -> None:
     )
     assert_public_safe(env_probe_payload)
     assert_public_safe(env_probe_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-cli-ingest-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-cli-ingest-") as tmp:
         cli_payload = run_cli_harbor_ingest_dry_run(Path(tmp))
     assert cli_payload["ok"] is True, cli_payload
     assert cli_payload["dry_run"] is True, cli_payload
     assert cli_payload["appended"] is False, cli_payload
-    assert cli_payload["benchmark_run"]["mode"] == "codex_goal_harness", cli_payload
-    assert cli_payload["benchmark_cli"]["mode"] == "codex_goal_harness", cli_payload
+    assert cli_payload["benchmark_run"]["mode"] == "codex_loopx", cli_payload
+    assert cli_payload["benchmark_cli"]["mode"] == "codex_loopx", cli_payload
     assert (
         cli_payload["benchmark_cli"]["requested_mode"]
-        == "goal-harness-managed-codex"
+        == "loopx-managed-codex"
     ), cli_payload
     assert cli_payload["benchmark_cli"]["mode_source"] == "harbor_job_result", cli_payload
     assert cli_payload["benchmark_cli"]["harbor_job_result_ingested"] is True, cli_payload
     assert_public_safe(cli_payload["benchmark_run"])
     assert_public_safe(cli_payload["benchmark_cli"])
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-bare-codex-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-bare-codex-") as tmp:
         bare_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_bare_codex_fixture(Path(tmp))
         )
     assert bare_payload["mode"] == "bare_codex_cli", bare_payload
     assert bare_payload["worker_mode"] == "codex", bare_payload
-    assert bare_payload["goal_harness_inside_case"] is False, bare_payload
+    assert bare_payload["loopx_inside_case"] is False, bare_payload
     assert bare_payload["case_semantics_changed_by_harness"] is False, bare_payload
     assert bare_payload["official_score_comparable_to_native_codex"] is True, bare_payload
-    assert bare_payload["worker_goal_harness_cli_call_total"] == 0, bare_payload
+    assert bare_payload["worker_loopx_cli_call_total"] == 0, bare_payload
     assert bare_payload["validation"]["worker_counter_trace_loaded"] is True, bare_payload
     assert bare_payload["validation"]["worker_benchmark_run_file_present"] is True, bare_payload
     assert bare_payload["worker_bridge_outcome"]["bridge_surface"] == (
@@ -2199,7 +2199,7 @@ def main() -> None:
         == "runner_usage_and_wall_time_only"
     ), bare_payload
     assert (
-        bare_payload["overhead_attribution_counters"]["goal_harness_cli_call_total"]
+        bare_payload["overhead_attribution_counters"]["loopx_cli_call_total"]
         == 0
     ), bare_payload
     bare_compact = compact_benchmark_run(bare_payload)
@@ -2212,7 +2212,7 @@ def main() -> None:
     ), bare_compact
     assert_public_safe(bare_payload)
     assert_public_safe(bare_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-clean-zero-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-clean-zero-") as tmp:
         clean_zero_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_clean_official_zero_fixture(Path(tmp))
         )
@@ -2243,19 +2243,19 @@ def main() -> None:
     ), compact_zero_observation
     assert_public_safe(clean_zero_payload)
     assert_public_safe(clean_zero_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-goal-mode-baseline-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-goal-mode-baseline-") as tmp:
         goal_mode_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_codex_goal_mode_baseline_fixture(Path(tmp))
         )
     assert goal_mode_payload["mode"] == "codex_goal_mode_baseline", goal_mode_payload
     assert goal_mode_payload["worker_mode"] == "codex_goal_mode_baseline", goal_mode_payload
     assert goal_mode_payload["codex_goal_mode_baseline"] is True, goal_mode_payload
-    assert goal_mode_payload["goal_harness_inside_case"] is False, goal_mode_payload
+    assert goal_mode_payload["loopx_inside_case"] is False, goal_mode_payload
     assert goal_mode_payload["case_semantics_changed_by_harness"] is False, goal_mode_payload
     assert goal_mode_payload["model_plus_harness_pair"] is False, goal_mode_payload
     assert goal_mode_payload["control_plane_score_applicable"] is False, goal_mode_payload
     assert (
-        goal_mode_payload["official_score_comparable_to_goal_harness_treatment"]
+        goal_mode_payload["official_score_comparable_to_loopx_treatment"]
         is True
     ), goal_mode_payload
     assert goal_mode_payload["interaction_counters"] is None, goal_mode_payload
@@ -2268,7 +2268,7 @@ def main() -> None:
     goal_mode_compact = compact_benchmark_run(goal_mode_payload)
     assert goal_mode_compact["mode"] == "codex_goal_mode_baseline", goal_mode_compact
     assert goal_mode_compact["worker_mode"] == "codex_goal_mode_baseline", goal_mode_compact
-    assert goal_mode_compact["goal_harness_inside_case"] is False, goal_mode_compact
+    assert goal_mode_compact["loopx_inside_case"] is False, goal_mode_compact
     assert (
         goal_mode_compact["case_semantics_changed_by_harness"] is False
     ), goal_mode_compact
@@ -2279,12 +2279,12 @@ def main() -> None:
     ), goal_mode_compact
     assert_public_safe(goal_mode_payload)
     assert_public_safe(goal_mode_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-no-packet-runtime-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-no-packet-runtime-") as tmp:
         no_packet_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_no_packet_runtime_goal_fixture(Path(tmp))
         )
-    assert no_packet_payload["mode"] == "codex_goal_harness_no_packet", no_packet_payload
-    assert no_packet_payload["worker_goal_harness_cli_call_total"] == 0, no_packet_payload
+    assert no_packet_payload["mode"] == "codex_loopx_no_packet", no_packet_payload
+    assert no_packet_payload["worker_loopx_cli_call_total"] == 0, no_packet_payload
     assert no_packet_payload["worker_counter_trace_trial_count"] == 0, no_packet_payload
     assert no_packet_payload["worker_bridge_outcome"]["counter_trace_present"] is False, no_packet_payload
     assert no_packet_payload["interaction_counters"] is None, no_packet_payload
@@ -2312,14 +2312,14 @@ def main() -> None:
     ), no_packet_compact
     assert_public_safe(no_packet_payload)
     assert_public_safe(no_packet_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-private-trajectory-counts-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-private-trajectory-counts-") as tmp:
         no_packet_private_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_no_packet_runtime_goal_fixture(Path(tmp)),
             trace_publicness="private_debug_counts_from_raw_trajectory",
             include_codex_trajectory_counts=True,
         )
     private_counters = no_packet_private_payload["interaction_counters"]
-    assert private_counters["goal_harness_cli_calls"]["total"] == 0, private_counters
+    assert private_counters["loopx_cli_calls"]["total"] == 0, private_counters
     assert private_counters["codex_runtime_goal_tool_calls"]["create_goal"] == 1, private_counters
     assert private_counters["codex_runtime_goal_tool_calls"]["update_goal"] == 1, private_counters
     assert private_counters["codex_runtime_goal_tool_calls"]["total"] == 2, private_counters
@@ -2346,7 +2346,7 @@ def main() -> None:
         ]
         == 2
     ), no_packet_private_payload
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-partial-stats-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-partial-stats-") as tmp:
         partial_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_partial_harbor_stats_fixture(Path(tmp))
         )
@@ -2360,7 +2360,7 @@ def main() -> None:
     assert partial_compact["official_task_score"]["passed"] is False, partial_compact
     assert_public_safe(partial_payload)
     assert_public_safe(partial_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-runner-ingest-long-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-runner-ingest-long-") as tmp:
         long_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_fixture(Path(tmp), agent_timeout_multiplier=2.0)
         )
@@ -2400,7 +2400,7 @@ def main() -> None:
     ), long_compact
     assert_public_safe(long_payload)
     assert_public_safe(long_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-verifier-failure-default-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-verifier-failure-default-") as tmp:
         failure_default_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_verifier_dependency_failure_fixture(Path(tmp))
         )
@@ -2410,7 +2410,7 @@ def main() -> None:
     assert failure_default_payload["failure_attribution_labels"] == [], failure_default_payload
     assert failure_default_payload["validation"]["verifier_logs_excluded"] is True, failure_default_payload
     assert_public_safe(failure_default_payload)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-worker-self-mismatch-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-worker-self-mismatch-") as tmp:
         mismatch_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_worker_self_validation_mismatch_fixture(Path(tmp))
         )
@@ -2444,7 +2444,7 @@ def main() -> None:
     ), mismatch_compact
     assert_public_safe(mismatch_payload)
     assert_public_safe(mismatch_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-worker-scope-ambiguous-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-worker-scope-ambiguous-") as tmp:
         ambiguous_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_worker_validation_scope_ambiguous_fixture(Path(tmp))
         )
@@ -2476,7 +2476,7 @@ def main() -> None:
     ), ambiguous_compact
     assert_public_safe(ambiguous_payload)
     assert_public_safe(ambiguous_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-verifier-failure-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-verifier-failure-") as tmp:
         failure_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_verifier_dependency_failure_fixture(Path(tmp)),
             include_verifier_log_attribution=True,
@@ -2519,7 +2519,7 @@ def main() -> None:
     ), failure_compact
     assert failure_payload["validation"]["verifier_logs_excluded"] is False, failure_payload
     assert failure_compact["validation"]["failed_checks"] == ["verifier_logs_excluded"], failure_compact
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-platform-failure-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-platform-failure-") as tmp:
         platform_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_verifier_platform_probe_failure_fixture(Path(tmp)),
             include_verifier_log_attribution=True,
@@ -2605,7 +2605,7 @@ def main() -> None:
     ), platform_compact
     assert_public_safe(platform_payload)
     assert_public_safe(platform_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-timeout-attribution-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-timeout-attribution-") as tmp:
         timeout_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_worker_trace_timeout_writeback_loss_fixture(Path(tmp)),
         )
@@ -2631,7 +2631,7 @@ def main() -> None:
     ], timeout_compact
     assert_public_safe(timeout_payload)
     assert_public_safe(timeout_compact)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-harbor-timeout-writeback-loss-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-harbor-timeout-writeback-loss-") as tmp:
         writeback_loss_payload = build_terminal_bench_harbor_result_benchmark_run(
             write_worker_trace_timeout_writeback_loss_fixture(Path(tmp)),
             include_verifier_log_attribution=True,
@@ -2650,8 +2650,8 @@ def main() -> None:
         == "agent_timeout_after_worker_trace_before_benchmark_run_writeback"
     ), writeback_loss_payload
     writeback_loss_counters = writeback_loss_payload["interaction_counters"]
-    assert writeback_loss_counters["goal_harness_cli_calls"]["active_user_observe"] == 1, writeback_loss_counters
-    assert writeback_loss_counters["goal_harness_cli_calls"]["check"] == 1, writeback_loss_counters
+    assert writeback_loss_counters["loopx_cli_calls"]["active_user_observe"] == 1, writeback_loss_counters
+    assert writeback_loss_counters["loopx_cli_calls"]["check"] == 1, writeback_loss_counters
     assert writeback_loss_counters["worker_bridge_writeback_loss_count"] == 1, writeback_loss_counters
     assert (
         writeback_loss_counters["worker_bridge_writeback_loss_reason"]

@@ -4,7 +4,7 @@ This packet adds one no-execute run-specific gate for the selected
 AgentIssue-Bench tag `lagent_239`:
 
 ```bash
-goal-harness benchmark agentissue-codex-runner-flow \
+loopx benchmark agentissue-codex-runner-flow \
   --goal-id <goal-id> \
   --tag lagent_239 \
   --run-gate-root <private-gate-root>
@@ -44,7 +44,7 @@ Markdown gate packets.
 ```bash
 python3 examples/agentissue-bench-codex-cli-runner-run-gate-smoke.py
 python3 -m py_compile examples/agentissue-bench-codex-cli-runner-run-gate-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/agentissue-bench-codex-cli-runner-run-gate-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-run-gate-v0.md
 ```

@@ -1,11 +1,11 @@
-# Goal Harness Dashboard
+# LoopX Dashboard
 
-This is the first product dashboard shell for Goal Harness. It renders the
+This is the first product dashboard shell for LoopX. It renders the
 status data contract with a React/Vite control-plane UI.
 
 ## Current Status
 
-The dashboard is an experimental operator preview, not the primary Goal Harness
+The dashboard is an experimental operator preview, not the primary LoopX
 workflow. The CLI, status JSON, run history, and active goal files remain the
 source of truth for day-to-day work. Use the dashboard for public-safe demos,
 local inspection, and focused UI experiments until it receives a dedicated
@@ -13,7 +13,7 @@ product iteration pass.
 
 ## Fresh Clone Public Preview
 
-No private Goal Harness state is required for the first dashboard preview. The
+No private LoopX state is required for the first dashboard preview. The
 app bundles `examples/status.example.json` as its public-safe example source,
 so a fresh checkout can validate and open the UI before starting any local
 status server:
@@ -27,7 +27,7 @@ npm run dev
 
 Then open `http://127.0.0.1:5173/`. Use the bundled example source for a public
 demo, or switch to a loopback status URL only after you have started
-`goal-harness serve-status` locally. Do not commit `status.local.json` or live
+`loopx serve-status` locally. Do not commit `status.local.json` or live
 status exports; they can contain local registry/runtime paths and private
 project summaries.
 
@@ -50,7 +50,7 @@ owner, agent lane, and claim-owner responsibilities so a new contributor can
 tell which part of the system is waiting, running, or coordinating side work.
 In ops mode, the user/agent todo lanes also have URL-backed search and lane
 filters so a developer can reproduce the exact projected candidate slice during
-review without changing the underlying Goal Harness state.
+review without changing the underlying LoopX state.
 The `Efficiency Evidence` panel pulls the public-safe self-iteration case from
 the showcase catalog so the hosted frontstage can show commit-backed baseline,
 actual-window, compression, and evidence-boundary signals without exposing raw
@@ -72,7 +72,7 @@ For contributor onboarding, use `/frontstage?mode=developer`. This is still a
 public-safe read-only view: it shows the agent-first start path, quota/status
 health checks, side-agent worktree guard, todo claiming, local server checks,
 and writeback boundary without loading live registry data. It is meant to help
-new developers understand how to enter Goal Harness from Codex CLI or another
+new developers understand how to enter LoopX from Codex CLI or another
 agent TUI before they open the denser ops board.
 
 The developer extension cockpit lives at `/frontstage/developer`. It is a
@@ -103,7 +103,7 @@ cd apps/dashboard
 npm run export:frontstage-share
 ```
 
-The default output is `/tmp/goal-harness-frontstage-share-bundle`. It includes a
+The default output is `/tmp/loopx-frontstage-share-bundle`. It includes a
 compiled dashboard, `status.frontstage-share.json`, a direct `/frontstage/`
 static route, a manifest, and a README with the local serve URL. The exporter
 rejects local paths, private registry state, internal document hosts, raw-key
@@ -111,7 +111,7 @@ leaks, token assignments, and private key material before reporting success.
 The share-bundle smoke also scans generated files for the synthetic `GH_FAKE_*`
 trap markers so public exports cannot accidentally carry a live-status payload.
 For repository Pages hosting later, rerun the same exporter with
-`-- --base /goal-harness/ --out-dir <artifact-dir>` and publish only that
+`-- --base /loopx/ --out-dir <artifact-dir>` and publish only that
 generated site artifact.
 
 ## Run
@@ -148,7 +148,7 @@ the URL. Browser search parameters such as `actionKind`, `goalId`, `lane`,
 reward append, controller opt-in, write-control, or durable goal truth.
 
 The detailed ops workbench consumes the same agent-facing
-`goal-harness status` JSON. Its first-screen action cards can group reward
+`loopx status` JSON. Its first-screen action cards can group reward
 gates, controller opt-ins, evidence watches, Codex handoffs, and health blocks;
 each card may expose a safe local path and reward-draft hint. The copied
 handoff remains a short `【GH Packet】` artifact with user todo, gate, safety
@@ -185,10 +185,10 @@ one run-bound `human_reward` overlay, refreshes status, and leaves the compact
 overlay as the source of truth future agents read through `status` or
 `history`.
 Durable reward should be recorded as a run-bound `human_reward` overlay through
-`goal-harness reward`; active state may summarize the reward afterward, but it
+`loopx reward`; active state may summarize the reward afterward, but it
 should not be the only source of truth for multi-agent reward signals.
 When a real CLI append should also update the active goal state, use
-`goal-harness reward --write-active-state-summary`; the dashboard append path
+`loopx reward --write-active-state-summary`; the dashboard append path
 sets the same summary-write intent after the operator confirms the preview.
 
 ## Load Live Status
@@ -197,7 +197,7 @@ For the canonical multi-project home, start a global status server. This is the
 normal operator view for all projects connected into the shared registry:
 
 ```bash
-goal-harness serve-status --global-registry --port 8766 --limit 80
+loopx serve-status --global-registry --port 8766 --limit 80
 ```
 
 On macOS, keep both the status feed and the built dashboard static app running
@@ -219,7 +219,7 @@ for local service operations. `status` also probes
 `http://127.0.0.1:8766/status.json` and prints the
 `status_contract.schema_version`; if it is missing or below the expected
 dashboard version, run `restart` before a demo so the live feed is not served by
-an older daemon. Logs live under `~/Library/Logs/goal-harness/`.
+an older daemon. Logs live under `~/Library/Logs/loopx/`.
 The status output path is covered without touching real macOS services by
 `python3 examples/macos-dashboard-launchagent-status-smoke.py`.
 
@@ -229,11 +229,11 @@ Then open the dashboard root:
 http://127.0.0.1:5174/
 ```
 
-For project-local debugging or a disposable `goal-harness demo`, start a local
+For project-local debugging or a disposable `loopx demo`, start a local
 status server from the project you want to inspect:
 
 ```bash
-goal-harness serve-status --port 8765
+loopx serve-status --port 8765
 ```
 
 `--global-registry` is intentionally explicit: it keeps the multi-project home
@@ -255,7 +255,7 @@ public-safe reward text. To allow direct local dashboard submission, start the
 server with the explicit write flag:
 
 ```bash
-goal-harness serve-status --port 8765 --enable-reward-write-api
+loopx serve-status --port 8765 --enable-reward-write-api
 ```
 
 The write flag is loopback-only. Without it, the dashboard can validate a
@@ -266,7 +266,7 @@ reward draft but cannot append feedback.
 Use a local static export:
 
 ```bash
-python3 -m goal_harness.cli --format json status > apps/dashboard/public/status.local.json
+python3 -m loopx.cli --format json status > apps/dashboard/public/status.local.json
 cd apps/dashboard
 npm run dev
 ```
@@ -279,7 +279,7 @@ local inspection file only. For public demos, use the sanitized
 `examples/status.example.json` fixture instead of committing a live export.
 
 You can also import a JSON file directly in the browser, or load a local API
-URL that returns the same `goal-harness --format json status` shape.
+URL that returns the same `loopx --format json status` shape.
 
 ## Browser Smokes
 

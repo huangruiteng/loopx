@@ -56,7 +56,7 @@ def start_server(repo_root: Path, registry: Path, runtime_root: Path, port: int,
     command = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(registry),
         "--runtime-root",
@@ -206,7 +206,7 @@ def configure_payload() -> dict[str, Any]:
 
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[1]
-    with tempfile.TemporaryDirectory(prefix="goal-harness-configure-api-smoke-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-configure-api-smoke-") as raw_tmp:
         registry, runtime_root = write_fixture(Path(raw_tmp))
         disabled_port = free_port()
         disabled_server = start_server(repo_root, registry, runtime_root, disabled_port, write_enabled=False)
@@ -261,7 +261,7 @@ def main() -> None:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--registry",

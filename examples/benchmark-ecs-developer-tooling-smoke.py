@@ -32,7 +32,7 @@ def main() -> int:
             [
                 "scripts/benchmark_ecs_bootstrap.py",
                 "--workspace",
-                str(tmp_path / "goal-harness-bench"),
+                str(tmp_path / "loopx-bench"),
                 "--min-free-gib",
                 "0",
                 "--require",
@@ -48,7 +48,7 @@ def main() -> int:
         assert bootstrap["ready"] is True, bootstrap
         assert bootstrap["workspace"]["path_recorded"] is False
         assert bootstrap["boundary"]["raw_logs_read"] is False
-        assert (tmp_path / "goal-harness-bench" / "sources").is_dir()
+        assert (tmp_path / "loopx-bench" / "sources").is_dir()
 
         runtime_layer = run_json(
             [
@@ -56,7 +56,7 @@ def main() -> int:
                 "--benchmark",
                 "all",
                 "--workspace",
-                str(tmp_path / "goal-harness-bench"),
+                str(tmp_path / "loopx-bench"),
             ]
         )
         assert (

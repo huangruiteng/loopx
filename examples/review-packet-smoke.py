@@ -40,7 +40,7 @@ def source_between(source: str, start: str, end: str) -> str:
 def build_sanitized_controller_packet() -> str:
     goal_id = "planned-main-control"
     project_agent_command = multiline_command(
-        "goal-harness \\",
+        "loopx \\",
         "  --registry ./examples/registry.example.json \\",
         "  --runtime-root ./tmp/runtime \\",
         "  read-only-map \\",
@@ -72,7 +72,7 @@ def build_sanitized_controller_packet() -> str:
 def build_sanitized_controller_packet_with_user_todo() -> str:
     goal_id = "planned-main-control"
     project_agent_command = multiline_command(
-        "goal-harness \\",
+        "loopx \\",
         "  --registry ./examples/registry.example.json \\",
         "  --runtime-root ./tmp/runtime \\",
         "  read-only-map \\",
@@ -102,7 +102,7 @@ def build_sanitized_controller_packet_with_user_todo() -> str:
 
 def build_sanitized_approved_command_packet() -> str:
     goal_id = "planned-main-control"
-    approved_command = "goal-harness read-only-map --goal-id planned-main-control --dry-run --approved"
+    approved_command = "loopx read-only-map --goal-id planned-main-control --dry-run --approved"
     return "\n".join(
         [
             "【GH Packet】",
@@ -125,7 +125,7 @@ def build_sanitized_approved_command_packet() -> str:
 def build_sanitized_focus_wait_packet() -> str:
     goal_id = "focus-wait-owner-blocker"
     status_command = (
-        "goal-harness --registry ./examples/registry.example.json "
+        "loopx --registry ./examples/registry.example.json "
         "--runtime-root ./tmp/runtime status --goal-id focus-wait-owner-blocker"
     )
     return "\n".join(

@@ -39,7 +39,7 @@ def assert_public_safe(payload: object) -> None:
 
 def run_cli_json(args: list[str], *, check: bool = True) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -53,7 +53,7 @@ def run_cli_json(args: list[str], *, check: bool = True) -> dict[str, Any]:
 
 def simulator_output(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "schema_version": "goal_harness_active_user_simulator_output_v0",
+        "schema_version": "loopx_active_user_simulator_output_v0",
         "simulator_kind": "codex_cli",
         "trigger": "public_progress_or_stall_signal",
         "message": (
@@ -62,7 +62,7 @@ def simulator_output(**overrides: Any) -> dict[str, Any]:
         ),
         "visible_evidence_basis": [
             "public task prompt visible to worker",
-            "compact Goal Harness status and run metadata",
+            "compact LoopX status and run metadata",
         ],
         "no_oracle_audit": {
             "hidden_tests_visible": False,
@@ -82,7 +82,7 @@ def assert_contract(payload: dict[str, Any]) -> None:
     assert payload["ok"] is True, payload
     assert (
         payload["schema_version"]
-        == "goal_harness_active_user_codex_cli_simulator_contract_v0"
+        == "loopx_active_user_codex_cli_simulator_contract_v0"
     ), payload
     assert payload["simulator_kind"] == "codex_cli", payload
     assert payload["manual_controller_feed_allowed"] is False, payload
@@ -99,7 +99,7 @@ def assert_contract(payload: dict[str, Any]) -> None:
 
 def assert_intervention(payload: dict[str, Any]) -> None:
     assert payload["ok"] is True, payload
-    assert payload["schema_version"] == "goal_harness_active_user_intervention_v0", payload
+    assert payload["schema_version"] == "loopx_active_user_intervention_v0", payload
     assert payload["channel"] == "codex_cli_user_simulator", payload
     assert payload["simulator_kind"] == "codex_cli", payload
     assert payload["formal_treatment_eligible"] is True, payload
@@ -111,7 +111,7 @@ def assert_intervention(payload: dict[str, Any]) -> None:
 
 
 def main() -> int:
-    from goal_harness.worker_bridge import (
+    from loopx.worker_bridge import (
         build_active_user_codex_simulator_contract,
         build_active_user_intervention_from_simulator_output,
         observe_active_user_intervention_feed,
@@ -158,7 +158,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "worker-bridge",
                 "active-user-simulator-output",
                 "--seq",
@@ -187,7 +187,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "worker-bridge",
                 "active-user-simulator-output",
                 "--seq",
@@ -214,7 +214,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "worker-bridge",
                 "active-user-simulator-output",
                 "--seq",
@@ -240,7 +240,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "worker-bridge",
                 "active-user-simulator-output",
                 "--seq",

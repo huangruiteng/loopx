@@ -32,10 +32,10 @@ def write_fake_codex(path: Path) -> None:
         "assert '--ignore-rules' in sys.argv, sys.argv\n"
         "assert os.environ['HOME'].endswith('/home'), os.environ['HOME']\n"
         "assert os.environ['CODEX_HOME'].endswith('/home/.codex'), os.environ['CODEX_HOME']\n"
-        "project = Path(os.environ['GOAL_HARNESS_LONG_RUN_PROJECT'])\n"
-        "artifact = project / os.environ['GOAL_HARNESS_LONG_RUN_ARTIFACT_REL']\n"
+        "project = Path(os.environ['LOOPX_LONG_RUN_PROJECT'])\n"
+        "artifact = project / os.environ['LOOPX_LONG_RUN_ARTIFACT_REL']\n"
         "artifact.parent.mkdir(parents=True, exist_ok=True)\n"
-        "artifact.write_text(os.environ['GOAL_HARNESS_LONG_RUN_MARKER'] + '\\n', encoding='utf-8')\n"
+        "artifact.write_text(os.environ['LOOPX_LONG_RUN_MARKER'] + '\\n', encoding='utf-8')\n"
         "print('fake codex worker wrote ' + artifact.name)\n",
         encoding="utf-8",
     )
@@ -43,7 +43,7 @@ def write_fake_codex(path: Path) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-fake-codex-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-fake-codex-") as raw_tmp:
         fake_codex = Path(raw_tmp) / "codex"
         write_fake_codex(fake_codex)
         result = subprocess.run(

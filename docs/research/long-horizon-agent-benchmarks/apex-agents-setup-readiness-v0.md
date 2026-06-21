@@ -35,7 +35,7 @@ dataset page requires accepting conditions before content access.
 
 ## Benchmark Fit
 
-APEX-Agents is a strong Goal Harness candidate because it stresses exactly the
+APEX-Agents is a strong LoopX candidate because it stresses exactly the
 kind of long-horizon workplace execution that benefits from recoverability,
 state truth, gate discipline, artifact reduction, and bounded operator
 intervention.
@@ -108,9 +108,9 @@ There are two plausible Codex routes, neither proven by this setup scan:
    aligned with the remote-GPU Route B principle, but needs a concrete MCP
    action bridge and compact result reducer before any task run.
 
-Either route is attractive for Goal Harness because the benchmark already
+Either route is attractive for LoopX because the benchmark already
 generates trajectories, snapshots, verifier results, and final scores. The
-public Goal Harness artifact should ingest only compact fields such as task id
+public LoopX artifact should ingest only compact fields such as task id
 hash/selector, world/domain metadata, runner status, final score, criterion
 counts, token/cost fields if available, timeout/failure class, and validation
 hashes. Raw task prompts, rubrics, gold outputs, world files, trajectories,
@@ -137,7 +137,7 @@ needs explicit approval for:
 The official example also logs a prompt preview and writes `initial_messages`,
 `trajectory`, `final_snapshot`, `verifiers`, and `grades` under its output
 directory. Those paths are useful for a private reducer but must not be copied
-into public Goal Harness docs.
+into public LoopX docs.
 
 ## Next Safe Step
 

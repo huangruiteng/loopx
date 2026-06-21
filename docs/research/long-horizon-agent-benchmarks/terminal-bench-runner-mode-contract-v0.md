@@ -2,12 +2,12 @@
 
 Checked at: 2026-06-08T18:48:19+08:00.
 
-This note answers the core Goal Harness research runner-integration question for
-`goal-harness benchmark run terminal-bench ...`: the current core comparison is
-`codex-goal-mode` versus `codex-goal-harness`. The first arm is the true Codex
-baseline for this Goal Harness experiment because it gives Codex its own goal
-mode/runtime goal affordances but injects no Goal Harness state. The second arm
-is the `Codex goal mode + Goal Harness` treatment.
+This note answers the core LoopX research runner-integration question for
+`loopx benchmark run terminal-bench ...`: the current core comparison is
+`codex-goal-mode` versus `codex-loopx`. The first arm is the true Codex
+baseline for this LoopX experiment because it gives Codex its own goal
+mode/runtime goal affordances but injects no LoopX state. The second arm
+is the `Codex goal mode + LoopX` treatment.
 
 This is a no-run contract. It does not run Harbor, Terminal-Bench, Docker,
 Codex, model APIs, cloud sandboxes, paid compute, uploads, shares, or
@@ -17,13 +17,13 @@ leaderboard paths.
 
 | Layer | Meaning | May affect official task semantics |
 | --- | --- | --- |
-| Parent runner control plane | Select task slice, create run id, recheck quota/gates, invoke Harbor, ingest structured results, write compact Goal Harness history. | No |
-| Codex goal-mode baseline | Run Codex with its native goal-mode affordance under the original benchmark task and no Goal Harness packet, skill, CLI bridge, or state. | Yes, to the extent Codex goal mode itself is part of the declared baseline surface |
-| Goal Harness treatment worker | Give the same goal-capable Codex worker Goal Harness todo/state/checkpoint/replan surfaces and evaluate `Codex goal mode + Goal Harness` as the agent-harness pair. | Yes, as the core experimental mode |
-| Hardened/bare calibration | Optional startup/install/environment control that withholds both Codex goal-mode instructions and Goal Harness state. | No |
+| Parent runner control plane | Select task slice, create run id, recheck quota/gates, invoke Harbor, ingest structured results, write compact LoopX history. | No |
+| Codex goal-mode baseline | Run Codex with its native goal-mode affordance under the original benchmark task and no LoopX packet, skill, CLI bridge, or state. | Yes, to the extent Codex goal mode itself is part of the declared baseline surface |
+| LoopX treatment worker | Give the same goal-capable Codex worker LoopX todo/state/checkpoint/replan surfaces and evaluate `Codex goal mode + LoopX` as the agent-harness pair. | Yes, as the core experimental mode |
+| Hardened/bare calibration | Optional startup/install/environment control that withholds both Codex goal-mode instructions and LoopX state. | No |
 
 The parent runner control plane may exist for all modes. The important
-question is whether the benchmark case itself receives Goal Harness-managed
+question is whether the benchmark case itself receives LoopX-managed
 context or intervention.
 
 ## Modes
@@ -31,15 +31,15 @@ context or intervention.
 The future CLI should expose explicit modes:
 
 ```text
-goal-harness benchmark run terminal-bench \
-  --mode codex-goal-mode | codex-goal-harness
+loopx benchmark run terminal-bench \
+  --mode codex-goal-mode | codex-loopx
 ```
 
-| Mode | Case worker | Goal Harness around case | Goal Harness inside case | Primary use |
+| Mode | Case worker | LoopX around case | LoopX inside case | Primary use |
 | --- | --- | --- | --- | --- |
 | `codex-goal-mode` | Codex worker runs with the same model/auth/env and the Codex native goal-mode surface declared by runner preflight. Access packet mode is `none`. | Parent runner only. | None. | True Codex baseline for this experiment. |
-| `codex-goal-harness` | The same goal-mode Codex worker receives the Goal Harness access packet/bridge surface. | Parent runner plus managed checkpoints/writeback. | Yes: todo/state/checkpoint/replan may be available. | Core Goal Harness experiment: the `Codex goal mode + Goal Harness` agent-harness pair. |
-| `hardened-codex` | Optional calibration worker with the same install/env but no Codex goal-mode instruction and no Goal Harness state. | Parent runner only. | None. | Startup/install/debug control only; not the primary baseline. |
+| `codex-loopx` | The same goal-mode Codex worker receives the LoopX access packet/bridge surface. | Parent runner plus managed checkpoints/writeback. | Yes: todo/state/checkpoint/replan may be available. | Core LoopX experiment: the `Codex goal mode + LoopX` agent-harness pair. |
+| `hardened-codex` | Optional calibration worker with the same install/env but no Codex goal-mode instruction and no LoopX state. | Parent runner only. | None. | Startup/install/debug control only; not the primary baseline. |
 
 `codex-goal-mode` is the right paired baseline because it asks whether Goal
 Harness adds value beyond Codex's own long-running goal execution mode. The
@@ -49,25 +49,25 @@ future flag rather than a literal `--goal` option, record that invocation in the
 run preflight instead of inventing a command.
 
 Current no-upload launch contract materializes the baseline through the Harbor
-custom-agent import path with `goal_harness_mode=codex_goal_mode_baseline`,
-`goal_harness_access_packet_mode=none`, no worker bridge, and
+custom-agent import path with `loopx_mode=codex_goal_mode_baseline`,
+`loopx_access_packet_mode=none`, no worker bridge, and
 `codex_goal_mode_invocation_surface=slash_command`. The worker instruction starts
 with Codex CLI `/goal`, then the original benchmark task instruction follows.
-This is still a baseline arm: it must not read Goal Harness state or expose a
-Goal Harness access packet inside the case.
+This is still a baseline arm: it must not read LoopX state or expose a
+LoopX access packet inside the case.
 
-`codex-goal-harness` is intentionally a different agent mode. It may
+`codex-loopx` is intentionally a different agent mode. It may
 still use the benchmark's official verifier, but it must be reported as
-`worker_mode=codex_goal_harness_cli` or equivalent. Its result is not a native
+`worker_mode=codex_loopx_cli` or equivalent. Its result is not a native
 Codex CLI baseline.
 
 ## Why Not Keep Bare Codex
 
 The old `bare-codex` path tested Harbor's native `--agent codex` startup
-surface. It is no longer a primary baseline because the Goal Harness treatment
+surface. It is no longer a primary baseline because the LoopX treatment
 is supposed to compete with Codex's own goal-mode execution, not with an
 underpowered no-goal worker. Comparing treatment against bare Codex would mix
-native goal-mode value with Goal Harness value.
+native goal-mode value with LoopX value.
 
 Keep native/bare evidence only as legacy startup debugging if an existing run
 already produced it. Do not launch it as part of the current main protocol.
@@ -84,7 +84,7 @@ For `codex-goal-mode`, each case must preserve:
 - tests, scoring, resources, timeout, dataset, and runner source unchanged;
 - same model, auth strategy, and hardened install strategy unless an ablation
   field records the change;
-- no Goal Harness review-packet, active-state, todo, report, or checkpoint text
+- no LoopX review-packet, active-state, todo, report, or checkpoint text
   injected into the benchmark task instruction;
 - Codex goal-mode invocation captured in runner preflight;
 - no upload, share, publish, or leaderboard flag unless a separate publication
@@ -92,10 +92,10 @@ For `codex-goal-mode`, each case must preserve:
 - raw logs, raw Codex sessions, Docker logs, local paths, auth material, and
   task artifacts remain private.
 
-For `codex-goal-harness`, each case must additionally record:
+For `codex-loopx`, each case must additionally record:
 
 - `case_semantics_changed_by_harness=true`;
-- the Goal Harness state surfaces available to the worker;
+- the LoopX state surfaces available to the worker;
 - intervention/checkpoint/replan counts;
 - human or simulator intervention policy if present;
 - claim boundary that this is a `model + harness` pair, not native Codex.
@@ -106,12 +106,12 @@ Compact benchmark events should include these mode fields:
 
 | Field | Example |
 | --- | --- |
-| `runner_control_plane` | `goal_harness_parent_runner` |
-| `worker_mode` | `codex_goal_mode_baseline` or `codex_goal_harness_cli` |
+| `runner_control_plane` | `loopx_parent_runner` |
+| `worker_mode` | `codex_goal_mode_baseline` or `codex_loopx_cli` |
 | `case_semantics_changed_by_harness` | `false` for goal-mode baseline, `true` for treatment |
-| `goal_harness_inside_case` | `false` for goal-mode baseline, `true` for treatment |
+| `loopx_inside_case` | `false` for goal-mode baseline, `true` for treatment |
 | `official_score_comparable_to_native_codex` | `false` for both current arms |
-| `official_score_comparable_to_goal_harness_treatment` | `true` for the goal-mode baseline |
+| `official_score_comparable_to_loopx_treatment` | `true` for the goal-mode baseline |
 | `codex_goal_mode_enabled` | `true` for both primary arms |
 | `control_plane_score_applicable` | `false` for goal-mode baseline, `true` for treatment |
 | `leaderboard_evidence` | `false` until an explicit publication gate exists |
@@ -120,7 +120,7 @@ Compact benchmark events should include these mode fields:
 
 1. Implement the Codex goal-mode baseline no-run fixture, command envelope, and
    private no-upload launch summary.
-2. Implement the `codex-goal-harness` worker bridge fixture and command
+2. Implement the `codex-loopx` worker bridge fixture and command
    envelope.
 3. Implement the private no-upload runner wrapper with the two primary modes.
 4. Run paired parallel hard-task experiments and compare score, closure,
@@ -131,8 +131,8 @@ Compact benchmark events should include these mode fields:
 Stop before:
 
 - reintroducing `bare-codex` as a primary baseline;
-- injecting Goal Harness state into a goal-mode baseline case;
-- calling `codex-goal-harness` a native Codex baseline;
+- injecting LoopX state into a goal-mode baseline case;
+- calling `codex-loopx` a native Codex baseline;
 - running full `terminal-bench@2.0`;
 - adding upload/share/leaderboard behavior;
 - copying credentials, raw logs, raw sessions, Docker logs, host paths, or task

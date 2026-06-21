@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import parse_active_state_todos  # noqa: E402
+from loopx.status import parse_active_state_todos  # noqa: E402
 
 
 GOAL_ID = "todo-lifecycle-goal"
@@ -31,7 +31,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     state_file.parent.mkdir(parents=True)
     state_file.write_text(
         "---\n"
@@ -82,7 +82,7 @@ def run_cli(registry_path: Path, *args: str) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--format",
@@ -102,7 +102,7 @@ def run_cli_error(registry_path: Path, *args: str) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--format",
@@ -124,7 +124,7 @@ def parsed_items(state_file: Path) -> list[dict]:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-todo-lifecycle-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-todo-lifecycle-smoke-") as tmp:
         root = Path(tmp)
         registry_path, state_file = write_fixture(root)
 

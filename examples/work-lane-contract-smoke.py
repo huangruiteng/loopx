@@ -9,8 +9,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown
-from goal_harness.status import (
+from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
+from loopx.status import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
     normalize_todo_task_class,
@@ -459,7 +459,7 @@ def assert_monitor_only_with_adapter_next_action_materializes_advancement() -> N
             next_action=(
                 "Continue after ALE host Codex e2e: package the ignored host-Codex "
                 "adapter contract into a public-safe generic artifact, or select one "
-                "local-material-ready ALE task for a concrete Goal Harness validation hypothesis."
+                "local-material-ready ALE task for a concrete LoopX validation hypothesis."
             ),
             agent_todo_items=[
                 {
@@ -713,7 +713,7 @@ def assert_external_monitor_context_recommends_executable_backlog() -> None:
     )
     executable_todo = (
         "[P1] Behavior regression suite lane: maintain `regression/` as the "
-        "home for Goal Harness CLI plus real Codex CLI interaction regressions."
+        "home for LoopX CLI plus real Codex CLI interaction regressions."
     )
     guard = build_quota_should_run(
         status_payload(
@@ -861,7 +861,7 @@ def assert_benchmark_source_preflight_routes_to_advancement() -> None:
 def assert_behavior_regression_suite_routes_to_advancement() -> None:
     regression_todo = (
         "[P1] Behavior regression suite lane: maintain `regression/` as the "
-        "home for Goal Harness CLI plus real Codex CLI interaction regressions. "
+        "home for LoopX CLI plus real Codex CLI interaction regressions. "
         "Add focused cases when a control-plane behavior previously failed or "
         "could strand automation, especially external-evidence waits, "
         "P0-blocked/P1-P2 fallback, no-progress self-repair, compact blocker "
@@ -874,7 +874,7 @@ def assert_behavior_regression_suite_routes_to_advancement() -> None:
             status="regression_suite_lane_only",
             next_action=(
                 "Continue the behavior regression suite lane by adding one focused "
-                "Goal Harness CLI plus Codex CLI interaction regression."
+                "LoopX CLI plus Codex CLI interaction regression."
             ),
             agent_todo_items=[
                 {
@@ -968,7 +968,7 @@ def assert_launch_then_poll_todo_without_handle_routes_to_advancement() -> None:
     launch_repeat_todo = (
         "[P0] Launch a private no-upload paired repeat for terminal-bench@2.0 / "
         "large-scale-text-editing with agent_setup_timeout_multiplier=4 on both "
-        "codex-goal-mode baseline and goal-harness treatment; poll only compact "
+        "codex-goal-mode baseline and loopx treatment; poll only compact "
         "materialization/result summaries, then ingest and compare before any claim."
     )
     guard = build_quota_should_run(

@@ -13,9 +13,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
-from goal_harness.state_projection import state_projection_gap_warning  # noqa: E402
-from goal_harness.state_refresh import refresh_state_run, render_state_refresh_markdown  # noqa: E402
+from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from loopx.state_projection import state_projection_gap_warning  # noqa: E402
+from loopx.state_refresh import refresh_state_run, render_state_refresh_markdown  # noqa: E402
 
 
 GOAL_ID = "state-projection-gap-fixture"
@@ -32,7 +32,7 @@ def write_registry(root: Path, state_text: str) -> tuple[Path, Path]:
     state_file = Path(".codex/goals") / GOAL_ID / "ACTIVE_GOAL_STATE.md"
     (project / state_file).parent.mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(state_text, encoding="utf-8")
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     write_json(
         registry_path,
         {

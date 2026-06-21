@@ -107,7 +107,7 @@ def search_blob(case: dict[str, Any]) -> str:
         efficiency.get("baseline"),
         efficiency.get("claim_boundary"),
     ]
-    for key in ("audience", "pattern_tags", "goal_harness_behavior"):
+    for key in ("audience", "pattern_tags", "loopx_behavior"):
         field = case.get(key)
         if isinstance(field, list):
             values.extend(field)
@@ -134,7 +134,7 @@ def render_case(case: dict[str, Any], *, output: Path | None) -> str:
     badges = frontend.get("badges") if isinstance(frontend.get("badges"), list) else []
     tags = case.get("pattern_tags") if isinstance(case.get("pattern_tags"), list) else []
     story_beats = frontend.get("story_beats") if isinstance(frontend.get("story_beats"), list) else []
-    behavior = case.get("goal_harness_behavior") if isinstance(case.get("goal_harness_behavior"), list) else []
+    behavior = case.get("loopx_behavior") if isinstance(case.get("loopx_behavior"), list) else []
     demo_command = case.get("demo_command")
     case_href = repo_link(str(case.get("case_page") or ""), output=output)
     storyboard_path = case.get("storyboard_path")
@@ -191,7 +191,7 @@ def render_case(case: dict[str, Any], *, output: Path | None) -> str:
         </dl>
         <div class="case-flow">
           <div>
-            <h4>Goal Harness behavior</h4>
+            <h4>LoopX behavior</h4>
             <ol>{behavior_items}</ol>
           </div>
           <div>
@@ -216,7 +216,7 @@ def render(catalog: dict[str, Any], *, output: Path | None) -> str:
     case_count = len(cases)
     status_filters = render_status_filters(cases)
     schema_version = str(catalog.get("schema_version") or "")
-    schema_label = schema_version.removeprefix("goal_harness_showcase_catalog_") or schema_version
+    schema_label = schema_version.removeprefix("loopx_showcase_catalog_") or schema_version
     pattern_count = len(
         {
             tag
@@ -230,7 +230,7 @@ def render(catalog: dict[str, Any], *, output: Path | None) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Goal Harness Showcase Frontstage</title>
+  <title>LoopX Showcase Frontstage</title>
   <style>
     :root {{
       color-scheme: light;
@@ -330,12 +330,12 @@ def render(catalog: dict[str, Any], *, output: Path | None) -> str:
   <main>
     <section class="hero">
       <div>
-        <p class="eyebrow">Goal Harness Showcases</p>
+        <p class="eyebrow">LoopX Showcases</p>
         <h1>Gate-aware human-in-the-loop control plane</h1>
         <p class="punchline">让人的判断成为控制面，而不是让 agent 在等待里空转。</p>
-        <p class="summary">Goal Harness keeps user decisions, agent todos, safe fallback, run history, and quota in one shared state layer: the gated route waits clearly, while independent safe side work can keep moving with evidence.</p>
+        <p class="summary">LoopX keeps user decisions, agent todos, safe fallback, run history, and quota in one shared state layer: the gated route waits clearly, while independent safe side work can keep moving with evidence.</p>
       </div>
-      <img src="{esc(asset_href)}" alt="Goal Harness control-plane board">
+      <img src="{esc(asset_href)}" alt="LoopX control-plane board">
     </section>
     <section class="metrics" aria-label="Catalog metrics">
       <div><strong>{case_count}</strong><span>public-safe cases</span></div>
@@ -348,7 +348,7 @@ def render(catalog: dict[str, Any], *, output: Path | None) -> str:
         <p>Executes bounded work inside an agent session or scheduled turn.</p>
       </section>
       <section>
-        <h2>Goal Harness</h2>
+        <h2>LoopX</h2>
         <p>Preserves the lifetime-goal control plane across turns, tools, agents, gates, evidence, and quota.</p>
       </section>
     </section>
@@ -421,7 +421,7 @@ def main() -> int:
     args = parser.parse_args()
 
     catalog = json.loads(args.catalog.read_text(encoding="utf-8"))
-    if catalog.get("schema_version") != "goal_harness_showcase_catalog_v0":
+    if catalog.get("schema_version") != "loopx_showcase_catalog_v0":
         raise ValueError("unsupported showcase catalog schema_version")
     html_text = render(catalog, output=args.output)
     if args.output:

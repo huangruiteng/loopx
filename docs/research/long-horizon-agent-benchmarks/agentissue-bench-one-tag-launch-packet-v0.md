@@ -79,7 +79,7 @@ AgentIssue-Bench patch evaluation expects patch files under:
 Patches/{tag}/attempt.patch
 ```
 
-The Goal Harness wrapper should therefore model the future pilot as two
+The LoopX wrapper should therefore model the future pilot as two
 separate actors:
 
 1. **Local Codex patch producer**

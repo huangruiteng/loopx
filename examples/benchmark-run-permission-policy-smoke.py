@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_core import (  # noqa: E402
+from loopx.benchmark_core import (  # noqa: E402
     RUN_PERMISSION_POLICY_SCHEMA_VERSION,
     RUN_PERMISSION_QUOTA_PROJECTION_SCHEMA_VERSION,
     RunPermissionAction,
@@ -20,7 +20,7 @@ from goal_harness.benchmark_core import (  # noqa: E402
     compact_run_permission_policy_for_quota,
     validate_run_permission_policy,
 )
-from goal_harness.quota import _goal_boundary  # noqa: E402
+from loopx.quota import _goal_boundary  # noqa: E402
 
 
 def assert_default_policy_is_quota_readable() -> None:

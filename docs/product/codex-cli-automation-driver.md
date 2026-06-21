@@ -2,7 +2,7 @@
 
 Status: product contract and implementation target.
 
-Goal Harness should make Codex CLI feel easy before it feels automated. The
+LoopX should make Codex CLI feel easy before it feels automated. The
 primary path is still the Codex TUI: the user starts from a project repo, sends
 one Goal-Harness-generated message, and can keep watching, steering, reviewing,
 or taking over. Automation is allowed only when it preserves that visible
@@ -21,8 +21,8 @@ primitives:
 - `codex --remote <ADDR>`, `codex app-server`, and `codex remote-control` expose
   experimental app-server / remote-control surfaces worth probing.
 
-It does not expose a mature native recurring scheduler for Goal Harness. Treat
-recurrence as a Goal Harness local-driver concern until Codex provides a
+It does not expose a mature native recurring scheduler for LoopX. Treat
+recurrence as a LoopX local-driver concern until Codex provides a
 first-class automation primitive.
 
 The important product distinction is:
@@ -31,8 +31,8 @@ The important product distinction is:
 | --- | --- | --- |
 | `codex [PROMPT]` | one-message TUI bootstrap is viable | scheduled wakeups |
 | `codex resume ... [PROMPT]` | a visible resume proof is plausible | safe injection into an already-open TUI |
-| `codex exec` | non-interactive execution exists | preserved TUI experience or default Goal Harness fallback |
-| `remote-control` / app-server | a future visible-control bridge may exist | production-safe Goal Harness driver semantics |
+| `codex exec` | non-interactive execution exists | preserved TUI experience or default LoopX fallback |
+| `remote-control` / app-server | a future visible-control bridge may exist | production-safe LoopX driver semantics |
 
 ## Driver Shape
 
@@ -40,17 +40,17 @@ The v0 driver should be explicit and conservative:
 
 1. A scheduler wakes up: manual command, `launchd`, cron, or a future local
    daemon.
-2. The driver runs `goal-harness quota should-run --goal-id <goal> --agent-id
+2. The driver runs `loopx quota should-run --goal-id <goal> --agent-id
    <agent>`.
 3. If user action is required, the driver surfaces only the concrete user gate
    and stops.
 4. If the side-agent workspace guard fires, the driver relocates to an
    independent worktree before any file edit.
-5. The driver runs `goal-harness codex-cli-visible-driver-plan`.
+5. The driver runs `loopx codex-cli-visible-driver-plan`.
 6. If the plan proves a visible attach path, the driver may attempt a visible
    `resume` / remote-control turn behind an idle guard.
 7. If no visible attach path is proven, the driver keeps TUI bootstrap primary.
-   `goal-harness codex-cli-exec-handoff` reports the disabled boundary and does
+   `loopx codex-cli-exec-handoff` reports the disabled boundary and does
    not print a runnable `codex exec` script.
 8. The driver spends quota only after validated writeback.
 
@@ -60,7 +60,7 @@ The local driver must never read or publish:
 - credentials;
 - hidden session files;
 - private logs;
-- local Goal Harness runtime state that would leak into public docs or
+- local LoopX runtime state that would leak into public docs or
   fixtures.
 
 ## Scheduler Options
@@ -75,11 +75,11 @@ The local driver must never read or publish:
 
 ## Success Criteria
 
-- One pasted TUI message can start the Goal Harness loop in a repo.
+- One pasted TUI message can start the LoopX loop in a repo.
 - A scheduled driver can decide whether work is allowed without reading private
   Codex session data.
 - A visible resume / remote-control proof shows the turn is visible,
-  interruptible, and idle-guarded before Goal Harness calls it
+  interruptible, and idle-guarded before LoopX calls it
   session-attached automation.
 - Headless `codex exec` is disabled for the default `/goal` product path, not a
   named fallback.
@@ -92,7 +92,7 @@ The dry-run-first local driver planner composes the existing quota, TUI,
 visible-driver, and headless-disabled boundary into one operator-facing packet:
 
 ```bash
-goal-harness codex-cli-local-driver-plan --project . --goal-id <goal> --agent-id <agent>
+loopx codex-cli-local-driver-plan --project . --goal-id <goal> --agent-id <agent>
 ```
 
 It is intentionally not a scheduler yet. It does not run Codex, read raw
@@ -111,7 +111,7 @@ A separate proof harness validates whether a resume or remote-control
 observation is strong enough to become a same-session automation candidate:
 
 ```bash
-goal-harness codex-cli-visible-session-proof \
+loopx codex-cli-visible-session-proof \
   --project . \
   --goal-id <goal> \
   --agent-id <agent> \
@@ -126,7 +126,7 @@ The next v0 packet turns those dry-run pieces into one driver decision without
 executing anything:
 
 ```bash
-goal-harness codex-cli-visible-driver-run --project . --goal-id <goal> --agent-id <agent>
+loopx codex-cli-visible-driver-run --project . --goal-id <goal> --agent-id <agent>
 ```
 
 This is still a run packet, not a Codex runner. It does not run Codex, read raw
@@ -145,7 +145,7 @@ Harness quota. It only chooses the next safe boundary:
 The first local scheduler-facing spike wraps that packet as a one-shot tick:
 
 ```bash
-goal-harness codex-cli-local-scheduler-tick --project . --goal-id <goal> --agent-id <agent>
+loopx codex-cli-local-scheduler-tick --project . --goal-id <goal> --agent-id <agent>
 ```
 
 This command is still no-execution by design. A launchd/cron/local-daemon
@@ -155,7 +155,7 @@ wrapper can call it and receive one of two safe outputs:
 - a precise blocker writeback command, when proof is missing.
 
 The tick itself does not run Codex, read transcripts, inspect session files,
-mutate sessions, write Goal Harness state, or spend quota. That boundary keeps
+mutate sessions, write LoopX state, or spend quota. That boundary keeps
 the product path honest: first make the scheduler decision visible and
 reviewable, then implement the actual external executor only after the proof
 and opt-in contract is stable.
@@ -163,7 +163,7 @@ and opt-in contract is stable.
 The next wrapper is the first explicit executor mode:
 
 ```bash
-goal-harness codex-cli-local-scheduler-exec --project . --goal-id <goal> --agent-id <agent>
+loopx codex-cli-local-scheduler-exec --project . --goal-id <goal> --agent-id <agent>
 ```
 
 By default it still executes nothing. It builds the same scheduler tick and
@@ -171,7 +171,7 @@ prints an executor packet. A local scheduler may opt into exactly one side
 effect:
 
 ```bash
-goal-harness codex-cli-local-scheduler-exec \
+loopx codex-cli-local-scheduler-exec \
   --project . \
   --goal-id <goal> \
   --agent-id <agent> \
@@ -183,7 +183,7 @@ goal-harness codex-cli-local-scheduler-exec \
 or:
 
 ```bash
-goal-harness codex-cli-local-scheduler-exec \
+loopx codex-cli-local-scheduler-exec \
   --project . \
   --goal-id <goal> \
   --agent-id <agent> \
@@ -203,7 +203,7 @@ post-turn writeback path.
 ## Next Build Slice
 
 Use the executor wrapper as the smallest local-driver bridge, then move toward
-the real product loop: one TUI message starts Goal Harness, recurring wakeups
+the real product loop: one TUI message starts LoopX, recurring wakeups
 run the guard, a visible same-session turn is attempted only after proof and
 idle checks, and headless `codex exec` remains disabled for the default
 `/goal` path.

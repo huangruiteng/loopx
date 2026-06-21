@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
@@ -23,9 +23,9 @@ README = TOPIC_DIR / "README.md"
 PROTOCOL = TOPIC_DIR / "passive-baseline-protocol-v0.md"
 GOAL_ID = "passive-baseline-fixture"
 TASK_ID = "mini_control_plane_repair_v0"
-BENCHMARK_ID = "goal-harness-local-passive-baseline@v0"
+BENCHMARK_ID = "loopx-local-passive-baseline@v0"
 BASELINE_MODE = "codex_goal_mode_baseline"
-TREATMENT_MODE = "passive_goal_harness_wrapper"
+TREATMENT_MODE = "passive_loopx_wrapper"
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -36,7 +36,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 def benchmark_run_event(mode: str, *, control_value: float, spend_count: int) -> dict[str, Any]:
     return {
         "schema_version": "benchmark_run_v0",
-        "source_runner": "goal-harness-local-fixture",
+        "source_runner": "loopx-local-fixture",
         "benchmark_id": BENCHMARK_ID,
         "job_name": f"{TASK_ID}__{mode}",
         "mode": mode,
@@ -95,7 +95,7 @@ def benchmark_run_event(mode: str, *, control_value: float, spend_count: int) ->
         ],
         "resume_or_inspect_commands": [
             "python3 examples/codex-cli-long-run-benchmark-smoke.py",
-            "goal-harness history --goal-id <goal-id> --limit 2",
+            "loopx history --goal-id <goal-id> --limit 2",
         ],
         "stop_conditions": [
             "do_not_invoke_real_benchmark_or_model_api_from_heartbeat",
@@ -109,7 +109,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, dict[str, Path]]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     event_paths = {
         BASELINE_MODE: root / f"{BASELINE_MODE}.benchmark_run.json",
         TREATMENT_MODE: root / f"{TREATMENT_MODE}.benchmark_run.json",
@@ -164,7 +164,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, dict[str, Path]]:
 
 def run_cli(args: list[str]) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=True,
         text=True,
@@ -225,7 +225,7 @@ def assert_doc_contract() -> None:
     required = [
         "Passive Baseline Protocol V0",
         "`codex_goal_mode_baseline`",
-        "`passive_goal_harness_wrapper`",
+        "`passive_loopx_wrapper`",
         "`codex_goal_mode_enabled`",
         "no simulated operator intervention is allowed",
         "`benchmark_result_v0`",

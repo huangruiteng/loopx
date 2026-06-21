@@ -7,7 +7,7 @@ development host as a benchmark provider, without copying Codex credentials or
 starting benchmark work.
 
 This is a plan only. It does not connect to the remote host, sync files, install
-Goal Harness remotely, start Docker, run benchmark tasks, invoke Codex, invoke
+LoopX remotely, start Docker, run benchmark tasks, invoke Codex, invoke
 model APIs, copy credentials, upload artifacts, use leaderboard paths, inspect
 other users' workloads, or print the concrete remote address/port.
 
@@ -31,7 +31,7 @@ zsh -ic '
     -o ForwardAgent=no \
     -o PermitLocalCommand=no \
     root@"$AI_ADDR" \
-    '"'"'REMOTE_WORK="${REMOTE_WORK:-/tmp/goal-harness-bench-${USER:-root}}"; umask 077; mkdir -p "$REMOTE_WORK"; chmod 700 "$REMOTE_WORK"; <probe-script>'"'"'
+    '"'"'REMOTE_WORK="${REMOTE_WORK:-/tmp/loopx-bench-${USER:-root}}"; umask 077; mkdir -p "$REMOTE_WORK"; chmod 700 "$REMOTE_WORK"; <probe-script>'"'"'
 '
 ```
 
@@ -42,7 +42,7 @@ Rules:
 - do not request environment forwarding; the local OpenSSH client treats
   `-o SendEnv=` as invalid, so omit `SendEnv` instead of passing an empty
   value;
-- do not pass local Codex, OpenAI, or Goal Harness runtime variables;
+- do not pass local Codex, OpenAI, or LoopX runtime variables;
 - keep remote output to compact readiness JSON or key-value lines.
 
 ## Private Workspace Shape
@@ -50,7 +50,7 @@ Rules:
 Recommended remote workspace:
 
 ```bash
-REMOTE_WORK="/tmp/goal-harness-bench-${USER:-root}"
+REMOTE_WORK="/tmp/loopx-bench-${USER:-root}"
 ```
 
 Required checks:
@@ -139,7 +139,7 @@ of the sync manifest. It should not connect or copy yet:
 ```bash
 rsync -azn --delete \
   --exclude '.git/' \
-  --exclude '.goal-harness/' \
+  --exclude '.loopx/' \
   --exclude '.local/' \
   --exclude '.env' \
   --exclude '.env.*' \
@@ -147,30 +147,30 @@ rsync -azn --delete \
   --exclude '*.pyc' \
   --exclude 'node_modules/' \
   --exclude '.venv/' \
-  ./ "$REMOTE_WORK/goal-harness/"
+  ./ "$REMOTE_WORK/loopx/"
 ```
 
 Before any real sync, add explicit excludes for any newly observed private or
-generated paths. The sync must not include `~/.codex`, local Goal Harness
+generated paths. The sync must not include `~/.codex`, local LoopX
 global runtime, benchmark run outputs, shell history, credentials, hidden refs,
 or raw trajectories.
 
-## Isolated Goal Harness Install Envelope
+## Isolated LoopX Install Envelope
 
 If sync is later approved and completed, install remotely with:
 
 ```bash
-cd "$REMOTE_WORK/goal-harness"
-GOAL_HARNESS_BIN_DIR="$REMOTE_WORK/bin" \
-GOAL_HARNESS_RELEASES_DIR="$REMOTE_WORK/releases" \
-GOAL_HARNESS_INSTALL_SKILL=0 \
-GOAL_HARNESS_INSTALL_CANARY=0 \
-GOAL_HARNESS_SHELL_PROFILE=/dev/null \
+cd "$REMOTE_WORK/loopx"
+LOOPX_BIN_DIR="$REMOTE_WORK/bin" \
+LOOPX_RELEASES_DIR="$REMOTE_WORK/releases" \
+LOOPX_INSTALL_SKILL=0 \
+LOOPX_INSTALL_CANARY=0 \
+LOOPX_SHELL_PROFILE=/dev/null \
 CODEX_HOME="$REMOTE_WORK/codex-empty" \
 ./scripts/install-local.sh
 ```
 
-This keeps the remote Goal Harness release self-contained and prevents Codex
+This keeps the remote LoopX release self-contained and prevents Codex
 skill installation or Codex auth/session reuse.
 
 ## Stop Rules
@@ -180,12 +180,12 @@ Stop before:
 - connecting if `$AI_ADDR` or `$AI_PORT` would be printed;
 - SSH agent forwarding;
 - syncing files;
-- remote Goal Harness install;
+- remote LoopX install;
 - Docker pull/build/run;
 - benchmark checkout or task execution;
 - Codex/model/API invocation;
 - copying `~/.codex`, API keys, SSH private keys, shell histories, `.env`
-  files, local Goal Harness runtime, raw trajectories, screenshots, hidden
+  files, local LoopX runtime, raw trajectories, screenshots, hidden
   refs, task bodies, solution files, or test bodies;
 - inspecting other users' processes, jobs, home directories, or Docker
   workloads;

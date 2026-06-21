@@ -11,7 +11,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness import history, state_refresh
+from loopx import history, state_refresh
 
 
 GOAL_ID = "reserved-run-path-fixture"
@@ -34,7 +34,7 @@ def write_registry(root: Path) -> Path:
         "- continue reserved run path validation\n\n",
         encoding="utf-8",
     )
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     registry_path.parent.mkdir(parents=True)
     registry_path.write_text(
         json.dumps(
@@ -71,7 +71,7 @@ def artifact_identity(payload: dict[str, object]) -> tuple[str, str, str]:
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-reserved-run-path-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-reserved-run-path-") as raw_tmp:
         root = Path(raw_tmp)
         registry_path = write_registry(root)
         original_history_now = history.now_local

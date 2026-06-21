@@ -35,19 +35,19 @@ def run(
     )
 
 
-def run_goal_harness(
+def run_loopx(
     *args: str,
     cwd: Path,
     env: dict[str, str],
 ) -> dict:
-    result = run(["goal-harness", "--format", "json", *args], cwd=cwd, env=env)
+    result = run(["loopx", "--format", "json", *args], cwd=cwd, env=env)
     return json.loads(result.stdout)
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-fresh-clone-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-fresh-clone-smoke-") as tmp:
         root = Path(tmp)
-        clone = root / "goal-harness"
+        clone = root / "loopx"
         run(
             ["git", "clone", "--quiet", "--no-local", str(REPO_ROOT), str(clone)],
             cwd=root,
@@ -63,57 +63,59 @@ def main() -> int:
             **os.environ,
             "HOME": str(home),
             "CODEX_HOME": str(codex_home),
-            "GOAL_HARNESS_BIN_DIR": str(bin_dir),
-            "GOAL_HARNESS_SHELL_PROFILE": str(profile),
-            "GOAL_HARNESS_INSTALL_SKILL": "1",
-            "GOAL_HARNESS_INSTALL_CANARY": "1",
-            "GOAL_HARNESS_RELEASE_ID": "fresh-clone-smoke-release",
+            "LOOPX_BIN_DIR": str(bin_dir),
+            "LOOPX_SHELL_PROFILE": str(profile),
+            "LOOPX_INSTALL_SKILL": "1",
+            "LOOPX_INSTALL_CANARY": "1",
+            "LOOPX_RELEASE_ID": "fresh-clone-smoke-release",
             "PATH": os.environ.get("PATH", ""),
             "SHELL": "/bin/zsh",
         }
 
         install = run([str(clone / "scripts" / "install-local.sh")], cwd=clone, env=env)
-        assert "goal-harness installed locally" in install.stdout, install.stdout
-        assert f"- executable: {bin_dir / 'goal-harness'}" in install.stdout, install.stdout
-        assert f"- canary executable: {bin_dir / 'goal-harness-canary'}" in install.stdout, install.stdout
-        assert f"- skill: {codex_home / 'skills' / 'goal-harness-project'}" in install.stdout, install.stdout
+        assert "loopx installed locally" in install.stdout, install.stdout
+        assert f"- executable: {bin_dir / 'loopx'}" in install.stdout, install.stdout
+        assert f"- canary executable: {bin_dir / 'loopx-canary'}" in install.stdout, install.stdout
+        assert f"- skill: {codex_home / 'skills' / 'loopx-project'}" in install.stdout, install.stdout
         assert "promotion-readiness evidence is missing" in install.stderr, install.stderr
         assert "non-blocking" in install.stderr, install.stderr
 
-        wrapper = bin_dir / "goal-harness"
-        canary_wrapper = bin_dir / "goal-harness-canary"
+        wrapper = bin_dir / "loopx"
+        canary_wrapper = bin_dir / "loopx-canary"
         assert wrapper.is_symlink(), wrapper
+        assert not (bin_dir / "goal-harness").exists()
         assert canary_wrapper.is_symlink(), canary_wrapper
-        assert canary_wrapper.resolve() == clone.resolve() / "scripts" / "goal-harness", canary_wrapper.resolve()
+        assert not (bin_dir / "goal-harness-canary").exists()
+        assert canary_wrapper.resolve() == clone.resolve() / "scripts" / "loopx", canary_wrapper.resolve()
         release_root = wrapper.resolve().parents[1]
         assert release_root != clone, release_root
-        assert (release_root / "goal_harness" / "cli.py").is_file(), release_root
-        assert (codex_home / "skills" / "goal-harness-project" / "SKILL.md").is_file()
-        assert (codex_home / "skills" / "goal-harness-self-repair" / "SKILL.md").is_file()
+        assert (release_root / "loopx" / "cli.py").is_file(), release_root
+        assert (codex_home / "skills" / "loopx-project" / "SKILL.md").is_file()
+        assert (codex_home / "skills" / "loopx-self-repair" / "SKILL.md").is_file()
 
         cli_env = {**env, "PATH": f"{bin_dir}:{env['PATH']}"}
-        doctor = run_goal_harness("doctor", cwd=root, env=cli_env)
+        doctor = run_loopx("doctor", cwd=root, env=cli_env)
         assert doctor["ok"] is True, doctor
-        assert doctor["path"]["goal_harness"] == str(wrapper), doctor
-        assert doctor["path"]["goal_harness_canary"] == str(canary_wrapper), doctor
+        assert doctor["path"]["loopx"] == str(wrapper), doctor
+        assert doctor["path"]["loopx_canary"] == str(canary_wrapper), doctor
         assert doctor["package"]["release_root"] == str(release_root), doctor
-        assert doctor["skills"]["goal-harness-project"]["exists"] is True, doctor
-        assert doctor["skills"]["goal-harness-self-repair"]["exists"] is True, doctor
+        assert doctor["skills"]["loopx-project"]["exists"] is True, doctor
+        assert doctor["skills"]["loopx-self-repair"]["exists"] is True, doctor
 
         project = root / "sample-project"
         project.mkdir()
         (project / "README.md").write_text(
-            "# Sample Project\n\nUse Goal Harness to coordinate this sample goal.\n",
+            "# Sample Project\n\nUse LoopX to coordinate this sample goal.\n",
             encoding="utf-8",
         )
-        bootstrap = run_goal_harness(
+        bootstrap = run_loopx(
             "bootstrap",
             "--project",
             str(project),
             "--goal-id",
             GOAL_ID,
             "--objective",
-            "Keep a sample project coordinated with Goal Harness.",
+            "Keep a sample project coordinated with LoopX.",
             "--domain",
             "fresh-clone-smoke",
             "--goal-doc",
@@ -126,17 +128,17 @@ def main() -> int:
         )
         assert bootstrap["ok"] is True, bootstrap
         assert bootstrap["goal_id"] == GOAL_ID, bootstrap
-        assert (project / ".goal-harness" / "registry.json").is_file(), bootstrap
+        assert (project / ".loopx" / "registry.json").is_file(), bootstrap
         assert (project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md").is_file(), bootstrap
 
-        registry = project / ".goal-harness" / "registry.json"
-        status = run_goal_harness("--registry", str(registry), "status", cwd=project, env=cli_env)
+        registry = project / ".loopx" / "registry.json"
+        status = run_loopx("--registry", str(registry), "status", cwd=project, env=cli_env)
         assert status["ok"] is True, status
         assert status["status_contract"]["minimum_dashboard_schema_version"] >= 2, status
         assert status["attention_queue"]["item_count"] == 1, status
         assert status["attention_queue"]["items"][0]["goal_id"] == GOAL_ID, status
 
-        check = run_goal_harness(
+        check = run_loopx(
             "--registry",
             str(registry),
             "check",
@@ -148,7 +150,7 @@ def main() -> int:
         assert check["ok"] is True, check
         assert check["summary"]["errors"] == 0, check
 
-        heartbeat = run_goal_harness(
+        heartbeat = run_loopx(
             "--registry",
             str(registry),
             "heartbeat-prompt",

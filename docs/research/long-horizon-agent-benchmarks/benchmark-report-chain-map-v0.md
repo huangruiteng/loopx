@@ -38,7 +38,7 @@ next:
 | Field | Meaning |
 | --- | --- |
 | `official_score` | Whether benchmark-native score evidence exists and whether it is eligible for official comparison. |
-| `control_plane_score` | Whether Goal Harness coordination evidence exists and which dimensions it supports. |
+| `control_plane_score` | Whether LoopX coordination evidence exists and which dimensions it supports. |
 | `readiness` | Whether the current report is readiness-only, control-plane-only, failure-analysis, or candidate official evidence. |
 | `authorization` | Whether the next action is fixture-only, operator-review, no-submit setup, or deferred. |
 | `replay_decision` | Whether to replay a fixture, request review, defer, or stop. |

@@ -11,7 +11,7 @@ This proof did not run Docker task pull/build/run, Codex, model APIs,
 benchmark tasks, uploads, leaderboard paths, submit actions, raw trajectories,
 screenshots, hidden refs, task bodies, solution files, test bodies, or other
 users' workloads. It did not copy local `~/.codex`, API keys, access tokens,
-`.env` files, shell histories, SSH private keys, local Goal Harness runtime,
+`.env` files, shell histories, SSH private keys, local LoopX runtime,
 or credentials.
 
 ## Pre-Sync Checks
@@ -20,7 +20,7 @@ Local checks passed before the real sync:
 
 ```text
 local_diff_check_ok=true
-local_goal_harness_check_ok=true
+local_loopx_check_ok=true
 public_boundary_scan_clean=true
 ```
 
@@ -45,7 +45,7 @@ forbidden-path scan remained clean.
 The real sync used the same redacted exclude set as the plan:
 
 - `.git/`
-- `.goal-harness/`
+- `.loopx/`
 - `.local/`
 - `.env`
 - `.env.*`
@@ -77,7 +77,7 @@ Post-sync absence scan:
 
 ```text
 forbidden_codex_found=false
-forbidden_goal_harness_found=false
+forbidden_loopx_found=false
 forbidden_local_found=false
 forbidden_env_found=false
 forbidden_env_glob_found=false
@@ -86,7 +86,7 @@ route_b_remote_boundary_scan_ok=true
 
 ## Isolated Install Result
 
-Goal Harness was installed only under the private remote workspace with an
+LoopX was installed only under the private remote workspace with an
 isolated empty Codex home route, skill install disabled, canary install
 disabled, and shell-profile modification disabled.
 
@@ -94,7 +94,7 @@ Compact result:
 
 ```text
 route_b_isolated_install_ok=true
-remote_goal_harness_doctor_ok=true
+remote_loopx_doctor_ok=true
 remote_codex_auth_json_found=false
 remote_codex_home_is_empty_route=true
 credential_values_printed=false

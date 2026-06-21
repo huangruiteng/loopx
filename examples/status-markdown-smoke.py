@@ -19,7 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import (  # noqa: E402
+from loopx.status import (  # noqa: E402
     build_promotion_readiness_summary,
     collect_status,
     delivery_batch_scale_for_run,
@@ -28,16 +28,16 @@ from goal_harness.status import (  # noqa: E402
     project_asset_todo_summary,
     render_status_markdown,
 )
-from goal_harness.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
-from goal_harness.cli_commands.status import attach_agent_lane_next_actions  # noqa: E402
-from goal_harness.review_packet import build_review_packet  # noqa: E402
-from goal_harness.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
+from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from loopx.cli_commands.status import attach_agent_lane_next_actions  # noqa: E402
+from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
 
 
-OLD_PLANNED_ACTION = "先审阅 Goal Harness operator gate；同意后再发送项目 agent 命令"
-NEW_PLANNED_ACTION = "先在 Goal Harness 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run"
+OLD_PLANNED_ACTION = "先审阅 LoopX operator gate；同意后再发送项目 agent 命令"
+NEW_PLANNED_ACTION = "先在 LoopX 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run"
 APPROVED_ACTION = "把已批准的 agent_command 发给目标项目 agent；这不是写权限授权"
-APPROVED_COMMAND = "goal-harness read-only-map --goal-id planned-main-control --dry-run"
+APPROVED_COMMAND = "loopx read-only-map --goal-id planned-main-control --dry-run"
 POST_HANDOFF_ACTION = "post-handoff fixture run is visible; choose the next bounded delivery step"
 POST_HANDOFF_CLASSIFICATION = "read_only_project_map"
 REJECTED_ACTION = "保持 goal 在 gate 状态，修改 handoff 后再请求 operator 判断"
@@ -75,7 +75,7 @@ def write_planned_registry(root: Path) -> Path:
     runtime = root / "runtime"
     goal_id = "planned-main-control"
     state_file = f".codex/goals/{goal_id}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -125,7 +125,7 @@ def write_connected_delivery_registry(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{DELIVERY_GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -211,7 +211,7 @@ def write_connected_delivery_registry(root: Path) -> Path:
                         "guards": [
                             "low-conflict delivery within declared write_scope",
                         ],
-                        "next_probe": f"goal-harness quota should-run --goal-id {DELIVERY_GOAL_ID}",
+                        "next_probe": f"loopx quota should-run --goal-id {DELIVERY_GOAL_ID}",
                         "authority_sources": [],
                     }
                 ],
@@ -254,7 +254,7 @@ def write_connected_readonly_registry(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{CONNECTED_READONLY_GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -300,7 +300,7 @@ def write_connected_readonly_registry(root: Path) -> Path:
 def write_dependency_blocker_registry(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     current_state_file = f".codex/goals/{DEPENDENCY_CURRENT_GOAL_ID}/ACTIVE_GOAL_STATE.md"
     blocker_state_file = f".codex/goals/{DEPENDENCY_BLOCKER_GOAL_ID}/ACTIVE_GOAL_STATE.md"
 
@@ -710,7 +710,7 @@ def append_explicit_delivery_refresh(root: Path, registry_path: Path) -> dict:
     command = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(registry_path),
         "--runtime-root",
@@ -969,7 +969,7 @@ def assert_promotion_readiness_summary_markdown() -> None:
         "promotion_readiness_summary": {
             "available": True,
             "source": "run_history",
-            "goal_id": "goal-harness-meta",
+            "goal_id": "loopx-meta",
             "generated_at": "2026-06-01T00:00:00+00:00",
             "classification": "canary_promotion_readiness_smoke_group",
             "delivery_outcome": "primary_goal_outcome",
@@ -999,7 +999,7 @@ def assert_promotion_readiness_summary_markdown() -> None:
     assert "age_hours=25.0" in markdown, markdown
     assert "requires_readiness_run=True" in markdown, markdown
     assert "window_hours=24" in markdown, markdown
-    assert "goal=goal-harness-meta" in markdown, markdown
+    assert "goal=loopx-meta" in markdown, markdown
     assert "classification=canary_promotion_readiness_smoke_group" in markdown, markdown
     assert "artifacts=True/True" in markdown, markdown
 
@@ -1096,10 +1096,10 @@ def assert_promotion_gate_summary_markdown() -> None:
 
 
 def assert_promotion_readiness_full_scan_fallback() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-promotion-readiness-full-scan-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-promotion-readiness-full-scan-") as raw_tmp:
         root = Path(raw_tmp)
         runtime = root / "runtime"
-        runs_dir = runtime / "goals" / "goal-harness-meta" / "runs"
+        runs_dir = runtime / "goals" / "loopx-meta" / "runs"
         runs_dir.mkdir(parents=True, exist_ok=True)
         readiness_json = runs_dir / "2026-01-01T00-00-00-readiness.json"
         readiness_markdown = runs_dir / "2026-01-01T00-00-00-readiness.md"
@@ -1109,7 +1109,7 @@ def assert_promotion_readiness_full_scan_fallback() -> None:
             json.dumps(
                 {
                     "generated_at": "2026-01-01T00:00:00+00:00",
-                    "goal_id": "goal-harness-meta",
+                    "goal_id": "loopx-meta",
                     "classification": "canary_promotion_readiness_smoke_group",
                     "delivery_batch_scale": "multi_surface",
                     "delivery_outcome": "primary_goal_outcome",
@@ -1137,7 +1137,7 @@ def assert_promotion_readiness_full_scan_fallback() -> None:
 
 
 def assert_promotion_readiness_warning_in_quota_guard() -> None:
-    goal_id = "goal-harness-meta"
+    goal_id = "loopx-meta"
 
     def status_payload(readiness_summary: dict) -> dict:
         return {
@@ -1207,7 +1207,7 @@ def assert_promotion_readiness_warning_in_quota_guard() -> None:
     stale_markdown = render_quota_should_run_markdown(stale_payload)
     assert "promotion_readiness_warning: status=stale requires_readiness_run=True" in stale_markdown, stale_markdown
     assert "promotion_readiness_action: promotion readiness evidence is missing, stale, or unknown" in stale_markdown, stale_markdown
-    assert "promotion_readiness_evidence: goal=goal-harness-meta" in stale_markdown, stale_markdown
+    assert "promotion_readiness_evidence: goal=loopx-meta" in stale_markdown, stale_markdown
     assert "age_hours=25.0" in stale_markdown, stale_markdown
     assert "artifacts=True/True" in stale_markdown, stale_markdown
 
@@ -2050,7 +2050,7 @@ def main() -> int:
     assert_promotion_readiness_summary_markdown()
     assert_promotion_gate_summary_markdown()
     assert_decision_freshness_summary_markdown()
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-smoke-") as tmp:
         root = Path(tmp)
         registry_path = write_planned_registry(root)
         assert_project_local_status_excludes_runtime_orphans(registry_path)
@@ -2082,43 +2082,43 @@ def main() -> int:
             recommended_action=DEFERRED_ACTION,
         )
         deferred_payload, deferred_markdown = collect_fixture_status(root, registry_path)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-registry-override-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-registry-override-smoke-") as tmp:
         root = Path(tmp)
         registry_path = write_planned_registry(root)
         append_state_refreshed_fixture(root, generated_at="2026-01-01T00:04:00+00:00")
         set_registry_attention_override(registry_path)
         override_payload, override_markdown = collect_fixture_status(root, registry_path)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-connected-delivery-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-connected-delivery-smoke-") as tmp:
         root = Path(tmp)
         delivery_registry_path = write_connected_delivery_registry(root)
         append_connected_delivery_fixture(root, generated_at="2026-01-01T00:05:00+00:00")
         delivery_payload, delivery_markdown = collect_fixture_status(root, delivery_registry_path)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-source-registry-shadow-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-source-registry-shadow-") as tmp:
         root = Path(tmp)
         shadow_registry_path = write_connected_delivery_registry(root)
         write_global_source_registry_shadow(root, shadow_registry_path, goal_id=DELIVERY_GOAL_ID)
         append_connected_delivery_fixture(root, generated_at="2026-01-01T00:05:00+00:00")
         shadow_payload, _shadow_markdown = collect_fixture_status(root, shadow_registry_path)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-explicit-refresh-scale-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-explicit-refresh-scale-") as tmp:
         root = Path(tmp)
         explicit_registry_path = write_connected_delivery_registry(root)
         append_explicit_delivery_refresh(root, explicit_registry_path)
         explicit_payload, explicit_markdown = collect_fixture_status(root, explicit_registry_path)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-stale-latest-run-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-stale-latest-run-") as tmp:
         root = Path(tmp)
         stale_projection_registry_path = write_planned_registry(root)
         append_stale_state_projection_fixture(root)
         stale_projection_payload, stale_projection_markdown = collect_fixture_status(root, stale_projection_registry_path)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-connected-readonly-progress-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-connected-readonly-progress-") as tmp:
         root = Path(tmp)
         readonly_registry_path = write_connected_readonly_registry(root)
         append_connected_readonly_progress_fixture(root, generated_at="2026-01-01T00:05:00+00:00")
         readonly_payload, readonly_markdown = collect_fixture_status(root, readonly_registry_path)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-dependency-blockers-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-dependency-blockers-") as tmp:
         root = Path(tmp)
         dependency_registry_path = write_dependency_blocker_registry(root)
         dependency_payload, dependency_markdown = collect_fixture_status(root, dependency_registry_path)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-connected-delivery-small-streak-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-connected-delivery-small-streak-") as tmp:
         root = Path(tmp)
         delivery_registry_path = write_connected_delivery_registry(root)
         append_connected_delivery_fixture(
@@ -2132,7 +2132,7 @@ def main() -> int:
             classification="delivery_active_blocker_snapshot_test",
         )
         small_streak_payload, small_streak_markdown = collect_fixture_status(root, delivery_registry_path)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-status-connected-delivery-surface-loop-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-status-connected-delivery-surface-loop-") as tmp:
         root = Path(tmp)
         delivery_registry_path = write_connected_delivery_registry(root)
         append_connected_delivery_fixture(

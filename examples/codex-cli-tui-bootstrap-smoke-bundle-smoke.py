@@ -22,9 +22,9 @@ def add_tree(tar: tarfile.TarFile, root: Path, name: str) -> None:
         for child in sorted(path.rglob("*")):
             if ".git" in child.parts or "__pycache__" in child.parts:
                 continue
-            tar.add(child, arcname=str(Path("goal-harness-main") / child.relative_to(root)))
+            tar.add(child, arcname=str(Path("loopx-main") / child.relative_to(root)))
     else:
-        tar.add(path, arcname=str(Path("goal-harness-main") / name))
+        tar.add(path, arcname=str(Path("loopx-main") / name))
 
 
 def run(command: list[str], *, env: dict[str, str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -42,9 +42,9 @@ def main() -> None:
     install_script = REPO_ROOT / "scripts" / "install-from-github.sh"
     subprocess.run(["bash", "-n", str(install_script)], check=True)
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-tui-bundle-") as td:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-tui-bundle-") as td:
         tmp = Path(td)
-        archive = tmp / "goal-harness.tar.gz"
+        archive = tmp / "loopx.tar.gz"
         home = tmp / "home"
         fake_bin = tmp / "fake-bin"
         fresh_repo = tmp / "public-fresh-repo"
@@ -65,7 +65,7 @@ def main() -> None:
 
         with tarfile.open(archive, "w:gz") as tar:
             for name in (
-                "goal_harness",
+                "loopx",
                 "scripts",
                 "skills",
                 "docs",
@@ -81,18 +81,18 @@ def main() -> None:
             {
                 "HOME": str(home),
                 "CODEX_HOME": str(home / ".codex"),
-                "GOAL_HARNESS_BIN_DIR": str(home / ".local" / "bin"),
-                "GOAL_HARNESS_RELEASES_DIR": str(home / ".local" / "share" / "goal-harness" / "releases"),
-                "GOAL_HARNESS_SHELL_PROFILE": str(home / ".profile"),
-                "GOAL_HARNESS_ARCHIVE_URL": f"file://{archive}",
-                "GOAL_HARNESS_INSTALL_CANARY": "0",
+                "LOOPX_BIN_DIR": str(home / ".local" / "bin"),
+                "LOOPX_RELEASES_DIR": str(home / ".local" / "share" / "loopx" / "releases"),
+                "LOOPX_SHELL_PROFILE": str(home / ".profile"),
+                "LOOPX_ARCHIVE_URL": f"file://{archive}",
+                "LOOPX_INSTALL_CANARY": "0",
                 "CODEX_CALLED_MARKER": str(codex_called_marker),
                 "PATH": f"{fake_bin}:{env.get('PATH', '')}",
             }
         )
         run(["bash", str(install_script)], env=env, cwd=tmp)
 
-        installed = home / ".local" / "bin" / "goal-harness"
+        installed = home / ".local" / "bin" / "loopx"
         assert installed.exists(), installed
         run([str(installed), "doctor"], env=env, cwd=fresh_repo)
 
@@ -135,8 +135,8 @@ def main() -> None:
             "reads_session_files",
             "reads_credentials",
             "mutates_codex_session",
-            "spends_goal_harness_quota",
-            "requires_goal_harness_repo_clone",
+            "spends_loopx_quota",
+            "requires_loopx_repo_clone",
         ):
             assert boundary[key] is False, (key, boundary)
 
@@ -155,9 +155,9 @@ def main() -> None:
             env=env,
             cwd=fresh_repo,
         ).stdout
-        assert message_only.startswith("Install and connect Goal Harness for this repo"), message_only
+        assert message_only.startswith("Install and connect LoopX for this repo"), message_only
         assert not message_only.startswith("/goal "), message_only
-        assert "# Codex CLI Goal Harness Bootstrap Message" not in message_only, message_only
+        assert "# Codex CLI LoopX Bootstrap Message" not in message_only, message_only
         assert "Fresh Repo Install Repair" not in message_only, message_only
         assert "install-from-github.sh" in message_only, message_only
         assert "/goal <thin task_body>" in message_only, message_only
@@ -183,7 +183,7 @@ def main() -> None:
         assert "# Codex CLI TUI Bootstrap Smoke Bundle" in markdown, markdown
         assert "Transcript-Free Boundary" in markdown, markdown
         assert "runs_codex: `False`" in markdown, markdown
-        assert "requires_goal_harness_repo_clone: `False`" in markdown, markdown
+        assert "requires_loopx_repo_clone: `False`" in markdown, markdown
 
         assert not codex_called_marker.exists(), codex_called_marker
 

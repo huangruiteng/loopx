@@ -23,7 +23,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = ".codex/goals/authority-source-registration-goal/ACTIVE_GOAL_STATE.md"
-    registry = project / ".goal-harness" / "registry.json"
+    registry = project / ".loopx" / "registry.json"
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
         "---\n"
@@ -74,7 +74,7 @@ def run_cli(registry: Path, runtime: Path, *args: str) -> dict[str, Any]:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "--registry",
@@ -141,7 +141,7 @@ def assert_doc_contract() -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-authority-source-") as raw_tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-authority-source-") as raw_tmp:
         registry, runtime, _project = write_fixture(Path(raw_tmp))
         before = registry.read_text(encoding="utf-8")
         dry = run_cli(registry, runtime, *registration_args(dry_run=True))

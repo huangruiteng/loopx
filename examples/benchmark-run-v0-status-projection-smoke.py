@@ -15,9 +15,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.review_packet import build_review_packet  # noqa: E402
-from goal_harness.status import collect_status, compact_benchmark_run, render_status_markdown  # noqa: E402
-from goal_harness.worker_bridge import build_worker_bridge_outcome  # noqa: E402
+from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.status import collect_status, compact_benchmark_run, render_status_markdown  # noqa: E402
+from loopx.worker_bridge import build_worker_bridge_outcome  # noqa: E402
 
 
 GOAL_ID = "benchmark-projection-fixture"
@@ -95,7 +95,7 @@ def benchmark_run_event() -> dict[str, Any]:
             "paths_redacted": True,
         },
         "worker_bridge_outcome": build_worker_bridge_outcome(
-            worker_goal_harness_cli_call_total=6,
+            worker_loopx_cli_call_total=6,
             counter_trace_present=True,
             runner_return_completed=True,
             official_score_completed=True,
@@ -135,9 +135,9 @@ def benchmark_result_event() -> dict[str, Any]:
     return {
         "schema_version": "benchmark_result_v0",
         "task_id": "mini_control_plane_repair_v0",
-        "scenario_id": "with_goal_harness",
+        "scenario_id": "with_loopx",
         "worker_mode": "deterministic",
-        "harness_identity": "goal_harness",
+        "harness_identity": "loopx",
         "worker_surface": "deterministic_shim",
         "terminal_state": "success",
         "official_task_score": {"kind": "deterministic_validation", "passed": True, "value": 1.0},
@@ -174,7 +174,7 @@ def write_fixture(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     run_time = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
@@ -261,11 +261,11 @@ def assert_interrupted_worker_bridge_outcome_projection() -> None:
         {
             "schema_version": "benchmark_run_v0",
             "benchmark_id": BENCHMARK_ID,
-            "mode": "codex_goal_harness_active_worker",
+            "mode": "codex_loopx_active_worker",
             "real_run": True,
             "submit_eligible": False,
             "worker_bridge_outcome": build_worker_bridge_outcome(
-                worker_goal_harness_cli_call_total=4,
+                worker_loopx_cli_call_total=4,
                 counter_trace_present=True,
                 interrupted=True,
                 interrupt_reason="controller_interrupt_after_wall_time_limit",
@@ -279,11 +279,11 @@ def assert_interrupted_worker_bridge_outcome_projection() -> None:
     )
     assert compact is not None
     outcome = compact["worker_bridge_outcome"]
-    assert outcome["schema_version"] == "goal_harness_worker_bridge_outcome_v0", outcome
+    assert outcome["schema_version"] == "loopx_worker_bridge_outcome_v0", outcome
     assert outcome["worker_bridge_verified"] is True, outcome
     assert outcome["runner_return_status"] == "interrupted_after_worker_bridge_success", outcome
     assert outcome["official_score_status"] == "blocked_pending_runner_return", outcome
-    assert outcome["worker_goal_harness_cli_call_total"] == 4, outcome
+    assert outcome["worker_loopx_cli_call_total"] == 4, outcome
     assert outcome["counter_trace_present"] is True, outcome
     policy = outcome["wall_time_policy"]
     assert policy["interrupted"] is True, outcome
@@ -322,7 +322,7 @@ def main() -> None:
         assert health["schema_version"] == "worker_bridge_ingest_health_note_v0", health
         assert health["health_state"] == "official_score_ingested", health
         assert health["evidence_layer"] == "official_sample_score", health
-        assert health["worker_goal_harness_cli_call_total"] == 6, health
+        assert health["worker_loopx_cli_call_total"] == 6, health
         assert "leaderboard uplift" in health["must_not_claim"], health
         assert summary["validation"]["all_passed"] is True, summary
         assert summary["trials"][0]["reward"]["reward"] == 1.0, summary
@@ -332,7 +332,7 @@ def main() -> None:
         result_summary = latest["benchmark_result_summary"]
         assert result_summary["schema_version"] == "benchmark_result_v0", result_summary
         assert result_summary["task_id"] == "mini_control_plane_repair_v0", result_summary
-        assert result_summary["scenario_id"] == "with_goal_harness", result_summary
+        assert result_summary["scenario_id"] == "with_loopx", result_summary
         assert result_summary["official_task_score"]["value"] == 1.0, result_summary
         control_score = result_summary["control_plane_score"]
         assert control_score["schema_version"] == "control_plane_score_core_v0", result_summary

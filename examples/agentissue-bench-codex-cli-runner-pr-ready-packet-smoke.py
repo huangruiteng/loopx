@@ -10,8 +10,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
 README = TOPIC_DIR / "README.md"
-BENCHMARK = REPO_ROOT / "goal_harness" / "benchmark.py"
-CLI = REPO_ROOT / "goal_harness" / "cli.py"
+BENCHMARK = REPO_ROOT / "loopx" / "benchmark.py"
+CLI = REPO_ROOT / "loopx" / "cli.py"
 
 DOCS = [
     "agentissue-bench-codex-cli-runner-contract-v0.md",

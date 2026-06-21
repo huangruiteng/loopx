@@ -1,6 +1,6 @@
 # Dreaming Exploration Lane
 
-Goal Harness should eventually support a separate dreaming / exploration lane
+LoopX should eventually support a separate dreaming / exploration lane
 for long-running projects. This lane is not the same as the project agent that
 is actively shipping work. Its job is to spend low-pressure background time on
 cross-run learning, option discovery, and refactor warnings.
@@ -31,7 +31,7 @@ Recent agent-platform and research signals point in the same direction:
   reflection, learned forgetting, and privacy governance as open engineering
   problems for autonomous agents.
 
-Goal Harness should adopt the useful shape, not the hype: dreaming is a
+LoopX should adopt the useful shape, not the hype: dreaming is a
 governed background lane for consolidation and proposals, not autonomous
 permission to rewrite project truth.
 
@@ -41,7 +41,7 @@ Priority: **P1 after the operator gate and reward loop are stable**.
 
 This lane should not block v0.1 bootstrap, registry sync, status contract,
 operator dashboard, or project-local refresh. It becomes important once several
-real projects are connected and Goal Harness has enough run history for
+real projects are connected and LoopX has enough run history for
 cross-project learning to be useful.
 
 ## Role
@@ -91,14 +91,14 @@ Use this boundary:
 The question for any planning output is whether it is `authority` or
 `proposal`. Guard and freshness outputs can be authority-like control signals;
 dreaming outputs are proposals unless a later operator/controller decision
-promotes them. This keeps Goal Harness from becoming a second brittle agent
+promotes them. This keeps LoopX from becoming a second brittle agent
 while still letting it maintain the long-horizon execution track.
 
 For periodic autonomous replan, keep the ownership split explicit:
 
 | Layer | Responsibility |
 | --- | --- |
-| Goal Harness | Detect that a periodic review is due from compact run history, state freshness, quota, and boundary facts; emit the obligation, stop condition, and compact guidance vocabulary; record the later replan acknowledgement. |
+| LoopX | Detect that a periodic review is due from compact run history, state freshness, quota, and boundary facts; emit the obligation, stop condition, and compact guidance vocabulary; record the later replan acknowledgement. |
 | Agent loop | Read the obligation during preflight, route the current turn into a bounded replan segment, inject current state into the model/executor, run validated todo writes, and spend only after writeback. |
 | Model / executor | Decide semantically which work to keep, split, add, retire, or escalate to a user/controller decision; explain the tradeoff and choose the next bounded slice. |
 
@@ -156,7 +156,7 @@ Goal
 This keeps project-agent work clean while still giving the user a central place
 to review broader learning and refactor requests.
 
-`goal-harness status` should expose the proposal plus a compact lane badge:
+`loopx status` should expose the proposal plus a compact lane badge:
 
 ```json
 {
@@ -195,7 +195,7 @@ The first useful slice is documentation and status schema, not an autonomous
 agent:
 
 1. Add public vocabulary for dreaming classifications and proposal fields.
-2. Let `goal-harness status` surface dreaming proposals as operator gates.
+2. Let `loopx status` surface dreaming proposals as operator gates.
 3. Add a local-only command or script that reads recent run history and emits a
    dry-run proposal without writing project files.
 4. Only after real proposals prove useful, add scheduled heartbeats or
@@ -204,7 +204,7 @@ agent:
 The local-only entry point is:
 
 ```bash
-goal-harness dreaming dry-run --goal-id <goal-id> --limit 20
+loopx dreaming dry-run --goal-id <goal-id> --limit 20
 ```
 
 This command reads compact run history through the selected registry/runtime
@@ -215,7 +215,7 @@ into ordinary delivery work.
 
 ## Server-Managed Planning Semantics
 
-A future Goal Harness server may schedule dreaming/planning work, but the
+A future LoopX server may schedule dreaming/planning work, but the
 server-owned lane keeps the same authority boundary as the CLI dry run:
 
 ```json
@@ -248,7 +248,7 @@ product taste while preventing it from becoming a second hidden project agent.
 
 Acceptance criterion: a project can receive a dreaming proposal without the
 project agent being interrupted, and the user can approve, reject, or defer it
-from Goal Harness.
+from LoopX.
 
 ## References
 

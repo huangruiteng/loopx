@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.project_prompt import build_codex_cli_exec_handoff  # noqa: E402
+from loopx.project_prompt import build_codex_cli_exec_handoff  # noqa: E402
 
 
 PROJECT = Path("/tmp/public-codex-cli-project")
@@ -23,7 +23,7 @@ AGENT_ID = "codex-side-bypass"
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -52,7 +52,7 @@ def assert_handoff_contract(payload: dict[str, object]) -> None:
     assert boundary["reads_credentials"] is False, payload
     assert boundary["reads_session_files"] is False, payload
     assert boundary["mutates_codex_session"] is False, payload
-    assert boundary["spends_goal_harness_quota"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
     assert boundary["headless_execution_disabled"] is True, payload
     assert boundary["provides_executable_headless_command"] is False, payload
 
@@ -62,7 +62,7 @@ def main() -> int:
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         codex_bin="codex",
     )
     assert_handoff_contract(payload)
@@ -94,7 +94,7 @@ def main() -> int:
     assert "# Codex CLI Exec Handoff Disabled" in cli_markdown, cli_markdown
     assert "Headless `codex exec` handoff is disabled" in cli_markdown, cli_markdown
     assert "codex-cli-bootstrap-message" in cli_markdown, cli_markdown
-    assert "cat <<'GOAL_HARNESS_CODEX_PROMPT' | codex exec" not in cli_markdown, cli_markdown
+    assert "cat <<'LOOPX_CODEX_PROMPT' | codex exec" not in cli_markdown, cli_markdown
 
     print("codex-cli-exec-handoff-smoke ok")
     return 0

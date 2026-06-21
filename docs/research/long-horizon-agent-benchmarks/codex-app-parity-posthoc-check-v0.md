@@ -1,7 +1,7 @@
 # Codex App Parity Posthoc Check V0
 
 This note defines a lightweight posthoc check for benchmark treatment rows that
-claim to approximate the Codex App plus Goal Harness product path.
+claim to approximate the Codex App plus LoopX product path.
 
 The check reads only compact `benchmark_run_v0` JSON. It must not read raw task
 text, raw logs, raw trajectories, verifier output, credentials, local private
@@ -18,7 +18,7 @@ The check answers:
 - Was a canonical case goal state visible, using
   `/app/.codex/goals/<case-goal-id>/ACTIVE_GOAL_STATE.md`?
 - Was that state initialized before the in-case agent started?
-- Is there compact evidence of Goal Harness CLI calls such as `status`,
+- Is there compact evidence of LoopX CLI calls such as `status`,
   `quota_should_run`, `todo_list`, `history`, and `check`?
 - Is there a public-safe Codex CLI trajectory summary or equivalent compact
   controller trace?
@@ -28,7 +28,7 @@ The check answers:
 ## CLI
 
 ```bash
-goal-harness benchmark parity-check \
+loopx benchmark parity-check \
   --benchmark-run-json <compact-benchmark-run-v0.json>
 ```
 

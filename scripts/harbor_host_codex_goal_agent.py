@@ -34,28 +34,28 @@ from codex_app_server_goal_driver import (
     start_codex_app_server_goal_followup_turn,
     start_codex_app_server_goal_turn,
 )
-from goal_harness.benchmark_case_state import (
+from loopx.benchmark_case_state import (
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
-    BENCHMARK_CASE_GOAL_HARNESS_AGENT_ID,
-    BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH,
-    BENCHMARK_CASE_GOAL_HARNESS_PRODUCT_PATH_PRIMARY_ROUTE,
-    BENCHMARK_CASE_GOAL_HARNESS_SCHEDULER_ROUTE,
-    BENCHMARK_CASE_GOAL_HARNESS_TODO_ID,
-    benchmark_case_goal_harness_event_log_path,
-    benchmark_case_goal_harness_install_payload,
+    BENCHMARK_CASE_LOOPX_AGENT_ID,
+    BENCHMARK_CASE_LOOPX_CLI_PATH,
+    BENCHMARK_CASE_LOOPX_PRODUCT_PATH_PRIMARY_ROUTE,
+    BENCHMARK_CASE_LOOPX_SCHEDULER_ROUTE,
+    BENCHMARK_CASE_LOOPX_TODO_ID,
+    benchmark_case_loopx_event_log_path,
+    benchmark_case_loopx_install_payload,
     benchmark_case_lifecycle_contract,
     render_benchmark_case_lifecycle_contract_lines,
 )
-from goal_harness.benchmark_core.loop_protocol import (
+from loopx.benchmark_core.loop_protocol import (
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
-    GOAL_HARNESS_PACKET_ONLY_OBSERVATION_ROUTE,
-    GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
+    LOOPX_PACKET_ONLY_OBSERVATION_ROUTE,
+    LOOPX_PROMPT_POLLING_TEST_ROUTE,
     MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID,
     PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
     build_benchmark_loop_contract,
     build_benchmark_loop_controller_trace,
     build_blind_loop_continuation_prompt,
-    classify_goal_harness_treatment_claim,
+    classify_loopx_treatment_claim,
     render_loop_contract_packet_lines,
 )
 
@@ -94,7 +94,7 @@ import sys
 import time
 import uuid
 
-REQUEST_DIR = pathlib.Path("__GOAL_HARNESS_REQUEST_DIR__")
+REQUEST_DIR = pathlib.Path("__LOOPX_REQUEST_DIR__")
 
 parser = argparse.ArgumentParser(description="Forward a command into Harbor environment.exec")
 parser.add_argument("--cwd", default="")
@@ -192,25 +192,25 @@ def _compact_json_keys(text: str) -> dict[str, Any]:
     }
 
 
-def _case_goal_harness_action_from_command(
+def _case_loopx_action_from_command(
     command: str,
     *,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     """Classify a task-environment command without recording the raw command."""
 
-    cli = str(payload.get("case_cli_path") or BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH)
+    cli = str(payload.get("case_cli_path") or BENCHMARK_CASE_LOOPX_CLI_PATH)
     try:
         parts = shlex.split(command)
     except ValueError:
         return {
-            "case_goal_harness_cli_call": False,
+            "case_loopx_cli_call": False,
             "parse_error": True,
             "raw_command_recorded": False,
         }
     if not parts or parts[0] != cli:
         return {
-            "case_goal_harness_cli_call": False,
+            "case_loopx_cli_call": False,
             "raw_command_recorded": False,
         }
     args = parts[1:]
@@ -238,7 +238,7 @@ def _case_goal_harness_action_from_command(
     elif command_name == "refresh-state":
         action = "refresh_state"
     return {
-        "case_goal_harness_cli_call": True,
+        "case_loopx_cli_call": True,
         "action": action,
         "command_group": command_name or "unknown",
         "subcommand": subcommand,
@@ -248,8 +248,8 @@ def _case_goal_harness_action_from_command(
 
 def _new_prompt_driven_case_trace(payload: dict[str, Any]) -> dict[str, Any]:
     return {
-        "schema_version": "harbor_prompt_driven_goal_harness_trace_v0",
-        "route": BENCHMARK_CASE_GOAL_HARNESS_PRODUCT_PATH_PRIMARY_ROUTE,
+        "schema_version": "harbor_prompt_driven_loopx_trace_v0",
+        "route": BENCHMARK_CASE_LOOPX_PRODUCT_PATH_PRIMARY_ROUTE,
         "case_goal_id": payload.get("benchmark_case_goal_id") or "",
         "case_agent_id": payload.get("case_agent_id") or "",
         "case_todo_id": payload.get("case_todo_id") or "",
@@ -285,7 +285,7 @@ def _summarize_prompt_driven_case_trace(
             if key in command
         }
         for command in commands
-        if command.get("case_goal_harness_cli_call")
+        if command.get("case_loopx_cli_call")
     ]
     counts: dict[str, int] = {}
     for command in public_commands:
@@ -316,15 +316,15 @@ def _case_cli_command(
     payload: dict[str, Any],
     *args: str,
 ) -> str:
-    cli = str(payload.get("case_cli_path") or BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH)
+    cli = str(payload.get("case_cli_path") or BENCHMARK_CASE_LOOPX_CLI_PATH)
     return " ".join([shlex.quote(cli), "--format", "json", *map(shlex.quote, args)])
 
 
 def _new_case_scheduler_trace(payload: dict[str, Any]) -> dict[str, Any]:
     return {
-        "schema_version": "harbor_case_goal_harness_cli_scheduler_trace_v0",
+        "schema_version": "harbor_case_loopx_cli_scheduler_trace_v0",
         "enabled": True,
-        "route": BENCHMARK_CASE_GOAL_HARNESS_SCHEDULER_ROUTE,
+        "route": BENCHMARK_CASE_LOOPX_SCHEDULER_ROUTE,
         "case_goal_id": payload.get("benchmark_case_goal_id") or "",
         "case_agent_id": payload.get("case_agent_id") or "",
         "case_todo_id": payload.get("case_todo_id") or "",
@@ -342,7 +342,7 @@ def _new_case_scheduler_trace(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _run_case_goal_harness_cli(
+async def _run_case_loopx_cli(
     environment: BaseEnvironment,
     *,
     payload: dict[str, Any],
@@ -419,16 +419,16 @@ def build_host_goal_prompt(
     bridge_command: Path,
     marker_path: Path,
     task_workdir: str = "/app",
-    goal_harness_access_packet: str = "",
+    loopx_access_packet: str = "",
 ) -> str:
     bridge = shlex.quote(str(bridge_command))
     marker_cmd = f"touch {shlex.quote(str(marker_path))}"
     task_workdir_arg = shlex.quote(task_workdir)
-    access_packet = goal_harness_access_packet.strip()
+    access_packet = loopx_access_packet.strip()
     access_packet_section = (
-        "\n\nGoal Harness treatment access packet:\n"
+        "\n\nLoopX treatment access packet:\n"
         "After the bridge check and before substantive work, use the "
-        "case-local Goal Harness CLI listed below to run quota should-run and "
+        "case-local LoopX CLI listed below to run quota should-run and "
         "claim the case todo through the same task-environment bridge. These "
         "calls are part of the treatment proof, so do not replace them with a "
         "mental note or a host-side shortcut. Keep case-local state isolated "
@@ -458,26 +458,26 @@ harness can observe completion:
 """.strip()
 
 
-def build_goal_harness_access_packet(
+def build_loopx_access_packet(
     *,
     mode: str,
     packet_mode: str = "compact",
-    goal_id: str = "goal-harness-meta",
+    goal_id: str = "loopx-meta",
     cli_bridge_enabled: str | bool = False,
-    command_prefix: str = "goal-harness",
+    command_prefix: str = "loopx",
     registry_arg: str = "",
     runtime_root_arg: str = "",
     scan_path: str = "",
-    classification: str = "swe_marathon_codex_goal_harness_treatment",
+    classification: str = "swe_marathon_codex_loopx_treatment",
     experiment_protocol: str = PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
     max_rounds: int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     benchmark_id: str = "swe-marathon",
     case_id: str = "current-case",
-    arm_id: str = "codex_goal_harness_treatment",
+    arm_id: str = "codex_loopx_treatment",
 ) -> str:
-    """Build a public-safe Goal Harness access packet for Harbor/SWE tasks."""
+    """Build a public-safe LoopX access packet for Harbor/SWE tasks."""
 
-    if mode != "codex_goal_harness" or packet_mode == "none":
+    if mode != "codex_loopx" or packet_mode == "none":
         return ""
 
     cli_enabled = _coerce_bool(cli_bridge_enabled)
@@ -490,16 +490,16 @@ def build_goal_harness_access_packet(
     goal_id_arg = shlex.quote(goal_id)
     scan_path_arg = shlex.quote(scan_path) if scan_path else "<public-scan-path>"
     route = (
-        GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE
+        LOOPX_PROMPT_POLLING_TEST_ROUTE
         if experiment_protocol == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
-        else GOAL_HARNESS_PACKET_ONLY_OBSERVATION_ROUTE
+        else LOOPX_PACKET_ONLY_OBSERVATION_ROUTE
     )
     loop_contract = build_benchmark_loop_contract(
         route=route,
         max_rounds=max_rounds,
         protocol_id=experiment_protocol,
     )
-    claim = classify_goal_harness_treatment_claim(
+    claim = classify_loopx_treatment_claim(
         {"benchmark_loop_contract": loop_contract}
     )
     case_lifecycle = benchmark_case_lifecycle_contract(
@@ -509,59 +509,59 @@ def build_goal_harness_access_packet(
         max_rounds=max_rounds,
     )
     case_goal_id = str(case_lifecycle["benchmark_case_goal_id"])
-    case_event_log_path = benchmark_case_goal_harness_event_log_path(case_goal_id)
+    case_event_log_path = benchmark_case_loopx_event_log_path(case_goal_id)
 
     lines = [
-        "Goal Harness Access Packet V0",
+        "LoopX Access Packet V0",
         "benchmark_family: harbor",
         f"mode: {mode}",
         f"packet_mode: {packet_mode}",
         f"goal_id: {goal_id}",
         f"classification: {classification}",
-        f"goal_harness_cli_bridge_available: {str(cli_enabled).lower()}",
+        f"loopx_cli_bridge_available: {str(cli_enabled).lower()}",
         "runner_side_official_verifier_remains_authoritative: true",
         "do_not_modify_tests: true",
         "do_not_upload_or_submit_to_leaderboard: true",
         "do_not_record_raw_task_text_logs_trajectories_or_credentials: true",
-        "use_goal_harness_for_planning_checkpoints_and_boundary_awareness_only: false",
+        "use_loopx_for_planning_checkpoints_and_boundary_awareness_only: false",
         "task_environment_commands_still_must_use_harbor_env_exec_bridge: true",
-        f"goal_harness_product_path_primary_route: {BENCHMARK_CASE_GOAL_HARNESS_PRODUCT_PATH_PRIMARY_ROUTE}",
-        "goal_harness_prompt_driven_loop_required: true",
-        "goal_harness_scheduler_route_supported_for_smoke_or_fallback: true",
-        "goal_harness_case_local_cli_installed_before_agent: true",
-        f"goal_harness_case_cli_path: {BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH}",
-        f"goal_harness_case_rollout_event_log_path: {case_event_log_path}",
-        f"goal_harness_case_agent_id: {BENCHMARK_CASE_GOAL_HARNESS_AGENT_ID}",
-        f"goal_harness_case_todo_id: {BENCHMARK_CASE_GOAL_HARNESS_TODO_ID}",
-        f"goal_harness_treatment_evidence_tier: {claim['goal_harness_treatment_evidence_tier']}",
-        f"strict_goal_harness_treatment_claim_allowed: {str(claim['strict_goal_harness_treatment_claim_allowed']).lower()}",
-        f"goal_harness_treatment_claim_blocker: {claim['goal_harness_treatment_claim_blocker']}",
+        f"loopx_product_path_primary_route: {BENCHMARK_CASE_LOOPX_PRODUCT_PATH_PRIMARY_ROUTE}",
+        "loopx_prompt_driven_loop_required: true",
+        "loopx_scheduler_route_supported_for_smoke_or_fallback: true",
+        "loopx_case_local_cli_installed_before_agent: true",
+        f"loopx_case_cli_path: {BENCHMARK_CASE_LOOPX_CLI_PATH}",
+        f"loopx_case_rollout_event_log_path: {case_event_log_path}",
+        f"loopx_case_agent_id: {BENCHMARK_CASE_LOOPX_AGENT_ID}",
+        f"loopx_case_todo_id: {BENCHMARK_CASE_LOOPX_TODO_ID}",
+        f"loopx_treatment_evidence_tier: {claim['loopx_treatment_evidence_tier']}",
+        f"strict_loopx_treatment_claim_allowed: {str(claim['strict_loopx_treatment_claim_allowed']).lower()}",
+        f"loopx_treatment_claim_blocker: {claim['loopx_treatment_claim_blocker']}",
     ]
     lines.extend(render_loop_contract_packet_lines(loop_contract))
     lines.extend(render_benchmark_case_lifecycle_contract_lines(case_lifecycle))
     if cli_enabled:
         lines.extend(
             [
-                "primary_goal_harness_cli_surface: task_environment_case_local_cli",
-                f"goal_harness_case_command_quota_should_run: {BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH} --format json quota should-run --goal-id {shlex.quote(case_goal_id)} --agent-id {BENCHMARK_CASE_GOAL_HARNESS_AGENT_ID}",
-                f"goal_harness_case_command_claim_todo: {BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH} --format json todo claim --goal-id {shlex.quote(case_goal_id)} --todo-id {BENCHMARK_CASE_GOAL_HARNESS_TODO_ID} --claimed-by {BENCHMARK_CASE_GOAL_HARNESS_AGENT_ID}",
-                f"goal_harness_case_command_status: {BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH} --format json status --goal-id {shlex.quote(case_goal_id)} --limit 5",
-                f"goal_harness_case_command_refresh_state: {BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH} --format json refresh-state --goal-id {shlex.quote(case_goal_id)}",
-                f"goal_harness_case_command_spend_quota: {BENCHMARK_CASE_GOAL_HARNESS_CLI_PATH} --format json quota spend-slot --goal-id {shlex.quote(case_goal_id)}",
-                "before_planning_call_goal_harness_case_quota_should_run_once: true",
-                "before_planning_claim_goal_harness_case_todo_once: true",
-                "before_final_marker_review_goal_harness_case_status_or_history_once: true",
-                f"goal_harness_global_command_check_optional_context: {base} check --scan-path {scan_path_arg}",
-                f"goal_harness_global_command_status_optional_context: {base} status --limit 5",
-                f"goal_harness_global_command_history_optional_context: {base} history --goal-id {goal_id_arg} --limit 5",
-                "goal_harness_case_cli_calls_are_part_of_the_treatment_flow: true",
+                "primary_loopx_cli_surface: task_environment_case_local_cli",
+                f"loopx_case_command_quota_should_run: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json quota should-run --goal-id {shlex.quote(case_goal_id)} --agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID}",
+                f"loopx_case_command_claim_todo: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json todo claim --goal-id {shlex.quote(case_goal_id)} --todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} --claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID}",
+                f"loopx_case_command_status: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json status --goal-id {shlex.quote(case_goal_id)} --limit 5",
+                f"loopx_case_command_refresh_state: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json refresh-state --goal-id {shlex.quote(case_goal_id)}",
+                f"loopx_case_command_spend_quota: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json quota spend-slot --goal-id {shlex.quote(case_goal_id)}",
+                "before_planning_call_loopx_case_quota_should_run_once: true",
+                "before_planning_claim_loopx_case_todo_once: true",
+                "before_final_marker_review_loopx_case_status_or_history_once: true",
+                f"loopx_global_command_check_optional_context: {base} check --scan-path {scan_path_arg}",
+                f"loopx_global_command_status_optional_context: {base} status --limit 5",
+                f"loopx_global_command_history_optional_context: {base} history --goal-id {goal_id_arg} --limit 5",
+                "loopx_case_cli_calls_are_part_of_the_treatment_flow: true",
             ]
         )
     else:
         lines.extend(
             [
-                "goal_harness_interface_surface: prompt_packet_only",
-                "worker_receives_no_goal_harness_cli_templates: true",
+                "loopx_interface_surface: prompt_packet_only",
+                "worker_receives_no_loopx_cli_templates: true",
             ]
         )
     return "\n".join(lines)
@@ -578,7 +578,7 @@ def build_case_goal_state_init_payload(
     """Build the public-safe case-local GH install/state/todo payload."""
 
     return dict(
-        benchmark_case_goal_harness_install_payload(
+        benchmark_case_loopx_install_payload(
             benchmark_id=benchmark_id,
             case_id=case_id,
             arm_id=arm_id,
@@ -604,27 +604,27 @@ def _case_goal_state_init_compact(
             payload.get("schema_version") or BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
         ),
         "case_goal_state_path": payload.get("case_state_path") or "",
-        "goal_harness_install_flow_required": bool(
+        "loopx_install_flow_required": bool(
             payload.get("install_flow_required") if required else False
         ),
-        "goal_harness_install_flow_status": status if required else "not_required",
-        "goal_harness_case_cli_installed_before_agent": bool(
+        "loopx_install_flow_status": status if required else "not_required",
+        "loopx_case_cli_installed_before_agent": bool(
             payload.get("case_cli_path") and initialized_before_agent
         ),
-        "goal_harness_case_cli_path": payload.get("case_cli_path") or "",
-        "goal_harness_case_rollout_event_log_path": (
+        "loopx_case_cli_path": payload.get("case_cli_path") or "",
+        "loopx_case_rollout_event_log_path": (
             payload.get("case_rollout_event_log_path") or ""
         ),
-        "goal_harness_case_agent_id": payload.get("case_agent_id") or "",
-        "goal_harness_case_todo_id": payload.get("case_todo_id") or "",
-        "goal_harness_case_todo_seeded": bool(payload.get("case_todo_seeded")),
-        "goal_harness_product_path_primary_route": (
+        "loopx_case_agent_id": payload.get("case_agent_id") or "",
+        "loopx_case_todo_id": payload.get("case_todo_id") or "",
+        "loopx_case_todo_seeded": bool(payload.get("case_todo_seeded")),
+        "loopx_product_path_primary_route": (
             payload.get("product_path_primary_route") or ""
         ),
-        "goal_harness_prompt_driven_route_required": bool(
+        "loopx_prompt_driven_route_required": bool(
             payload.get("prompt_driven_route_required")
         ),
-        "goal_harness_scheduler_route_supported": bool(
+        "loopx_scheduler_route_supported": bool(
             payload.get("scheduler_route_supported")
         ),
         "case_goal_state_raw_output_recorded": False,
@@ -647,24 +647,24 @@ class HarborHostCodexGoalAgent(BaseAgent):
         reasoning_effort: str | None = "high",
         app_server_wait_for_completion: str | bool = False,
         app_server_response_timeout_sec: str | int | float = 30,
-        goal_harness_mode: str = "codex_goal_mode_baseline",
-        goal_harness_goal_id: str = "goal-harness-meta",
-        goal_harness_access_packet_mode: str = "none",
-        goal_harness_cli_bridge_enabled: str | bool = False,
-        goal_harness_command_prefix: str = "goal-harness",
-        goal_harness_registry_arg: str = "",
-        goal_harness_runtime_root_arg: str = "",
-        goal_harness_scan_path: str = "",
-        goal_harness_classification: str = (
-            "swe_marathon_codex_goal_harness_treatment"
+        loopx_mode: str = "codex_goal_mode_baseline",
+        loopx_goal_id: str = "loopx-meta",
+        loopx_access_packet_mode: str = "none",
+        loopx_cli_bridge_enabled: str | bool = False,
+        loopx_command_prefix: str = "loopx",
+        loopx_registry_arg: str = "",
+        loopx_runtime_root_arg: str = "",
+        loopx_scan_path: str = "",
+        loopx_classification: str = (
+            "swe_marathon_codex_loopx_treatment"
         ),
-        goal_harness_experiment_protocol: str = PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
-        goal_harness_max_rounds: str | int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
-        goal_harness_prompt_polling_rounds: str | int = "auto",
-        goal_harness_prompt_polling_round_timeout_sec: str | int | float = "auto",
-        goal_harness_benchmark_id: str = "swe-marathon",
-        goal_harness_case_id: str = "current-case",
-        goal_harness_arm_id: str = "codex_goal_harness_treatment",
+        loopx_experiment_protocol: str = PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
+        loopx_max_rounds: str | int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
+        loopx_prompt_polling_rounds: str | int = "auto",
+        loopx_prompt_polling_round_timeout_sec: str | int | float = "auto",
+        loopx_benchmark_id: str = "swe-marathon",
+        loopx_case_id: str = "current-case",
+        loopx_arm_id: str = "codex_loopx_treatment",
         startup_delay_sec: str | int | float = 5,
         poll_interval_sec: str | int | float = 5,
         **kwargs: Any,
@@ -677,49 +677,49 @@ class HarborHostCodexGoalAgent(BaseAgent):
         self.reasoning_effort = reasoning_effort
         self.app_server_wait_for_completion = _coerce_bool(app_server_wait_for_completion)
         self.app_server_response_timeout_sec = float(app_server_response_timeout_sec)
-        self.goal_harness_mode = goal_harness_mode
-        self.goal_harness_goal_id = goal_harness_goal_id
-        self.goal_harness_access_packet_mode = goal_harness_access_packet_mode
-        self.goal_harness_cli_bridge_enabled = _coerce_bool(
-            goal_harness_cli_bridge_enabled
+        self.loopx_mode = loopx_mode
+        self.loopx_goal_id = loopx_goal_id
+        self.loopx_access_packet_mode = loopx_access_packet_mode
+        self.loopx_cli_bridge_enabled = _coerce_bool(
+            loopx_cli_bridge_enabled
         )
-        self.goal_harness_command_prefix = goal_harness_command_prefix
-        self.goal_harness_registry_arg = goal_harness_registry_arg
-        self.goal_harness_runtime_root_arg = goal_harness_runtime_root_arg
-        self.goal_harness_scan_path = goal_harness_scan_path
-        self.goal_harness_classification = goal_harness_classification
-        self.goal_harness_experiment_protocol = goal_harness_experiment_protocol
-        self.goal_harness_max_rounds = int(goal_harness_max_rounds)
-        self.goal_harness_benchmark_id = goal_harness_benchmark_id
-        self.goal_harness_case_id = goal_harness_case_id
-        self.goal_harness_arm_id = goal_harness_arm_id
-        if str(goal_harness_prompt_polling_rounds).strip().lower() == "auto":
-            self.goal_harness_prompt_polling_rounds = (
-                self.goal_harness_max_rounds
-                if goal_harness_experiment_protocol
+        self.loopx_command_prefix = loopx_command_prefix
+        self.loopx_registry_arg = loopx_registry_arg
+        self.loopx_runtime_root_arg = loopx_runtime_root_arg
+        self.loopx_scan_path = loopx_scan_path
+        self.loopx_classification = loopx_classification
+        self.loopx_experiment_protocol = loopx_experiment_protocol
+        self.loopx_max_rounds = int(loopx_max_rounds)
+        self.loopx_benchmark_id = loopx_benchmark_id
+        self.loopx_case_id = loopx_case_id
+        self.loopx_arm_id = loopx_arm_id
+        if str(loopx_prompt_polling_rounds).strip().lower() == "auto":
+            self.loopx_prompt_polling_rounds = (
+                self.loopx_max_rounds
+                if loopx_experiment_protocol
                 == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
                 else 1
             )
         else:
-            self.goal_harness_prompt_polling_rounds = max(
+            self.loopx_prompt_polling_rounds = max(
                 1,
-                int(goal_harness_prompt_polling_rounds),
+                int(loopx_prompt_polling_rounds),
             )
-        if str(goal_harness_prompt_polling_round_timeout_sec).strip().lower() == "auto":
-            self.goal_harness_prompt_polling_round_timeout_sec = max(
+        if str(loopx_prompt_polling_round_timeout_sec).strip().lower() == "auto":
+            self.loopx_prompt_polling_round_timeout_sec = max(
                 30.0,
                 self.goal_timeout_sec,
             )
         else:
-            self.goal_harness_prompt_polling_round_timeout_sec = max(
+            self.loopx_prompt_polling_round_timeout_sec = max(
                 30.0,
-                float(goal_harness_prompt_polling_round_timeout_sec),
+                float(loopx_prompt_polling_round_timeout_sec),
             )
         self.startup_delay_sec = float(startup_delay_sec)
         self.poll_interval_sec = float(poll_interval_sec)
         self._served_request_count = 0
         self._case_state_init_payload: dict[str, Any] = {}
-        self._prompt_driven_goal_harness_commands: list[dict[str, Any]] = []
+        self._prompt_driven_loopx_commands: list[dict[str, Any]] = []
 
     def version(self) -> str:
         return "0.5.0"
@@ -743,7 +743,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
     def _write_bridge_script(path: Path, request_dir: Path) -> None:
         path.write_text(
             BRIDGE_SCRIPT_TEMPLATE.replace(
-                "__GOAL_HARNESS_REQUEST_DIR__",
+                "__LOOPX_REQUEST_DIR__",
                 str(request_dir),
             ),
             encoding="utf-8",
@@ -772,11 +772,11 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     cwd=cwd,
                     timeout_sec=timeout_sec,
                 )
-                case_command = _case_goal_harness_action_from_command(
+                case_command = _case_loopx_action_from_command(
                     str(payload["command"]),
                     payload=self._case_state_init_payload,
                 )
-                if case_command.get("case_goal_harness_cli_call"):
+                if case_command.get("case_loopx_cli_call"):
                     case_command.update(
                         {
                             "return_code": int(result.return_code or 0),
@@ -788,7 +788,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                             "raw_output_recorded": False,
                         }
                     )
-                    self._prompt_driven_goal_harness_commands.append(case_command)
+                    self._prompt_driven_loopx_commands.append(case_command)
                 response.write_text(
                     json.dumps(
                         {
@@ -830,7 +830,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
         request_dir.mkdir(parents=True, exist_ok=True)
         bin_dir.mkdir(parents=True, exist_ok=True)
         self._case_state_init_payload = {}
-        self._prompt_driven_goal_harness_commands = []
+        self._prompt_driven_loopx_commands = []
 
         bridge = bin_dir / "harbor-env-exec"
         marker = work_dir / "done.marker"
@@ -839,21 +839,21 @@ class HarborHostCodexGoalAgent(BaseAgent):
         tmux_name = f"gh_harbor_goal_{run_id}"
         self._write_bridge_script(bridge, request_dir)
 
-        goal_harness_access_packet = build_goal_harness_access_packet(
-            mode=self.goal_harness_mode,
-            packet_mode=self.goal_harness_access_packet_mode,
-            goal_id=self.goal_harness_goal_id,
-            cli_bridge_enabled=self.goal_harness_cli_bridge_enabled,
-            command_prefix=self.goal_harness_command_prefix,
-            registry_arg=self.goal_harness_registry_arg,
-            runtime_root_arg=self.goal_harness_runtime_root_arg,
-            scan_path=self.goal_harness_scan_path,
-            classification=self.goal_harness_classification,
-            experiment_protocol=self.goal_harness_experiment_protocol,
-            max_rounds=self.goal_harness_max_rounds,
-            benchmark_id=self.goal_harness_benchmark_id,
-            case_id=self.goal_harness_case_id,
-            arm_id=self.goal_harness_arm_id,
+        loopx_access_packet = build_loopx_access_packet(
+            mode=self.loopx_mode,
+            packet_mode=self.loopx_access_packet_mode,
+            goal_id=self.loopx_goal_id,
+            cli_bridge_enabled=self.loopx_cli_bridge_enabled,
+            command_prefix=self.loopx_command_prefix,
+            registry_arg=self.loopx_registry_arg,
+            runtime_root_arg=self.loopx_runtime_root_arg,
+            scan_path=self.loopx_scan_path,
+            classification=self.loopx_classification,
+            experiment_protocol=self.loopx_experiment_protocol,
+            max_rounds=self.loopx_max_rounds,
+            benchmark_id=self.loopx_benchmark_id,
+            case_id=self.loopx_case_id,
+            arm_id=self.loopx_arm_id,
         )
         case_state_init_payload: dict[str, Any] = {}
         case_state_init_compact = _case_goal_state_init_compact(
@@ -864,30 +864,30 @@ class HarborHostCodexGoalAgent(BaseAgent):
         case_scheduler_trace: dict[str, Any] = {}
         loop_contract: dict[str, Any] = {}
         treatment_claim: dict[str, Any] = {}
-        if goal_harness_access_packet:
+        if loopx_access_packet:
             case_lifecycle_contract = benchmark_case_lifecycle_contract(
-                benchmark_id=self.goal_harness_benchmark_id,
-                case_id=self.goal_harness_case_id,
-                arm_id=self.goal_harness_arm_id,
-                max_rounds=self.goal_harness_max_rounds,
+                benchmark_id=self.loopx_benchmark_id,
+                case_id=self.loopx_case_id,
+                arm_id=self.loopx_arm_id,
+                max_rounds=self.loopx_max_rounds,
             )
             loop_route = (
-                GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE
-                if self.goal_harness_experiment_protocol
+                LOOPX_PROMPT_POLLING_TEST_ROUTE
+                if self.loopx_experiment_protocol
                 == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
-                else GOAL_HARNESS_PACKET_ONLY_OBSERVATION_ROUTE
+                else LOOPX_PACKET_ONLY_OBSERVATION_ROUTE
             )
             loop_contract = build_benchmark_loop_contract(
                 route=loop_route,
-                max_rounds=self.goal_harness_max_rounds,
-                protocol_id=self.goal_harness_experiment_protocol,
+                max_rounds=self.loopx_max_rounds,
+                protocol_id=self.loopx_experiment_protocol,
             )
             case_state_init_payload = build_case_goal_state_init_payload(
-                benchmark_id=self.goal_harness_benchmark_id,
-                case_id=self.goal_harness_case_id,
-                arm_id=self.goal_harness_arm_id,
+                benchmark_id=self.loopx_benchmark_id,
+                case_id=self.loopx_case_id,
+                arm_id=self.loopx_arm_id,
                 route=loop_route,
-                max_rounds=self.goal_harness_max_rounds,
+                max_rounds=self.loopx_max_rounds,
             )
             self._case_state_init_payload = dict(case_state_init_payload)
             init_result = await environment.exec(
@@ -912,8 +912,8 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     "ok": False,
                     "first_blocker": "harbor_case_goal_state_init_failed",
                     "raw_output_recorded": False,
-                    "goal_harness_mode": self.goal_harness_mode,
-                    "goal_harness_access_packet_injected": True,
+                    "loopx_mode": self.loopx_mode,
+                    "loopx_access_packet_injected": True,
                     "benchmark_loop_contract": loop_contract,
                     "benchmark_case_lifecycle_contract": case_lifecycle_contract,
                     **case_state_init_compact,
@@ -923,17 +923,17 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     encoding="utf-8",
                 )
                 context.metadata = {
-                    "goal_harness_agent": self.name(),
+                    "loopx_agent": self.name(),
                     "completion_marker_observed": False,
                     "first_blocker": "harbor_case_goal_state_init_failed",
-                    "goal_harness_mode": self.goal_harness_mode,
-                    "goal_harness_access_packet_injected": True,
+                    "loopx_mode": self.loopx_mode,
+                    "loopx_access_packet_injected": True,
                     "benchmark_loop_contract": loop_contract,
                     "benchmark_case_lifecycle_contract": case_lifecycle_contract,
                     **case_state_init_compact,
                 }
                 return
-            if self.goal_harness_cli_bridge_enabled:
+            if self.loopx_cli_bridge_enabled:
                 case_scheduler_trace = _new_case_scheduler_trace(
                     case_state_init_payload
                 )
@@ -974,7 +974,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 pre_agent_ok = True
                 for action, args in pre_agent_specs:
                     pre_agent_ok = (
-                        await _run_case_goal_harness_cli(
+                        await _run_case_loopx_cli(
                             environment,
                             payload=case_state_init_payload,
                             trace=case_scheduler_trace,
@@ -991,7 +991,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     cwd=self.task_workdir,
                 )
                 case_scheduler_trace["pre_agent_lifecycle_ok"] = pre_agent_ok
-                (work_dir / "goal_harness_case_rollout_trace.public.json").write_text(
+                (work_dir / "loopx_case_rollout_trace.public.json").write_text(
                     json.dumps(case_scheduler_trace, sort_keys=True) + "\n",
                     encoding="utf-8",
                 )
@@ -1001,13 +1001,13 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         "goal_surface": self.goal_surface,
                         "ok": False,
                         "first_blocker": (
-                            "harbor_case_goal_harness_scheduler_preflight_failed"
+                            "harbor_case_loopx_scheduler_preflight_failed"
                         ),
                         "raw_output_recorded": False,
-                        "goal_harness_mode": self.goal_harness_mode,
-                        "goal_harness_access_packet_injected": True,
-                        "goal_harness_case_scheduler_trace_present": True,
-                        "goal_harness_case_scheduler_pre_agent_ok": False,
+                        "loopx_mode": self.loopx_mode,
+                        "loopx_access_packet_injected": True,
+                        "loopx_case_scheduler_trace_present": True,
+                        "loopx_case_scheduler_pre_agent_ok": False,
                         "benchmark_loop_contract": loop_contract,
                         "benchmark_case_lifecycle_contract": case_lifecycle_contract,
                         **case_state_init_compact,
@@ -1017,18 +1017,18 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         encoding="utf-8",
                     )
                     context.metadata = {
-                        "goal_harness_agent": self.name(),
+                        "loopx_agent": self.name(),
                         "completion_marker_observed": False,
                         "first_blocker": (
-                            "harbor_case_goal_harness_scheduler_preflight_failed"
+                            "harbor_case_loopx_scheduler_preflight_failed"
                         ),
-                        "goal_harness_mode": self.goal_harness_mode,
-                        "goal_harness_access_packet_injected": True,
-                        "goal_harness_case_scheduler_trace_present": True,
+                        "loopx_mode": self.loopx_mode,
+                        "loopx_access_packet_injected": True,
+                        "loopx_case_scheduler_trace_present": True,
                         **case_state_init_compact,
                     }
                     return
-            treatment_claim = classify_goal_harness_treatment_claim(
+            treatment_claim = classify_loopx_treatment_claim(
                 {"benchmark_loop_contract": loop_contract}
             )
         else:
@@ -1038,7 +1038,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
             bridge_command=bridge,
             marker_path=marker,
             task_workdir=self.task_workdir,
-            goal_harness_access_packet=goal_harness_access_packet,
+            loopx_access_packet=loopx_access_packet,
         )
         prompt_path.write_text(prompt, encoding="utf-8")
 
@@ -1071,9 +1071,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
                             "first_blocker": "codex_app_server_goal_turn_failed",
                             "error_type": type(exc).__name__,
                             "raw_transcript_recorded": False,
-                            "goal_harness_mode": self.goal_harness_mode,
-                            "goal_harness_access_packet_injected": bool(
-                                goal_harness_access_packet
+                            "loopx_mode": self.loopx_mode,
+                            "loopx_access_packet_injected": bool(
+                                loopx_access_packet
                             ),
                             "benchmark_loop_contract": loop_contract,
                             "benchmark_case_lifecycle_contract": case_lifecycle_contract,
@@ -1085,13 +1085,13 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     encoding="utf-8",
                 )
                 context.metadata = {
-                    "goal_harness_agent": self.name(),
+                    "loopx_agent": self.name(),
                     "completion_marker_observed": False,
                     "bridge_request_count": self._served_request_count,
                     "first_blocker": "codex_app_server_goal_turn_failed",
-                    "goal_harness_mode": self.goal_harness_mode,
-                    "goal_harness_access_packet_injected": bool(
-                        goal_harness_access_packet
+                    "loopx_mode": self.loopx_mode,
+                    "loopx_access_packet_injected": bool(
+                        loopx_access_packet
                     ),
                     "benchmark_loop_contract": loop_contract,
                     "benchmark_case_lifecycle_contract": case_lifecycle_contract,
@@ -1101,22 +1101,22 @@ class HarborHostCodexGoalAgent(BaseAgent):
             await self._serve_bridge_requests(environment, request_dir)
 
             prompt_polling_enabled = bool(
-                goal_harness_access_packet
-                and self.goal_harness_experiment_protocol
+                loopx_access_packet
+                and self.loopx_experiment_protocol
                 == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
-                and self.goal_harness_prompt_polling_rounds > 1
+                and self.loopx_prompt_polling_rounds > 1
             )
             controller_trace: dict[str, Any] = {}
             if prompt_polling_enabled:
                 controller_trace = build_benchmark_loop_controller_trace(
-                    route=GOAL_HARNESS_PROMPT_POLLING_TEST_ROUTE,
-                    max_rounds=self.goal_harness_max_rounds,
+                    route=LOOPX_PROMPT_POLLING_TEST_ROUTE,
+                    max_rounds=self.loopx_max_rounds,
                     schema_version="harbor_host_prompt_polling_controller_trace_v0",
                 )
                 controller_trace["initial_prompt_count"] = 1
                 controller_trace["controller_action_decisions"] = 1
                 controller_trace["last_decision"] = "start_initial_app_server_goal_turn"
-                treatment_claim = classify_goal_harness_treatment_claim(
+                treatment_claim = classify_loopx_treatment_claim(
                     {
                         "benchmark_loop_contract": loop_contract,
                         "controller_trace_present": True,
@@ -1130,20 +1130,20 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 )
                 prompt_driven_trace = _summarize_prompt_driven_case_trace(
                     case_state_init_payload,
-                    self._prompt_driven_goal_harness_commands,
+                    self._prompt_driven_loopx_commands,
                 )
-                current_treatment_claim = classify_goal_harness_treatment_claim(
+                current_treatment_claim = classify_loopx_treatment_claim(
                     {
                         "benchmark_loop_contract": loop_contract,
                         "controller_trace_present": bool(controller_trace),
-                        "goal_harness_product_path_primary_route": (
+                        "loopx_product_path_primary_route": (
                             case_state_init_payload.get("product_path_primary_route")
                             or ""
                         ),
-                        "goal_harness_prompt_driven_loop_required": bool(
+                        "loopx_prompt_driven_loop_required": bool(
                             case_state_init_payload.get("prompt_driven_route_required")
                         ),
-                        "goal_harness_prompt_driven_lifecycle_observed": bool(
+                        "loopx_prompt_driven_lifecycle_observed": bool(
                             prompt_driven_trace.get("lifecycle_observed")
                         ),
                     }
@@ -1156,69 +1156,69 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         "completion_marker_observed": marker.exists(),
                         "bridge_request_count": self._served_request_count,
                         "first_blocker": first_blocker,
-                        "goal_harness_mode": self.goal_harness_mode,
-                        "goal_harness_access_packet_injected": bool(
-                            goal_harness_access_packet
+                        "loopx_mode": self.loopx_mode,
+                        "loopx_access_packet_injected": bool(
+                            loopx_access_packet
                         ),
-                        "goal_harness_cli_bridge_enabled": (
-                            self.goal_harness_cli_bridge_enabled
+                        "loopx_cli_bridge_enabled": (
+                            self.loopx_cli_bridge_enabled
                         ),
                         "prompt_polling_enabled": prompt_polling_enabled,
                         "prompt_polling_rounds_requested": (
-                            self.goal_harness_prompt_polling_rounds
+                            self.loopx_prompt_polling_rounds
                         ),
                         "prompt_polling_round_timeout_sec": (
-                            self.goal_harness_prompt_polling_round_timeout_sec
+                            self.loopx_prompt_polling_round_timeout_sec
                         ),
                         "benchmark_loop_contract": loop_contract,
                         "benchmark_case_lifecycle_contract": case_lifecycle_contract,
-                        "goal_harness_case_scheduler_trace_present": bool(
+                        "loopx_case_scheduler_trace_present": bool(
                             case_scheduler_trace
                         ),
-                        "goal_harness_case_scheduler_route": (
+                        "loopx_case_scheduler_route": (
                             case_scheduler_trace.get("route") or ""
                         ),
-                        "goal_harness_case_scheduler_pre_agent_ok": bool(
+                        "loopx_case_scheduler_pre_agent_ok": bool(
                             case_scheduler_trace.get("pre_agent_lifecycle_ok")
                         ),
-                        "goal_harness_case_scheduler_command_count": (
+                        "loopx_case_scheduler_command_count": (
                             case_scheduler_command_count
                         ),
-                        "goal_harness_case_rollout_event_counts": (
+                        "loopx_case_rollout_event_counts": (
                             case_scheduler_trace.get("event_kind_counts") or {}
                         ),
-                        "goal_harness_prompt_driven_trace_present": bool(
+                        "loopx_prompt_driven_trace_present": bool(
                             prompt_driven_trace.get("command_count")
                         ),
-                        "goal_harness_prompt_driven_case_cli_call_count": (
+                        "loopx_prompt_driven_case_cli_call_count": (
                             prompt_driven_trace.get("command_count") or 0
                         ),
-                        "goal_harness_prompt_driven_event_counts": (
+                        "loopx_prompt_driven_event_counts": (
                             prompt_driven_trace.get("event_kind_counts") or {}
                         ),
-                        "goal_harness_prompt_driven_lifecycle_observed": bool(
+                        "loopx_prompt_driven_lifecycle_observed": bool(
                             prompt_driven_trace.get("lifecycle_observed")
                         ),
                         **case_state_init_compact,
                         **current_treatment_claim,
                     }
                 )
-                if goal_harness_access_packet:
+                if loopx_access_packet:
                     (
-                        work_dir / "goal_harness_prompt_driven_trace.public.json"
+                        work_dir / "loopx_prompt_driven_trace.public.json"
                     ).write_text(
                         json.dumps(prompt_driven_trace, sort_keys=True) + "\n",
                         encoding="utf-8",
                     )
                 if controller_trace:
-                    compact["goal_harness_controller_trace_present"] = True
-                    compact["goal_harness_controller_trace"] = controller_trace
-                    (work_dir / "goal_harness_controller_trace.public.json").write_text(
+                    compact["loopx_controller_trace_present"] = True
+                    compact["loopx_controller_trace"] = controller_trace
+                    (work_dir / "loopx_controller_trace.public.json").write_text(
                         json.dumps(controller_trace, sort_keys=True) + "\n",
                         encoding="utf-8",
                     )
                 if case_scheduler_trace:
-                    (work_dir / "goal_harness_case_rollout_trace.public.json").write_text(
+                    (work_dir / "loopx_case_rollout_trace.public.json").write_text(
                         json.dumps(case_scheduler_trace, sort_keys=True) + "\n",
                         encoding="utf-8",
                     )
@@ -1241,7 +1241,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     case_state_init_payload.get("case_agent_id") or ""
                 )
                 case_todo_id = str(case_state_init_payload.get("case_todo_id") or "")
-                await _run_case_goal_harness_cli(
+                await _run_case_loopx_cli(
                     environment,
                     payload=case_state_init_payload,
                     trace=case_scheduler_trace,
@@ -1256,7 +1256,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     ],
                     cwd=self.task_workdir,
                 )
-                await _run_case_goal_harness_cli(
+                await _run_case_loopx_cli(
                     environment,
                     payload=case_state_init_payload,
                     trace=case_scheduler_trace,
@@ -1311,7 +1311,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     ),
                 ]
                 for action, args in closeout_specs:
-                    await _run_case_goal_harness_cli(
+                    await _run_case_loopx_cli(
                         environment,
                         payload=case_state_init_payload,
                         trace=case_scheduler_trace,
@@ -1332,11 +1332,11 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 completion_marker_count = 0
                 timeout_blocker = ""
                 try:
-                    while current_round <= self.goal_harness_prompt_polling_rounds:
+                    while current_round <= self.loopx_prompt_polling_rounds:
                         marker_seen_this_round = False
                         round_deadline = min(
                             deadline,
-                            time.time() + self.goal_harness_prompt_polling_round_timeout_sec,
+                            time.time() + self.loopx_prompt_polling_round_timeout_sec,
                         )
                         while time.time() < round_deadline:
                             observe_codex_app_server_goal_turn(turn)
@@ -1356,7 +1356,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                             completion_marker_count
                         )
                         controller_trace["round_timeout_sec"] = (
-                            self.goal_harness_prompt_polling_round_timeout_sec
+                            self.loopx_prompt_polling_round_timeout_sec
                         )
                         await run_case_scheduler_round(
                             round_index=current_round,
@@ -1370,7 +1370,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                             )
                             controller_trace["last_decision"] = timeout_blocker
                             break
-                        if current_round >= self.goal_harness_prompt_polling_rounds:
+                        if current_round >= self.loopx_prompt_polling_rounds:
                             controller_trace["last_decision"] = (
                                 "stop_at_prompt_polling_round_budget"
                             )
@@ -1381,10 +1381,10 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         continuation_prompt = "\n\n".join(
                             part
                             for part in (
-                                goal_harness_access_packet,
+                                loopx_access_packet,
                                 build_blind_loop_continuation_prompt(
                                     scheduled_round=next_round,
-                                    max_rounds=self.goal_harness_prompt_polling_rounds,
+                                    max_rounds=self.loopx_prompt_polling_rounds,
                                     persistent_constraint_clause=(
                                         " Use harbor-env-exec for task-environment "
                                         "commands; do not upload or submit."
@@ -1429,20 +1429,20 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 finally:
                     turn.terminate()
                 context.metadata = {
-                    "goal_harness_agent": self.name(),
+                    "loopx_agent": self.name(),
                     "completion_marker_observed": bool(completion_marker_count),
                     "bridge_request_count": self._served_request_count,
                     "goal_surface": "app_server",
                     "turn_completed_observed": bool(turn.turn_completed_observed),
                     "first_blocker": timeout_blocker,
-                    "goal_harness_mode": self.goal_harness_mode,
-                    "goal_harness_access_packet_injected": bool(
-                        goal_harness_access_packet
+                    "loopx_mode": self.loopx_mode,
+                    "loopx_access_packet_injected": bool(
+                        loopx_access_packet
                     ),
                     "prompt_polling_enabled": True,
                     "prompt_polling_rounds_completed": current_round,
                     "prompt_polling_round_timeout_sec": (
-                        self.goal_harness_prompt_polling_round_timeout_sec
+                        self.loopx_prompt_polling_round_timeout_sec
                     ),
                     "benchmark_loop_contract": loop_contract,
                     "benchmark_case_lifecycle_contract": case_lifecycle_contract,
@@ -1467,14 +1467,14 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         write_compact()
                         turn.terminate()
                         context.metadata = {
-                            "goal_harness_agent": self.name(),
+                            "loopx_agent": self.name(),
                             "completion_marker_observed": True,
                             "bridge_request_count": self._served_request_count,
                             "goal_surface": "app_server",
                             "turn_completed_observed": bool(turn.turn_completed_observed),
-                            "goal_harness_mode": self.goal_harness_mode,
-                            "goal_harness_access_packet_injected": bool(
-                                goal_harness_access_packet
+                            "loopx_mode": self.loopx_mode,
+                            "loopx_access_packet_injected": bool(
+                                loopx_access_packet
                             ),
                             "benchmark_loop_contract": loop_contract,
                             "benchmark_case_lifecycle_contract": case_lifecycle_contract,
@@ -1489,15 +1489,15 @@ class HarborHostCodexGoalAgent(BaseAgent):
             finally:
                 turn.terminate()
             context.metadata = {
-                "goal_harness_agent": self.name(),
+                "loopx_agent": self.name(),
                 "completion_marker_observed": False,
                 "bridge_request_count": self._served_request_count,
                 "goal_surface": "app_server",
                 "turn_completed_observed": bool(turn.turn_completed_observed),
                 "first_blocker": "harbor_host_codex_app_server_goal_timeout",
-                "goal_harness_mode": self.goal_harness_mode,
-                "goal_harness_access_packet_injected": bool(
-                    goal_harness_access_packet
+                "loopx_mode": self.loopx_mode,
+                "loopx_access_packet_injected": bool(
+                    loopx_access_packet
                 ),
                 "benchmark_loop_contract": loop_contract,
                 "benchmark_case_lifecycle_contract": case_lifecycle_contract,
@@ -1549,12 +1549,12 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 capture_path.write_text(self._capture(tmux_name), encoding="utf-8")
                 self._tmux("send-keys", "-t", tmux_name, "C-c", check=False)
                 context.metadata = {
-                    "goal_harness_agent": self.name(),
+                    "loopx_agent": self.name(),
                     "completion_marker_observed": True,
                     "bridge_request_count": self._served_request_count,
-                    "goal_harness_mode": self.goal_harness_mode,
-                    "goal_harness_access_packet_injected": bool(
-                        goal_harness_access_packet
+                    "loopx_mode": self.loopx_mode,
+                    "loopx_access_packet_injected": bool(
+                        loopx_access_packet
                     ),
                     "benchmark_loop_contract": loop_contract,
                     "benchmark_case_lifecycle_contract": case_lifecycle_contract,
@@ -1567,12 +1567,12 @@ class HarborHostCodexGoalAgent(BaseAgent):
 
         self._tmux("send-keys", "-t", tmux_name, "C-c", check=False)
         context.metadata = {
-            "goal_harness_agent": self.name(),
+            "loopx_agent": self.name(),
             "completion_marker_observed": False,
             "bridge_request_count": self._served_request_count,
             "first_blocker": "harbor_host_codex_goal_timeout",
-            "goal_harness_mode": self.goal_harness_mode,
-            "goal_harness_access_packet_injected": bool(goal_harness_access_packet),
+            "loopx_mode": self.loopx_mode,
+            "loopx_access_packet_injected": bool(loopx_access_packet),
             "benchmark_loop_contract": loop_contract,
             "benchmark_case_lifecycle_contract": case_lifecycle_contract,
             **case_state_init_compact,

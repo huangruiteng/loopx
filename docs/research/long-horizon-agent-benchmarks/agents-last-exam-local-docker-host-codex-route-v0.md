@@ -1,6 +1,6 @@
 # Agents Last Exam Local Docker Host Codex Route V0
 
-This note records the non-GCP ALE route that Goal Harness should use before an
+This note records the non-GCP ALE route that LoopX should use before an
 official Google Cloud run is available: local Docker/Colima plus host Codex CLI.
 It is a local validation route, not a leaderboard route.
 
@@ -76,7 +76,7 @@ The local route is allowed only when the task-data substrate is explicit:
 Example public-safe gate:
 
 ```bash
-goal-harness benchmark ale-task-material-readiness \
+loopx benchmark ale-task-material-readiness \
   --source-root <ale-source-root> \
   --selected-task-id demo/tool_smoke \
   --requires-task-data false \
@@ -87,7 +87,7 @@ goal-harness benchmark ale-task-material-readiness \
 For a formal task:
 
 ```bash
-goal-harness benchmark ale-task-material-readiness \
+loopx benchmark ale-task-material-readiness \
   --source-root <ale-source-root> \
   --selected-task-id computing_math/os_log_permission_guard_v1 \
   --requires-task-data true \
@@ -103,11 +103,11 @@ For a `baked_in_sandbox` candidate, prove the sandbox input directory before
 feeding the result into task-material readiness:
 
 ```bash
-goal-harness benchmark ale-baked-task-input-readiness \
+loopx benchmark ale-baked-task-input-readiness \
   --selected-task-id computing_math/os_log_permission_guard_v1 \
   --image agentslastexam/ale-kasm:latest
 
-goal-harness benchmark ale-task-material-readiness \
+loopx benchmark ale-task-material-readiness \
   --source-root <ale-source-root> \
   --selected-task-id computing_math/os_log_permission_guard_v1 \
   --requires-task-data true \
@@ -119,7 +119,7 @@ goal-harness benchmark ale-task-material-readiness \
 To avoid testing one doomed formal task at a time, scan the selected-task pool:
 
 ```bash
-goal-harness benchmark ale-baked-task-input-scan \
+loopx benchmark ale-baked-task-input-scan \
   --source-root <ale-source-root> \
   --image agentslastexam/ale-kasm:latest
 ```

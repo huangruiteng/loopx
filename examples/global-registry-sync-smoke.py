@@ -14,8 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.global_registry import sync_project_registry_to_global  # noqa: E402
-from goal_harness.paths import global_registry_path  # noqa: E402
+from loopx.global_registry import sync_project_registry_to_global  # noqa: E402
+from loopx.paths import global_registry_path  # noqa: E402
 
 
 GOAL_ID = "multi-source-main-control"
@@ -77,7 +77,7 @@ def sync_worker(registry_path: str) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-global-sync-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-global-sync-smoke-") as tmp:
         root = Path(tmp)
         runtime = root / "runtime"
         global_registry = global_registry_path(runtime)
@@ -88,8 +88,8 @@ def main() -> int:
         (controller_repo / "ACTIVE_GOAL_STATE.md").write_text("# Controller state\n", encoding="utf-8")
         (project_repo / "ACTIVE_GOAL_STATE.md").write_text("# Project state\n", encoding="utf-8")
 
-        controller_registry = controller_repo / ".goal-harness" / "registry.json"
-        project_registry = project_repo / ".goal-harness" / "registry.json"
+        controller_registry = controller_repo / ".loopx" / "registry.json"
+        project_registry = project_repo / ".loopx" / "registry.json"
         write_registry(controller_registry, runtime=runtime, repo=controller_repo, override=True)
         write_registry(project_registry, runtime=runtime, repo=project_repo, override=False)
 

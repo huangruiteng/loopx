@@ -240,7 +240,7 @@ export const sampleGoalChannelProjection: GoalChannelProjection = {
     event_ledger_is_source_of_truth: true,
     projection_is_writable: false,
     recompute_rule:
-      "refresh from Goal Harness status/quota/run history; do not edit the channel projection as project truth",
+      "refresh from LoopX status/quota/run history; do not edit the channel projection as project truth",
     write_authority: "none",
   },
 };

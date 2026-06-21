@@ -10,8 +10,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
 HANDOFF = TOPIC_DIR / "benchmark-program-current-state-handoff-v0.md"
 README = TOPIC_DIR / "README.md"
-STATUS = REPO_ROOT / "goal_harness" / "status.py"
-REVIEW_PACKET = REPO_ROOT / "goal_harness" / "review_packet.py"
+STATUS = REPO_ROOT / "loopx" / "status.py"
+REVIEW_PACKET = REPO_ROOT / "loopx" / "review_packet.py"
 HOT_PATH_SMOKE = REPO_ROOT / "examples" / "hot-path-interface-budget-smoke.py"
 
 HANDOFF_SCHEMA = "benchmark_program_current_state_handoff_v0"

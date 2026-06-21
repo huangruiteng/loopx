@@ -91,7 +91,7 @@ exercise any endpoint or start the container.
 
 The selected MCP config confirms a broad workplace-tool surface: calendar,
 chat, code execution, documents, filesystem, mail, PDF, spreadsheets, and
-presentations. This is a good fit for Goal Harness because failures will likely
+presentations. This is a good fit for LoopX because failures will likely
 involve planning, file discovery, evidence discipline, recovery, artifact
 selection, and long-context state rather than just code patching.
 
@@ -116,7 +116,7 @@ There are two viable next designs:
    the official trajectory shape required by the grading runner.
 
 The second route is safer for this project. It matches the existing
-credential-isolated remote-provider pattern and lets Goal Harness keep raw
+credential-isolated remote-provider pattern and lets LoopX keep raw
 task prompts, trajectories, snapshots, screenshots, generated artifacts, and
 grader rationales private while reducing only compact evidence into public
 `benchmark_run_v0` / `benchmark_result_v0` rows.

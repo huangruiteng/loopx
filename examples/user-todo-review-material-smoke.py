@@ -56,7 +56,7 @@ def start_server(repo_root: Path, registry: Path, runtime_root: Path, port: int)
     command = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(registry),
         "--runtime-root",
@@ -180,7 +180,7 @@ def review_material_url(base_url: str, *, path: str) -> str:
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo_root))
-    from goal_harness.status import collect_status, render_status_markdown  # noqa: PLC0415
+    from loopx.status import collect_status, render_status_markdown  # noqa: PLC0415
 
     with tempfile.TemporaryDirectory() as raw_tmp:
         root = Path(raw_tmp)

@@ -6,7 +6,7 @@ Purpose: define the first controlled Route B execution step after the redacted
 SSH command-adapter and rsync dry-run proof. Route B keeps Codex auth on the
 local machine and uses the remote host only as a private execution workspace.
 
-This is a plan only. It does not sync files, install Goal Harness remotely,
+This is a plan only. It does not sync files, install LoopX remotely,
 start Docker, run benchmark tasks, invoke Codex, invoke model APIs, copy
 credentials, upload artifacts, use leaderboard paths, inspect other users'
 workloads, print the concrete remote address or port, read raw trajectories,
@@ -33,7 +33,7 @@ git diff --check -- \
   docs/research/long-horizon-agent-benchmarks/remote-gpu-route-b-sync-install-plan-v0.md \
   docs/research/long-horizon-agent-benchmarks/README.md
 
-goal-harness check \
+loopx check \
   --scan-path docs/research/long-horizon-agent-benchmarks/remote-gpu-route-b-sync-install-plan-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md
 ```
@@ -44,7 +44,7 @@ Then rerun the dry-run manifest and record only compact counts, not file names:
 rsync -azn --delete --stats \
   -e "ssh -p $AI_PORT -o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no -o ClearAllForwardings=yes -o PermitLocalCommand=no -o RequestTTY=no -o StrictHostKeyChecking=yes" \
   --exclude ".git/" \
-  --exclude ".goal-harness/" \
+  --exclude ".loopx/" \
   --exclude ".local/" \
   --exclude ".env" \
   --exclude ".env.*" \
@@ -53,7 +53,7 @@ rsync -azn --delete --stats \
   --exclude "*.pyc" \
   --exclude "node_modules/" \
   --exclude ".venv/" \
-  ./ root@"$AI_ADDR":/tmp/goal-harness-bench-probe/goal-harness/
+  ./ root@"$AI_ADDR":/tmp/loopx-bench-probe/loopx/
 ```
 
 Do not print `$AI_ADDR`, `$AI_PORT`, file lists, local usernames, remote
@@ -68,7 +68,7 @@ real sync may use the same manifest without `-n`:
 rsync -az --delete --stats \
   -e "ssh -p $AI_PORT -o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no -o ClearAllForwardings=yes -o PermitLocalCommand=no -o RequestTTY=no -o StrictHostKeyChecking=yes" \
   --exclude ".git/" \
-  --exclude ".goal-harness/" \
+  --exclude ".loopx/" \
   --exclude ".local/" \
   --exclude ".env" \
   --exclude ".env.*" \
@@ -77,7 +77,7 @@ rsync -az --delete --stats \
   --exclude "*.pyc" \
   --exclude "node_modules/" \
   --exclude ".venv/" \
-  ./ root@"$AI_ADDR":/tmp/goal-harness-bench-probe/goal-harness/
+  ./ root@"$AI_ADDR":/tmp/loopx-bench-probe/loopx/
 ```
 
 Allowed durable output from the real sync:
@@ -98,9 +98,9 @@ Do not store file names, remote path details, or SSH target details.
 After the real sync, run a remote absence scan that reports only booleans:
 
 ```bash
-REMOTE_WORK=/tmp/goal-harness-bench-probe
-ROOT="$REMOTE_WORK/goal-harness"
-for name in .codex .goal-harness .local .env; do
+REMOTE_WORK=/tmp/loopx-bench-probe
+ROOT="$REMOTE_WORK/loopx"
+for name in .codex .loopx .local .env; do
   if find "$ROOT" -maxdepth 4 -name "$name" -print -quit | grep -q .; then
     echo "forbidden_${name#.}_found=true"
   else
@@ -118,17 +118,17 @@ The public-ready pass condition is every `forbidden_*_found=false`.
 
 ## Isolated Remote Install
 
-If and only if the post-sync boundary scan is clean, install the Goal Harness
+If and only if the post-sync boundary scan is clean, install the LoopX
 helper inside the private remote workspace:
 
 ```bash
-cd /tmp/goal-harness-bench-probe/goal-harness
-GOAL_HARNESS_BIN_DIR=/tmp/goal-harness-bench-probe/bin \
-GOAL_HARNESS_RELEASES_DIR=/tmp/goal-harness-bench-probe/releases \
-GOAL_HARNESS_INSTALL_SKILL=0 \
-GOAL_HARNESS_INSTALL_CANARY=0 \
-GOAL_HARNESS_SHELL_PROFILE=/dev/null \
-CODEX_HOME=/tmp/goal-harness-bench-probe/codex-empty \
+cd /tmp/loopx-bench-probe/loopx
+LOOPX_BIN_DIR=/tmp/loopx-bench-probe/bin \
+LOOPX_RELEASES_DIR=/tmp/loopx-bench-probe/releases \
+LOOPX_INSTALL_SKILL=0 \
+LOOPX_INSTALL_CANARY=0 \
+LOOPX_SHELL_PROFILE=/dev/null \
+CODEX_HOME=/tmp/loopx-bench-probe/codex-empty \
 ./scripts/install-local.sh
 ```
 
@@ -138,7 +138,7 @@ reduced to:
 
 ```text
 route_b_isolated_install_ok=true|false
-remote_goal_harness_doctor_ok=true|false
+remote_loopx_doctor_ok=true|false
 remote_codex_home_is_empty_route=true
 credential_values_printed=false
 codex_home_synced=false
@@ -150,9 +150,9 @@ benchmark_started=false
 Stop before:
 
 - syncing if the dry-run envelope grows unexpectedly or includes private paths;
-- writing outside `/tmp/goal-harness-bench-probe`;
+- writing outside `/tmp/loopx-bench-probe`;
 - copying local `~/.codex`, API keys, access tokens, `.env` files, shell
-  histories, SSH private keys, local Goal Harness runtime, raw trajectories,
+  histories, SSH private keys, local LoopX runtime, raw trajectories,
   screenshots, hidden refs, task bodies, solution files, or test bodies;
 - installing into a real remote `CODEX_HOME` or modifying the remote shell
   profile;

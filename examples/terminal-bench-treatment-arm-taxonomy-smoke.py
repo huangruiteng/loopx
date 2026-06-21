@@ -15,9 +15,9 @@ README = TOPIC_DIR / "README.md"
 
 ARMS = (
     "codex_goal_mode",
-    "codex_goal_harness",
+    "codex_loopx",
     "hardened_codex_calibration",
-    "passive_goal_harness_observer",
+    "passive_loopx_observer",
 )
 
 FORBIDDEN_TEXT = [
@@ -40,22 +40,22 @@ FORBIDDEN_TEXT = [
 REQUIRED_SNIPPETS = [
     "Terminal-Bench Treatment Arm Taxonomy V0",
     "codex_goal_mode",
-    "codex_goal_harness",
+    "codex_loopx",
     "hardened_codex_calibration",
-    "passive_goal_harness_observer",
+    "passive_loopx_observer",
     "primary_paired_baseline",
     "calibration_only",
     "codex_runtime_goal_tool_calls",
-    "goal_harness_cli_calls",
-    "goal_harness_state_reads",
-    "goal_harness_state_writes",
+    "loopx_cli_calls",
+    "loopx_state_reads",
+    "loopx_state_writes",
     "harness_skill_or_packet_injected",
     "prompt_packet_only_no_cli_bridge",
     "codex_runtime_goal_tool_calls=2",
-    "goal_harness_cli_calls=0",
+    "loopx_cli_calls=0",
     "create_goal",
     "update_goal",
-    "Goal Harness Access Packet",
+    "LoopX Access Packet",
     "python3 examples/terminal-bench-treatment-arm-taxonomy-smoke.py",
 ]
 
@@ -65,19 +65,19 @@ def taxonomy_payload() -> dict[str, Any]:
         "schema_version": "terminal_bench_treatment_arm_taxonomy_v0",
         "arms": {
             "codex_goal_mode": {
-                "goal_harness_inside_case": False,
+                "loopx_inside_case": False,
                 "official_score_comparable_to_native_codex": False,
                 "uses_codex_runtime_goal_tools": True,
-                "uses_goal_harness_interfaces": False,
+                "uses_loopx_interfaces": False,
                 "codex_goal_mode_enabled": True,
                 "primary_paired_baseline": True,
                 "calibration_only": False,
             },
-            "codex_goal_harness": {
-                "goal_harness_inside_case": True,
+            "codex_loopx": {
+                "loopx_inside_case": True,
                 "official_score_comparable_to_native_codex": False,
                 "uses_codex_runtime_goal_tools": "allowed_but_separately_counted",
-                "uses_goal_harness_interfaces": "requires_cli_bridge_or_trace",
+                "uses_loopx_interfaces": "requires_cli_bridge_or_trace",
                 "codex_goal_mode_enabled": True,
                 "primary_paired_baseline": False,
                 "calibration_only": False,
@@ -85,21 +85,21 @@ def taxonomy_payload() -> dict[str, Any]:
                 "current_v0_cli_bridge_available": False,
             },
             "hardened_codex_calibration": {
-                "goal_harness_inside_case": False,
+                "loopx_inside_case": False,
                 "official_score_comparable_to_native_codex": False,
-                "official_score_comparable_to_goal_harness_treatment": False,
+                "official_score_comparable_to_loopx_treatment": False,
                 "uses_codex_runtime_goal_tools": False,
-                "uses_goal_harness_interfaces": False,
+                "uses_loopx_interfaces": False,
                 "codex_goal_mode_enabled": False,
                 "primary_paired_baseline": False,
                 "calibration_only": True,
                 "task_prompt_changed": False,
             },
-            "passive_goal_harness_observer": {
-                "goal_harness_inside_case": False,
+            "passive_loopx_observer": {
+                "loopx_inside_case": False,
                 "official_score_comparable_to_native_codex": True,
                 "uses_codex_runtime_goal_tools": False,
-                "uses_goal_harness_interfaces": "outside_case_only",
+                "uses_loopx_interfaces": "outside_case_only",
             },
         },
         "first_managed_sample_reclassification": {
@@ -109,18 +109,18 @@ def taxonomy_payload() -> dict[str, Any]:
                 "update_goal": 1,
                 "total": 2,
             },
-            "goal_harness_cli_calls": 0,
-            "goal_harness_state_reads": 0,
-            "goal_harness_state_writes": 0,
+            "loopx_cli_calls": 0,
+            "loopx_state_reads": 0,
+            "loopx_state_writes": 0,
             "harness_skill_or_packet_injected": False,
             "case_result_writeback": "runner_only",
             "correct_arm": "codex_goal_mode",
-            "incorrect_arm": "codex_goal_harness",
+            "incorrect_arm": "codex_loopx",
         },
-        "codex_goal_harness_required_packet": [
-            "goal_harness_interface_surface",
-            "goal_harness_cli_bridge_available",
-            "declared_goal_harness_interface_commands",
+        "codex_loopx_required_packet": [
+            "loopx_interface_surface",
+            "loopx_cli_bridge_available",
+            "declared_loopx_interface_commands",
             "when_to_call_status_todo_history_check_or_writeback",
             "public_safety_boundaries",
             "compact_counter_reporting",
@@ -148,38 +148,38 @@ def main() -> None:
     payload = taxonomy_payload()
     assert tuple(payload["arms"]) == ARMS, payload
     codex_goal = payload["arms"]["codex_goal_mode"]
-    harness = payload["arms"]["codex_goal_harness"]
+    harness = payload["arms"]["codex_loopx"]
     calibration = payload["arms"]["hardened_codex_calibration"]
-    passive = payload["arms"]["passive_goal_harness_observer"]
+    passive = payload["arms"]["passive_loopx_observer"]
     sample = payload["first_managed_sample_reclassification"]
 
     assert codex_goal["codex_goal_mode_enabled"] is True, codex_goal
     assert codex_goal["primary_paired_baseline"] is True, codex_goal
     assert codex_goal["calibration_only"] is False, codex_goal
     assert codex_goal["uses_codex_runtime_goal_tools"] is True, codex_goal
-    assert codex_goal["uses_goal_harness_interfaces"] is False, codex_goal
-    assert harness["goal_harness_inside_case"] is True, harness
+    assert codex_goal["uses_loopx_interfaces"] is False, codex_goal
+    assert harness["loopx_inside_case"] is True, harness
     assert harness["codex_goal_mode_enabled"] is True, harness
     assert harness["primary_paired_baseline"] is False, harness
     assert harness["calibration_only"] is False, harness
-    assert harness["uses_goal_harness_interfaces"] == "requires_cli_bridge_or_trace", harness
+    assert harness["uses_loopx_interfaces"] == "requires_cli_bridge_or_trace", harness
     assert harness["current_v0_interface_surface"] == "prompt_packet_only_no_cli_bridge", harness
     assert harness["current_v0_cli_bridge_available"] is False, harness
     assert calibration["calibration_only"] is True, calibration
     assert calibration["primary_paired_baseline"] is False, calibration
     assert calibration["codex_goal_mode_enabled"] is False, calibration
     assert calibration["task_prompt_changed"] is False, calibration
-    assert calibration["uses_goal_harness_interfaces"] is False, calibration
+    assert calibration["uses_loopx_interfaces"] is False, calibration
     assert calibration["official_score_comparable_to_native_codex"] is False, calibration
-    assert calibration["official_score_comparable_to_goal_harness_treatment"] is False, calibration
-    assert passive["uses_goal_harness_interfaces"] == "outside_case_only", passive
+    assert calibration["official_score_comparable_to_loopx_treatment"] is False, calibration
+    assert passive["uses_loopx_interfaces"] == "outside_case_only", passive
     assert sample["codex_runtime_goal_tool_calls"]["total"] == 2, sample
-    assert sample["goal_harness_cli_calls"] == 0, sample
-    assert sample["goal_harness_state_reads"] == 0, sample
-    assert sample["goal_harness_state_writes"] == 0, sample
+    assert sample["loopx_cli_calls"] == 0, sample
+    assert sample["loopx_state_reads"] == 0, sample
+    assert sample["loopx_state_writes"] == 0, sample
     assert sample["harness_skill_or_packet_injected"] is False, sample
     assert sample["correct_arm"] == "codex_goal_mode", sample
-    assert sample["incorrect_arm"] == "codex_goal_harness", sample
+    assert sample["incorrect_arm"] == "codex_loopx", sample
     assert payload["real_run"] is False, payload
     assert payload["submit_eligible"] is False, payload
     assert_public_safe(payload)

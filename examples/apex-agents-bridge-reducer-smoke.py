@@ -242,7 +242,7 @@ def reduce_to_benchmark_result(fixture: dict[str, Any]) -> dict[str, Any]:
         "task_id": "apex_agents_redacted_single_task_fixture",
         "scenario_id": "host_codex_external_mcp_adapter_no_run",
         "worker_mode": "deterministic_fixture",
-        "harness_identity": "goal_harness",
+        "harness_identity": "loopx",
         "worker_surface": "host_codex_cli_external_mcp_adapter",
         "terminal_state": "blocked_before_private_material",
         "official_task_score": {

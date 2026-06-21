@@ -56,7 +56,7 @@ def run_cli(registry_path: Path, *args: str, check: bool = True) -> subprocess.C
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--format",
@@ -80,7 +80,7 @@ def goal_from_registry(registry_path: Path) -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-configure-goal-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-configure-goal-smoke-") as tmp:
         root = Path(tmp)
         registry_path = write_registry(root)
         original = registry_path.read_text(encoding="utf-8")

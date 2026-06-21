@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate public-safe Goal Harness rollout event logging."""
+"""Validate public-safe LoopX rollout event logging."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.rollout_event_log import (  # noqa: E402
+from loopx.rollout_event_log import (  # noqa: E402
     build_rollout_event,
     append_rollout_event,
     load_rollout_events,
@@ -30,7 +30,7 @@ def assert_public_safe_text(text: str) -> None:
         "/" + "private/",
         "trajectory" + ".json",
         "Auth" + "orization:",
-        "goal-harness-" + "ecs",
+        "loopx-" + "ecs",
         "115." + "190.",
     )
     for marker in forbidden:
@@ -58,15 +58,15 @@ def run_script(*args: str) -> dict:
     return json.loads(result.stdout)
 
 
-def run_goal_harness_cli(*args: str, allow_failure: bool = False) -> dict:
+def run_loopx_cli(*args: str, allow_failure: bool = False) -> dict:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         text=True,
         capture_output=True,
     )
     if result.returncode != 0 and not allow_failure:
         raise AssertionError(
-            f"goal_harness.cli failed rc={result.returncode}\n"
+            f"loopx.cli failed rc={result.returncode}\n"
             f"stdout={result.stdout}\nstderr={result.stderr}"
         )
     assert_public_safe_text(result.stdout)
@@ -94,7 +94,7 @@ updated_at: 2026-06-21T00:00:00+08:00
 ## Agent Todo
 
 - [ ] [P0] Claim the smoke todo.
-  <!-- goal-harness:todo todo_id=todo_auto_rollout status=open task_class=advancement_task action_kind=smoke -->
+  <!-- loopx:todo todo_id=todo_auto_rollout status=open task_class=advancement_task action_kind=smoke -->
 """,
         encoding="utf-8",
     )
@@ -128,10 +128,10 @@ updated_at: 2026-06-21T00:00:00+08:00
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-rollout-event-log-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-rollout-event-log-") as tmp:
         tmp_root = Path(tmp)
         runtime_root = tmp_root / "runtime"
-        goal_id = "goal-harness-meta"
+        goal_id = "loopx-meta"
         log_path = rollout_event_log_path(runtime_root, goal_id)
         event = build_rollout_event(
             goal_id=goal_id,
@@ -240,7 +240,7 @@ def main() -> None:
         assert_public_safe_text(log_path.read_text(encoding="utf-8"))
 
         registry_path, cli_runtime_root, project, cli_goal_id = write_smoke_project(tmp_root / "auto")
-        claim_payload = run_goal_harness_cli(
+        claim_payload = run_loopx_cli(
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -258,7 +258,7 @@ def main() -> None:
         )
         assert claim_payload["rollout_event"]["event_kind"] == "todo_claim", claim_payload
 
-        refresh_payload = run_goal_harness_cli(
+        refresh_payload = run_loopx_cli(
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -282,7 +282,7 @@ def main() -> None:
         )
         assert refresh_payload["rollout_event"]["event_kind"] == "refresh_state", refresh_payload
 
-        should_run_payload = run_goal_harness_cli(
+        should_run_payload = run_loopx_cli(
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -339,7 +339,7 @@ def main() -> None:
             + "\n",
             encoding="utf-8",
         )
-        benchmark_payload = run_goal_harness_cli(
+        benchmark_payload = run_loopx_cli(
             "--registry",
             str(registry_path),
             "--runtime-root",

@@ -4,16 +4,16 @@ Checked at: 2026-06-07T20:05:00+08:00
 
 ## Purpose
 
-This protocol is the first Goal Harness baseline that answers whether the
+This protocol is the first LoopX baseline that answers whether the
 control plane helps without any operator simulator. It compares the same
 autonomous engineering slice in two modes:
 
 - `codex_goal_mode_baseline`: Codex CLI or a deterministic Codex-like fixture
   runs through the declared Codex goal-mode baseline surface and receives no
-  Goal Harness registry, quota, review packet, Goal Tick output, or runtime
+  LoopX registry, quota, review packet, Goal Tick output, or runtime
   writeback surface.
-- `passive_goal_harness_wrapper`: the same goal-mode worker and task are
-  wrapped with Goal Harness state, quota, review packet, Goal Tick phases,
+- `passive_loopx_wrapper`: the same goal-mode worker and task are
+  wrapped with LoopX state, quota, review packet, Goal Tick phases,
   validation writeback, and run-history append support, but no simulated
   operator intervention is allowed.
 
@@ -36,7 +36,7 @@ Start local and deterministic before invoking official benchmark runners:
    restartability, stale-state avoidance, continuation quality, evidence
    discipline, writeback quality, failure attribution, or spend discipline.
 5. Append one compact `benchmark_run_v0` row per mode through
-   `goal-harness history append-benchmark-run`.
+   `loopx history append-benchmark-run`.
 6. Inspect status/run history for two benchmark rows and no private surface.
 
 Only after this deterministic fixture is stable should the same mode pair move
@@ -48,12 +48,12 @@ Each paired result must preserve these fields:
 
 | Field | Rule |
 | --- | --- |
-| `scenario_id` | `codex_goal_mode_baseline` or `passive_goal_harness_wrapper`. |
+| `scenario_id` | `codex_goal_mode_baseline` or `passive_loopx_wrapper`. |
 | `task_id` | Same task id for both modes. |
 | `worker_surface` | Same worker class unless the experiment explicitly records an ablation. |
 | `codex_goal_mode_enabled` | `true` for both primary modes. |
 | `official_task_score` | Native or deterministic task score; local fixture should keep the delta at `0`. |
-| `control_plane_score` | Goal Harness coordination score; passive wrapper may improve this. |
+| `control_plane_score` | LoopX coordination score; passive wrapper may improve this. |
 | `restartability` | Whether another worker can resume from public artifacts. |
 | `stale_state_avoidance` | Whether current state beats stale latest-run or stale todo text. |
 | `continuation_quality` | Whether the next action is durable and specific. |
@@ -72,7 +72,7 @@ without reading raw benchmark logs.
 For each mode:
 
 ```bash
-goal-harness history append-benchmark-run \
+loopx history append-benchmark-run \
   --goal-id <goal-id> \
   --benchmark-run-json <benchmark-run-v0.json> \
   --classification benchmark_run_v0 \
@@ -110,7 +110,7 @@ python3 examples/passive-baseline-protocol-smoke.py
 ```
 
 It writes two deterministic public-safe `benchmark_run_v0` fixtures, appends
-them through the Goal Harness history CLI, and proves status can see two
+them through the LoopX history CLI, and proves status can see two
 benchmark rows without reading real runner output.
 
 The broader local A/B capability smoke remains:
@@ -119,6 +119,6 @@ The broader local A/B capability smoke remains:
 python3 examples/codex-cli-long-run-benchmark-smoke.py
 ```
 
-That smoke emits `benchmark_result_v0` for with/without Goal Harness and keeps
+That smoke emits `benchmark_result_v0` for with/without LoopX and keeps
 both official-task scores equal while requiring a positive
 `control_plane_score` delta.

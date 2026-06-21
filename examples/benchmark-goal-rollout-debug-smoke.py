@@ -26,7 +26,7 @@ FORBIDDEN_MARKERS = [
     ".local/private-benchmark-jobs",
     "BEGIN OPENSSH PRIVATE KEY",
     "OPENAI_API_KEY",
-    # Keep active leak markers split in source so `goal-harness check` can
+    # Keep active leak markers split in source so `loopx check` can
     # scan this public smoke while the runtime assertion still tests the full
     # forbidden marker in rendered artifacts.
     "Author" + "ization:",

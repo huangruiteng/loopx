@@ -2,7 +2,7 @@
 """Run the public dependency-free smoke scripts.
 
 This is intentionally a tiny examples runner, not a test framework. Keep
-`goal-harness check` focused on contract health and call this explicitly when
+`loopx check` focused on contract health and call this explicitly when
 example behavior needs coverage.
 """
 

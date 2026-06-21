@@ -1,6 +1,6 @@
 # Codex CLI Long-Run Regression Spec
 
-Goal Harness needs a low-frequency regression that proves a replaceable worker
+LoopX needs a low-frequency regression that proves a replaceable worker
 can keep advancing a small goal for several turns from durable state alone. The
 first version should be isolated, public-safe, and independent of any real
 Codex App thread history.
@@ -9,12 +9,12 @@ Codex App thread history.
 
 - Start from an empty isolated `HOME`, runtime root, global registry, project
   registry, and active state fixture.
-- Use one small synthetic Goal Harness task that can complete in `3-5` worker
+- Use one small synthetic LoopX task that can complete in `3-5` worker
   steps.
 - Run through the deterministic shim by default. Real Codex CLI invocation is
   an explicit low-frequency mode only after the fixture contract is stable.
 - Record a JSONL run log with one row per worker step.
-- Use the normal Goal Harness guard: `quota should-run` before work, validated
+- Use the normal LoopX guard: `quota should-run` before work, validated
   artifact or state writeback before `quota spend-slot`.
 - Do not depend on real session history, current chat context, browser state,
   user profile files, external services, or existing local automations.
@@ -72,7 +72,7 @@ Each row must contain:
 
 ## First Runner Shim
 
-The first executable regression is a narrow Goal Harness CLI shim:
+The first executable regression is a narrow LoopX CLI shim:
 
 ```bash
 python3 examples/codex-cli-long-run-regression-runner-smoke.py
@@ -106,7 +106,7 @@ codex exec --skip-git-repo-check --ephemeral --ignore-user-config \
   -C <isolated-fixture-project> <step-prompt>
 ```
 
-The deterministic Goal Harness CLI shim remains the default public smoke so
+The deterministic LoopX CLI shim remains the default public smoke so
 ordinary contract checks stay fast and reproducible. The real-worker mode is
 opt-in, starts from an empty isolated `HOME` and `CODEX_HOME`, and must not read
 real session history or Codex App thread state.
@@ -168,4 +168,4 @@ The runner's current fixture proves the control-plane contract but is too easy
 to measure Codex task capability. Use
 `codex-cli-long-run-benchmark-design.md` for the next benchmark task:
 `mini_control_plane_repair_v0`, a `3-5` step isolated control-plane repair with
-matching with/without Goal Harness scenarios and `benchmark_result_v0` metrics.
+matching with/without LoopX scenarios and `benchmark_result_v0` metrics.

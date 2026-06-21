@@ -94,7 +94,7 @@ Targeted validation:
 ```bash
 python3 examples/perfbench-alternate-source-selection-smoke.py
 python3 -m py_compile examples/perfbench-alternate-source-selection-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/perfbench-alternate-source-selection-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/perfbench-alternate-source-selection-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

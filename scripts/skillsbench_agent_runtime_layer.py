@@ -24,7 +24,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "skillsbench_agent_runtime_layer_v0"
-DEFAULT_OUTPUT = "~/goal-harness-bench/benchflow-agent-runtime"
+DEFAULT_OUTPUT = "~/loopx-bench/benchflow-agent-runtime"
 MOUNT_TARGET = "/opt/benchflow"
 DEFAULT_CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp"
 DEFAULT_CODEX_ACP_VERSION = "0.0.45"

@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from goal_harness.contract import check_contract
+from loopx.contract import check_contract
 
 
 def write_run(run_dir: Path, goal_id: str, *, duplicate_kind: str) -> None:
@@ -115,7 +115,7 @@ def main() -> None:
         assert "reward-overlay-goal: reward overlay rows raw=2 unique=1 overlays=1" in checks, payload
         assert "reward-overlay-goal: duplicate index rows" not in warnings, payload
         assert "plain-duplicate-goal: duplicate index rows raw=2 unique=1" in warnings, payload
-        assert "goal-harness history inspect-index-duplicates --goal-id plain-duplicate-goal" in warnings, payload
+        assert "loopx history inspect-index-duplicates --goal-id plain-duplicate-goal" in warnings, payload
         assert not any(".local/managed_doc" in item for item in payload["errors"]), payload
 
     print("contract-reward-overlay-smoke ok")

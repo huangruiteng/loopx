@@ -3,7 +3,7 @@
 Status: readiness contract + launch-plan contract + runner-batch contract +
 smoke-tested public gate.
 
-This contract defines the benchmark route used when Codex and Goal Harness stay
+This contract defines the benchmark route used when Codex and LoopX stay
 on the local trusted machine while a remote development host provides Docker,
 runner dependencies, task-data staging, bounded command execution, and compact
 result reduction.
@@ -13,7 +13,7 @@ result reduction.
 Local agent owns:
 
 - Codex CLI and Codex auth;
-- Goal Harness state, quota, todo projection, and writeback;
+- LoopX state, quota, todo projection, and writeback;
 - model invocation, planning, and patch generation;
 - public/private filtering before any artifact becomes durable.
 
@@ -110,17 +110,17 @@ surface.
 
 The same route applies to the three active benchmark families:
 
-- Terminal-Bench: local Codex/Goal Harness drives the attempt; the remote side
+- Terminal-Bench: local Codex/LoopX drives the attempt; the remote side
   supplies Docker, Harbor or a runner wrapper, and compact result ingestion.
-- SkillsBench: local Codex/Goal Harness drives the attempt; the runner must no
+- SkillsBench: local Codex/LoopX drives the attempt; the runner must no
   longer assume Codex ACP starts inside the remote worker before a
   split-control adapter exists. The current public adapter surface is a
-  local-driver/A2A contract: Codex auth, model invocation, Goal Harness state,
+  local-driver/A2A contract: Codex auth, model invocation, LoopX state,
   and raw reasoning stay local; the remote executor owns Docker, BenchFlow task
   data, bounded command execution, cleanup, and compact result reduction. A
   no-upload mini-pair is not launch-ready until the local Codex A2A participant
   is materialized.
-- Agents' Last Exam: local Codex/Goal Harness and local auth remain trusted;
+- Agents' Last Exam: local Codex/LoopX and local auth remain trusted;
   the remote side handles Docker, source/task-data staging, CUA/provider
   capacity where applicable, and compact result reduction.
 

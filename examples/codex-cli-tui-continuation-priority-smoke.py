@@ -24,7 +24,7 @@ def assert_contract_doc() -> None:
         "Codex CLI TUI Continuation Priority",
         "Frontstage and showcase work are important support surfaces",
         "must not outrank a runnable Codex CLI TUI continuation task",
-        "one pasted Goal Harness message starts the loop",
+        "one pasted LoopX message starts the loop",
         "later steer or resume work through the same visible TUI",
         "Codex CLI TUI continuation wins over frontstage polish",
         "planning drift and run self-repair",

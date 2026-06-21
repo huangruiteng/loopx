@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.delivery_outcome import (  # noqa: E402
+from loopx.delivery_outcome import (  # noqa: E402
     ACCOUNTABLE_DELIVERY_OUTCOMES,
     DELIVERY_OUTCOME_CHOICES,
     DELIVERY_OUTCOME_UNKNOWN,
@@ -23,9 +23,9 @@ from goal_harness.delivery_outcome import (  # noqa: E402
     normalize_delivery_outcome,
     require_delivery_outcome,
 )
-from goal_harness.history import append_benchmark_run  # noqa: E402
-from goal_harness.state_refresh import refresh_state_run  # noqa: E402
-from goal_harness.status import delivery_outcome_for_run  # noqa: E402
+from loopx.history import append_benchmark_run  # noqa: E402
+from loopx.state_refresh import refresh_state_run  # noqa: E402
+from loopx.status import delivery_outcome_for_run  # noqa: E402
 
 
 GOAL_ID = "delivery-outcome-enum-fixture"
@@ -52,7 +52,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
         "- Advance primary result evidence.\n",
         encoding="utf-8",
     )
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     write_json(
         registry_path,
         {
@@ -136,7 +136,7 @@ def assert_refresh_state_enforces_enum(registry_path: Path) -> None:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--format",

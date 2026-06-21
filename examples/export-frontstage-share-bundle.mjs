@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dashboardDir = resolve(repoRoot, "apps/dashboard");
-const defaultOutDir = resolve("/tmp", "goal-harness-frontstage-share-bundle");
+const defaultOutDir = resolve("/tmp", "loopx-frontstage-share-bundle");
 const statusFileName = "status.frontstage-share.json";
 const manifestFileName = "frontstage-share-manifest.json";
 const showcaseCatalogPath = "docs/showcases/showcase-catalog.json";
@@ -34,7 +34,7 @@ function parseArgs(argv) {
     }
   }
   if (!args.base.startsWith("/")) {
-    throw new Error("--base must be an absolute browser path such as / or /goal-harness/");
+    throw new Error("--base must be an absolute browser path such as / or /loopx/");
   }
   if (!args.base.endsWith("/")) {
     args.base = `${args.base}/`;
@@ -176,7 +176,7 @@ Hosted entry:
 ${frontstageUrl}
 \`\`\`
 `;
-  const readme = `# Goal Harness Frontstage Share Bundle
+  const readme = `# LoopX Frontstage Share Bundle
 
 This directory is a generated, public-safe static bundle. It contains the
 dashboard build plus a sanitized \`goal_channel_projection_v0\` status fixture.
@@ -203,7 +203,7 @@ ${previewBlock}
 
 async function writeManifest(outDir, base) {
   const manifest = {
-    schema_version: "goal_harness_frontstage_share_bundle_v0",
+    schema_version: "loopx_frontstage_share_bundle_v0",
     base,
     site_dir: "site",
     status_fixture: `site/${statusFileName}`,

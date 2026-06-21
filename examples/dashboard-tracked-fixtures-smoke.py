@@ -66,12 +66,12 @@ def main() -> int:
         assert_public_safe(text, label=str(path))
 
     assert_public_safe("./fixtures/runtime", label="relative fixture path")
-    assert_public_safe("/tmp/goal-harness-dashboard-smoke", label="temporary path")
+    assert_public_safe("/tmp/loopx-dashboard-smoke", label="temporary path")
 
     for private_text in [
-        "/Users/alice/.codex/goal-harness/registry.global.json",
-        "/home/alice/.codex/goal-harness/registry.global.json",
-        r"C:\\Users\\alice\\.codex\\goal-harness\\registry.global.json",
+        "/Users/alice/.codex/loopx/registry.global.json",
+        "/home/alice/.codex/loopx/registry.global.json",
+        r"C:\\Users\\alice\\.codex\\loopx\\registry.global.json",
         "https://code.byted.org/private/project",
         "Bearer " + "abcdef123456",
     ]:

@@ -131,7 +131,7 @@ Targeted validation:
 ```bash
 python3 examples/agentissue-bench-lagent239-local-execution-gate-smoke.py
 python3 -m py_compile examples/agentissue-bench-lagent239-local-execution-gate-smoke.py
-goal-harness check \
+loopx check \
   --scan-path examples/agentissue-bench-lagent239-local-execution-gate-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-lagent239-local-execution-gate-packet-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

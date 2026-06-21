@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.quota import (  # noqa: E402
+from loopx.quota import (  # noqa: E402
     build_quota_plan,
     build_quota_monitor_poll_event,
     build_quota_should_run,
@@ -270,7 +270,7 @@ def append_quota_slot_spend_fixture(
 def write_cli_fixture(root: Path, *, scoped_agents: bool = False) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     base_time = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=30)
     goal_specs = [
         ("half-speed", 0.5, "state_refreshed", 0, None),
@@ -390,7 +390,7 @@ def run_cli_quota_plan(root: Path) -> tuple[dict, str]:
     base_args = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(registry_path),
         "--runtime-root",
@@ -419,7 +419,7 @@ def run_cli_throttled_should_run(root: Path) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -446,7 +446,7 @@ def run_cli_slot_preview(root: Path) -> tuple[dict, dict]:
     base_args = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(registry_path),
         "--runtime-root",
@@ -494,7 +494,7 @@ def run_cli_slot_spend_execute(root: Path) -> tuple[dict, dict, str, str]:
     base_args = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(registry_path),
         "--runtime-root",
@@ -554,7 +554,7 @@ def run_cli_slot_void_execute(root: Path) -> tuple[dict, dict, dict, str, str]:
     base_args = [
         sys.executable,
         "-m",
-        "goal_harness.cli",
+        "loopx.cli",
         "--registry",
         str(registry_path),
         "--runtime-root",
@@ -660,7 +660,7 @@ def assert_plan_shape(plan: dict, markdown: str | None = None) -> None:
 
 
 def assert_scheduler_advisory_does_not_override_goal_should_run() -> None:
-    meta_id = "goal-harness-meta"
+    meta_id = "loopx-meta"
     creator_id = "showcase-creator-operator"
     side_bypass_id = "showcase-side-agent-self-iteration"
     gated_id = "owner-gated"
@@ -670,7 +670,7 @@ def assert_scheduler_advisory_does_not_override_goal_should_run() -> None:
     gated_goal = goal(gated_id, compute=1.0)
 
     meta_item = attention(meta_id, compute=0.5)
-    meta_item["recommended_action"] = "advance one gate-independent Goal Harness backlog item"
+    meta_item["recommended_action"] = "advance one gate-independent LoopX backlog item"
     meta_item["agent_todos"] = {
         "source_section": "Agent Todo",
         "total_count": 2,
@@ -814,10 +814,10 @@ def assert_operator_gate_should_run(status_payload: dict) -> None:
     assert payload["user_todo_summary"]["open_count"] == 1, payload
     assert payload["agent_todo_summary"]["open_count"] == 1, payload
     assert payload["todo_write_hint"]["section"] == "User Todo / Owner Review Reading Queue", payload
-    assert "goal-harness todo add --goal-id needs-operator --role user" in payload["todo_write_hint"][
+    assert "loopx todo add --goal-id needs-operator --role user" in payload["todo_write_hint"][
         "user_todo_command_template"
     ], payload
-    assert "goal-harness todo add --goal-id needs-operator --role agent" in payload["todo_write_hint"][
+    assert "loopx todo add --goal-id needs-operator --role agent" in payload["todo_write_hint"][
         "agent_todo_command_template"
     ], payload
     assert "Next Action" in payload["todo_write_hint"]["rule"], payload
@@ -1067,12 +1067,12 @@ def assert_outcome_floor_projected_blocker_quiet_noop() -> None:
 
 
 def assert_control_plane_health_self_repair_should_run() -> None:
-    goal_id = "goal-harness-meta"
+    goal_id = "loopx-meta"
     meta_goal = goal(goal_id, compute=1.0)
     meta_goal["control_plane"] = {"self_repair": {"enabled": True}}
     meta_item = attention(goal_id, compute=1.0)
     health_item = {
-        "goal_id": "goal-harness-contract",
+        "goal_id": "loopx-contract",
         "status": "contract_check_failed",
         "waiting_on": "codex",
         "severity": "high",
@@ -1102,7 +1102,7 @@ def assert_control_plane_health_self_repair_should_run() -> None:
     assert decision["effective_action"] == "control_plane_health_repair", decision
     assert decision["heartbeat_recommendation"]["recommended_mode"] == "repair_control_plane_health", decision
     assert decision["stall_self_repair"]["trigger"] == "health_blocker", decision
-    assert decision["stall_self_repair"]["blocking_health_items"][0]["goal_id"] == "goal-harness-contract", decision
+    assert decision["stall_self_repair"]["blocking_health_items"][0]["goal_id"] == "loopx-contract", decision
     assert decision["control_plane"]["self_repair"]["enabled"] is True, decision
     assert "decision: `self_repair`" in markdown, markdown
     assert "self_repair_allowed: `True`" in markdown, markdown
@@ -1119,7 +1119,7 @@ def assert_control_plane_self_repair_default_off() -> None:
     ordinary_goal = goal(goal_id, compute=1.0)
     ordinary_item = attention(goal_id, compute=1.0)
     health_item = {
-        "goal_id": "goal-harness-contract",
+        "goal_id": "loopx-contract",
         "status": "contract_check_failed",
         "waiting_on": "codex",
         "severity": "high",
@@ -1146,7 +1146,7 @@ def assert_control_plane_self_repair_default_off() -> None:
 
 
 def assert_control_plane_waiting_projection_self_repair_should_run() -> None:
-    goal_id = "goal-harness-meta"
+    goal_id = "loopx-meta"
     meta_goal = goal(goal_id, compute=1.0)
     meta_goal["control_plane"] = {"self_repair": {"enabled": True}}
     meta_item = attention(goal_id, compute=1.0, state="waiting", waiting_on="")
@@ -1192,7 +1192,7 @@ def post_handoff_meta_fixture(
     latest_classification: str = "handoff_only_budget_fields_merged",
     agent_todo_text: str = "Keep heartbeat prompt and agent-to-CLI interaction lean as an ongoing interface-budget task.",
 ) -> dict:
-    goal_id = "goal-harness-meta"
+    goal_id = "loopx-meta"
     meta_goal = goal(goal_id, compute=1.0)
     meta_goal["adapter_kind"] = "harness_self_improvement"
     meta_goal["adapter_status"] = "connected-read-only"
@@ -1250,7 +1250,7 @@ def post_handoff_meta_fixture(
 
 
 def assert_control_plane_post_handoff_observe_if_unchanged() -> None:
-    goal_id = "goal-harness-meta"
+    goal_id = "loopx-meta"
     payload = post_handoff_meta_fixture(with_agent_todo=False)
     decision = build_quota_should_run(payload, goal_id=goal_id)
     markdown = render_quota_should_run_markdown(decision)
@@ -1278,7 +1278,7 @@ def assert_control_plane_post_handoff_observe_if_unchanged() -> None:
 
 
 def assert_control_plane_post_handoff_agent_todo_stays_active() -> None:
-    goal_id = "goal-harness-meta"
+    goal_id = "loopx-meta"
     payload = post_handoff_meta_fixture(with_agent_todo=True)
     decision = build_quota_should_run(payload, goal_id=goal_id)
     markdown = render_quota_should_run_markdown(decision)
@@ -1307,7 +1307,7 @@ def assert_control_plane_post_handoff_agent_todo_stays_active() -> None:
 
 
 def assert_dependency_observation_returns_to_primary_backlog() -> None:
-    goal_id = "goal-harness-meta"
+    goal_id = "loopx-meta"
     payload = post_handoff_meta_fixture(
         with_agent_todo=True,
         latest_classification="side_bypass_seed308_dependency_observed",
@@ -1365,7 +1365,7 @@ def assert_attention_queue_overrides_stale_run_history() -> None:
             "status": "operator_gate_approved",
             "waiting_on": "codex",
             "recommended_action": "run the approved dry-run",
-            "agent_command": "goal-harness read-only-map --goal-id queue-authority --dry-run",
+            "agent_command": "loopx read-only-map --goal-id queue-authority --dry-run",
             "source": "latest_run",
         }
     )
@@ -1394,7 +1394,7 @@ def assert_attention_queue_overrides_stale_run_history() -> None:
     assert decision["waiting_on"] == "codex", decision
     assert decision["status"] == "operator_gate_approved", decision
     assert decision["recommended_action"] == "run the approved dry-run", decision
-    assert decision["agent_command"] == "goal-harness read-only-map --goal-id queue-authority --dry-run", decision
+    assert decision["agent_command"] == "loopx read-only-map --goal-id queue-authority --dry-run", decision
     assert "operator_question" not in decision, decision
     assert "gate_prompt" not in decision, decision
 
@@ -1535,7 +1535,7 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
 
     assert first_decision["should_run"] is True, first_decision
     assert first_rec["recommended_mode"] == "run_first_read_only_map", first_rec
-    assert first_rec["command"] == "goal-harness read-only-map --goal-id first-map", first_rec
+    assert first_rec["command"] == "loopx read-only-map --goal-id first-map", first_rec
     assert first_rec["notify"] == "NOTIFY", first_rec
     assert "append exactly one heartbeat spend" in first_rec["spend_policy"], first_rec
 
@@ -1584,7 +1584,7 @@ def assert_goal_boundary_in_should_run() -> None:
                 "low-conflict delivery within side-bypass write_scope only",
                 "do not touch protected main-control files",
             ],
-            "next_probe": "goal-harness quota should-run --goal-id delivery-side-bypass",
+            "next_probe": "loopx quota should-run --goal-id delivery-side-bypass",
         }
     )
     delivery_item = attention("delivery-side-bypass", compute=0.33)
@@ -1866,7 +1866,7 @@ def assert_slot_void_execute(
 
 def assert_quota_void_event_net_ledger() -> None:
     goal_id = "void-ledger-goal"
-    with tempfile.TemporaryDirectory(prefix="goal-harness-quota-void-ledger-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-void-ledger-") as tmp:
         runtime = Path(tmp) / "runtime"
         run_dir = runtime / "goals" / goal_id / "runs"
         run_dir.mkdir(parents=True)
@@ -1969,18 +1969,18 @@ def main() -> int:
     assert_quota_void_event_net_ledger()
     assert_monitor_poll_event_carries_agent_id()
     assert_slot_preview(build_quota_slot_preview(status_payload, goal_id="near-limit-half", slots=1))
-    with tempfile.TemporaryDirectory(prefix="goal-harness-quota-plan-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-plan-smoke-") as tmp:
         cli_plan, cli_markdown = run_cli_quota_plan(Path(tmp))
     assert_plan_shape(cli_plan, cli_markdown)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-quota-should-run-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-should-run-smoke-") as tmp:
         assert_throttled_cli_should_run(run_cli_throttled_should_run(Path(tmp)))
-    with tempfile.TemporaryDirectory(prefix="goal-harness-quota-slot-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-slot-smoke-") as tmp:
         slot_preview, should_run_after_preview = run_cli_slot_preview(Path(tmp))
     assert_slot_preview(slot_preview)
     assert_dry_run_left_cli_fixture_unchanged(should_run_after_preview)
-    with tempfile.TemporaryDirectory(prefix="goal-harness-quota-slot-execute-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-slot-execute-smoke-") as tmp:
         assert_slot_spend_execute(*run_cli_slot_spend_execute(Path(tmp)))
-    with tempfile.TemporaryDirectory(prefix="goal-harness-quota-slot-void-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-slot-void-smoke-") as tmp:
         assert_slot_void_execute(*run_cli_slot_void_execute(Path(tmp)))
     print("quota-plan-smoke ok")
     return 0

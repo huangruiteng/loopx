@@ -19,7 +19,7 @@ def run_cli(*args: str, registry_path: Path, runtime: Path) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -41,7 +41,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
     runs_dir = runtime / "goals" / GOAL_ID / "runs"
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -137,7 +137,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-dreaming-contract-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-dreaming-contract-") as tmp:
         registry_path, runtime = write_fixture(Path(tmp))
 
         status_payload = run_cli("status", registry_path=registry_path, runtime=runtime)

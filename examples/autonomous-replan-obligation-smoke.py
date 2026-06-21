@@ -15,7 +15,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness import cli as goal_harness_cli
+from loopx import cli as loopx_cli
 
 GOAL_ID = "autonomous-replan-fixture"
 CLI_TIMEOUT_SECONDS = 30
@@ -46,16 +46,16 @@ def run_cli(
         stdout = io.StringIO()
         stderr = io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            exit_code = goal_harness_cli.main(argv)
+            exit_code = loopx_cli.main(argv)
         if exit_code != 0:
             public_args = " ".join(args)
             raise AssertionError(
-                f"goal-harness fixture command failed with exit {exit_code}: {public_args}\n"
+                f"loopx fixture command failed with exit {exit_code}: {public_args}\n"
                 f"{stderr.getvalue().strip()}"
             )
         return json.loads(stdout.getvalue())
 
-    command = [sys.executable, "-m", "goal_harness.cli", *argv]
+    command = [sys.executable, "-m", "loopx.cli", *argv]
     try:
         result = subprocess.run(
             command,
@@ -68,7 +68,7 @@ def run_cli(
     except subprocess.TimeoutExpired as exc:
         public_args = " ".join(args)
         raise AssertionError(
-            f"goal-harness fixture command timed out after {timeout}s: {public_args}"
+            f"loopx fixture command timed out after {timeout}s: {public_args}"
         ) from exc
     return json.loads(result.stdout)
 
@@ -107,7 +107,7 @@ def write_fixture(
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     replan_section = ""
@@ -235,7 +235,7 @@ def attention_item(status_payload: dict) -> dict:
 
 
 def assert_replan_obligation_projected() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-autonomous-replan-") as tmp:
         registry_path, runtime = write_fixture(Path(tmp), include_replan_signals=True)
         status_payload = run_cli("status", registry_path=registry_path, runtime=runtime)
         item = attention_item(status_payload)
@@ -273,7 +273,7 @@ def assert_replan_obligation_projected() -> None:
 
 
 def assert_replan_obligation_projected_from_run_history() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-autonomous-replan-") as tmp:
         registry_path, runtime = write_fixture(
             Path(tmp),
             include_replan_signals=False,
@@ -301,7 +301,7 @@ def assert_replan_obligation_projected_from_run_history() -> None:
 
 
 def assert_periodic_replan_obligation_projected_from_run_history() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-autonomous-replan-") as tmp:
         registry_path, runtime = write_fixture(
             Path(tmp),
             include_replan_signals=False,
@@ -345,7 +345,7 @@ def assert_periodic_replan_obligation_projected_from_run_history() -> None:
 
 
 def assert_no_periodic_replan_before_threshold_or_after_ack() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-autonomous-replan-") as tmp:
         registry_path, runtime = write_fixture(
             Path(tmp),
             include_replan_signals=False,
@@ -366,7 +366,7 @@ def assert_no_periodic_replan_before_threshold_or_after_ack() -> None:
         assert "autonomous_replan_obligation" not in guard, guard
         assert guard["heartbeat_recommendation"]["recommended_mode"] != "autonomous_replan_required", guard
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-autonomous-replan-") as tmp:
         registry_path, runtime = write_fixture(
             Path(tmp),
             include_replan_signals=False,
@@ -379,7 +379,7 @@ def assert_no_periodic_replan_before_threshold_or_after_ack() -> None:
 
 
 def assert_validated_classification_without_ack_does_not_clear_replan() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-autonomous-replan-") as tmp:
         registry_path, runtime = write_fixture(
             Path(tmp),
             include_replan_signals=False,
@@ -403,7 +403,7 @@ def assert_validated_classification_without_ack_does_not_clear_replan() -> None:
 
 
 def assert_refresh_state_structured_ack_clears_replan() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-autonomous-replan-") as tmp:
         registry_path, runtime = write_fixture(
             Path(tmp),
             include_replan_signals=False,
@@ -436,7 +436,7 @@ def assert_refresh_state_structured_ack_clears_replan() -> None:
 
 
 def assert_no_replan_obligation_without_signal() -> None:
-    with tempfile.TemporaryDirectory(prefix="goal-harness-autonomous-replan-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-autonomous-replan-") as tmp:
         registry_path, runtime = write_fixture(Path(tmp), include_replan_signals=False)
         status_payload = run_cli("status", registry_path=registry_path, runtime=runtime)
         item = attention_item(status_payload)

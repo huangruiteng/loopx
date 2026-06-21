@@ -15,13 +15,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.heartbeat_prompt import INTERFACE_BUDGET_CHARS, build_heartbeat_prompt  # noqa: E402
+from loopx.heartbeat_prompt import INTERFACE_BUDGET_CHARS, build_heartbeat_prompt  # noqa: E402
 
 DOC = REPO_ROOT / "docs" / "heartbeat-automation-prompt.md"
 README = REPO_ROOT / "README.md"
 GETTING_STARTED = REPO_ROOT / "docs" / "guides" / "getting-started.md"
 INTEGRATION_DOC = REPO_ROOT / "docs" / "integration.md"
-PROJECT_SKILL = REPO_ROOT / "skills" / "goal-harness-project" / "SKILL.md"
+PROJECT_SKILL = REPO_ROOT / "skills" / "loopx-project" / "SKILL.md"
 GOAL_ID = "public-heartbeat-goal"
 ACTIVE_STATE = Path("/tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md")
 PROJECT_SPECIFIC_PROMPT_LEAKS = (
@@ -182,11 +182,11 @@ def main() -> int:
     assert_no_project_specific_prompt_leaks("brief", str(brief_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("thin", str(thin_payload["task_body"]))
     assert payload["quota_guard_command"] == (
-        'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" '
+        'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
         "quota should-run --goal-id public-heartbeat-goal"
     ), payload
     assert payload["quota_spend_command"] == (
-        'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" '
+        'loopx --registry "$HOME/.codex/loopx/registry.global.json" '
         "quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute"
     ), payload
     assert compact_payload["compact"] is True, compact_payload
@@ -202,10 +202,10 @@ def main() -> int:
     )
     compact_task = normalized(str(compact_payload["task_body"]))
     for phrase in (
-        "compact Goal Harness heartbeat body",
+        "compact LoopX heartbeat body",
         "Expanded lifecycle contract",
-        "goal-harness heartbeat-prompt --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
-        'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
+        "loopx heartbeat-prompt --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
+        'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
         "state=operator_gate",
         "notify_user_on_open_todo=true",
         "open_todo_notification_policy=repeat_until_resolved",
@@ -227,9 +227,9 @@ def main() -> int:
         "bottleneck lens",
         "no-progress self-repair",
         "Public-safe commit/push/PR may proceed",
-        "goal-harness todo add --goal-id public-heartbeat-goal --role user|agent",
+        "loopx todo add --goal-id public-heartbeat-goal --role user|agent",
         "blockers/plans, not prose",
-        'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
+        'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
         "validated progress artifacts pass explicit `--delivery-batch-scale` and `--delivery-outcome`",
         "Do not append spend for quiet skips",
     ):
@@ -238,10 +238,10 @@ def main() -> int:
     assert registry_default_payload["active_state"] == "the registry-declared active state", registry_default_payload
     assert registry_default_payload["active_state_source"] == "registry", registry_default_payload
     assert registry_default_payload["expanded_prompt_command"] == (
-        "goal-harness heartbeat-prompt --goal-id public-heartbeat-goal"
+        "loopx heartbeat-prompt --goal-id public-heartbeat-goal"
     ), registry_default_payload
     assert registry_default_payload["compact_prompt_command"] == (
-        "goal-harness heartbeat-prompt --compact --goal-id public-heartbeat-goal"
+        "loopx heartbeat-prompt --compact --goal-id public-heartbeat-goal"
     ), registry_default_payload
     assert "using `the registry-declared active state`" in registry_default_task, registry_default_task
     scoped_task = normalized(str(scoped_payload["task_body"]))
@@ -270,7 +270,7 @@ def main() -> int:
     assert profile_scoped_payload["agent_scope_source"] == "agent_profile_v0", profile_scoped_payload
     assert "private_note" not in profile_scoped_payload["agent_profile"], profile_scoped_payload
     assert profile_scoped_payload["thin_prompt_command"] == (
-        "goal-harness heartbeat-prompt --thin --goal-id public-heartbeat-goal "
+        "loopx heartbeat-prompt --thin --goal-id public-heartbeat-goal "
         "--active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md --agent-id codex-side-bypass"
     ), profile_scoped_payload
     assert "--agent-scope" not in profile_scoped_payload["thin_prompt_command"], profile_scoped_payload
@@ -289,7 +289,7 @@ def main() -> int:
         "agent_id `codex-side-bypass`",
         "control-plane coordination and todo claim ergonomics",
         "do not take benchmark execution todos unless reassigned",
-        "goal-harness todo claim --goal-id public-heartbeat-goal --todo-id <todo_id> --claimed-by codex-side-bypass",
+        "loopx todo claim --goal-id public-heartbeat-goal --todo-id <todo_id> --claimed-by codex-side-bypass",
         "Do not write scope into todo metadata",
     ):
         assert phrase in scoped_task, phrase
@@ -313,12 +313,12 @@ def main() -> int:
     )
     brief_task = normalized(str(brief_payload["task_body"]))
     for phrase in (
-        "Brief installed Goal Harness heartbeat",
+        "Brief installed LoopX heartbeat",
         "Thin dispatcher",
         "pull details on demand",
-        "goal-harness heartbeat-prompt --compact --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
+        "loopx heartbeat-prompt --compact --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
         "Preflight and quota guard",
-        'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
+        'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
         "Gate/open todo ->",
         "status/log/metric/marker poll",
         "safe_bypass_kind=outcome_floor_recovery",
@@ -332,7 +332,7 @@ def main() -> int:
         "bounded segment/batch",
         "validate/writeback/todos",
         "explicit delivery scale/outcome for progress artifacts",
-        'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
+        'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
         "No spend for quiet skips",
     ):
         assert phrase in brief_task, phrase
@@ -340,7 +340,7 @@ def main() -> int:
     assert thin_payload["brief"] is False, thin_payload
     assert thin_payload["compact"] is False, thin_payload
     assert thin_payload["thin_prompt_command"] == (
-        "goal-harness heartbeat-prompt --thin --goal-id public-heartbeat-goal "
+        "loopx heartbeat-prompt --thin --goal-id public-heartbeat-goal "
         "--active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md"
     ), thin_payload
     assert len(str(thin_payload["task_body"])) < len(str(brief_payload["task_body"])) * 0.45, (
@@ -350,9 +350,9 @@ def main() -> int:
     thin_task = normalized(str(thin_payload["task_body"]))
     for phrase in (
         "Advance `public-heartbeat-goal` from /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
-        "Use skills: `goal-harness-project`; if surprising/tiny/contradictory",
-        "`goal-harness-self-repair`",
-        "Goal Harness CLI is source of truth",
+        "Use skills: `loopx-project`; if surprising/tiny/contradictory",
+        "`loopx-self-repair`",
+        "LoopX CLI is source of truth",
         "registry/global quota truth",
         "active state, status/run history, repo state",
         "Run `quota should-run`; follow `interaction_contract`",
@@ -360,7 +360,7 @@ def main() -> int:
         "list concrete payload todo(s)/questions",
         'never only "owner gate"',
         "If false/0: 无用户待办/无需通知 or quiet",
-        "具体 user todo 未投影，需修复 Goal Harness 状态投影",
+        "具体 user todo 未投影，需修复 LoopX 状态投影",
         "Do bounded validated batch or quiet no-op; spend after writeback",
         "Plans/done -> GH todo or rationale",
         "After 2 no-progress, self-repair",
@@ -383,15 +383,15 @@ def main() -> int:
     must_have = (
         "<ACTIVE_GOAL_STATE_PATH>",
         "<GOAL_ID>",
-        "Generic Goal Harness lifecycle",
+        "Generic LoopX lifecycle",
         "Keep project-specific branching out of the automation prompt",
         "Put local policy in registry, active-state sections, adapter output",
         "quota should-run.goal_boundary",
-        "update goal-harness heartbeat-prompt so all projects inherit it",
+        "update loopx heartbeat-prompt so all projects inherit it",
         'export PATH="$HOME/.local/bin:$PATH"',
-        'install_script="$HOME/goal-harness/scripts/install-local.sh"',
-        "goal-harness doctor >/dev/null",
-        'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id <GOAL_ID>',
+        'install_script="$HOME/loopx/scripts/install-local.sh"',
+        "loopx doctor >/dev/null",
+        'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID>',
         "If that preflight still fails",
         "should_run=false",
         "state=operator_gate",
@@ -407,7 +407,7 @@ def main() -> int:
         "When `interaction_contract.user_channel.action_required=false`",
         "`user_todo_summary.open_count=0`",
         "allow \"无用户待办/无需通知\"",
-        "具体 user todo 未投影，需修复 Goal Harness 状态投影",
+        "具体 user todo 未投影，需修复 LoopX 状态投影",
         "NOTIFY",
         "notify_user_on_open_todo=true",
         "blocker-push opportunity",
@@ -435,7 +435,7 @@ def main() -> int:
         "Still do not launch/stop/restart/sync/design code",
         "DONT_NOTIFY",
         "should_run=true",
-        "When you inspect current Goal Harness routing",
+        "When you inspect current LoopX routing",
         "attention_queue.items",
         "project_asset are authoritative",
         "raw queue fields are not owner/gate/stop authority",
@@ -484,11 +484,11 @@ def main() -> int:
         "Plan/top todo/route changes need todo/Next Action writeback",
         "If the step discovers a concrete user/owner action",
         "do not hide it in `Next Action`, a review doc, or chat",
-        "goal-harness todo add --goal-id <GOAL_ID> --role user --text \"<public-safe user/owner action>\"",
+        "loopx todo add --goal-id <GOAL_ID> --role user --text \"<public-safe user/owner action>\"",
         "Use `--role agent` for project-agent follow-up work",
         "docs/project-agent-todo-contract.md",
-        'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute',
-        "goal-harness refresh-state --goal-id <GOAL_ID>",
+        'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute',
+        "loopx refresh-state --goal-id <GOAL_ID>",
         "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
         "--delivery-batch-scale multi_surface",
         "--delivery-outcome outcome_progress",
@@ -505,13 +505,13 @@ def main() -> int:
     assert "if absent say" not in compact_doc, compact_doc
     for phrase in (
         'export PATH="$HOME/.local/bin:$PATH"',
-        'install_script="$HOME/goal-harness/scripts/install-local.sh"',
-        "Generic Goal Harness lifecycle",
+        'install_script="$HOME/loopx/scripts/install-local.sh"',
+        "Generic LoopX lifecycle",
         "Keep project-specific branching out of the automation prompt",
         "Put local policy in registry, active-state sections, adapter output",
         "quota should-run.goal_boundary",
-        "goal-harness doctor >/dev/null",
-        'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
+        "loopx doctor >/dev/null",
+        'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
         "If that preflight still fails",
         "should_run=false",
         "state=operator_gate",
@@ -524,7 +524,7 @@ def main() -> int:
         "name concrete payload todo(s)/questions",
         'never only "owner gate"',
         "If false/0, allow quiet/no-user-todo",
-        "具体 user todo 未投影，需修复 Goal Harness 状态投影",
+        "具体 user todo 未投影，需修复 LoopX 状态投影",
         "NOTIFY",
         "notify_user_on_open_todo=true",
         "blocker-push",
@@ -546,7 +546,7 @@ def main() -> int:
         "state/board/ledger",
         "Still do not launch/stop/restart/sync/design code",
         "DONT_NOTIFY",
-        "When you inspect current Goal Harness routing",
+        "When you inspect current LoopX routing",
         "attention_queue.items",
         "project_asset` are authoritative",
         "raw queue fields are not owner/gate/stop authority",
@@ -586,10 +586,10 @@ def main() -> int:
         "clean public/private boundary scan",
         "Plan/top todo/route changes need todo/Next Action writeback",
         "If the step discovers a concrete user/owner action",
-        "goal-harness todo add --goal-id public-heartbeat-goal --role user --text \"<public-safe user/owner action>\"",
+        "loopx todo add --goal-id public-heartbeat-goal --role user --text \"<public-safe user/owner action>\"",
         "docs/project-agent-todo-contract.md",
-        'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
-        "goal-harness refresh-state --goal-id public-heartbeat-goal",
+        'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
+        "loopx refresh-state --goal-id public-heartbeat-goal",
         "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
         "--delivery-batch-scale multi_surface",
         "--delivery-outcome outcome_progress",
@@ -604,10 +604,10 @@ def main() -> int:
     assert_ordered(
         doc,
         (
-            "Before spending delivery compute, first make the Goal Harness CLI reachable",
+            "Before spending delivery compute, first make the LoopX CLI reachable",
             'export PATH="$HOME/.local/bin:$PATH"',
-            "goal-harness doctor >/dev/null",
-            'goal-harness --format json --registry "$HOME/.codex/goal-harness/registry.global.json" quota should-run --goal-id <GOAL_ID>',
+            "loopx doctor >/dev/null",
+            'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID>',
             "If that preflight still fails",
             "If the result says should_run=false",
             "state=operator_gate",
@@ -620,7 +620,7 @@ def main() -> int:
             "status/log/metric/marker surfaces",
             "New eval/fail/complete/blocker",
             "If the result says should_run=true",
-            "When you inspect current Goal Harness routing",
+            "When you inspect current LoopX routing",
             "attention_queue.items",
             "run_history.latest_runs",
             "Also inspect goal_boundary",
@@ -637,20 +637,20 @@ def main() -> int:
             "Choose one bounded, verifiable progress segment from that audit",
             "Public-safe repo publication is not an operator gate by itself",
             "Run the smallest useful validation",
-            'goal-harness --registry "$HOME/.codex/goal-harness/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute',
-            "goal-harness refresh-state --goal-id <GOAL_ID>",
+            'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute',
+            "loopx refresh-state --goal-id <GOAL_ID>",
             "Return a compact final report",
         ),
     )
 
     getting_started = GETTING_STARTED.read_text(encoding="utf-8")
     assert "docs/guides/getting-started.md" in readme, readme
-    assert "goal-harness heartbeat-prompt --thin" in readme, readme
-    assert "goal-harness quota spend-slot" in readme, readme
+    assert "loopx heartbeat-prompt --thin" in readme, readme
+    assert "loopx quota spend-slot" in readme, readme
     assert "Generate a guarded Codex App heartbeat body" in getting_started, getting_started
-    assert "goal-harness heartbeat-prompt --thin" in getting_started, getting_started
-    assert "goal-harness heartbeat-prompt --compact" in getting_started, getting_started
-    assert "goal-harness-canary" in getting_started, getting_started
+    assert "loopx heartbeat-prompt --thin" in getting_started, getting_started
+    assert "loopx heartbeat-prompt --compact" in getting_started, getting_started
+    assert "loopx-canary" in getting_started, getting_started
     assert "release snapshot" in getting_started, getting_started
     assert "execution_obligation" in getting_started, getting_started
     assert "safe-bypass or self-repair hints" in getting_started, getting_started
@@ -658,18 +658,18 @@ def main() -> int:
     assert "execution_obligation" in doc, doc
     assert "must_attempt_work=true" in doc, doc
     assert "not an execution gate" in normalized(doc), doc
-    assert "goal-harness heartbeat-prompt" in doc, doc
+    assert "loopx heartbeat-prompt" in doc, doc
     assert "--compact" in doc, doc
     assert "--brief" in doc, doc
     assert "--thin" in doc, doc
-    assert "--cli-bin goal-harness-canary" in doc, doc
+    assert "--cli-bin loopx-canary" in doc, doc
     assert "Do not hand-edit per-project lifecycle branches" in doc, doc
-    assert "goal-harness heartbeat-prompt" in integration_doc, integration_doc
-    assert "goal-harness heartbeat-prompt --compact" in integration_doc, integration_doc
-    assert "goal-harness heartbeat-prompt --brief" in integration_doc, integration_doc
-    assert "goal-harness heartbeat-prompt --thin" in integration_doc, integration_doc
-    assert "goal-harness-canary heartbeat-prompt" in integration_doc, integration_doc
-    assert "--cli-bin goal-harness-canary" in integration_doc, integration_doc
+    assert "loopx heartbeat-prompt" in integration_doc, integration_doc
+    assert "loopx heartbeat-prompt --compact" in integration_doc, integration_doc
+    assert "loopx heartbeat-prompt --brief" in integration_doc, integration_doc
+    assert "loopx heartbeat-prompt --thin" in integration_doc, integration_doc
+    assert "loopx-canary heartbeat-prompt" in integration_doc, integration_doc
+    assert "--cli-bin loopx-canary" in integration_doc, integration_doc
     assert "local release snapshot" in integration_doc, integration_doc
     assert "visible goal text can stay short" in integration_doc, integration_doc
     assert "shares the same quota, gate," in integration_doc, integration_doc
@@ -681,8 +681,8 @@ def main() -> int:
     assert "Two Prompt Layers" in doc, doc
     assert "Visible goal text" in doc, doc
     assert "Heartbeat automation task body" in doc, doc
-    assert "Do not use Goal Harness as an autonomous production controller" in readme, readme
-    assert "goal-harness heartbeat-prompt" in project_skill, project_skill
+    assert "Do not use LoopX as an autonomous production controller" in readme, readme
+    assert "loopx heartbeat-prompt" in project_skill, project_skill
     assert "--compact" in project_skill, project_skill
     assert "--brief" in project_skill, project_skill
     assert "--thin" in project_skill, project_skill
@@ -718,7 +718,7 @@ def main() -> int:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "heartbeat-prompt",
@@ -736,14 +736,14 @@ def main() -> int:
     assert cli_payload["task_body"] == payload["task_body"], cli_payload
     assert cli_payload["compact"] is False, cli_payload
     assert cli_payload["brief"] is False, cli_payload
-    assert cli_payload["cli_bin"] == "goal-harness", cli_payload
+    assert cli_payload["cli_bin"] == "loopx", cli_payload
     assert cli_payload["active_state_source"] == "explicit", cli_payload
 
     cli_compact_json = subprocess.run(
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "heartbeat-prompt",
@@ -766,7 +766,7 @@ def main() -> int:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "heartbeat-prompt",
@@ -784,13 +784,13 @@ def main() -> int:
     cli_brief_payload = json.loads(cli_brief_json.stdout)
     assert cli_brief_payload["task_body"] == brief_payload["task_body"], cli_brief_payload
     assert cli_brief_payload["brief"] is True, cli_brief_payload
-    assert cli_brief_payload["cli_bin"] == "goal-harness", cli_brief_payload
+    assert cli_brief_payload["cli_bin"] == "loopx", cli_brief_payload
 
     cli_thin_json = subprocess.run(
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "heartbeat-prompt",
@@ -808,13 +808,13 @@ def main() -> int:
     cli_thin_payload = json.loads(cli_thin_json.stdout)
     assert cli_thin_payload["task_body"] == thin_payload["task_body"], cli_thin_payload
     assert cli_thin_payload["thin"] is True, cli_thin_payload
-    assert cli_thin_payload["cli_bin"] == "goal-harness", cli_thin_payload
+    assert cli_thin_payload["cli_bin"] == "loopx", cli_thin_payload
 
     cli_canary_json = subprocess.run(
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--format",
             "json",
             "heartbeat-prompt",
@@ -824,7 +824,7 @@ def main() -> int:
             str(ACTIVE_STATE),
             "--brief",
             "--cli-bin",
-            "goal-harness-canary",
+            "loopx-canary",
         ],
         cwd=REPO_ROOT,
         check=True,
@@ -832,16 +832,16 @@ def main() -> int:
         text=True,
     )
     cli_canary_payload = json.loads(cli_canary_json.stdout)
-    assert cli_canary_payload["cli_bin"] == "goal-harness-canary", cli_canary_payload
-    assert "goal-harness-canary doctor" in cli_canary_payload["cli_preflight"], cli_canary_payload
-    assert "goal-harness-canary --format json" in cli_canary_payload["quota_guard_command"], cli_canary_payload
-    assert "goal-harness-canary heartbeat-prompt --compact" in cli_canary_payload["task_body"], cli_canary_payload
+    assert cli_canary_payload["cli_bin"] == "loopx-canary", cli_canary_payload
+    assert "loopx-canary doctor" in cli_canary_payload["cli_preflight"], cli_canary_payload
+    assert "loopx-canary --format json" in cli_canary_payload["quota_guard_command"], cli_canary_payload
+    assert "loopx-canary heartbeat-prompt --compact" in cli_canary_payload["task_body"], cli_canary_payload
 
     with tempfile.TemporaryDirectory() as raw_tmp:
         root = Path(raw_tmp)
         project = root / "project"
         state_file = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
-        registry_path = project / ".goal-harness" / "registry.json"
+        registry_path = project / ".loopx" / "registry.json"
         state_file.parent.mkdir(parents=True)
         registry_path.parent.mkdir(parents=True)
         state_file.write_text("# Active State\n", encoding="utf-8")
@@ -876,7 +876,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--registry",
@@ -905,7 +905,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--registry",
@@ -933,10 +933,10 @@ def main() -> int:
         assert cli_registry_default_payload["active_state_source"].startswith("registry:"), cli_registry_default_payload
         assert cli_registry_default_payload["resolved_active_state"] == str(state_file), cli_registry_default_payload
         assert cli_registry_default_payload["expanded_prompt_command"] == (
-            "goal-harness heartbeat-prompt --goal-id public-heartbeat-goal "
+            "loopx heartbeat-prompt --goal-id public-heartbeat-goal "
             "--agent-id codex-main-control --agent-scope 'primary review and coordination'"
         ), cli_registry_default_payload
-        assert "goal-harness heartbeat-prompt --compact --goal-id public-heartbeat-goal" in (
+        assert "loopx heartbeat-prompt --compact --goal-id public-heartbeat-goal" in (
             cli_registry_default_payload["task_body"]
         ), cli_registry_default_payload
         assert "--active-state" not in cli_registry_default_payload["task_body"], cli_registry_default_payload
@@ -944,7 +944,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--registry",
@@ -970,7 +970,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--registry",
@@ -1005,7 +1005,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--registry",
@@ -1041,7 +1041,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--registry",
@@ -1065,7 +1065,7 @@ def main() -> int:
         )
         assert cli_profile_scoped_payload["agent_scope_source"] == "agent_profile_v0", cli_profile_scoped_payload
         assert cli_profile_scoped_payload["thin_prompt_command"] == (
-            "goal-harness heartbeat-prompt --thin --goal-id public-heartbeat-goal --agent-id codex-side-bypass"
+            "loopx heartbeat-prompt --thin --goal-id public-heartbeat-goal --agent-id codex-side-bypass"
         ), cli_profile_scoped_payload
         assert "--agent-scope" not in cli_profile_scoped_payload["thin_prompt_command"], (
             cli_profile_scoped_payload
@@ -1078,7 +1078,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--registry",
@@ -1098,7 +1098,7 @@ def main() -> int:
         cli_unknown_payload = json.loads(cli_unknown_scoped.stdout)
         assert "is not registered" in cli_unknown_payload["error"], cli_unknown_payload
 
-        legacy_registry_path = project / ".goal-harness" / "legacy-registry.json"
+        legacy_registry_path = project / ".loopx" / "legacy-registry.json"
         legacy_registry_path.write_text(
             json.dumps(
                 {
@@ -1120,7 +1120,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--registry",
@@ -1147,7 +1147,7 @@ def main() -> int:
         project = root / "project"
         runtime = root / "runtime"
         state_file = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
-        local_registry_path = project / ".goal-harness" / "registry.json"
+        local_registry_path = project / ".loopx" / "registry.json"
         global_registry_path = runtime / "registry.global.json"
         state_file.parent.mkdir(parents=True)
         local_registry_path.parent.mkdir(parents=True)
@@ -1195,7 +1195,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--runtime-root",
@@ -1224,7 +1224,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--runtime-root",
@@ -1257,7 +1257,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "goal_harness.cli",
+                "loopx.cli",
                 "--format",
                 "json",
                 "--runtime-root",
@@ -1289,7 +1289,7 @@ def main() -> int:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "heartbeat-prompt",
             "--goal-id",
             GOAL_ID,

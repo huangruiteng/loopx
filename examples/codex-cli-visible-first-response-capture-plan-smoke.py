@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.codex_cli_probe import (  # noqa: E402
+from loopx.codex_cli_probe import (  # noqa: E402
     build_codex_cli_bounded_visible_pilot_adapter,
     build_codex_cli_visible_first_response_capture_plan,
 )
@@ -29,7 +29,7 @@ PRODUCT_README = REPO_ROOT / "docs" / "product" / "README.md"
 
 def run_cli(*extra_args: str) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *extra_args],
+        [sys.executable, "-m", "loopx.cli", *extra_args],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -47,8 +47,8 @@ def assert_boundary(payload: dict[str, object]) -> None:
     assert boundary["reads_stdout_stderr"] is False, payload
     assert boundary["reads_credentials"] is False, payload
     assert boundary["mutates_codex_session"] is False, payload
-    assert boundary["writes_goal_harness_state"] is False, payload
-    assert boundary["spends_goal_harness_quota"] is False, payload
+    assert boundary["writes_loopx_state"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
     assert boundary["manual_paste_primary"] is True, payload
     assert boundary["argv_prompt_rejected"] is True, payload
     assert boundary["success_claim_requires_bounded_adapter"] is True, payload
@@ -74,7 +74,7 @@ def assert_sample_fixtures_pass_adapter(payload: dict[str, object]) -> None:
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
         first_response_payload=payload["sample_first_response_fixture"],
         idle_payload=payload["sample_runtime_idle_fixture"],
     )
@@ -114,7 +114,7 @@ def assert_cli() -> None:
     assert "argv_prompt_rejected" in markdown, markdown
     assert "reads_raw_transcripts" in markdown, markdown
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-codex-cli-first-response-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-first-response-") as tmp:
         tmp_path = Path(tmp)
         first_response = tmp_path / "public-first-response.json"
         idle = tmp_path / "public-runtime-idle.json"
@@ -155,7 +155,7 @@ def main() -> int:
         project=PROJECT,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        cli_bin="goal-harness",
+        cli_bin="loopx",
     )
     assert_capture_plan(direct)
     assert_sample_fixtures_pass_adapter(direct)

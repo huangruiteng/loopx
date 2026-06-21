@@ -14,11 +14,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_adapters.terminal_bench import (  # noqa: E402
+from loopx.benchmark_adapters.terminal_bench import (  # noqa: E402
     build_terminal_bench_result_finalization_gate,
     summarize_terminal_bench_post_launch_materialization,
 )
-from goal_harness.benchmark_core.io import load_json_object  # noqa: E402
+from loopx.benchmark_core.io import load_json_object  # noqa: E402
 
 
 STARTUP_BLOCKER_CLASSES = {

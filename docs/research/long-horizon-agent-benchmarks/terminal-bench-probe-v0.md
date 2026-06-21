@@ -5,10 +5,10 @@ Checked at: 2026-06-07T18:12:55+08:00
 ## Scope
 
 This probe answers one narrow setup question for the long-horizon benchmark
-program: where can Goal Harness attach to Terminal-Bench or Harbor without
+program: where can LoopX attach to Terminal-Bench or Harbor without
 changing official benchmark semantics?
 
-The answer is deliberately conservative. Goal Harness should first behave as a
+The answer is deliberately conservative. LoopX should first behave as a
 passive control-plane wrapper around official runner outputs. A custom agent
 wrapper is possible, but it should not be the first leaderboard-facing path.
 
@@ -20,8 +20,8 @@ wrapper is possible, but it should not be the first leaderboard-facing path.
 - Harbor public repository:
   `https://github.com/laude-institute/harbor`, commit
   `8cfac6ad91c5c566ff14040cc4acbfe94ad42356`.
-- Current Goal Harness authority/material handoff summary for
-  `goal-harness-meta`: redacted authority context reports current
+- Current LoopX authority/material handoff summary for
+  `loopx-meta`: redacted authority context reports current
   benchmark/material authority with no owner-review requirement and low
   conflict risk. This was used only as a planning constraint; private source
   paths, internal document links, and raw agent-harness material are not copied
@@ -43,7 +43,7 @@ Terminal-Bench has two relevant surfaces:
   attempts, timeout overrides, and output path.
 - Trial outputs are structured enough for passive ingestion: per-trial
   `results.json`, command history, pane logs, agent logs, and run-level
-  `run_metadata.json` / benchmark result JSON are the first Goal Harness read
+  `run_metadata.json` / benchmark result JSON are the first LoopX read
   surface.
 
 Harbor is the current official harness path for Terminal-Bench 2.0:
@@ -61,22 +61,22 @@ Harbor is the current official harness path for Terminal-Bench 2.0:
   `trajectory.json`, captures token and cost metrics when available, supports
   optional skills/MCP registration, and writes Codex stdout to agent logs.
 
-## Goal Harness Attachment Strategy
+## LoopX Attachment Strategy
 
 Use a three-step boundary:
 
 1. Passive observer first. Read `lock.json`, `result.json`, trial
    `result.json`, `trajectory.json`, verifier reward files, and trial logs.
-   Write a Goal Harness `benchmark_run_v0` event only after parsing and
+   Write a LoopX `benchmark_run_v0` event only after parsing and
    validating those official outputs.
 2. Local comparison second. Run the same small official or official-like task
-   once with bare Codex CLI and once with Goal Harness passive observation,
+   once with bare Codex CLI and once with LoopX passive observation,
    without changing benchmark prompts, task files, timeouts, resources, or
    scoring.
 3. Custom agent wrapper last. Only after passive metrics show a concrete gap,
    consider a local-only `--agent-import-path` wrapper that subclasses the
    runner's `BaseAgent`, delegates execution to the built-in Codex agent or the
-   Codex CLI, and adds Goal Harness state markers. Do not present this wrapper
+   Codex CLI, and adds LoopX state markers. Do not present this wrapper
    as an official leaderboard agent until benchmark rules and submission
    semantics are checked.
 
@@ -103,11 +103,11 @@ For a future local-only custom wrapper probe:
 ```bash
 harbor run \
   --dataset terminal-bench@2.0 \
-  --agent-import-path goal_harness_terminal_bench.agent:GoalHarnessCodexAgent \
+  --agent-import-path loopx_terminal_bench.agent:GoalHarnessCodexAgent \
   --model <openai-codex-model> \
   --n-concurrent 1 \
   --jobs-dir <local-private-output-dir> \
-  --job-name terminal_bench_probe_v0_goal_harness_wrapper
+  --job-name terminal_bench_probe_v0_loopx_wrapper
 ```
 
 For the older `tb` runner compatibility path:
@@ -132,7 +132,7 @@ Stop before any of the following:
   scoring;
 - copying credentials, private run logs, Codex session content, internal
   project paths, or raw agent-harness documents into a public artifact;
-- claiming Goal Harness improves benchmark score before a paired run and a
+- claiming LoopX improves benchmark score before a paired run and a
   public-safe `benchmark_run_v0` comparison exist.
 
 ## Next Slice

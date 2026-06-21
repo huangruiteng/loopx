@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve the Goal Harness SkillsBench local ACP relay over stdio."""
+"""Serve the LoopX SkillsBench local ACP relay over stdio."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
+from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     CodexExecConfig,
     SkillsBenchLocalAcpRelay,
 )

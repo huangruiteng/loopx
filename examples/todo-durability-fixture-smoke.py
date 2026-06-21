@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import parse_active_state_todos  # noqa: E402
+from loopx.status import parse_active_state_todos  # noqa: E402
 
 
 GOAL_ID = "todo-durability-fixture-goal"
@@ -32,7 +32,7 @@ def run_cli(*args: str, registry_path: Path, runtime: Path) -> dict:
         [
             sys.executable,
             "-m",
-            "goal_harness.cli",
+            "loopx.cli",
             "--registry",
             str(registry_path),
             "--runtime-root",
@@ -75,7 +75,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(state_text(), encoding="utf-8")
@@ -152,7 +152,7 @@ def main() -> int:
     parsed = parse_active_state_todos(state_text())
     assert_parseable_agent_todos(parsed["agent_todos"])
 
-    with tempfile.TemporaryDirectory(prefix="goal-harness-todo-durability-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-todo-durability-") as tmp:
         registry_path, runtime = write_fixture(Path(tmp))
         status_payload = run_cli("status", registry_path=registry_path, runtime=runtime)
         item = attention_item(status_payload)

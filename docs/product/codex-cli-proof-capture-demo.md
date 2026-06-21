@@ -1,7 +1,7 @@
 # Codex CLI Proof-Capture Demo
 
 This demo bundle lets a user or contributor rehearse the visible proof protocol
-without running Codex, reading session material, or touching local Goal Harness
+without running Codex, reading session material, or touching local LoopX
 state. It is deliberately fixture-first: the commands validate public-safe
 evidence shape and show the acceptance decision that a real opt-in proof would
 need to produce.
@@ -24,7 +24,7 @@ need to produce.
 ## Rehearse The Current Likely Path
 
 ```bash
-goal-harness --format json codex-cli-visible-attach-acceptance \
+loopx --format json codex-cli-visible-attach-acceptance \
   --project . \
   --goal-id public-codex-cli-goal \
   --agent-id codex-side-bypass \
@@ -44,12 +44,12 @@ blocker: same_tui_visible_attach_not_proven
 
 This is the important product distinction. A visible `resume` or
 `remote-control` path can become a useful proof spike, but it still does not
-prove Goal Harness can safely add a turn to the same open TUI.
+prove LoopX can safely add a turn to the same open TUI.
 
 ## Rehearse The Future Promotion Path
 
 ```bash
-goal-harness --format json codex-cli-visible-attach-acceptance \
+loopx --format json codex-cli-visible-attach-acceptance \
   --project . \
   --goal-id public-codex-cli-goal \
   --agent-id codex-side-bypass \

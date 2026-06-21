@@ -48,7 +48,7 @@ def main() -> int:
         [
             "A **task claim should be a per-todo lease**",
             "pending key is per todo: `(goal_id, todo_id)`",
-            "Goal Harness does not have a separate issue object",
+            "LoopX does not have a separate issue object",
             "one active pending lease per\n  `(goal_id, todo_id)`",
             "not one active lease per goal or project",
             "side agents claim scoped todos and work in separate git worktrees",
@@ -60,7 +60,7 @@ def main() -> int:
     require(
         todo_contract,
         [
-            "a `goal_id` is the Goal Harness control-plane boundary",
+            "a `goal_id` is the LoopX control-plane boundary",
             "A `todo_id` is a structured work item inside that goal",
             "does not\ncurrently model issues as a separate runtime object",
             "one `coordination.primary_agent`",

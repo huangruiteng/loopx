@@ -17,16 +17,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from goal_harness.status import collect_status  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 GOAL_ID = "terminal-bench-active-user-observation-fixture"
 BENCHMARK_ID = "terminal-bench@2.0"
 TASK_ID = "train-fasttext"
 CLASSIFICATION = "terminal_bench_active_user_assisted_observation_fixture_v0"
-RUN_MODE = "codex_goal_harness_active_user_assisted_observation_fixture"
+RUN_MODE = "codex_loopx_active_user_assisted_observation_fixture"
 FIRST_BLOCKER = "real_assisted_worker_observation_fixture_only_no_real_case"
-OBSERVATION_SCHEMA = "goal_harness_active_user_intervention_observation_v0"
+OBSERVATION_SCHEMA = "loopx_active_user_intervention_observation_v0"
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -38,7 +38,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
-    registry_path = project / ".goal-harness" / "registry.json"
+    registry_path = project / ".loopx" / "registry.json"
 
     (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
     (project / state_file).write_text(
@@ -60,7 +60,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
             "goals": [
                 {
                     "id": GOAL_ID,
-                    "domain": "goal-harness-platform",
+                    "domain": "loopx-platform",
                     "status": "active-read-only",
                     "state_file": state_file,
                     "repo": str(project),
@@ -91,7 +91,7 @@ def write_fake_surface_commands(root: Path) -> Path:
 
 def run_cli_json(args: list[str], *, env: dict[str, str]) -> dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, "-m", "goal_harness.cli", *args],
+        [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=True,
         text=True,
@@ -118,7 +118,7 @@ def common_args(registry_path: Path, runtime: Path) -> list[str]:
         "--goal-id",
         GOAL_ID,
         "--mode",
-        "codex-goal-harness",
+        "codex-loopx",
         "--dataset",
         BENCHMARK_ID,
         "--include-task-name",
@@ -177,7 +177,7 @@ def assert_benchmark_run(run: dict[str, Any], *, appended: bool) -> None:
     assert run["schema_version"] == "benchmark_run_v0", run
     assert run["benchmark_id"] == BENCHMARK_ID, run
     assert run["mode"] == RUN_MODE, run
-    assert run["worker_mode"] == "codex_goal_harness_cli", run
+    assert run["worker_mode"] == "codex_loopx_cli", run
     assert run["first_blocker"] == FIRST_BLOCKER, run
     assert run["real_run"] is False, run
     assert run["submit_eligible"] is False, run
@@ -186,13 +186,13 @@ def assert_benchmark_run(run: dict[str, Any], *, appended: bool) -> None:
     assert run["assisted_collaboration_claim_allowed"] is True, run
     assert run["official_score_claim_allowed"] is False, run
     assert run["active_user_simulator_injection_channel_available"] is True, run
-    assert run["worker_goal_harness_cli_call_total"] == 1, run
-    assert run["goal_harness_counter_scope"] == "worker_active_user_observation_fixture", run
+    assert run["worker_loopx_cli_call_total"] == 1, run
+    assert run["loopx_counter_scope"] == "worker_active_user_observation_fixture", run
     counters = run["interaction_counters"]
-    assert counters["goal_harness_cli_calls"]["active_user_observe"] == 1, counters
-    assert counters["goal_harness_cli_calls"]["total"] == 1, counters
-    assert counters["goal_harness_state_reads"] == 1, counters
-    assert counters["goal_harness_state_writes"] == 0, counters
+    assert counters["loopx_cli_calls"]["active_user_observe"] == 1, counters
+    assert counters["loopx_cli_calls"]["total"] == 1, counters
+    assert counters["loopx_state_reads"] == 1, counters
+    assert counters["loopx_state_writes"] == 0, counters
     assert counters["case_result_writeback"] == "worker_active_user_observe_fixture_no_official_run", counters
     assert counters["counter_trust_level"] == "active_user_observation_fixture_audited", counters
     validation = run["validation"]

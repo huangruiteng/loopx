@@ -16,16 +16,16 @@ The route is:
 2. Run Codex CLI on that host.
 3. Keep benchmark source checkouts, containers, task data, runner dependencies,
    raw artifacts, and compact reducers on that host.
-4. Write only compact public-safe evidence back to Goal Harness.
+4. Write only compact public-safe evidence back to LoopX.
 
 The comparison baseline for product claims is real Codex Goal mode, not a
 Codex CLI polling loop. If the cloud host can run `codex exec` but the benchmark
 runner cannot prove a stable `/goal` invocation and persistent goal state, the
 run remains a readiness or unverified slash-goal experiment. It should not be
-paired with a Goal Harness treatment for uplift claims until that baseline
+paired with a LoopX treatment for uplift claims until that baseline
 trigger is proven or an equivalent supported Codex Goal surface is documented.
 
-Goal Harness should not need to understand the SSH jump path, remote file
+LoopX should not need to understand the SSH jump path, remote file
 bridge, or command relay in the hot path. Once the host is reachable and Codex
 is authenticated there by the operator, benchmark execution should look like a
 normal single-host developer workflow.
@@ -35,7 +35,7 @@ handshake, establish one short-lived SSH ControlMaster/ControlPath connection
 for the benchmark slice and reuse it for bounded probes, source staging, and
 runner launch commands. Keep those commands mostly serial when authentication
 is sensitive to concurrency, and close the master in cleanup. This reduces
-connection flakiness without teaching Goal Harness private SSH topology.
+connection flakiness without teaching LoopX private SSH topology.
 Public evidence should record only that the SSH alias was reachable and the
 slice used a short-lived multiplexed SSH session; private host names, keys,
 jump-host details, control paths, and shell history stay out of commits.
@@ -143,7 +143,7 @@ Keep internal and external benchmark branches close to upstream:
 - keep internal changes on a tiny adapter branch or wrapper layer;
 - avoid patching benchmark scoring, task definitions, prompts, or official
   runner behavior unless the change is upstreamable and separately reviewed;
-- keep Goal Harness reducers, compact ledgers, route docs, and local evidence
+- keep LoopX reducers, compact ledgers, route docs, and local evidence
   outside benchmark forks;
 - do not commit raw logs, trajectories, hidden task files, credentials, local
   paths, or private host details.
@@ -151,7 +151,7 @@ Keep internal and external benchmark branches close to upstream:
 If a fork is needed, it should preserve a small reusable patch set and stay
 easy to rebase. Temporary local-Codex split-control hacks should be documented
 as route research, not carried forward into benchmark forks or the default
-Goal Harness benchmark path.
+LoopX benchmark path.
 
 ## Readiness Checklist
 
@@ -187,4 +187,4 @@ run:
 This note is a route decision, not benchmark score evidence. It may claim only
 that the default route moved from split-control to dedicated cloud-host Codex
 execution. It must not claim benchmark uplift, task success, leaderboard
-standing, or Goal Harness effectiveness until compact run evidence exists.
+standing, or LoopX effectiveness until compact run evidence exists.
