@@ -542,12 +542,20 @@ the worker starts. Harbor's host agent seeds
 `/app/.codex/goals/<benchmark-case-goal-id>/ACTIVE_GOAL_STATE.md`, installs a
 task-environment CLI at `/app/.local/bin/goal-harness`, seeds
 `todo_benchmark_case_main`, and writes public-safe lifecycle events to the
-case-local `rollout-event-log.jsonl`. The generated prompt tells the worker to
-call the case-local CLI through `harbor-env-exec` for `quota should-run` and
-`todo claim` before substantive work. Global Goal Harness commands are optional
-context only; they must not select todos for the benchmark case. This keeps
-parallel cases isolated and prevents the main project goal or side-agent lane
-from leaking into benchmark treatment control.
+case-local `rollout-event-log.jsonl`. The host controller must then run the
+case-local CLI as a scheduler lifecycle, not merely mention it in the prompt:
+`check`, `quota should-run`, and `todo claim` before the first agent turn;
+`quota should-run` and `todo update` around each scheduled continuation; and
+`status`, `refresh-state`, and `quota spend-slot` during closeout. The generated
+prompt may still tell the worker to use the same case-local CLI through
+`harbor-env-exec`, but worker self-calls are optional supporting evidence rather
+than the only treatment proof. Compact evidence should include
+`goal_harness_case_scheduler_command_count`,
+`goal_harness_case_rollout_event_counts`, and
+`goal_harness_case_rollout_trace.public.json`. Global Goal Harness commands are
+optional context only; they must not select todos for the benchmark case. This
+keeps parallel cases isolated and prevents the main project goal or side-agent
+lane from leaking into benchmark treatment control.
 
 This is not a submit/upload path and should still be reduced to compact public
 evidence before ledger ingestion.
