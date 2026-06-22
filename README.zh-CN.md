@@ -16,102 +16,9 @@ loop 状态：目标、用户决策、agent todo、认领关系、scope、证据
 和 quota 留在同一层状态里。该等人的地方明确等人，不该空等的安全侧路继续推进，
 每一次自动执行都留下边界、验证面和写回轨迹。
 
-[English](README.md) · [快速开始](#快速开始) · [Showcases](docs/showcases/README.md) ·
-[用户群与反馈](#用户群与反馈) · [产品愿景](docs/product/vision.md) · [架构](docs/architecture.md)
-
-第一次看 LoopX？先打开
-[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) 看公开
-案例，或直接跳到 [快速开始](#快速开始)。[3 分钟 demo script](docs/outreach/frontstage-demo-script.md)
-只给演示者做 timed walkthrough 用。
-
-## 它是什么
-
-LoopX 不是另一个 agent runtime，也不是要替代 Codex、Claude Code、
-Cursor 或其他终端 agent。更准确地说，它是 loop engineering 的控制面：
-runtime 负责执行一次次 bounded agent loop，LoopX 负责保存这些 loop 继续工作所需
-的动态目标状态。
-
-| 层次 | 负责什么 |
-| --- | --- |
-| Codex / Claude Code / Cursor | 执行 bounded agent loop，写代码、读文件、运行命令、回复用户 |
-| goal mode / automation / CLI 脚本 / TUI | 触发或调度下一次 executor loop |
-| LoopX | 维护动态 loop 状态：当前目标、用户决策、agent todo、run history、quota、证据、边界和交接 |
-
-一句话：LoopX 不是执行器，而是让 goal mode、automation、CLI 脚本或可见 TUI
-触发的 agent loop 都能共享同一份动态长期目标状态。
-
-## 为什么 Loop Engineering 需要控制面
-
-短任务失败，常常是因为模型某一步做错了。长期任务失败，更常见的原因是
-state drift。
-
-Loop engineering 常常从一个定时器、一段长 prompt、一个 shell 脚本或一个可见
-TUI session 开始。它们能证明想法，但不足以承载真实工作：一旦目标变化、用户反馈
-出现、owner gate 卡住、多 agent 同时碰同一个 repo，就需要共享状态，而不是继续依赖
-聊天记忆。
-
-- 用户已经做过的决策散落在聊天里，后续 agent 不知道；
-- P0 卡在 user gate 上，agent 只会空等，或者绕过人类决策继续乱跑；
-- 多个 agent 同时工作，却看不到彼此认领了哪些 todo；
-- 上一轮到底做了什么、怎么验证的、为什么没继续，难以复盘；
-- public/private 边界、benchmark no-upload 边界、生产权限边界没有被稳定投影；
-- 人类反馈没有沉淀成下一轮 agent 能读懂的控制面信号。
-
-LoopX 的产品判断是：强能力 agent loop 已经存在，问题在于如何把它变成长期
-可用、可控、可解释的协作系统。
-
-换句话说，LoopX 想让人的多个 agent 可以持续接力，包括夜间和用户离开后的安全工作；
-但接力的前提不是绕过人，而是把人类判断、scope、能力门、quota 和证据写成下一轮
-agent 也能读懂的控制面。
-
-## 它如何工作
-
-```mermaid
-flowchart LR
-  U["用户判断 / gate / feedback"] --> GH["LoopX state"]
-  P["主控 agent"] --> GH
-  S["旁路 agent"] --> GH
-  GH --> T["User todo / Agent todo"]
-  GH --> H["Run history / evidence"]
-  GH --> Q["Quota guard"]
-  T --> A["下一步 bounded action"]
-  Q --> A
-  A --> GH
-```
-
-核心对象：
-
-- **Lifetime goal**：能跨越单个聊天、单个 agent run、单个 todo 的长期目标。
-- **User gate**：需要人类判断的位置，明确停下并把问题投影出来。
-- **Safe fallback**：不依赖该 gate 的安全侧路，允许继续推进并留下证据。
-- **Todo ownership**：agent 通过 `claimed_by` 认领 todo，减少并发冲突。
-- **Quota guard**：每次自动 heartbeat 前判断是否应该运行、等待、通知或自修复。
-- **Run history**：把每轮进展、验证、blocker、reward、quota spend 记录成紧凑历史。
-
-## 看几个例子
-
-| Case | 说明 | 入口 |
-| --- | --- | --- |
-| Blocked P0 with safe P1/P2 rotation | P0 被用户决策卡住，但 P1/P2 安全侧路继续推进，且 gate 不丢失。 | [0617 case](docs/showcases/cases/0617-blocked-p0-safe-rotation.md) |
-| LoopX self-iteration loop | 主控聚焦 benchmark，旁路 agent 在独立 scope 里改进控制面、文档和自合并机制。 | [0619 self-iteration](docs/showcases/cases/0619-loopx-self-iteration.md) |
-| Dynamic workflow for hardware-agent development | 模糊、多 agent、跨阶段工程协作如何收敛到同一控制面。 | [0619 redacted stub](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md) |
-
-完整案例目录见 [docs/showcases/README.md](docs/showcases/README.md)。案例默认只保留
-public-safe 信息，不提交内部截图、私有链接、raw benchmark 日志或本地状态。
-
-## 适合什么场景
-
-LoopX 适合长期、多人、多 agent 或带边界的工作：
-
-- 多天或多周的工程、研究、benchmark、实验推进；
-- Codex / Claude Code / Cursor 的 recurring heartbeat 或 monitor-style 工作；
-- 需要等待 CI、benchmark、外部 owner、用户判断的项目；
-- 一个主控 agent 加多个旁路 agent 的协作；
-- 需要把“agent 做了什么、卡在哪、下一步是什么”翻译给非技术用户的产品；
-- 发布公开材料前需要持续检查 public/private 边界的项目。
-
-它不适合直接作为生产自动化控制器。危险权限、生产操作、私有材料公开、发布
-动作仍然应该由人类或宿主项目明确授权。
+[English](README.md) · [快速开始](#快速开始) · [看几个例子](#看几个例子) ·
+[Showcases](docs/showcases/README.md) · [用户群与反馈](#用户群与反馈) ·
+[产品愿景](docs/product/vision.md) · [架构](docs/architecture.md)
 
 ## 快速开始
 
@@ -180,6 +87,100 @@ loopx bootstrap \
 成功连接后应该能看到 `.loopx/registry.json`、
 `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`、`loopx status` 的下一步投影；
 这些本地状态必须被 gitignore，不要提交到公开仓库。
+
+## 看几个例子
+
+想先看证明，再读控制面细节，可以从三个短入口开始：
+
+- [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/)：
+  公开 showcase 首页，用 canonical case cards 解释 LoopX 解决什么问题。
+- [Blocked P0 with safe P1/P2 rotation](docs/showcases/cases/0617-blocked-p0-safe-rotation.md)：
+  一个可复现 synthetic demo，展示用户决策保持可见时，安全侧路仍可继续推进。
+- [LoopX self-iteration](docs/showcases/cases/0619-loopx-self-iteration.md)
+  和 [hardware-agent workflow](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md)：
+  用 public-safe 证据展示同一控制面如何协调主控、旁路、scope 和 ownership。
+
+完整案例目录见 [docs/showcases/README.md](docs/showcases/README.md)。
+演示者需要 timed walkthrough 时，再打开
+[3 分钟 demo script](docs/outreach/frontstage-demo-script.md)。
+
+## 它是什么
+
+LoopX 不是另一个 agent runtime，也不是要替代 Codex、Claude Code、
+Cursor 或其他终端 agent。更准确地说，它是 loop engineering 的控制面：
+runtime 负责执行一次次 bounded agent loop，LoopX 负责保存这些 loop 继续工作所需
+的动态目标状态。
+
+| 层次 | 负责什么 |
+| --- | --- |
+| Codex / Claude Code / Cursor | 执行 bounded agent loop，写代码、读文件、运行命令、回复用户 |
+| goal mode / automation / CLI 脚本 / TUI | 触发或调度下一次 executor loop |
+| LoopX | 维护动态 loop 状态：当前目标、用户决策、agent todo、run history、quota、证据、边界和交接 |
+
+一句话：LoopX 不是执行器，而是让 goal mode、automation、CLI 脚本或可见 TUI
+触发的 agent loop 都能共享同一份动态长期目标状态。
+
+## 为什么 Loop Engineering 需要控制面
+
+短任务失败，常常是因为模型某一步做错了。长期任务失败，更常见的原因是
+state drift。
+
+Loop engineering 常常从一个定时器、一段长 prompt、一个 shell 脚本或一个可见
+TUI session 开始。它们能证明想法，但不足以承载真实工作：一旦目标变化、用户反馈
+出现、owner gate 卡住、多 agent 同时碰同一个 repo，就需要共享状态，而不是继续依赖
+聊天记忆。
+
+- 用户已经做过的决策散落在聊天里，后续 agent 不知道；
+- P0 卡在 user gate 上，agent 只会空等，或者绕过人类决策继续乱跑；
+- 多个 agent 同时工作，却看不到彼此认领了哪些 todo；
+- 上一轮到底做了什么、怎么验证的、为什么没继续，难以复盘；
+- public/private 边界、benchmark no-upload 边界、生产权限边界没有被稳定投影；
+- 人类反馈没有沉淀成下一轮 agent 能读懂的控制面信号。
+
+LoopX 的产品判断是：强能力 agent loop 已经存在，问题在于如何把它变成长期
+可用、可控、可解释的协作系统。
+
+换句话说，LoopX 想让人的多个 agent 可以持续接力，包括夜间和用户离开后的安全工作；
+但接力的前提不是绕过人，而是把人类判断、scope、能力门、quota 和证据写成下一轮
+agent 也能读懂的控制面。
+
+## 它如何工作
+
+```mermaid
+flowchart LR
+  U["用户判断 / gate / feedback"] --> GH["LoopX state"]
+  P["主控 agent"] --> GH
+  S["旁路 agent"] --> GH
+  GH --> T["User todo / Agent todo"]
+  GH --> H["Run history / evidence"]
+  GH --> Q["Quota guard"]
+  T --> A["下一步 bounded action"]
+  Q --> A
+  A --> GH
+```
+
+核心对象：
+
+- **Lifetime goal**：能跨越单个聊天、单个 agent run、单个 todo 的长期目标。
+- **User gate**：需要人类判断的位置，明确停下并把问题投影出来。
+- **Safe fallback**：不依赖该 gate 的安全侧路，允许继续推进并留下证据。
+- **Todo ownership**：agent 通过 `claimed_by` 认领 todo，减少并发冲突。
+- **Quota guard**：每次自动 heartbeat 前判断是否应该运行、等待、通知或自修复。
+- **Run history**：把每轮进展、验证、blocker、reward、quota spend 记录成紧凑历史。
+
+## 适合什么场景
+
+LoopX 适合长期、多人、多 agent 或带边界的工作：
+
+- 多天或多周的工程、研究、benchmark、实验推进；
+- Codex / Claude Code / Cursor 的 recurring heartbeat 或 monitor-style 工作；
+- 需要等待 CI、benchmark、外部 owner、用户判断的项目；
+- 一个主控 agent 加多个旁路 agent 的协作；
+- 需要把“agent 做了什么、卡在哪、下一步是什么”翻译给非技术用户的产品；
+- 发布公开材料前需要持续检查 public/private 边界的项目。
+
+它不适合直接作为生产自动化控制器。危险权限、生产操作、私有材料公开、发布
+动作仍然应该由人类或宿主项目明确授权。
 
 ## 用户群与反馈
 

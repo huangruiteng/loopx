@@ -21,149 +21,13 @@ surface, and writeback trail.
 LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地方明确等人，
 不该空等的安全侧路继续推进，下一轮 agent 总能读到目标、边界、证据和交接。
 
-[Quick Start](#quick-start) · [Getting Started](docs/guides/getting-started.md) ·
-[Showcases](docs/showcases/README.md) · [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
+[Quick Start](#quick-start) · [See It In Action](#see-it-in-action) ·
+[Getting Started](docs/guides/getting-started.md) · [Showcases](docs/showcases/README.md) ·
+[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
 [Community](#community--feedback) · [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
 [Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
 
 > Keep the loop moving. Keep the judgment human.
-
-New here? Start with the
-[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) for a
-visual tour, or jump straight to [Quick Start](#quick-start). The
-[3-minute demo script](docs/outreach/frontstage-demo-script.md) is for
-presenters who need a timed walkthrough.
-
-## What Is It?
-
-LoopX does not replace Codex, Claude Code, Cursor, or another agent
-runtime. It sits above them as a loop-engineering control plane: the runtime
-executes bounded agent loops, while LoopX preserves the dynamic goal state those
-loops need to keep working without losing the plot.
-
-Short answer: LoopX is not another executor. Codex goal, Codex App
-automation, CLI scripts, cron jobs, or a human-visible TUI can trigger the next
-executor loop; LoopX keeps the goal, gate, evidence, quota, and handoff contract
-stable across those turns.
-
-| Layer | Role |
-| --- | --- |
-| Codex / Claude Code / Cursor | Execute a bounded agent loop: read, write, run commands, and respond. |
-| Goal mode / automation / CLI scripts / TUI | Trigger or schedule the next executor loop. |
-| LoopX | Preserve the dynamic loop state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
-
-The product promise is not "more todo lists." It is a practical foundation for
-loop engineering: keep human judgment at high-value decision points, keep safe
-fallback work moving when one lane is gated, and stop compute spend when a turn
-cannot produce a verified transition.
-
-Put differently: LoopX lets a user's agent team keep working across tools,
-turns, and off-hours without turning the project into a pile of hidden scripts
-and stale prompts. The technical contract underneath that promise is explicit:
-agent identity, todo ownership, scope, capability gates, quota, evidence
-writeback, and public/private boundaries stay visible to the next turn.
-
-![LoopX control-plane board](docs/assets/control-plane-board.svg)
-
-## See It In Action
-
-| Case | What It Shows | Public Surface |
-| --- | --- | --- |
-| [Blocked P0 with safe P1/P2 rotation](docs/showcases/cases/0617-blocked-p0-safe-rotation.md) | A user-gated high-priority lane stays visible while safe fallback work continues. | Reproducible synthetic demo |
-| [LoopX self-iteration loop](docs/showcases/cases/0619-loopx-self-iteration.md) | A side agent improved LoopX itself while the primary agent stayed focused on benchmark work. | Commit-backed public evidence case |
-| [Dynamic workflow for hardware-agent development](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md) | A fuzzy multi-agent engineering workflow can converge through one shared control plane. | Redacted public-safe stub |
-
-Start with the [showcase catalog](docs/showcases/README.md): public-safe
-cases that show where LoopX helps, with reproducible demos where the
-evidence allows.
-
-Open the [hosted frontstage](https://huangruiteng.github.io/loopx/frontstage/)
-for the product-facing view: case cards, narrative motion, efficiency evidence,
-and public/private boundary notes rendered from `docs/showcases/`. Live registry
-or local status projections are separate ops-mode surfaces, not public demo
-content.
-
-<table>
-  <tr>
-    <td width="62%">
-      <img src="docs/assets/frontstage-showcase-first-screen.png" alt="Hosted LoopX frontstage showing public-safe showcase cases">
-    </td>
-    <td width="38%">
-      <strong>From AI assist to async agent work.</strong><br><br>
-      Traditional AI-assisted development speeds up the active coding session.
-      LoopX changes the operating model: humans set gates, scope, and
-      evidence, while primary and side agents keep safe lanes moving across
-      turns and off-hours.<br><br>
-      <strong>从“人带着 AI 写代码”，到“agent 团队异步接力”。</strong><br>
-      人在关键判断处掌舵，agent 在可验证边界内持续推进。
-    </td>
-  </tr>
-</table>
-
-## Why Loop Engineering Needs A Control Plane
-
-Short agent tasks usually fail because the model makes a bad local choice.
-Long-running loops fail differently: state drifts.
-
-Loop engineering often begins with a timer, a long prompt, a shell script, or a
-visible TUI session. That can prove the idea, but it is not enough for real
-work. Once the goal changes, the user gives feedback, an owner gate appears, or
-multiple agents touch the same repo, the loop needs shared state instead of
-chat memory.
-
-After several runs, several projects, or several handoffs, the hard questions
-become:
-
-- What is the current objective, and what is explicitly out of scope?
-- Which owner decision, source document, run artifact, or benchmark result is
-  the current authority?
-- What did the last agent run actually do, and how was it validated?
-- Which next action belongs to the human, and which belongs to the agent?
-- Which actions are safe read-only work, and which cross write, production,
-  private-data, or publication boundaries?
-- How does human feedback survive into the next run?
-
-LoopX makes those questions machine-readable enough for agents and legible
-enough for operators, so a loop can run longer without becoming less
-accountable.
-
-## What You Get
-
-- **Lifetime goals**: durable project intentions that outlive one chat thread,
-  run, todo, or implementation plan. A lifetime goal does not grant open-ended
-  autonomy: only the next bounded transition is executable.
-- **User gates**: concrete human decisions that stay visible instead of
-  disappearing into chat.
-- **Safe fallback**: audited side paths that can continue when one lane is
-  gated, without bypassing the gate.
-- **Todo ownership**: user and agent todos with `claimed_by` for multi-agent
-  coordination.
-- **Quota and steering**: a guard that says whether an automatic turn should
-  run, wait, ask the user, self-repair, or stay quiet.
-- **Run history and evidence**: compact append-only events for progress,
-  validation, blockers, reward, benchmark results, and quota spend.
-- **Public/private boundary checks**: local scans and docs rules to keep raw
-  private state, credentials, logs, traces, and benchmark material out of
-  public artifacts.
-
-## Good Fits
-
-Use LoopX when agent work spans time, people, projects, or safety
-boundaries:
-
-- multi-day or multi-week engineering and research goals;
-- recurring heartbeat or monitor-style agent turns;
-- benchmark and experiment loops that must wait for evidence;
-- projects with owner/SOP gates or human reward judgments;
-- controller agents that spawn scoped side agents;
-- creator, research, or operations workflows where non-engineering users need
-  agent progress translated into clear state, blockers, and feedback prompts;
-- public/private boundary checks before publishing artifacts;
-- local dashboards that should foreground user decisions before raw logs.
-
-Do not use LoopX as an autonomous production controller. It is a local
-coordination substrate; project ownership and dangerous permissions stay with
-the human/operator.
 
 ## Quick Start
 
@@ -264,6 +128,121 @@ loopx doctor
 For the full install, diagnose, connect, heartbeat, dashboard, development, and
 command-reference workflow, read
 [docs/guides/getting-started.md](docs/guides/getting-started.md).
+
+## See It In Action
+
+Want proof before reading the control-plane details? Use three short entry
+points:
+
+- [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/):
+  the public showcase homepage with the canonical case cards.
+- [Blocked P0 with safe P1/P2 rotation](docs/showcases/cases/0617-blocked-p0-safe-rotation.md):
+  a reproducible synthetic demo where a human gate stays visible while safe
+  fallback work continues.
+- [LoopX self-iteration](docs/showcases/cases/0619-loopx-self-iteration.md)
+  and the [hardware-agent workflow](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.md):
+  public-safe evidence that one control plane can coordinate primary and side
+  agents without hiding ownership or scope.
+
+For more cases, open the [showcase catalog](docs/showcases/README.md). For a
+timed presenter walkthrough, use the
+[3-minute demo script](docs/outreach/frontstage-demo-script.md).
+
+## What Is It?
+
+LoopX does not replace Codex, Claude Code, Cursor, or another agent
+runtime. It sits above them as a loop-engineering control plane: the runtime
+executes bounded agent loops, while LoopX preserves the dynamic goal state those
+loops need to keep working without losing the plot.
+
+Short answer: LoopX is not another executor. Codex goal, Codex App
+automation, CLI scripts, cron jobs, or a human-visible TUI can trigger the next
+executor loop; LoopX keeps the goal, gate, evidence, quota, and handoff contract
+stable across those turns.
+
+| Layer | Role |
+| --- | --- |
+| Codex / Claude Code / Cursor | Execute a bounded agent loop: read, write, run commands, and respond. |
+| Goal mode / automation / CLI scripts / TUI | Trigger or schedule the next executor loop. |
+| LoopX | Preserve the dynamic loop state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
+
+The product promise is not "more todo lists." It is a practical foundation for
+loop engineering: keep human judgment at high-value decision points, keep safe
+fallback work moving when one lane is gated, and stop compute spend when a turn
+cannot produce a verified transition.
+
+Put differently: LoopX lets a user's agent team keep working across tools,
+turns, and off-hours without turning the project into a pile of hidden scripts
+and stale prompts. The technical contract underneath that promise is explicit:
+agent identity, todo ownership, scope, capability gates, quota, evidence
+writeback, and public/private boundaries stay visible to the next turn.
+
+![LoopX control-plane board](docs/assets/control-plane-board.svg)
+
+## Why Loop Engineering Needs A Control Plane
+
+Short agent tasks usually fail because the model makes a bad local choice.
+Long-running loops fail differently: state drifts.
+
+Loop engineering often begins with a timer, a long prompt, a shell script, or a
+visible TUI session. That can prove the idea, but it is not enough for real
+work. Once the goal changes, the user gives feedback, an owner gate appears, or
+multiple agents touch the same repo, the loop needs shared state instead of
+chat memory.
+
+After several runs, several projects, or several handoffs, the hard questions
+become:
+
+- What is the current objective, and what is explicitly out of scope?
+- Which owner decision, source document, run artifact, or benchmark result is
+  the current authority?
+- What did the last agent run actually do, and how was it validated?
+- Which next action belongs to the human, and which belongs to the agent?
+- Which actions are safe read-only work, and which cross write, production,
+  private-data, or publication boundaries?
+- How does human feedback survive into the next run?
+
+LoopX makes those questions machine-readable enough for agents and legible
+enough for operators, so a loop can run longer without becoming less
+accountable.
+
+## What You Get
+
+- **Lifetime goals**: durable project intentions that outlive one chat thread,
+  run, todo, or implementation plan. A lifetime goal does not grant open-ended
+  autonomy: only the next bounded transition is executable.
+- **User gates**: concrete human decisions that stay visible instead of
+  disappearing into chat.
+- **Safe fallback**: audited side paths that can continue when one lane is
+  gated, without bypassing the gate.
+- **Todo ownership**: user and agent todos with `claimed_by` for multi-agent
+  coordination.
+- **Quota and steering**: a guard that says whether an automatic turn should
+  run, wait, ask the user, self-repair, or stay quiet.
+- **Run history and evidence**: compact append-only events for progress,
+  validation, blockers, reward, benchmark results, and quota spend.
+- **Public/private boundary checks**: local scans and docs rules to keep raw
+  private state, credentials, logs, traces, and benchmark material out of
+  public artifacts.
+
+## Good Fits
+
+Use LoopX when agent work spans time, people, projects, or safety
+boundaries:
+
+- multi-day or multi-week engineering and research goals;
+- recurring heartbeat or monitor-style agent turns;
+- benchmark and experiment loops that must wait for evidence;
+- projects with owner/SOP gates or human reward judgments;
+- controller agents that spawn scoped side agents;
+- creator, research, or operations workflows where non-engineering users need
+  agent progress translated into clear state, blockers, and feedback prompts;
+- public/private boundary checks before publishing artifacts;
+- local dashboards that should foreground user decisions before raw logs.
+
+Do not use LoopX as an autonomous production controller. It is a local
+coordination substrate; project ownership and dangerous permissions stay with
+the human/operator.
 
 ## Community & Feedback
 
