@@ -7647,7 +7647,7 @@ def _indexed_rollout_todo_event(event: dict[str, Any]) -> dict[str, Any] | None:
         "event_kinds": [str(event.get("event_kind") or "todo_event")],
         "latest_event_kind": str(event.get("event_kind") or "todo_event"),
         "latest_event_at": public_safe_compact_text(event.get("recorded_at"), limit=80),
-        "latest_event_status": public_safe_compact_text(event.get("status"), limit=80),
+        "latest_event_status": status,
         "agent_id": public_safe_compact_text(event.get("agent_id"), limit=120),
     }
 
@@ -7715,6 +7715,9 @@ def build_todo_index(
                 existing["latest_event_kind"] = latest_kind
                 existing["latest_event_at"] = event_item.get("latest_event_at")
                 existing["latest_event_status"] = event_item.get("latest_event_status")
+                if event_item.get("status"):
+                    existing["status"] = event_item.get("status")
+                    existing["done"] = bool(event_item.get("done"))
                 if event_item.get("agent_id"):
                     existing["agent_id"] = event_item.get("agent_id")
                 continue
