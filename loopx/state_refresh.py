@@ -9,6 +9,7 @@ from typing import Any
 
 from .delivery_outcome import DELIVERY_OUTCOME_CHOICES, require_delivery_outcome
 from .feedback import validate_public_safe_text
+from .file_lock import exclusive_file_lock
 from .global_registry import sync_project_registry_to_global
 from .history import load_registry, reserve_unique_run_paths, unique_run_paths
 from .paths import resolve_runtime_root
@@ -30,6 +31,7 @@ RECOMMENDED_ACTION_SECTION_LINE_LIMIT = 16
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
 CHECKBOX_PREFIX_RE = re.compile(r"^\[(?P<mark>[ xX])\]\s+")
 DELIVERY_BATCH_SCALE_CHOICES = ("test_only", "single_surface", "multi_surface", "implementation")
+ACTIVE_STATE_NEXT_ACTION_UPDATE_SCHEMA_VERSION = "active_state_next_action_update_v0"
 
 
 def now_local() -> str:
@@ -71,6 +73,84 @@ def extract_section_lines(text: str, heading: str, limit: int = 8) -> list[str]:
             if len(collected) >= limit:
                 break
     return collected
+
+
+def replace_updated_at(text: str, updated_at: str) -> str:
+    if not text.startswith("---"):
+        return text
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return text
+    frontmatter = parts[1]
+    body = parts[2]
+    if re.search(r"(?m)^updated_at:\s*.+$", frontmatter):
+        frontmatter = re.sub(
+            r"(?m)^updated_at:\s*.+$",
+            f"updated_at: {updated_at}",
+            frontmatter,
+            count=1,
+        )
+    else:
+        frontmatter = frontmatter.rstrip("\n") + f"\nupdated_at: {updated_at}\n"
+    return "---" + frontmatter + "---" + body
+
+
+def normalize_next_action_text(value: str) -> str:
+    text = " ".join(str(value or "").strip().split())
+    if not text:
+        raise ValueError("next_action must not be empty")
+    validate_public_safe_text("active_state_next_action", text)
+    return text
+
+
+def next_action_section_bounds(lines: list[str]) -> tuple[int, int] | None:
+    for index, line in enumerate(lines):
+        if line.strip() != "## Next Action":
+            continue
+        end = len(lines)
+        for next_index in range(index + 1, len(lines)):
+            if lines[next_index].startswith("## "):
+                end = next_index
+                break
+        return index, end
+    return None
+
+
+def next_action_insert_anchor(lines: list[str]) -> int:
+    preferred = {
+        "## Recent User Feedback",
+        "## Progress Ledger",
+        "## Operating Lessons",
+        "## Completed Work Archive",
+    }
+    for index, line in enumerate(lines):
+        if line.strip() in preferred:
+            return index
+    return len(lines)
+
+
+def replace_next_action_section(
+    state_text: str,
+    *,
+    next_action: str,
+    updated_at: str,
+) -> tuple[str, bool]:
+    lines = state_text.splitlines()
+    section = ["## Next Action", "", f"- {next_action}", ""]
+    bounds = next_action_section_bounds(lines)
+    if bounds:
+        start, end = bounds
+        updated_lines = [*lines[:start], *section, *lines[end:]]
+    else:
+        anchor = next_action_insert_anchor(lines)
+        insert = list(section)
+        if anchor > 0 and lines[anchor - 1].strip():
+            insert.insert(0, "")
+        updated_lines = [*lines[:anchor], *insert, *lines[anchor:]]
+    section_text = "\n".join(updated_lines).rstrip() + "\n"
+    if section_text.rstrip("\n") == state_text.rstrip("\n"):
+        return state_text, False
+    return replace_updated_at(section_text, updated_at), True
 
 
 def clean_action_line(line: str) -> str:
@@ -330,6 +410,23 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
         if projection_gap.get("recommended_action"):
             lines.append(f"- state_projection_gap_action: {projection_gap.get('recommended_action')}")
 
+    next_action_update = (
+        payload.get("active_state_next_action_update")
+        if isinstance(payload.get("active_state_next_action_update"), dict)
+        else {}
+    )
+    if next_action_update:
+        lines.append(
+            "- active_state_next_action_update: "
+            f"updated={next_action_update.get('updated')} "
+            f"would_update={next_action_update.get('would_update')} "
+            f"dry_run={next_action_update.get('dry_run')}"
+        )
+        if next_action_update.get("next_action"):
+            lines.append(
+                f"- active_state_next_action: {next_action_update.get('next_action')}"
+            )
+
     global_sync = payload.get("global_sync") if isinstance(payload.get("global_sync"), dict) else {}
     if global_sync:
         lines.extend(
@@ -367,6 +464,7 @@ def refresh_state_run(
     state_file: Path | None,
     classification: str,
     recommended_action: str | None,
+    next_action: str | None = None,
     delivery_batch_scale: str | None = None,
     delivery_outcome: str | None = None,
     agent_id: str | None = None,
@@ -418,9 +516,32 @@ def refresh_state_run(
     if not resolved_state_file.exists():
         raise FileNotFoundError(f"state file does not exist: {resolved_state_file}")
     state_text = resolved_state_file.read_text(encoding="utf-8")
+    normalized_next_action = normalize_next_action_text(next_action) if next_action else None
+    generated_at = now_local()
+    active_state_next_action_update: dict[str, Any] | None = None
+    if normalized_next_action:
+        with exclusive_file_lock(resolved_state_file):
+            locked_state_text = resolved_state_file.read_text(encoding="utf-8")
+            updated_state_text, state_updated = replace_next_action_section(
+                locked_state_text,
+                next_action=normalized_next_action,
+                updated_at=generated_at,
+            )
+            active_state_next_action_update = {
+                "schema_version": ACTIVE_STATE_NEXT_ACTION_UPDATE_SCHEMA_VERSION,
+                "source": "refresh_state",
+                "next_action": normalized_next_action,
+                "updated": bool(state_updated and not dry_run),
+                "would_update": bool(state_updated),
+                "dry_run": bool(dry_run),
+                "updated_at": generated_at if state_updated else None,
+            }
+            if state_updated and not dry_run:
+                resolved_state_file.write_text(updated_state_text, encoding="utf-8")
+            state_text = updated_state_text if state_updated else locked_state_text
+
     action = recommended_action or derive_recommended_action(state_text)
     validate_public_safe_text("recommended_action", action)
-    generated_at = now_local()
     record = build_state_refresh_record(
         goal_id=safe_goal_id,
         state_file=resolved_state_file,
@@ -435,6 +556,8 @@ def refresh_state_run(
         agent_lane=normalized_agent_lane or None,
         autonomous_replan_recorded=autonomous_replan_recorded,
     )
+    if active_state_next_action_update:
+        record["active_state_next_action_update"] = active_state_next_action_update
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
     json_path, markdown_path = unique_run_paths(runs_dir, generated_at)
@@ -472,6 +595,7 @@ def refresh_state_run(
         "agent_lane": record.get("agent_lane"),
         "autonomous_replan_recorded": autonomous_replan_recorded,
         "recommended_action": action,
+        "active_state_next_action_update": active_state_next_action_update,
         "generated_at": generated_at,
         "health_check": record["health_check"],
         "json_path": str(json_path),

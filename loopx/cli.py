@@ -5676,6 +5676,14 @@ def main(argv: list[str] | None = None) -> int:
         help=f"Public-safe next action. Defaults to: {DEFAULT_REFRESH_ACTION}",
     )
     refresh_state_parser.add_argument(
+        "--next-action",
+        help=(
+            "Explicitly update the active state's durable ## Next Action before "
+            "appending the refresh run. Without this flag, --recommended-action "
+            "only describes the run record."
+        ),
+    )
+    refresh_state_parser.add_argument(
         "--delivery-batch-scale",
         choices=DELIVERY_BATCH_SCALE_CHOICES,
         help="Optional explicit delivery scale for this refresh run, overriding classification-name inference.",
@@ -10144,6 +10152,7 @@ def main(argv: list[str] | None = None) -> int:
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 classification=args.classification,
                 recommended_action=args.recommended_action,
+                next_action=args.next_action,
                 delivery_batch_scale=args.delivery_batch_scale,
                 delivery_outcome=args.delivery_outcome,
                 agent_id=args.agent_id,

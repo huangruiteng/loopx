@@ -927,6 +927,12 @@ If the refresh command was run without `--recommended-action`, the compact
 `recommended_action` should be the first public-safe item from the refreshed
 active state's `## Next Action`, including wrapped continuation lines;
 otherwise it falls back to a generic refresh notice.
+`--recommended-action` describes the appended run record; it does not rewrite
+the active state's durable `## Next Action`. To intentionally change that
+durable route, run `refresh-state --next-action <public-safe action>`. Status
+projections may expose both `active_state_next_action` and
+`latest_run_recommended_action`; when they differ, `next_action_projection_warning`
+marks the drift instead of silently choosing one as the only truth.
 
 When a refresh is scoped with `--agent-id`, the run records
 `progress_scope=agent_lane`. This is a side-lane note, not a project-level

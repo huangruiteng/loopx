@@ -511,6 +511,14 @@ For every registered goal, `quota should-run` also includes a `todo_write_hint`
 so agent executors know to write newly discovered user/owner work with
 `loopx todo add --role user` instead of hiding it in `Next Action`,
 review docs, or chat.
+When available, `quota should-run` also keeps next-action signals separate:
+`active_state_next_action` is the durable `## Next Action`,
+`latest_run_recommended_action` is the latest non-agent-lane run's
+recommendation, and `agent_lane_next_action` is the current `--agent-id`
+slice. If the active-state and latest-run actions differ,
+`next_action_projection_warning` asks the executor to explicitly write back the
+intended durable route with `refresh-state --next-action` or keep treating the
+signals as distinct.
 For goals with `coordination.registered_agents`, `quota should-run` accepts an
 optional `--agent-id <registered-agent>`. Identity-aware heartbeat prompts pass
 that flag through their quota guard. If a registered goal is checked without an

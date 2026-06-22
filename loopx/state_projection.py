@@ -7,6 +7,7 @@ from .todo_contract import TODO_TASK_PATTERN, todo_done_for_status, todo_status_
 
 
 STATE_PROJECTION_GAP_SCHEMA_VERSION = "state_projection_gap_v0"
+NEXT_ACTION_PROJECTION_WARNING_SCHEMA_VERSION = "next_action_projection_warning_v0"
 
 SECTION_HEADING_PATTERN = re.compile(r"^##+\s+(.+?)\s*$")
 BULLET_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$")
@@ -56,6 +57,70 @@ def _compact_text(value: Any, *, limit: int = 220) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "…"
+
+
+def _action_projection_text(value: Any, *, limit: int = 320) -> str:
+    return _compact_text(value, limit=limit)
+
+
+def _action_projection_compare_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _action_projection_prefix(value: Any) -> str:
+    text = _action_projection_compare_text(value)
+    return text[:96]
+
+
+def actions_are_projection_aligned(left: Any, right: Any) -> bool:
+    left_text = _action_projection_compare_text(left)
+    right_text = _action_projection_compare_text(right)
+    if not left_text or not right_text:
+        return False
+    if left_text == right_text:
+        return True
+    left_prefix = _action_projection_prefix(left_text)
+    right_prefix = _action_projection_prefix(right_text)
+    for prefix, text in ((left_prefix, right_text), (right_prefix, left_text)):
+        if prefix and len(prefix) >= 24 and prefix in text:
+            return True
+    shorter, longer = sorted((left_text, right_text), key=len)
+    return len(shorter) >= 32 and shorter in longer
+
+
+def next_action_projection_warning(
+    *,
+    active_state_next_action: Any,
+    latest_run_recommended_action: Any,
+    agent_lane_next_action: Any = None,
+) -> dict[str, Any] | None:
+    active_text = _action_projection_text(active_state_next_action)
+    latest_text = _action_projection_text(latest_run_recommended_action)
+    if not active_text or not latest_text:
+        return None
+    if actions_are_projection_aligned(active_text, latest_text):
+        return None
+    warning: dict[str, Any] = {
+        "schema_version": NEXT_ACTION_PROJECTION_WARNING_SCHEMA_VERSION,
+        "kind": "next_action_projection_mismatch",
+        "severity": "warning",
+        "requires_state_writeback": True,
+        "active_state_next_action": active_text,
+        "latest_run_recommended_action": latest_text,
+        "reason": (
+            "latest run recommended_action differs from the durable active-state "
+            "Next Action"
+        ),
+        "recommended_action": (
+            "if the latest run action is the intended durable route, write it back "
+            "explicitly with refresh-state --next-action; otherwise keep treating "
+            "the run recommendation and active-state Next Action as separate signals"
+        ),
+    }
+    lane_text = _action_projection_text(agent_lane_next_action)
+    if lane_text:
+        warning["agent_lane_next_action"] = lane_text
+    return warning
 
 
 def is_user_wait_text(value: Any) -> bool:

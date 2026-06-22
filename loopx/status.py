@@ -39,7 +39,11 @@ from .paths import global_registry_path, resolve_runtime_root
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
-from .state_projection import active_state_next_action_entries, state_projection_gap_warning
+from .state_projection import (
+    active_state_next_action_entries,
+    next_action_projection_warning,
+    state_projection_gap_warning,
+)
 from .todo_contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -6528,6 +6532,17 @@ def build_attention_queue(
             continue
         item = goal_attention(goal)
         if item:
+            current_status_run = latest_run(goal)
+            latest_run_action = public_safe_compact_text(
+                current_status_run.get("recommended_action")
+                if isinstance(current_status_run, dict)
+                else None,
+                limit=320,
+            )
+            if latest_run_action:
+                item["latest_run_recommended_action"] = latest_run_action
+                if isinstance(item.get("project_asset"), dict):
+                    item["project_asset"]["latest_run_recommended_action"] = latest_run_action
             control_plane = compact_control_plane_policy(goal.get("control_plane"))
             if control_plane:
                 item["control_plane"] = control_plane
@@ -6567,6 +6582,17 @@ def build_attention_queue(
                     item["project_asset"]["stale_latest_run_warning"] = projection_warning
             if goal.get("registry_member"):
                 item.update(active_state_todo_fields(goal))
+                if isinstance(item.get("project_asset"), dict):
+                    active_next_action = item.get("active_state_next_action")
+                    if active_next_action:
+                        item["project_asset"]["active_state_next_action"] = active_next_action
+                    next_action_warning = next_action_projection_warning(
+                        active_state_next_action=active_next_action,
+                        latest_run_recommended_action=item.get("latest_run_recommended_action"),
+                    )
+                    if next_action_warning:
+                        item["next_action_projection_warning"] = next_action_warning
+                        item["project_asset"]["next_action_projection_warning"] = next_action_warning
                 sync_connected_attention_action_from_todos(item)
                 backlog_warning = (
                     item.get("backlog_hygiene_warning")
@@ -7825,6 +7851,12 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         )
         if action:
             lines.append(f"  - action: {action}")
+        active_state_action = _markdown_scalar(item.get("active_state_next_action") or "")
+        if active_state_action:
+            lines.append(f"  - active_state_next_action: {active_state_action}")
+        latest_run_action = _markdown_scalar(item.get("latest_run_recommended_action") or "")
+        if latest_run_action:
+            lines.append(f"  - latest_run_recommended_action: {latest_run_action}")
         authority_summary = _authority_registry_markdown_summary(goals.get(str(item.get("goal_id") or "")))
         if authority_summary:
             lines.append(f"  - authority_material: {authority_summary}")
@@ -7855,6 +7887,16 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
             asset_next_action = _markdown_scalar(project_asset.get("next_action") or "")
             if asset_next_action:
                 lines.append(f"    - asset_next_action: {asset_next_action}")
+            asset_active_next_action = _markdown_scalar(
+                project_asset.get("active_state_next_action") or ""
+            )
+            if asset_active_next_action:
+                lines.append(f"    - asset_active_state_next_action: {asset_active_next_action}")
+            asset_latest_run_action = _markdown_scalar(
+                project_asset.get("latest_run_recommended_action") or ""
+            )
+            if asset_latest_run_action:
+                lines.append(f"    - asset_latest_run_recommended_action: {asset_latest_run_action}")
             agent_lane_recommendation = (
                 project_asset.get("agent_lane_recommendation")
                 if isinstance(project_asset.get("agent_lane_recommendation"), dict)
@@ -8016,6 +8058,19 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"active_state_updated_at={_markdown_scalar(projection_warning.get('active_state_updated_at') or '')} "
                     f"latest_run_generated_at={_markdown_scalar(projection_warning.get('latest_run_generated_at') or '')} "
                     f"reason={_markdown_scalar(projection_warning.get('reason') or '')}"
+                )
+            next_action_warning = (
+                project_asset.get("next_action_projection_warning")
+                if isinstance(project_asset.get("next_action_projection_warning"), dict)
+                else item.get("next_action_projection_warning")
+                if isinstance(item.get("next_action_projection_warning"), dict)
+                else {}
+            )
+            if next_action_warning:
+                lines.append(
+                    "    - next_action_projection_warning: "
+                    f"requires_state_writeback={next_action_warning.get('requires_state_writeback')} "
+                    f"reason={_markdown_scalar(next_action_warning.get('reason') or '')}"
                 )
             backlog_warning = (
                 project_asset.get("backlog_hygiene_warning")

@@ -29,7 +29,7 @@ from .execution_profile import (
     outcome_floor_threshold,
 )
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
-from .state_projection import is_user_wait_text
+from .state_projection import is_user_wait_text, next_action_projection_warning
 from .todo_contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -5256,6 +5256,26 @@ def build_quota_should_run(
             selected_action=selected_recommended_action,
             work_lane_contract=work_lane_contract,
         )
+        active_state_next_action_text = _protocol_action_text(
+            item.get("active_state_next_action")
+            or project_asset.get("active_state_next_action")
+            or project_asset.get("next_action"),
+            limit=320,
+        )
+        latest_run_recommended_action_text = _protocol_action_text(
+            item.get("latest_run_recommended_action")
+            or project_asset.get("latest_run_recommended_action"),
+            limit=320,
+        )
+        agent_lane_next_action_text = _protocol_action_text(
+            agent_lane_next_action.get("text") if isinstance(agent_lane_next_action, dict) else None,
+            limit=320,
+        )
+        next_action_warning = next_action_projection_warning(
+            active_state_next_action=active_state_next_action_text,
+            latest_run_recommended_action=latest_run_recommended_action_text,
+            agent_lane_next_action=agent_lane_next_action_text,
+        )
         agent_scope_action = _agent_scope_frontier_action(effective_action)
         payload = {
             "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed or workspace_repair_allowed,
@@ -5317,6 +5337,8 @@ def build_quota_should_run(
             "source": item.get("source"),
             "project_asset_source": item.get("project_asset_source"),
             "recommended_action": selected_recommended_action,
+            "active_state_next_action": active_state_next_action_text or None,
+            "latest_run_recommended_action": latest_run_recommended_action_text or None,
             "execution_profile": _quota_execution_profile_summary(
                 project_asset.get("execution_profile")
             )
@@ -5467,6 +5489,8 @@ def build_quota_should_run(
             payload["stale_latest_run_warning"] = projection_warning
         if state_action_projection_warning:
             payload["state_action_projection_warning"] = state_action_projection_warning
+        if next_action_warning:
+            payload["next_action_projection_warning"] = next_action_warning
         backlog_warning = (
             item.get("backlog_hygiene_warning")
             if isinstance(item.get("backlog_hygiene_warning"), dict)
@@ -6625,6 +6649,12 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"role={agent_identity.get('role')} "
             f"primary_agent={agent_identity.get('primary_agent')}"
         )
+    if payload.get("active_state_next_action"):
+        lines.append(f"- active_state_next_action: {payload.get('active_state_next_action')}")
+    if payload.get("latest_run_recommended_action"):
+        lines.append(
+            f"- latest_run_recommended_action: {payload.get('latest_run_recommended_action')}"
+        )
     agent_lane_next_action = (
         payload.get("agent_lane_next_action")
         if isinstance(payload.get("agent_lane_next_action"), dict)
@@ -6752,6 +6782,22 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         if state_action_projection_warning.get("recommended_action"):
             lines.append(
                 f"- state_action_projection_action: {state_action_projection_warning.get('recommended_action')}"
+            )
+    next_action_projection = (
+        payload.get("next_action_projection_warning")
+        if isinstance(payload.get("next_action_projection_warning"), dict)
+        else {}
+    )
+    if next_action_projection:
+        lines.append(
+            "- next_action_projection_warning: "
+            f"requires_state_writeback={next_action_projection.get('requires_state_writeback')} "
+            f"reason={next_action_projection.get('reason')}"
+        )
+        if next_action_projection.get("latest_run_recommended_action"):
+            lines.append(
+                "- latest_run_projection_action: "
+                f"{next_action_projection.get('latest_run_recommended_action')}"
             )
     backlog_hygiene_warning = (
         payload.get("backlog_hygiene_warning")
