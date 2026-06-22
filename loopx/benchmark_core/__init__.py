@@ -70,7 +70,14 @@ from .parity import (
     build_codex_app_parity_posthoc_check,
     render_codex_app_parity_posthoc_check_markdown,
 )
-from .rounds import RoundReward, compact_round_rewards, summarize_round_rewards
+from .rounds import (
+    BENCHMARK_ROUND_ARTIFACT_RESTORE_PLAN_SCHEMA_VERSION,
+    RoundReward,
+    build_round_artifact_restore_plan,
+    compact_round_artifact_snapshots,
+    compact_round_rewards,
+    summarize_round_rewards,
+)
 from .run_permissions import (
     DEFAULT_RUN_PERMISSION_ALLOWED_ACTIONS,
     DEFAULT_RUN_PERMISSION_FORBIDDEN_ACTIONS,
@@ -101,6 +108,7 @@ __all__ = [
     "BENCHMARK_LOOP_CONTROLLER_TRACE_SCHEMA_VERSION",
     "BENCHMARK_LOOP_PROTOCOL_SCHEMA_VERSION",
     "BENCHMARK_OBSERVABLE_HANDLE_POLICY_SCHEMA_VERSION",
+    "BENCHMARK_ROUND_ARTIFACT_RESTORE_PLAN_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_LAUNCH_PLAN_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_RUNNER_BATCH_SCHEMA_VERSION",
@@ -116,6 +124,7 @@ __all__ = [
     "build_benchmark_loop_contract",
     "build_benchmark_loop_controller_trace",
     "build_benchmark_observable_handle_policy",
+    "build_round_artifact_restore_plan",
     "build_benchmark_candidate_source_boundary",
     "build_blind_loop_continuation_prompt",
     "build_blind_loop_initial_prompt",
@@ -156,6 +165,7 @@ __all__ = [
     "canonical_lifecycle",
     "compact_run_permission_policy_for_quota",
     "compact_round_rewards",
+    "compact_round_artifact_snapshots",
     "load_json_object",
     "load_jsonl_objects",
     "optional_float",

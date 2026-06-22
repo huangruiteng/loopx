@@ -34,6 +34,8 @@ from loopx.benchmark_core import (  # noqa: E402
     Observation,
     PreflightResult,
     RunHandle,
+    build_round_artifact_restore_plan,
+    compact_round_artifact_snapshots,
     canonical_lifecycle,
     load_json_object,
     optional_float,
@@ -140,6 +142,75 @@ def test_round_reward_summary_prefers_best_score() -> None:
     assert summary["best_round_is_final"] is False, summary
 
 
+def test_best_round_restore_plan_uses_public_snapshot_handle() -> None:
+    plan = build_round_artifact_restore_plan(
+        round_rewards=[
+            {"agent_round": 1, "reward": 0.25},
+            {"agent_round": 2, "reward": 1.0, "passed": True},
+            {"agent_round": 3, "reward": 0.0},
+        ],
+        round_artifact_snapshots=[
+            {"agent_round": 1, "snapshot_ref": "round-1-compact-snapshot"},
+            {"agent_round": 2, "snapshot_ref": "round-2-compact-snapshot"},
+            {"agent_round": 3, "snapshot_ref": "round-3-compact-snapshot"},
+        ],
+    )
+    assert plan["schema_version"] == "benchmark_round_artifact_restore_plan_v0", plan
+    assert plan["selected_round"] == 2, plan
+    assert plan["selected_reward"] == 1.0, plan
+    assert plan["best_round_is_final"] is False, plan
+    assert plan["restore_required"] is True, plan
+    assert plan["executable_final_selection"] is True, plan
+    assert plan["blocked_reason"] == "", plan
+    assert plan["restore_plan"] == {
+        "action": "restore_best_round_snapshot_before_final_scoring",
+        "snapshot_ref": "round-2-compact-snapshot",
+        "agent_round": 2,
+    }, plan
+    assert plan["boundary"]["raw_snapshot_paths_recorded"] is False, plan
+
+
+def test_best_round_restore_plan_blocks_without_snapshot() -> None:
+    plan = build_round_artifact_restore_plan(
+        round_rewards=[
+            {"agent_round": 1, "reward": 0.25},
+            {"agent_round": 2, "reward": 1.0, "passed": True},
+            {"agent_round": 3, "reward": 0.0},
+        ],
+        round_artifact_snapshots=[
+            {"agent_round": 1, "snapshot_ref": "round-1-compact-snapshot"},
+            {"agent_round": 3, "snapshot_ref": "round-3-compact-snapshot"},
+            {"agent_round": 2, "snapshot_ref": "/private/raw/round-2"},
+        ],
+    )
+    assert plan["selected_round"] == 2, plan
+    assert plan["executable_final_selection"] is False, plan
+    assert plan["blocked_reason"] == "missing_snapshot_for_best_round", plan
+    assert plan["restore_plan"] == {
+        "action": "capture_per_round_snapshot_before_using_best_score_policy"
+    }, plan
+    snapshots = compact_round_artifact_snapshots(
+        [{"agent_round": 2, "snapshot_ref": "/private/raw/round-2"}]
+    )
+    assert snapshots == [], snapshots
+
+
+def test_best_round_restore_plan_keeps_final_when_best_is_final() -> None:
+    plan = build_round_artifact_restore_plan(
+        round_rewards=[
+            {"agent_round": 1, "reward": 0.25},
+            {"agent_round": 2, "reward": 1.0, "passed": True},
+        ],
+        round_artifact_snapshots=[],
+    )
+    assert plan["selected_round"] == 2, plan
+    assert plan["final_round"] == 2, plan
+    assert plan["best_round_is_final"] is True, plan
+    assert plan["restore_required"] is False, plan
+    assert plan["executable_final_selection"] is True, plan
+    assert plan["restore_plan"] == {"action": "keep_final_workspace"}, plan
+
+
 def test_benchmark_adapter_modules_own_public_config() -> None:
     assert TERMINAL_BENCH_DEFAULT_DATASET == "terminal-bench@2.0"
     assert TERMINAL_BENCH_DEFAULT_TASK == "build-cython-ext"
@@ -188,6 +259,9 @@ def main() -> int:
     test_process_started_is_not_case_entry()
     test_existing_lifecycle_builder_projects_canonical_state()
     test_round_reward_summary_prefers_best_score()
+    test_best_round_restore_plan_uses_public_snapshot_handle()
+    test_best_round_restore_plan_blocks_without_snapshot()
+    test_best_round_restore_plan_keeps_final_when_best_is_final()
     test_benchmark_adapter_modules_own_public_config()
     test_benchmark_adapter_modules_own_helper_surfaces()
     test_benchmark_facade_has_no_shadowed_top_level_definitions()
