@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "loopx" / "cli.py"
 STARTER_MODULE = ROOT / "loopx" / "cli_commands" / "starter.py"
 VISIBLE_DRIVER_MODULE = ROOT / "loopx" / "cli_commands" / "starter_visible_driver.py"
+SCHEDULER_MODULE = ROOT / "loopx" / "cli_commands" / "starter_scheduler.py"
+SESSION_RUNTIME_MODULE = ROOT / "loopx" / "cli_commands" / "starter_session_runtime.py"
 INIT = ROOT / "loopx" / "cli_commands" / "__init__.py"
 
 
@@ -49,6 +51,8 @@ def assert_source_shape() -> None:
     cli_source = CLI.read_text(encoding="utf-8")
     starter_source = STARTER_MODULE.read_text(encoding="utf-8")
     visible_driver_source = VISIBLE_DRIVER_MODULE.read_text(encoding="utf-8")
+    scheduler_source = SCHEDULER_MODULE.read_text(encoding="utf-8")
+    session_runtime_source = SESSION_RUNTIME_MODULE.read_text(encoding="utf-8")
     init_source = INIT.read_text(encoding="utf-8")
 
     starter_commands = [
@@ -97,10 +101,34 @@ def assert_source_shape() -> None:
         "starter module omitted visible-driver dispatch delegation",
     )
     require(
+        "register_starter_session_runtime_commands(subparsers)" in starter_source,
+        "starter module omitted session-runtime registration delegation",
+    )
+    require(
+        "handle_starter_session_runtime_command(args, print_payload)" in starter_source,
+        "starter module omitted session-runtime dispatch delegation",
+    )
+    require(
+        "register_starter_scheduler_commands(subparsers)" in starter_source,
+        "starter module omitted scheduler registration delegation",
+    )
+    require(
+        "handle_starter_scheduler_command(args, print_payload)" in starter_source,
+        "starter module omitted scheduler dispatch delegation",
+    )
+    require(
         '"codex-cli-visible-driver-run": handle_codex_cli_visible_driver_run_command' in visible_driver_source,
         "visible-driver module omitted visible driver run dispatch",
     )
-    require('"demo": handle_demo_command' in starter_source, "starter dispatcher omitted demo")
+    require(
+        '"codex-cli-local-scheduler-exec": handle_codex_cli_local_scheduler_exec_command' in scheduler_source,
+        "scheduler module omitted local scheduler exec dispatch",
+    )
+    require(
+        '"codex-cli-runtime-idle-detector": handle_codex_cli_runtime_idle_detector_command' in session_runtime_source,
+        "session-runtime module omitted runtime idle dispatch",
+    )
+    require('str(getattr(args, "command", "")) == "demo"' in starter_source, "starter dispatcher omitted demo")
     require("handle_starter_command" in init_source, "__init__ omitted starter dispatcher export")
 
 
