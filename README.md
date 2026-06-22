@@ -212,6 +212,9 @@ attention cost. See the
 [project-level reward model](docs/product/project-level-reward-model.md) for
 the conservative schema and benchmark boundary.
 
+For a short version of the operating model, read
+[Loop Engineering principles and pitfalls](docs/product/loop-engineering-principles-and-pitfalls.md).
+
 ## What You Get
 
 - **Lifetime goals**: durable project intentions that outlive one chat thread,

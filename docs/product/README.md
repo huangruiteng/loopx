@@ -80,6 +80,10 @@ runtime contract, benchmark route, or launch draft.
   value model for Loop Agents that separates quantity, quality, token cost, and
   user attention cost without turning one benchmark score into a universal
   product claim.
+- [Loop Engineering principles and pitfalls](loop-engineering-principles-and-pitfalls.md):
+  short public-safe digest of the operating rules behind source of truth, human
+  gates, safe fallback, feedback, compact evidence, quota, and performance
+  review.
 - [Frontstage two-surface strategy](frontstage-two-surface-strategy.md): route,
   data-source, visual-freedom, validation, and roadmap boundaries between the
   public showcase/homepage surface and the real local ops control-plane
