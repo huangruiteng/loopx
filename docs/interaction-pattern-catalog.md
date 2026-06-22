@@ -121,7 +121,6 @@ Hot-path execution decisions: deliver, fallback, recover, or stay quiet.
 | P0 | IP-002 | Blocked Priority With Safe Fallback | Agent plus user-visible notification | notify without requiring an answer | continue safe fallback after exposing blocked higher-priority work |
 | P0 | IP-003 | Scoped Gate With Safe Fallback | User plus agent | notify concrete scoped gate | execute non-dependent fallback; no gated action |
 | P0 | IP-021 | Per-Todo Capability Gate | CLI projects, agent decides | ask only when missing capability is owner-held | expose runnable executable candidates; agent chooses one, otherwise repair bridge or skip |
-| P0 | IP-026 | Agent-Scoped No-Candidate Wait | CLI/controller | no notification | keep the side-agent active but quiet until current-agent or unclaimed work exists |
 | P0 | IP-007 | Outcome Floor Recovery | Agent | usually no interruption | produce missing outcome-scale evidence or blocker only |
 | P1 | IP-008 | Monitor Quiet Skip | CLI/controller | no notification | append at most one no-spend poll, then stay quiet |
 
@@ -144,6 +143,7 @@ Projection, authority, write scope, and lease integrity.
 | --- | --- | --- | --- | --- | --- |
 | P0 | IP-005 | State Projection Gap | Agent | no user ask unless a user todo is missing | repair todo/state projection before ordinary delivery |
 | P0 | IP-006 | Checkpointed Scope Mismatch | CLI/controller | ask or repair boundary projection | do not execute action whose write scope is not projected |
+| P0 | IP-026 | Agent-Scoped No-Candidate Gap | Status/quota | no interruption | project scope exhaustion or primary-review wait instead of forcing delivery |
 | P1 | IP-011 | Authority Material Intake | Agent plus registry | notify only on gate/conflict | register redacted source contract before relying on material |
 | P1 | IP-016 | Task Lease Claim | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
 | P1 | IP-019 | Side-Agent Scoped Continuation | Primary plus side agent | no interruption unless scope/review is ambiguous | side agent claims scoped todo, uses independent worktree, then self-merges small validated work or hands review to primary |
@@ -556,84 +556,6 @@ watch lane instead of staying quiet or writing a concrete blocker.
 - `examples/heartbeat-quota-flow-smoke.py`
 - `docs/heartbeat-automation-prompt.md`
 - `docs/archive/incidents/monitor-only-replan-stall-incident-20260621.md`
-
-#### IP-026 Agent-Scoped No-Candidate Wait
-
-**Trigger**
-
-- `quota should-run --agent-id <side-agent>` sees a goal-level
-  `advancement_task` lane, but `agent_lane_next_action` is absent;
-- the current agent has no `current_agent_claimed_advancement_items`;
-- there is no unclaimed advancement candidate that the side-agent may adopt;
-- visible advancement work is claimed by another agent or otherwise outside
-  the current agent's scope.
-
-**User channel**
-
-Do not notify the user. This is a scheduling/projection boundary, not a user
-decision.
-
-**Agent channel**
-
-Return `agent_scope_frontier_v0` with one of:
-
-- `primary_review_wait`: visible work is owned by the primary agent;
-- `reassignment_required`: visible work is owned by another agent and needs an
-  explicit handoff or claim change;
-- `agent_scope_exhausted`: no current-agent or unclaimed advancement candidate
-  is projected.
-
-For all three, set `should_run=false`, `delivery_allowed=false`,
-`quiet_noop_allowed=true`, and no-spend CLI policy. If an unclaimed
-advancement candidate exists, the side-agent may take it as `unclaimed_todo`
-instead of waiting.
-
-**State contract**
-
-```text
-agent_scope_frontier = {
-  schema_version: agent_scope_frontier_v0,
-  agent_id,
-  primary_agent,
-  action: primary_review_wait | reassignment_required | agent_scope_exhausted,
-  candidate_counts: {
-    current_agent_claimed_advancement_count,
-    unclaimed_advancement_count,
-    other_agent_claimed_advancement_count
-  },
-  quiet_noop_allowed: true,
-  spend_policy: "no quota spend ..."
-}
-interaction_contract.agent_channel.delivery_allowed = false
-interaction_contract.agent_channel.quiet_noop_allowed = true
-```
-
-**Bad smell**
-
-`should_run=true` plus `delivery_allowed=true` while the same payload has no
-`agent_lane_next_action` and the recommendation points at another agent's todo.
-That makes a side-agent burn a heartbeat on stale global work or repeatedly
-explain why it cannot act.
-
-**Visual model**
-
-```mermaid
-flowchart LR
-  Q["quota should-run --agent-id side"] --> C{"current or unclaimed advancement?"}
-  C -->|yes| R["run selected current-agent/unclaimed todo"]
-  C -->|no| O{"only other-agent claimed work?"}
-  O -->|primary owns it| P["primary_review_wait"]
-  O -->|another owner| A["reassignment_required"]
-  O -->|none projected| E["agent_scope_exhausted"]
-  P --> N["quiet no-op, no spend"]
-  A --> N
-  E --> N
-```
-
-**Validation**
-
-- `examples/work-lane-contract-smoke.py`
-- `skills/loopx-self-repair/references/repair-patterns.md`
 
 ### Human Decision
 
@@ -1360,6 +1282,81 @@ monitor work to crowd out the selected advancement lane.
   agent-lane pointer without replacing the project route.
 - PR #262 / commit `292a2c8`: additive status/quota visibility lanes with a
   16-item agent-facing cap.
+
+#### IP-026 Agent-Scoped No-Candidate Gap
+
+**Trigger**
+
+- `quota should-run --agent-id <agent>` returns `should_run=true` or
+  `interaction_contract.agent_channel.must_attempt=true`;
+- the same payload has no `agent_lane_next_action`;
+- `current_agent_claimed_advancement_items` is empty;
+- no runnable candidate is projected for that agent; and
+- the recommended action points at another agent's lane, an out-of-scope lane,
+  or a goal-level route the current agent cannot safely advance.
+
+**Expected behavior**
+
+Agent-scoped quota must distinguish "the goal has runnable work" from "this
+agent has runnable work." When the current agent has no in-scope candidate,
+quota should not force a delivery turn. It should project one of these machine
+states instead:
+
+- `scope_exhausted`: no current-agent or unclaimed candidate matches the
+  registered agent profile and boundary;
+- `primary_review_wait`: the remaining useful step is review, merge,
+  reassignment, or decision by the primary agent/controller;
+- `reassignment_required`: useful work exists, but ownership must be changed
+  before this agent may treat it as its lane.
+
+The interaction contract should then set:
+
+```text
+agent_channel.must_attempt=false
+agent_channel.delivery_allowed=false
+agent_channel.quiet_noop_allowed=true
+```
+
+The user channel remains quiet unless a concrete user todo exists. The
+recommended action should name the scoped condition, not borrow the global
+goal-level route. A side agent should be allowed to no-op without spend, or
+claim a newly exposed in-scope todo before delivery becomes allowed again.
+
+This pattern is the runtime counterpart of IP-022. IP-022 makes claimed and
+agent-lane work visible; IP-026 says what to do when that scoped frontier is
+empty.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  Q["quota should-run --agent-id side"] --> F{"current-agent frontier?"}
+  F -->|"current-agent candidate"| D["bounded delivery allowed"]
+  F -->|"unclaimed in-scope candidate"| C["agent may claim before delivery"]
+  F -->|"only other-agent or out-of-scope work"| X["scope_exhausted / primary_review_wait"]
+  X --> N["quiet no-op, no spend"]
+  X --> R["primary may review, merge, or reassign"]
+  R --> Q
+```
+
+**Bad smell**
+
+A side-agent heartbeat receives `should_run=true`,
+`delivery_allowed=true`, and `quiet_noop_allowed=false` even though
+`agent_lane_next_action=None`, `current_agent_claimed_advancement_items=[]`,
+and the only recommendation is a primary-owned benchmark or runtime lane. The
+agent either churns through repeated empty heartbeats or risks working outside
+its registered scope.
+
+**Validation**
+
+- future quota/status regression with two registered agents where all runnable
+  work is claimed by the primary and the side-agent `--agent-id` call returns
+  `scope_exhausted` or `primary_review_wait`;
+- `examples/work-lane-contract-smoke.py` should cover that an empty
+  current-agent frontier cannot produce `delivery_allowed=true`;
+- `skills/loopx-self-repair/references/repair-patterns.md` records
+  `agent_scoped_no_candidate_gap` for incident triage.
 
 #### IP-023 Status Neutral Run Window
 
