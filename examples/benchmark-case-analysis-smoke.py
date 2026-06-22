@@ -13,7 +13,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.benchmark_case_analysis import trajectory_public_summary_coverage  # noqa: E402
+from loopx.benchmark_case_analysis import (  # noqa: E402
+    harness_interaction_public_summary_coverage,
+    trajectory_public_summary_coverage,
+)
 ANALYSIS_JSON = (
     REPO_ROOT
     / "docs"
@@ -88,6 +91,58 @@ def test_case_analysis_json() -> None:
     for row in trajectory_coverage["rows"]:
         assert row["public_safe"] is True, row
         assert row["private_trajectory_present"] is True, row
+    harness_coverage = harness_interaction_public_summary_coverage(payload)
+    assert harness_coverage["schema_version"] == (
+        "harness_interaction_public_summary_coverage_v0"
+    ), harness_coverage
+    assert harness_coverage["raw_trajectory_recorded"] is False, harness_coverage
+    assert harness_coverage["raw_task_text_recorded"] is False, harness_coverage
+    assert harness_coverage["raw_verifier_output_recorded"] is False, harness_coverage
+    assert harness_coverage["raw_logs_recorded"] is False, harness_coverage
+    assert harness_coverage["summary_count"] >= 8, harness_coverage
+    assert harness_coverage["public_safe_count"] == harness_coverage[
+        "summary_count"
+    ], harness_coverage
+    assert {"skillsbench@1.1", "terminal-bench@2.0", "swe-marathon"}.issubset(
+        set(harness_coverage["benchmark_ids"])
+    ), harness_coverage
+    harness_rows = {
+        (row["benchmark_id"], row["case_id"], row["summary_path"]): row
+        for row in harness_coverage["rows"]
+    }
+    swe_zstd_harness = harness_rows[
+        ("swe-marathon", "zstd-decoder", "arms.treatment")
+    ]
+    assert swe_zstd_harness["loopx_cli_call_count"] == 31, swe_zstd_harness
+    assert swe_zstd_harness["lifecycle_observed"] is True, swe_zstd_harness
+    terminal_nginx_harness = harness_rows[
+        ("terminal-bench@2.0", "nginx-request-logging", "arms.treatment")
+    ]
+    assert terminal_nginx_harness["source_kind"] == "case_arm", (
+        terminal_nginx_harness
+    )
+    assert terminal_nginx_harness["loopx_cli_call_count"] == 0, (
+        terminal_nginx_harness
+    )
+    skillsbench_native_harness = harness_rows[
+        (
+            "skillsbench@1.1",
+            "llm-prefix-cache-replay",
+            "native_goal_route_observations",
+        )
+    ]
+    assert skillsbench_native_harness["controller_trace_present"] is True, (
+        skillsbench_native_harness
+    )
+    debug_trajectory_harness = harness_rows[
+        ("skillsbench@1.1", "debug-trl-grpo", "trajectory_public_summary")
+    ]
+    assert debug_trajectory_harness["tool_call_count"] == 112, (
+        debug_trajectory_harness
+    )
+    assert debug_trajectory_harness["private_trajectory_present"] is True, (
+        debug_trajectory_harness
+    )
     by_case = {(case["benchmark_id"], case["case_id"]): case for case in cases}
     terminal_coverage = payload["terminal_bench_current_protocol_coverage"]
     assert terminal_coverage["schema_version"] == (
@@ -1150,7 +1205,7 @@ def test_case_analysis_markdown() -> None:
     assert "dapt-intrusion-detection" in text, text
     assert "debug-trl-grpo" in text, text
     assert "zstd-decoder" in text, text
-    assert "extended-round product-path negative asset" in text, text
+    assert "extended round product path negative asset" in text, text
     assert "Product-path verification does not prove causal regression" in text, text
     assert "31 LoopX CLI calls" in text, text
     assert "make-doom-for-mips" in text, text
@@ -1177,6 +1232,11 @@ def test_case_analysis_markdown() -> None:
     assert "Terminal-Bench Current-Protocol Coverage" in text, text
     assert "Public Trajectory Summary Coverage" in text, text
     assert "trajectory_public_summary_coverage_v0" in text, text
+    assert "Public Harness Interaction Coverage" in text, text
+    assert "harness_interaction_public_summary_coverage_v0" in text, text
+    assert "`swe-marathon` | `zstd-decoder` | `arms.treatment`" in text, text
+    assert "`terminal-bench@2.0` | `nginx-request-logging` | `arms.treatment`" in text, text
+    assert "native_goal_route_observations" in text, text
     assert "legacy_blind_loop_positive_result.trajectory_public_summary" in text, text
     assert "`debug-trl-grpo` | `trajectory_public_summary`" in text, text
     assert "current-protocol success-preservation guards" in text, text
@@ -1202,7 +1262,7 @@ def test_case_analysis_markdown() -> None:
     assert "not explained by interaction count alone" in text, text
     assert "protocol v10" in text and "paired_no_score_uplift" in text, text
     assert "max-5 rerun" in text and "1:0,2:0,3:0,4:0,5:0" in text, text
-    assert "reward-feedback positive / blind-loop neutral asset" in text, text
+    assert "reward feedback positive blind loop neutral asset" in text, text
     assert "protocol v0" in text and "first_success_round=null" in text, text
     assert "blind-loop regression" in text, text
     assert "1:0.25,2:0.25" in text and "1:0.25,2:0" in text, text
