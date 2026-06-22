@@ -83,7 +83,8 @@ runtime contract, benchmark route, or launch draft.
 - [Loop Engineering principles and pitfalls](loop-engineering-principles-and-pitfalls.md):
   short public-safe digest of the operating rules behind source of truth, human
   gates, safe fallback, feedback, compact evidence, quota, and performance
-  review.
+  review. A Chinese version is available at
+  [Loop Engineering 原则与常见坑](loop-engineering-principles-and-pitfalls.zh.md).
 - [Frontstage two-surface strategy](frontstage-two-surface-strategy.md): route,
   data-source, visual-freedom, validation, and roadmap boundaries between the
   public showcase/homepage surface and the real local ops control-plane
