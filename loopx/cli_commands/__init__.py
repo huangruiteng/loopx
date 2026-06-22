@@ -37,6 +37,10 @@ from .project_lifecycle import (
     register_project_lifecycle_commands,
 )
 from .quota import handle_quota_command, register_quota_command
+from .registry_admin import (
+    handle_registry_admin_command,
+    register_registry_admin_commands,
+)
 from .starter import (
     handle_codex_cli_bounded_visible_pilot_adapter_command,
     handle_codex_cli_bootstrap_message_command,
@@ -108,6 +112,7 @@ __all__ = [
     "handle_new_project_prompt_command",
     "handle_project_lifecycle_command",
     "handle_quota_command",
+    "handle_registry_admin_command",
     "handle_review_packet_command",
     "handle_status_command",
     "handle_terminal_bench_adapter_command",
@@ -125,6 +130,7 @@ __all__ = [
     "register_ml_experiment_commands",
     "register_project_lifecycle_commands",
     "register_quota_command",
+    "register_registry_admin_commands",
     "register_starter_commands",
     "register_status_commands",
     "register_terminal_bench_adapter_commands",
