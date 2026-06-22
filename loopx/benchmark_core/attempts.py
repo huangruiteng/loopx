@@ -150,6 +150,8 @@ def build_benchmark_attempt_accounting(
         normalized_failure_class = classify_benchmark_failure(
             failure_label, lifecycle=lifecycle_projection
         )
+    elif isinstance(failure_class, BenchmarkFailureClass):
+        normalized_failure_class = failure_class
     else:
         normalized_failure_class = BenchmarkFailureClass(_normalize(failure_class))
 

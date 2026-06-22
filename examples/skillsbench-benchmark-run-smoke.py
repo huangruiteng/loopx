@@ -781,6 +781,12 @@ def test_skillsbench_skeleton_builder() -> None:
     assert compact["submit_eligible"] is False, compact
     assert compact["leaderboard_evidence"] is False, compact
     assert compact["validation"]["all_passed"] is True, compact
+    attempt_accounting = compact["attempt_accounting"]
+    assert attempt_accounting["schema_version"] == "benchmark_attempt_accounting_v0"
+    assert attempt_accounting["case_attempt_countable"] is False, compact
+    assert attempt_accounting["solver_attempt_countable"] is False, compact
+    assert attempt_accounting["verifier_attempt_countable"] is False, compact
+    assert attempt_accounting["official_score_attempt_countable"] is False, compact
     assert "do_not_read_raw_task_prompt_solution_or_trajectory" in compact[
         "stop_conditions"
     ], compact
@@ -1327,6 +1333,13 @@ def test_skillsbench_official_result_builder() -> None:
         assert compact["leaderboard_evidence"] is False
         assert compact["official_task_score"]["value"] == 0.0
         assert compact["official_task_score"]["passed"] is False
+        attempt_accounting = compact["attempt_accounting"]
+        assert attempt_accounting["failure_class"] == "solver_failed", compact
+        assert attempt_accounting["lifecycle_phase"] == "verifier_scored", compact
+        assert attempt_accounting["case_attempt_countable"] is True, compact
+        assert attempt_accounting["solver_attempt_countable"] is True, compact
+        assert attempt_accounting["verifier_attempt_countable"] is True, compact
+        assert attempt_accounting["official_score_attempt_countable"] is True, compact
         assert compact["score_failure_attribution"] == (
             "official_verifier_solution_failure"
         )
@@ -1708,6 +1721,14 @@ def test_skillsbench_volume_mount_failure_attribution() -> None:
         assert compact["score_failure_attribution"] == (
             "skillsbench_docker_compose_volume_mount_failure"
         ), compact
+        attempt_accounting = compact["attempt_accounting"]
+        assert attempt_accounting["failure_class"] == (
+            "job_materialization_failed"
+        ), compact
+        assert attempt_accounting["case_attempt_countable"] is False, compact
+        assert attempt_accounting["solver_attempt_countable"] is False, compact
+        assert attempt_accounting["verifier_attempt_countable"] is False, compact
+        assert attempt_accounting["official_score_attempt_countable"] is False, compact
         assert "skillsbench_docker_compose_setup_failure" in compact[
             "failure_attribution_labels"
         ], compact

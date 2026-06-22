@@ -10,7 +10,13 @@ from ..benchmark_case_state import (
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
     benchmark_case_active_state_path,
 )
-from ..benchmark_core import RunPermissionAction, build_run_permission_policy
+from ..benchmark_core import (
+    BenchmarkFailureClass,
+    RunPermissionAction,
+    build_benchmark_attempt_accounting,
+    build_run_permission_policy,
+    canonical_lifecycle,
+)
 from ..codex_goal_baseline import build_codex_app_server_goal_worker_plan
 
 
@@ -377,6 +383,73 @@ def build_skillsbench_run_permission_policy(
         max_wall_time_minutes=max_wall_time_minutes,
         no_upload_required=True,
         compact_observation_only=True,
+    )
+
+
+_SKILLSBENCH_SETUP_FAILURE_LABELS = {
+    "skillsbench_result_json_missing_after_runner_exit",
+    "skillsbench_runner_setup_error",
+    "skillsbench_environment_setup_error",
+    "skillsbench_docker_setup_preflight_blocked",
+    "skillsbench_docker_compose_setup_failure",
+    "skillsbench_docker_compose_unclassified_setup_failure",
+}
+
+
+def _skillsbench_attempt_setup_blocked(failure_labels: Iterable[str]) -> bool:
+    return any(
+        str(label) in _SKILLSBENCH_SETUP_FAILURE_LABELS for label in failure_labels
+    )
+
+
+def _skillsbench_attempt_failure_class(
+    *,
+    failure_labels: Iterable[str],
+    reward_value: float | int | None,
+    verifier_error_text: str,
+    score_failure_attribution: str,
+) -> BenchmarkFailureClass:
+    if _skillsbench_attempt_setup_blocked(failure_labels):
+        return BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED
+    if verifier_error_text and reward_value is None:
+        return BenchmarkFailureClass.VERIFIER_FAILED
+    if reward_value is None and score_failure_attribution != "none":
+        return BenchmarkFailureClass.OFFICIAL_SCORE_FAILED
+    if reward_value == 0:
+        return BenchmarkFailureClass.SOLVER_FAILED
+    return BenchmarkFailureClass.NONE
+
+
+def _skillsbench_attempt_lifecycle(
+    *,
+    setup_blocked: bool,
+    reward_value: float | int | None,
+    verifier_error_text: str,
+    tool_calls: int,
+    native_goal_worker_trace_observed: bool,
+    controller_trace_present: bool,
+) -> dict[str, Any]:
+    if setup_blocked:
+        return canonical_lifecycle(
+            process_started=True,
+            runner_accepted_args=True,
+        )
+
+    verifier_or_score_seen = reward_value is not None or bool(verifier_error_text)
+    worker_seen = (
+        tool_calls > 0
+        or native_goal_worker_trace_observed
+        or controller_trace_present
+        or verifier_or_score_seen
+    )
+    return canonical_lifecycle(
+        process_started=True,
+        runner_accepted_args=True,
+        job_root_materialized=True,
+        trial_started=True,
+        worker_started=worker_seen,
+        result_written=True,
+        verifier_scored=verifier_or_score_seen,
     )
 
 
@@ -1438,6 +1511,11 @@ def build_skillsbench_benchmark_run(
         "run_permission_policy": build_skillsbench_run_permission_policy(
             route=route
         ),
+        "attempt_accounting": build_benchmark_attempt_accounting(
+            lifecycle=canonical_lifecycle(),
+            failure_label="not_run_adapter_skeleton",
+            failure_class=BenchmarkFailureClass.NONE,
+        ),
         "agent": {
             "name": agent,
             "model": model,
@@ -2476,6 +2554,25 @@ def build_skillsbench_benchflow_result_benchmark_run(
     native_goal_worker_trace_status = _skillsbench_native_goal_worker_trace_status(
         controller_counters
     )
+    setup_blocked = _skillsbench_attempt_setup_blocked(failure_labels)
+    attempt_accounting = build_benchmark_attempt_accounting(
+        lifecycle=_skillsbench_attempt_lifecycle(
+            setup_blocked=setup_blocked,
+            reward_value=reward_value,
+            verifier_error_text=verifier_error_text,
+            tool_calls=tool_calls,
+            native_goal_worker_trace_observed=native_goal_worker_trace_observed,
+            controller_trace_present=controller_trace_present,
+        ),
+        failure_label=score_failure_attribution,
+        failure_class=_skillsbench_attempt_failure_class(
+            failure_labels=failure_labels,
+            reward_value=reward_value,
+            verifier_error_text=verifier_error_text,
+            score_failure_attribution=score_failure_attribution,
+        ),
+        official_score_attempted=reward_value is not None and not setup_blocked,
+    )
 
     benchmark_run: dict[str, Any] = {
         "schema_version": "benchmark_run_v0",
@@ -2486,6 +2583,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "job_name": job_name,
         "mode": contract["mode"],
         "route": route,
+        "attempt_accounting": attempt_accounting,
         "agent": {
             "name": observed_agent,
             "model": observed_model,

@@ -78,6 +78,14 @@ def main() -> None:
     assert verifier["verifier_attempt_countable"] is True
     assert verifier["official_score_attempt_countable"] is True
 
+    explicit_enum = build_benchmark_attempt_accounting(
+        lifecycle=canonical_lifecycle(),
+        failure_label="fixture_no_run",
+        failure_class=BenchmarkFailureClass.NONE,
+    )
+    assert explicit_enum["failure_class"] == BenchmarkFailureClass.NONE
+    assert explicit_enum["case_attempt_countable"] is False
+
     assert (
         classify_benchmark_failure("official-score-missing")
         == BenchmarkFailureClass.OFFICIAL_SCORE_FAILED
