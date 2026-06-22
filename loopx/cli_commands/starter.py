@@ -1170,3 +1170,33 @@ def handle_demo_command(args: argparse.Namespace, print_payload: PrintPayload) -
         }
     print_payload(payload, args.format, render_demo_markdown)
     return 0 if payload.get("ok") else 1
+
+
+def handle_starter_command(
+    args: argparse.Namespace,
+    print_payload: PrintPayload,
+) -> int | None:
+    handlers: dict[str, Callable[[argparse.Namespace, PrintPayload], int]] = {
+        "new-project-prompt": handle_new_project_prompt_command,
+        "codex-cli-bootstrap-message": handle_codex_cli_bootstrap_message_command,
+        "codex-cli-tui-bootstrap-smoke-bundle": handle_codex_cli_tui_bootstrap_smoke_bundle_command,
+        "codex-cli-one-message-loop-pilot": handle_codex_cli_one_message_loop_pilot_command,
+        "codex-cli-visible-local-driver-pilot": handle_codex_cli_visible_local_driver_pilot_command,
+        "codex-cli-bounded-visible-pilot-adapter": handle_codex_cli_bounded_visible_pilot_adapter_command,
+        "codex-cli-visible-first-response-capture-plan": handle_codex_cli_visible_first_response_capture_plan_command,
+        "codex-cli-visible-attach-acceptance": handle_codex_cli_visible_attach_acceptance_command,
+        "codex-cli-exec-handoff": handle_codex_cli_exec_handoff_command,
+        "codex-cli-session-probe": handle_codex_cli_session_probe_command,
+        "codex-cli-visible-driver-plan": handle_codex_cli_visible_driver_plan_command,
+        "codex-cli-local-driver-plan": handle_codex_cli_local_driver_plan_command,
+        "codex-cli-visible-driver-run": handle_codex_cli_visible_driver_run_command,
+        "codex-cli-local-scheduler-tick": handle_codex_cli_local_scheduler_tick_command,
+        "codex-cli-local-scheduler-exec": handle_codex_cli_local_scheduler_exec_command,
+        "codex-cli-visible-session-proof": handle_codex_cli_visible_session_proof_command,
+        "codex-cli-runtime-idle-detector": handle_codex_cli_runtime_idle_detector_command,
+        "demo": handle_demo_command,
+    }
+    handler = handlers.get(str(getattr(args, "command", "")))
+    if handler is None:
+        return None
+    return handler(args, print_payload)

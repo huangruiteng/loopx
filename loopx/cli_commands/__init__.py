@@ -68,6 +68,7 @@ from .starter import (
     handle_codex_cli_visible_session_proof_command,
     handle_demo_command,
     handle_new_project_prompt_command,
+    handle_starter_command,
     register_starter_commands,
 )
 from .status import (
@@ -129,6 +130,7 @@ __all__ = [
     "handle_registry_admin_command",
     "handle_review_packet_command",
     "handle_status_command",
+    "handle_starter_command",
     "handle_support_control_command",
     "handle_terminal_bench_adapter_command",
     "handle_terminal_bench_environment_result_command",

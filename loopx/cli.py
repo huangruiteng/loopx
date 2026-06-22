@@ -10,34 +10,17 @@ from .cli_commands import (
     handle_benchmark_command,
     handle_bootstrap_connect_command,
     handle_check_command,
-    handle_codex_cli_bounded_visible_pilot_adapter_command,
-    handle_codex_cli_bootstrap_message_command,
-    handle_codex_cli_exec_handoff_command,
-    handle_codex_cli_visible_first_response_capture_plan_command,
-    handle_codex_cli_local_driver_plan_command,
-    handle_codex_cli_local_scheduler_exec_command,
-    handle_codex_cli_local_scheduler_tick_command,
-    handle_codex_cli_one_message_loop_pilot_command,
-    handle_codex_cli_runtime_idle_detector_command,
-    handle_codex_cli_session_probe_command,
-    handle_codex_cli_tui_bootstrap_smoke_bundle_command,
-    handle_codex_cli_visible_attach_acceptance_command,
-    handle_codex_cli_visible_local_driver_pilot_command,
-    handle_codex_cli_visible_driver_run_command,
-    handle_codex_cli_visible_driver_plan_command,
-    handle_codex_cli_visible_session_proof_command,
     handle_diagnose_command,
-    handle_demo_command,
     handle_doctor_command,
     handle_dreaming_command,
     handle_history_command,
     handle_ml_experiment_command,
-    handle_new_project_prompt_command,
     handle_project_lifecycle_command,
     handle_quota_command,
     handle_registry_admin_command,
     handle_review_packet_command,
     handle_status_command,
+    handle_starter_command,
     handle_support_control_command,
     handle_todo_command,
     handle_worker_bridge_command,
@@ -190,59 +173,9 @@ def main(argv: list[str] | None = None) -> int:
     if bootstrap_connect_result is not None:
         return bootstrap_connect_result
 
-    if args.command == "new-project-prompt":
-        return handle_new_project_prompt_command(args, print_payload)
-
-    if args.command == "codex-cli-bootstrap-message":
-        return handle_codex_cli_bootstrap_message_command(args, print_payload)
-
-    if args.command == "codex-cli-tui-bootstrap-smoke-bundle":
-        return handle_codex_cli_tui_bootstrap_smoke_bundle_command(args, print_payload)
-
-    if args.command == "codex-cli-one-message-loop-pilot":
-        return handle_codex_cli_one_message_loop_pilot_command(args, print_payload)
-
-    if args.command == "codex-cli-visible-local-driver-pilot":
-        return handle_codex_cli_visible_local_driver_pilot_command(args, print_payload)
-
-    if args.command == "codex-cli-bounded-visible-pilot-adapter":
-        return handle_codex_cli_bounded_visible_pilot_adapter_command(args, print_payload)
-
-    if args.command == "codex-cli-visible-first-response-capture-plan":
-        return handle_codex_cli_visible_first_response_capture_plan_command(args, print_payload)
-
-    if args.command == "codex-cli-visible-attach-acceptance":
-        return handle_codex_cli_visible_attach_acceptance_command(args, print_payload)
-
-    if args.command == "codex-cli-exec-handoff":
-        return handle_codex_cli_exec_handoff_command(args, print_payload)
-
-    if args.command == "codex-cli-session-probe":
-        return handle_codex_cli_session_probe_command(args, print_payload)
-
-    if args.command == "codex-cli-visible-driver-plan":
-        return handle_codex_cli_visible_driver_plan_command(args, print_payload)
-
-    if args.command == "codex-cli-local-driver-plan":
-        return handle_codex_cli_local_driver_plan_command(args, print_payload)
-
-    if args.command == "codex-cli-visible-driver-run":
-        return handle_codex_cli_visible_driver_run_command(args, print_payload)
-
-    if args.command == "codex-cli-local-scheduler-tick":
-        return handle_codex_cli_local_scheduler_tick_command(args, print_payload)
-
-    if args.command == "codex-cli-local-scheduler-exec":
-        return handle_codex_cli_local_scheduler_exec_command(args, print_payload)
-
-    if args.command == "codex-cli-visible-session-proof":
-        return handle_codex_cli_visible_session_proof_command(args, print_payload)
-
-    if args.command == "codex-cli-runtime-idle-detector":
-        return handle_codex_cli_runtime_idle_detector_command(args, print_payload)
-
-    if args.command == "demo":
-        return handle_demo_command(args, print_payload)
+    starter_result = handle_starter_command(args, print_payload)
+    if starter_result is not None:
+        return starter_result
 
     if args.command == "doctor":
         return handle_doctor_command(args, print_payload)
