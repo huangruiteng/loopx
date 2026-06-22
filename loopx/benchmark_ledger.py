@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .benchmark_core import classify_product_mode_main_table_pair
+
 
 BENCHMARK_RUN_LEDGER_SCHEMA_VERSION = "benchmark_run_ledger_v0"
 BENCHMARK_RUN_LEDGER_DEFAULT_PATH = Path(
@@ -317,6 +319,78 @@ def _source_schema(payload: dict[str, Any]) -> str:
     return _compact_text(payload.get("schema_version"), limit=120)
 
 
+def _run_identity_tokens(run: dict[str, Any]) -> set[str]:
+    tokens: set[str] = set()
+    for field in ("arm_id", "mode", "route"):
+        text = _compact_text(run.get(field), limit=160)
+        if text:
+            tokens.add(text.lower())
+    contract = run.get("benchmark_loop_contract")
+    if isinstance(contract, dict):
+        for field in ("route", "protocol_id"):
+            text = _compact_text(contract.get(field), limit=160)
+            if text:
+                tokens.add(text.lower())
+    return tokens
+
+
+def _run_matches_token(run: dict[str, Any], *needles: str) -> bool:
+    tokens = _run_identity_tokens(run)
+    for needle in needles:
+        lower_needle = needle.lower()
+        if lower_needle in tokens:
+            return True
+        if any(lower_needle in token for token in tokens):
+            return True
+    return False
+
+
+def _product_mode_baseline_run(run: dict[str, Any]) -> bool:
+    return _run_matches_token(
+        run,
+        "raw-codex-autonomous-max5",
+        "raw_codex_autonomous_max5",
+        "skillsbench_raw_codex_autonomous_max5",
+    )
+
+
+def _product_mode_treatment_run(run: dict[str, Any]) -> bool:
+    return _run_matches_token(
+        run,
+        "loopx-product-mode",
+        "loopx_product_mode",
+        "skillsbench_loopx_product_mode",
+    )
+
+
+def _compact_product_mode_pair_review(review: dict[str, Any]) -> dict[str, Any]:
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "comparison_id",
+        "main_table_claim_allowed",
+        "product_mode_pair_complete",
+        "claim_blocker",
+        "benchmark_id",
+        "case_id",
+        "baseline_route_valid",
+        "treatment_route_valid",
+        "treatment_loopx_lifecycle_observed",
+        "official_feedback_blinded",
+    ):
+        value = review.get(field)
+        if value not in (None, "", []):
+            compact[field] = value
+    headline_metrics = review.get("headline_metrics")
+    if isinstance(headline_metrics, list):
+        compact["headline_metrics"] = [
+            metric
+            for metric in (_compact_text(item, limit=80) for item in headline_metrics)
+            if metric
+        ][:8]
+    return compact
+
+
 def _terminal_bench_case_id_from_job_name(
     *,
     benchmark_id: str,
@@ -361,6 +435,17 @@ def _relative_ref(value: str | Path | None, *, cwd: Path | None = None) -> str |
 
 def _case_ids(benchmark_run: dict[str, Any]) -> list[str]:
     ids: list[str] = []
+    case_id = _compact_text(benchmark_run.get("case_id"), limit=140)
+    if case_id:
+        ids.append(case_id)
+    case_ids = benchmark_run.get("case_ids")
+    if isinstance(case_ids, list):
+        for item in case_ids:
+            text = _compact_text(item, limit=140)
+            if text and text not in ids:
+                ids.append(text)
+    if ids:
+        return ids
     trials = benchmark_run.get("trials")
     if isinstance(trials, list):
         for trial in trials:
@@ -1153,6 +1238,7 @@ def build_benchmark_run_ledger_entry(
         "run_group_id": resolved_run_group_id or run_id,
         "arm_id": resolved_arm_id,
         "mode": mode,
+        "route": _compact_text(benchmark_run.get("route"), limit=120),
         "job_name": job_name,
         "status": _run_status(benchmark_run, score),
         "score_status": score_status,
@@ -1211,6 +1297,27 @@ def build_benchmark_run_ledger_entry(
             benchmark_run.get("worker_bridge_materialization_status"),
             limit=120,
         ),
+        "loopx_prompt_driven_lifecycle_observed": benchmark_run.get(
+            "loopx_prompt_driven_lifecycle_observed"
+        )
+        if isinstance(benchmark_run.get("loopx_prompt_driven_lifecycle_observed"), bool)
+        else None,
+        "worker_loopx_cli_call_total": benchmark_run.get("worker_loopx_cli_call_total")
+        if isinstance(benchmark_run.get("worker_loopx_cli_call_total"), int)
+        and not isinstance(benchmark_run.get("worker_loopx_cli_call_total"), bool)
+        else None,
+        "loopx_prompt_driven_case_cli_call_count": benchmark_run.get(
+            "loopx_prompt_driven_case_cli_call_count"
+        )
+        if isinstance(
+            benchmark_run.get("loopx_prompt_driven_case_cli_call_count"),
+            int,
+        )
+        and not isinstance(
+            benchmark_run.get("loopx_prompt_driven_case_cli_call_count"),
+            bool,
+        )
+        else None,
         "agent_model": agent_model,
         "model_control_status": model_control_status,
         "actual_model_verified": model_actual_verified
@@ -1528,8 +1635,18 @@ class _LedgerWriteLock:
 
 def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
     runs = [run for run in case.get("runs", []) if isinstance(run, dict)]
-    baselines = [run for run in runs if "baseline" in str(run.get("arm_id", ""))]
-    treatments = [run for run in runs if "treatment" in str(run.get("arm_id", ""))]
+    baselines = [
+        run
+        for run in runs
+        if "baseline" in str(run.get("arm_id", ""))
+        or _product_mode_baseline_run(run)
+    ]
+    treatments = [
+        run
+        for run in runs
+        if "treatment" in str(run.get("arm_id", ""))
+        or _product_mode_treatment_run(run)
+    ]
     latest_baseline = baselines[-1] if baselines else None
     latest_treatment = treatments[-1] if treatments else None
 
@@ -1589,6 +1706,32 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
         }
 
     if latest_baseline and latest_treatment:
+        product_mode_pair_review: dict[str, Any] | None = None
+        if _product_mode_baseline_run(latest_baseline) or _product_mode_treatment_run(
+            latest_treatment
+        ):
+            product_mode_pair_review = _compact_product_mode_pair_review(
+                classify_product_mode_main_table_pair(
+                    baseline_run=latest_baseline,
+                    treatment_run=latest_treatment,
+                    benchmark_id=_compact_text(
+                        latest_baseline.get("benchmark_id")
+                        or latest_treatment.get("benchmark_id")
+                        or "skillsbench@1.1",
+                        limit=120,
+                    )
+                    or "skillsbench@1.1",
+                )
+            )
+            if product_mode_pair_review.get("main_table_claim_allowed") is not True:
+                return with_case_routing(
+                    {
+                        "decision": "product_mode_pair_incomplete",
+                        "baseline_run_id": latest_baseline.get("run_id"),
+                        "treatment_run_id": latest_treatment.get("run_id"),
+                        "product_mode_main_table_pair": product_mode_pair_review,
+                    }
+                )
         b_score = latest_baseline.get("official_score")
         t_score = latest_treatment.get("official_score")
         b_scope = _compact_text(latest_baseline.get("failure_scope"), limit=80)
@@ -1641,6 +1784,8 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
             "baseline_failure_scope": b_scope,
             "treatment_failure_scope": t_scope,
         }
+        if product_mode_pair_review:
+            result["product_mode_main_table_pair"] = product_mode_pair_review
         if "decision_info" in locals():
             result.update(
                 {
@@ -1746,8 +1891,8 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
         "",
         "## Case Decisions",
         "",
-        "| Benchmark | Case | Decision | Case Routing | Runs |",
-        "| --- | --- | --- | --- | --- |",
+        "| Benchmark | Case | Decision | Product Pair | Case Routing | Runs |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     benchmarks = ledger.get("benchmarks") if isinstance(ledger.get("benchmarks"), dict) else {}
     for benchmark_id in sorted(benchmarks):
@@ -1769,10 +1914,26 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
             )
             routing_class = _compact_text(routing.get("class"), limit=120)
             routing_cell = f"`{routing_class}`" if routing_class else "-"
+            pair_review = (
+                decision.get("product_mode_main_table_pair")
+                if isinstance(decision.get("product_mode_main_table_pair"), dict)
+                else {}
+            )
+            product_pair_cell = "-"
+            if pair_review:
+                if pair_review.get("main_table_claim_allowed") is True:
+                    product_pair_cell = "`main_table_ready`"
+                else:
+                    blocker = _compact_text(
+                        pair_review.get("claim_blocker"),
+                        limit=120,
+                    )
+                    product_pair_cell = f"`{blocker or 'pair_incomplete'}`"
             runs = case.get("runs", []) if isinstance(case, dict) else []
             lines.append(
                 f"| `{benchmark_id}` | `{case_id}` | "
                 f"`{decision.get('decision', 'unknown')}` | "
+                f"{product_pair_cell} | "
                 f"{routing_cell} | `{len(runs)}` |"
             )
     repair_rows: list[tuple[str, str, str, str, str, str, str, str]] = []
