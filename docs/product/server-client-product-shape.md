@@ -29,7 +29,9 @@ long-running facts become coherent:
 - per-todo claim and future lease state;
 - quota, spend, idempotency, and concurrency policy;
 - compact public/private boundary summaries;
+- compact mental-model and management projections for clients;
 - scheduled planning, dreaming, and replanning queues;
+- review and feedback rollups for maintainer-facing performance review;
 - proposal promotion from advisory lanes into normal user or agent todos.
 
 The backend layer around that store should be thin but strict: typed reads,
@@ -76,6 +78,29 @@ This keeps server-side dreaming and periodic replanning useful without turning
 the server into a hidden autonomous agent. The server owns durable scheduling
 facts and proposal records; the client and executor still perform the visible
 human-in-the-loop transition and bounded delivery work.
+
+### Management Projections And Summaries
+
+Loop Agent management adds a second projection need on top of ordinary status.
+The server should keep kernel state explicit, but expose compressed read models
+for clients:
+
+- **mental-model projection**: maps goal state, gates, todos, claims, scope,
+  evidence, run history, quota, and handoff into the five user concepts:
+  Goal, Next step, Needs your judgment, Evidence, and Can continue.
+- **performance-review projection**: rolls a lane or anchor into quantity,
+  quality, token cost, user-attention cost, latest evidence, and next
+  expectation.
+- **review-feed projection**: turns recent outputs, gates, blockers, and
+  signals into cards that the user can mark useful, not useful, needs evidence,
+  off-scope, or too expensive.
+
+These projections should be deterministic from recorded state first. A
+model-backed summarizer can help produce friendlier wording, cluster duplicate
+signals, or draft a review summary, but it must be default-off for control
+purposes. Its output is advisory until promoted through a typed review,
+feedback, todo, or gate transition. It cannot approve gates, mutate active
+truth, hide missing evidence, or spend quota.
 
 ## Multica Reference Point
 
@@ -156,7 +181,7 @@ An executor loop should:
 - respect user gates, public/private boundaries, and claimed todo ownership;
 - keep one turn bounded to the selected todo or safe side path;
 - write back evidence, validation, blockers, and next-step proposals;
-- stop before credentials, destructive git, private material, production
+- stop before sensitive material, destructive git, private material, production
   actions, or unapproved publication boundaries.
 
 The executor can be powerful without being the product authority. LoopX
@@ -204,19 +229,34 @@ The first product slices should remain small and compatible with CLI-only mode.
 
 1. **`goal_channel_projection_v0`**: a read-only first-screen projection for
    goal, gate, todos, current blocker, latest evidence, quota, and next action.
-2. **`agent_profile_v0`**: registered agent identity with role, primary/side
+2. **`mental_model_projection_v0`**: a user-facing compression layer that maps
+   kernel state into Goal, Next step, Needs your judgment, Evidence, and Can
+   continue. Clients should render this before exposing raw claim, scope,
+   quota, run-history, or handoff details.
+3. **`agent_profile_v0`**: registered agent identity with role, primary/side
    relationship, default scope, worktree policy, and review handoff policy.
-3. **`task_lease_v0`**: per-`(goal_id, todo_id)` ownership with TTL,
+4. **`task_lease_v0`**: per-`(goal_id, todo_id)` ownership with TTL,
    idempotency key, write scope, renewal, transfer, and conflict behavior.
-4. **`planning_queue_v0`**: advisory planning, dreaming, and replanning
+5. **`planning_queue_v0`**: advisory planning, dreaming, and replanning
    proposals that remain non-executable until promoted by controller or user
    decision plus normal quota and boundary checks. The minimal record should
    include proposal id, source run window, due/retry policy, candidate todo
    refs, confidence, promotion target, and idempotency key.
-5. **`feedback_signal_v0`**: user feedback captured as one of four control
+6. **`feedback_signal_v0`**: user feedback captured as one of four control
    effects: gate decision, preference hint, todo mutation, or product
    improvement note. Raw private chat should not become public evidence.
-6. **`handoff_packet_v0`**: compact executor input that carries the selected
+7. **`performance_review_projection_v0`**: lane or anchor rollup over a bounded
+   window with output quantity, quality label, token or quota cost, user
+   attention cost, evidence references, and next expectation. It should cite
+   source events instead of copying raw work context.
+8. **`review_feed_card_v0`**: card-level projection for outputs, blockers,
+   signals, or proposed todos that can receive user feedback and later produce
+   `feedback_signal_v0`, `todo_update`, `anchor_update`, or
+   `performance_review_note`.
+9. **`advisory_summary_v0`**: optional model-backed summary of recent state,
+   used only for wording or clustering. It is default-off for control and cannot
+   mutate state unless converted into a typed object above.
+10. **`handoff_packet_v0`**: compact executor input that carries the selected
    todo, stop condition, validation expectation, boundary notes, and writeback
    target without copying the whole project history.
 
@@ -236,6 +276,7 @@ creating a second source of truth.
 The near-term roadmap should therefore prefer:
 
 - contract-first status and write APIs over UI-only state;
+- mental-model projections before frontend-only remapping;
 - local concurrency correctness before broad server scheduling;
 - side-agent scope and worktree policy before autonomous multi-agent merging;
 - planning proposals before background execution;
