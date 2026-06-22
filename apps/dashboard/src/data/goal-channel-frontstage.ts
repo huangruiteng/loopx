@@ -44,7 +44,7 @@ export const goalChannelProjectionSchema = z.object({
   mode: z.literal("read_only"),
   goal_id: z.string(),
   display_name: z.string(),
-  generated_at: z.string(),
+  generated_at: z.string().optional().nullable(),
   latest_status: z.string(),
   waiting_on: z.string(),
   next_action: z.string(),
@@ -106,7 +106,7 @@ export type GoalChannelProjection = {
   mode: "read_only";
   goal_id: string;
   display_name: string;
-  generated_at: string;
+  generated_at?: string | null;
   latest_status: string;
   waiting_on: string;
   next_action: string;

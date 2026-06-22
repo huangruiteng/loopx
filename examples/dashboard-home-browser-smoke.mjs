@@ -709,6 +709,7 @@ async function main() {
     const initialTodoExplorerText = await todoExplorer.innerText();
     const requiredTodoExplorerText = [
       "Project Todo Explorer",
+      "All projects",
       "todo_dashboard_search_meta_backlog",
       "dashboard_todo_search_fixture",
       "claimed_by=codex-side-bypass",
@@ -725,6 +726,12 @@ async function main() {
     if (!filteredTodoExplorerText.includes("增加自动 backlog 候选面")) {
       throw new Error("Project todo explorer search lost the matching todo body.");
     }
+    await page.getByLabel("Todo project").selectOption("showcase-creator-operator");
+    const projectFilteredTodoExplorerText = await todoExplorer.innerText();
+    if (!projectFilteredTodoExplorerText.includes("No projected todo matches todo_dashboard_search_meta_backlog")) {
+      throw new Error("Project todo explorer did not apply the selected project filter.");
+    }
+    await page.getByLabel("Todo project").selectOption("all");
     await page.locator('[data-testid="project-todo-search-input"]').fill("todo_f2760d7e328f");
     const historicalTodoExplorerText = await todoExplorer.innerText();
     const requiredHistoricalTodoText = [

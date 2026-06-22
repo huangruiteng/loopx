@@ -1262,7 +1262,14 @@ function todoExplorerHaystack(item: TodoExplorerItem) {
     .toLowerCase();
 }
 
+function todoExplorerProjectOptions(items: TodoExplorerItem[]) {
+  return Array.from(new Set(items.map((item) => item.goalId)))
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right));
+}
+
 function ProjectTodoExplorer({
+  onProjectChange,
   onQueryChange,
   onRoleChange,
   onSelectGoal,
@@ -1270,10 +1277,12 @@ function ProjectTodoExplorer({
   query,
   role,
   rows,
+  selectedTodoGoalId,
   selectedGoalId,
   status,
   todoIndex,
 }: {
+  onProjectChange: (goalId: string) => void;
   onQueryChange: (query: string) => void;
   onRoleChange: (role: "all" | TodoExplorerRole) => void;
   onSelectGoal: (goalId: string) => void;
@@ -1281,18 +1290,24 @@ function ProjectTodoExplorer({
   query: string;
   role: "all" | TodoExplorerRole;
   rows: GoalDirectoryRow[];
+  selectedTodoGoalId: string;
   selectedGoalId: string;
   status: "all" | "open" | "done" | "blocked" | "deferred";
   todoIndex?: TodoIndexSummary | null;
 }) {
   const allItems = useMemo(() => collectTodoExplorerItems(rows, todoIndex), [rows, todoIndex]);
+  const projectOptions = useMemo(() => todoExplorerProjectOptions(allItems), [allItems]);
+  const selectedProject = selectedTodoGoalId === "all" || projectOptions.includes(selectedTodoGoalId)
+    ? selectedTodoGoalId
+    : "all";
   const normalizedQuery = query.trim().toLowerCase();
   const filteredItems = allItems.filter((item) => {
+    const projectMatches = selectedProject === "all" || item.goalId === selectedProject;
     const roleMatches = role === "all" || item.role === role;
     const itemStatus = todoDisplayStatus(item.todo);
     const statusMatches = status === "all" || itemStatus === status;
     const queryMatches = !normalizedQuery || todoExplorerHaystack(item).includes(normalizedQuery);
-    return roleMatches && statusMatches && queryMatches;
+    return projectMatches && roleMatches && statusMatches && queryMatches;
   });
   const openCount = allItems.filter((item) => !item.todo.done).length;
   const agentCount = allItems.filter((item) => item.role === "agent").length;
@@ -1307,18 +1322,19 @@ function ProjectTodoExplorer({
             Project Todo Explorer
           </CardTitle>
           <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-            Search current projected todos by id, text, owner, action kind, or claimed agent.
+            Search current projected and indexed todos by project, id, text, owner, action kind, or claimed agent.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant="info">{filteredItems.length}/{allItems.length} shown</Badge>
+          <Badge variant="neutral">{projectOptions.length} projects</Badge>
           <Badge variant={openCount > 0 ? "warning" : "success"}>{openCount} open</Badge>
           <Badge variant="neutral">{agentCount} agent</Badge>
           {todoIndex ? <Badge variant="neutral">{todoIndex.rollout_event_count} events</Badge> : null}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_148px_148px]">
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_148px_148px]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400 dark:text-zinc-500" />
             <input
@@ -1330,6 +1346,18 @@ function ProjectTodoExplorer({
               value={query}
             />
           </div>
+          <Select
+            aria-label="Todo project"
+            onChange={(event) => onProjectChange(event.target.value)}
+            value={selectedProject}
+          >
+            <option value="all">All projects</option>
+            {projectOptions.map((goalId) => (
+              <option key={goalId} value={goalId}>
+                {goalId}
+              </option>
+            ))}
+          </Select>
           <Select
             aria-label="Todo role"
             onChange={(event) => onRoleChange(event.target.value as "all" | TodoExplorerRole)}
@@ -5833,14 +5861,17 @@ export function DashboardPage() {
   }
 
   useEffect(() => {
-    if (search.statusUrl) {
-      void loadFromUrl(search.statusUrl);
+    const trimmedStatusUrl = search.statusUrl.trim();
+    if (trimmedStatusUrl) {
+      if (source.kind !== "url" || source.label !== trimmedStatusUrl) {
+        void loadFromUrl(trimmedStatusUrl);
+      }
       return;
     }
-    if (search.view !== "ops") {
+    if (search.view !== "ops" && source.kind === "example") {
       void loadFromUrl(defaultGlobalStatusUrl);
     }
-  }, []);
+  }, [search.statusUrl, search.view, source.kind, source.label]);
 
   useEffect(() => {
     if (search.statusUrl && source.kind === "example") {
@@ -5976,6 +6007,14 @@ export function DashboardPage() {
 
               <section>
                 <ProjectTodoExplorer
+                  onProjectChange={(todoGoalId) =>
+                    navigate({
+                      search: (current) => ({
+                        ...current,
+                        todoGoalId,
+                      }),
+                    })
+                  }
                   onQueryChange={(todoQuery) =>
                     navigate({
                       search: (current) => ({
@@ -6004,6 +6043,7 @@ export function DashboardPage() {
                   query={search.todoQuery}
                   role={search.todoRole}
                   rows={goalRows}
+                  selectedTodoGoalId={search.todoGoalId}
                   selectedGoalId={selectedGoalId}
                   status={search.todoStatus}
                   todoIndex={payload.todo_index}

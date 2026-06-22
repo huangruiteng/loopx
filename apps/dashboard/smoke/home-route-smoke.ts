@@ -35,13 +35,16 @@ for (const goalId of shareGoalIds) {
 }
 
 includes(routerSource, 'view: z.enum(["ops", "share"]).optional()', "optional view search param");
+includes(routerSource, 'todoGoalId: z.string().optional().default("all")', "todo project search param");
 includes(routerSource, 'todoQuery: z.string().optional().default("")', "todo query search param");
 includes(routerSource, 'todoRole: z.enum(["all", "user", "agent"]).optional().default("all")', "todo role search param");
+includes(routerSource, 'todoStatus: z.enum(["all", "open", "done", "blocked", "deferred"]).optional().default("all")', "todo status search param");
 excludes(routerSource, 'view: z.enum(["ops", "share"]).optional().default("share")', "share default route mode");
 
 includes(dashboardSource, 'const defaultGlobalStatusUrl = "http://127.0.0.1:8766/status.json";', "global default status URL");
 includes(dashboardSource, 'return view === "ops" ? "ops" : undefined;', "canonical URL omits non-ops view");
-includes(dashboardSource, 'if (search.view !== "ops") {', "non-ops renders control-plane home");
+includes(dashboardSource, 'if (search.view !== "ops" && source.kind === "example") {', "non-ops loads global status source once");
+includes(dashboardSource, '[search.statusUrl, search.view, source.kind, source.label]', "status URL change reload effect");
 includes(dashboardSource, 'void loadFromUrl(defaultGlobalStatusUrl);', "home loads global status source");
 includes(dashboardSource, 'data-testid="share-overview"', "control-plane home test id");
 includes(dashboardSource, 'data-testid={`share-top-todos-${view.spec.id}`}', "share top todo list test id");
@@ -67,6 +70,9 @@ includes(dashboardSource, 'data-testid="project-todo-explorer"', "project todo e
 includes(dashboardSource, 'data-testid="project-todo-search-input"', "project todo search input test id");
 includes(dashboardSource, 'data-testid="project-todo-id"', "project todo id rendering");
 includes(dashboardSource, "Project Todo Explorer", "project todo explorer title");
+includes(dashboardSource, "All projects", "project todo all-project selector");
+includes(dashboardSource, "todoExplorerProjectOptions", "project todo auto project options");
+includes(dashboardSource, "selectedTodoGoalId", "project todo selected project prop");
 includes(dashboardSource, "claimed_by=", "project todo claimed owner metadata");
 includes(dashboardSource, "action=", "project todo action metadata");
 includes(dashboardSource, "source={item.source}", "project todo source metadata");
@@ -74,6 +80,7 @@ includes(dashboardSource, "latest_event_kind", "project todo historical event me
 includes(dashboardSource, "todoIndex={payload.todo_index}", "project todo index wiring");
 excludes(dashboardSource, "raw internal slot constraints", "raw internal constraint copy");
 includes(contractSource, "todo_id", "status contract todo id metadata");
+includes(readFileSync("src/data/goal-channel-frontstage.ts", "utf8"), "generated_at: z.string().optional().nullable()", "goal channel generated_at optional live status compatibility");
 includes(packageSource, '"smoke:home-route"', "home route smoke script");
 includes(packageSource, '"smoke:home-browser"', "home browser smoke script");
 includes(packageSource, '"smoke:demo-readiness"', "demo readiness smoke script");
