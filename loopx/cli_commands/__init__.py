@@ -12,6 +12,10 @@ from .agents_last_exam import (
     handle_agents_last_exam_command,
     register_agents_last_exam_commands,
 )
+from .agents_last_exam_baked_input import (
+    handle_agents_last_exam_baked_input_command,
+    register_agents_last_exam_baked_input_commands,
+)
 from .agents_last_exam_local_plan import (
     handle_agents_last_exam_local_plan_command,
     register_agents_last_exam_local_plan_commands,
@@ -19,6 +23,10 @@ from .agents_last_exam_local_plan import (
 from .agents_last_exam_runner_source import (
     handle_agents_last_exam_runner_source_command,
     register_agents_last_exam_runner_source_commands,
+)
+from .agents_last_exam_task_material import (
+    handle_agents_last_exam_task_material_command,
+    register_agents_last_exam_task_material_commands,
 )
 from .agentissue_runner_flow import (
     handle_agentissue_runner_flow_command,
@@ -123,8 +131,10 @@ from .worker_bridge import handle_worker_bridge_command, register_worker_bridge_
 
 __all__ = [
     "handle_agents_last_exam_command",
+    "handle_agents_last_exam_baked_input_command",
     "handle_agents_last_exam_local_plan_command",
     "handle_agents_last_exam_runner_source_command",
+    "handle_agents_last_exam_task_material_command",
     "handle_agentissue_runner_flow_command",
     "handle_benchmark_boundary_command",
     "handle_benchmark_command",
@@ -172,8 +182,10 @@ __all__ = [
     "handle_todo_command",
     "handle_worker_bridge_command",
     "register_agents_last_exam_commands",
+    "register_agents_last_exam_baked_input_commands",
     "register_agents_last_exam_local_plan_commands",
     "register_agents_last_exam_runner_source_commands",
+    "register_agents_last_exam_task_material_commands",
     "register_agentissue_runner_flow_commands",
     "register_benchmark_boundary_commands",
     "register_benchmark_command_group",

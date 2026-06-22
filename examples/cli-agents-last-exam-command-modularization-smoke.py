@@ -43,6 +43,12 @@ def main() -> int:
     runner_source_source = (
         ROOT / "loopx" / "cli_commands" / "agents_last_exam_runner_source.py"
     ).read_text(encoding="utf-8")
+    baked_input_source = (
+        ROOT / "loopx" / "cli_commands" / "agents_last_exam_baked_input.py"
+    ).read_text(encoding="utf-8")
+    task_material_source = (
+        ROOT / "loopx" / "cli_commands" / "agents_last_exam_task_material.py"
+    ).read_text(encoding="utf-8")
 
     leaked_markers = [
         "ale_local_preflight_parser = benchmark_sub.add_parser",
@@ -65,6 +71,10 @@ def main() -> int:
     assert_contains(init_source, "handle_agents_last_exam_local_plan_command")
     assert_contains(init_source, "register_agents_last_exam_runner_source_commands")
     assert_contains(init_source, "handle_agents_last_exam_runner_source_command")
+    assert_contains(init_source, "register_agents_last_exam_baked_input_commands")
+    assert_contains(init_source, "handle_agents_last_exam_baked_input_command")
+    assert_contains(init_source, "register_agents_last_exam_task_material_commands")
+    assert_contains(init_source, "handle_agents_last_exam_task_material_command")
     assert_contains(ale_source, "AGENTS_LAST_EXAM_COMMANDS")
     assert_contains(ale_source, "ale-validation-run-gate")
     assert_contains(
@@ -82,6 +92,22 @@ def main() -> int:
     assert_contains(
         ale_source,
         "handle_agents_last_exam_runner_source_command(",
+    )
+    assert_contains(
+        ale_source,
+        "register_agents_last_exam_baked_input_commands(",
+    )
+    assert_contains(
+        ale_source,
+        "handle_agents_last_exam_baked_input_command(",
+    )
+    assert_contains(
+        ale_source,
+        "register_agents_last_exam_task_material_commands(",
+    )
+    assert_contains(
+        ale_source,
+        "handle_agents_last_exam_task_material_command(",
     )
     for marker in (
         "def render_agents_last_exam_local_preflight_markdown",
@@ -104,6 +130,28 @@ def main() -> int:
         if marker in ale_source:
             raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
         assert_contains(runner_source_source, marker)
+    for marker in (
+        "def render_agents_last_exam_baked_task_input_readiness_markdown",
+        "def render_agents_last_exam_baked_task_input_scan_markdown",
+        "build_agents_last_exam_baked_task_input_readiness(",
+        "build_agents_last_exam_baked_task_input_scan(",
+        'if args.benchmark_command == "ale-baked-task-input-readiness":',
+        'if args.benchmark_command == "ale-baked-task-input-scan":',
+    ):
+        if marker in ale_source:
+            raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
+        assert_contains(baked_input_source, marker)
+    for marker in (
+        "def render_agents_last_exam_task_material_readiness_markdown",
+        "def render_agents_last_exam_candidate_task_data_scan_markdown",
+        "build_agents_last_exam_task_material_readiness(",
+        "build_agents_last_exam_candidate_task_data_scan(",
+        'if args.benchmark_command == "ale-task-material-readiness":',
+        'if args.benchmark_command == "ale-candidate-task-data-scan":',
+    ):
+        if marker in ale_source:
+            raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
+        assert_contains(task_material_source, marker)
 
     help_result = run_cli("benchmark", "ale-validation-run-gate", "--help")
     if help_result.returncode != 0:
@@ -148,6 +196,59 @@ def main() -> int:
         raise AssertionError(host_route_payload)
     if host_route_payload["boundary"].get("local_paths_recorded") is not False:
         raise AssertionError(host_route_payload)
+
+    baked_input_result = run_cli(
+        "benchmark",
+        "ale-baked-task-input-readiness",
+        "--selected-task-id",
+        "demo/task",
+        "--no-docker-run",
+        "--format",
+        "json",
+    )
+    if baked_input_result.returncode != 0:
+        raise AssertionError(baked_input_result.stderr or baked_input_result.stdout)
+    baked_input_payload = json.loads(baked_input_result.stdout)
+    if baked_input_payload.get("ok") is not True:
+        raise AssertionError(baked_input_payload)
+    if baked_input_payload["boundary"].get("task_data_content_read") is not False:
+        raise AssertionError(baked_input_payload)
+
+    task_material_result = run_cli(
+        "benchmark",
+        "ale-task-material-readiness",
+        "--source-root",
+        ".",
+        "--selected-task-id",
+        "demo/task",
+        "--format",
+        "json",
+    )
+    if task_material_result.returncode != 0:
+        raise AssertionError(
+            task_material_result.stderr or task_material_result.stdout
+        )
+    task_material_payload = json.loads(task_material_result.stdout)
+    if task_material_payload.get("ok") is not True:
+        raise AssertionError(task_material_payload)
+    if task_material_payload["boundary"].get("task_body_read") is not False:
+        raise AssertionError(task_material_payload)
+
+    candidate_scan_result = run_cli(
+        "benchmark",
+        "ale-candidate-task-data-scan",
+        "--source-root",
+        ".",
+        "--format",
+        "json",
+    )
+    if candidate_scan_result.returncode != 0:
+        raise AssertionError(candidate_scan_result.stderr or candidate_scan_result.stdout)
+    candidate_scan_payload = json.loads(candidate_scan_result.stdout)
+    if candidate_scan_payload.get("ok") is not True:
+        raise AssertionError(candidate_scan_payload)
+    if candidate_scan_payload["boundary"].get("task_config_line_scan") is not True:
+        raise AssertionError(candidate_scan_payload)
 
     with tempfile.TemporaryDirectory() as temp_dir:
         missing_gate = Path(temp_dir) / "missing-gate.json"
