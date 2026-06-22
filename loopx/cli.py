@@ -128,6 +128,7 @@ from .benchmark_case_analysis import (
     apply_accepted_case_analysis_records,
     build_case_analysis_candidate_report,
     load_json as load_benchmark_case_analysis_json,
+    render_case_analysis_markdown,
     render_case_analysis_candidate_report_markdown,
 )
 from .benchmark_core import (
@@ -694,6 +695,15 @@ def render_benchmark_case_analysis_candidates_markdown(
             + f"- raw logs read: `{read_boundary.get('raw_logs_read')}`\n"
             + f"- task text read: `{read_boundary.get('task_text_read')}`\n"
             + f"- trajectory read: `{read_boundary.get('trajectory_read')}`\n"
+            + (
+                "\n## Accepted Upsert\n\n"
+                f"- output_written: `{payload['accepted_upsert'].get('output_written')}`\n"
+                f"- markdown_written: `{payload['accepted_upsert'].get('markdown_written')}`\n"
+                f"- added_count: `{payload['accepted_upsert'].get('added_count')}`\n"
+                f"- skipped_count: `{payload['accepted_upsert'].get('skipped_count')}`\n"
+                if isinstance(payload.get("accepted_upsert"), dict)
+                else ""
+            )
         )
     lines = [
         "# Benchmark Case-Analysis Candidates",
@@ -3521,6 +3531,15 @@ def main(argv: list[str] | None = None) -> int:
         "--output-case-analysis-path",
         default=None,
         help="Output path for --apply-accepted. Required when applying.",
+    )
+    benchmark_case_analysis_candidates_parser.add_argument(
+        "--output-case-analysis-markdown-path",
+        default=None,
+        help=(
+            "Optional Markdown output path for --apply-accepted. The generated "
+            "summary/table is refreshed from compact JSON and existing deep "
+            "case notes are preserved when available."
+        ),
     )
 
     agentissue_runner_flow_parser = benchmark_sub.add_parser(
@@ -9145,13 +9164,37 @@ def main(argv: list[str] | None = None) -> int:
                             result["analysis"],
                             ensure_ascii=False,
                             indent=2,
-                            sort_keys=True,
                         )
                         + "\n",
                         encoding="utf-8",
                     )
+                    markdown_written = False
+                    if args.output_case_analysis_markdown_path:
+                        markdown_path = Path(args.output_case_analysis_markdown_path)
+                        existing_markdown = None
+                        if markdown_path.exists():
+                            existing_markdown = markdown_path.read_text(
+                                encoding="utf-8"
+                            )
+                        else:
+                            default_markdown_path = Path(
+                                args.case_analysis_path
+                            ).with_suffix(".md")
+                            if default_markdown_path.exists():
+                                existing_markdown = default_markdown_path.read_text(
+                                    encoding="utf-8"
+                                )
+                        markdown_path.write_text(
+                            render_case_analysis_markdown(
+                                result["analysis"],
+                                existing_markdown=existing_markdown,
+                            ),
+                            encoding="utf-8",
+                        )
+                        markdown_written = True
                     payload["accepted_upsert"] = {
                         "output_written": True,
+                        "markdown_written": markdown_written,
                         "added_count": result["added_count"],
                         "skipped_count": result["skipped_count"],
                     }

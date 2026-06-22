@@ -25,6 +25,23 @@ GENERATED_SAFE_ACCEPTED_CLASSES = {
     ),
     "baseline_solved_control_candidate": "generated_baseline_solved_control_asset",
 }
+CASE_ANALYSIS_DETAIL_START_HEADING = "## Treatment Policy Control Set"
+CASE_ANALYSIS_CLASS_LABELS = {
+    "baseline_solved_non_regression_asset": (
+        "current-protocol baseline-solved / non-regression asset"
+    ),
+    "generated_baseline_solved_control_asset": (
+        "generated baseline-solved control asset"
+    ),
+    "generated_baseline_solved_non_regression_asset": (
+        "generated baseline-solved non-regression asset"
+    ),
+    "generated_no_uplift_asset": "generated no-uplift asset",
+    "no_uplift_asset": "no-uplift asset",
+    "positive_uplift_asset": "positive uplift asset",
+    "regression_asset": "regression asset",
+    "setup_blocker_asset": "setup blocker asset",
+}
 
 
 def load_json(path: str | Path) -> dict[str, Any]:
@@ -470,6 +487,184 @@ def apply_accepted_case_analysis_records(
         "added_records": added_records,
         "skipped_records": skipped_records,
     }
+
+
+def _case_analysis_class_label(case: dict[str, Any]) -> str:
+    classification = _compact_text(case.get("classification"), limit=180)
+    if not classification:
+        return "case-analysis asset"
+    if classification in CASE_ANALYSIS_CLASS_LABELS:
+        return CASE_ANALYSIS_CLASS_LABELS[classification]
+    return classification.replace("_", " ")
+
+
+def _case_analysis_score_triplet(case: dict[str, Any]) -> tuple[object, object, object]:
+    scores = case.get("scores") if isinstance(case.get("scores"), dict) else {}
+    baseline = scores.get("baseline_official_score")
+    treatment = scores.get("treatment_official_score")
+    delta = scores.get("official_score_delta")
+    decision = _compact_text(case.get("decision"), limit=180)
+    classification = _compact_text(case.get("classification"), limit=180)
+    if baseline is None and treatment is None and delta is None:
+        if decision == "paired_no_score_uplift":
+            return 0.0, 0.0, 0.0
+        if decision == "baseline_passed_not_current_treatment_priority":
+            return 1.0, None, None
+        if "setup" in classification or "runner" in decision:
+            return "missing", None, None
+    return baseline, treatment, delta
+
+
+def _markdown_table_value(value: object) -> str:
+    if value is None or value == "":
+        return "n/a"
+    text = _compact_text(value, limit=120)
+    return f"`{text}`"
+
+
+def _markdown_escape_cell(value: object) -> str:
+    return _compact_text(value, limit=240).replace("|", "\\|")
+
+
+def _render_case_analysis_summary_table(analysis: dict[str, Any]) -> list[str]:
+    lines = [
+        "| Benchmark | Case | Class | Baseline | Treatment | Delta | Decision |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    cases = analysis.get("cases")
+    if not isinstance(cases, list):
+        return lines
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        baseline, treatment, delta = _case_analysis_score_triplet(case)
+        lines.append(
+            "| "
+            f"`{_markdown_escape_cell(case.get('benchmark_id'))}` | "
+            f"`{_markdown_escape_cell(case.get('case_id'))}` | "
+            f"{_markdown_escape_cell(_case_analysis_class_label(case))} | "
+            f"{_markdown_table_value(baseline)} | "
+            f"{_markdown_table_value(treatment)} | "
+            f"{_markdown_table_value(delta)} | "
+            f"`{_markdown_escape_cell(case.get('decision'))}` |"
+        )
+    return lines
+
+
+def _render_terminal_bench_current_protocol_coverage(
+    analysis: dict[str, Any],
+) -> list[str]:
+    coverage = analysis.get("terminal_bench_current_protocol_coverage")
+    if not isinstance(coverage, dict):
+        return []
+    rows = coverage.get("rows")
+    if not isinstance(rows, list):
+        return []
+    lines = [
+        "## Terminal-Bench Current-Protocol Coverage",
+        "",
+        "These rows are generated from the latest compact ledger decisions. They are",
+        "current-protocol success-preservation guards: both baseline and treatment",
+        "score `1.0`, so none of them should be counted as current uplift.",
+        "",
+        "| Case | Baseline | Treatment | Delta | Role | Case Analysis Status |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        baseline = row.get("baseline_official_score")
+        treatment = row.get("treatment_official_score")
+        delta = row.get("official_score_delta")
+        baseline_run = _compact_text(row.get("baseline_run_id"), limit=40)
+        treatment_run = _compact_text(row.get("treatment_run_id"), limit=40)
+        lines.append(
+            "| "
+            f"`{_markdown_escape_cell(row.get('case_id'))}` | "
+            f"`{baseline}` (`{baseline_run}`) | "
+            f"`{treatment}` (`{treatment_run}`) | "
+            f"`{delta}` | "
+            f"`{_markdown_escape_cell(row.get('main_table_role'))}` | "
+            f"`{_markdown_escape_cell(row.get('case_analysis_status'))}` |"
+        )
+    return lines
+
+
+def _preserved_case_analysis_detail(existing_markdown: str | None) -> str:
+    if not existing_markdown:
+        return (
+            "## Boundary\n\n"
+            "This file records only compact public-safe evidence. It does not copy "
+            "raw logs, task prompts, trajectories, credentials, hidden tests, "
+            "uploads, or absolute local paths.\n"
+        )
+    marker = f"\n{CASE_ANALYSIS_DETAIL_START_HEADING}"
+    start = existing_markdown.find(marker)
+    if start >= 0:
+        return existing_markdown[start + 1 :].strip() + "\n"
+    if existing_markdown.startswith(CASE_ANALYSIS_DETAIL_START_HEADING):
+        return existing_markdown.strip() + "\n"
+    return (
+        "## Boundary\n\n"
+        "This file records only compact public-safe evidence. It does not copy "
+        "raw logs, task prompts, trajectories, credentials, hidden tests, "
+        "uploads, or absolute local paths.\n"
+    )
+
+
+def render_case_analysis_markdown(
+    analysis: dict[str, Any],
+    *,
+    existing_markdown: str | None = None,
+) -> str:
+    """Render the generated case-analysis summary while preserving deep notes."""
+    cases = analysis.get("cases")
+    case_count = len(cases) if isinstance(cases, list) else 0
+    generated_count = (
+        sum(
+            1
+            for case in cases
+            if isinstance(case, dict)
+            and _compact_text(case.get("classification"), limit=180).startswith(
+                "generated_"
+            )
+        )
+        if isinstance(cases, list)
+        else 0
+    )
+    lines = [
+        "# Benchmark Case Analysis",
+        "",
+        "This file is the human view of `benchmark_case_analysis_v0`. It records durable",
+        "case lessons that should guide benchmark routing, treatment design, and claims.",
+        "",
+        "It is intentionally separate from `benchmark-run-ledger.md`. The run ledger",
+        "records compact attempts and scores; this file records why a result matters.",
+        "",
+        f"- schema_version: `{analysis.get('schema_version')}`",
+        f"- updated_at: `{analysis.get('updated_at')}`",
+        "- machine_source: `benchmark-case-analysis.json`",
+        "- ledger-only migration audit:",
+        "  `benchmark-case-analysis-ledger-only-migration-audit-20260618.md`",
+        "",
+        "## Summary",
+        "",
+        "The table below is generated from compact public case-analysis JSON. It uses",
+        "`n/a` when the compact record does not establish a comparable paired arm,",
+        "and it preserves detailed hand-authored case notes below the generated",
+        "summary sections.",
+        "",
+        f"- case_count: `{case_count}`",
+        f"- generated_compact_record_count: `{generated_count}`",
+        "",
+    ]
+    lines.extend(_render_case_analysis_summary_table(analysis))
+    coverage_lines = _render_terminal_bench_current_protocol_coverage(analysis)
+    if coverage_lines:
+        lines.extend(["", *coverage_lines])
+    detail = _preserved_case_analysis_detail(existing_markdown)
+    lines.extend(["", detail.strip()])
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def find_case_analysis_candidates(

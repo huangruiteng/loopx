@@ -20,6 +20,7 @@ from loopx.benchmark_case_analysis import (  # noqa: E402
     apply_accepted_case_analysis_records,
     build_case_analysis_candidate_report,
     build_case_analysis_upsert_proposals,
+    render_case_analysis_markdown,
     render_case_analysis_candidate_report_markdown,
 )
 
@@ -207,7 +208,17 @@ def test_generated_safe_acceptance_policy_from_fixture() -> None:
         "generated_from_compact_benchmark_run_ledger"
     ), generated
     assert generated["source_boundary"]["raw_logs_recorded"] is False, generated
+    markdown = render_case_analysis_markdown(
+        result["analysis"],
+        existing_markdown="old generated header\n\n## Treatment Policy Control Set\n\nkeep me\n",
+    )
+    assert "new-no-uplift" in markdown, markdown
+    assert "generated no-uplift asset" in markdown, markdown
+    assert "new-baseline-pass" in markdown, markdown
+    assert "generated baseline-solved control asset" in markdown, markdown
+    assert "## Treatment Policy Control Set" in markdown and "keep me" in markdown
     assert_public_safe(json.dumps(result["analysis"], ensure_ascii=False))
+    assert_public_safe(markdown)
 
 
 def test_candidate_cli_on_fixture() -> None:
@@ -268,6 +279,11 @@ def test_candidate_cli_on_fixture() -> None:
         ), proposal_report
         assert_public_safe(proposals_output)
         accepted_output = root / "accepted-analysis.json"
+        accepted_markdown = root / "accepted-analysis.md"
+        (root / "analysis.md").write_text(
+            "old generated header\n\n## Treatment Policy Control Set\n\npreserve-details\n",
+            encoding="utf-8",
+        )
         accepted_report_output = subprocess.check_output(
             [
                 sys.executable,
@@ -281,6 +297,8 @@ def test_candidate_cli_on_fixture() -> None:
                 "--apply-accepted",
                 "--output-analysis",
                 str(accepted_output),
+                "--output-markdown",
+                str(accepted_markdown),
             ],
             text=True,
         )
@@ -289,13 +307,24 @@ def test_candidate_cli_on_fixture() -> None:
         assert accepted_report["accepted_upsert"]["added_count"] == 2, (
             accepted_report
         )
+        assert accepted_report["accepted_upsert"]["markdown_written"] is True, (
+            accepted_report
+        )
         accepted_analysis = json.loads(accepted_output.read_text(encoding="utf-8"))
+        assert accepted_output.read_text(encoding="utf-8").lstrip().startswith(
+            '{\n  "schema_version"'
+        ), accepted_output.read_text(encoding="utf-8")[:120]
         accepted_cases = {
             (case["benchmark_id"], case["case_id"])
             for case in accepted_analysis["cases"]
         }
         assert ("bench@v1", "new-no-uplift") in accepted_cases, accepted_analysis
+        accepted_markdown_text = accepted_markdown.read_text(encoding="utf-8")
+        assert "new-no-uplift" in accepted_markdown_text, accepted_markdown_text
+        assert "new-baseline-pass" in accepted_markdown_text, accepted_markdown_text
+        assert "preserve-details" in accepted_markdown_text, accepted_markdown_text
         assert_public_safe(accepted_report_output)
+        assert_public_safe(accepted_markdown_text)
 
 
 def test_loopx_benchmark_cli_on_fixture() -> None:
@@ -354,6 +383,11 @@ def test_loopx_benchmark_cli_on_fixture() -> None:
         ] == "proposal_only_not_applied", proposals_payload
         assert_public_safe(proposals_output)
         accepted_output = root / "accepted-loopx-analysis.json"
+        accepted_markdown = root / "accepted-loopx-analysis.md"
+        analysis_path.with_suffix(".md").write_text(
+            "old generated header\n\n## Treatment Policy Control Set\n\ncli-preserve-details\n",
+            encoding="utf-8",
+        )
         accepted_payload_output = subprocess.check_output(
             [
                 str(REPO_ROOT / "scripts" / "loopx"),
@@ -370,6 +404,8 @@ def test_loopx_benchmark_cli_on_fixture() -> None:
                 "--apply-accepted",
                 "--output-case-analysis-path",
                 str(accepted_output),
+                "--output-case-analysis-markdown-path",
+                str(accepted_markdown),
             ],
             text=True,
         )
@@ -381,8 +417,16 @@ def test_loopx_benchmark_cli_on_fixture() -> None:
         assert accepted_payload["accepted_upsert"]["added_count"] == 2, (
             accepted_payload
         )
+        assert accepted_payload["accepted_upsert"]["markdown_written"] is True, (
+            accepted_payload
+        )
         assert accepted_output.exists(), accepted_payload
+        assert accepted_markdown.exists(), accepted_payload
+        accepted_markdown_text = accepted_markdown.read_text(encoding="utf-8")
+        assert "new-no-uplift" in accepted_markdown_text, accepted_markdown_text
+        assert "cli-preserve-details" in accepted_markdown_text, accepted_markdown_text
         assert_public_safe(accepted_payload_output)
+        assert_public_safe(accepted_markdown_text)
         markdown = subprocess.check_output(
             [
                 str(REPO_ROOT / "scripts" / "loopx"),

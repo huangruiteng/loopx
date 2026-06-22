@@ -16,6 +16,7 @@ from loopx.benchmark_case_analysis import (  # noqa: E402
     apply_accepted_case_analysis_records,
     build_case_analysis_candidate_report,
     load_json,
+    render_case_analysis_markdown,
     render_case_analysis_candidate_report_markdown,
 )
 
@@ -80,6 +81,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Output path for --apply-accepted. Required when applying.",
     )
+    parser.add_argument(
+        "--output-markdown",
+        type=Path,
+        default=None,
+        help=(
+            "Optional Markdown output path for --apply-accepted. The generated "
+            "summary/table is refreshed from compact JSON and existing deep "
+            "case notes are preserved when available."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -109,13 +120,30 @@ def main() -> int:
                 result["analysis"],
                 ensure_ascii=False,
                 indent=2,
-                sort_keys=True,
             )
             + "\n",
             encoding="utf-8",
         )
+        markdown_written = False
+        if args.output_markdown is not None:
+            existing_markdown = None
+            if args.output_markdown.exists():
+                existing_markdown = args.output_markdown.read_text(encoding="utf-8")
+            elif args.analysis.with_suffix(".md").exists():
+                existing_markdown = args.analysis.with_suffix(".md").read_text(
+                    encoding="utf-8"
+                )
+            args.output_markdown.write_text(
+                render_case_analysis_markdown(
+                    result["analysis"],
+                    existing_markdown=existing_markdown,
+                ),
+                encoding="utf-8",
+            )
+            markdown_written = True
         report["accepted_upsert"] = {
             "output_written": True,
+            "markdown_written": markdown_written,
             "added_count": result["added_count"],
             "skipped_count": result["skipped_count"],
         }
