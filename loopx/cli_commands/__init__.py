@@ -45,6 +45,10 @@ from .status import (
     handle_status_command,
     register_status_commands,
 )
+from .terminal_bench_adapter import (
+    handle_terminal_bench_adapter_command,
+    register_terminal_bench_adapter_commands,
+)
 from .todo import handle_todo_command, register_todo_command
 
 __all__ = [
@@ -76,6 +80,7 @@ __all__ = [
     "handle_quota_command",
     "handle_review_packet_command",
     "handle_status_command",
+    "handle_terminal_bench_adapter_command",
     "handle_todo_command",
     "register_benchmark_boundary_commands",
     "register_doctor_command",
@@ -85,5 +90,6 @@ __all__ = [
     "register_quota_command",
     "register_starter_commands",
     "register_status_commands",
+    "register_terminal_bench_adapter_commands",
     "register_todo_command",
 ]
