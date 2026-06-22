@@ -98,20 +98,43 @@ def main() -> int:
             runtime_root_override=None,
             dry_run=False,
         )
-        sync_project_registry_to_global(
+
+        assert_no_write_temps(global_registry)
+        controller_goal = find_goal(global_registry)
+        assert Path(controller_goal["source_registry"]).resolve() == controller_registry.resolve(), controller_goal
+
+        try:
+            sync_project_registry_to_global(
+                registry_path=project_registry,
+                runtime_root_override=None,
+                dry_run=False,
+            )
+        except ValueError as exc:
+            assert "global route collision" in str(exc), exc
+        else:
+            raise AssertionError("same goal id from a different route should require replacement")
+
+        assert_no_write_temps(global_registry)
+        controller_goal = find_goal(global_registry)
+        assert Path(controller_goal["source_registry"]).resolve() == controller_registry.resolve(), controller_goal
+
+        replacement = sync_project_registry_to_global(
             registry_path=project_registry,
             runtime_root_override=None,
             dry_run=False,
+            allow_route_replacement=True,
         )
+        assert replacement["route_collisions"], replacement
+        assert replacement["backup_path"], replacement
+        assert Path(replacement["backup_path"]).exists(), replacement
 
-        assert_no_write_temps(global_registry)
         goal = find_goal(global_registry)
         assert goal["waiting_on"] == "user_or_controller", goal
         assert goal["attention_status"] == "owner_sop_review_pending", goal
         assert goal["recommended_action"] == OVERRIDE_ACTION, goal
         assert goal["operator_question"] == "是否同意继续？", goal
         assert goal["next_handoff_condition"] == "owner/SOP decision recorded", goal
-        assert goal["source_registry"] == str(project_registry.resolve()), goal
+        assert Path(goal["source_registry"]).resolve() == project_registry.resolve(), goal
 
         sync_project_registry_to_global(
             registry_path=project_registry,
@@ -125,10 +148,10 @@ def main() -> int:
         assert "recommended_action" not in goal, goal
         assert "operator_question" not in goal, goal
         assert "next_handoff_condition" not in goal, goal
-        assert goal["source_registry"] == str(project_registry.resolve()), goal
+        assert Path(goal["source_registry"]).resolve() == project_registry.resolve(), goal
 
         processes = [
-            multiprocessing.Process(target=sync_worker, args=(str(controller_registry),)),
+            multiprocessing.Process(target=sync_worker, args=(str(project_registry),)),
             multiprocessing.Process(target=sync_worker, args=(str(project_registry),)),
         ]
         for process in processes:

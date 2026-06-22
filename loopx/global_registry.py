@@ -21,6 +21,8 @@ ATTENTION_OVERRIDE_FIELDS = (
     "next_handoff_condition",
 )
 
+ROUTE_FIELDS = ("source_registry", "repo", "state_file")
+
 
 def now_local() -> str:
     return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
@@ -68,6 +70,55 @@ def same_source_registry(existing: dict[str, Any], incoming: dict[str, Any]) -> 
         return str(existing_source) == str(incoming_source)
 
 
+def _resolved_route_value(goal: dict[str, Any], field: str) -> str | None:
+    value = goal.get(field)
+    if value is None:
+        return None
+    text = str(value)
+    if field == "source_registry":
+        try:
+            return str(Path(text).expanduser().resolve())
+        except OSError:
+            return text
+    return text
+
+
+def route_snapshot(goal: dict[str, Any] | None) -> dict[str, str | None]:
+    if not isinstance(goal, dict):
+        return {field: None for field in ROUTE_FIELDS}
+    return {field: _resolved_route_value(goal, field) for field in ROUTE_FIELDS}
+
+
+def route_collision(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any] | None:
+    existing_route = route_snapshot(existing)
+    incoming_route = route_snapshot(incoming)
+    changed = [
+        field
+        for field in ROUTE_FIELDS
+        if existing_route.get(field)
+        and incoming_route.get(field)
+        and existing_route.get(field) != incoming_route.get(field)
+    ]
+    if not changed:
+        return None
+    return {
+        "goal_id": str(incoming.get("id") or existing.get("id") or ""),
+        "changed_fields": changed,
+        "existing_route": existing_route,
+        "incoming_route": incoming_route,
+    }
+
+
+def collision_message(collision: dict[str, Any]) -> str:
+    goal_id = collision.get("goal_id") or "<unknown>"
+    fields = ", ".join(collision.get("changed_fields") or [])
+    return (
+        f"global route collision for goal_id {goal_id}: {fields} would change. "
+        "Use the existing source_registry to register agents, choose a new --fork-goal id, "
+        "or rerun with --replace-state to write a global registry backup and replace the route."
+    )
+
+
 def preserve_attention_override(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
     merged = {key: value for key, value in incoming.items() if key != "clear_attention_override"}
     if incoming.get("clear_attention_override"):
@@ -86,11 +137,17 @@ def preserve_attention_override(existing: dict[str, Any], incoming: dict[str, An
     return merged
 
 
-def merge_goal_entries(existing: list[Any], incoming: list[dict[str, Any]]) -> tuple[list[Any], list[str], list[str]]:
+def merge_goal_entries(
+    existing: list[Any],
+    incoming: list[dict[str, Any]],
+    *,
+    allow_route_replacement: bool = False,
+) -> tuple[list[Any], list[str], list[str], list[dict[str, Any]]]:
     merged: list[Any] = []
     seen_incoming = {str(goal.get("id")) for goal in incoming if goal.get("id")}
     actions: list[str] = []
     synced_ids: list[str] = []
+    collisions: list[dict[str, Any]] = []
 
     existing_by_id = {
         str(item.get("id")): item
@@ -110,11 +167,25 @@ def merge_goal_entries(existing: list[Any], incoming: list[dict[str, Any]]) -> t
         existing_goal = existing_by_id.get(goal_id)
         action = "updated" if existing_goal else "added"
         if existing_goal:
+            collision = route_collision(existing_goal, goal)
+            if collision:
+                collisions.append(collision)
+                if not allow_route_replacement:
+                    raise ValueError(collision_message(collision))
+                action = "replaced-route"
             goal = preserve_attention_override(existing_goal, goal)
         merged.append(goal)
         actions.append(f"{goal_id}:{action}")
         synced_ids.append(goal_id)
-    return merged, actions, synced_ids
+    return merged, actions, synced_ids, collisions
+
+
+def write_recovery_backup(global_path: Path, payload: dict[str, Any], *, dry_run: bool) -> str | None:
+    timestamp = now_local().replace(":", "").replace("-", "")
+    backup_path = global_path.with_name(f"{global_path.name}.route-collision-backup-{timestamp}.bak")
+    if not dry_run:
+        write_json(backup_path, payload)
+    return str(backup_path)
 
 
 def sync_project_registry_to_global(
@@ -123,6 +194,7 @@ def sync_project_registry_to_global(
     runtime_root_override: str | None,
     goal_id: str | None = None,
     dry_run: bool = False,
+    allow_route_replacement: bool = False,
 ) -> dict[str, Any]:
     registry_path = registry_path.expanduser()
     if not registry_path.exists():
@@ -159,7 +231,16 @@ def sync_project_registry_to_global(
     if not isinstance(existing_goals, list):
         existing_goals = []
 
-    merged_goals, actions, synced_ids = merge_goal_entries(existing_goals, incoming)
+    merged_goals, actions, synced_ids, collisions = merge_goal_entries(
+        existing_goals,
+        incoming,
+        allow_route_replacement=allow_route_replacement,
+    )
+    backup_path = (
+        write_recovery_backup(global_path, existing, dry_run=dry_run)
+        if collisions and allow_route_replacement
+        else None
+    )
     payload = dict(existing)
     payload["schema_version"] = str(payload.get("schema_version") or project_registry.get("schema_version") or "0.1")
     payload["updated_at"] = synced_at
@@ -181,6 +262,9 @@ def sync_project_registry_to_global(
         "global_goal_count": len(merged_goals),
         "synced_goal_ids": synced_ids,
         "actions": actions,
+        "route_collisions": collisions,
+        "route_replacement_allowed": allow_route_replacement,
+        "backup_path": backup_path,
         "updated_at": synced_at,
         "wrote": not dry_run,
     }
@@ -204,6 +288,13 @@ def render_global_sync_markdown(payload: dict[str, Any]) -> str:
         return "\n".join(lines)
     if payload.get("reason"):
         lines.append(f"- reason: {payload.get('reason')}")
+    if payload.get("backup_path"):
+        lines.append(f"- backup_path: `{payload.get('backup_path')}`")
+    collisions = payload.get("route_collisions") or []
+    if collisions:
+        lines.extend(["", "## Route Replacements"])
+        for collision in collisions:
+            lines.append(f"- {collision_message(collision)}")
     synced = payload.get("synced_goal_ids") or []
     if synced:
         lines.extend(["", "## Synced Goals"])
