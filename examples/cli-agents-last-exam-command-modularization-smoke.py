@@ -49,6 +49,9 @@ def main() -> int:
     baked_input_source = (
         ROOT / "loopx" / "cli_commands" / "agents_last_exam_baked_input.py"
     ).read_text(encoding="utf-8")
+    host_codex_source = (
+        ROOT / "loopx" / "cli_commands" / "agents_last_exam_host_codex.py"
+    ).read_text(encoding="utf-8")
     task_material_source = (
         ROOT / "loopx" / "cli_commands" / "agents_last_exam_task_material.py"
     ).read_text(encoding="utf-8")
@@ -78,6 +81,8 @@ def main() -> int:
     assert_contains(init_source, "handle_agents_last_exam_runner_source_command")
     assert_contains(init_source, "register_agents_last_exam_baked_input_commands")
     assert_contains(init_source, "handle_agents_last_exam_baked_input_command")
+    assert_contains(init_source, "register_agents_last_exam_host_codex_commands")
+    assert_contains(init_source, "handle_agents_last_exam_host_codex_command")
     assert_contains(init_source, "register_agents_last_exam_task_material_commands")
     assert_contains(init_source, "handle_agents_last_exam_task_material_command")
     assert_contains(ale_source, "AGENTS_LAST_EXAM_COMMANDS")
@@ -121,6 +126,14 @@ def main() -> int:
     assert_contains(
         ale_source,
         "handle_agents_last_exam_task_material_command(",
+    )
+    assert_contains(
+        ale_source,
+        "register_agents_last_exam_host_codex_commands(",
+    )
+    assert_contains(
+        ale_source,
+        "handle_agents_last_exam_host_codex_command(",
     )
     for marker in (
         "def render_agents_last_exam_local_preflight_markdown",
@@ -176,6 +189,17 @@ def main() -> int:
         if marker in ale_source:
             raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
         assert_contains(task_material_source, marker)
+    for marker in (
+        "def render_agents_last_exam_host_codex_cli_route_markdown",
+        "def render_agents_last_exam_host_codex_cua_no_task_smoke_markdown",
+        "build_agents_last_exam_host_codex_cli_route(",
+        "build_agents_last_exam_host_codex_cua_no_task_smoke_from_environment(",
+        'if args.benchmark_command == "ale-host-codex-cli-route":',
+        'if args.benchmark_command == "ale-host-codex-cua-no-task-e2e":',
+    ):
+        if marker in ale_source:
+            raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
+        assert_contains(host_codex_source, marker)
 
     help_result = run_cli("benchmark", "ale-validation-run-gate", "--help")
     if help_result.returncode != 0:
@@ -220,6 +244,30 @@ def main() -> int:
         raise AssertionError(host_route_payload)
     if host_route_payload["boundary"].get("local_paths_recorded") is not False:
         raise AssertionError(host_route_payload)
+
+    host_no_task_result = run_cli(
+        "benchmark",
+        "ale-host-codex-cua-no-task-e2e",
+        "--assume-codex-binary-available",
+        "--codex-version-text",
+        "codex-smoke",
+        "--cua-mcp-assets-root",
+        ".",
+        "--operator-authorized-host-codex-auth",
+        "--format",
+        "json",
+    )
+    if host_no_task_result.returncode != 0:
+        raise AssertionError(host_no_task_result.stderr or host_no_task_result.stdout)
+    host_no_task_payload = json.loads(host_no_task_result.stdout)
+    if host_no_task_payload.get("ok") is not True:
+        raise AssertionError(host_no_task_payload)
+    if host_no_task_payload["boundary"].get("codex_prompt_sent") is not False:
+        raise AssertionError(host_no_task_payload)
+    if host_no_task_payload["boundary"].get("task_body_read") is not False:
+        raise AssertionError(host_no_task_payload)
+    if host_no_task_payload["boundary"].get("local_paths_recorded") is not False:
+        raise AssertionError(host_no_task_payload)
 
     baked_input_result = run_cli(
         "benchmark",
