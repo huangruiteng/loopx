@@ -40,6 +40,9 @@ def main() -> int:
     local_plan_source = (
         ROOT / "loopx" / "cli_commands" / "agents_last_exam_local_plan.py"
     ).read_text(encoding="utf-8")
+    launch_dry_run_source = (
+        ROOT / "loopx" / "cli_commands" / "agents_last_exam_launch_dry_run.py"
+    ).read_text(encoding="utf-8")
     runner_source_source = (
         ROOT / "loopx" / "cli_commands" / "agents_last_exam_runner_source.py"
     ).read_text(encoding="utf-8")
@@ -69,6 +72,8 @@ def main() -> int:
     assert_contains(init_source, "handle_agents_last_exam_command")
     assert_contains(init_source, "register_agents_last_exam_local_plan_commands")
     assert_contains(init_source, "handle_agents_last_exam_local_plan_command")
+    assert_contains(init_source, "register_agents_last_exam_launch_dry_run_commands")
+    assert_contains(init_source, "handle_agents_last_exam_launch_dry_run_command")
     assert_contains(init_source, "register_agents_last_exam_runner_source_commands")
     assert_contains(init_source, "handle_agents_last_exam_runner_source_command")
     assert_contains(init_source, "register_agents_last_exam_baked_input_commands")
@@ -84,6 +89,14 @@ def main() -> int:
     assert_contains(
         ale_source,
         "handle_agents_last_exam_local_plan_command(",
+    )
+    assert_contains(
+        ale_source,
+        "register_agents_last_exam_launch_dry_run_commands(",
+    )
+    assert_contains(
+        ale_source,
+        "handle_agents_last_exam_launch_dry_run_command(",
     )
     assert_contains(
         ale_source,
@@ -119,6 +132,17 @@ def main() -> int:
         if marker in ale_source:
             raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
         assert_contains(local_plan_source, marker)
+    for marker in (
+        "def render_agents_last_exam_local_launch_packet_markdown",
+        "def render_agents_last_exam_local_exact_dry_run_result_markdown",
+        "build_agents_last_exam_local_launch_packet(",
+        "build_agents_last_exam_local_exact_dry_run_result(",
+        'if args.benchmark_command == "ale-local-launch-packet":',
+        'if args.benchmark_command == "ale-local-exact-dry-run-result":',
+    ):
+        if marker in ale_source:
+            raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
+        assert_contains(launch_dry_run_source, marker)
     for marker in (
         "def render_agents_last_exam_local_runner_readiness_markdown",
         "def render_agents_last_exam_local_source_readiness_markdown",
@@ -249,6 +273,67 @@ def main() -> int:
         raise AssertionError(candidate_scan_payload)
     if candidate_scan_payload["boundary"].get("task_config_line_scan") is not True:
         raise AssertionError(candidate_scan_payload)
+
+    launch_packet_result = run_cli(
+        "benchmark",
+        "ale-local-launch-packet",
+        "--source-root",
+        ".",
+        "--experiment-spec",
+        "examples/smoke.json",
+        "--selected-task-id",
+        "demo/task",
+        "--no-docker-probe",
+        "--format",
+        "json",
+    )
+    if launch_packet_result.returncode != 0:
+        raise AssertionError(launch_packet_result.stderr or launch_packet_result.stdout)
+    launch_packet_payload = json.loads(launch_packet_result.stdout)
+    if launch_packet_payload.get("ok") is not True:
+        raise AssertionError(launch_packet_payload)
+    launch_boundary = launch_packet_payload.get("boundary") or {}
+    if launch_boundary.get("container_started") is not False:
+        raise AssertionError(launch_packet_payload)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        stdout_file = Path(temp_dir) / "dry-run.txt"
+        stdout_file.write_text(
+            "\n".join(
+                [
+                    "experiment: smoke",
+                    "environment: local (docker->host)",
+                    "concurrency: 1",
+                    "units (1):",
+                    "host_codex_gpt55_xhigh demo__task smoke",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        exact_dry_run_result = run_cli(
+            "benchmark",
+            "ale-local-exact-dry-run-result",
+            "--stdout-file",
+            str(stdout_file),
+            "--exit-code",
+            "0",
+            "--expected-task-id",
+            "demo/task",
+            "--expected-agent-id",
+            "host_codex_gpt55_xhigh",
+            "--format",
+            "json",
+        )
+    if exact_dry_run_result.returncode != 0:
+        raise AssertionError(
+            exact_dry_run_result.stderr or exact_dry_run_result.stdout
+        )
+    exact_dry_run_payload = json.loads(exact_dry_run_result.stdout)
+    if exact_dry_run_payload.get("ok") is not True:
+        raise AssertionError(exact_dry_run_payload)
+    if exact_dry_run_payload["boundary"].get("raw_stdout_recorded") is not False:
+        raise AssertionError(exact_dry_run_payload)
 
     with tempfile.TemporaryDirectory() as temp_dir:
         missing_gate = Path(temp_dir) / "missing-gate.json"

@@ -20,6 +20,10 @@ from .agents_last_exam_local_plan import (
     handle_agents_last_exam_local_plan_command,
     register_agents_last_exam_local_plan_commands,
 )
+from .agents_last_exam_launch_dry_run import (
+    handle_agents_last_exam_launch_dry_run_command,
+    register_agents_last_exam_launch_dry_run_commands,
+)
 from .agents_last_exam_runner_source import (
     handle_agents_last_exam_runner_source_command,
     register_agents_last_exam_runner_source_commands,
@@ -132,6 +136,7 @@ from .worker_bridge import handle_worker_bridge_command, register_worker_bridge_
 __all__ = [
     "handle_agents_last_exam_command",
     "handle_agents_last_exam_baked_input_command",
+    "handle_agents_last_exam_launch_dry_run_command",
     "handle_agents_last_exam_local_plan_command",
     "handle_agents_last_exam_runner_source_command",
     "handle_agents_last_exam_task_material_command",
@@ -183,6 +188,7 @@ __all__ = [
     "handle_worker_bridge_command",
     "register_agents_last_exam_commands",
     "register_agents_last_exam_baked_input_commands",
+    "register_agents_last_exam_launch_dry_run_commands",
     "register_agents_last_exam_local_plan_commands",
     "register_agents_last_exam_runner_source_commands",
     "register_agents_last_exam_task_material_commands",
