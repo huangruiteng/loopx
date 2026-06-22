@@ -88,5 +88,9 @@ runtime contract, benchmark route, or launch draft.
   stays a generic control plane by default, how domain packs such as
   `ml_experiment` are detected but default-off, and which evidence/result
   protocols belong in the default surface versus an explicit pack.
+- [Scenario capability gap map](scenario-capability-gap-map.md): compares the
+  bottom-layer LoopX capability increments needed by repo issue-fix loops,
+  creator/self-media operations, and other repository scenario signals before
+  domain-specific adapters are built.
 - [Naming decision packet](naming-decision-packet.md): historical naming
   context before the LoopX rename.
