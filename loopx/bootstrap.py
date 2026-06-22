@@ -507,6 +507,7 @@ def bootstrap_project(
     force: bool,
     dry_run: bool,
     sync_global: bool,
+    allow_global_route_replacement: bool = False,
 ) -> dict[str, Any]:
     project = project.expanduser().resolve()
     registry_path = registry_path.expanduser()
@@ -616,6 +617,7 @@ def bootstrap_project(
                 runtime_root_override=str(runtime_root),
                 goal_id=goal_id,
                 dry_run=False,
+                allow_route_replacement=allow_global_route_replacement,
             )
 
     candidates = onboarding_candidates(onboarding_scan)
@@ -658,6 +660,7 @@ def bootstrap_project(
             "global_registry": str(runtime_root / "registry.global.json"),
             "synced_goal_ids": [goal_id] if sync_global else [],
             "wrote": False,
+            "route_replacement_allowed": allow_global_route_replacement,
         },
         "actions": actions,
         "next_commands": [

@@ -15,6 +15,7 @@ from .authority import (
 )
 from .agent_registry import (
     agent_profile_from_registry,
+    normalize_registered_agents,
     primary_agent_id_from_registry,
     registered_agent_ids_from_registry,
     require_registered_agent_id,
@@ -2225,6 +2226,97 @@ def default_public_scan_root() -> str:
     return str(Path(__file__).resolve().parents[1])
 
 
+def register_agent_via_source_registry(
+    *,
+    runtime_root_arg: str | None,
+    goal_id: str,
+    agent_ids: list[str],
+    primary_agent: str | None,
+    execute: bool,
+) -> dict[str, object]:
+    global_path = explicit_global_registry(runtime_root_arg)
+    if not global_path.exists():
+        raise FileNotFoundError(f"global registry does not exist: {global_path}")
+    global_registry = load_registry(global_path)
+    goal = next((item for item in registry_goals(global_registry) if item.get("id") == goal_id), None)
+    if goal is None:
+        raise ValueError(f"goal_id not found in global registry: {goal_id}")
+    source_registry = goal.get("source_registry")
+    if not source_registry:
+        raise ValueError(
+            f"{goal_id}: global registry entry has no source_registry; "
+            "use configure-goal with an explicit --registry instead of connect"
+        )
+    source_registry_path = Path(str(source_registry)).expanduser()
+    source_payload = load_registry(source_registry_path)
+    source_goal = next((item for item in registry_goals(source_payload) if item.get("id") == goal_id), None)
+    if source_goal is None:
+        raise ValueError(f"{goal_id}: source_registry does not contain the goal: {source_registry_path}")
+    coordination = source_goal.get("coordination") if isinstance(source_goal.get("coordination"), dict) else {}
+    existing_agents = normalize_registered_agents(coordination.get("registered_agents"))
+    requested_agents = normalize_registered_agents(agent_ids)
+    merged_agents = list(existing_agents)
+    for agent_id in requested_agents:
+        if agent_id not in merged_agents:
+            merged_agents.append(agent_id)
+    effective_primary = primary_agent or primary_agent_id_from_registry(source_registry_path, goal_id)
+    configure_payload = configure_goal(
+        registry_path=source_registry_path,
+        goal_id=goal_id,
+        registered_agents=merged_agents,
+        primary_agent=effective_primary,
+        execute=execute,
+    )
+    sync_payload: dict[str, object] | None = None
+    if execute and configure_payload.get("written"):
+        sync_payload = sync_project_registry_to_global(
+            registry_path=source_registry_path,
+            runtime_root_override=runtime_root_arg,
+            goal_id=goal_id,
+            dry_run=False,
+        )
+    return {
+        "ok": True,
+        "dry_run": not execute,
+        "execute": execute,
+        "goal_id": goal_id,
+        "global_registry": str(global_path),
+        "source_registry": str(source_registry_path),
+        "existing_agents": existing_agents,
+        "requested_agents": requested_agents,
+        "registered_agents": merged_agents,
+        "primary_agent": effective_primary,
+        "changed": configure_payload.get("changed"),
+        "written": configure_payload.get("written"),
+        "configure_goal": configure_payload,
+        "global_sync": sync_payload or {"enabled": bool(execute), "wrote": False},
+    }
+
+
+def render_register_agent_markdown(payload: dict[str, object]) -> str:
+    lines = [
+        "# LoopX Agent Registration",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- dry_run: `{payload.get('dry_run')}`",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- global_registry: `{payload.get('global_registry')}`",
+        f"- source_registry: `{payload.get('source_registry')}`",
+        f"- primary_agent: `{payload.get('primary_agent')}`",
+        f"- changed: `{payload.get('changed')}`",
+        f"- written: `{payload.get('written')}`",
+    ]
+    if payload.get("error"):
+        lines.append(f"- error: {payload.get('error')}")
+        return "\n".join(lines)
+    lines.append(f"- existing_agents: `{', '.join(payload.get('existing_agents') or [])}`")
+    lines.append(f"- registered_agents: `{', '.join(payload.get('registered_agents') or [])}`")
+    sync_payload = payload.get("global_sync")
+    if isinstance(sync_payload, dict):
+        lines.append(f"- global_sync_wrote: `{sync_payload.get('wrote')}`")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="LoopX control-plane helper.")
     parser.add_argument("--version", action="version", version=f"loopx {__version__}")
@@ -2242,6 +2334,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     bootstrap_parser.add_argument("--project", default=".", help="Project directory to connect.")
     bootstrap_parser.add_argument("--goal-id", help="Stable goal id. Defaults to <project-name>-goal.")
+    bootstrap_parser.add_argument(
+        "--fork-goal",
+        help="Create a new forked goal id instead of reusing an existing global goal route.",
+    )
     bootstrap_parser.add_argument("--objective", default=DEFAULT_OBJECTIVE, help="Initial goal objective.")
     bootstrap_parser.add_argument("--domain", default=DEFAULT_DOMAIN, help="Goal domain label.")
     bootstrap_parser.add_argument("--role", choices=["controller", "subagent"], default="controller")
@@ -2331,6 +2427,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Maximum top-level names sampled by the fast onboarding scan.",
     )
     bootstrap_parser.add_argument("--force", action="store_true", help="Replace existing goal entry or state file.")
+    bootstrap_parser.add_argument(
+        "--replace-state",
+        action="store_true",
+        help=(
+            "Allow replacing an existing global route for the same goal id. "
+            "Writes a global registry backup before changing the route."
+        ),
+    )
     bootstrap_parser.add_argument("--dry-run", action="store_true", help="Show planned writes without changing files.")
     bootstrap_parser.add_argument(
         "--no-global-sync",
@@ -3087,6 +3191,27 @@ def main(argv: list[str] | None = None) -> int:
         "--execute",
         action="store_true",
         help="Write the registry. Without this flag, configure-goal is a dry-run preview.",
+    )
+
+    register_agent_parser = sub.add_parser(
+        "register-agent",
+        help="Register an automation agent through the existing global source_registry without reconnecting the goal.",
+    )
+    register_agent_parser.add_argument("--goal-id", required=True, help="Goal id already present in the global registry.")
+    register_agent_parser.add_argument(
+        "--agent-id",
+        action="append",
+        required=True,
+        help="Public-safe agent id to add. Repeatable; comma-separated values are also accepted.",
+    )
+    register_agent_parser.add_argument(
+        "--primary-agent",
+        help="Optional primary agent id to set; defaults to the existing primary agent.",
+    )
+    register_agent_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write the source registry and sync it globally. Without this flag, preview only.",
     )
 
     history_parser = sub.add_parser("history", help="Read compact run history from the shared runtime root.")
@@ -5727,6 +5852,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Merge this project-local registry into the shared global registry.",
     )
     sync_global_parser.add_argument("--goal-id", help="Only sync one goal id from the source registry.")
+    sync_global_parser.add_argument(
+        "--replace-state",
+        action="store_true",
+        help="Allow replacing an existing global route and write a backup before doing so.",
+    )
     sync_global_parser.add_argument("--dry-run", action="store_true", help="Preview the global registry merge.")
 
     migrate_state_parser = sub.add_parser(
@@ -6321,11 +6451,14 @@ def main(argv: list[str] | None = None) -> int:
             runtime_root = Path(args.runtime_root).expanduser() if args.runtime_root else None
             state_file = Path(args.state_file).expanduser() if args.state_file else None
             goal_doc = Path(args.goal_doc).expanduser() if args.goal_doc else None
+            if args.fork_goal and args.goal_id and args.fork_goal != args.goal_id:
+                raise ValueError("--fork-goal cannot be combined with a different --goal-id")
+            goal_id = args.fork_goal or args.goal_id
             payload = bootstrap_project(
                 project=Path(args.project),
                 registry_path=registry_path,
                 runtime_root=runtime_root,
-                goal_id=args.goal_id,
+                goal_id=goal_id,
                 objective=args.objective,
                 domain=args.domain,
                 role=args.role,
@@ -6356,6 +6489,7 @@ def main(argv: list[str] | None = None) -> int:
                 force=args.force,
                 dry_run=args.dry_run,
                 sync_global=not bool(args.no_global_sync),
+                allow_global_route_replacement=bool(args.replace_state),
             )
         except Exception as exc:
             payload = {
@@ -6853,6 +6987,28 @@ def main(argv: list[str] | None = None) -> int:
                 "error": str(exc),
             }
         print_payload(payload, args.format, render_configure_goal_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "register-agent":
+        try:
+            payload = register_agent_via_source_registry(
+                runtime_root_arg=args.runtime_root,
+                goal_id=args.goal_id,
+                agent_ids=args.agent_id,
+                primary_agent=args.primary_agent,
+                execute=bool(args.execute),
+            )
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "dry_run": not bool(args.execute),
+                "execute": bool(args.execute),
+                "goal_id": args.goal_id,
+                "changed": False,
+                "written": False,
+                "error": str(exc),
+            }
+        print_payload(payload, args.format, render_register_agent_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "benchmark":
@@ -10336,6 +10492,7 @@ def main(argv: list[str] | None = None) -> int:
                 runtime_root_override=args.runtime_root,
                 goal_id=args.goal_id,
                 dry_run=bool(args.dry_run),
+                allow_route_replacement=bool(args.replace_state),
             )
         except Exception as exc:
             registry = load_registry(registry_path)
