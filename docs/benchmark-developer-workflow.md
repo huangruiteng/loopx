@@ -521,6 +521,14 @@ parallel old/new definitions. The contract requires:
 - if a Harbor/app-server route cannot provide that controller trace, classify it
   as packet-only route-safety evidence and do not compare it as test.
 
+`best_score` is only an executable final-selection policy when the runner also
+captures a compact per-round artifact snapshot. Use
+`loopx.benchmark_core.build_round_artifact_restore_plan` to combine
+`round_rewards` with public-safe snapshot handles. If the best scored round is
+not the final round and has no restore-ready snapshot handle, keep the run as
+offline analysis evidence and record `missing_snapshot_for_best_round` instead
+of claiming the runner can submit or verify the best round.
+
 When launching the actual test arm, the outer controller should set
 `loopx_experiment_protocol=max5_blind_loop_no_feedback`, inject a fresh
 LoopX packet before each scheduled prompt, keep official feedback
