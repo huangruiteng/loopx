@@ -32,6 +32,10 @@ from .doctor import handle_doctor_command, register_doctor_command
 from .dreaming import handle_dreaming_command, register_dreaming_commands
 from .history import handle_history_command, register_history_command
 from .ml_experiment import handle_ml_experiment_command, register_ml_experiment_commands
+from .project_lifecycle import (
+    handle_project_lifecycle_command,
+    register_project_lifecycle_commands,
+)
 from .quota import handle_quota_command, register_quota_command
 from .starter import (
     handle_codex_cli_bounded_visible_pilot_adapter_command,
@@ -102,6 +106,7 @@ __all__ = [
     "handle_history_command",
     "handle_ml_experiment_command",
     "handle_new_project_prompt_command",
+    "handle_project_lifecycle_command",
     "handle_quota_command",
     "handle_review_packet_command",
     "handle_status_command",
@@ -118,6 +123,7 @@ __all__ = [
     "register_dreaming_commands",
     "register_history_command",
     "register_ml_experiment_commands",
+    "register_project_lifecycle_commands",
     "register_quota_command",
     "register_starter_commands",
     "register_status_commands",
