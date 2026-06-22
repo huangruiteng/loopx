@@ -35,6 +35,56 @@ The probe includes the current shell path plus standard user-local/Homebrew
 install locations when checking command presence, but it records only booleans
 and fixed surface names, never local directories.
 
+## Structured Run Permission Policy
+
+This policy describes the future private no-upload managed pilot boundary after
+the preflight guard is ready. The preflight command itself remains a no-run
+surface probe and must still not execute Harbor, Terminal-Bench, Codex workers,
+model APIs, task containers, uploads, or leaderboard paths.
+
+```json
+{
+  "schema_version": "run_permission_policy_v0",
+  "policy_id": "terminal_bench_managed_local_no_upload_preflight_20260622",
+  "allowed_actions": [
+    "codex_model_invocation",
+    "local_docker_runner",
+    "local_harbor_runner",
+    "benchmark_dependency_fetch",
+    "compact_result_reduction"
+  ],
+  "forbidden_actions": [
+    "public_result_upload",
+    "leaderboard_submission",
+    "public_benchmark_claim",
+    "production_cloud_action",
+    "credential_sync",
+    "raw_artifact_publication"
+  ],
+  "max_wall_time_minutes": 360,
+  "no_upload_required": true,
+  "submit_allowed": false,
+  "leaderboard_claim_allowed": false,
+  "public_benchmark_claim_allowed": false,
+  "production_cloud_allowed": false,
+  "observation_boundary": {
+    "compact_only": true,
+    "raw_logs_public": false,
+    "raw_task_text_public": false,
+    "raw_trajectory_public": false,
+    "local_paths_public": false
+  },
+  "operator_gate_required_for": [
+    "public_result_upload",
+    "leaderboard_submission",
+    "public_benchmark_claim",
+    "production_cloud_action",
+    "credential_sync",
+    "raw_artifact_publication"
+  ]
+}
+```
+
 The compact event uses:
 
 | Field | Value |

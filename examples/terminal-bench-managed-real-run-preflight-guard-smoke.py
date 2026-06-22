@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -17,6 +18,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.benchmark_core import (  # noqa: E402
+    RunPermissionAction,
+    compact_run_permission_policy_for_quota,
+    validate_run_permission_policy,
+)
 from loopx.status import collect_status  # noqa: E402
 
 
@@ -36,6 +42,8 @@ REQUIRED_DOC_SNIPPETS = [
     "--preflight-guard",
     "loopx_managed_codex_real_run_preflight_guard",
     "ready_for_private_managed_no_upload_pilot_review",
+    "run_permission_policy_v0",
+    "terminal_bench_managed_local_no_upload_preflight_20260622",
     "auth-surface variable names are checked",
     "credential values are never read or stored",
     "python3 examples/terminal-bench-managed-real-run-preflight-guard-smoke.py",
@@ -175,6 +183,18 @@ def assert_public_safe(payload: dict[str, Any]) -> None:
     assert len(text) < 18000, len(text)
 
 
+def load_run_permission_policy(text: str) -> dict[str, Any]:
+    match = re.search(
+        r"## Structured Run Permission Policy\s+.*?```json\s+(.*?)\s+```",
+        text,
+        re.DOTALL,
+    )
+    assert match, "missing structured run permission policy block"
+    payload = json.loads(match.group(1))
+    assert isinstance(payload, dict), payload
+    return payload
+
+
 def assert_doc_contract() -> None:
     text = DOC.read_text(encoding="utf-8")
     readme = README.read_text(encoding="utf-8")
@@ -183,6 +203,35 @@ def assert_doc_contract() -> None:
     assert "terminal-bench-managed-real-run-preflight-guard-v0.md" in readme, readme
     leaked = [marker for marker in FORBIDDEN_TEXT if marker in text]
     assert not leaked, leaked
+
+
+def assert_structured_run_permission_policy() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    policy = load_run_permission_policy(text)
+    validation = validate_run_permission_policy(policy)
+    projection = compact_run_permission_policy_for_quota(policy)
+
+    assert validation["ok"] is True, validation
+    assert projection is not None, policy
+    assert (
+        projection["policy_id"]
+        == "terminal_bench_managed_local_no_upload_preflight_20260622"
+    )
+    assert projection["delivery_allowed"] is True, projection
+    assert projection["max_wall_time_minutes"] == 360, projection
+    assert projection["no_upload_required"] is True, projection
+    assert projection["submit_allowed"] is False, projection
+    assert projection["leaderboard_claim_allowed"] is False, projection
+    assert projection["compact_observation_only"] is True, projection
+    assert (
+        RunPermissionAction.LOCAL_HARBOR_RUNNER.value
+        in projection["allowed_actions"]
+    )
+    assert (
+        RunPermissionAction.PUBLIC_RESULT_UPLOAD.value
+        in projection["forbidden_actions"]
+    )
+    assert "The preflight command itself remains a no-run\nsurface probe" in text
 
 
 def assert_payload(payload: dict[str, Any], *, appended: bool) -> None:
@@ -269,6 +318,7 @@ def assert_guard_rejects_fake_worker(registry_path: Path, runtime: Path, env: di
 
 def main() -> None:
     assert_doc_contract()
+    assert_structured_run_permission_policy()
     with tempfile.TemporaryDirectory(prefix="terminal-bench-managed-preflight-") as tmp:
         root = Path(tmp)
         registry_path, runtime = write_fixture(root)
