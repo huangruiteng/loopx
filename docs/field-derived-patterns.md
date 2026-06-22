@@ -73,8 +73,8 @@ with a deprecated or archived source.
 The same pattern applies outside documentation-heavy agent repositories. A
 platform migration or product integration goal often has several material
 classes at once: design docs, owner review notes, target and source
-repositories, migration checklists, dashboards, and validation records. Goal
-Harness should compact those into a public-safe material registry: expose roles,
+repositories, migration checklists, dashboards, and validation records. LoopX
+should compact those into a public-safe material registry: expose roles,
 freshness, missing owner evidence, and next action, while keeping private URLs,
 repository paths, product configs, and raw review text in project-local payloads.
 This lets a new project agent know which sources are current without flooding
@@ -114,7 +114,32 @@ read-only-map summaries:
 This makes state refreshes useful. A state-only update is not a log entry; it is
 a new current-belief surface for the next agent tick and dashboard.
 
-## 3. Managed External-Source Manifest
+## 3. Bounded Derived State Inheritance
+
+LoopX may derive state from structured sources such as active-state Markdown,
+todo metadata comments, authority registries, JSON run records, and AST/source
+inspections. Derived state is useful only when it stays smaller and more
+auditable than the material it summarizes.
+
+A derived-state surface should declare:
+
+- canonical source: the structured field, file, or command that can reconstruct
+  the full view;
+- inheritance rule: which source fields are copied, compacted, or deliberately
+  dropped;
+- item limits: top-N counts for hot paths, plus a cold path for the full list;
+- archive/prune rule: when old completed or superseded state must leave the
+  active projection;
+- projection semantics: whether status, quota, dashboard, or review packets may
+  schedule from the derived view or only display it.
+
+Model-created state must not become a second source of truth. If an agent
+summarizes todos, benchmark cases, experiments, or authority sources, that
+summary should either point back to a parseable source or be written through a
+LoopX command that adds structured metadata. Unbounded lists belong behind
+detail pointers, not in heartbeat payloads or first-screen status.
+
+## 4. Managed External-Source Manifest
 
 Many real projects depend on external documents, review surfaces, or product
 discussion artifacts. They should not be treated as ordinary links.
@@ -140,7 +165,7 @@ This pattern prevents two common failures:
   cleaner;
 - letting a stale local note become the current project authority.
 
-## 4. Validation Surface Map
+## 5. Validation Surface Map
 
 Complex projects rarely have one validation command. Progress may be proven by
 different surfaces:
@@ -158,7 +183,7 @@ LoopX should require each complex-project map to name validation
 surfaces before proposing implementation work. This lets the dashboard show
 "ready for Codex" only when the next action has a credible verification path.
 
-## 5. Experiment Board
+## 6. Experiment Board
 
 Long-window experiment projects need an experiment board, not only a run log.
 The board should separate:
@@ -195,7 +220,7 @@ Adapters should surface `waiting_on=external_evidence` until the decisive
 evidence is comparable. Human reward or decision advice should not be inferred
 from training-only guardrails.
 
-## 6. Gate Order
+## 7. Gate Order
 
 Several field failures become simpler if LoopX applies gates in a stable
 order:
@@ -210,7 +235,7 @@ Compute quota decides how much automatic agent time a goal may consume. It does
 not authorize writes, production actions, or route decisions. Operator gates
 and human reward remain separate durable events.
 
-## 7. Handoff Packet
+## 8. Handoff Packet
 
 A good handoff packet is short enough to forward, but precise enough to avoid
 re-discovery. It should include:
@@ -225,11 +250,11 @@ re-discovery. It should include:
 - the exact condition that would allow the next stage.
 
 It should not include raw private evidence. It should also not pretend to be
-user approval. If a project agent needs permission to cross a gate, Goal
-Harness should record an `operator_gate_*` run before the command becomes
+user approval. If a project agent needs permission to cross a gate, LoopX
+should record an `operator_gate_*` run before the command becomes
 Codex-ready.
 
-## 8. Parallel Work Claims
+## 9. Parallel Work Claims
 
 Large projects often need several agents, but parallelism only works when
 claims are explicit:
@@ -245,7 +270,7 @@ claims are explicit:
 LoopX should record these as proposed sub-agent scopes in read-only
 maps, then let the controller accept, edit, or reject them.
 
-## 9. Anti-Patterns To Block
+## 10. Anti-Patterns To Block
 
 LoopX should actively prevent these patterns:
 
