@@ -3390,6 +3390,11 @@ def compact_benchmark_experiment_report(run: dict[str, Any]) -> dict[str, Any] |
             compact_official[field] = official.get(field)
     if compact_official:
         compact["official_score"] = compact_official
+    attempt_accounting = _compact_benchmark_attempt_accounting(
+        source.get("attempt_accounting")
+    )
+    if attempt_accounting:
+        compact["attempt_accounting"] = attempt_accounting
 
     passive = (
         source.get("passive_control_plane_score")

@@ -20,6 +20,11 @@ from ..benchmark_case_state import (
     benchmark_case_active_state_path,
     benchmark_case_goal_id,
 )
+from ..benchmark_core import (
+    BenchmarkFailureClass,
+    build_benchmark_attempt_accounting,
+    canonical_lifecycle,
+)
 from ..benchmark_core.io import (
     load_json_object as _load_json_object,
     load_jsonl_objects as _load_jsonl_objects,
@@ -3814,6 +3819,36 @@ def build_agents_last_exam_result_benchmark_report(
         negative_layers.append("eval_result_missing")
     if error_type:
         negative_layers.append("eval_error_present")
+    attempt_lifecycle = canonical_lifecycle(
+        process_started=run_json_present,
+        runner_accepted_args=run_json_present,
+        job_root_materialized=run_json_present,
+        trial_started=run_json_present,
+        worker_started=bool(events) or completed or score is not None or bool(error_type),
+        result_written=eval_result_present,
+        verifier_scored=score is not None or bool(error_type),
+    )
+    if not run_json_present:
+        attempt_failure_class = BenchmarkFailureClass.RUNNER_STARTUP_FAILED
+        attempt_failure_label = "ale_run_json_missing"
+    elif error_type:
+        attempt_failure_class = BenchmarkFailureClass.VERIFIER_FAILED
+        attempt_failure_label = f"ale_eval_error:{error_type}"
+    elif score is None:
+        attempt_failure_class = BenchmarkFailureClass.OFFICIAL_SCORE_FAILED
+        attempt_failure_label = "ale_eval_score_missing"
+    elif score == 0:
+        attempt_failure_class = BenchmarkFailureClass.SOLVER_FAILED
+        attempt_failure_label = "ale_eval_score_zero"
+    else:
+        attempt_failure_class = BenchmarkFailureClass.NONE
+        attempt_failure_label = "none"
+    attempt_accounting = build_benchmark_attempt_accounting(
+        lifecycle=attempt_lifecycle,
+        failure_label=attempt_failure_label,
+        failure_class=attempt_failure_class,
+        official_score_attempted=score is not None,
+    )
 
     return {
         "schema_version": "benchmark_experiment_report_v0",
@@ -3837,6 +3872,7 @@ def build_agents_last_exam_result_benchmark_report(
             "submit_eligible": False,
             "leaderboard_evidence": False,
         },
+        "attempt_accounting": attempt_accounting,
         "passive_control_plane_score": {
             "restartability": 1.0 if run_json_present and events_jsonl_present else 0.5,
             "stale_state_avoidance": 1.0,

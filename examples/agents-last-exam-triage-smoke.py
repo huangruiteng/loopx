@@ -260,6 +260,27 @@ def assert_ale_result_ingest_contract() -> None:
             run_dir,
             report_id="agents-last-exam-synthetic-ingest-smoke",
         )
+        missing_eval_dir = Path(tmp) / "missing_eval_run"
+        missing_eval_dir.mkdir()
+        write_json(
+            missing_eval_dir / "run.json",
+            {
+                "schema_version": 2,
+                "run_id": "codex__demo__missing_eval",
+                "agent_id": "codex_loopx",
+                "model": "openai/gpt-5.4",
+                "task_path": "demo/missing-eval",
+                "status": "completed",
+            },
+        )
+        (missing_eval_dir / "events.jsonl").write_text(
+            json.dumps({"type": "agent_finished"}, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        missing_eval_report = build_agents_last_exam_result_benchmark_report(
+            missing_eval_dir,
+            report_id="agents-last-exam-missing-eval-smoke",
+        )
 
     assert report["schema_version"] == "benchmark_experiment_report_v0", report
     identity = report["experiment_identity"]
@@ -278,17 +299,37 @@ def assert_ale_result_ingest_contract() -> None:
     assert artifacts["local_paths_recorded"] is False, artifacts
     assert artifacts["event_type_counts"]["unit_started"] == 1, artifacts
     assert "single_arm_no_delta" in report["negative_results"]["negative_evidence_layers"], report
+    attempt = report["attempt_accounting"]
+    assert attempt["schema_version"] == "benchmark_attempt_accounting_v0", report
+    assert attempt["failure_class"] == "none", report
+    assert attempt["case_attempt_countable"] is True, report
+    assert attempt["solver_attempt_countable"] is True, report
+    assert attempt["verifier_attempt_countable"] is True, report
+    assert attempt["official_score_attempt_countable"] is True, report
 
     compact = compact_benchmark_experiment_report(report)
     assert compact is not None, report
     assert compact["experiment_identity"]["benchmark_id"] == BENCHMARK_ID, compact
     assert compact["official_score"]["kind"] == "ale_eval_result", compact
+    compact_attempt = compact["attempt_accounting"]
+    assert compact_attempt["case_attempt_countable"] is True, compact
+    assert compact_attempt["official_score_attempt_countable"] is True, compact
+    missing_compact = compact_benchmark_experiment_report(missing_eval_report)
+    assert missing_compact is not None, missing_eval_report
+    missing_attempt = missing_compact["attempt_accounting"]
+    assert missing_attempt["failure_class"] == "official_score_failed", missing_compact
+    assert missing_attempt["case_attempt_countable"] is True, missing_compact
+    assert missing_attempt["solver_attempt_countable"] is True, missing_compact
+    assert missing_attempt["verifier_attempt_countable"] is False, missing_compact
+    assert missing_attempt["official_score_attempt_countable"] is False, missing_compact
     note = benchmark_experiment_report_readiness_note(compact)
     assert note is not None, compact
     assert note["next_run_authorization"] == "fixture_only", note
     assert note["leaderboard_evidence"] is False, note
     assert_public_safe(report)
     assert_public_safe(compact)
+    assert_public_safe(missing_eval_report)
+    assert_public_safe(missing_compact)
     assert_public_safe(note)
 
 
