@@ -88,6 +88,7 @@ from .benchmark_adapters.skillsbench import (
     build_skillsbench_app_server_goal_worker_contract,
     build_skillsbench_benchflow_result_benchmark_run,
     build_skillsbench_local_driver_a2a_contract,
+    build_skillsbench_run_permission_policy,
     build_skillsbench_worker_handshake_preflight,
     skillsbench_recommended_action,
     skillsbench_job_name,

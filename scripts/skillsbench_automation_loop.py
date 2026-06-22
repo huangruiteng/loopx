@@ -80,6 +80,7 @@ from loopx.benchmark_case_state import (  # noqa: E402
 )
 from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
     build_skillsbench_app_server_goal_worker_contract,
+    build_skillsbench_run_permission_policy,
     build_skillsbench_worker_handshake_preflight,
 )
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
@@ -1660,6 +1661,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         if is_app_server_goal_route
         else None
     )
+    run_permission_policy = build_skillsbench_run_permission_policy(
+        route=route,
+        max_wall_time_minutes=max(480, (int(args.outer_timeout_sec) + 59) // 60),
+    )
     launch_plan = {
         "schema_version": "skillsbench_runner_launch_plan_v0",
         "benchmark_id": args.dataset,
@@ -1697,6 +1702,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             else ""
         ),
         "ledger_path": str(Path(args.ledger_path).expanduser()),
+        "run_permission_policy": run_permission_policy,
         "task_setup_preflight": setup_preflight,
         "task_staging": {
             "schema_version": "skillsbench_task_staging_v0",
