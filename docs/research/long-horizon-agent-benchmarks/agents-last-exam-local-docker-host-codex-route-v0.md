@@ -38,6 +38,55 @@ This differs from upstream ALE's in-sandbox `codex` agent path. The upstream
 agent can require provider-key configuration inside the sandbox. Our path keeps
 Codex auth on the host and uses the bridge as the interface boundary.
 
+## Structured Run Permission Policy
+
+This policy records the local Docker plus host Codex validation boundary. It
+does not authorize official GCP execution, leaderboard submission, public result
+claims, credential sync, or launch from an automatic heartbeat.
+
+```json
+{
+  "schema_version": "run_permission_policy_v0",
+  "policy_id": "agents_last_exam_local_docker_host_codex_no_upload_20260622",
+  "allowed_actions": [
+    "codex_model_invocation",
+    "local_docker_runner",
+    "local_harbor_runner",
+    "benchmark_dependency_fetch",
+    "compact_result_reduction"
+  ],
+  "forbidden_actions": [
+    "public_result_upload",
+    "leaderboard_submission",
+    "public_benchmark_claim",
+    "production_cloud_action",
+    "credential_sync",
+    "raw_artifact_publication"
+  ],
+  "max_wall_time_minutes": 480,
+  "no_upload_required": true,
+  "submit_allowed": false,
+  "leaderboard_claim_allowed": false,
+  "public_benchmark_claim_allowed": false,
+  "production_cloud_allowed": false,
+  "observation_boundary": {
+    "compact_only": true,
+    "raw_logs_public": false,
+    "raw_task_text_public": false,
+    "raw_trajectory_public": false,
+    "local_paths_public": false
+  },
+  "operator_gate_required_for": [
+    "public_result_upload",
+    "leaderboard_submission",
+    "public_benchmark_claim",
+    "production_cloud_action",
+    "credential_sync",
+    "raw_artifact_publication"
+  ]
+}
+```
+
 ## Current Evidence
 
 - The local Docker/CUA substrate has been validated on `agentslastexam/ale-kasm`
