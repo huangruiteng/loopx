@@ -206,6 +206,12 @@ LoopX makes those questions machine-readable enough for agents and legible
 enough for operators, so a loop can run longer without becoming less
 accountable.
 
+The value model is broader than a single task score: LoopX aims to make a
+Loop Agent reviewable by output quantity, output quality, token cost, and user
+attention cost. See the
+[project-level reward model](docs/product/project-level-reward-model.md) for
+the conservative schema and benchmark boundary.
+
 ## What You Get
 
 - **Lifetime goals**: durable project intentions that outlive one chat thread,

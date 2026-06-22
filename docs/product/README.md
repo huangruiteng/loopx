@@ -76,6 +76,10 @@ runtime contract, benchmark route, or launch draft.
   maintainer-first product design for signal inbox, selected anchors, agent
   lanes, review feed, and performance review so long-running Loop Agents can be
   evaluated by value, quality, cost, and user attention.
+- [Project-level reward model](project-level-reward-model.md): conservative
+  value model for Loop Agents that separates quantity, quality, token cost, and
+  user attention cost without turning one benchmark score into a universal
+  product claim.
 - [Frontstage two-surface strategy](frontstage-two-surface-strategy.md): route,
   data-source, visual-freedom, validation, and roadmap boundaries between the
   public showcase/homepage surface and the real local ops control-plane
