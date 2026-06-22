@@ -260,6 +260,50 @@ These should not become separate control planes. They should pressure the same
 LoopX primitives until the primitives are strong enough to support multiple
 domains.
 
+### Repository Scenario Inventory
+
+The README and product docs already name more scenario pressure than the first
+two examples. The useful product move is to rank the substrate each scenario
+needs, not to start one adapter per scenario.
+
+| Rank | Scenario Signal | Evidence In Repo | Bottom-Layer Increment To Build First |
+| --- | --- | --- | --- |
+| P0 | Maintainer management and multi-agent lanes | `docs/product/intelligent-management-surface.md`, `docs/product/nontechnical-operator-status-model.md` | `signal_v0`, `anchor_v0`, `management_projection_v0`, and lane-level `performance_review_v0` so a maintainer can review value, quality, cost, and attention before more automation is trusted. |
+| P0 | Repo issue-fix and PR-led growth | `docs/product/intelligent-management-surface.md`, `docs/project-agent-todo-contract.md` | `issue_meta_surface_v0`, `issue_intake_packet_v0`, and `patch_handoff_packet_v0` so issue signals can stay visible without becoming raw backlog or unsafe patch authority. |
+| P0 | Creator and self-media operations | `README.md`, `README.zh-CN.md`, `docs/product/vision.md` | `content_ops_surface_v0`, source-aware draft queues, and durable `feedback_signal_v0` so source boundaries, taste feedback, and no-autopublish gates survive turns. |
+| P0 | Benchmark developer workflow | `docs/benchmark-developer-workflow.md`, `docs/research/long-horizon-agent-benchmarks/` | `observable_artifact_handle_v0`, compact result/blocker reducers, and score-claim boundary checks so real runs can be observed without raw task text, trajectories, logs, or host paths. |
+| P1 | Codex CLI TUI onboarding and continuation | `README.md`, `docs/product/codex-cli-tui-loop.md`, `docs/product/codex-cli-automation-driver.md` | `host_session_handle_v0`, visible-session proof, idle/fallback state, and prompt-upgrade detection so one-message bootstrap and same-TUI continuation are legible and recoverable. |
+| P1 | ML experiment advisory | `docs/product/domain-capability-packs.md`, `docs/experiment-controller-milestone.md` | `domain_pack_detection_v0`, `domain_pack_contract_v0`, and advisory `ml_experiment_result_v0` so experiment-shaped goals can be recognized without silently enabling launch or route decisions. |
+| P1 | Host integration and local dashboard APIs | `docs/reference/protocols/host-integration-surface-v0.md`, `docs/integration.md` | `host_integration_surface_v0` plus CLI-equivalent dry-run/writeback contracts so browser, MCP, and loopback surfaces remain facades rather than new authorities. |
+| P1 | Research and material registry loops | `docs/authority-source-registration.md`, `docs/research/` | `authority_source_v0`, compact source contracts, and freshness checks so durable materials can guide routing without copying source bodies or private links. |
+| P2 | Public frontstage/showcase adoption | `docs/product/frontstage-two-surface-strategy.md`, `docs/showcases/README.md` | `showcase_case_v0` and public-safe synthetic fixtures so demos explain LoopX without leaking live control state or turning showcase UI into control authority. |
+| P2 | Office operations and partner connectors | `docs/product/intelligent-management-surface.md` | Generic `connector_observation_v0`, `signal_v0`, and review-feed cards so partner tools can send compact work signals before LoopX owns any domain executor. |
+
+The ranking says which substrate should be reusable first:
+
+1. **P0: signal-to-anchor pipeline.** The management surface, issue loop, and
+   creator loop all need `signal_v0` with source status, freshness, suggested
+   effect, and explicit promotion to todo, gate, review event, or anchor.
+2. **P0: compact artifact handles and validation surfaces.** Issue repro,
+   benchmark runs, Codex sessions, experiment jobs, and content drafts all need
+   observable handles with allowed poll/read actions, validation status, and
+   no-raw-material evidence rules.
+3. **P0: feedback writeback as typed state.** Review feed scores, user style
+   feedback, maintainer corrections, and benchmark route judgments must become
+   `feedback_signal_v0`, reward overlays, todo updates, boundary corrections, or
+   performance review notes.
+4. **P1: domain-pack detection without permission escalation.** ML experiments,
+   office ops, issue solvers, and content connectors can be detected as
+   scenario-shaped, but only registry or owner boundary records can enable
+   advisory or delivery autonomy.
+5. **P1: host facade discipline.** Browser, MCP, dashboard, Codex CLI,
+   benchmark host, and connector surfaces should expose the same dry-run,
+   validation, writeback, and stop-condition lifecycle as the CLI.
+6. **P2: scenario-specific frontends and adapters.** Build custom cards,
+   publisher queues, experiment panels, or issue dashboards only after their
+   compact state surface has proved useful in plain LoopX status and review
+   packets.
+
 ## Priority Stack
 
 P0: make issue-fix loops product-native.
@@ -282,10 +326,13 @@ P0: make creator-ops feedback durable.
 
 P1: scan and rank remaining scenario signals.
 
-8. Inventory benchmark, ML, host-integration, and operator UI scenarios by
-   which common substrate capability they stress.
-9. Avoid adding a domain pack until the registry boundary explicitly enables
-   it.
+8. Completed the first repository scenario inventory across maintainer
+   management, issue-fix, creator ops, benchmarks, Codex CLI, ML experiments,
+   host integrations, research materials, frontstage, and partner connectors.
+9. Promote the reusable P0 substrate from that scan: signal-to-anchor,
+   artifact-handle/validation, and feedback-writeback contracts.
+10. Avoid adding a domain pack until the registry boundary explicitly enables
+    it.
 
 ## Acceptance Criteria
 
