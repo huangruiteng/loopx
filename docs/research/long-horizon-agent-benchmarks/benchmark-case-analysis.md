@@ -14,35 +14,43 @@ records compact attempts and scores; this file records why a result matters.
 
 ## Summary
 
-The table now prefers the current benchmark protocol when it exists:
-SkillsBench main rows use raw Codex autonomous max5 versus LoopX
-product-mode, and Terminal-Bench rows must distinguish legacy
-`codex_loopx` evidence from the current LoopX managed route.
-Legacy positives stay in the case notes as assets, but should not be counted as
-current main-table uplift until a current-protocol rerun closes.
+The table below is generated from compact public case-analysis JSON. It uses
+`n/a` when the compact record does not establish a comparable paired arm,
+and it preserves detailed hand-authored case notes below the generated
+summary sections.
 
-The latest ledger-only migration audit explicitly classified 17 compact
-ledger-only cases. Seven are promotion-ready when they teach a reusable routing
-or non-regression lesson; four are already represented by Terminal-Bench
-current-protocol coverage rows; the remainder are setup/probe/defer rows that
-should not be promoted into main case analysis until compact score or blocker
-evidence becomes useful.
-
-The 2026-06-22 generated-safe upsert promoted eight compact-ledger records into
-the machine JSON and human table: one Terminal-Bench no-uplift row and seven
-baseline-solved control rows. It still leaves infrastructure-alignment,
-baseline-failure, setup, and single-arm candidates outside automatic promotion
-until matched treatment or manual attribution exists.
+- case_count: `34`
+- generated_compact_record_count: `8`
 
 | Benchmark | Case | Class | Baseline | Treatment | Delta | Decision |
 | --- | --- | --- | --- | --- | --- | --- |
-| `terminal-bench@2.0` | `multi-source-data-merger` | current-protocol baseline-solved / legacy positive asset | `1.0` | `1.0` | `0.0` | `paired_baseline_solved_treatment_preserved` |
-| `terminal-bench@2.0` | `nginx-request-logging` | current-protocol baseline-solved / legacy runner asset | `1.0` | `1.0` | `0.0` | `paired_baseline_solved_treatment_preserved` |
-| `terminal-bench@2.0` | `make-doom-for-mips` | timeout attribution asset | `0.0` | `0.0` | `0.0` | `paired_result_requires_attribution` |
-| `terminal-bench@2.0` | `mteb-retrieve` | setup probe asset | `0.0` | `0.0` | `0.0` | `environment_setup_probe_materialized_with_exception_repeat_blocked` |
-| `terminal-bench@2.0` | `pytorch-model-recovery` | exception attribution asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift_exception_research_required` |
-| `terminal-bench@2.0` | `train-fasttext` | single-arm managed-Codex failure asset | n/a | `0.0` | n/a | `single_arm_recorded` |
-| `terminal-bench@2.0` | `headless-terminal` | generated no-uplift asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
+| `terminal-bench@2.0` | `multi-source-data-merger` | current-protocol baseline-solved / non-regression asset | `1` | `1` | `` | `paired_baseline_solved_treatment_preserved` |
+| `terminal-bench@2.0` | `nginx-request-logging` | current-protocol baseline-solved / non-regression asset | `1` | `1` | `` | `paired_baseline_solved_treatment_preserved` |
+| `terminal-bench@2.0` | `make-doom-for-mips` | timeout attribution asset | `` | `` | `` | `paired_result_requires_attribution` |
+| `terminal-bench@2.0` | `mteb-retrieve` | setup probe asset | `` | `` | `` | `environment_setup_probe_materialized_with_exception_repeat_blocked` |
+| `terminal-bench@2.0` | `pytorch-model-recovery` | exception attribution asset | `` | `` | `` | `paired_no_score_uplift_exception_research_required` |
+| `skillsbench@1.1` | `llm-prefix-cache-replay` | reward feedback positive blind loop neutral asset | `` | `` | `` | `reward_feedback_positive_primary_blind_loop_no_uplift` |
+| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | native goal connected no trace runner error asset | `` | n/a | n/a | `baseline_runner_or_setup_repair_required` |
+| `skillsbench@1.1` | `dapt-intrusion-detection` | reward feedback positive blind loop neutral asset | `` | `` | `` | `reward_feedback_positive_primary_blind_loop_no_uplift` |
+| `skillsbench@1.1` | `debug-trl-grpo` | regression asset | `0.25` | `` | `-0.25` | `paired_treatment_regressed` |
+| `skillsbench@1.1` | `civ6-adjacency-optimizer` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
+| `skillsbench@1.1` | `manufacturing-codebook-normalization` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
+| `skillsbench@1.1` | `software-dependency-audit` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
+| `skillsbench@1.1` | `react-performance-debugging` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
+| `skillsbench@1.1` | `pddl-airport-planning` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
+| `skillsbench@1.1` | `ada-bathroom-plan-repair` | current-protocol baseline-solved / non-regression asset | `1` | `1` | `` | `paired_baseline_solved_treatment_preserved` |
+| `skillsbench@1.1` | `organize-messy-files` | current-protocol baseline-solved / non-regression asset | `1` | `1` | `` | `paired_baseline_solved_treatment_preserved` |
+| `skillsbench@1.1` | `citation-check` | current-protocol baseline-solved / non-regression asset | `1` | `1` | `` | `paired_baseline_solved_treatment_preserved` |
+| `skillsbench@1.1` | `3d-scan-calc` | current-protocol baseline-solved / non-regression asset | `1` | `1` | `` | `paired_baseline_solved_treatment_preserved` |
+| `skillsbench@1.1` | `bike-rebalance` | current-protocol baseline-solved / non-regression asset | `1` | `1` | `` | `paired_baseline_solved_treatment_preserved` |
+| `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
+| `terminal-bench@2.0` | `train-fasttext` | single arm failure asset | n/a | `` | n/a | `single_arm_recorded` |
+| `skillsbench@1.1` | `setup-fuzzing-py` | setup blocker asset | `missing` | n/a | n/a | `baseline_runner_or_setup_repair_required` |
+| `skillsbench@1.1` | `adaptive-cruise-control` | setup blocker asset | `missing` | n/a | n/a | `baseline_runner_or_setup_repair_required` |
+| `skillsbench@1.1` | `travel-planning` | baseline solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
+| `skillsbench@1.1` | `paratransit-routing` | product mode invalid shallow loopx asset | `` | `` | `` | `product_mode_treatment_invalid_shallow_loopx_lifecycle` |
+| `swe-marathon` | `zstd-decoder` | extended round product path negative asset | `1.0` | `` | `-1.0` | `paired_treatment_regressed` |
+| `terminal-bench@2.0` | `headless-terminal` | generated no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
 | `terminal-bench@2.0` | `build-cython-ext` | generated baseline-solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
 | `terminal-bench@2.0` | `compile-compcert` | generated baseline-solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
 | `terminal-bench@2.0` | `financial-document-processor` | generated baseline-solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
@@ -50,26 +58,6 @@ until matched treatment or manual attribution exists.
 | `terminal-bench@2.0` | `merge-diff-arc-agi-task` | generated baseline-solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
 | `terminal-bench@2.0` | `path-tracing` | generated baseline-solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
 | `terminal-bench@2.0` | `sqlite-db-truncate` | generated baseline-solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
-| `swe-marathon` | `zstd-decoder` | extended-round product-path negative asset | `1.0` | `0.0` | `-1.0` | `paired_treatment_regressed` |
-| `skillsbench@1.1` | `llm-prefix-cache-replay` | reward-feedback positive / blind-loop neutral asset | `0.0` | `0.0` | `0.0` | `reward_feedback_positive_primary_blind_loop_no_uplift` |
-| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | native Goal connected-no-trace runner-error asset | `0.0` | n/a | n/a | `baseline_runner_or_setup_repair_required` |
-| `skillsbench@1.1` | `dapt-intrusion-detection` | reward-feedback positive / blind-loop neutral asset | `0.0` | `0.0` | `0.0` | `reward_feedback_positive_primary_blind_loop_no_uplift` |
-| `skillsbench@1.1` | `paratransit-routing` | product-mode invalid shallow LoopX / blind-loop+depth-gate positive asset | `0.0` | `0.0` | `0.0` | `product_mode_treatment_invalid_shallow_loopx_lifecycle` |
-| `skillsbench@1.1` | `debug-trl-grpo` | regression asset | `0.25` | `0.0` | `-0.25` | `paired_treatment_regressed` |
-| `skillsbench@1.1` | `civ6-adjacency-optimizer` | no-uplift asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
-| `skillsbench@1.1` | `manufacturing-codebook-normalization` | no-uplift asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
-| `skillsbench@1.1` | `software-dependency-audit` | no-uplift asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
-| `skillsbench@1.1` | `react-performance-debugging` | no-uplift asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
-| `skillsbench@1.1` | `pddl-airport-planning` | no-uplift asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
-| `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | no-uplift asset | `0.0` | `0.0` | `0.0` | `paired_no_score_uplift` |
-| `skillsbench@1.1` | `ada-bathroom-plan-repair` | baseline-solved non-regression asset | `1.0` | `1.0` | `0.0` | `paired_baseline_solved_treatment_preserved` |
-| `skillsbench@1.1` | `organize-messy-files` | baseline-solved non-regression asset | `1.0` | `1.0` | `0.0` | `paired_baseline_solved_treatment_preserved` |
-| `skillsbench@1.1` | `citation-check` | baseline-solved non-regression asset | `1.0` | `1.0` | `0.0` | `paired_baseline_solved_treatment_preserved` |
-| `skillsbench@1.1` | `3d-scan-calc` | baseline-solved non-regression asset | `1.0` | `1.0` | `0.0` | `paired_baseline_solved_treatment_preserved` |
-| `skillsbench@1.1` | `bike-rebalance` | baseline-solved non-regression asset | `1.0` | `1.0` | `0.0` | `paired_baseline_solved_treatment_preserved` |
-| `skillsbench@1.1` | `travel-planning` | baseline-solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
-| `skillsbench@1.1` | `setup-fuzzing-py` | setup blocker asset | missing | n/a | n/a | `baseline_runner_or_setup_repair_required` |
-| `skillsbench@1.1` | `adaptive-cruise-control` | setup blocker asset | missing | n/a | n/a | `baseline_runner_or_setup_repair_required` |
 
 ## Public Trajectory Summary Coverage
 
@@ -86,6 +74,32 @@ not yet contain a public trajectory summary.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `skillsbench@1.1` | `debug-trl-grpo` | `trajectory_public_summary` (public-safe) | `5` | `112` | `0` | `2` | `yes` |
 | `skillsbench@1.1` | `paratransit-routing` | `legacy_blind_loop_positive_result.trajectory_public_summary` (public-safe) | `1` | `16` | `0` | `0` | `yes` |
+
+## Public Harness Interaction Coverage
+
+These rows are generated from compact case-analysis counters across
+benchmarks. They combine SkillsBench trajectory summaries, Terminal-Bench
+worker/LoopX counters, SWE-Marathon product-path counters, and any future
+benchmark case records that expose the same public fields. They do not read
+or copy raw trajectories, task text, verifier output, logs, or local paths.
+
+- schema_version: `harness_interaction_public_summary_coverage_v0`
+- summary_count: `11`
+- benchmark_ids: `skillsbench@1.1, swe-marathon, terminal-bench@2.0`
+
+| Benchmark | Case | Source | Kind | LoopX CLI | Rounds | Tools | Events | Controller Trace | Lifecycle |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `skillsbench@1.1` | `debug-trl-grpo` | `trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `5` | `112` | `0` | `no` | `no` |
+| `skillsbench@1.1` | `llm-prefix-cache-replay` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `0` | `0` | `0` | `yes` | `no` |
+| `skillsbench@1.1` | `paratransit-routing` | `arms.treatment` (public-safe) | `case_arm` | `1` | `0` | `0` | `0` | `no` | `no` |
+| `skillsbench@1.1` | `paratransit-routing` | `legacy_blind_loop_positive_result.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `1` | `16` | `0` | `no` | `no` |
+| `skillsbench@1.1` | `paratransit-routing` | `product_mode_attribution.blind_loop_positive_treatment` (public-safe) | `product_mode_attribution` | `0` | `0` | `16` | `0` | `no` | `no` |
+| `skillsbench@1.1` | `paratransit-routing` | `product_mode_attribution.product_mode_neutral_treatment` (public-safe) | `product_mode_attribution` | `1` | `0` | `13` | `0` | `no` | `no` |
+| `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `0` | `0` | `0` | `yes` | `no` |
+| `swe-marathon` | `zstd-decoder` | `arms.baseline` (public-safe) | `case_arm` | `0` | `0` | `0` | `0` | `no` | `no` |
+| `swe-marathon` | `zstd-decoder` | `arms.treatment` (public-safe) | `case_arm` | `31` | `0` | `0` | `0` | `no` | `yes` |
+| `terminal-bench@2.0` | `nginx-request-logging` | `arms.treatment` (public-safe) | `case_arm` | `0` | `0` | `0` | `0` | `no` | `no` |
+| `terminal-bench@2.0` | `nginx-request-logging` | `legacy_runner_materialization_asset.arms.treatment` (public-safe) | `case_arm` | `0` | `0` | `0` | `0` | `no` | `no` |
 
 ## Terminal-Bench Current-Protocol Coverage
 

@@ -42,6 +42,55 @@ CASE_ANALYSIS_CLASS_LABELS = {
     "regression_asset": "regression asset",
     "setup_blocker_asset": "setup blocker asset",
 }
+HARNESS_INTERACTION_COUNTER_FIELDS = (
+    "loopx_cli_call_count",
+    "worker_loopx_cli_call_total",
+    "loopx_prompt_driven_case_cli_call_count",
+    "loopx_case_scheduler_command_count",
+    "controller_action_decisions",
+    "followup_prompt_count",
+    "private_trajectory_tool_call_count",
+    "tool_call_count",
+)
+HARNESS_INTERACTION_BOOL_FIELDS = (
+    "loopx_inside_case",
+    "loopx_lifecycle_observed",
+    "loopx_trace_observed",
+    "loopx_prompt_driven_trace_present",
+    "loopx_prompt_driven_lifecycle_observed",
+    "loopx_controller_trace_present",
+    "loopx_controller_trace_public_safe",
+    "native_goal_mode_invoked",
+    "native_goal_worker_connected",
+    "private_trajectory_present",
+)
+HARNESS_INTERACTION_MAP_FIELDS = (
+    "loopx_case_rollout_event_counts",
+    "loopx_prompt_driven_event_counts",
+    "loopx_solution_phase_counters",
+    "trajectory_action_category_counts",
+    "loopx_cli_state_usage_counts",
+)
+HARNESS_PUBLIC_UNSAFE_FIELDS = (
+    "raw_text_copied_to_public",
+    "raw_task_text_copied_to_public",
+    "raw_verifier_output_copied_to_public",
+    "raw_logs_copied",
+    "raw_logs_read",
+    "raw_task_text_copied",
+    "raw_task_text_read",
+    "raw_verifier_output_copied",
+    "raw_verifier_output_read",
+    "raw_trajectory_copied",
+    "raw_trajectory_read",
+    "raw_agent_trajectory_recorded",
+    "raw_commands_recorded",
+    "raw_output_recorded",
+    "trajectory_copied",
+    "trajectory_read",
+    "host_path_recorded",
+    "local_paths_recorded",
+)
 
 
 def load_json(path: str | Path) -> dict[str, Any]:
@@ -620,6 +669,80 @@ def _iter_public_trajectory_summaries(
     return summaries
 
 
+def _first_int_field(value: dict[str, Any], *keys: str) -> int:
+    for key in keys:
+        candidate = value.get(key)
+        if isinstance(candidate, int) and not isinstance(candidate, bool):
+            return candidate
+    return 0
+
+
+def _sum_public_count_map(value: Any) -> int:
+    if isinstance(value, dict):
+        total = 0
+        for child in value.values():
+            if isinstance(child, int) and not isinstance(child, bool):
+                total += child
+            elif isinstance(child, dict):
+                total += _sum_public_count_map(child)
+        return total
+    return 0
+
+
+def _harness_summary_is_public_safe(summary: dict[str, Any]) -> bool:
+    return not any(bool(summary.get(field)) for field in HARNESS_PUBLIC_UNSAFE_FIELDS)
+
+
+def _harness_summary_kind(path: str, summary: dict[str, Any]) -> str:
+    if path.endswith("trajectory_public_summary"):
+        return "trajectory_public_summary"
+    if "native_goal_route_observations" in path:
+        return "native_goal_route_observation"
+    if ".arms." in f".{path}.":
+        return "case_arm"
+    if "product_mode" in path:
+        return "product_mode_attribution"
+    if summary.get("loopx_case_rollout_event_counts"):
+        return "case_rollout_trace"
+    if summary.get("loopx_prompt_driven_event_counts"):
+        return "prompt_driven_trace"
+    return "compact_harness_interaction"
+
+
+def _contains_harness_interaction_summary(summary: dict[str, Any]) -> bool:
+    return any(
+        key in summary
+        for key in (
+            *HARNESS_INTERACTION_COUNTER_FIELDS,
+            *HARNESS_INTERACTION_BOOL_FIELDS,
+            *HARNESS_INTERACTION_MAP_FIELDS,
+        )
+    )
+
+
+def _iter_harness_interaction_summaries(
+    value: object,
+    *,
+    path: str = "",
+) -> list[tuple[str, dict[str, Any]]]:
+    summaries: list[tuple[str, dict[str, Any]]] = []
+    if isinstance(value, dict):
+        if _contains_harness_interaction_summary(value):
+            summaries.append((path or "$", value))
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            summaries.extend(
+                _iter_harness_interaction_summaries(child, path=child_path)
+            )
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            child_path = f"{path}[{index}]" if path else f"[{index}]"
+            summaries.extend(
+                _iter_harness_interaction_summaries(child, path=child_path)
+            )
+    return summaries
+
+
 def _trajectory_summary_is_public_safe(summary: dict[str, Any]) -> bool:
     return not any(
         bool(summary.get(field))
@@ -697,6 +820,97 @@ def trajectory_public_summary_coverage(analysis: dict[str, Any]) -> dict[str, An
     }
 
 
+def harness_interaction_public_summary_coverage(
+    analysis: dict[str, Any],
+) -> dict[str, Any]:
+    """Return generic public-safe harness interaction coverage rows.
+
+    This intentionally consumes only compact case-analysis fields. It does not
+    read raw trajectories, verifier output, task text, logs, or local paths.
+    """
+
+    rows: list[dict[str, Any]] = []
+    cases = analysis.get("cases")
+    if not isinstance(cases, list):
+        cases = []
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        benchmark_id = _compact_text(case.get("benchmark_id"), limit=160)
+        case_id = _compact_text(case.get("case_id"), limit=200)
+        classification = _compact_text(case.get("classification"), limit=180)
+        for summary_path, summary in _iter_harness_interaction_summaries(case):
+            event_count = sum(
+                _sum_public_count_map(summary.get(field))
+                for field in HARNESS_INTERACTION_MAP_FIELDS
+            )
+            rows.append(
+                {
+                    "benchmark_id": benchmark_id,
+                    "case_id": case_id,
+                    "classification": classification,
+                    "summary_path": _compact_text(summary_path, limit=220),
+                    "source_kind": _harness_summary_kind(summary_path, summary),
+                    "arm_id": _compact_text(summary.get("arm_id"), limit=160),
+                    "loopx_cli_call_count": _first_int_field(
+                        summary,
+                        "loopx_cli_call_count",
+                        "worker_loopx_cli_call_total",
+                        "loopx_prompt_driven_case_cli_call_count",
+                    ),
+                    "round_count": _first_int_field(
+                        summary,
+                        "round_count",
+                        "private_trajectory_round_count",
+                        "max_round_observed",
+                    ),
+                    "tool_call_count": _first_int_field(
+                        summary,
+                        "tool_call_count",
+                        "private_trajectory_tool_call_count",
+                    ),
+                    "event_count": event_count,
+                    "controller_trace_present": bool(
+                        summary.get("loopx_controller_trace_present")
+                    ),
+                    "lifecycle_observed": bool(
+                        summary.get("loopx_lifecycle_observed")
+                        or summary.get("loopx_prompt_driven_lifecycle_observed")
+                    ),
+                    "private_trajectory_present": bool(
+                        summary.get("private_trajectory_present")
+                    ),
+                    "public_safe": _harness_summary_is_public_safe(summary),
+                }
+            )
+    rows.sort(
+        key=lambda row: (
+            str(row.get("benchmark_id")),
+            str(row.get("case_id")),
+            str(row.get("summary_path")),
+        )
+    )
+    benchmark_ids = sorted(
+        {
+            str(row.get("benchmark_id"))
+            for row in rows
+            if row.get("benchmark_id")
+        }
+    )
+    public_safe_count = sum(1 for row in rows if row.get("public_safe"))
+    return {
+        "schema_version": "harness_interaction_public_summary_coverage_v0",
+        "summary_count": len(rows),
+        "public_safe_count": public_safe_count,
+        "benchmark_ids": benchmark_ids,
+        "raw_trajectory_recorded": False,
+        "raw_task_text_recorded": False,
+        "raw_verifier_output_recorded": False,
+        "raw_logs_recorded": False,
+        "rows": rows,
+    }
+
+
 def _render_public_trajectory_summary_coverage(
     analysis: dict[str, Any],
 ) -> list[str]:
@@ -738,6 +952,55 @@ def _render_public_trajectory_summary_coverage(
             f"`{_markdown_escape_scalar(row.get('loopx_cli_call_count'))}` | "
             f"`{_markdown_escape_scalar(row.get('protected_path_edit_signal_count'))}` | "
             f"`{attribution}` |"
+        )
+    return lines
+
+
+def _render_harness_interaction_public_summary_coverage(
+    analysis: dict[str, Any],
+) -> list[str]:
+    coverage = harness_interaction_public_summary_coverage(analysis)
+    rows = coverage.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return []
+    lines = [
+        "## Public Harness Interaction Coverage",
+        "",
+        "These rows are generated from compact case-analysis counters across",
+        "benchmarks. They combine SkillsBench trajectory summaries, Terminal-Bench",
+        "worker/LoopX counters, SWE-Marathon product-path counters, and any future",
+        "benchmark case records that expose the same public fields. They do not read",
+        "or copy raw trajectories, task text, verifier output, logs, or local paths.",
+        "",
+        "- schema_version: "
+        f"`{coverage.get('schema_version')}`",
+        "- summary_count: "
+        f"`{coverage.get('summary_count', 0)}`",
+        "- benchmark_ids: "
+        f"`{', '.join(coverage.get('benchmark_ids') or [])}`",
+        "",
+        "| Benchmark | Case | Source | Kind | LoopX CLI | Rounds | Tools | Events | Controller Trace | Lifecycle |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        public_safe = "public-safe" if row.get("public_safe") else "unsafe"
+        controller_trace = "yes" if row.get("controller_trace_present") else "no"
+        lifecycle = "yes" if row.get("lifecycle_observed") else "no"
+        lines.append(
+            "| "
+            f"`{_markdown_escape_cell(row.get('benchmark_id'))}` | "
+            f"`{_markdown_escape_cell(row.get('case_id'))}` | "
+            f"`{_markdown_escape_cell(row.get('summary_path'))}` "
+            f"({public_safe}) | "
+            f"`{_markdown_escape_cell(row.get('source_kind'))}` | "
+            f"`{_markdown_escape_scalar(row.get('loopx_cli_call_count'))}` | "
+            f"`{_markdown_escape_scalar(row.get('round_count'))}` | "
+            f"`{_markdown_escape_scalar(row.get('tool_call_count'))}` | "
+            f"`{_markdown_escape_scalar(row.get('event_count'))}` | "
+            f"`{controller_trace}` | "
+            f"`{lifecycle}` |"
         )
     return lines
 
@@ -814,6 +1077,11 @@ def render_case_analysis_markdown(
     trajectory_coverage_lines = _render_public_trajectory_summary_coverage(analysis)
     if trajectory_coverage_lines:
         lines.extend(["", *trajectory_coverage_lines])
+    harness_coverage_lines = _render_harness_interaction_public_summary_coverage(
+        analysis
+    )
+    if harness_coverage_lines:
+        lines.extend(["", *harness_coverage_lines])
     coverage_lines = _render_terminal_bench_current_protocol_coverage(analysis)
     if coverage_lines:
         lines.extend(["", *coverage_lines])
