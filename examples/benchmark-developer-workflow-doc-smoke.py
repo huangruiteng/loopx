@@ -70,6 +70,8 @@ def main() -> int:
             "official_feedback_blinded_count",
             "do not compare it as test",
             "case-local LoopX surface",
+            "case-local LoopX active todo state",
+            "completion_source_of_truth",
             "/app/.local/bin/loopx",
             "todo_benchmark_case_main",
             "product-path treatment proof is",

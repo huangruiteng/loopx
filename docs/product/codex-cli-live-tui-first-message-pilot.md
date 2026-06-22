@@ -62,7 +62,7 @@ LoopX loop started successfully.
 
 Observed blockers:
 
-- no bounded first-response or completion marker;
+- no bounded first-response or completion signal;
 - capture output exceeded the automation budget before a compact result was
   available;
 - the TUI process remained active after the capture window;

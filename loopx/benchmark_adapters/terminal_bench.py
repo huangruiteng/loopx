@@ -4142,7 +4142,7 @@ def _terminal_bench_prompt_driven_loopx_observation(
     controller_initial_prompt_count = 0
     controller_followup_prompt_count = 0
     controller_action_decisions = 0
-    controller_completion_marker_observed_count = 0
+    controller_no_active_todo_confirmed_count = 0
     controller_round_timeout_sec: float | None = None
     controller_last_decision = "none"
     controller_turn_completed_observed = False
@@ -4155,7 +4155,7 @@ def _terminal_bench_prompt_driven_loopx_observation(
         nonlocal controller_initial_prompt_count
         nonlocal controller_followup_prompt_count
         nonlocal controller_action_decisions
-        nonlocal controller_completion_marker_observed_count
+        nonlocal controller_no_active_todo_confirmed_count
         nonlocal controller_round_timeout_sec
         nonlocal controller_last_decision
         if not isinstance(payload, dict):
@@ -4175,8 +4175,8 @@ def _terminal_bench_prompt_driven_loopx_observation(
             ("followup_prompt_count", controller_followup_prompt_count),
             ("controller_action_decisions", controller_action_decisions),
             (
-                "completion_marker_observed_count",
-                controller_completion_marker_observed_count,
+                "no_active_todo_confirmed_count",
+                controller_no_active_todo_confirmed_count,
             ),
         ):
             raw = payload.get(field)
@@ -4193,8 +4193,8 @@ def _terminal_bench_prompt_driven_loopx_observation(
                 controller_followup_prompt_count = value
             elif field == "controller_action_decisions":
                 controller_action_decisions = value
-            elif field == "completion_marker_observed_count":
-                controller_completion_marker_observed_count = value
+            elif field == "no_active_todo_confirmed_count":
+                controller_no_active_todo_confirmed_count = value
         timeout_raw = payload.get("round_timeout_sec")
         if isinstance(timeout_raw, (int, float)) and not isinstance(timeout_raw, bool):
             controller_round_timeout_sec = max(
@@ -4297,8 +4297,8 @@ def _terminal_bench_prompt_driven_loopx_observation(
         "controller_initial_prompt_count": controller_initial_prompt_count,
         "controller_followup_prompt_count": controller_followup_prompt_count,
         "controller_action_decisions": controller_action_decisions,
-        "controller_completion_marker_observed_count": (
-            controller_completion_marker_observed_count
+        "controller_no_active_todo_confirmed_count": (
+            controller_no_active_todo_confirmed_count
         ),
         "controller_round_timeout_sec": controller_round_timeout_sec,
         "controller_last_decision": controller_last_decision,
@@ -5604,9 +5604,9 @@ def build_terminal_bench_harbor_result_benchmark_run(
         "controller_action_decisions": _non_negative_int(
             prompt_driven_loopx.get("controller_action_decisions")
         ),
-        "controller_completion_marker_observed_count": _non_negative_int(
+        "controller_no_active_todo_confirmed_count": _non_negative_int(
             prompt_driven_loopx.get(
-                "controller_completion_marker_observed_count"
+                "controller_no_active_todo_confirmed_count"
             )
         ),
         "controller_round_timeout_sec": (

@@ -37,11 +37,9 @@ def main() -> int:
         "gpt-5.5",
     ], command
 
-    marker = Path("/tmp/loopx-terminal-bench/done.marker")
     prompt = module.build_host_goal_prompt(
         container_name="example-container",
         instruction="Synthetic instruction placeholder.",
-        marker_path=marker,
         task_workdir="/app",
     )
     assert "native Codex Goal mode" in prompt
@@ -50,7 +48,8 @@ def main() -> int:
     assert "first verify container command execution" in prompt
     assert "docker exec example-container bash -lc 'cd /app && pwd'" in prompt
     assert "Synthetic instruction placeholder." in prompt
-    assert str(marker) in prompt
+    assert "finish the Codex turn" in prompt
+    assert "completion marker" not in prompt
     assert "/Users/" not in prompt
     assert "/data/loopx-bench" not in prompt
     assert "/root/loopx-bench" not in prompt
@@ -84,7 +83,6 @@ def main() -> int:
     treatment_prompt = module.build_host_goal_prompt(
         container_name="example-container",
         instruction="Synthetic instruction placeholder.",
-        marker_path=marker,
         task_workdir="/app",
         loopx_case_lifecycle_packet=lifecycle_packet,
     )

@@ -835,14 +835,14 @@ prompt and compact app-server metadata. A Terminal-Bench treatment run remains
 incomplete evidence until the per-case LoopX lifecycle can be observed:
 `quota_should_run`, `todo_claim_or_update`, bounded work/continuation, official
 case result or validation, `refresh_state`, and `quota_spend`.
-The app-server host agent treats the benchmark completion marker and official
-verifier as the success path. It drains app-server events opportunistically and
-writes a compact turn file with `turn_completed_observed`,
-assistant-message counters, and `completion_marker_observed`, but missing or
-late `turn/completed` is diagnostic only. Do not use `turn/completed` as a hard
-failure gate for Terminal-Bench: doing so can change execution semantics by
-terminating a still-running Goal turn before the marker or verifier has a chance
-to reflect the case outcome.
+The app-server host agent treats the case-local LoopX active todo state as the
+treatment completion source of truth. The agent should mark the case todo done
+when the task is complete; the host exits only after it confirms that no
+case-local active todo remains. It drains app-server events opportunistically
+and writes a compact turn file with `turn_completed_observed`,
+assistant-message counters, and `completion_source_of_truth`. The official
+verifier remains the score authority; do not add a second completion file or
+hidden marker for the agent to maintain.
 
 When a Terminal-Bench launch produces only startup or materialization state,
 reduce it before writing LoopX evidence:

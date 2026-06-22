@@ -47,7 +47,7 @@ def assert_doc() -> None:
         "remote-control",
         "codex doctor",
         "did not produce bounded output before manual interrupt",
-        "no bounded first-response or completion marker",
+        "no bounded first-response or completion signal",
         "capture output exceeded the automation budget",
         "process remained active",
         "process command line",

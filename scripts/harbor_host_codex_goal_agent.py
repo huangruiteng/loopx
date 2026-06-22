@@ -298,18 +298,14 @@ def _case_scheduler_closeout_summary(
     *,
     result_kind: str,
 ) -> dict[str, Any]:
+    status_summary = _case_scheduler_latest_status_summary(trace)
     commands = trace.get("commands") if isinstance(trace.get("commands"), list) else []
-    status_summary: dict[str, Any] = {}
     refresh_observed = False
     spend_observed = False
     for command in commands:
         if not isinstance(command, dict):
             continue
         action = str(command.get("action") or "")
-        if action.endswith("_status") and isinstance(
-            command.get("stdout_summary"), dict
-        ):
-            status_summary = command["stdout_summary"]
         if action.endswith("_refresh_state") and command.get("ok"):
             refresh_observed = True
         if action.endswith("_quota_spend") and command.get("ok"):
@@ -351,6 +347,84 @@ def _case_scheduler_closeout_summary(
             not in {"done", "completed", "closed"}
         )
     return closeout
+
+
+def _case_scheduler_latest_status_summary(trace: dict[str, Any]) -> dict[str, Any]:
+    commands = trace.get("commands") if isinstance(trace.get("commands"), list) else []
+    status_summary: dict[str, Any] = {}
+    for command in commands:
+        if not isinstance(command, dict):
+            continue
+        action = str(command.get("action") or "")
+        if action.endswith("_status") and isinstance(command.get("stdout_summary"), dict):
+            status_summary = command["stdout_summary"]
+    return status_summary
+
+
+def _todo_open_count(summary: Any) -> int | None:
+    if not isinstance(summary, dict):
+        return None
+    for key in ("open_count", "open"):
+        value = summary.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return max(0, value)
+    return None
+
+
+def _case_scheduler_active_todo_exit_state(trace: dict[str, Any]) -> dict[str, Any]:
+    """Summarize whether case-local LoopX still has active todo work."""
+
+    status_summary = _case_scheduler_latest_status_summary(trace)
+    agent_summary = (
+        status_summary.get("agent_todo_summary")
+        if isinstance(status_summary.get("agent_todo_summary"), dict)
+        else {}
+    )
+    user_summary = (
+        status_summary.get("user_todo_summary")
+        if isinstance(status_summary.get("user_todo_summary"), dict)
+        else {}
+    )
+    case_todo = (
+        agent_summary.get("case_todo")
+        if isinstance(agent_summary.get("case_todo"), dict)
+        else {}
+    )
+    terminal_statuses = {"done", "completed", "closed", "archived"}
+    case_status = str(case_todo.get("status") or "").strip().lower()
+    case_todo_active = bool(case_status and case_status not in terminal_statuses)
+    agent_open_count = _todo_open_count(agent_summary)
+    user_open_count = _todo_open_count(user_summary)
+    agent_has_active = case_todo_active or (
+        agent_open_count is not None and agent_open_count > 0
+    )
+    user_has_active = user_open_count is not None and user_open_count > 0
+    status_observed = bool(status_summary)
+    unknown = not status_observed or (
+        agent_open_count is None and user_open_count is None and not case_todo
+    )
+    no_active_todo = bool(
+        status_observed and not unknown and not agent_has_active and not user_has_active
+    )
+    return {
+        "schema_version": "harbor_case_loopx_active_todo_exit_state_v0",
+        "status_observed": status_observed,
+        "no_active_todo": no_active_todo,
+        "exit_condition": (
+            "no_active_loopx_todo"
+            if no_active_todo
+            else "active_loopx_todo_present"
+            if not unknown
+            else "unknown_loopx_todo_state"
+        ),
+        "agent_open_count": agent_open_count,
+        "user_open_count": user_open_count,
+        "case_todo_id": case_todo.get("todo_id") or trace.get("case_todo_id") or "",
+        "case_todo_status": case_todo.get("status") or "",
+        "case_todo_claimed_by": case_todo.get("claimed_by") or "",
+        "raw_logs_recorded": False,
+        "raw_output_recorded": False,
+    }
 
 
 def _case_loopx_action_from_command(
@@ -582,12 +656,10 @@ def build_host_goal_prompt(
     *,
     instruction: str,
     bridge_command: Path,
-    marker_path: Path,
     task_workdir: str = "/app",
     loopx_access_packet: str = "",
 ) -> str:
     bridge = shlex.quote(str(bridge_command))
-    marker_cmd = f"touch {shlex.quote(str(marker_path))}"
     task_workdir_arg = shlex.quote(task_workdir)
     access_packet = loopx_access_packet.strip()
     access_packet_section = (
@@ -601,6 +673,18 @@ def build_host_goal_prompt(
         f"{access_packet}"
         if access_packet
         else ""
+    )
+    completion_clause = (
+        "LoopX is the completion source of truth for this treatment. When the\n"
+        "task is genuinely complete, mark the case-local LoopX todo done using\n"
+            "the command in the access packet. The host exits only after it confirms\n"
+            "there is no active case-local LoopX todo; do not create a separate\n"
+            "completion file."
+        if access_packet
+        else (
+            "When the task is complete, finish the Codex turn. Do not create a\n"
+            "separate completion file."
+        )
     )
     return f"""
 You are solving a Harbor benchmark task using native Codex Goal mode on the host.
@@ -617,9 +701,7 @@ Task instruction:
 {instruction}
 {access_packet_section}
 
-When and only when the task is complete, run this exact host command so the
-harness can observe completion:
-{marker_cmd}
+{completion_clause}
 """.strip()
 
 
@@ -711,11 +793,16 @@ def build_loopx_access_packet(
                 f"loopx_case_command_quota_should_run: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json quota should-run --goal-id {shlex.quote(case_goal_id)} --agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID}",
                 f"loopx_case_command_claim_todo: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json todo claim --goal-id {shlex.quote(case_goal_id)} --todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} --claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID}",
                 f"loopx_case_command_status: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json status --goal-id {shlex.quote(case_goal_id)} --limit 5",
+                f"loopx_case_command_mark_todo_done_when_complete: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json todo update --goal-id {shlex.quote(case_goal_id)} --todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} --status done --claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID}",
                 f"loopx_case_command_refresh_state: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json refresh-state --goal-id {shlex.quote(case_goal_id)}",
                 f"loopx_case_command_spend_quota: {BENCHMARK_CASE_LOOPX_CLI_PATH} --format json quota spend-slot --goal-id {shlex.quote(case_goal_id)}",
+                "loopx_completion_source_of_truth: case_local_active_todo",
                 "before_planning_call_loopx_case_quota_should_run_once: true",
                 "before_planning_claim_loopx_case_todo_once: true",
-                "before_final_marker_review_loopx_case_status_or_history_once: true",
+                "when_task_complete_mark_case_todo_done: true",
+                "before_finishing_review_loopx_case_status_or_history_once: true",
+                "separate_completion_file_required: false",
+                "host_exit_condition: confirmed_no_active_loopx_todo",
                 f"loopx_global_command_check_optional_context: {base} check --scan-path {scan_path_arg}",
                 f"loopx_global_command_status_optional_context: {base} status --limit 5",
                 f"loopx_global_command_history_optional_context: {base} history --goal-id {goal_id_arg} --limit 5",
@@ -999,7 +1086,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
         self._prompt_driven_loopx_commands = []
 
         bridge = bin_dir / "harbor-env-exec"
-        marker = work_dir / "done.marker"
         prompt_path = work_dir / "prompt.txt"
         capture_path = work_dir / "tmux_capture.txt"
         tmux_name = f"loopx_harbor_goal_{run_id}"
@@ -1090,7 +1176,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 )
                 context.metadata = {
                     "loopx_agent": self.name(),
-                    "completion_marker_observed": False,
                     "first_blocker": "harbor_case_goal_state_init_failed",
                     "loopx_mode": self.loopx_mode,
                     "loopx_access_packet_injected": True,
@@ -1184,7 +1269,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     )
                     context.metadata = {
                         "loopx_agent": self.name(),
-                        "completion_marker_observed": False,
                         "first_blocker": (
                             "harbor_case_loopx_scheduler_preflight_failed"
                         ),
@@ -1202,7 +1286,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
         prompt = build_host_goal_prompt(
             instruction=instruction,
             bridge_command=bridge,
-            marker_path=marker,
             task_workdir=self.task_workdir,
             loopx_access_packet=loopx_access_packet,
         )
@@ -1252,7 +1335,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 )
                 context.metadata = {
                     "loopx_agent": self.name(),
-                    "completion_marker_observed": False,
                     "bridge_request_count": self._served_request_count,
                     "first_blocker": "codex_app_server_goal_turn_failed",
                     "loopx_mode": self.loopx_mode,
@@ -1319,7 +1401,11 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         "goal_surface": "app_server",
                         "app_server_wait_for_completion_requested": self.app_server_wait_for_completion,
                         "app_server_completion_hard_gate": False,
-                        "completion_marker_observed": marker.exists(),
+                        "completion_source_of_truth": (
+                            "case_local_active_todo"
+                            if case_state_init_payload
+                            else "codex_turn_completion"
+                        ),
                         "bridge_request_count": self._served_request_count,
                         "first_blocker": first_blocker,
                         "loopx_mode": self.loopx_mode,
@@ -1352,6 +1438,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         ),
                         "loopx_case_rollout_event_counts": (
                             case_scheduler_trace.get("event_kind_counts") or {}
+                        ),
+                        "loopx_case_active_todo_exit_state": (
+                            case_scheduler_trace.get("active_todo_exit_state") or {}
                         ),
                         "loopx_case_closeout_summary": (
                             case_scheduler_trace.get("closeout_summary") or {}
@@ -1400,9 +1489,9 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 *,
                 round_index: int,
                 stage: str,
-            ) -> None:
+            ) -> dict[str, Any]:
                 if not case_scheduler_trace or not case_state_init_payload:
-                    return
+                    return {}
                 case_goal_id = str(
                     case_state_init_payload.get("benchmark_case_goal_id") or ""
                 )
@@ -1442,12 +1531,25 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     ],
                     cwd=self.task_workdir,
                 )
+                await _run_case_loopx_cli(
+                    environment,
+                    payload=case_state_init_payload,
+                    trace=case_scheduler_trace,
+                    action=f"{stage}_round_{round_index}_status",
+                    args=["status", "--goal-id", case_goal_id, "--limit", "5"],
+                    cwd=self.task_workdir,
+                )
+                exit_state = _case_scheduler_active_todo_exit_state(
+                    case_scheduler_trace
+                )
+                case_scheduler_trace["active_todo_exit_state"] = exit_state
                 await _collect_case_rollout_event_counts(
                     environment,
                     payload=case_state_init_payload,
                     trace=case_scheduler_trace,
                     cwd=self.task_workdir,
                 )
+                return exit_state
 
             async def run_case_scheduler_closeout(*, result_kind: str) -> None:
                 if not case_scheduler_trace or not case_state_init_payload:
@@ -1504,12 +1606,11 @@ class HarborHostCodexGoalAgent(BaseAgent):
             if prompt_polling_enabled:
                 deadline = time.time() + self.goal_timeout_sec
                 current_round = 1
-                completion_marker_count = 0
                 timeout_blocker = ""
                 runtime_blocker = ""
                 try:
                     while current_round <= self.loopx_prompt_polling_rounds:
-                        marker_seen_this_round = False
+                        active_todo_exit_state: dict[str, Any] = {}
                         round_deadline = min(
                             deadline,
                             time.time() + self.loopx_prompt_polling_round_timeout_sec,
@@ -1517,10 +1618,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         while time.time() < round_deadline:
                             observe_codex_app_server_goal_turn(turn)
                             await self._serve_bridge_requests(environment, request_dir)
-                            if marker.exists():
-                                completion_marker_count += 1
-                                marker_seen_this_round = True
-                                break
                             if turn.turn_completed_observed:
                                 break
                             await asyncio.sleep(self.poll_interval_sec)
@@ -1528,18 +1625,80 @@ class HarborHostCodexGoalAgent(BaseAgent):
                             int(controller_trace.get("max_round_observed", -1)),
                             current_round,
                         )
-                        controller_trace["completion_marker_observed_count"] = (
-                            completion_marker_count
-                        )
                         controller_trace["round_timeout_sec"] = (
                             self.loopx_prompt_polling_round_timeout_sec
                         )
-                        await run_case_scheduler_round(
+                        active_todo_exit_state = await run_case_scheduler_round(
                             round_index=current_round,
                             stage="post_turn",
                         )
-                        if time.time() >= round_deadline and not (
-                            marker_seen_this_round or turn.turn_completed_observed
+                        if active_todo_exit_state:
+                            controller_trace["active_todo_exit_state"] = (
+                                active_todo_exit_state
+                            )
+                        if active_todo_exit_state.get("no_active_todo") is True:
+                            await self._serve_bridge_requests(
+                                environment,
+                                request_dir,
+                            )
+                            await asyncio.sleep(
+                                min(max(self.poll_interval_sec, 0.01), 1.0)
+                            )
+                            case_goal_id = str(
+                                case_state_init_payload.get(
+                                    "benchmark_case_goal_id"
+                                )
+                                or ""
+                            )
+                            await _run_case_loopx_cli(
+                                environment,
+                                payload=case_state_init_payload,
+                                trace=case_scheduler_trace,
+                                action=(
+                                    f"post_turn_round_{current_round}"
+                                    "_status_confirm"
+                                ),
+                                args=[
+                                    "status",
+                                    "--goal-id",
+                                    case_goal_id,
+                                    "--limit",
+                                    "5",
+                                ],
+                                cwd=self.task_workdir,
+                            )
+                            active_todo_exit_state = (
+                                _case_scheduler_active_todo_exit_state(
+                                    case_scheduler_trace
+                                )
+                            )
+                            case_scheduler_trace["active_todo_exit_state"] = (
+                                active_todo_exit_state
+                            )
+                            controller_trace["active_todo_exit_state"] = (
+                                active_todo_exit_state
+                            )
+                            if (
+                                active_todo_exit_state.get("no_active_todo")
+                                is True
+                            ):
+                                controller_trace[
+                                    "no_active_todo_confirmed_count"
+                                ] = (
+                                    int(
+                                        controller_trace.get(
+                                            "no_active_todo_confirmed_count", 0
+                                        )
+                                    )
+                                    + 1
+                                )
+                                controller_trace["last_decision"] = (
+                                    "stop_after_confirmed_no_active_loopx_todo"
+                                )
+                                break
+                        if (
+                            time.time() >= round_deadline
+                            and not turn.turn_completed_observed
                         ):
                             timeout_blocker = (
                                 "harbor_prompt_polling_round_timeout_before_completion"
@@ -1551,8 +1710,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                                 "stop_at_prompt_polling_round_budget"
                             )
                             break
-                        if marker.exists():
-                            marker.unlink()
                         next_round = current_round + 1
                         continuation_prompt = "\n\n".join(
                             part
@@ -1623,7 +1780,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     turn.terminate()
                 context.metadata = {
                     "loopx_agent": self.name(),
-                    "completion_marker_observed": bool(completion_marker_count),
+                    "completion_source_of_truth": "case_local_active_todo",
                     "bridge_request_count": self._served_request_count,
                     "goal_surface": "app_server",
                     "turn_completed_observed": bool(turn.turn_completed_observed),
@@ -1649,19 +1806,19 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 while time.time() < deadline:
                     observe_codex_app_server_goal_turn(turn)
                     await self._serve_bridge_requests(environment, request_dir)
-                    if marker.exists():
-                        observe_codex_app_server_goal_turn(
-                            turn,
-                            timeout_sec=min(2.0, self.poll_interval_sec),
-                        )
+                    if turn.turn_completed_observed:
                         await run_case_scheduler_closeout(
-                            result_kind="completion_marker"
+                            result_kind="turn_completed"
                         )
                         write_compact()
                         turn.terminate()
                         context.metadata = {
                             "loopx_agent": self.name(),
-                            "completion_marker_observed": True,
+                            "completion_source_of_truth": (
+                                "case_local_active_todo"
+                                if case_state_init_payload
+                                else "codex_turn_completion"
+                            ),
                             "bridge_request_count": self._served_request_count,
                             "goal_surface": "app_server",
                             "turn_completed_observed": bool(turn.turn_completed_observed),
@@ -1678,12 +1835,16 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     await asyncio.sleep(self.poll_interval_sec)
                 observe_codex_app_server_goal_turn(turn)
                 await run_case_scheduler_closeout(result_kind="timeout_blocker")
-                write_compact("harbor_completion_marker_missing_before_timeout")
+                write_compact("harbor_app_server_turn_incomplete_before_timeout")
             finally:
                 turn.terminate()
             context.metadata = {
                 "loopx_agent": self.name(),
-                "completion_marker_observed": False,
+                "completion_source_of_truth": (
+                    "case_local_active_todo"
+                    if case_state_init_payload
+                    else "codex_turn_completion"
+                ),
                 "bridge_request_count": self._served_request_count,
                 "goal_surface": "app_server",
                 "turn_completed_observed": bool(turn.turn_completed_observed),
@@ -1738,30 +1899,17 @@ class HarborHostCodexGoalAgent(BaseAgent):
         deadline = time.time() + self.goal_timeout_sec
         while time.time() < deadline:
             await self._serve_bridge_requests(environment, request_dir)
-            if marker.exists():
-                capture_path.write_text(self._capture(tmux_name), encoding="utf-8")
-                self._tmux("send-keys", "-t", tmux_name, "C-c", check=False)
-                context.metadata = {
-                    "loopx_agent": self.name(),
-                    "completion_marker_observed": True,
-                    "bridge_request_count": self._served_request_count,
-                    "loopx_mode": self.loopx_mode,
-                    "loopx_access_packet_injected": bool(
-                        loopx_access_packet
-                    ),
-                    "benchmark_loop_contract": loop_contract,
-                    "benchmark_case_lifecycle_contract": case_lifecycle_contract,
-                    **case_state_init_compact,
-                    **treatment_claim,
-                }
-                return
             capture_path.write_text(self._capture(tmux_name), encoding="utf-8")
             await asyncio.sleep(self.poll_interval_sec)
 
         self._tmux("send-keys", "-t", tmux_name, "C-c", check=False)
         context.metadata = {
             "loopx_agent": self.name(),
-            "completion_marker_observed": False,
+            "completion_source_of_truth": (
+                "case_local_active_todo"
+                if case_state_init_payload
+                else "codex_turn_completion"
+            ),
             "bridge_request_count": self._served_request_count,
             "first_blocker": "harbor_host_codex_goal_timeout",
             "loopx_mode": self.loopx_mode,

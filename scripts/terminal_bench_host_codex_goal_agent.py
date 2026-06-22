@@ -89,11 +89,9 @@ def build_host_goal_prompt(
     *,
     container_name: str,
     instruction: str,
-    marker_path: Path,
     task_workdir: str = "/app",
     loopx_case_lifecycle_packet: str = "",
 ) -> str:
-    marker_cmd = f"touch {shlex.quote(str(marker_path))}"
     docker_exec = (
         f"docker exec {shlex.quote(container_name)} "
         f"bash -lc 'cd {shlex.quote(task_workdir)} && <command>'"
@@ -114,8 +112,8 @@ Do not modify tests. Complete the task inside the task container only.
 Task instruction:
 {instruction}
 
-When and only when the task is complete, run this exact host command so the harness can observe completion:
-{marker_cmd}
+When the task is complete, finish the Codex turn. Do not create a separate
+completion file.
 """.strip()
     packet = loopx_case_lifecycle_packet.strip()
     if packet:
@@ -247,7 +245,6 @@ class HostCodexGoalAgent(BaseAgent):
         run_id = uuid.uuid4().hex[:10]
         work_dir = self.work_root / f"host-codex-goal-{run_id}"
         work_dir.mkdir(parents=True, exist_ok=True)
-        marker = work_dir / "done.marker"
         capture_path = work_dir / "tmux_capture.txt"
         prompt_path = work_dir / "prompt.txt"
         tmux_name = f"gh_tb_goal_{run_id}"
@@ -263,7 +260,6 @@ class HostCodexGoalAgent(BaseAgent):
         prompt = build_host_goal_prompt(
             container_name=container_name,
             instruction=instruction,
-            marker_path=marker,
             task_workdir=self.task_workdir,
             loopx_case_lifecycle_packet=loopx_packet,
         )
@@ -310,7 +306,7 @@ class HostCodexGoalAgent(BaseAgent):
                         "goal_surface": "app_server",
                         "app_server_wait_for_completion_requested": self.app_server_wait_for_completion,
                         "app_server_completion_hard_gate": False,
-                        "completion_marker_observed": marker.exists(),
+                        "completion_source_of_truth": "codex_turn_completion",
                         "first_blocker": first_blocker,
                         "loopx_mode": self.loopx_mode,
                         "loopx_access_packet_mode": self.loopx_access_packet_mode,
@@ -329,17 +325,13 @@ class HostCodexGoalAgent(BaseAgent):
             try:
                 while time.time() < deadline:
                     observe_codex_app_server_goal_turn(turn)
-                    if marker.exists():
-                        observe_codex_app_server_goal_turn(
-                            turn,
-                            timeout_sec=min(2.0, self.poll_interval_sec),
-                        )
+                    if turn.turn_completed_observed:
                         write_compact()
                         turn.terminate()
                         return AgentResult(total_input_tokens=0, total_output_tokens=0)
                     time.sleep(self.poll_interval_sec)
                 observe_codex_app_server_goal_turn(turn)
-                write_compact("terminal_bench_completion_marker_missing_before_timeout")
+                write_compact("terminal_bench_app_server_turn_incomplete_before_timeout")
                 return AgentResult(
                     total_input_tokens=0,
                     total_output_tokens=0,
@@ -382,10 +374,6 @@ class HostCodexGoalAgent(BaseAgent):
 
         deadline = time.time() + self.goal_timeout_sec
         while time.time() < deadline:
-            if marker.exists():
-                capture_path.write_text(self._capture(tmux_name), encoding="utf-8")
-                self._tmux("send-keys", "-t", tmux_name, "C-c", check=False)
-                return AgentResult(total_input_tokens=0, total_output_tokens=0)
             time.sleep(self.poll_interval_sec)
             capture_path.write_text(self._capture(tmux_name), encoding="utf-8")
 

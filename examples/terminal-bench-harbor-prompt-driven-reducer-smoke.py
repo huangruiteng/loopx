@@ -121,7 +121,7 @@ def write_prompt_driven_fixture(root: Path) -> Path:
         "initial_prompt_count": 1,
         "followup_prompt_count": 0,
         "controller_action_decisions": 1,
-        "completion_marker_observed_count": 0,
+        "no_active_todo_confirmed_count": 0,
         "round_timeout_sec": 900.0,
         "last_decision": "harbor_prompt_polling_round_timeout_before_completion",
     }
@@ -170,6 +170,7 @@ def assert_prompt_driven_result(payload: dict) -> None:
     assert payload["controller_max_rounds_budget"] == 5, payload
     assert payload["controller_max_round_observed"] == 1, payload
     assert payload["controller_followup_prompt_count"] == 0, payload
+    assert payload["controller_no_active_todo_confirmed_count"] == 0, payload
     assert payload["controller_round_timeout_sec"] == 900.0, payload
     assert payload["controller_turn_completed_observed"] is False, payload
     assert (
@@ -213,6 +214,7 @@ def main() -> int:
         assert compact["loopx_controller_trace_present"] is True, compact
         assert compact["controller_max_round_observed"] == 1, compact
         assert compact["controller_followup_prompt_count"] == 0, compact
+        assert compact["controller_no_active_todo_confirmed_count"] == 0, compact
         assert compact["controller_round_timeout_sec"] == 900.0, compact
         assert (
             compact["controller_last_decision"]

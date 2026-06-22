@@ -1992,7 +1992,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "controller_initial_prompt_count",
         "controller_followup_prompt_count",
         "controller_action_decisions",
-        "controller_completion_marker_observed_count",
+        "controller_no_active_todo_confirmed_count",
         "max_rounds_budget",
         "round_reward_count",
     ):

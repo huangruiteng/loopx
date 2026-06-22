@@ -39,7 +39,6 @@ def main() -> int:
     prompt = module.build_host_goal_prompt(
         instruction="Synthetic Harbor instruction placeholder.",
         bridge_command=Path("/tmp/gh-harbor/bin/harbor-env-exec"),
-        marker_path=Path("/tmp/gh-harbor/done.marker"),
         task_workdir="/workspace",
     )
     assert "native Codex Goal mode" in prompt
@@ -48,6 +47,9 @@ def main() -> int:
     assert "first verify the bridge" in prompt
     assert "--cwd /workspace -- pwd" in prompt
     assert "Synthetic Harbor instruction placeholder." in prompt
+    assert "finish the Codex turn" in prompt
+    assert "completion marker" not in prompt
+    assert "touch /tmp/gh-harbor/done.marker" not in prompt
     assert "/Users/" not in prompt
     assert "/data/loopx-bench" not in prompt
     assert "/root/loopx-bench" not in prompt
@@ -80,6 +82,12 @@ def main() -> int:
     assert "loopx_case_command_quota_should_run:" in treatment_packet
     assert "/app/.local/bin/loopx --format json quota should-run" in treatment_packet
     assert "loopx_case_command_claim_todo:" in treatment_packet
+    assert "loopx_case_command_mark_todo_done_when_complete:" in treatment_packet
+    assert "loopx_completion_source_of_truth: case_local_active_todo" in treatment_packet
+    assert "when_task_complete_mark_case_todo_done: true" in treatment_packet
+    assert "separate_completion_file_required: false" in treatment_packet
+    assert "host_exit_condition: confirmed_no_active_loopx_todo" in treatment_packet
+    assert "completion_marker_exit_condition" not in treatment_packet
     assert "loopx_global_command_check_optional_context:" in treatment_packet
     assert "do_not_upload_or_submit_to_leaderboard: true" in treatment_packet
     assert "benchmark_loop_contract:" in treatment_packet
@@ -357,16 +365,69 @@ def main() -> int:
     }, scheduler_trace
     assert scheduler_trace["raw_logs_recorded"] is False, scheduler_trace
 
+    open_exit_state = module._case_scheduler_active_todo_exit_state(
+        scheduler_trace
+    )
+    assert open_exit_state["no_active_todo"] is False, open_exit_state
+    assert open_exit_state["exit_condition"] == "active_loopx_todo_present", (
+        open_exit_state
+    )
+
+    done_trace = module._new_case_scheduler_trace(init_payload)
+    done_trace["commands"].append(
+        {
+            "action": "post_turn_round_1_status",
+            "ok": True,
+            "stdout_summary": module._compact_json_keys(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "goal_id": init_payload["benchmark_case_goal_id"],
+                        "agent_todo_summary": {
+                            "schema_version": "todo_summary_v0",
+                            "open_count": 0,
+                            "items": [
+                                {
+                                    "todo_id": init_payload["case_todo_id"],
+                                    "status": "done",
+                                    "claimed_by": init_payload["case_agent_id"],
+                                    "priority": "P0",
+                                    "task_class": "advancement_task",
+                                }
+                            ],
+                        },
+                        "user_todo_summary": {
+                            "schema_version": "todo_summary_v0",
+                            "open_count": 0,
+                        },
+                    }
+                ),
+                case_todo_id=init_payload["case_todo_id"],
+            ),
+            "raw_output_recorded": False,
+        }
+    )
+    done_exit_state = module._case_scheduler_active_todo_exit_state(done_trace)
+    assert done_exit_state["no_active_todo"] is True, done_exit_state
+    assert done_exit_state["exit_condition"] == "no_active_loopx_todo", (
+        done_exit_state
+    )
+    assert done_exit_state["case_todo_status"] == "done", done_exit_state
+
     treatment_prompt = module.build_host_goal_prompt(
         instruction="Synthetic Harbor instruction placeholder.",
         bridge_command=Path("/tmp/gh-harbor/bin/harbor-env-exec"),
-        marker_path=Path("/tmp/gh-harbor/done.marker"),
         task_workdir="/workspace",
         loopx_access_packet=treatment_packet,
     )
     assert "LoopX treatment access packet:" in treatment_prompt
     assert "case-local LoopX CLI" in treatment_prompt
     assert "part of the treatment proof" in treatment_prompt
+    assert "LoopX is the completion source of truth" in treatment_prompt
+    assert "mark the case-local LoopX todo done" in treatment_prompt
+    assert "completion marker" not in treatment_prompt
+    assert "touch /tmp/gh-harbor/done.marker" not in treatment_prompt
+    assert "host_exit_condition: confirmed_no_active_loopx_todo" in treatment_prompt
     assert "mode: codex_loopx" in treatment_prompt
 
     with tempfile.TemporaryDirectory(prefix="gh-harbor-host-agent-") as tmp:
@@ -539,6 +600,62 @@ def main() -> int:
         class _FakeContext:
             metadata: dict = {}
 
+        class _DoneAfterFirstRoundEnvironment(_FakeEnvironment):
+            async def exec(
+                self,
+                command: str,
+                cwd: str | None = None,
+                timeout_sec: int = 0,
+            ):
+                self.commands.append(command)
+                if command.startswith("cat "):
+                    return _FakeExecResult(
+                        "\n".join(
+                            [
+                                '{"event_kind":"install"}',
+                                '{"event_kind":"quota_should_run"}',
+                                '{"event_kind":"todo_claim"}',
+                                '{"event_kind":"todo_update"}',
+                                '{"event_kind":"status"}',
+                            ]
+                        )
+                        + "\n"
+                    )
+                if " status " in command:
+                    return _FakeExecResult(
+                        json.dumps(
+                            {
+                                "ok": True,
+                                "goal_id": (
+                                    "swe-marathon-current-case-"
+                                    "codex-loopx-treatment-case"
+                                ),
+                                "agent_todo_summary": {
+                                    "schema_version": "todo_summary_v0",
+                                    "open_count": 0,
+                                    "items": [
+                                        {
+                                            "todo_id": "todo_benchmark_case_main",
+                                            "status": "done",
+                                            "claimed_by": "codex-benchmark-agent",
+                                            "priority": "P0",
+                                            "task_class": "advancement_task",
+                                        }
+                                    ],
+                                },
+                                "user_todo_summary": {
+                                    "schema_version": "todo_summary_v0",
+                                    "open_count": 0,
+                                },
+                                "raw_logs_recorded": False,
+                            }
+                        )
+                    )
+                return _FakeExecResult(
+                    '{"ok":true,"goal_id":"demo","should_run":true,'
+                    '"raw_logs_recorded":false}'
+                )
+
         original_start = module.start_codex_app_server_goal_turn
         original_followup = module.start_codex_app_server_goal_followup_turn
 
@@ -549,6 +666,65 @@ def main() -> int:
         def _fake_followup(*args, **kwargs):
             del args, kwargs
             raise module.CodexAppServerGoalDriverError("synthetic follow-up failure")
+
+        module.start_codex_app_server_goal_turn = _fake_start
+        module.start_codex_app_server_goal_followup_turn = _fake_followup
+        try:
+            no_active_agent = module.HarborHostCodexGoalAgent(
+                logs_dir=Path(tmp) / "no-active-stop-logs",
+                goal_surface="app_server",
+                goal_timeout_sec=60,
+                startup_delay_sec=0,
+                poll_interval_sec=0.01,
+                task_workdir="/workspace",
+                loopx_mode="codex_loopx",
+                loopx_access_packet_mode="compact",
+                loopx_cli_bridge_enabled=True,
+                loopx_experiment_protocol="max5_blind_loop_no_feedback",
+                loopx_max_rounds=5,
+            )
+            no_active_context = _FakeContext()
+            asyncio.run(
+                no_active_agent.run(
+                    "Synthetic Harbor instruction placeholder.",
+                    _DoneAfterFirstRoundEnvironment(),
+                    no_active_context,
+                )
+            )
+        finally:
+            module.start_codex_app_server_goal_turn = original_start
+            module.start_codex_app_server_goal_followup_turn = original_followup
+
+        no_active_compact_paths = sorted(
+            (Path(tmp) / "no-active-stop-logs").glob(
+                "host-codex-goal-*/app_server_goal_turn.compact.json"
+            )
+        )
+        assert no_active_compact_paths, "no-active stop should write compact closeout"
+        no_active_compact = json.loads(
+            no_active_compact_paths[-1].read_text(encoding="utf-8")
+        )
+        assert no_active_compact["loopx_controller_trace"]["last_decision"] == (
+            "stop_after_confirmed_no_active_loopx_todo"
+        ), no_active_compact
+        assert no_active_compact["loopx_controller_trace"][
+            "followup_prompt_count"
+        ] == 0, no_active_compact
+        assert no_active_compact["loopx_controller_trace"][
+            "no_active_todo_confirmed_count"
+        ] == 1, no_active_compact
+        assert "completion_marker_observed" not in no_active_compact, (
+            no_active_compact
+        )
+        assert no_active_compact["loopx_case_active_todo_exit_state"][
+            "no_active_todo"
+        ] is True, no_active_compact
+        assert no_active_compact["loopx_case_closeout_summary"][
+            "case_todo_status"
+        ] == "done", no_active_compact
+        assert no_active_context.metadata["first_blocker"] == "", (
+            no_active_context.metadata
+        )
 
         module.start_codex_app_server_goal_turn = _fake_start
         module.start_codex_app_server_goal_followup_turn = _fake_followup
