@@ -10,6 +10,7 @@ from ..benchmark_case_state import (
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
     benchmark_case_active_state_path,
 )
+from ..benchmark_core import RunPermissionAction, build_run_permission_policy
 from ..codex_goal_baseline import build_codex_app_server_goal_worker_plan
 
 
@@ -353,6 +354,32 @@ def skillsbench_job_name(dataset: str, task_id: str, route: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", raw).strip("_").lower()
 
 
+def build_skillsbench_run_permission_policy(
+    *,
+    route: str = SKILLSBENCH_DEFAULT_ROUTE,
+    max_wall_time_minutes: int = 480,
+) -> dict[str, Any]:
+    """Build the public no-upload execution boundary for SkillsBench routes."""
+
+    safe_route = (
+        _skillsbench_public_safe_label(route, limit=80)
+        or SKILLSBENCH_DEFAULT_ROUTE
+    )
+    policy_route = re.sub(r"[^A-Za-z0-9]+", "_", safe_route).strip("_").lower()
+    return build_run_permission_policy(
+        policy_id=f"skillsbench_{policy_route}_no_upload_20260622",
+        allowed_actions=(
+            RunPermissionAction.CODEX_MODEL_INVOCATION.value,
+            RunPermissionAction.LOCAL_DOCKER_RUNNER.value,
+            RunPermissionAction.BENCHMARK_DEPENDENCY_FETCH.value,
+            RunPermissionAction.COMPACT_RESULT_REDUCTION.value,
+        ),
+        max_wall_time_minutes=max_wall_time_minutes,
+        no_upload_required=True,
+        compact_observation_only=True,
+    )
+
+
 def build_skillsbench_app_server_goal_worker_contract(
     *,
     dataset: str = SKILLSBENCH_DEFAULT_DATASET,
@@ -440,6 +467,9 @@ def build_skillsbench_app_server_goal_worker_contract(
         "first_blocker": first_blocker,
         "blockers": blockers,
         "next_action": next_action,
+        "run_permission_policy": build_skillsbench_run_permission_policy(
+            route="codex-app-server-goal-baseline"
+        ),
         "worker_adapter": {
             "label": "skillsbench_host_codex_app_server_goal_worker",
             "script": "scripts/skillsbench_host_codex_goal_worker.py",
@@ -1405,6 +1435,9 @@ def build_skillsbench_benchmark_run(
         "job_name": job_name,
         "mode": contract["mode"],
         "route": route,
+        "run_permission_policy": build_skillsbench_run_permission_policy(
+            route=route
+        ),
         "agent": {
             "name": agent,
             "model": model,

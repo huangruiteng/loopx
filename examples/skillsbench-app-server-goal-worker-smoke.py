@@ -22,6 +22,11 @@ from loopx.benchmark import (  # noqa: E402
     build_skillsbench_benchmark_run,
     skillsbench_route_contract,
 )
+from loopx.benchmark_core import (  # noqa: E402
+    RunPermissionAction,
+    compact_run_permission_policy_for_quota,
+    validate_run_permission_policy,
+)
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     run_skillsbench_local_acp_relay_probe,
 )
@@ -131,6 +136,40 @@ def assert_plan_prerequisites(plan: dict[str, Any]) -> None:
     ), prereq
 
 
+def assert_skillsbench_run_permission_policy(
+    policy: dict[str, Any],
+    *,
+    expected_route: str,
+) -> None:
+    validation = validate_run_permission_policy(policy)
+    projection = compact_run_permission_policy_for_quota(policy)
+
+    assert validation["ok"] is True, validation
+    assert projection is not None, policy
+    assert (
+        projection["policy_id"]
+        == f"skillsbench_{expected_route.replace('-', '_')}_no_upload_20260622"
+    ), projection
+    assert projection["delivery_allowed"] is True, projection
+    assert projection["max_wall_time_minutes"] >= 480, projection
+    assert projection["no_upload_required"] is True, projection
+    assert projection["submit_allowed"] is False, projection
+    assert projection["leaderboard_claim_allowed"] is False, projection
+    assert projection["compact_observation_only"] is True, projection
+    assert (
+        RunPermissionAction.CODEX_MODEL_INVOCATION.value
+        in projection["allowed_actions"]
+    )
+    assert (
+        RunPermissionAction.LOCAL_DOCKER_RUNNER.value
+        in projection["allowed_actions"]
+    )
+    assert (
+        RunPermissionAction.PUBLIC_RESULT_UPLOAD.value
+        in projection["forbidden_actions"]
+    )
+
+
 def _load_worker_module() -> Any:
     spec = importlib.util.spec_from_file_location("skillsbench_goal_worker", WORKER_SCRIPT)
     assert spec and spec.loader
@@ -165,6 +204,10 @@ def test_worker_contract_is_public_safe() -> None:
     assert payload["proof_required"]["turn_start"] is True, payload
     assert payload["boundary"]["raw_task_text_read_into_public_state"] is False, payload
     assert payload["worker_plan"]["claim_boundary"]["requires_turn_start_evidence"] is True, payload
+    assert_skillsbench_run_permission_policy(
+        payload["run_permission_policy"],
+        expected_route=ROUTE,
+    )
 
 
 def test_skeleton_marks_app_server_goal_actor() -> None:
@@ -177,6 +220,10 @@ def test_skeleton_marks_app_server_goal_actor() -> None:
     assert counters["codex_acp_protocol_used"] is False, counters
     assert policy["outer_controller"] == "codex_app_server_goal_worker", policy
     assert policy["inner_case_actor"] == "host_codex_app_server_goal_worker", policy
+    assert_skillsbench_run_permission_policy(
+        run["run_permission_policy"],
+        expected_route=ROUTE,
+    )
 
 
 def test_launcher_plan_only_uses_native_worker_route() -> None:
@@ -208,6 +255,10 @@ def test_launcher_plan_only_uses_native_worker_route() -> None:
     assert plan["app_server_goal_worker_trace_dir"].endswith(
         "app_server_goal_worker_traces"
     ), plan
+    assert_skillsbench_run_permission_policy(
+        plan["run_permission_policy"],
+        expected_route=ROUTE,
+    )
 
 
 def test_launcher_plan_only_marks_bridge_ready_when_explicit() -> None:
