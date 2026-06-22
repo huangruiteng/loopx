@@ -174,6 +174,24 @@ The existing LoopX objects remain the source of truth for control: goal,
 gate, todo, quota, evidence, run history, handoff, and boundary. The management
 surface adds review and value semantics around them.
 
+## Observe/Review/Score Versus Control
+
+The management surface should be useful before it is allowed to control work.
+This keeps adoption low-risk and gives users a way to judge existing agents
+before trusting LoopX with writeback.
+
+| Layer | Allowed behavior | Write boundary |
+| --- | --- | --- |
+| Observe | read goals, todos, claims, gates, evidence, run history, and compact costs | no LoopX state mutation |
+| Review | let the user inspect cards, mark useful/not useful, ask for evidence, or flag boundary concerns | local or draft `review_event_v0` only |
+| Score | aggregate quality, cost, attention, and output labels for a lane or anchor | append review summary only after explicit user save |
+| Control | turn feedback into todo changes, gate decisions, anchor promotion, or replanning | normal LoopX CLI/API write path, quota, boundary, and authority checks |
+
+The UI should not blur these layers. A user can browse and score a feed without
+granting control. A score can recommend a control transition, but the transition
+must still pass through the same LoopX state, authority, and boundary contracts
+as CLI-driven work.
+
 ## Adoption Path
 
 The management surface and the control loop can be adopted in stages.
@@ -192,6 +210,55 @@ trusted. It also gives LoopX a path to grow with host products: a host can keep
 its executor or issue solver, while LoopX supplies the reviewable control and
 management layer.
 
+## Repository And App Boundary
+
+The first implementation can live in the same repository as the existing
+dashboard because it depends on the same public control-plane contracts. Keeping
+it together avoids a second source of truth while the projection model is still
+moving.
+
+The boundary should be explicit:
+
+- `loopx/` owns schemas, CLI writes, status projection, quota, gates, and
+  public/private checks;
+- `apps/dashboard/` owns read-first operator UI, review-feed mock actions, and
+  URL-backed filters;
+- `docs/product/` owns product contracts and acceptance criteria;
+- public showcase routes explain the idea, while ops routes manage real local
+  state;
+- any browser write path must call a typed LoopX command or local API and stay
+  behind a separate capability gate.
+
+This means the management surface is part of LoopX, but not all future host
+products need to live in this repository. A partner issue solver, office-ops
+connector, or content agent can remain outside the repo and expose compact
+signals, evidence, and review cards to LoopX.
+
+## Frontend Collaboration Model
+
+Frontend collaboration should focus on making the management surface feel like
+a real work product, not on moving control authority into the browser.
+
+Useful collaboration areas:
+
+- information architecture for project selector, lanes, anchors, review feed,
+  and performance review;
+- dense operator interaction patterns for filtering, searching, scoring, and
+  quick dismissal;
+- accessibility and responsive behavior for repeated review sessions;
+- visual hierarchy that distinguishes user gates, soft preferences, and
+  boundary risks;
+- local-only mock actions for review cards before write APIs are enabled.
+
+Non-goals for frontend collaboration:
+
+- direct mutation of `.loopx`, `.local`, or runtime history from arbitrary UI
+  state;
+- hidden recommendation ranking that cannot be explained as a LoopX projection;
+- autopublish or production actions;
+- importing private chats, raw traces, or private documents into public
+  fixtures.
+
 ## Near-Term PoC
 
 The first PoC should be narrow:
@@ -208,6 +275,26 @@ The first accepted use case is maintainer self-management: finding a todo,
 understanding why it is selected, reviewing recent outputs, and deciding what
 should become an anchor. Issue-fix and office-operation cases can reuse the
 same surface after the maintainer flow is credible.
+
+### PoC Acceptance Plan
+
+The PoC is accepted when a maintainer can complete this loop on local data:
+
+1. Select all projects or one project.
+2. Search for a todo by id or text and see its goal, status, claim, lane, and
+   evidence pointer.
+3. Inspect the current user gate and confirm whether action is required.
+4. Review at least three work cards and mark them useful, not useful, needs
+   evidence, or off-scope in a local/draft layer.
+5. See a lane-level review summary with output count, quality label, token cost
+   when available, and user-attention cost proxy.
+6. Promote exactly one reviewed item into a proposed todo or anchor, without
+   mutating LoopX control state until the explicit write path is enabled.
+
+This acceptance path deliberately serves maintainer management before broader
+issue-solver or office-ops showcases. Once it works for LoopX itself, the same
+projection can ingest partner issue-fix results or office-operation signals as
+external evidence instead of treating them as first-class control authorities.
 
 ## Non-Goals
 
