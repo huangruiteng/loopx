@@ -28,6 +28,10 @@ from .benchmark_run_ledger import (
     handle_benchmark_run_ledger_command,
     register_benchmark_run_ledger_commands,
 )
+from .bootstrap_connect import (
+    handle_bootstrap_connect_command,
+    register_bootstrap_connect_command,
+)
 from .doctor import handle_doctor_command, register_doctor_command
 from .dreaming import handle_dreaming_command, register_dreaming_commands
 from .history import handle_history_command, register_history_command
@@ -90,6 +94,7 @@ __all__ = [
     "handle_benchmark_boundary_command",
     "handle_benchmark_review_lifecycle_command",
     "handle_benchmark_run_ledger_command",
+    "handle_bootstrap_connect_command",
     "handle_check_command",
     "handle_codex_cli_bounded_visible_pilot_adapter_command",
     "handle_codex_cli_bootstrap_message_command",
@@ -129,6 +134,7 @@ __all__ = [
     "register_benchmark_boundary_commands",
     "register_benchmark_review_lifecycle_commands",
     "register_benchmark_run_ledger_commands",
+    "register_bootstrap_connect_command",
     "register_doctor_command",
     "register_dreaming_commands",
     "register_history_command",
