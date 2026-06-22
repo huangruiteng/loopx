@@ -4273,7 +4273,7 @@
               "baseline_route_valid": true,
               "benchmark_id": "skillsbench@1.1",
               "case_id": "paratransit-routing",
-              "claim_blocker": "treatment_loopx_lifecycle_not_observed",
+              "claim_blocker": "treatment_official_feedback_not_blinded,treatment_reward_feedback_forwarding_not_disabled,treatment_compact_metrics_missing,treatment_loopx_lifecycle_not_observed",
               "comparison_id": "skillsbench_product_mode_main_table_v0",
               "headline_metrics": [
                 "best_score",
@@ -4282,13 +4282,13 @@
                 "declared_done_score"
               ],
               "main_table_claim_allowed": false,
-              "official_feedback_blinded": true,
+              "official_feedback_blinded": false,
               "product_mode_pair_complete": false,
               "schema_version": "benchmark_product_mode_comparison_v0",
               "treatment_loopx_lifecycle_observed": false,
               "treatment_route_valid": true
             },
-            "treatment_run_id": "c9e2eebe7a8e"
+            "treatment_run_id": "885394be2262"
           },
           "runs": [
             {
@@ -5004,6 +5004,54 @@
                 "staged": true,
                 "task_skills_removed": true
               }
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": ".local/private-benchmark-jobs/paratransit-loopx-product-mode-20260622T102509Z/loopx-product-mode-20260622T102509Z/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "paratransit-routing",
+              "case_ids": [
+                "paratransit-routing"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_runner_failed_before_agent_install",
+              "failure_labels": [
+                "skillsbench_runner_failed_before_agent_install",
+                "skillsbench_runner_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "paratransit-loopx-product-mode-20260622T102509Z",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": true,
+              "mode": "skillsbench_loopx_product_mode_treatment",
+              "notes": "official SkillsBench BenchFlow LoopX product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-06-22T18:25:10+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-product-mode-paratransit-20260622T102509Z",
+              "run_id": "885394be2262",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "apt_retry_patch_required": false,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": false,
+                "staged": false
+              },
+              "verifier_attempt_countable": false
             }
           ]
         },
@@ -6871,7 +6919,7 @@
           ]
         }
       },
-      "run_count": 122
+      "run_count": 124
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -10923,5 +10971,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-22T06:08:33+08:00"
+  "updated_at": "2026-06-22T18:25:10+08:00"
 }

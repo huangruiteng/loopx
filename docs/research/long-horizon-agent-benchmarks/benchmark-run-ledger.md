@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-22T06:08:33+08:00`
+- updated_at: `2026-06-22T18:25:10+08:00`
 
 ## Case Decisions
 
@@ -25,7 +25,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `paired_no_score_uplift` | - | - | `25` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `paired_no_score_uplift` | - | - | `4` |
 | `skillsbench@1.1` | `organize-messy-files` | `paired_baseline_solved_treatment_preserved` | - | - | `3` |
-| `skillsbench@1.1` | `paratransit-routing` | `product_mode_pair_incomplete` | `treatment_loopx_lifecycle_not_observed` | - | `9` |
+| `skillsbench@1.1` | `paratransit-routing` | `product_mode_pair_incomplete` | `treatment_official_feedback_not_blinded,treatment_reward_feedback_forwarding_not_disabled,treatment_compact_metrics_m...` | - | `10` |
 | `skillsbench@1.1` | `pddl-airport-planning` | `paired_no_score_uplift` | - | - | `9` |
 | `skillsbench@1.1` | `react-performance-debugging` | `paired_baseline_runner_or_setup_repair_required` | - | - | `5` |
 | `skillsbench@1.1` | `setup-fuzzing-py` | `baseline_runner_or_setup_repair_required` | - | - | `3` |
@@ -166,6 +166,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `paratransit-routing` | `codex_loopx_treatment` | `` | `missing` | `` | `` | `skillsbench_docker_daemon_unavailable` | `.local/private-benchmark-jobs/skillsbench-paratransit-routing-loopx-product-mode-depth-rerun-20260617T113221CST/paratransit-routing__loopx_product_mode_depth_rerun/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `paratransit-routing` | `codex_loopx_treatment` | `` | `0.0` | `` | `1:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-paratransit-routing-loopx-product-mode-depth-rerun-20260617T113439CST/paratransit-routing__loopx_product_mode_depth_rerun/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `paratransit-routing` | `codex_loopx_treatment` | `` | `1.0` | `5` | `1:0,2:0,3:0,4:0,5:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-paratransit-routing-loopx-product-mode-depth-gate-20260617T1229CST/paratransit-routing__loopx_product_mode_depth_gate/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `paratransit-routing` | `codex_loopx_treatment` | `` | `missing` | `` | `` | `skillsbench_runner_failed_before_agent_install` | `.local/private-benchmark-jobs/paratransit-loopx-product-mode-20260622T102509Z/loopx-product-mode-20260622T102509Z/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `pddl-airport-planning` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `result.json` |
 | `skillsbench@1.1` | `pddl-airport-planning` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `result.json` |
 | `skillsbench@1.1` | `pddl-airport-planning` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `result.json` |
