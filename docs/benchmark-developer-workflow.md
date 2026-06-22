@@ -404,6 +404,15 @@ envelope for each observed round by default, so the controller does not cut off
 a still-running Codex Goal turn at the older `900s` official timeout before
 continuation evidence exists.
 
+For the SkillsBench main-table product-mode comparison, treat the pair contract
+as executable input, not prose memory: baseline is `raw-codex-autonomous-max5`,
+treatment is `loopx-product-mode`, both use the same case and max-5/no-feedback
+budget, and the treatment must show LoopX state/todo/replan/CLI lifecycle in
+compact counters. Use
+`loopx.benchmark_core.classify_product_mode_main_table_pair` before promoting a
+base/test pair into the public comparison table; shallow packet-only or
+which-goal-only rows stay analysis assets, not main-table evidence.
+
 When wrapping that launch in `tmux`, `launchd`, or a generated `run.sh`, put the
 same `PYTHONPATH` export inside the wrapper script, not only in the interactive
 shell that creates it. Otherwise Harbor can create a job shell but fail before

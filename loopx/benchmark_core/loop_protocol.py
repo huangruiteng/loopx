@@ -8,7 +8,11 @@ BENCHMARK_LOOP_PROTOCOL_SCHEMA_VERSION = "benchmark_loop_protocol_v0"
 BENCHMARK_LOOP_CONTROLLER_TRACE_SCHEMA_VERSION = (
     "benchmark_loop_controller_trace_v0"
 )
+BENCHMARK_PRODUCT_MODE_COMPARISON_SCHEMA_VERSION = (
+    "benchmark_product_mode_comparison_v0"
+)
 MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID = "max5_blind_loop_no_feedback"
+PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID = "product_mode_max5_no_feedback"
 PACKET_ONLY_OBSERVATION_PROTOCOL_ID = "packet_only_observation"
 
 BLIND_LOOP_DEFAULT_MAX_ROUNDS = 5
@@ -92,6 +96,8 @@ def build_benchmark_loop_contract(
     resolved_protocol = protocol_id or (
         MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
         if blind_loop and not feedback_forwarded and budget == BLIND_LOOP_DEFAULT_MAX_ROUNDS
+        else PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
+        if product_mode and not feedback_forwarded and budget == BLIND_LOOP_DEFAULT_MAX_ROUNDS
         else PACKET_ONLY_OBSERVATION_PROTOCOL_ID
         if route == LOOPX_PACKET_ONLY_OBSERVATION_ROUTE
         else "custom_or_legacy_loop"
@@ -127,6 +133,296 @@ def build_benchmark_loop_contract(
         strict_treatment_claim_allowed=strict_allowed,
         claim_blocker=claim_blocker,
     ).as_dict()
+
+
+def build_product_mode_main_table_comparison_contract(
+    *,
+    benchmark_id: str = "skillsbench@1.1",
+    max_rounds: int | None = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
+    baseline_route: str = RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
+    treatment_route: str = LOOPX_PRODUCT_MODE_ROUTE,
+) -> dict[str, Any]:
+    budget = (
+        max_rounds
+        if isinstance(max_rounds, int)
+        and not isinstance(max_rounds, bool)
+        and max_rounds > 0
+        else BLIND_LOOP_DEFAULT_MAX_ROUNDS
+    )
+    baseline_contract = build_benchmark_loop_contract(
+        route=baseline_route,
+        max_rounds=budget,
+        protocol_id=PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
+        if baseline_route == RAW_CODEX_AUTONOMOUS_MAX5_ROUTE
+        else None,
+    )
+    treatment_contract = build_benchmark_loop_contract(
+        route=treatment_route,
+        max_rounds=budget,
+        protocol_id=PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
+        if treatment_route == LOOPX_PRODUCT_MODE_ROUTE
+        else None,
+    )
+    return {
+        "schema_version": BENCHMARK_PRODUCT_MODE_COMPARISON_SCHEMA_VERSION,
+        "comparison_id": "skillsbench_product_mode_main_table_v0",
+        "benchmark_id": benchmark_id,
+        "protocol_id": PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID,
+        "max_rounds_budget": budget,
+        "baseline_arm": {
+            "route": baseline_route,
+            "arm_id": "raw_codex_autonomous_max5",
+            "contract": baseline_contract,
+            "loopx_state_todo_replan_cli_required": False,
+            "loopx_cli_allowed": False,
+            "agent_surface": "raw_codex_autonomous",
+        },
+        "treatment_arm": {
+            "route": treatment_route,
+            "arm_id": "loopx_product_mode",
+            "contract": treatment_contract,
+            "loopx_state_todo_replan_cli_required": True,
+            "case_local_loopx_state_required": True,
+            "loopx_cli_required": True,
+            "agent_surface": "loopx_state_todo_replan_cli",
+        },
+        "policy_gate": {
+            "same_benchmark_and_case_required": True,
+            "official_feedback_forwarded_to_agent": False,
+            "official_feedback_blinded": True,
+            "reward_feedback_forwarded": False,
+            "stop_on_reward_one": True,
+            "stop_on_agent_declared_done_no_remaining_goals": True,
+            "stop_on_max_rounds_budget": True,
+            "headline_metrics": [
+                "best_score",
+                "final_score",
+                "first_success_round",
+                "declared_done_score",
+            ],
+            "main_table_claim_requires": [
+                "paired_baseline_and_treatment_same_case",
+                "raw_codex_autonomous_max5_baseline",
+                "loopx_state_todo_replan_cli_treatment",
+                "no_official_feedback_to_either_agent",
+                "compact_round_reward_trace_or_equivalent_metrics",
+            ],
+        },
+        "boundary": {
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+            "raw_logs_recorded": False,
+            "local_paths_recorded": False,
+        },
+    }
+
+
+def _compact_run_text(value: Any) -> str:
+    if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+        return ""
+    return str(value).strip()[:200]
+
+
+def _run_route_tokens(run: dict[str, Any]) -> set[str]:
+    contract = run.get("benchmark_loop_contract")
+    if not isinstance(contract, dict):
+        contract = {}
+    values = {
+        contract.get("route"),
+        run.get("route"),
+        run.get("mode"),
+        run.get("arm_id"),
+    }
+    tokens = {_compact_run_text(value) for value in values}
+    return {token for token in tokens if token}
+
+
+def _route_matches(run: dict[str, Any], *needles: str) -> bool:
+    tokens = _run_route_tokens(run)
+    lower_tokens = {token.lower() for token in tokens}
+    for needle in needles:
+        lower_needle = needle.lower()
+        if lower_needle in lower_tokens:
+            return True
+        if any(lower_needle in token for token in lower_tokens):
+            return True
+    return False
+
+
+def _run_case_id(run: dict[str, Any]) -> str:
+    case_id = _compact_run_text(run.get("case_id"))
+    if case_id:
+        return case_id
+    case_ids = run.get("case_ids")
+    if isinstance(case_ids, list):
+        for item in case_ids:
+            case_id = _compact_run_text(item)
+            if case_id:
+                return case_id
+    return ""
+
+
+def _run_benchmark_id(run: dict[str, Any]) -> str:
+    return _compact_run_text(run.get("benchmark_id"))
+
+
+def _run_max_rounds_budget(run: dict[str, Any]) -> int | None:
+    contract = run.get("benchmark_loop_contract")
+    if not isinstance(contract, dict):
+        contract = {}
+    for value in (contract.get("max_rounds_budget"), run.get("max_rounds_budget")):
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+    round_trace = run.get("round_reward_trace")
+    if isinstance(round_trace, dict):
+        value = round_trace.get("max_rounds_budget")
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+    return None
+
+
+def _run_feedback_blinded(run: dict[str, Any]) -> bool:
+    if run.get("official_feedback_blinded") is True:
+        return True
+    round_trace = run.get("round_reward_trace")
+    if isinstance(round_trace, dict):
+        return round_trace.get("official_feedback_blinded") is True
+    contract = run.get("benchmark_loop_contract")
+    if isinstance(contract, dict):
+        return contract.get("official_feedback_blinded") is True
+    return False
+
+
+def _run_reward_feedback_forwarded(run: dict[str, Any]) -> bool | None:
+    if isinstance(run.get("reward_feedback_forwarded"), bool):
+        return run["reward_feedback_forwarded"]
+    round_trace = run.get("round_reward_trace")
+    if isinstance(round_trace, dict) and isinstance(
+        round_trace.get("reward_feedback_forwarded"), bool
+    ):
+        return round_trace["reward_feedback_forwarded"]
+    contract = run.get("benchmark_loop_contract")
+    if isinstance(contract, dict) and isinstance(
+        contract.get("official_feedback_forwarded"), bool
+    ):
+        return contract["official_feedback_forwarded"]
+    return None
+
+
+def _run_has_headline_metrics(run: dict[str, Any]) -> bool:
+    for key in ("best_round_reward", "final_round_reward"):
+        if isinstance(run.get(key), (int, float)) and not isinstance(
+            run.get(key), bool
+        ):
+            return True
+    rewards = run.get("round_rewards")
+    if isinstance(rewards, list) and rewards:
+        return True
+    round_trace = run.get("round_reward_trace")
+    if isinstance(round_trace, dict):
+        records = round_trace.get("records")
+        return isinstance(records, list) and bool(records)
+    return False
+
+
+def _loopx_product_lifecycle_observed(run: dict[str, Any]) -> bool:
+    if run.get("loopx_prompt_driven_lifecycle_observed") is True:
+        return True
+    for key in (
+        "worker_loopx_cli_call_total",
+        "loopx_cli_command_count",
+        "loopx_prompt_driven_command_count",
+    ):
+        value = run.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return True
+    counters = run.get("solution_phase_counters")
+    if isinstance(counters, dict):
+        value = counters.get("loopx_cli_command_count")
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return True
+    trace = run.get("loopx_prompt_driven_trace")
+    if isinstance(trace, dict):
+        return trace.get("lifecycle_observed") is True
+    return False
+
+
+def classify_product_mode_main_table_pair(
+    *,
+    baseline_run: dict[str, Any],
+    treatment_run: dict[str, Any],
+    benchmark_id: str = "skillsbench@1.1",
+    max_rounds: int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
+) -> dict[str, Any]:
+    """Classify whether two compact runs satisfy the main-table pair contract."""
+
+    contract = build_product_mode_main_table_comparison_contract(
+        benchmark_id=benchmark_id,
+        max_rounds=max_rounds,
+    )
+    blockers: list[str] = []
+    baseline_case = _run_case_id(baseline_run)
+    treatment_case = _run_case_id(treatment_run)
+    if not baseline_case or not treatment_case or baseline_case != treatment_case:
+        blockers.append("case_id_mismatch_or_missing")
+    baseline_benchmark = _run_benchmark_id(baseline_run) or benchmark_id
+    treatment_benchmark = _run_benchmark_id(treatment_run) or benchmark_id
+    if baseline_benchmark != treatment_benchmark:
+        blockers.append("benchmark_id_mismatch")
+    if baseline_benchmark != benchmark_id:
+        blockers.append("unexpected_benchmark_id")
+    if not _route_matches(
+        baseline_run,
+        RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
+        "raw_codex_autonomous_max5",
+        "skillsbench_raw_codex_autonomous_max5",
+    ):
+        blockers.append("baseline_not_raw_codex_autonomous_max5")
+    if not _route_matches(
+        treatment_run,
+        LOOPX_PRODUCT_MODE_ROUTE,
+        "loopx_product_mode",
+        "skillsbench_loopx_product_mode",
+    ):
+        blockers.append("treatment_not_loopx_product_mode")
+    for label, run in (("baseline", baseline_run), ("treatment", treatment_run)):
+        observed_budget = _run_max_rounds_budget(run)
+        if observed_budget is not None and observed_budget != max_rounds:
+            blockers.append(f"{label}_max_rounds_not_{max_rounds}")
+        if not _run_feedback_blinded(run):
+            blockers.append(f"{label}_official_feedback_not_blinded")
+        if _run_reward_feedback_forwarded(run) is not False:
+            blockers.append(f"{label}_reward_feedback_forwarding_not_disabled")
+        if not _run_has_headline_metrics(run):
+            blockers.append(f"{label}_compact_metrics_missing")
+    if treatment_run.get("loopx_inside_case") is not True:
+        blockers.append("treatment_loopx_inside_case_not_confirmed")
+    if not _loopx_product_lifecycle_observed(treatment_run):
+        blockers.append("treatment_loopx_lifecycle_not_observed")
+
+    allowed = not blockers
+    return {
+        "schema_version": BENCHMARK_PRODUCT_MODE_COMPARISON_SCHEMA_VERSION,
+        "comparison_id": contract["comparison_id"],
+        "main_table_claim_allowed": allowed,
+        "product_mode_pair_complete": allowed,
+        "claim_blocker": "none" if allowed else ",".join(blockers),
+        "benchmark_id": baseline_benchmark,
+        "case_id": baseline_case or treatment_case,
+        "baseline_route_valid": "baseline_not_raw_codex_autonomous_max5"
+        not in blockers,
+        "treatment_route_valid": "treatment_not_loopx_product_mode" not in blockers,
+        "treatment_loopx_lifecycle_observed": _loopx_product_lifecycle_observed(
+            treatment_run
+        ),
+        "official_feedback_blinded": (
+            _run_feedback_blinded(baseline_run)
+            and _run_feedback_blinded(treatment_run)
+        ),
+        "headline_metrics": contract["policy_gate"]["headline_metrics"],
+        "contract": contract,
+    }
 
 
 def build_benchmark_loop_controller_trace(
