@@ -76,6 +76,10 @@ runtime contract, benchmark route, or launch draft.
   maintainer-first product design for signal inbox, selected anchors, agent
   lanes, review feed, and performance review so long-running Loop Agents can be
   evaluated by value, quality, cost, and user attention.
+- [Complex request planning intake](complex-request-planning-intake.md):
+  bounded intake pattern for turning a large mixed strategy request into a
+  small typed todo batch with claim decisions, safe summaries, and a visible
+  next proof slice.
 - [Project-level reward model](project-level-reward-model.md): conservative
   value model for Loop Agents that separates quantity, quality, token cost, and
   user attention cost without turning one benchmark score into a universal
