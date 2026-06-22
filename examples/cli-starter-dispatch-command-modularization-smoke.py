@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "loopx" / "cli.py"
 STARTER_MODULE = ROOT / "loopx" / "cli_commands" / "starter.py"
+VISIBLE_DRIVER_MODULE = ROOT / "loopx" / "cli_commands" / "starter_visible_driver.py"
 INIT = ROOT / "loopx" / "cli_commands" / "__init__.py"
 
 
@@ -47,6 +48,7 @@ def require_json_success(result: subprocess.CompletedProcess[str]) -> dict[str, 
 def assert_source_shape() -> None:
     cli_source = CLI.read_text(encoding="utf-8")
     starter_source = STARTER_MODULE.read_text(encoding="utf-8")
+    visible_driver_source = VISIBLE_DRIVER_MODULE.read_text(encoding="utf-8")
     init_source = INIT.read_text(encoding="utf-8")
 
     starter_commands = [
@@ -86,7 +88,18 @@ def assert_source_shape() -> None:
     require("register_starter_commands(sub)" in cli_source, "cli.py did not register starter commands")
     require("handle_starter_command(args, print_payload)" in cli_source, "cli.py did not call starter dispatcher")
     require("def handle_starter_command(" in starter_source, "starter module omitted dispatcher")
-    require('"codex-cli-visible-driver-run": handle_codex_cli_visible_driver_run_command' in starter_source, "starter dispatcher omitted visible driver run")
+    require(
+        "register_starter_visible_driver_commands(subparsers)" in starter_source,
+        "starter module omitted visible-driver registration delegation",
+    )
+    require(
+        "handle_starter_visible_driver_command(args, print_payload)" in starter_source,
+        "starter module omitted visible-driver dispatch delegation",
+    )
+    require(
+        '"codex-cli-visible-driver-run": handle_codex_cli_visible_driver_run_command' in visible_driver_source,
+        "visible-driver module omitted visible driver run dispatch",
+    )
     require('"demo": handle_demo_command' in starter_source, "starter dispatcher omitted demo")
     require("handle_starter_command" in init_source, "__init__ omitted starter dispatcher export")
 

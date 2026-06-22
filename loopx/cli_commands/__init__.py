@@ -50,18 +50,10 @@ from .registry_admin import (
     register_registry_admin_commands,
 )
 from .starter import (
-    handle_codex_cli_bounded_visible_pilot_adapter_command,
-    handle_codex_cli_visible_first_response_capture_plan_command,
-    handle_codex_cli_local_driver_plan_command,
     handle_codex_cli_local_scheduler_exec_command,
     handle_codex_cli_local_scheduler_tick_command,
-    handle_codex_cli_one_message_loop_pilot_command,
     handle_codex_cli_runtime_idle_detector_command,
     handle_codex_cli_session_probe_command,
-    handle_codex_cli_visible_attach_acceptance_command,
-    handle_codex_cli_visible_local_driver_pilot_command,
-    handle_codex_cli_visible_driver_run_command,
-    handle_codex_cli_visible_driver_plan_command,
     handle_codex_cli_visible_session_proof_command,
     handle_demo_command,
     handle_starter_command,
@@ -74,6 +66,18 @@ from .starter_bootstrap import (
     handle_new_project_prompt_command,
     handle_starter_bootstrap_command,
     register_starter_bootstrap_commands,
+)
+from .starter_visible_driver import (
+    handle_codex_cli_bounded_visible_pilot_adapter_command,
+    handle_codex_cli_visible_first_response_capture_plan_command,
+    handle_codex_cli_local_driver_plan_command,
+    handle_codex_cli_one_message_loop_pilot_command,
+    handle_codex_cli_visible_attach_acceptance_command,
+    handle_codex_cli_visible_local_driver_pilot_command,
+    handle_codex_cli_visible_driver_plan_command,
+    handle_codex_cli_visible_driver_run_command,
+    handle_starter_visible_driver_command,
+    register_starter_visible_driver_commands,
 )
 from .status import (
     handle_check_command,
@@ -136,6 +140,7 @@ __all__ = [
     "handle_status_command",
     "handle_starter_command",
     "handle_starter_bootstrap_command",
+    "handle_starter_visible_driver_command",
     "handle_support_control_command",
     "handle_terminal_bench_adapter_command",
     "handle_terminal_bench_environment_result_command",
@@ -157,6 +162,7 @@ __all__ = [
     "register_registry_admin_commands",
     "register_starter_commands",
     "register_starter_bootstrap_commands",
+    "register_starter_visible_driver_commands",
     "register_status_commands",
     "register_support_control_commands",
     "register_terminal_bench_adapter_commands",
