@@ -155,7 +155,16 @@ const goalSpecs = [
     agentTodos: { open: 3, done: 1, total: 4, next: "拆分 dependency blocker 和 current-goal blocker。" },
     agentTodoItems: [
       { done: false, text: "拆分依赖阻塞和当前目标阻塞，避免 meta 可执行回合空转。" },
-      { done: false, text: "增加自动 backlog 候选面，让 P1/P2 可持续推进。" },
+      {
+        done: false,
+        text: "增加自动 backlog 候选面，让 P1/P2 可持续推进。",
+        todo_id: "todo_dashboard_search_meta_backlog",
+        priority: "P1",
+        status: "open",
+        task_class: "advancement_task",
+        action_kind: "dashboard_todo_search_fixture",
+        claimed_by: "codex-side-bypass",
+      },
       { done: false, text: "统一多项目看板的 serve-status --global-registry 命令说明。" },
       { done: true, text: "已硬化 heartbeat prompt，依赖项目 todo 不再吃掉当前 goal turn。" },
     ],
@@ -215,6 +224,12 @@ function todoGroupFor(spec, role) {
       index: index + 1,
       done: item.done,
       text: item.text,
+      todo_id: item.todo_id,
+      priority: item.priority,
+      status: item.status,
+      task_class: item.task_class,
+      action_kind: item.action_kind,
+      claimed_by: item.claimed_by,
       review_materials: [],
     })),
   };
@@ -370,6 +385,34 @@ const statusFixture = {
       progress_signal_run_count_7d: 1,
       project_share_24h: 0.25,
     })),
+  },
+  todo_index: {
+    schema_version: "todo_index_v0",
+    source: "attention_queue_and_rollout_event_log",
+    total_count: 1,
+    current_projected_count: 0,
+    rollout_event_count: 2,
+    item_limit: 240,
+    items: [
+      {
+        schema_version: "todo_index_item_v0",
+        goal_id: "loopx-meta",
+        index: 0,
+        done: false,
+        text: "todo update recorded for todo_f2760d7e328f",
+        title: "todo update recorded for todo_f2760d7e328f",
+        todo_id: "todo_f2760d7e328f",
+        role: "agent",
+        status: "open",
+        source: "rollout_event_log",
+        event_count: 2,
+        event_kinds: ["todo_add", "todo_update"],
+        latest_event_kind: "todo_update",
+        latest_event_at: "2026-06-22T12:28:47Z",
+        latest_event_status: "open",
+        agent_id: "codex-main-control",
+      },
+    ],
   },
   decision_freshness_summary: {
     available: true,
@@ -661,6 +704,39 @@ async function main() {
     }
 
     await page.goto(`${baseUrl}/?view=ops&goalId=loopx-meta&statusUrl=/${fixtureName}`, { waitUntil: "networkidle" });
+    await page.waitForSelector('[data-testid="project-todo-explorer"]', { timeout: 10_000 });
+    const todoExplorer = page.locator('[data-testid="project-todo-explorer"]');
+    const initialTodoExplorerText = await todoExplorer.innerText();
+    const requiredTodoExplorerText = [
+      "Project Todo Explorer",
+      "todo_dashboard_search_meta_backlog",
+      "dashboard_todo_search_fixture",
+      "claimed_by=codex-side-bypass",
+    ];
+    const missingTodoExplorerText = requiredTodoExplorerText.filter((text) => !initialTodoExplorerText.includes(text));
+    if (missingTodoExplorerText.length) {
+      throw new Error(`Missing project todo explorer text: ${missingTodoExplorerText.join(", ")}`);
+    }
+    await page.locator('[data-testid="project-todo-search-input"]').fill("todo_dashboard_search_meta_backlog");
+    const filteredTodoExplorerText = await todoExplorer.innerText();
+    if (!filteredTodoExplorerText.includes("1/")) {
+      throw new Error(`Project todo explorer did not narrow search results: ${filteredTodoExplorerText}`);
+    }
+    if (!filteredTodoExplorerText.includes("增加自动 backlog 候选面")) {
+      throw new Error("Project todo explorer search lost the matching todo body.");
+    }
+    await page.locator('[data-testid="project-todo-search-input"]').fill("todo_f2760d7e328f");
+    const historicalTodoExplorerText = await todoExplorer.innerText();
+    const requiredHistoricalTodoText = [
+      "todo_f2760d7e328f",
+      "source=rollout_event_log",
+      "event=todo_update",
+      "todo update recorded for todo_f2760d7e328f",
+    ];
+    const missingHistoricalTodoText = requiredHistoricalTodoText.filter((text) => !historicalTodoExplorerText.includes(text));
+    if (missingHistoricalTodoText.length) {
+      throw new Error(`Project todo explorer did not expose historical todo index text: ${missingHistoricalTodoText.join(", ")}`);
+    }
     await page.waitForSelector('[data-testid="control-plane-settings-panel"]', { timeout: 10_000 });
     const settingsText = await page.locator('[data-testid="control-plane-settings-panel"]').innerText();
     const requiredSettings = [

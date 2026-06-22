@@ -61,8 +61,23 @@ export const todoItemSchema = z.object({
   index: z.number(),
   done: z.boolean(),
   text: z.string(),
+  schema_version: z.string().optional().nullable(),
+  todo_id: z.string().optional().nullable(),
+  role: z.string().optional().nullable(),
+  status: z.string().optional().nullable(),
+  priority: z.string().optional().nullable(),
+  title: z.string().optional().nullable(),
+  archive_state: z.string().optional().nullable(),
+  source_section: z.string().optional().nullable(),
+  task_class: z.string().optional().nullable(),
+  action_kind: z.string().optional().nullable(),
+  claimed_by: z.string().optional().nullable(),
+  required_capabilities: z.array(z.string()).optional(),
+  note: z.string().optional().nullable(),
+  evidence: z.string().optional().nullable(),
+  updated_at: z.string().optional().nullable(),
   review_materials: z.array(reviewMaterialSchema).optional().default([]),
-});
+}).passthrough();
 
 export const todoGroupSchema = z.object({
   source_section: z.string().optional().nullable(),
@@ -70,6 +85,27 @@ export const todoGroupSchema = z.object({
   open_count: z.number().optional().default(0),
   done_count: z.number().optional().default(0),
   items: z.array(todoItemSchema).optional().default([]),
+});
+
+export const todoIndexItemSchema = todoItemSchema.extend({
+  goal_id: z.string(),
+  source: z.string().optional().nullable(),
+  event_count: z.number().optional().default(0),
+  event_kinds: z.array(z.string()).optional().default([]),
+  latest_event_kind: z.string().optional().nullable(),
+  latest_event_at: z.string().optional().nullable(),
+  latest_event_status: z.string().optional().nullable(),
+  agent_id: z.string().optional().nullable(),
+}).passthrough();
+
+export const todoIndexSchema = z.object({
+  schema_version: z.string().optional().nullable(),
+  source: z.string().optional().nullable(),
+  total_count: z.number().optional().default(0),
+  current_projected_count: z.number().optional().default(0),
+  rollout_event_count: z.number().optional().default(0),
+  item_limit: z.number().optional().nullable(),
+  items: z.array(todoIndexItemSchema).optional().default([]),
 });
 
 export const projectAssetTodoSummarySchema = z.object({
@@ -638,6 +674,7 @@ export const statusPayloadSchema = z.object({
   promotion_gate: promotionGateSchema.default(null),
   decision_freshness_summary: decisionFreshnessSummarySchema.default(null),
   usage_summary: usageSummarySchema.default(null),
+  todo_index: todoIndexSchema.optional().nullable().default(null),
 });
 
 export const rewardDryRunResponseSchema = z.object({
@@ -682,6 +719,8 @@ export type ProjectAssetLatestValidation = z.infer<typeof projectAssetLatestVali
 export type ProjectAssetHandoffReadiness = z.infer<typeof projectAssetHandoffReadinessSchema>;
 export type TodoGroup = z.infer<typeof todoGroupSchema>;
 export type TodoItem = z.infer<typeof todoItemSchema>;
+export type TodoIndexItem = z.infer<typeof todoIndexItemSchema>;
+export type TodoIndexSummary = z.infer<typeof todoIndexSchema>;
 export type ReviewMaterial = z.infer<typeof reviewMaterialSchema>;
 export type ProjectMap = z.infer<typeof projectMapSchema>;
 export type GlobalRegistryHealth = z.infer<typeof globalRegistryHealthSchema>;

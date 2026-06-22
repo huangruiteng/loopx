@@ -35,6 +35,8 @@ for (const goalId of shareGoalIds) {
 }
 
 includes(routerSource, 'view: z.enum(["ops", "share"]).optional()', "optional view search param");
+includes(routerSource, 'todoQuery: z.string().optional().default("")', "todo query search param");
+includes(routerSource, 'todoRole: z.enum(["all", "user", "agent"]).optional().default("all")', "todo role search param");
 excludes(routerSource, 'view: z.enum(["ops", "share"]).optional().default("share")', "share default route mode");
 
 includes(dashboardSource, 'const defaultGlobalStatusUrl = "http://127.0.0.1:8766/status.json";', "global default status URL");
@@ -61,7 +63,17 @@ includes(dashboardSource, '阻塞说明', "Chinese blocker label");
 includes(dashboardSource, '配额守卫', "Chinese quota guard label");
 includes(dashboardSource, '状态写回', "Chinese state writeback label");
 includes(dashboardSource, '<h1 className="text-2xl font-semibold">Goal Operations</h1>', "ops workbench fallback");
+includes(dashboardSource, 'data-testid="project-todo-explorer"', "project todo explorer test id");
+includes(dashboardSource, 'data-testid="project-todo-search-input"', "project todo search input test id");
+includes(dashboardSource, 'data-testid="project-todo-id"', "project todo id rendering");
+includes(dashboardSource, "Project Todo Explorer", "project todo explorer title");
+includes(dashboardSource, "claimed_by=", "project todo claimed owner metadata");
+includes(dashboardSource, "action=", "project todo action metadata");
+includes(dashboardSource, "source={item.source}", "project todo source metadata");
+includes(dashboardSource, "latest_event_kind", "project todo historical event metadata");
+includes(dashboardSource, "todoIndex={payload.todo_index}", "project todo index wiring");
 excludes(dashboardSource, "raw internal slot constraints", "raw internal constraint copy");
+includes(contractSource, "todo_id", "status contract todo id metadata");
 includes(packageSource, '"smoke:home-route"', "home route smoke script");
 includes(packageSource, '"smoke:home-browser"', "home browser smoke script");
 includes(packageSource, '"smoke:demo-readiness"', "demo readiness smoke script");

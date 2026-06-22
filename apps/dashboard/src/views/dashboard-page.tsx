@@ -18,6 +18,7 @@ import {
   Radar,
   RefreshCw,
   RotateCcw,
+  Search,
   ShieldCheck,
   Sun,
   Terminal,
@@ -53,7 +54,9 @@ import {
   ProjectAssetLatestValidation,
   ProjectAssetHandoffReadiness,
   ProjectAssetTodoSummary,
+  TodoItem,
   TodoGroup,
+  TodoIndexSummary,
   EventLedgerSummary,
   PromotionReadinessSummary,
   PromotionGate,
@@ -275,6 +278,22 @@ type TodoFocusItem = {
   waitingOn: string;
   phase: string;
   priority: number;
+};
+
+type TodoExplorerRole = "user" | "agent";
+
+type TodoExplorerItem = {
+  goalId: string;
+  role: TodoExplorerRole;
+  todo: TodoItem;
+  sourceSection: string;
+  source: string;
+  openCount: number;
+  totalCount: number;
+  severity: string;
+  waitingOn: string;
+  phase: string;
+  sourceOrder: number;
 };
 
 function laneFor(item: QueueItem) {
@@ -1116,6 +1135,292 @@ function buildTodoFocusItems(rows: GoalDirectoryRow[]): TodoFocusItem[] {
   }
 
   return items.sort((a, b) => a.priority - b.priority || a.goalId.localeCompare(b.goalId));
+}
+
+function todoDisplayTitle(todo: TodoItem) {
+  return todo.title?.trim() || todo.text;
+}
+
+function todoDisplayStatus(todo: TodoItem) {
+  return todo.status?.trim() || (todo.done ? "done" : "open");
+}
+
+function todoExplorerStatusVariant(item: TodoExplorerItem): BadgeVariant {
+  const todo = item.todo;
+  const status = todoDisplayStatus(todo);
+  if (status === "done") {
+    return "success";
+  }
+  if (status === "blocked") {
+    return "danger";
+  }
+  if (status === "deferred") {
+    return "neutral";
+  }
+  return item.role === "user" ? "warning" : "info";
+}
+
+function todoRoleLabel(role: TodoExplorerRole) {
+  return role === "user" ? "User" : "Agent";
+}
+
+function collectTodoExplorerItems(rows: GoalDirectoryRow[], todoIndex?: TodoIndexSummary | null): TodoExplorerItem[] {
+  const items: TodoExplorerItem[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const row of rows) {
+    const projectAsset = row.queueItem?.project_asset;
+    const groups: Array<[TodoExplorerRole, TodoGroup | null]> = [
+      ["user", todosFromProjectAssetSummary(projectAsset?.user_todos, row.queueItem?.user_todos, "project_asset.user_todos")],
+      ["agent", todosFromProjectAssetSummary(projectAsset?.agent_todos, row.queueItem?.agent_todos, "project_asset.agent_todos")],
+    ];
+    for (const [role, group] of groups) {
+      for (const [sourceOrder, todo] of (group?.items ?? []).entries()) {
+        items.push({
+          goalId: row.goal.id,
+          role,
+          todo,
+          sourceSection: todo.source_section ?? group?.source_section ?? `${role}_todos`,
+          source: "attention_queue",
+          openCount: group?.open_count ?? 0,
+          totalCount: group?.total_count ?? 0,
+          severity: row.severity,
+          waitingOn: row.waitingOn,
+          phase: row.lifecyclePhase,
+          sourceOrder,
+        });
+        seenKeys.add(`${row.goal.id}:${role}:${todo.todo_id ?? todo.index}:${todo.text}`);
+      }
+    }
+  }
+
+  const rowByGoal = new Map(rows.map((row) => [row.goal.id, row]));
+  for (const [sourceOrder, todo] of (todoIndex?.items ?? []).entries()) {
+    const goalId = todo.goal_id;
+    const rawRole = todo.role === "user" || todo.role === "agent" ? todo.role : "agent";
+    const key = `${goalId}:${rawRole}:${todo.todo_id ?? todo.index}:${todo.text}`;
+    if (seenKeys.has(key)) {
+      continue;
+    }
+    const row = rowByGoal.get(goalId);
+    items.push({
+      goalId,
+      role: rawRole,
+      todo,
+      sourceSection: todo.source_section ?? todo.source ?? "todo_index",
+      source: todo.source ?? "todo_index",
+      openCount: 0,
+      totalCount: 0,
+      severity: row?.severity ?? "watch",
+      waitingOn: row?.waitingOn ?? "codex",
+      phase: row?.lifecyclePhase ?? "indexed",
+      sourceOrder: sourceOrder + 10_000,
+    });
+    seenKeys.add(key);
+  }
+
+  return items.sort((left, right) => {
+    const leftDone = left.todo.done ? 1 : 0;
+    const rightDone = right.todo.done ? 1 : 0;
+    return leftDone - rightDone
+      || left.goalId.localeCompare(right.goalId)
+      || left.role.localeCompare(right.role)
+      || left.todo.index - right.todo.index
+      || left.sourceOrder - right.sourceOrder;
+  });
+}
+
+function todoExplorerHaystack(item: TodoExplorerItem) {
+  const todo = item.todo;
+  return [
+    item.goalId,
+    item.role,
+    item.sourceSection,
+    item.severity,
+    item.waitingOn,
+    item.phase,
+    todo.todo_id,
+    todo.priority,
+    todo.status,
+    todo.title,
+    todo.text,
+    todo.task_class,
+    todo.action_kind,
+    todo.claimed_by,
+    todo.archive_state,
+    todo.note,
+    todo.evidence,
+    item.source,
+    (todo as { latest_event_kind?: string | null }).latest_event_kind,
+    (todo as { latest_event_at?: string | null }).latest_event_at,
+    (todo as { agent_id?: string | null }).agent_id,
+    String(todo.index),
+    ...(todo.required_capabilities ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function ProjectTodoExplorer({
+  onQueryChange,
+  onRoleChange,
+  onSelectGoal,
+  onStatusChange,
+  query,
+  role,
+  rows,
+  selectedGoalId,
+  status,
+  todoIndex,
+}: {
+  onQueryChange: (query: string) => void;
+  onRoleChange: (role: "all" | TodoExplorerRole) => void;
+  onSelectGoal: (goalId: string) => void;
+  onStatusChange: (status: "all" | "open" | "done" | "blocked" | "deferred") => void;
+  query: string;
+  role: "all" | TodoExplorerRole;
+  rows: GoalDirectoryRow[];
+  selectedGoalId: string;
+  status: "all" | "open" | "done" | "blocked" | "deferred";
+  todoIndex?: TodoIndexSummary | null;
+}) {
+  const allItems = useMemo(() => collectTodoExplorerItems(rows, todoIndex), [rows, todoIndex]);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredItems = allItems.filter((item) => {
+    const roleMatches = role === "all" || item.role === role;
+    const itemStatus = todoDisplayStatus(item.todo);
+    const statusMatches = status === "all" || itemStatus === status;
+    const queryMatches = !normalizedQuery || todoExplorerHaystack(item).includes(normalizedQuery);
+    return roleMatches && statusMatches && queryMatches;
+  });
+  const openCount = allItems.filter((item) => !item.todo.done).length;
+  const agentCount = allItems.filter((item) => item.role === "agent").length;
+  const visibleItems = filteredItems.slice(0, 80);
+
+  return (
+    <Card data-testid="project-todo-explorer">
+      <CardHeader className="flex-wrap">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Search className="h-4 w-4" />
+            Project Todo Explorer
+          </CardTitle>
+          <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
+            Search current projected todos by id, text, owner, action kind, or claimed agent.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="info">{filteredItems.length}/{allItems.length} shown</Badge>
+          <Badge variant={openCount > 0 ? "warning" : "success"}>{openCount} open</Badge>
+          <Badge variant="neutral">{agentCount} agent</Badge>
+          {todoIndex ? <Badge variant="neutral">{todoIndex.rollout_event_count} events</Badge> : null}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_148px_148px]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400 dark:text-zinc-500" />
+            <input
+              aria-label="Search project todos"
+              className={cn(inputClassName, "pl-9")}
+              data-testid="project-todo-search-input"
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="todo_f2760d7e328f, benchmark, claimed_by, action_kind..."
+              value={query}
+            />
+          </div>
+          <Select
+            aria-label="Todo role"
+            onChange={(event) => onRoleChange(event.target.value as "all" | TodoExplorerRole)}
+            value={role}
+          >
+            <option value="all">All roles</option>
+            <option value="user">User todos</option>
+            <option value="agent">Agent todos</option>
+          </Select>
+          <Select
+            aria-label="Todo status"
+            onChange={(event) => onStatusChange(event.target.value as "all" | "open" | "done" | "blocked" | "deferred")}
+            value={status}
+          >
+            <option value="all">All status</option>
+            <option value="open">Open</option>
+            <option value="blocked">Blocked</option>
+            <option value="deferred">Deferred</option>
+            <option value="done">Done</option>
+          </Select>
+        </div>
+
+        {visibleItems.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-zinc-700 dark:text-zinc-400">
+            No projected todo matches {query ? <span className="font-mono">{query}</span> : "the current filters"}.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 dark:divide-zinc-800 dark:border-zinc-800">
+            {visibleItems.map((item) => {
+              const todo = item.todo;
+              const statusLabel = todoDisplayStatus(todo);
+              const todoEventFields = todo as unknown as { latest_event_kind?: unknown };
+              const latestEventKind = typeof todoEventFields.latest_event_kind === "string"
+                ? todoEventFields.latest_event_kind
+                : "";
+              return (
+                <button
+                  className={cn(
+                    "w-full bg-white px-4 py-3 text-left transition hover:bg-slate-50 dark:bg-zinc-950 dark:hover:bg-zinc-900",
+                    item.goalId === selectedGoalId && "bg-slate-50 dark:bg-zinc-900",
+                  )}
+                  data-testid="project-todo-result"
+                  key={`${item.goalId}-${item.role}-${todo.todo_id ?? todo.index}-${item.sourceOrder}`}
+                  onClick={() => onSelectGoal(item.goalId)}
+                  type="button"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={item.role === "user" ? "warning" : "info"}>{todoRoleLabel(item.role)}</Badge>
+                    <Badge variant={todoExplorerStatusVariant(item)}>{statusLabel}</Badge>
+                    {todo.priority ? <Badge variant={todo.priority === "P0" ? "danger" : "neutral"}>{todo.priority}</Badge> : null}
+                    <span className="break-all text-xs font-medium text-slate-500 dark:text-zinc-400">{item.goalId}</span>
+                    {todo.todo_id ? (
+                      <span
+                        className="break-all rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700 dark:bg-zinc-900 dark:text-zinc-300"
+                        data-testid="project-todo-id"
+                      >
+                        {todo.todo_id}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400 dark:text-zinc-500">#{todo.index}</span>
+                    )}
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-800 dark:text-zinc-200">
+                    {todoDisplayTitle(todo)}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
+                    <span>{item.sourceSection}</span>
+                    {item.source ? <span>source={item.source}</span> : null}
+                    {todo.action_kind ? <span>action={todo.action_kind}</span> : null}
+                    {todo.task_class ? <span>class={todo.task_class}</span> : null}
+                    {todo.claimed_by ? <span>claimed_by={todo.claimed_by}</span> : null}
+                    {latestEventKind ? <span>event={latestEventKind}</span> : null}
+                    {todo.updated_at ? <span>updated={todo.updated_at}</span> : null}
+                  </div>
+                  {todo.note ? (
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-zinc-400">{todo.note}</p>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {filteredItems.length > visibleItems.length ? (
+          <p className="text-xs text-slate-500 dark:text-zinc-400">
+            Showing first {visibleItems.length} matches. Narrow the search to inspect the rest.
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
 }
 
 function TodoFocusColumn({
@@ -5667,6 +5972,42 @@ export function DashboardPage() {
 
               <section>
                 <TodoFocusPanel rows={goalRows} onSelectGoal={selectGoal} selectedGoalId={selectedReviewGoalId} />
+              </section>
+
+              <section>
+                <ProjectTodoExplorer
+                  onQueryChange={(todoQuery) =>
+                    navigate({
+                      search: (current) => ({
+                        ...current,
+                        todoQuery,
+                      }),
+                    })
+                  }
+                  onRoleChange={(todoRole) =>
+                    navigate({
+                      search: (current) => ({
+                        ...current,
+                        todoRole,
+                      }),
+                    })
+                  }
+                  onSelectGoal={selectGoal}
+                  onStatusChange={(todoStatus) =>
+                    navigate({
+                      search: (current) => ({
+                        ...current,
+                        todoStatus,
+                      }),
+                    })
+                  }
+                  query={search.todoQuery}
+                  role={search.todoRole}
+                  rows={goalRows}
+                  selectedGoalId={selectedGoalId}
+                  status={search.todoStatus}
+                  todoIndex={payload.todo_index}
+                />
               </section>
 
               <section>
