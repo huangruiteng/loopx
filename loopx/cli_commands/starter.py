@@ -16,43 +16,30 @@ from ..demo import (
 from ..codex_cli_probe import (
     DEFAULT_CODEX_BIN,
     DEFAULT_EXECUTOR_TIMEOUT_SECONDS,
-    DEFAULT_MIN_HUMAN_INPUT_IDLE_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
-    build_codex_cli_bounded_visible_pilot_adapter,
-    build_codex_cli_one_message_loop_pilot,
-    build_codex_cli_visible_first_response_capture_plan,
-    build_codex_cli_visible_local_driver_pilot,
-    build_codex_cli_visible_attach_acceptance,
     build_codex_cli_local_scheduler_executor,
     build_codex_cli_local_scheduler_tick,
-    build_codex_cli_local_driver_plan,
-    build_codex_cli_visible_driver_run_packet,
-    build_codex_cli_visible_driver_plan,
-    build_codex_cli_visible_session_proof,
-    build_codex_cli_runtime_idle_observation_payload,
     build_codex_cli_runtime_idle_detector,
-    load_codex_cli_first_response_fixture,
+    build_codex_cli_visible_session_proof,
     load_codex_cli_visible_session_proof_fixture,
-    load_codex_cli_runtime_idle_fixture,
-    render_codex_cli_bounded_visible_pilot_adapter_markdown,
-    render_codex_cli_one_message_loop_pilot_markdown,
-    render_codex_cli_visible_first_response_capture_plan_markdown,
-    render_codex_cli_visible_local_driver_pilot_markdown,
-    render_codex_cli_visible_attach_acceptance_markdown,
     render_codex_cli_local_scheduler_executor_markdown,
     render_codex_cli_local_scheduler_tick_markdown,
-    render_codex_cli_local_driver_plan_markdown,
     render_codex_cli_session_probe_markdown,
-    render_codex_cli_visible_driver_run_packet_markdown,
-    render_codex_cli_visible_driver_plan_markdown,
-    render_codex_cli_visible_session_proof_markdown,
     render_codex_cli_runtime_idle_detector_markdown,
-    probe_human_input_idle_seconds,
+    render_codex_cli_visible_session_proof_markdown,
     run_codex_cli_session_probe,
 )
 from .starter_bootstrap import (
     handle_starter_bootstrap_command,
     register_starter_bootstrap_commands,
+)
+from .starter_runtime_idle import (
+    _add_runtime_idle_observation_arguments,
+    _load_codex_cli_runtime_idle_payload,
+)
+from .starter_visible_driver import (
+    handle_starter_visible_driver_command,
+    register_starter_visible_driver_commands,
 )
 
 
@@ -62,283 +49,9 @@ PrintPayload = Callable[
 ]
 
 
-def _add_runtime_idle_observation_arguments(
-    parser: argparse.ArgumentParser,
-    *,
-    include_idle_fixture: bool = True,
-) -> None:
-    if include_idle_fixture:
-        parser.add_argument(
-            "--idle-fixture",
-            help="Optional public-safe runtime idle fixture. Without it, later visible turn candidates remain blocked.",
-        )
-    parser.add_argument(
-        "--observe-local-runtime",
-        action="store_true",
-        help="Build the idle packet from public-safe local observation fields instead of a JSON fixture.",
-    )
-    parser.add_argument(
-        "--observed-surface",
-        default="codex_cli_tui_visible_window",
-        choices=[
-            "codex_cli_tui_visible_window",
-            "remote_control_visible_prompt",
-            "same_tui_visible_attach",
-            "visible_resume_prompt",
-        ],
-        help="Visible Codex CLI surface observed by the local runtime check.",
-    )
-    parser.add_argument(
-        "--turn-state",
-        choices=["idle", "running", "unknown"],
-        default="unknown",
-        help="Public-safe visible turn state. Unknown or running fails closed.",
-    )
-    parser.add_argument(
-        "--human-input-idle-seconds",
-        type=float,
-        help="Public-safe observed seconds since last human input. Useful for tests or external sensors.",
-    )
-    parser.add_argument(
-        "--probe-human-input-idle",
-        action="store_true",
-        help="Probe the local platform for coarse human-input idle seconds when supported.",
-    )
-    parser.add_argument(
-        "--min-human-input-idle-seconds",
-        type=float,
-        default=DEFAULT_MIN_HUMAN_INPUT_IDLE_SECONDS,
-        help="Minimum idle seconds required to consider human typing inactive.",
-    )
-    parser.add_argument(
-        "--checked-before-prompt",
-        action="store_true",
-        help="Confirm this idle check ran before any later visible prompt.",
-    )
-    parser.add_argument(
-        "--visible-to-user",
-        action="store_true",
-        help="Confirm the target turn remains visible to the user.",
-    )
-    parser.add_argument(
-        "--user-can-interrupt",
-        action="store_true",
-        help="Confirm the user can interrupt the target turn.",
-    )
-    parser.add_argument(
-        "--manual-takeover-available",
-        action="store_true",
-        help="Confirm manual takeover remains available.",
-    )
-
-
-def _load_codex_cli_runtime_idle_payload(args: argparse.Namespace) -> dict[str, object] | None:
-    if args.idle_fixture and args.observe_local_runtime:
-        raise ValueError("Use either --idle-fixture or --observe-local-runtime, not both.")
-    if args.idle_fixture:
-        return load_codex_cli_runtime_idle_fixture(Path(args.idle_fixture).expanduser())
-    if not args.observe_local_runtime:
-        return None
-    probe_result = None
-    human_input_idle_seconds = args.human_input_idle_seconds
-    if args.probe_human_input_idle:
-        probe_result = probe_human_input_idle_seconds()
-        if probe_result.get("ok") is True:
-            human_input_idle_seconds = float(probe_result["human_input_idle_seconds"])
-    return build_codex_cli_runtime_idle_observation_payload(
-        observed_surface=args.observed_surface,
-        turn_state=args.turn_state,
-        human_input_idle_seconds=human_input_idle_seconds,
-        min_human_input_idle_seconds=args.min_human_input_idle_seconds,
-        checked_before_prompt=bool(args.checked_before_prompt),
-        visible_to_user=bool(args.visible_to_user),
-        user_can_interrupt=bool(args.user_can_interrupt),
-        manual_takeover_available=bool(args.manual_takeover_available),
-        probe_result=probe_result,
-    )
-
-
 def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     register_starter_bootstrap_commands(subparsers)
-
-    codex_cli_one_message_loop_parser = subparsers.add_parser(
-        "codex-cli-one-message-loop-pilot",
-        help="Compose the first Codex CLI TUI paste message with the safe scheduler/executor bridge.",
-    )
-    codex_cli_one_message_loop_parser.add_argument("--project", default=".", help="Project directory to start from.")
-    codex_cli_one_message_loop_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
-    codex_cli_one_message_loop_parser.add_argument(
-        "--agent-id",
-        help="Registered LoopX agent id to include in quota/claim instructions.",
-    )
-    codex_cli_one_message_loop_parser.add_argument(
-        "--cli-bin",
-        default="loopx",
-        help="LoopX CLI binary name embedded in generated commands.",
-    )
-    codex_cli_one_message_loop_parser.add_argument(
-        "--codex-bin",
-        default=DEFAULT_CODEX_BIN,
-        help="Codex CLI executable to probe and reference in bridge commands.",
-    )
-    codex_cli_one_message_loop_parser.add_argument(
-        "--timeout-seconds",
-        type=float,
-        default=DEFAULT_TIMEOUT_SECONDS,
-        help="Per-command timeout for help-only Codex CLI probes.",
-    )
-    codex_cli_one_message_loop_parser.add_argument(
-        "--fixture",
-        help="Public-safe JSON fixture with command_outputs, used instead of invoking Codex CLI.",
-    )
-    codex_cli_one_message_loop_parser.add_argument(
-        "--proof-fixture",
-        help="Optional public-safe visible-session proof fixture. Without it, same-session automation remains blocked.",
-    )
-    _add_runtime_idle_observation_arguments(codex_cli_one_message_loop_parser)
-    codex_cli_one_message_loop_parser.add_argument(
-        "--allow-headless-fallback",
-        action="store_true",
-        help="Deprecated and ignored; headless codex exec is disabled for this default /goal path.",
-    )
-
-    codex_cli_visible_local_driver_parser = subparsers.add_parser(
-        "codex-cli-visible-local-driver-pilot",
-        help="Compose the one-message TUI start and later scheduler bridge into a visible local driver pilot packet.",
-    )
-    codex_cli_visible_local_driver_parser.add_argument("--project", default=".", help="Project directory to start from.")
-    codex_cli_visible_local_driver_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
-    codex_cli_visible_local_driver_parser.add_argument(
-        "--agent-id",
-        help="Registered LoopX agent id to include in quota/claim instructions.",
-    )
-    codex_cli_visible_local_driver_parser.add_argument(
-        "--cli-bin",
-        default="loopx",
-        help="LoopX CLI binary name embedded in generated commands.",
-    )
-    codex_cli_visible_local_driver_parser.add_argument(
-        "--codex-bin",
-        default=DEFAULT_CODEX_BIN,
-        help="Codex CLI executable to probe and reference in bridge commands.",
-    )
-    codex_cli_visible_local_driver_parser.add_argument(
-        "--timeout-seconds",
-        type=float,
-        default=DEFAULT_TIMEOUT_SECONDS,
-        help="Per-command timeout for help-only Codex CLI probes.",
-    )
-    codex_cli_visible_local_driver_parser.add_argument(
-        "--fixture",
-        help="Public-safe JSON fixture with command_outputs, used instead of invoking Codex CLI.",
-    )
-    codex_cli_visible_local_driver_parser.add_argument(
-        "--proof-fixture",
-        help="Optional public-safe visible-session proof fixture. Without it, later visible turns remain blocked.",
-    )
-    codex_cli_visible_local_driver_parser.add_argument(
-        "--idle-fixture",
-        help="Optional public-safe runtime idle fixture. Without it, later visible turn candidates remain blocked.",
-    )
-    _add_runtime_idle_observation_arguments(
-        codex_cli_visible_local_driver_parser,
-        include_idle_fixture=False,
-    )
-    codex_cli_visible_local_driver_parser.add_argument(
-        "--allow-headless-fallback",
-        action="store_true",
-        help="Deprecated and ignored; headless codex exec is disabled for this default /goal path.",
-    )
-
-    codex_cli_bounded_visible_parser = subparsers.add_parser(
-        "codex-cli-bounded-visible-pilot-adapter",
-        help="Validate public-safe first-response and idle evidence before claiming Codex CLI live TUI bootstrap success.",
-    )
-    codex_cli_bounded_visible_parser.add_argument("--project", default=".", help="Project directory to start from.")
-    codex_cli_bounded_visible_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
-    codex_cli_bounded_visible_parser.add_argument(
-        "--agent-id",
-        help="Registered LoopX agent id to include in adapter commands.",
-    )
-    codex_cli_bounded_visible_parser.add_argument(
-        "--cli-bin",
-        default="loopx",
-        help="LoopX CLI binary name embedded in generated commands.",
-    )
-    codex_cli_bounded_visible_parser.add_argument(
-        "--first-response-fixture",
-        help="Public-safe JSON fixture proving the first visible TUI response shape.",
-    )
-    _add_runtime_idle_observation_arguments(codex_cli_bounded_visible_parser)
-
-    codex_cli_first_response_capture_parser = subparsers.add_parser(
-        "codex-cli-visible-first-response-capture-plan",
-        help="Plan the public-safe manual visible capture of Codex CLI first-response and idle fixtures.",
-    )
-    codex_cli_first_response_capture_parser.add_argument(
-        "--project",
-        default=".",
-        help="Project directory to start from.",
-    )
-    codex_cli_first_response_capture_parser.add_argument(
-        "--goal-id",
-        help="Goal id. Defaults to <project-name>-goal.",
-    )
-    codex_cli_first_response_capture_parser.add_argument(
-        "--agent-id",
-        help="Registered LoopX agent id to include in generated commands.",
-    )
-    codex_cli_first_response_capture_parser.add_argument(
-        "--cli-bin",
-        default="loopx",
-        help="LoopX CLI binary name embedded in generated commands.",
-    )
-    codex_cli_first_response_capture_parser.add_argument(
-        "--first-response-path",
-        default="public-first-response.json",
-        help="Public-safe first-response fixture path used in generated commands.",
-    )
-    codex_cli_first_response_capture_parser.add_argument(
-        "--idle-path",
-        default="public-runtime-idle.json",
-        help="Public-safe runtime idle fixture path used in generated commands.",
-    )
-
-    codex_cli_visible_attach_acceptance_parser = subparsers.add_parser(
-        "codex-cli-visible-attach-acceptance",
-        help="Accept or block same-TUI Codex CLI visible attach from help-only probe, proof, and idle evidence.",
-    )
-    codex_cli_visible_attach_acceptance_parser.add_argument("--project", default=".", help="Project directory to start from.")
-    codex_cli_visible_attach_acceptance_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
-    codex_cli_visible_attach_acceptance_parser.add_argument(
-        "--agent-id",
-        help="Registered LoopX agent id to include in acceptance commands.",
-    )
-    codex_cli_visible_attach_acceptance_parser.add_argument(
-        "--cli-bin",
-        default="loopx",
-        help="LoopX CLI binary name embedded in generated commands.",
-    )
-    codex_cli_visible_attach_acceptance_parser.add_argument(
-        "--codex-bin",
-        default=DEFAULT_CODEX_BIN,
-        help="Codex CLI executable to probe and reference in fallback commands.",
-    )
-    codex_cli_visible_attach_acceptance_parser.add_argument(
-        "--timeout-seconds",
-        type=float,
-        default=DEFAULT_TIMEOUT_SECONDS,
-        help="Per-command timeout for help-only Codex CLI probes.",
-    )
-    codex_cli_visible_attach_acceptance_parser.add_argument(
-        "--fixture",
-        help="Public-safe JSON fixture with command_outputs, used instead of invoking Codex CLI.",
-    )
-    codex_cli_visible_attach_acceptance_parser.add_argument(
-        "--proof-fixture",
-        help="Optional public-safe visible-session proof fixture. Without it, same-TUI attach is not accepted.",
-    )
-    _add_runtime_idle_observation_arguments(codex_cli_visible_attach_acceptance_parser)
+    register_starter_visible_driver_commands(subparsers)
 
     codex_cli_probe_parser = subparsers.add_parser(
         "codex-cli-session-probe",
@@ -358,108 +71,6 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     codex_cli_probe_parser.add_argument(
         "--fixture",
         help="Public-safe JSON fixture with command_outputs, used instead of invoking Codex CLI.",
-    )
-
-    codex_cli_visible_driver_parser = subparsers.add_parser(
-        "codex-cli-visible-driver-plan",
-        help="Plan a public-safe visible Codex CLI driver path from session-probe evidence.",
-    )
-    codex_cli_visible_driver_parser.add_argument("--project", default=".", help="Project directory to start from.")
-    codex_cli_visible_driver_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
-    codex_cli_visible_driver_parser.add_argument(
-        "--agent-id",
-        help="Registered LoopX agent id to include in quota/claim instructions.",
-    )
-    codex_cli_visible_driver_parser.add_argument(
-        "--cli-bin",
-        default="loopx",
-        help="LoopX CLI binary name embedded in generated commands.",
-    )
-    codex_cli_visible_driver_parser.add_argument(
-        "--codex-bin",
-        default=DEFAULT_CODEX_BIN,
-        help="Codex CLI executable to probe and reference in fallback commands.",
-    )
-    codex_cli_visible_driver_parser.add_argument(
-        "--timeout-seconds",
-        type=float,
-        default=DEFAULT_TIMEOUT_SECONDS,
-        help="Per-command timeout for help-only Codex CLI probes.",
-    )
-    codex_cli_visible_driver_parser.add_argument(
-        "--fixture",
-        help="Public-safe JSON fixture with command_outputs, used instead of invoking Codex CLI.",
-    )
-
-    codex_cli_local_driver_parser = subparsers.add_parser(
-        "codex-cli-local-driver-plan",
-        help="Compose a dry-run-first local Codex CLI driver plan from quota, TUI bootstrap, visible-driver, and exec fallback commands.",
-    )
-    codex_cli_local_driver_parser.add_argument("--project", default=".", help="Project directory to start from.")
-    codex_cli_local_driver_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
-    codex_cli_local_driver_parser.add_argument(
-        "--agent-id",
-        help="Registered LoopX agent id to include in quota/claim instructions.",
-    )
-    codex_cli_local_driver_parser.add_argument(
-        "--cli-bin",
-        default="loopx",
-        help="LoopX CLI binary name embedded in generated commands.",
-    )
-    codex_cli_local_driver_parser.add_argument(
-        "--codex-bin",
-        default=DEFAULT_CODEX_BIN,
-        help="Codex CLI executable to probe and reference in fallback commands.",
-    )
-    codex_cli_local_driver_parser.add_argument(
-        "--timeout-seconds",
-        type=float,
-        default=DEFAULT_TIMEOUT_SECONDS,
-        help="Per-command timeout for help-only Codex CLI probes.",
-    )
-    codex_cli_local_driver_parser.add_argument(
-        "--fixture",
-        help="Public-safe JSON fixture with command_outputs, used instead of invoking Codex CLI.",
-    )
-
-    codex_cli_visible_driver_run_parser = subparsers.add_parser(
-        "codex-cli-visible-driver-run",
-        help="Build a no-execution visible Codex CLI driver run packet from quota-safe driver planning inputs.",
-    )
-    codex_cli_visible_driver_run_parser.add_argument("--project", default=".", help="Project directory to start from.")
-    codex_cli_visible_driver_run_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
-    codex_cli_visible_driver_run_parser.add_argument(
-        "--agent-id",
-        help="Registered LoopX agent id to include in quota/claim instructions.",
-    )
-    codex_cli_visible_driver_run_parser.add_argument(
-        "--cli-bin",
-        default="loopx",
-        help="LoopX CLI binary name embedded in generated commands.",
-    )
-    codex_cli_visible_driver_run_parser.add_argument(
-        "--codex-bin",
-        default=DEFAULT_CODEX_BIN,
-        help="Codex CLI executable to probe for visible-session capabilities.",
-    )
-    codex_cli_visible_driver_run_parser.add_argument(
-        "--timeout-seconds",
-        type=float,
-        default=DEFAULT_TIMEOUT_SECONDS,
-        help="Per-command timeout for help-only Codex CLI probes.",
-    )
-    codex_cli_visible_driver_run_parser.add_argument(
-        "--fixture",
-        help="Public-safe JSON fixture with command_outputs, used instead of invoking Codex CLI.",
-    )
-    codex_cli_visible_driver_run_parser.add_argument(
-        "--proof-fixture",
-        help="Optional public-safe visible-session proof fixture. Without it, same-session automation remains blocked.",
-    )
-    codex_cli_visible_driver_run_parser.add_argument(
-        "--allow-headless-fallback",
-        action="store_true",
-        help="Deprecated and ignored; headless codex exec is disabled for this default /goal path.",
     )
 
     codex_cli_local_scheduler_tick_parser = subparsers.add_parser(
@@ -606,68 +217,7 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
         default="loopx",
         help="LoopX CLI binary name embedded in idle detector metadata.",
     )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--idle-fixture",
-        help="Public-safe JSON idle fixture. Mutually exclusive with --observe-local-runtime.",
-    )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--observe-local-runtime",
-        action="store_true",
-        help="Build the idle packet from public-safe local observation fields instead of a JSON fixture.",
-    )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--observed-surface",
-        default="codex_cli_tui_visible_window",
-        choices=[
-            "codex_cli_tui_visible_window",
-            "remote_control_visible_prompt",
-            "same_tui_visible_attach",
-            "visible_resume_prompt",
-        ],
-        help="Visible Codex CLI surface observed by the local runtime check.",
-    )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--turn-state",
-        choices=["idle", "running", "unknown"],
-        default="unknown",
-        help="Public-safe visible turn state. Unknown or running fails closed.",
-    )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--human-input-idle-seconds",
-        type=float,
-        help="Public-safe observed seconds since last human input. Useful for tests or external sensors.",
-    )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--probe-human-input-idle",
-        action="store_true",
-        help="Probe the local platform for coarse human-input idle seconds when supported.",
-    )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--min-human-input-idle-seconds",
-        type=float,
-        default=DEFAULT_MIN_HUMAN_INPUT_IDLE_SECONDS,
-        help="Minimum idle seconds required to consider human typing inactive.",
-    )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--checked-before-prompt",
-        action="store_true",
-        help="Confirm this idle check ran before any later visible prompt.",
-    )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--visible-to-user",
-        action="store_true",
-        help="Confirm the target turn remains visible to the user.",
-    )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--user-can-interrupt",
-        action="store_true",
-        help="Confirm the user can interrupt the target turn.",
-    )
-    codex_cli_runtime_idle_parser.add_argument(
-        "--manual-takeover-available",
-        action="store_true",
-        help="Confirm manual takeover remains available.",
-    )
+    _add_runtime_idle_observation_arguments(codex_cli_runtime_idle_parser)
 
     demo_parser = subparsers.add_parser(
         "demo",
@@ -684,133 +234,6 @@ def register_starter_commands(subparsers: argparse._SubParsersAction) -> None:
     demo_parser.add_argument("--agent-todo", default=DEFAULT_DEMO_AGENT_TODO)
 
 
-def handle_codex_cli_one_message_loop_pilot_command(
-    args: argparse.Namespace,
-    print_payload: PrintPayload,
-) -> int:
-    probe_payload = run_codex_cli_session_probe(
-        codex_bin=args.codex_bin,
-        timeout_seconds=args.timeout_seconds,
-        fixture=Path(args.fixture).expanduser() if args.fixture else None,
-    )
-    proof_payload = (
-        load_codex_cli_visible_session_proof_fixture(Path(args.proof_fixture).expanduser())
-        if args.proof_fixture
-        else None
-    )
-    idle_payload = _load_codex_cli_runtime_idle_payload(args)
-    payload = build_codex_cli_one_message_loop_pilot(
-        project=Path(args.project),
-        goal_id=args.goal_id,
-        agent_id=args.agent_id,
-        cli_bin=args.cli_bin,
-        codex_bin=args.codex_bin,
-        probe_payload=probe_payload,
-        proof_payload=proof_payload,
-        idle_payload=idle_payload,
-        allow_headless_fallback=bool(args.allow_headless_fallback),
-    )
-    print_payload(payload, args.format, render_codex_cli_one_message_loop_pilot_markdown)
-    return 0 if payload.get("ok") else 1
-
-
-def handle_codex_cli_visible_local_driver_pilot_command(
-    args: argparse.Namespace,
-    print_payload: PrintPayload,
-) -> int:
-    probe_payload = run_codex_cli_session_probe(
-        codex_bin=args.codex_bin,
-        timeout_seconds=args.timeout_seconds,
-        fixture=Path(args.fixture).expanduser() if args.fixture else None,
-    )
-    proof_payload = (
-        load_codex_cli_visible_session_proof_fixture(Path(args.proof_fixture).expanduser())
-        if args.proof_fixture
-        else None
-    )
-    idle_payload = _load_codex_cli_runtime_idle_payload(args)
-    payload = build_codex_cli_visible_local_driver_pilot(
-        project=Path(args.project),
-        goal_id=args.goal_id,
-        agent_id=args.agent_id,
-        cli_bin=args.cli_bin,
-        codex_bin=args.codex_bin,
-        probe_payload=probe_payload,
-        proof_payload=proof_payload,
-        idle_payload=idle_payload,
-        allow_headless_fallback=bool(args.allow_headless_fallback),
-    )
-    print_payload(payload, args.format, render_codex_cli_visible_local_driver_pilot_markdown)
-    return 0 if payload.get("ok") else 1
-
-
-def handle_codex_cli_bounded_visible_pilot_adapter_command(
-    args: argparse.Namespace,
-    print_payload: PrintPayload,
-) -> int:
-    first_response_payload = (
-        load_codex_cli_first_response_fixture(Path(args.first_response_fixture).expanduser())
-        if args.first_response_fixture
-        else None
-    )
-    idle_payload = _load_codex_cli_runtime_idle_payload(args)
-    payload = build_codex_cli_bounded_visible_pilot_adapter(
-        project=Path(args.project),
-        goal_id=args.goal_id,
-        agent_id=args.agent_id,
-        cli_bin=args.cli_bin,
-        first_response_payload=first_response_payload,
-        idle_payload=idle_payload,
-    )
-    print_payload(payload, args.format, render_codex_cli_bounded_visible_pilot_adapter_markdown)
-    return 0 if payload.get("ok") else 1
-
-
-def handle_codex_cli_visible_first_response_capture_plan_command(
-    args: argparse.Namespace,
-    print_payload: PrintPayload,
-) -> int:
-    payload = build_codex_cli_visible_first_response_capture_plan(
-        project=Path(args.project),
-        goal_id=args.goal_id,
-        agent_id=args.agent_id,
-        cli_bin=args.cli_bin,
-        first_response_path=args.first_response_path,
-        idle_path=args.idle_path,
-    )
-    print_payload(payload, args.format, render_codex_cli_visible_first_response_capture_plan_markdown)
-    return 0 if payload.get("ok") else 1
-
-
-def handle_codex_cli_visible_attach_acceptance_command(
-    args: argparse.Namespace,
-    print_payload: PrintPayload,
-) -> int:
-    probe_payload = run_codex_cli_session_probe(
-        codex_bin=args.codex_bin,
-        timeout_seconds=args.timeout_seconds,
-        fixture=Path(args.fixture).expanduser() if args.fixture else None,
-    )
-    proof_payload = (
-        load_codex_cli_visible_session_proof_fixture(Path(args.proof_fixture).expanduser())
-        if args.proof_fixture
-        else None
-    )
-    idle_payload = _load_codex_cli_runtime_idle_payload(args)
-    payload = build_codex_cli_visible_attach_acceptance(
-        project=Path(args.project),
-        goal_id=args.goal_id,
-        agent_id=args.agent_id,
-        cli_bin=args.cli_bin,
-        codex_bin=args.codex_bin,
-        probe_payload=probe_payload,
-        proof_payload=proof_payload,
-        idle_payload=idle_payload,
-    )
-    print_payload(payload, args.format, render_codex_cli_visible_attach_acceptance_markdown)
-    return 0 if payload.get("ok") else 1
-
-
 def handle_codex_cli_session_probe_command(
     args: argparse.Namespace,
     print_payload: PrintPayload,
@@ -821,76 +244,6 @@ def handle_codex_cli_session_probe_command(
         fixture=Path(args.fixture).expanduser() if args.fixture else None,
     )
     print_payload(payload, args.format, render_codex_cli_session_probe_markdown)
-    return 0 if payload.get("ok") else 1
-
-
-def handle_codex_cli_visible_driver_plan_command(
-    args: argparse.Namespace,
-    print_payload: PrintPayload,
-) -> int:
-    probe_payload = run_codex_cli_session_probe(
-        codex_bin=args.codex_bin,
-        timeout_seconds=args.timeout_seconds,
-        fixture=Path(args.fixture).expanduser() if args.fixture else None,
-    )
-    payload = build_codex_cli_visible_driver_plan(
-        project=Path(args.project),
-        goal_id=args.goal_id,
-        agent_id=args.agent_id,
-        cli_bin=args.cli_bin,
-        codex_bin=args.codex_bin,
-        probe_payload=probe_payload,
-    )
-    print_payload(payload, args.format, render_codex_cli_visible_driver_plan_markdown)
-    return 0 if payload.get("ok") else 1
-
-
-def handle_codex_cli_local_driver_plan_command(
-    args: argparse.Namespace,
-    print_payload: PrintPayload,
-) -> int:
-    probe_payload = run_codex_cli_session_probe(
-        codex_bin=args.codex_bin,
-        timeout_seconds=args.timeout_seconds,
-        fixture=Path(args.fixture).expanduser() if args.fixture else None,
-    )
-    payload = build_codex_cli_local_driver_plan(
-        project=Path(args.project),
-        goal_id=args.goal_id,
-        agent_id=args.agent_id,
-        cli_bin=args.cli_bin,
-        codex_bin=args.codex_bin,
-        probe_payload=probe_payload,
-    )
-    print_payload(payload, args.format, render_codex_cli_local_driver_plan_markdown)
-    return 0 if payload.get("ok") else 1
-
-
-def handle_codex_cli_visible_driver_run_command(
-    args: argparse.Namespace,
-    print_payload: PrintPayload,
-) -> int:
-    probe_payload = run_codex_cli_session_probe(
-        codex_bin=args.codex_bin,
-        timeout_seconds=args.timeout_seconds,
-        fixture=Path(args.fixture).expanduser() if args.fixture else None,
-    )
-    proof_payload = (
-        load_codex_cli_visible_session_proof_fixture(Path(args.proof_fixture).expanduser())
-        if args.proof_fixture
-        else None
-    )
-    payload = build_codex_cli_visible_driver_run_packet(
-        project=Path(args.project),
-        goal_id=args.goal_id,
-        agent_id=args.agent_id,
-        cli_bin=args.cli_bin,
-        codex_bin=args.codex_bin,
-        probe_payload=probe_payload,
-        proof_payload=proof_payload,
-        allow_headless_fallback=bool(args.allow_headless_fallback),
-    )
-    print_payload(payload, args.format, render_codex_cli_visible_driver_run_packet_markdown)
     return 0 if payload.get("ok") else 1
 
 
@@ -1023,16 +376,11 @@ def handle_starter_command(
     bootstrap_result = handle_starter_bootstrap_command(args, print_payload)
     if bootstrap_result is not None:
         return bootstrap_result
+    visible_driver_result = handle_starter_visible_driver_command(args, print_payload)
+    if visible_driver_result is not None:
+        return visible_driver_result
     handlers: dict[str, Callable[[argparse.Namespace, PrintPayload], int]] = {
-        "codex-cli-one-message-loop-pilot": handle_codex_cli_one_message_loop_pilot_command,
-        "codex-cli-visible-local-driver-pilot": handle_codex_cli_visible_local_driver_pilot_command,
-        "codex-cli-bounded-visible-pilot-adapter": handle_codex_cli_bounded_visible_pilot_adapter_command,
-        "codex-cli-visible-first-response-capture-plan": handle_codex_cli_visible_first_response_capture_plan_command,
-        "codex-cli-visible-attach-acceptance": handle_codex_cli_visible_attach_acceptance_command,
         "codex-cli-session-probe": handle_codex_cli_session_probe_command,
-        "codex-cli-visible-driver-plan": handle_codex_cli_visible_driver_plan_command,
-        "codex-cli-local-driver-plan": handle_codex_cli_local_driver_plan_command,
-        "codex-cli-visible-driver-run": handle_codex_cli_visible_driver_run_command,
         "codex-cli-local-scheduler-tick": handle_codex_cli_local_scheduler_tick_command,
         "codex-cli-local-scheduler-exec": handle_codex_cli_local_scheduler_exec_command,
         "codex-cli-visible-session-proof": handle_codex_cli_visible_session_proof_command,
