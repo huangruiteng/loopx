@@ -20,6 +20,10 @@ from .benchmark_boundary import (
     handle_benchmark_boundary_command,
     register_benchmark_boundary_commands,
 )
+from .benchmark_dispatch import (
+    handle_benchmark_command,
+    register_benchmark_command_group,
+)
 from .benchmark_review_lifecycle import (
     handle_benchmark_review_lifecycle_command,
     register_benchmark_review_lifecycle_commands,
@@ -92,6 +96,7 @@ __all__ = [
     "handle_agents_last_exam_command",
     "handle_agentissue_runner_flow_command",
     "handle_benchmark_boundary_command",
+    "handle_benchmark_command",
     "handle_benchmark_review_lifecycle_command",
     "handle_benchmark_run_ledger_command",
     "handle_bootstrap_connect_command",
@@ -132,6 +137,7 @@ __all__ = [
     "register_agents_last_exam_commands",
     "register_agentissue_runner_flow_commands",
     "register_benchmark_boundary_commands",
+    "register_benchmark_command_group",
     "register_benchmark_review_lifecycle_commands",
     "register_benchmark_run_ledger_commands",
     "register_bootstrap_connect_command",

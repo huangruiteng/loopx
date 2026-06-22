@@ -44,6 +44,9 @@ def main() -> int:
     init_source = (ROOT / "loopx" / "cli_commands" / "__init__.py").read_text(
         encoding="utf-8"
     )
+    dispatch_source = (
+        ROOT / "loopx" / "cli_commands" / "benchmark_dispatch.py"
+    ).read_text(encoding="utf-8")
     module_source = (
         ROOT / "loopx" / "cli_commands" / "benchmark_run_ledger.py"
     ).read_text(encoding="utf-8")
@@ -61,10 +64,10 @@ def main() -> int:
         if marker in cli_source:
             raise AssertionError(f"{marker} leaked back into loopx/cli.py")
     assert_contains(
-        cli_source,
+        dispatch_source,
         "register_benchmark_run_ledger_commands(benchmark_sub, add_subcommand_format)",
     )
-    assert_contains(cli_source, "handle_benchmark_run_ledger_command(")
+    assert_contains(dispatch_source, "handle_benchmark_run_ledger_command(")
     assert_contains(init_source, "register_benchmark_run_ledger_commands")
     assert_contains(init_source, "handle_benchmark_run_ledger_command")
     assert_contains(module_source, "BENCHMARK_RUN_LEDGER_COMMANDS")

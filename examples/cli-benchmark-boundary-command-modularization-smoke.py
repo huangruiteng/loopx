@@ -31,6 +31,9 @@ def main() -> int:
     init_source = (ROOT / "loopx" / "cli_commands" / "__init__.py").read_text(
         encoding="utf-8"
     )
+    dispatch_source = (
+        ROOT / "loopx" / "cli_commands" / "benchmark_dispatch.py"
+    ).read_text(encoding="utf-8")
     boundary_source = (
         ROOT / "loopx" / "cli_commands" / "benchmark_boundary.py"
     ).read_text(encoding="utf-8")
@@ -44,8 +47,8 @@ def main() -> int:
     for marker in leaked_markers:
         if marker in cli_source:
             raise AssertionError(f"{marker} leaked back into loopx/cli.py")
-    assert_contains(cli_source, "register_benchmark_boundary_commands(benchmark_sub, add_subcommand_format)")
-    assert_contains(cli_source, "handle_benchmark_boundary_command(")
+    assert_contains(dispatch_source, "register_benchmark_boundary_commands(benchmark_sub, add_subcommand_format)")
+    assert_contains(dispatch_source, "handle_benchmark_boundary_command(")
     assert_contains(init_source, "register_benchmark_boundary_commands")
     assert_contains(init_source, "handle_benchmark_boundary_command")
     assert_contains(boundary_source, "BENCHMARK_BOUNDARY_COMMANDS")

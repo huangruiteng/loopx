@@ -7,11 +7,7 @@ from pathlib import Path
 
 from . import __version__
 from .cli_commands import (
-    handle_agents_last_exam_command,
-    handle_agentissue_runner_flow_command,
-    handle_benchmark_review_lifecycle_command,
-    handle_benchmark_run_ledger_command,
-    handle_benchmark_boundary_command,
+    handle_benchmark_command,
     handle_bootstrap_connect_command,
     handle_check_command,
     handle_codex_cli_bounded_visible_pilot_adapter_command,
@@ -44,14 +40,8 @@ from .cli_commands import (
     handle_status_command,
     handle_support_control_command,
     handle_todo_command,
-    handle_terminal_bench_adapter_command,
-    handle_terminal_bench_environment_result_command,
     handle_worker_bridge_command,
-    register_agents_last_exam_commands,
-    register_agentissue_runner_flow_commands,
-    register_benchmark_review_lifecycle_commands,
-    register_benchmark_run_ledger_commands,
-    register_benchmark_boundary_commands,
+    register_benchmark_command_group,
     register_bootstrap_connect_command,
     register_doctor_command,
     register_dreaming_commands,
@@ -64,8 +54,6 @@ from .cli_commands import (
     register_status_commands,
     register_support_control_commands,
     register_todo_command,
-    register_terminal_bench_adapter_commands,
-    register_terminal_bench_environment_result_commands,
     register_worker_bridge_commands,
 )
 from .cli_rollout import (
@@ -144,22 +132,7 @@ def main(argv: list[str] | None = None) -> int:
 
     register_history_command(sub)
 
-    benchmark_parser = sub.add_parser(
-        "benchmark",
-        help="Benchmark runner skeletons. Current public surface is fixture-only and no-run by default.",
-    )
-    benchmark_sub = benchmark_parser.add_subparsers(dest="benchmark_command", required=True)
-
-    register_benchmark_run_ledger_commands(benchmark_sub, add_subcommand_format)
-
-    register_agentissue_runner_flow_commands(benchmark_sub, add_subcommand_format)
-    register_benchmark_boundary_commands(benchmark_sub, add_subcommand_format)
-    register_terminal_bench_adapter_commands(benchmark_sub, add_subcommand_format)
-
-    register_agents_last_exam_commands(benchmark_sub, add_subcommand_format)
-
-    register_benchmark_review_lifecycle_commands(benchmark_sub, add_subcommand_format)
-    register_terminal_bench_environment_result_commands(benchmark_sub, add_subcommand_format)
+    register_benchmark_command_group(sub, add_subcommand_format)
 
     register_project_lifecycle_commands(sub, add_subcommand_format)
 
@@ -303,59 +276,15 @@ def main(argv: list[str] | None = None) -> int:
     if registry_admin_result is not None:
         return registry_admin_result
 
-    if args.command == "benchmark":
-        agentissue_runner_flow_result = handle_agentissue_runner_flow_command(
-            args,
-            registry_path=registry_path,
-            print_payload=print_payload,
-        )
-        if agentissue_runner_flow_result is not None:
-            return agentissue_runner_flow_result
-        benchmark_boundary_result = handle_benchmark_boundary_command(
-            args,
-            print_payload=print_payload,
-            output_format=output_format,
-        )
-        if benchmark_boundary_result is not None:
-            return benchmark_boundary_result
-        terminal_bench_adapter_result = handle_terminal_bench_adapter_command(
-            args,
-            print_payload=print_payload,
-            output_format=output_format,
-        )
-        if terminal_bench_adapter_result is not None:
-            return terminal_bench_adapter_result
-        agents_last_exam_result = handle_agents_last_exam_command(
-            args,
-            print_payload=print_payload,
-            output_format=output_format,
-        )
-        if agents_last_exam_result is not None:
-            return agents_last_exam_result
-        benchmark_review_lifecycle_result = handle_benchmark_review_lifecycle_command(
-            args,
-            registry_path=registry_path,
-            print_payload=print_payload,
-            output_format=output_format,
-        )
-        if benchmark_review_lifecycle_result is not None:
-            return benchmark_review_lifecycle_result
-        terminal_bench_environment_result = handle_terminal_bench_environment_result_command(
-            args,
-            print_payload=print_payload,
-            output_format=output_format,
-        )
-        if terminal_bench_environment_result is not None:
-            return terminal_bench_environment_result
-        benchmark_run_ledger_result = handle_benchmark_run_ledger_command(
-            args,
-            registry_path=registry_path,
-            print_payload=print_payload,
-            output_format=output_format,
-            append_benchmark_run_rollout_event=append_benchmark_run_rollout_event,
-        )
-        if benchmark_run_ledger_result is not None:
-            return benchmark_run_ledger_result
+    benchmark_result = handle_benchmark_command(
+        args,
+        registry_path=registry_path,
+        print_payload=print_payload,
+        output_format=output_format,
+        append_benchmark_run_rollout_event=append_benchmark_run_rollout_event,
+    )
+    if benchmark_result is not None:
+        return benchmark_result
     if args.command == "history":
         return handle_history_command(
             args,

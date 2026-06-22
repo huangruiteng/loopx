@@ -44,6 +44,9 @@ def main() -> int:
     init_source = (ROOT / "loopx" / "cli_commands" / "__init__.py").read_text(
         encoding="utf-8"
     )
+    dispatch_source = (
+        ROOT / "loopx" / "cli_commands" / "benchmark_dispatch.py"
+    ).read_text(encoding="utf-8")
     review_source = (
         ROOT / "loopx" / "cli_commands" / "benchmark_review_lifecycle.py"
     ).read_text(encoding="utf-8")
@@ -66,10 +69,10 @@ def main() -> int:
     if "render_terminal_bench_environment_setup_gate_markdown" in review_source:
         raise AssertionError("Terminal-Bench environment renderers leaked into review lifecycle module")
     assert_contains(
-        cli_source,
+        dispatch_source,
         "register_terminal_bench_environment_result_commands(benchmark_sub, add_subcommand_format)",
     )
-    assert_contains(cli_source, "handle_terminal_bench_environment_result_command(")
+    assert_contains(dispatch_source, "handle_terminal_bench_environment_result_command(")
     assert_contains(init_source, "register_terminal_bench_environment_result_commands")
     assert_contains(init_source, "handle_terminal_bench_environment_result_command")
     assert_contains(module_source, "TERMINAL_BENCH_ENVIRONMENT_RESULT_COMMANDS")

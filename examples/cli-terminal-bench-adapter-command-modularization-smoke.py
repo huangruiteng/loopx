@@ -31,6 +31,9 @@ def main() -> int:
     init_source = (ROOT / "loopx" / "cli_commands" / "__init__.py").read_text(
         encoding="utf-8"
     )
+    dispatch_source = (
+        ROOT / "loopx" / "cli_commands" / "benchmark_dispatch.py"
+    ).read_text(encoding="utf-8")
     adapter_source = (
         ROOT / "loopx" / "cli_commands" / "terminal_bench_adapter.py"
     ).read_text(encoding="utf-8")
@@ -46,10 +49,10 @@ def main() -> int:
         if marker in cli_source:
             raise AssertionError(f"{marker} leaked back into loopx/cli.py")
     assert_contains(
-        cli_source,
+        dispatch_source,
         "register_terminal_bench_adapter_commands(benchmark_sub, add_subcommand_format)",
     )
-    assert_contains(cli_source, "handle_terminal_bench_adapter_command(")
+    assert_contains(dispatch_source, "handle_terminal_bench_adapter_command(")
     assert_contains(init_source, "register_terminal_bench_adapter_commands")
     assert_contains(init_source, "handle_terminal_bench_adapter_command")
     assert_contains(adapter_source, "TERMINAL_BENCH_ADAPTER_COMMANDS")

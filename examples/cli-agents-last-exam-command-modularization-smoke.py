@@ -31,6 +31,9 @@ def main() -> int:
     init_source = (ROOT / "loopx" / "cli_commands" / "__init__.py").read_text(
         encoding="utf-8"
     )
+    dispatch_source = (
+        ROOT / "loopx" / "cli_commands" / "benchmark_dispatch.py"
+    ).read_text(encoding="utf-8")
     ale_source = (ROOT / "loopx" / "cli_commands" / "agents_last_exam.py").read_text(
         encoding="utf-8"
     )
@@ -46,10 +49,10 @@ def main() -> int:
         if marker in cli_source:
             raise AssertionError(f"{marker} leaked back into loopx/cli.py")
     assert_contains(
-        cli_source,
+        dispatch_source,
         "register_agents_last_exam_commands(benchmark_sub, add_subcommand_format)",
     )
-    assert_contains(cli_source, "handle_agents_last_exam_command(")
+    assert_contains(dispatch_source, "handle_agents_last_exam_command(")
     assert_contains(init_source, "register_agents_last_exam_commands")
     assert_contains(init_source, "handle_agents_last_exam_command")
     assert_contains(ale_source, "AGENTS_LAST_EXAM_COMMANDS")
