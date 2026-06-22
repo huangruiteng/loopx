@@ -275,6 +275,26 @@ def _round_reward_summary(run: dict[str, Any]) -> str:
     return ",".join(parts)
 
 
+def _attempt_label_from_accounting(run: dict[str, Any]) -> str:
+    accounting = (
+        run.get("attempt_accounting")
+        if isinstance(run.get("attempt_accounting"), dict)
+        else {}
+    )
+    if not accounting:
+        return ""
+    for field, label in (
+        ("official_score_attempt_countable", "official_score_attempt"),
+        ("verifier_attempt_countable", "verifier_attempt"),
+        ("solver_attempt_countable", "solver_attempt"),
+        ("case_attempt_countable", "case_attempt"),
+        ("launcher_attempt_countable", "launcher_attempt"),
+    ):
+        if accounting.get(field) is True:
+            return label
+    return ""
+
+
 def _compact_first_from_lists(
     benchmark_run: dict[str, Any],
     *field_names: str,
@@ -1205,6 +1225,43 @@ def build_benchmark_run_ledger_entry(
         else None,
         "source_event_schema": source_schema,
     }
+    attempt_accounting = (
+        benchmark_run.get("attempt_accounting")
+        if isinstance(benchmark_run.get("attempt_accounting"), dict)
+        else {}
+    )
+    if (
+        not attempt_accounting
+        and source_schema == "terminal_bench_post_launch_materialization_v0"
+    ):
+        marker = (
+            benchmark_run.get("compact_failure_marker")
+            if isinstance(benchmark_run.get("compact_failure_marker"), dict)
+            else {}
+        )
+        attempt_accounting = (
+            marker.get("attempt_accounting")
+            if isinstance(marker.get("attempt_accounting"), dict)
+            else {}
+        )
+    if attempt_accounting:
+        for source_field, entry_field in (
+            ("lifecycle_phase", "attempt_lifecycle_phase"),
+            ("failure_label", "attempt_failure_label"),
+            ("failure_class", "attempt_failure_class"),
+        ):
+            text = _compact_text(attempt_accounting.get(source_field), limit=120)
+            if text:
+                entry[entry_field] = text
+        for field in (
+            "launcher_attempt_countable",
+            "case_attempt_countable",
+            "solver_attempt_countable",
+            "verifier_attempt_countable",
+            "official_score_attempt_countable",
+        ):
+            if isinstance(attempt_accounting.get(field), bool):
+                entry[field] = attempt_accounting[field]
     if source_schema == "terminal_bench_post_launch_materialization_v0":
         marker = (
             benchmark_run.get("compact_failure_marker")
@@ -1820,7 +1877,13 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
                 round_rewards_text = _round_reward_summary(run)
                 attempt = _compact_text(run.get("ledger_attempt_kind"), limit=80)
                 if not attempt:
-                    attempt = "case_attempt" if run.get("case_attempt_countable") is True else ""
+                    attempt = _attempt_label_from_accounting(run)
+                if not attempt:
+                    attempt = (
+                        "case_attempt"
+                        if run.get("case_attempt_countable") is True
+                        else ""
+                    )
                 lines.append(
                     "| "
                     f"`{benchmark_id}` | "

@@ -11,6 +11,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from ..benchmark_core import (
+    BenchmarkFailureClass,
+    build_benchmark_attempt_accounting,
+    canonical_lifecycle,
+)
 from ..benchmark_core.io import (
     load_json_object as _load_json_object,
     load_jsonl_objects as _load_jsonl_objects,
@@ -3155,6 +3160,78 @@ def _terminal_bench_finished_phase(trial: dict[str, Any], key: str) -> bool:
         return False
     return bool(phase.get("started_at") and phase.get("finished_at"))
 
+
+def _terminal_bench_attempt_failure_label(
+    *,
+    setup_blocked: bool,
+    official_score: Any,
+    score_failure_attribution: str,
+    worker_bridge_materialization_blocker: str,
+    worker_materialization_probe_contract_present: bool,
+    environment_setup_probe_run: bool,
+) -> str:
+    if environment_setup_probe_run:
+        return "environment_setup_probe"
+    if worker_materialization_probe_contract_present:
+        return "worker_materialization_probe_contract"
+    if setup_blocked:
+        return (
+            worker_bridge_materialization_blocker
+            if worker_bridge_materialization_blocker not in {"", "none"}
+            else "terminal_bench_setup_blocked_before_case"
+        )
+    if score_failure_attribution and score_failure_attribution != "none":
+        return score_failure_attribution
+    if official_score is None:
+        return "official_score_missing"
+    if official_score == 0:
+        return "official_score_zero"
+    return "none"
+
+
+def _terminal_bench_attempt_failure_class(
+    *,
+    setup_blocked: bool,
+    official_score: Any,
+    score_failure_attribution: str,
+    worker_materialization_probe_contract_present: bool,
+    environment_setup_probe_run: bool,
+) -> BenchmarkFailureClass:
+    if (
+        setup_blocked
+        or worker_materialization_probe_contract_present
+        or environment_setup_probe_run
+    ):
+        return BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED
+    if score_failure_attribution in {
+        "verifier_dependency_install_failure",
+        "verifier_platform_probe_failure",
+        "verifier_infrastructure_failure",
+    }:
+        return BenchmarkFailureClass.VERIFIER_FAILED
+    if official_score is None:
+        return BenchmarkFailureClass.OFFICIAL_SCORE_FAILED
+    if official_score == 0:
+        return BenchmarkFailureClass.SOLVER_FAILED
+    return BenchmarkFailureClass.NONE
+
+
+def _terminal_bench_failure_marker_attempt_accounting(
+    *,
+    failure_label: str,
+    launch_state_countable: bool,
+) -> dict[str, Any]:
+    lifecycle = canonical_lifecycle(
+        process_started=True,
+        runner_accepted_args=launch_state_countable,
+    )
+    return build_benchmark_attempt_accounting(
+        lifecycle=lifecycle,
+        failure_label=failure_label,
+        failure_class=BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED,
+        official_score_attempted=False,
+    )
+
 def _terminal_bench_official_zero_observation(
     *,
     trial: dict[str, Any],
@@ -5367,7 +5444,7 @@ def build_terminal_bench_harbor_result_benchmark_run(
         "pre_worker_agent_setup_failures_classified": True,
         "environment_setup_failures_before_worker_classified": True,
         "loopx_controller_trace_present": (
-            prompt_driven_controller_trace_observed
+            (not worker_bridge_required) or prompt_driven_controller_trace_observed
         ),
         "loopx_controller_trace_public_safe": (
             (not prompt_driven_controller_trace_observed)
@@ -5495,12 +5572,94 @@ def build_terminal_bench_harbor_result_benchmark_run(
     )
     if prompt_driven_first_blocker in {"", "none"}:
         prompt_driven_first_blocker = ""
+    all_trials_blocked_before_case = (
+        bool(trials)
+        and (
+            environment_setup_failure_before_worker_count
+            + pre_worker_agent_setup_failure_count
+            + worker_startup_blocker_count
+        )
+        >= len(trials)
+        and worker_counter_trace_trial_count == 0
+        and not prompt_driven_lifecycle_observed
+    )
+    official_score_case_signal = bool(
+        official_score is not None
+        and not environment_setup_probe_run
+        and not worker_materialization_probe_contract_present
+        and not all_trials_blocked_before_case
+    )
+    worker_writeback_case_signal = bool(
+        worker_benchmark_run_file_count > 0 and not all_trials_blocked_before_case
+    )
+    case_activity_observed = bool(
+        official_score_case_signal
+        or worker_counter_trace_trial_count > 0
+        or prompt_driven_lifecycle_observed
+        or worker_writeback_case_signal
+        or official_zero_observation_count > 0
+    )
+    attempt_setup_blocked = bool(
+        worker_materialization_probe_contract_present
+        or environment_setup_probe_run
+        or all_trials_blocked_before_case
+        or (
+            not case_activity_observed
+            and (
+                environment_setup_failure_before_worker_count > 0
+                or pre_worker_agent_setup_failure_count > 0
+                or worker_startup_blocker_count > 0
+                or worker_bridge_materialization_blocker not in {"", "none"}
+            )
+        )
+    )
+    attempt_failure_label = _terminal_bench_attempt_failure_label(
+        setup_blocked=attempt_setup_blocked,
+        official_score=official_score,
+        score_failure_attribution=score_failure_attribution,
+        worker_bridge_materialization_blocker=worker_bridge_materialization_blocker,
+        worker_materialization_probe_contract_present=(
+            worker_materialization_probe_contract_present
+        ),
+        environment_setup_probe_run=environment_setup_probe_run,
+    )
+    attempt_lifecycle = canonical_lifecycle(
+        process_started=(job_path / "lock.json").exists(),
+        runner_accepted_args=(job_path / "config.json").exists(),
+        job_root_materialized=case_activity_observed,
+        trial_started=case_activity_observed,
+        worker_started=case_activity_observed,
+        result_written=bool(
+            case_activity_observed
+            and (
+                worker_benchmark_run_file_count > 0
+                or prompt_driven_lifecycle_observed
+                or official_score_case_signal
+            )
+        ),
+        verifier_scored=official_score_case_signal,
+    )
+    attempt_accounting = build_benchmark_attempt_accounting(
+        lifecycle=attempt_lifecycle,
+        failure_label=attempt_failure_label,
+        failure_class=_terminal_bench_attempt_failure_class(
+            setup_blocked=attempt_setup_blocked,
+            official_score=official_score,
+            score_failure_attribution=score_failure_attribution,
+            worker_materialization_probe_contract_present=(
+                worker_materialization_probe_contract_present
+            ),
+            environment_setup_probe_run=environment_setup_probe_run,
+        ),
+        official_score_attempted=official_score_case_signal,
+    )
     payload = {
         "schema_version": "benchmark_run_v0",
         "source_runner": payload_source_runner,
         "benchmark_id": payload_benchmark_id,
         "job_name": config.get("job_name") or job_path.name,
         "mode": payload_mode,
+        "attempt_accounting": attempt_accounting,
         "environment_setup_probe_run": environment_setup_probe_run,
         "environment_setup_probe_status": environment_setup_probe_status,
         "environment_setup_probe_cleared": environment_setup_probe_cleared,
@@ -6530,6 +6689,10 @@ def _terminal_bench_compact_failure_marker(
         "raw_task_text_read": False,
         "trajectory_read": False,
         "raw_external_handle_payload_recorded": False,
+        "attempt_accounting": _terminal_bench_failure_marker_attempt_accounting(
+            failure_label=failure_class,
+            launch_state_countable=launch_state_countable,
+        ),
     }
     optional_fields: dict[str, Any] = {
         "job_result_finished": job_result_finished,

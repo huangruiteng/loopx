@@ -897,6 +897,27 @@ def stale_active_post_launch() -> dict[str, Any]:
             "raw_task_text_read": False,
             "trajectory_read": False,
             "raw_external_handle_payload_recorded": False,
+            "attempt_accounting": {
+                "schema_version": "benchmark_attempt_accounting_v0",
+                "lifecycle_phase": "runner_accepted_args",
+                "failure_label": "stale_active_job_without_trial_result",
+                "failure_class": "job_materialization_failed",
+                "attempts": {
+                    "launcher": {"attempted": True, "countable": True},
+                    "case": {"attempted": False, "countable": False},
+                    "solver": {"attempted": False, "countable": False},
+                    "verifier": {"attempted": False, "countable": False},
+                    "official_score": {
+                        "attempted": False,
+                        "countable": False,
+                    },
+                },
+                "launcher_attempt_countable": True,
+                "case_attempt_countable": False,
+                "solver_attempt_countable": False,
+                "verifier_attempt_countable": False,
+                "official_score_attempt_countable": False,
+            },
         },
         "raw_paths_recorded": False,
         "raw_logs_read": False,
@@ -921,6 +942,9 @@ def ended_active_post_launch() -> dict[str, Any]:
     marker["failure_class"] = "detached_worker_ended_active_without_trial_result"
     marker["evidence_kind"] = "detached_worker_active_job_without_trial_result"
     marker["job_updated_age_seconds"] = 42.0
+    marker["attempt_accounting"]["failure_label"] = (
+        "detached_worker_ended_active_without_trial_result"
+    )
     return payload
 
 
@@ -952,6 +976,9 @@ def test_ledger_ingests_post_launch_stale_active_marker() -> None:
     assert entry["terminal_closeout"] is True, entry
     assert entry["case_attempt_countable"] is False, entry
     assert entry["benchmark_budget_countable"] is False, entry
+    assert entry["attempt_failure_class"] == "job_materialization_failed", entry
+    assert entry["launcher_attempt_countable"] is True, entry
+    assert entry["official_score_attempt_countable"] is False, entry
 
     with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-stale-active-") as tmp:
         root = Path(tmp)
@@ -998,6 +1025,13 @@ def test_ledger_ingests_post_launch_ended_active_marker() -> None:
     assert entry["terminal_closeout"] is True, entry
     assert entry["case_attempt_countable"] is False, entry
     assert entry["benchmark_budget_countable"] is False, entry
+    assert (
+        entry["attempt_failure_label"]
+        == "detached_worker_ended_active_without_trial_result"
+    ), entry
+    assert entry["attempt_failure_class"] == "job_materialization_failed", entry
+    assert entry["launcher_attempt_countable"] is True, entry
+    assert entry["official_score_attempt_countable"] is False, entry
 
 
 def test_cli_harbor_ingest_updates_run_ledger() -> None:

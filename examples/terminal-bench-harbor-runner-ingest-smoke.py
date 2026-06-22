@@ -1677,6 +1677,15 @@ def main() -> None:
         payload["official_score_source"]
         == payload["official_task_score"]["source"]
     ), payload
+    attempt_accounting = payload["attempt_accounting"]
+    assert attempt_accounting["schema_version"] == "benchmark_attempt_accounting_v0", (
+        attempt_accounting
+    )
+    assert attempt_accounting["failure_class"] == "none", attempt_accounting
+    assert attempt_accounting["case_attempt_countable"] is True, attempt_accounting
+    assert attempt_accounting["official_score_attempt_countable"] is True, (
+        attempt_accounting
+    )
     assert payload["official_score_status"] == "completed", payload
     assert payload["runner_return_status"] == "completed_with_agent_timeout", payload
     assert payload["progress"]["n_errored_trials"] == 2, payload
@@ -1716,6 +1725,19 @@ def main() -> None:
     assert baseline_setup_compact["worker_startup_blockers"] == [
         "codex_cli_not_on_path"
     ], baseline_setup_compact
+    baseline_attempt_accounting = baseline_setup_compact["attempt_accounting"]
+    assert baseline_attempt_accounting["failure_class"] == (
+        "job_materialization_failed"
+    ), baseline_attempt_accounting
+    assert baseline_attempt_accounting["launcher_attempt_countable"] is True, (
+        baseline_attempt_accounting
+    )
+    assert baseline_attempt_accounting["case_attempt_countable"] is False, (
+        baseline_attempt_accounting
+    )
+    assert baseline_attempt_accounting["official_score_attempt_countable"] is False, (
+        baseline_attempt_accounting
+    )
     assert baseline_setup_compact["worker_setup_diagnostic_blockers"] == [
         "codex_cli_not_on_path"
     ], baseline_setup_compact
@@ -2159,6 +2181,16 @@ def main() -> None:
     assert env_probe_compact["environment_setup_probe_cleared"] is True, (
         env_probe_compact
     )
+    env_probe_attempt_accounting = env_probe_compact["attempt_accounting"]
+    assert env_probe_attempt_accounting["failure_label"] == (
+        "environment_setup_probe"
+    ), env_probe_attempt_accounting
+    assert env_probe_attempt_accounting["case_attempt_countable"] is False, (
+        env_probe_attempt_accounting
+    )
+    assert env_probe_attempt_accounting["official_score_attempt_countable"] is False, (
+        env_probe_attempt_accounting
+    )
     assert env_probe_compact["environment_setup_failure_before_worker_count"] == 0, (
         env_probe_compact
     )
@@ -2234,6 +2266,16 @@ def main() -> None:
         clean_zero_compact["score_failure_attribution"]
         == "official_verifier_solution_failure"
     ), clean_zero_compact
+    clean_zero_attempt_accounting = clean_zero_compact["attempt_accounting"]
+    assert clean_zero_attempt_accounting["failure_class"] == "solver_failed", (
+        clean_zero_attempt_accounting
+    )
+    assert clean_zero_attempt_accounting["case_attempt_countable"] is True, (
+        clean_zero_attempt_accounting
+    )
+    assert clean_zero_attempt_accounting["official_score_attempt_countable"] is True, (
+        clean_zero_attempt_accounting
+    )
     compact_zero_observation = clean_zero_compact["trials"][0][
         "official_zero_observation"
     ]

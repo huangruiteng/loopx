@@ -130,6 +130,7 @@ BENCHMARK_VALIDATION_NEUTRAL_FALSE_FIELDS = {
     "native_goal_worker_trace_dir_present",
     "native_goal_worker_public_trace_read",
     "native_goal_worker_trace_observed",
+    "loopx_controller_trace_present",
     "leaderboard_claim_allowed",
     "official_score_claim_allowed",
     "probe_contract_result_present",
@@ -1646,6 +1647,11 @@ def _compact_benchmark_post_launch_materialization(value: Any) -> dict[str, Any]
         age = marker.get("job_updated_age_seconds")
         if isinstance(age, (int, float)) and not isinstance(age, bool):
             compact_marker["job_updated_age_seconds"] = round(float(age), 3)
+        attempt_accounting = _compact_benchmark_attempt_accounting(
+            marker.get("attempt_accounting")
+        )
+        if attempt_accounting:
+            compact_marker["attempt_accounting"] = attempt_accounting
         if compact_marker:
             compact["compact_failure_marker"] = compact_marker
     return compact
