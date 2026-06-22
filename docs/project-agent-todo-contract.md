@@ -245,6 +245,18 @@ requiring a successor primary review todo and defaults that successor todo's
 allowed only when it matches the primary agent. This keeps broad side-agent
 handoff visible to the shared control plane.
 
+That generated primary review successor also records `action_kind=primary_review`,
+`blocks_agent=<side-agent-id>`, and `unblocks_todo_id=<completed-todo-id>`.
+These fields are a small unblock hint, not a general dependency graph: they let
+quota and dashboards recognize that reviewing this todo releases another agent's
+lane without parsing prose or PR numbers.
+
+For primary-agent completions and self-merged same-lane continuations, a
+successor created with `--next-agent-todo` inherits the completed todo's
+effective `claimed_by` unless `--next-claimed-by` explicitly names another
+registered agent. This prevents follow-up work from accidentally falling into
+the unclaimed pool.
+
 For small changes that satisfy the repository's self-merge rules, the side
 agent may self-merge and complete without a successor review todo by making the
 exception explicit:
@@ -318,6 +330,11 @@ loopx todo supersede \
   --next-agent-todo "<replacement executable action>"
 ```
 
+If the superseded todo was claimed, the replacement inherits that `claimed_by`.
+If it carried `blocks_agent` / `unblocks_todo_id`, the replacement inherits
+those unblock fields too. Use `--next-claimed-by <agent-id>` to make a handoff
+explicit.
+
 `todo complete` and `todo supersede` are intentionally idempotent for repeated
 heartbeats: if the old todo is already complete and the next todo already
 exists with the same metadata, the command returns `changed=false` and does not
@@ -333,7 +350,9 @@ carry `schema_version=todo_summary_v0`; individual items carry
 `schema_version=todo_item_v0`, `todo_id`, `role`, `status`, `priority`,
 `title`, `archive_state`, `source_section`, `index`, `text`, `task_class`, and
 optional `action_kind`, `claimed_by`, `required_capabilities`, and
-`target_capabilities`. The `todo_id` is first-class when written by the CLI.
+`target_capabilities`. Primary review handoffs may also carry
+`blocks_agent` and `unblocks_todo_id` to show which agent/todo they release.
+The `todo_id` is first-class when written by the CLI.
 `claimed_by` values are normalized public-safe agent ids and should correspond to
 `coordination.registered_agents`. Legacy Markdown without metadata still gets a
 parser-derived compatibility id from local section/index/text, and the first

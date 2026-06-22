@@ -5997,6 +5997,20 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     todo_parser.add_argument(
+        "--blocks-agent",
+        help=(
+            "For todo add/update, mark that this todo unblocks a registered agent, "
+            "for example codex-side-bypass."
+        ),
+    )
+    todo_parser.add_argument(
+        "--unblocks-todo-id",
+        help=(
+            "For todo add/update, link this todo to the blocked todo it unblocks, "
+            "for example todo_ab12cd34ef56."
+        ),
+    )
+    todo_parser.add_argument(
         "--clear-claim",
         action="store_true",
         help="For todo update, remove the soft claimed_by owner from the todo.",
@@ -6006,9 +6020,10 @@ def main(argv: list[str] | None = None) -> int:
     todo_parser.add_argument(
         "--next-claimed-by",
         help=(
-            "For complete with --next-agent-todo, soft-claim the successor todo for "
-            "a registered agent. Side-agent review handoffs default this to primary_agent; "
-            "self-merged side-agent continuations may claim their own successor."
+            "For complete/supersede with --next-agent-todo, soft-claim the successor "
+            "todo for a registered agent. If omitted, claimed successors inherit the "
+            "completed/superseded todo owner when available; side-agent review handoffs "
+            "default to primary_agent."
         ),
     )
     todo_parser.add_argument(
@@ -10448,6 +10463,8 @@ def main(argv: list[str] | None = None) -> int:
                     required_capabilities=args.required_capabilities,
                     target_capabilities=args.target_capabilities,
                     claimed_by=args.claimed_by,
+                    blocks_agent=args.blocks_agent,
+                    unblocks_todo_id=args.unblocks_todo_id,
                     project=Path(args.project).expanduser() if args.project else None,
                     state_file=Path(args.state_file).expanduser() if args.state_file else None,
                     dry_run=bool(args.dry_run),
@@ -10472,6 +10489,8 @@ def main(argv: list[str] | None = None) -> int:
                         ("--required-write-scope", args.required_write_scopes),
                         ("--required-capability", args.required_capabilities),
                         ("--target-capability", args.target_capabilities),
+                        ("--blocks-agent", args.blocks_agent),
+                        ("--unblocks-todo-id", args.unblocks_todo_id),
                         ("--next-agent-todo", args.next_agent_todo),
                         ("--next-user-todo", args.next_user_todo),
                         ("--next-claimed-by", args.next_claimed_by),
@@ -10515,9 +10534,11 @@ def main(argv: list[str] | None = None) -> int:
                     args.required_capabilities,
                     args.target_capabilities,
                     args.claimed_by,
+                    args.blocks_agent,
+                    args.unblocks_todo_id,
                     args.clear_claim,
                 ]):
-                    raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, or --clear-claim")
+                    raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, --blocks-agent, --unblocks-todo-id, or --clear-claim")
                 if args.next_claimed_by:
                     raise ValueError("todo update does not support --next-claimed-by")
                 if args.side_agent_self_merged:
@@ -10538,6 +10559,8 @@ def main(argv: list[str] | None = None) -> int:
                     required_capabilities=args.required_capabilities,
                     target_capabilities=args.target_capabilities,
                     claimed_by=args.claimed_by,
+                    blocks_agent=args.blocks_agent,
+                    unblocks_todo_id=args.unblocks_todo_id,
                     clear_claim=bool(args.clear_claim),
                     project=Path(args.project).expanduser() if args.project else None,
                     state_file=Path(args.state_file).expanduser() if args.state_file else None,
@@ -10548,6 +10571,8 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError("todo complete requires --todo-id")
                 if args.claimed_by and args.clear_claim:
                     raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
+                if args.blocks_agent or args.unblocks_todo_id:
+                    raise ValueError("todo complete does not support --blocks-agent or --unblocks-todo-id; use todo update before completion or side-agent review successor metadata")
                 payload = complete_goal_todo(
                     registry_path=registry_path,
                     goal_id=args.goal_id,
@@ -10572,10 +10597,10 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError("todo supersede requires --todo-id")
                 if args.claimed_by or args.clear_claim:
                     raise ValueError("todo supersede does not support --claimed-by or --clear-claim")
-                if args.next_claimed_by:
-                    raise ValueError("todo supersede does not support --next-claimed-by")
                 if args.side_agent_self_merged:
                     raise ValueError("todo supersede does not support --side-agent-self-merged")
+                if args.blocks_agent or args.unblocks_todo_id:
+                    raise ValueError("todo supersede does not support --blocks-agent or --unblocks-todo-id; update the source todo first so the successor can inherit dependency metadata")
                 payload = supersede_goal_todo(
                     registry_path=registry_path,
                     goal_id=args.goal_id,
@@ -10584,6 +10609,7 @@ def main(argv: list[str] | None = None) -> int:
                     reason=args.reason,
                     next_agent_todo=args.next_agent_todo,
                     next_user_todo=args.next_user_todo,
+                    next_claimed_by=args.next_claimed_by,
                     next_task_class=args.next_task_class,
                     next_action_kind=args.next_action_kind,
                     project=Path(args.project).expanduser() if args.project else None,

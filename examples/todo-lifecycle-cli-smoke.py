@@ -191,6 +191,7 @@ def main() -> int:
         assert completed_item["claimed_by"] == "codex-main-control", completed_item
         assert rebuild_item["done"] is False and rebuild_item["task_class"] == "advancement_task", rebuild_item
         assert rebuild_item["action_kind"] == "rebuild_score", rebuild_item
+        assert rebuild_item["claimed_by"] == "codex-main-control", rebuild_item
 
         side_added = run_cli(
             registry_path,
@@ -369,6 +370,8 @@ def main() -> int:
         assert side_completed["changed"] is True, side_completed
         review_todo_id = side_completed["next_todos"][0]["todo_id"]
         assert side_completed["next_todos"][0]["claimed_by"] == "codex-main-control", side_completed
+        assert side_completed["next_todos"][0]["blocks_agent"] == "codex-side-bypass", side_completed
+        assert side_completed["next_todos"][0]["unblocks_todo_id"] == side_review_todo_id, side_completed
         items = parsed_items(state_file)
         side_item = next(item for item in items if item["todo_id"] == side_todo_id)
         side_review_item = next(item for item in items if item["todo_id"] == side_review_todo_id)
@@ -378,6 +381,9 @@ def main() -> int:
             side_review_item
         )
         assert review_item["done"] is False and review_item["claimed_by"] == "codex-main-control", review_item
+        assert review_item["action_kind"] == "primary_review", review_item
+        assert review_item["blocks_agent"] == "codex-side-bypass", review_item
+        assert review_item["unblocks_todo_id"] == side_review_todo_id, review_item
 
         repeated = run_cli(
             registry_path,
@@ -419,6 +425,7 @@ def main() -> int:
         validate_item = next(item for item in items if item["todo_id"] == validate_todo_id)
         assert rebuild_item["done"] is True and rebuild_item["superseded_by"] == validate_todo_id, rebuild_item
         assert validate_item["done"] is False and validate_item["task_class"] == "advancement_task", validate_item
+        assert validate_item["claimed_by"] == "codex-main-control", validate_item
 
         blocked = run_cli(
             registry_path,

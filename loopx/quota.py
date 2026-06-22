@@ -39,7 +39,9 @@ from .todo_contract import (
     next_action_requires_advancement_text,
     normalize_required_capabilities,
     normalize_target_capabilities,
+    normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_id,
     normalize_required_write_scopes,
     normalize_todo_status,
     normalize_todo_task_class,
@@ -975,6 +977,8 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "required_capabilities",
         "target_capabilities",
         "claimed_by",
+        "blocks_agent",
+        "unblocks_todo_id",
     ):
         if item.get(key) is not None:
             compact[key] = item.get(key)
@@ -1874,15 +1878,38 @@ def _agent_lane_next_action(
 
     preferred_todo_ids = _todo_ids_from_action(active_next_action)
 
-    def lane_candidate_sort_key(raw_item: dict[str, Any]) -> tuple[int, int, int, int, int]:
+    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+
+    def lane_candidate_sort_key(raw_item: dict[str, Any]) -> tuple[int, int, int, int, int, int, int]:
         todo_id = str(raw_item.get("todo_id") or "").strip()
         active_next_rank = 0 if todo_id and todo_id in preferred_todo_ids else 1
         claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
         claim_rank = 0 if claimed_by == agent_id else 1
+        action_kind = str(raw_item.get("action_kind") or "").strip()
+        blocks_agent = normalize_todo_blocks_agent(raw_item.get("blocks_agent"))
+        unblocks_todo_id = normalize_todo_id(raw_item.get("unblocks_todo_id"))
+        explicit_unblock_rank = (
+            0
+            if agent_id == primary_agent
+            and claimed_by == agent_id
+            and blocks_agent
+            and blocks_agent != agent_id
+            and unblocks_todo_id
+            else 1
+        )
+        primary_review_rank = (
+            0
+            if agent_id == primary_agent
+            and claimed_by == agent_id
+            and (action_kind == "primary_review" or action_kind.startswith("primary_review_"))
+            else 1
+        )
         repair_rank = 0 if raw_item.get("capability_repair_mode") is True else 1
         return (
+            explicit_unblock_rank,
             active_next_rank,
             claim_rank,
+            primary_review_rank,
             repair_rank,
             _todo_priority_rank(raw_item),
             _todo_index_rank(raw_item),
@@ -1922,6 +1949,15 @@ def _agent_lane_next_action(
                 else "unclaimed_todo"
             )
             payload = _compact_todo_summary_item(raw_item, text=text)
+            if selected_by == "unclaimed_todo":
+                payload["claim_required_before_work"] = True
+            blocks_agent = normalize_todo_blocks_agent(raw_item.get("blocks_agent"))
+            unblocks_todo_id = normalize_todo_id(raw_item.get("unblocks_todo_id"))
+            if blocks_agent and unblocks_todo_id:
+                payload["unblock_handoff"] = {
+                    "blocks_agent": blocks_agent,
+                    "unblocks_todo_id": unblocks_todo_id,
+                }
             for key in (
                 "missing_capabilities",
                 "missing_target_capabilities",

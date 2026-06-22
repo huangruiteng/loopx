@@ -54,7 +54,9 @@ from .todo_contract import (
     normalize_required_capabilities,
     normalize_target_capabilities,
     normalize_required_write_scopes,
+    normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_id,
     normalize_todo_status,
     normalize_todo_task_class,
     parse_todo_metadata_line,
@@ -3821,6 +3823,12 @@ def structured_todo_item(
     claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
     if claimed_by:
         normalized["claimed_by"] = claimed_by
+    blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+    if blocks_agent:
+        normalized["blocks_agent"] = blocks_agent
+    unblocks_todo_id = normalize_todo_id(item.get("unblocks_todo_id"))
+    if unblocks_todo_id:
+        normalized["unblocks_todo_id"] = unblocks_todo_id
     if priority:
         normalized["priority"] = priority
         normalized["title"] = normalize_todo_text(title)
@@ -3848,6 +3856,8 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "required_capabilities",
         "target_capabilities",
         "claimed_by",
+        "blocks_agent",
+        "unblocks_todo_id",
         "note",
         "evidence",
         "reason",

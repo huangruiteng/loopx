@@ -328,6 +328,14 @@ candidate remains in `runnable_candidates` with `capability_repair_mode=true`,
 `missing_target_capabilities`. This avoids a circular gate where a todo cannot
 develop `benchmark_runner` because it does not already have `benchmark_runner`.
 
+For multi-agent goals, executable primary-review handoffs can carry
+`blocks_agent=<side-agent>` and `unblocks_todo_id=<todo_id>`. When the current
+agent is the primary agent and the handoff is already claimed by that primary
+agent, `agent_lane_next_action` ranks that explicit unblock ahead of ordinary
+same-priority backlog, even if the goal-level `Next Action` prose is stale.
+This is only a scheduling hint: capability gates, write-scope checks, user
+gates, and validation still apply.
+
 External-evidence waits have an additional CLI-level observation contract. When
 the selected goal is `state=waiting`, `waiting_on=external_evidence`, and its
 current lane is a continuous monitor, or when the active state says a
@@ -519,6 +527,9 @@ slice. If the active-state and latest-run actions differ,
 `next_action_projection_warning` asks the executor to explicitly write back the
 intended durable route with `refresh-state --next-action` or keep treating the
 signals as distinct.
+When `agent_lane_next_action.selected_by=unclaimed_todo`, the payload marks
+`claim_required_before_work=true`; executors must claim the todo before editing
+or launching delivery work.
 For goals with `coordination.registered_agents`, `quota should-run` accepts an
 optional `--agent-id <registered-agent>`. Identity-aware heartbeat prompts pass
 that flag through their quota guard. If a registered goal is checked without an

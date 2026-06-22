@@ -151,6 +151,10 @@ def normalize_todo_claimed_by(value: Any) -> str | None:
     return None
 
 
+def normalize_todo_blocks_agent(value: Any) -> str | None:
+    return normalize_todo_claimed_by(value)
+
+
 def normalize_todo_id(value: Any) -> str | None:
     candidate = str(value or "").strip().lower()
     if candidate and TODO_ID_PATTERN.match(candidate):
@@ -306,6 +310,14 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             claimed_by = normalize_todo_claimed_by(value)
             if claimed_by:
                 metadata["claimed_by"] = claimed_by
+        elif key == "blocks_agent":
+            blocks_agent = normalize_todo_blocks_agent(value)
+            if blocks_agent:
+                metadata["blocks_agent"] = blocks_agent
+        elif key == "unblocks_todo_id":
+            todo_id = normalize_todo_id(value)
+            if todo_id:
+                metadata["unblocks_todo_id"] = todo_id
         elif key in {"note", "evidence", "reason", "completed_at", "updated_at"}:
             if value:
                 metadata[key] = value
@@ -326,6 +338,8 @@ def format_todo_metadata_line(
     required_capabilities: Any = None,
     target_capabilities: Any = None,
     claimed_by: str | None = None,
+    blocks_agent: str | None = None,
+    unblocks_todo_id: str | None = None,
     note: str | None = None,
     evidence: str | None = None,
     reason: str | None = None,
@@ -383,6 +397,16 @@ def format_todo_metadata_line(
         raise ValueError("claimed_by must be a public-safe agent token such as codex-main-control")
     if normalized_claimed_by:
         fields.append(f"claimed_by={encode_metadata_value(normalized_claimed_by)}")
+    normalized_blocks_agent = normalize_todo_blocks_agent(blocks_agent)
+    if blocks_agent and not normalized_blocks_agent:
+        raise ValueError("blocks_agent must be a public-safe agent token such as codex-side-bypass")
+    if normalized_blocks_agent:
+        fields.append(f"blocks_agent={encode_metadata_value(normalized_blocks_agent)}")
+    normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id)
+    if unblocks_todo_id and not normalized_unblocks_todo_id:
+        raise ValueError("unblocks_todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")
+    if normalized_unblocks_todo_id:
+        fields.append(f"unblocks_todo_id={encode_metadata_value(normalized_unblocks_todo_id)}")
     for key, value in (
         ("note", note),
         ("evidence", evidence),
