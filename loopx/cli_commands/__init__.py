@@ -8,6 +8,10 @@ Command modules expose two small functions:
 The top-level CLI keeps global options, registry fallback, and dispatch order.
 """
 
+from .agents_last_exam import (
+    handle_agents_last_exam_command,
+    register_agents_last_exam_commands,
+)
 from .benchmark_boundary import (
     handle_benchmark_boundary_command,
     register_benchmark_boundary_commands,
@@ -52,6 +56,7 @@ from .terminal_bench_adapter import (
 from .todo import handle_todo_command, register_todo_command
 
 __all__ = [
+    "handle_agents_last_exam_command",
     "handle_benchmark_boundary_command",
     "handle_check_command",
     "handle_codex_cli_bounded_visible_pilot_adapter_command",
@@ -82,6 +87,7 @@ __all__ = [
     "handle_status_command",
     "handle_terminal_bench_adapter_command",
     "handle_todo_command",
+    "register_agents_last_exam_commands",
     "register_benchmark_boundary_commands",
     "register_doctor_command",
     "register_dreaming_commands",

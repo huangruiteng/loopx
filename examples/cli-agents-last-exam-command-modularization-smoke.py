@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "loopx.cli", *args],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def assert_contains(text: str, needle: str) -> None:
+    if needle not in text:
+        raise AssertionError(f"expected to find {needle!r} in output:\n{text}")
+
+
+def main() -> int:
+    cli_source = (ROOT / "loopx" / "cli.py").read_text(encoding="utf-8")
+    init_source = (ROOT / "loopx" / "cli_commands" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    ale_source = (ROOT / "loopx" / "cli_commands" / "agents_last_exam.py").read_text(
+        encoding="utf-8"
+    )
+
+    leaked_markers = [
+        "ale_local_preflight_parser = benchmark_sub.add_parser",
+        "ale_validation_run_gate_parser = benchmark_sub.add_parser",
+        "def render_agents_last_exam_local_preflight_markdown",
+        "build_agents_last_exam_local_preflight(",
+        'if args.benchmark_command == "ale-local-preflight":',
+    ]
+    for marker in leaked_markers:
+        if marker in cli_source:
+            raise AssertionError(f"{marker} leaked back into loopx/cli.py")
+    assert_contains(
+        cli_source,
+        "register_agents_last_exam_commands(benchmark_sub, add_subcommand_format)",
+    )
+    assert_contains(cli_source, "handle_agents_last_exam_command(")
+    assert_contains(init_source, "register_agents_last_exam_commands")
+    assert_contains(init_source, "handle_agents_last_exam_command")
+    assert_contains(ale_source, "AGENTS_LAST_EXAM_COMMANDS")
+    assert_contains(ale_source, "ale-validation-run-gate")
+
+    help_result = run_cli("benchmark", "ale-validation-run-gate", "--help")
+    if help_result.returncode != 0:
+        raise AssertionError(help_result.stderr or help_result.stdout)
+    assert_contains(help_result.stdout, "--task-material-readiness-json")
+    assert_contains(help_result.stdout, "--leaderboard-enabled")
+
+    preflight_result = run_cli(
+        "benchmark",
+        "ale-local-preflight",
+        "--no-docker-probe",
+        "--format",
+        "json",
+    )
+    if preflight_result.returncode != 0:
+        raise AssertionError(preflight_result.stderr or preflight_result.stdout)
+    preflight_payload = json.loads(preflight_result.stdout)
+    if preflight_payload.get("ok") is not True:
+        raise AssertionError(preflight_payload)
+    boundary = preflight_payload["boundary"]
+    if boundary.get("no_upload") is not True:
+        raise AssertionError(preflight_payload)
+    if boundary.get("submit_eligible") is not False:
+        raise AssertionError(preflight_payload)
+
+    host_route_result = run_cli(
+        "benchmark",
+        "ale-host-codex-cli-route",
+        "--assume-codex-binary-available",
+        "--codex-version-text",
+        "codex-smoke",
+        "--operator-authorized-host-codex-auth",
+        "--format",
+        "json",
+    )
+    if host_route_result.returncode != 0:
+        raise AssertionError(host_route_result.stderr or host_route_result.stdout)
+    host_route_payload = json.loads(host_route_result.stdout)
+    if host_route_payload.get("ok") is not True:
+        raise AssertionError(host_route_payload)
+    if host_route_payload["host_auth"].get("credential_values_recorded") is not False:
+        raise AssertionError(host_route_payload)
+    if host_route_payload["boundary"].get("local_paths_recorded") is not False:
+        raise AssertionError(host_route_payload)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        missing_gate = Path(temp_dir) / "missing-gate.json"
+        gate_result = run_cli(
+            "benchmark",
+            "ale-validation-run-gate",
+            "--selected-task-id",
+            "demo/task",
+            "--validation-hypothesis",
+            "smoke",
+            "--task-material-readiness-json",
+            str(missing_gate),
+            "--host-codex-no-task-e2e-json",
+            str(missing_gate),
+            "--exact-dry-run-json",
+            str(missing_gate),
+            "--format",
+            "json",
+        )
+    if gate_result.returncode != 1:
+        raise AssertionError(
+            f"expected validation gate failure, got {gate_result.returncode}:\n"
+            f"stdout={gate_result.stdout}\nstderr={gate_result.stderr}"
+        )
+    gate_payload = json.loads(gate_result.stdout)
+    if gate_payload.get("ok") is not False:
+        raise AssertionError(gate_payload)
+    if gate_payload.get("error_type") != "FileNotFoundError":
+        raise AssertionError(gate_payload)
+
+    print("cli-agents-last-exam-command-modularization-smoke: ok")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
