@@ -108,6 +108,34 @@ The pack should never infer that a metric board, dataset path, training system,
 or launch command is authorized merely because text in a todo looks familiar.
 Authority comes from the registry, goal boundary, and compact owner decision.
 
+### Quick Trial
+
+Algorithm experiment users can trial the advisory shape without enabling
+delivery authority:
+
+```bash
+loopx ml-experiment preview --format json \
+  --experiment-id exp_preview_v1 \
+  --primary-metric offline_auc \
+  --baseline-value 0.421 \
+  --candidate-value 0.437 \
+  --guardrail-status clean \
+  --train-window train_2026w24 \
+  --eval-window eval_2026w25 \
+  --hypothesis-id h_route_mix_v1 \
+  --mechanism-family "candidate retrieval mix" \
+  --route route_mix \
+  --positive-evidence offline_eval_delta_positive \
+  --next-candidate holdout_eval
+```
+
+The preview writes no state and launches nothing. It returns compact public-safe
+`ml_experiment_result_v0`, `dataset_window_contract_v0`,
+`hypothesis_ledger_v0`, and `experiment_replan_v0` sections with
+`launch_actions_enabled=false` and `production_actions_enabled=false`.
+Use artifact aliases instead of raw logs, private paths, internal links, or
+credential-bearing metric dumps.
+
 ## Detection
 
 `domain_pack_detection_v0` is a suggest-only detector. It may inspect public-safe

@@ -196,6 +196,12 @@ from .history import (
     render_index_duplicate_inspection_markdown,
     render_index_duplicate_repair_markdown,
 )
+from .ml_experiment import (
+    GUARDRAIL_STATUSES,
+    HYPOTHESIS_STATUSES,
+    build_ml_experiment_advisory_packet,
+    render_ml_experiment_advisory_markdown,
+)
 from .operator_gate import (
     DEFAULT_OPERATOR_GATE,
     OPERATOR_GATE_DECISIONS,
@@ -2836,6 +2842,70 @@ def main(argv: list[str] | None = None) -> int:
         choices=["thin", "brief", "compact"],
         default=[],
         help="Prompt mode to compare. Repeatable; defaults to the thin installed heartbeat contract.",
+    )
+
+    ml_experiment_parser = sub.add_parser(
+        "ml-experiment",
+        help="Render default-off ML experiment advisory packets.",
+    )
+    ml_experiment_sub = ml_experiment_parser.add_subparsers(dest="ml_experiment_command", required=True)
+    ml_experiment_preview_parser = ml_experiment_sub.add_parser(
+        "preview",
+        help="Preview a public-safe ML experiment result, hypothesis ledger, and replan packet.",
+    )
+    add_subcommand_format(ml_experiment_preview_parser)
+    ml_experiment_preview_parser.add_argument("--experiment-id", required=True, help="Public experiment id.")
+    ml_experiment_preview_parser.add_argument("--primary-metric", required=True, help="Primary metric label.")
+    ml_experiment_preview_parser.add_argument("--baseline-value", type=float, required=True)
+    ml_experiment_preview_parser.add_argument("--candidate-value", type=float, required=True)
+    metric_direction = ml_experiment_preview_parser.add_mutually_exclusive_group()
+    metric_direction.add_argument(
+        "--higher-is-better",
+        dest="higher_is_better",
+        action="store_true",
+        default=True,
+        help="Classify positive metric deltas as improvements. This is the default.",
+    )
+    metric_direction.add_argument(
+        "--lower-is-better",
+        dest="higher_is_better",
+        action="store_false",
+        help="Classify negative metric deltas as improvements.",
+    )
+    ml_experiment_preview_parser.add_argument(
+        "--guardrail-status",
+        choices=GUARDRAIL_STATUSES,
+        default="unknown",
+        help="Compact guardrail classification.",
+    )
+    ml_experiment_preview_parser.add_argument("--train-window", required=True)
+    ml_experiment_preview_parser.add_argument("--eval-window", required=True)
+    ml_experiment_preview_parser.add_argument("--granularity", default="daily")
+    ml_experiment_preview_parser.add_argument("--hypothesis-id", required=True)
+    ml_experiment_preview_parser.add_argument("--mechanism-family", required=True)
+    ml_experiment_preview_parser.add_argument("--route", required=True)
+    ml_experiment_preview_parser.add_argument(
+        "--hypothesis-status",
+        choices=HYPOTHESIS_STATUSES,
+        default="active",
+    )
+    ml_experiment_preview_parser.add_argument(
+        "--positive-evidence",
+        action="append",
+        default=[],
+        help="Compact public-safe evidence label. Repeatable.",
+    )
+    ml_experiment_preview_parser.add_argument(
+        "--negative-evidence",
+        action="append",
+        default=[],
+        help="Compact public-safe evidence label. Repeatable.",
+    )
+    ml_experiment_preview_parser.add_argument(
+        "--next-candidate",
+        action="append",
+        default=[],
+        help="Compact public-safe follow-up candidate label. Repeatable.",
     )
 
     sub.add_parser("registry", help="Inspect registry goals and adapter declarations.")
@@ -6590,6 +6660,37 @@ def main(argv: list[str] | None = None) -> int:
                 "recommended_action": "fix upgrade-plan collection before default promotion",
             }
         print_payload(payload, output_format(args), render_upgrade_plan_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "ml-experiment":
+        try:
+            if args.ml_experiment_command != "preview":
+                raise ValueError("ml-experiment requires the `preview` subcommand")
+            payload = build_ml_experiment_advisory_packet(
+                experiment_id=args.experiment_id,
+                primary_metric=args.primary_metric,
+                baseline_value=args.baseline_value,
+                candidate_value=args.candidate_value,
+                higher_is_better=bool(args.higher_is_better),
+                guardrail_status=args.guardrail_status,
+                train_window=args.train_window,
+                eval_window=args.eval_window,
+                granularity=args.granularity,
+                hypothesis_id=args.hypothesis_id,
+                mechanism_family=args.mechanism_family,
+                route=args.route,
+                hypothesis_status=args.hypothesis_status,
+                positive_evidence=args.positive_evidence,
+                negative_evidence=args.negative_evidence,
+                next_candidates=args.next_candidate,
+            )
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "mode": "ml-experiment",
+                "error": str(exc),
+            }
+        print_payload(payload, output_format(args), render_ml_experiment_advisory_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "registry":
