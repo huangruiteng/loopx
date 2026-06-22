@@ -76,16 +76,20 @@ from .starter_session_runtime import (
     register_starter_session_runtime_commands,
 )
 from .starter_visible_driver import (
-    handle_codex_cli_bounded_visible_pilot_adapter_command,
-    handle_codex_cli_visible_first_response_capture_plan_command,
     handle_codex_cli_local_driver_plan_command,
-    handle_codex_cli_one_message_loop_pilot_command,
-    handle_codex_cli_visible_attach_acceptance_command,
-    handle_codex_cli_visible_local_driver_pilot_command,
     handle_codex_cli_visible_driver_plan_command,
     handle_codex_cli_visible_driver_run_command,
     handle_starter_visible_driver_command,
     register_starter_visible_driver_commands,
+)
+from .starter_visible_pilot import (
+    handle_codex_cli_bounded_visible_pilot_adapter_command,
+    handle_codex_cli_one_message_loop_pilot_command,
+    handle_codex_cli_visible_attach_acceptance_command,
+    handle_codex_cli_visible_first_response_capture_plan_command,
+    handle_codex_cli_visible_local_driver_pilot_command,
+    handle_starter_visible_pilot_command,
+    register_starter_visible_pilot_commands,
 )
 from .status import (
     handle_check_command,
@@ -151,6 +155,7 @@ __all__ = [
     "handle_starter_scheduler_command",
     "handle_starter_session_runtime_command",
     "handle_starter_visible_driver_command",
+    "handle_starter_visible_pilot_command",
     "handle_support_control_command",
     "handle_terminal_bench_adapter_command",
     "handle_terminal_bench_environment_result_command",
@@ -175,6 +180,7 @@ __all__ = [
     "register_starter_scheduler_commands",
     "register_starter_session_runtime_commands",
     "register_starter_visible_driver_commands",
+    "register_starter_visible_pilot_commands",
     "register_status_commands",
     "register_support_control_commands",
     "register_terminal_bench_adapter_commands",
