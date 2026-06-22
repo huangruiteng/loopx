@@ -55,6 +55,9 @@ def main() -> int:
     task_material_source = (
         ROOT / "loopx" / "cli_commands" / "agents_last_exam_task_material.py"
     ).read_text(encoding="utf-8")
+    validation_gate_source = (
+        ROOT / "loopx" / "cli_commands" / "agents_last_exam_validation_gate.py"
+    ).read_text(encoding="utf-8")
 
     leaked_markers = [
         "ale_local_preflight_parser = benchmark_sub.add_parser",
@@ -85,8 +88,9 @@ def main() -> int:
     assert_contains(init_source, "handle_agents_last_exam_host_codex_command")
     assert_contains(init_source, "register_agents_last_exam_task_material_commands")
     assert_contains(init_source, "handle_agents_last_exam_task_material_command")
+    assert_contains(init_source, "register_agents_last_exam_validation_gate_commands")
+    assert_contains(init_source, "handle_agents_last_exam_validation_gate_command")
     assert_contains(ale_source, "AGENTS_LAST_EXAM_COMMANDS")
-    assert_contains(ale_source, "ale-validation-run-gate")
     assert_contains(
         ale_source,
         "register_agents_last_exam_local_plan_commands(",
@@ -134,6 +138,14 @@ def main() -> int:
     assert_contains(
         ale_source,
         "handle_agents_last_exam_host_codex_command(",
+    )
+    assert_contains(
+        ale_source,
+        "register_agents_last_exam_validation_gate_commands(",
+    )
+    assert_contains(
+        ale_source,
+        "handle_agents_last_exam_validation_gate_command(",
     )
     for marker in (
         "def render_agents_last_exam_local_preflight_markdown",
@@ -200,6 +212,17 @@ def main() -> int:
         if marker in ale_source:
             raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
         assert_contains(host_codex_source, marker)
+    for marker in (
+        "def render_agents_last_exam_validation_run_gate_markdown",
+        "build_agents_last_exam_validation_run_gate(",
+        'benchmark_subparsers.add_parser(\n        "ale-validation-run-gate"',
+        'if args.benchmark_command == "ale-validation-run-gate":',
+        "Path(args.task_material_readiness_json)",
+        "json.loads(",
+    ):
+        if marker in ale_source:
+            raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
+        assert_contains(validation_gate_source, marker)
 
     help_result = run_cli("benchmark", "ale-validation-run-gate", "--help")
     if help_result.returncode != 0:
