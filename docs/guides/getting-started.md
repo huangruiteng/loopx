@@ -227,9 +227,18 @@ under `~/.local/share/loopx/releases/`, installs the CLI wrapper under
 `~/.local/bin`, and installs the reusable LoopX skills under
 `~/.codex/skills`.
 
-`loopx doctor` reports `install_freshness`. When it says
-`requires_upgrade=true`, rerun the no-clone installer printed in
-`upgrade_command`, then run `loopx doctor` again before continuing.
+`loopx doctor` reports `install_freshness`. For a productized upgrade path, use
+the explicit self-update interface:
+
+```bash
+loopx update --check
+loopx update --dry-run
+loopx update --execute
+```
+
+`--check` and `--dry-run` are read-only. `--execute` reruns the no-clone
+installer, reports the source archive, keeps the previous release snapshot as a
+rollback target when possible, and validates the result with `loopx doctor`.
 
 This is the recommended install repair path for Codex CLI users because an
 agent can run it from inside the TUI without asking the user to clone this
@@ -266,12 +275,12 @@ checkout to the default local release.
 - the CLI wrappers under `~/.local/bin`;
 - the LoopX Codex skills under `~/.codex/skills`.
 
-For a no-clone install, rerun the GitHub archive installer to refresh the
-release snapshot and skills:
+For a no-clone install, use `loopx update` to refresh the release snapshot and
+skills:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
-loopx doctor
+loopx update --check
+loopx update --execute
 ```
 
 For a contributor checkout, re-run the installer to update both surfaces from
@@ -731,6 +740,7 @@ bootstrap / connect     connect a project-local goal
 new-project-prompt      generate a Codex prompt for project connection
 demo                    create a disposable local demo goal
 doctor                  diagnose installation and import health
+update                  check or execute a no-clone LoopX self-update
 registry                inspect registered goals
 registry-boundary       classify registry local/public boundary and push policy
 status                  show first-screen operator status

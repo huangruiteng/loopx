@@ -143,6 +143,11 @@ def main() -> int:
         assert upgrade["ok"] is True, upgrade
         assert upgrade["mode"] == "upgrade-plan", upgrade
 
+        update = cli_json(registry_path, "update", "--format", "json", "--check")
+        assert update["ok"] is True, update
+        assert update["mode"] == "update", update
+        assert update["check_only"] is True, update
+
         promotion = cli_json(registry_path, "promotion-gate", "--format", "json")
         assert promotion["ok"] is True, promotion
         assert promotion["gate"] == "promotion_readiness", promotion

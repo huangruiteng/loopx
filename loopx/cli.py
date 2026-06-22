@@ -283,6 +283,7 @@ from .todos import (
     supersede_goal_todo,
     update_goal_todo,
 )
+from .self_update import build_update_plan, execute_update_plan, render_update_plan_markdown
 from .upgrade import build_upgrade_plan, render_upgrade_plan_markdown
 from .worker_bridge import (
     DEFAULT_WORKER_BRIDGE_ACTIVE_USER_FEED_JSONL,
@@ -2853,6 +2854,34 @@ def main(argv: list[str] | None = None) -> int:
         choices=["thin", "brief", "compact"],
         default=[],
         help="Prompt mode to compare. Repeatable; defaults to the thin installed heartbeat contract.",
+    )
+
+    update_parser = sub.add_parser(
+        "update",
+        help="Check or execute a no-clone LoopX self-update.",
+    )
+    add_subcommand_format(update_parser)
+    update_mode = update_parser.add_mutually_exclusive_group()
+    update_mode.add_argument("--check", action="store_true", help="Only report install freshness and update source.")
+    update_mode.add_argument("--dry-run", action="store_true", help="Preview the update plan without installing.")
+    update_mode.add_argument("--execute", action="store_true", help="Run the installer and validate with loopx doctor.")
+    update_parser.add_argument(
+        "--repo",
+        help="GitHub repo owner/name used by the installer archive. Defaults to LOOPX_REPO or huangruiteng/loopx.",
+    )
+    update_parser.add_argument(
+        "--ref",
+        help="Git ref used by the installer archive. Defaults to LOOPX_REF or main.",
+    )
+    update_parser.add_argument(
+        "--archive-url",
+        help="Explicit tarball URL passed to the installer as LOOPX_ARCHIVE_URL.",
+    )
+    update_parser.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=600,
+        help="Timeout for --execute installer and post-update doctor commands.",
     )
 
     ml_experiment_parser = sub.add_parser(
@@ -6702,6 +6731,31 @@ def main(argv: list[str] | None = None) -> int:
                 "recommended_action": "fix upgrade-plan collection before default promotion",
             }
         print_payload(payload, output_format(args), render_upgrade_plan_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "update":
+        try:
+            payload = build_update_plan(
+                repo=args.repo,
+                ref=args.ref,
+                archive_url=args.archive_url,
+                check_only=args.check,
+                execute=args.execute,
+            )
+            if args.execute:
+                payload = execute_update_plan(payload, timeout_seconds=args.timeout_seconds)
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "schema_version": "loopx_update_plan_v0",
+                "mode": "update",
+                "check_only": bool(getattr(args, "check", False)),
+                "dry_run": not bool(getattr(args, "execute", False)),
+                "execute_requested": bool(getattr(args, "execute", False)),
+                "error": str(exc),
+                "recommended_action": "fix update planning or installation before retrying",
+            }
+        print_payload(payload, output_format(args), render_update_plan_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "ml-experiment":
