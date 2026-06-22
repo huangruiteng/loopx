@@ -213,7 +213,9 @@ attention cost. See the
 the conservative schema and benchmark boundary.
 
 For a short version of the operating model, read
-[Loop Engineering principles and pitfalls](docs/product/loop-engineering-principles-and-pitfalls.md).
+[Loop Engineering principles and pitfalls](docs/product/loop-engineering-principles-and-pitfalls.md)
+or the
+[Chinese version](docs/product/loop-engineering-principles-and-pitfalls.zh.md).
 
 ## What You Get
 
