@@ -82,6 +82,55 @@ the custom host agent, not a prompt-only packet. Required treatment properties:
 - compact controller trace and rollout events for quota, todo claim/update,
   state read/write, validation, refresh, spend, and case result.
 
+## Structured Run Permission Policy
+
+```json
+{
+  "schema_version": "run_permission_policy_v0",
+  "policy_id": "swe_marathon_vliw_local_no_upload_20260622",
+  "allowed_actions": [
+    "codex_model_invocation",
+    "local_docker_runner",
+    "local_harbor_runner",
+    "benchmark_dependency_fetch",
+    "compact_result_reduction"
+  ],
+  "forbidden_actions": [
+    "public_result_upload",
+    "leaderboard_submission",
+    "public_benchmark_claim",
+    "production_cloud_action",
+    "credential_sync",
+    "raw_artifact_publication"
+  ],
+  "max_wall_time_minutes": 480,
+  "no_upload_required": true,
+  "submit_allowed": false,
+  "leaderboard_claim_allowed": false,
+  "public_benchmark_claim_allowed": false,
+  "production_cloud_allowed": false,
+  "observation_boundary": {
+    "compact_only": true,
+    "raw_logs_public": false,
+    "raw_task_text_public": false,
+    "raw_trajectory_public": false,
+    "local_paths_public": false
+  },
+  "operator_gate_required_for": [
+    "public_result_upload",
+    "leaderboard_submission",
+    "public_benchmark_claim",
+    "production_cloud_action",
+    "credential_sync",
+    "raw_artifact_publication"
+  ]
+}
+```
+
+This policy records the no-upload local execution boundary. It does not by
+itself authorize launch from an automatic heartbeat; the stop rules below still
+apply.
+
 ## No-Upload Guard
 
 A scored local or remote pilot must:

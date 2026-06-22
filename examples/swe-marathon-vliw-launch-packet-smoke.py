@@ -5,10 +5,20 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.benchmark_core import (  # noqa: E402
+    RunPermissionAction,
+    compact_run_permission_policy_for_quota,
+    validate_run_permission_policy,
+)
+
 DOC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
 PACKET_PATH = DOC_DIR / "swe-marathon-vliw-kernel-optimization-launch-packet-v0.md"
 CATALOG_PATH = DOC_DIR / "swe-marathon-full-suite-status-20260622.json"
@@ -40,6 +50,16 @@ def load_case() -> dict:
     )
 
 
+def load_run_permission_policy(packet: str) -> dict:
+    match = re.search(
+        r"## Structured Run Permission Policy\s+```json\s+(.*?)\s+```",
+        packet,
+        re.DOTALL,
+    )
+    assert match, "missing structured run permission policy block"
+    return json.loads(match.group(1))
+
+
 def test_packet_matches_catalog() -> None:
     case = load_case()
     packet = PACKET_PATH.read_text(encoding="utf-8")
@@ -63,6 +83,32 @@ def test_no_execution_boundary() -> None:
     assert_public_safe(packet)
 
 
+def test_structured_run_permission_policy() -> None:
+    packet = PACKET_PATH.read_text(encoding="utf-8")
+    policy = load_run_permission_policy(packet)
+    validation = validate_run_permission_policy(policy)
+    projection = compact_run_permission_policy_for_quota(policy)
+
+    assert validation["ok"] is True, validation
+    assert projection is not None, policy
+    assert projection["policy_id"] == "swe_marathon_vliw_local_no_upload_20260622"
+    assert projection["delivery_allowed"] is True, projection
+    assert projection["max_wall_time_minutes"] == 480, projection
+    assert projection["no_upload_required"] is True, projection
+    assert projection["submit_allowed"] is False, projection
+    assert projection["leaderboard_claim_allowed"] is False, projection
+    assert projection["compact_observation_only"] is True, projection
+    assert (
+        RunPermissionAction.LOCAL_HARBOR_RUNNER.value
+        in projection["allowed_actions"]
+    )
+    assert (
+        RunPermissionAction.PUBLIC_RESULT_UPLOAD.value
+        in projection["forbidden_actions"]
+    )
+    assert "does not by\nitself authorize launch from an automatic heartbeat" in packet
+
+
 def test_readme_indexes_packet() -> None:
     readme = README_PATH.read_text(encoding="utf-8")
     assert "swe-marathon-vliw-kernel-optimization-launch-packet-v0.md" in readme
@@ -71,5 +117,6 @@ def test_readme_indexes_packet() -> None:
 if __name__ == "__main__":
     test_packet_matches_catalog()
     test_no_execution_boundary()
+    test_structured_run_permission_policy()
     test_readme_indexes_packet()
     print("swe-marathon-vliw-launch-packet-smoke ok")
