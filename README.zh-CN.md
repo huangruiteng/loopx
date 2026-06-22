@@ -16,6 +16,9 @@ loop 状态：目标、用户决策、agent todo、认领关系、scope、证据
 和 quota 留在同一层状态里。该等人的地方明确等人，不该空等的安全侧路继续推进，
 每一次自动执行都留下边界、验证面和写回轨迹。
 
+同一份状态也会投影到本地管理面：用户可以先看项目、agent lane、user gate、
+todo、证据和 review 信号，再决定是否给 agent 更多自主权。
+
 [English](README.md) · [快速开始](#快速开始) · [看几个例子](#看几个例子) ·
 [Showcases](docs/showcases/README.md) · [用户群与反馈](#用户群与反馈) ·
 [产品愿景](docs/product/vision.md) · [架构](docs/architecture.md)
@@ -104,6 +107,22 @@ loopx bootstrap \
 演示者需要 timed walkthrough 时，再打开
 [3 分钟 demo script](docs/outreach/frontstage-demo-script.md)。
 
+## 审阅和管理 Agent 工作
+
+项目接入后，LoopX 可以先作为 read-first 管理面使用，而不是一上来就接管更多控制权。
+本地 dashboard 支持查看所有已连接项目、搜索 todo、检查 user gate、对比 agent lane、
+跟踪证据，避免用户从 raw log 里理解 agent 到底做了什么。
+
+```bash
+loopx serve-status --global-registry --port 8766 --limit 80
+cd ~/loopx/apps/dashboard && npm install && npm run dev
+```
+
+这个管理面保持保守：CLI 状态仍然是事实源，浏览器写入需要显式本地 opt-in，
+review 信号不会自动变成执行权限。更完整的设计见
+[intelligent management surface](docs/product/intelligent-management-surface.md)
+和 [project-level reward model](docs/product/project-level-reward-model.md)。
+
 ## 它是什么
 
 LoopX 不是另一个 agent runtime，也不是要替代 Codex、Claude Code、
@@ -167,6 +186,10 @@ flowchart LR
 - **Todo ownership**：agent 通过 `claimed_by` 认领 todo，减少并发冲突。
 - **Quota guard**：每次自动 heartbeat 前判断是否应该运行、等待、通知或自修复。
 - **Run history**：把每轮进展、验证、blocker、reward、quota spend 记录成紧凑历史。
+- **Read-first management surface**：本地 dashboard 用于项目选择、todo 搜索、
+  agent lane、user gate、证据和 review 信号。
+- **Performance review**：用产出数量、产出质量、token cost 和 user attention cost
+  评价长期 Loop Agent 的项目级价值。
 
 ## 适合什么场景
 

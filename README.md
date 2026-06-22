@@ -18,6 +18,10 @@ human decisions stay in one compact layer. User gates stay explicit; safe
 fallback lanes keep moving; every automatic turn has a boundary, validation
 surface, and writeback trail.
 
+The same state also feeds a local management surface: operators can inspect
+projects, agent lanes, user gates, todos, evidence, and review signals before
+granting more autonomy.
+
 LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地方明确等人，
 不该空等的安全侧路继续推进，下一轮 agent 总能读到目标、边界、证据和交接。
 
@@ -148,6 +152,25 @@ For more cases, open the [showcase catalog](docs/showcases/README.md). For a
 timed presenter walkthrough, use the
 [3-minute demo script](docs/outreach/frontstage-demo-script.md).
 
+## Review Agent Work
+
+After a project is connected, LoopX can be used as a read-first management
+surface before it is trusted with more control. The local dashboard helps you
+inspect all connected projects, search todos, review user gates, compare agent
+lanes, and follow evidence without reading raw logs.
+
+```bash
+loopx serve-status --global-registry --port 8766 --limit 80
+cd ~/loopx/apps/dashboard && npm install && npm run dev
+```
+
+This surface is intentionally conservative: CLI state remains the source of
+truth, browser writes require explicit local opt-in, and review signals are
+kept separate from execution permission. See the
+[intelligent management surface](docs/product/intelligent-management-surface.md)
+and [project-level reward model](docs/product/project-level-reward-model.md)
+for the longer product direction.
+
 ## What Is It?
 
 LoopX does not replace Codex, Claude Code, Cursor, or another agent
@@ -232,6 +255,10 @@ or the
   run, wait, ask the user, self-repair, or stay quiet.
 - **Run history and evidence**: compact append-only events for progress,
   validation, blockers, reward, benchmark results, and quota spend.
+- **Read-first management surface**: a local dashboard for project selection,
+  todo search, agent lanes, user gates, evidence, and review signals.
+- **Performance review**: project-level value signals across output quantity,
+  output quality, token cost, and user attention cost.
 - **Public/private boundary checks**: local scans and docs rules to keep raw
   private state, credentials, logs, traces, and benchmark material out of
   public artifacts.
