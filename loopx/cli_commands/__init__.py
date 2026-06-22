@@ -69,6 +69,10 @@ from .status import (
     handle_status_command,
     register_status_commands,
 )
+from .support_control import (
+    handle_support_control_command,
+    register_support_control_commands,
+)
 from .terminal_bench_adapter import (
     handle_terminal_bench_adapter_command,
     register_terminal_bench_adapter_commands,
@@ -115,6 +119,7 @@ __all__ = [
     "handle_registry_admin_command",
     "handle_review_packet_command",
     "handle_status_command",
+    "handle_support_control_command",
     "handle_terminal_bench_adapter_command",
     "handle_terminal_bench_environment_result_command",
     "handle_todo_command",
@@ -133,6 +138,7 @@ __all__ = [
     "register_registry_admin_commands",
     "register_starter_commands",
     "register_status_commands",
+    "register_support_control_commands",
     "register_terminal_bench_adapter_commands",
     "register_terminal_bench_environment_result_commands",
     "register_todo_command",
