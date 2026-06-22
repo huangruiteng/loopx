@@ -36,3 +36,12 @@ This contract is enough to distinguish mechanism-level causes such as:
 
 Content-level root cause still requires a stronger redacted semantic summarizer
 or an explicit owner gate to inspect raw private trajectory material.
+
+## Case-Analysis Backfill
+
+Backfill public summaries into `benchmark-case-analysis.json` as
+`trajectory_public_summary` blocks on the durable case record or the specific
+legacy/current subrecord they explain. `benchmark-case-analysis.md` renders the
+`Public Trajectory Summary Coverage` table from those blocks, so good/bad case
+attribution can show which conclusions are trace-backed without exposing raw
+trajectory material.

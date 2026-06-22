@@ -71,6 +71,22 @@ until matched treatment or manual attribution exists.
 | `skillsbench@1.1` | `setup-fuzzing-py` | setup blocker asset | missing | n/a | n/a | `baseline_runner_or_setup_repair_required` |
 | `skillsbench@1.1` | `adaptive-cruise-control` | setup blocker asset | missing | n/a | n/a | `baseline_runner_or_setup_repair_required` |
 
+## Public Trajectory Summary Coverage
+
+These rows are generated from `trajectory_public_summary` blocks already
+backfilled into `benchmark-case-analysis.json`. They expose only compact
+public counters; absence from this table means the durable case record does
+not yet contain a public trajectory summary.
+
+- schema_version: `trajectory_public_summary_coverage_v0`
+- summary_count: `2`
+- attribution_conclusion_count: `2`
+
+| Benchmark | Case | Summary | Rounds | Tools | LoopX CLI | Protected Edits | Attribution |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `skillsbench@1.1` | `debug-trl-grpo` | `trajectory_public_summary` (public-safe) | `5` | `112` | `0` | `2` | `yes` |
+| `skillsbench@1.1` | `paratransit-routing` | `legacy_blind_loop_positive_result.trajectory_public_summary` (public-safe) | `1` | `16` | `0` | `0` | `yes` |
+
 ## Terminal-Bench Current-Protocol Coverage
 
 These rows are generated from the latest compact ledger decisions. They are

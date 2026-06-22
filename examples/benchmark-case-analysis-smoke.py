@@ -5,10 +5,15 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.benchmark_case_analysis import trajectory_public_summary_coverage  # noqa: E402
 ANALYSIS_JSON = (
     REPO_ROOT
     / "docs"
@@ -57,6 +62,32 @@ def test_case_analysis_json() -> None:
 
     cases = payload.get("cases")
     assert isinstance(cases, list) and len(cases) >= 2, payload
+    trajectory_coverage = trajectory_public_summary_coverage(payload)
+    assert trajectory_coverage["schema_version"] == (
+        "trajectory_public_summary_coverage_v0"
+    ), trajectory_coverage
+    assert trajectory_coverage["summary_count"] == 2, trajectory_coverage
+    assert trajectory_coverage["public_safe_count"] == 2, trajectory_coverage
+    assert trajectory_coverage["attribution_conclusion_count"] == 2, (
+        trajectory_coverage
+    )
+    coverage_rows = {
+        (row["benchmark_id"], row["case_id"], row["summary_path"]): row
+        for row in trajectory_coverage["rows"]
+    }
+    assert (
+        "skillsbench@1.1",
+        "debug-trl-grpo",
+        "trajectory_public_summary",
+    ) in coverage_rows, trajectory_coverage
+    assert (
+        "skillsbench@1.1",
+        "paratransit-routing",
+        "legacy_blind_loop_positive_result.trajectory_public_summary",
+    ) in coverage_rows, trajectory_coverage
+    for row in trajectory_coverage["rows"]:
+        assert row["public_safe"] is True, row
+        assert row["private_trajectory_present"] is True, row
     by_case = {(case["benchmark_id"], case["case_id"]): case for case in cases}
     terminal_coverage = payload["terminal_bench_current_protocol_coverage"]
     assert terminal_coverage["schema_version"] == (
@@ -1144,6 +1175,10 @@ def test_case_analysis_markdown() -> None:
     assert "negative-control" in text, text
     assert "Treatment Policy Control Set" in text, text
     assert "Terminal-Bench Current-Protocol Coverage" in text, text
+    assert "Public Trajectory Summary Coverage" in text, text
+    assert "trajectory_public_summary_coverage_v0" in text, text
+    assert "legacy_blind_loop_positive_result.trajectory_public_summary" in text, text
+    assert "`debug-trl-grpo` | `trajectory_public_summary`" in text, text
     assert "current-protocol success-preservation guards" in text, text
     assert "cobol-modernization" in text, text
     assert "git-multibranch" in text, text

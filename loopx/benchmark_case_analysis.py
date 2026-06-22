@@ -526,6 +526,12 @@ def _markdown_escape_cell(value: object) -> str:
     return _compact_text(value, limit=240).replace("|", "\\|")
 
 
+def _markdown_escape_scalar(value: object) -> str:
+    if value is None:
+        return ""
+    return _markdown_escape_cell(str(value))
+
+
 def _render_case_analysis_summary_table(analysis: dict[str, Any]) -> list[str]:
     lines = [
         "| Benchmark | Case | Class | Baseline | Treatment | Delta | Decision |",
@@ -586,6 +592,152 @@ def _render_terminal_bench_current_protocol_coverage(
             f"`{delta}` | "
             f"`{_markdown_escape_cell(row.get('main_table_role'))}` | "
             f"`{_markdown_escape_cell(row.get('case_analysis_status'))}` |"
+        )
+    return lines
+
+
+def _iter_public_trajectory_summaries(
+    value: object,
+    *,
+    path: str = "",
+) -> list[tuple[str, dict[str, Any]]]:
+    summaries: list[tuple[str, dict[str, Any]]] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            if key == "trajectory_public_summary" and isinstance(child, dict):
+                summaries.append((child_path, child))
+                continue
+            summaries.extend(
+                _iter_public_trajectory_summaries(child, path=child_path)
+            )
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            child_path = f"{path}[{index}]" if path else f"[{index}]"
+            summaries.extend(
+                _iter_public_trajectory_summaries(child, path=child_path)
+            )
+    return summaries
+
+
+def _trajectory_summary_is_public_safe(summary: dict[str, Any]) -> bool:
+    return not any(
+        bool(summary.get(field))
+        for field in (
+            "raw_text_copied_to_public",
+            "raw_task_text_copied_to_public",
+            "raw_verifier_output_copied_to_public",
+            "host_path_recorded",
+        )
+    )
+
+
+def trajectory_public_summary_coverage(analysis: dict[str, Any]) -> dict[str, Any]:
+    """Return public-safe coverage rows for backfilled trajectory summaries."""
+
+    rows: list[dict[str, Any]] = []
+    cases = analysis.get("cases")
+    if not isinstance(cases, list):
+        cases = []
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        benchmark_id = _compact_text(case.get("benchmark_id"), limit=160)
+        case_id = _compact_text(case.get("case_id"), limit=200)
+        classification = _compact_text(case.get("classification"), limit=180)
+        for summary_path, summary in _iter_public_trajectory_summaries(case):
+            rows.append(
+                {
+                    "benchmark_id": benchmark_id,
+                    "case_id": case_id,
+                    "classification": classification,
+                    "summary_path": _compact_text(summary_path, limit=200),
+                    "schema_version": _compact_text(
+                        summary.get("schema_version"),
+                        limit=120,
+                    ),
+                    "round_count": summary.get("round_count", 0),
+                    "tool_call_count": summary.get("tool_call_count", 0),
+                    "loopx_cli_call_count": summary.get("loopx_cli_call_count", 0),
+                    "loopx_cli_state_usage_counts": summary.get(
+                        "loopx_cli_state_usage_counts",
+                        {},
+                    ),
+                    "protected_path_edit_signal_count": summary.get(
+                        "protected_path_edit_signal_count",
+                        0,
+                    ),
+                    "attribution_conclusion_present": bool(
+                        summary.get("attribution_conclusion")
+                    ),
+                    "private_trajectory_present": bool(
+                        summary.get("private_trajectory_present")
+                    ),
+                    "public_safe": _trajectory_summary_is_public_safe(summary),
+                }
+            )
+    rows.sort(
+        key=lambda row: (
+            str(row.get("benchmark_id")),
+            str(row.get("case_id")),
+            str(row.get("summary_path")),
+        )
+    )
+    public_safe_count = sum(1 for row in rows if row.get("public_safe"))
+    attribution_count = sum(
+        1 for row in rows if row.get("attribution_conclusion_present")
+    )
+    return {
+        "schema_version": "trajectory_public_summary_coverage_v0",
+        "summary_count": len(rows),
+        "public_safe_count": public_safe_count,
+        "attribution_conclusion_count": attribution_count,
+        "raw_trajectory_recorded": False,
+        "rows": rows,
+    }
+
+
+def _render_public_trajectory_summary_coverage(
+    analysis: dict[str, Any],
+) -> list[str]:
+    coverage = trajectory_public_summary_coverage(analysis)
+    rows = coverage.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return []
+    lines = [
+        "## Public Trajectory Summary Coverage",
+        "",
+        "These rows are generated from `trajectory_public_summary` blocks already",
+        "backfilled into `benchmark-case-analysis.json`. They expose only compact",
+        "public counters; absence from this table means the durable case record does",
+        "not yet contain a public trajectory summary.",
+        "",
+        "- schema_version: "
+        f"`{coverage.get('schema_version')}`",
+        "- summary_count: "
+        f"`{coverage.get('summary_count', 0)}`",
+        "- attribution_conclusion_count: "
+        f"`{coverage.get('attribution_conclusion_count', 0)}`",
+        "",
+        "| Benchmark | Case | Summary | Rounds | Tools | LoopX CLI | Protected Edits | Attribution |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        attribution = "yes" if row.get("attribution_conclusion_present") else "no"
+        public_safe = "public-safe" if row.get("public_safe") else "unsafe"
+        lines.append(
+            "| "
+            f"`{_markdown_escape_cell(row.get('benchmark_id'))}` | "
+            f"`{_markdown_escape_cell(row.get('case_id'))}` | "
+            f"`{_markdown_escape_cell(row.get('summary_path'))}` "
+            f"({public_safe}) | "
+            f"`{_markdown_escape_scalar(row.get('round_count'))}` | "
+            f"`{_markdown_escape_scalar(row.get('tool_call_count'))}` | "
+            f"`{_markdown_escape_scalar(row.get('loopx_cli_call_count'))}` | "
+            f"`{_markdown_escape_scalar(row.get('protected_path_edit_signal_count'))}` | "
+            f"`{attribution}` |"
         )
     return lines
 
@@ -659,6 +811,9 @@ def render_case_analysis_markdown(
         "",
     ]
     lines.extend(_render_case_analysis_summary_table(analysis))
+    trajectory_coverage_lines = _render_public_trajectory_summary_coverage(analysis)
+    if trajectory_coverage_lines:
+        lines.extend(["", *trajectory_coverage_lines])
     coverage_lines = _render_terminal_bench_current_protocol_coverage(analysis)
     if coverage_lines:
         lines.extend(["", *coverage_lines])
