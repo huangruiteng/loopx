@@ -42,15 +42,22 @@ def _compact_text(value: object, *, limit: int = 200) -> str:
 def case_analysis_keys(analysis: dict[str, Any]) -> set[tuple[str, str]]:
     keys: set[tuple[str, str]] = set()
     cases = analysis.get("cases")
-    if not isinstance(cases, list):
-        return keys
-    for case in cases:
-        if not isinstance(case, dict):
-            continue
-        benchmark_id = _compact_text(case.get("benchmark_id"), limit=160)
-        case_id = _compact_text(case.get("case_id"), limit=200)
-        if benchmark_id and case_id:
-            keys.add((benchmark_id, case_id))
+    if isinstance(cases, list):
+        for case in cases:
+            if not isinstance(case, dict):
+                continue
+            benchmark_id = _compact_text(case.get("benchmark_id"), limit=160)
+            case_id = _compact_text(case.get("case_id"), limit=200)
+            if benchmark_id and case_id:
+                keys.add((benchmark_id, case_id))
+    coverage = analysis.get("terminal_bench_current_protocol_coverage")
+    if isinstance(coverage, dict) and isinstance(coverage.get("rows"), list):
+        for row in coverage["rows"]:
+            if not isinstance(row, dict):
+                continue
+            case_id = _compact_text(row.get("case_id"), limit=200)
+            if case_id:
+                keys.add(("terminal-bench@2.0", case_id))
     return keys
 
 
