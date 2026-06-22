@@ -106,6 +106,10 @@ work still belongs in the existing code, examples, and contract documents:
   setup-readiness scan. It identifies the required Harbor fork, Codex runner
   surface, CUA/GPU deferrals, CPU shell-only pilot candidates, and the next
   no-task Harbor CLI preflight before any scored run.
+- `swe-marathon-full-suite-status-20260622.md`: public-safe 20-case
+  SWE-Marathon sweep table. It combines upstream task manifest metadata with
+  the compact public run ledger to classify resource lanes, existing evidence,
+  and the next CPU/no-CUA case without copying task bodies or raw run evidence.
 - `swe-marathon-rust-c-compiler-launch-packet-v0.md`: no-execution launch
   packet for the first SWE-Marathon CPU shell-only pilot candidate. It records
   compact `rust-c-compiler` routing metadata, no-upload command boundaries,
