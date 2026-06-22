@@ -104,24 +104,7 @@ loopx bootstrap \
   用 public-safe 证据展示同一控制面如何协调主控、旁路、scope 和 ownership。
 
 完整案例目录见 [docs/showcases/README.md](docs/showcases/README.md)。
-演示者需要 timed walkthrough 时，再打开
-[3 分钟 demo script](docs/outreach/frontstage-demo-script.md)。
-
-## 审阅和管理 Agent 工作
-
-项目接入后，LoopX 可以先作为 read-first 管理面使用，而不是一上来就接管更多控制权。
-本地 dashboard 支持查看所有已连接项目、搜索 todo、检查 user gate、对比 agent lane、
-跟踪证据，避免用户从 raw log 里理解 agent 到底做了什么。
-
-```bash
-loopx serve-status --global-registry --port 8766 --limit 80
-cd ~/loopx/apps/dashboard && npm install && npm run dev
-```
-
-这个管理面保持保守：CLI 状态仍然是事实源，浏览器写入需要显式本地 opt-in，
-review 信号不会自动变成执行权限。更完整的设计见
-[intelligent management surface](docs/product/intelligent-management-surface.md)
-和 [project-level reward model](docs/product/project-level-reward-model.md)。
+更完整的演示材料放在文末实验性能力里。
 
 ## 它是什么
 
@@ -263,3 +246,26 @@ benchmark 证据边界。
 - 稳定 CLI/runtime 行为的 focused smoke；
 - 控制面协议、架构说明、贡献者任务；
 - 明确标注 evidence boundary 的展示材料。
+
+## Experimental / 实验性能力
+
+下面这些能力适合 demo 和产品迭代，但还不是主线 getting-started 路径。
+
+### 审阅和管理 Agent 工作
+
+项目接入后，LoopX 可以先作为 read-first 管理面使用，而不是一上来就接管更多控制权。
+本地 dashboard 支持查看所有已连接项目、搜索 todo、检查 user gate、对比 agent lane、
+跟踪证据，避免用户从 raw log 里理解 agent 到底做了什么。
+
+```bash
+loopx serve-status --global-registry --port 8766 --limit 80
+cd ~/loopx/apps/dashboard && npm install && npm run dev
+```
+
+这个管理面保持保守：CLI 状态仍然是事实源，浏览器写入需要显式本地 opt-in，
+review 信号不会自动变成执行权限。更完整的设计见
+[intelligent management surface](docs/product/intelligent-management-surface.md)
+和 [project-level reward model](docs/product/project-level-reward-model.md)。
+
+演示者需要 timed walkthrough 时，可以使用
+[3 分钟 demo script](docs/outreach/frontstage-demo-script.md)。

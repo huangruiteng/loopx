@@ -149,27 +149,7 @@ points:
   agents without hiding ownership or scope.
 
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
-timed presenter walkthrough, use the
-[3-minute demo script](docs/outreach/frontstage-demo-script.md).
-
-## Review Agent Work
-
-After a project is connected, LoopX can be used as a read-first management
-surface before it is trusted with more control. The local dashboard helps you
-inspect all connected projects, search todos, review user gates, compare agent
-lanes, and follow evidence without reading raw logs.
-
-```bash
-loopx serve-status --global-registry --port 8766 --limit 80
-cd ~/loopx/apps/dashboard && npm install && npm run dev
-```
-
-This surface is intentionally conservative: CLI state remains the source of
-truth, browser writes require explicit local opt-in, and review signals are
-kept separate from execution permission. See the
-[intelligent management surface](docs/product/intelligent-management-surface.md)
-and [project-level reward model](docs/product/project-level-reward-model.md)
-for the longer product direction.
+full presenter material, see the experimental notes below.
 
 ## What Is It?
 
@@ -462,6 +442,33 @@ The next milestones are stronger project adapters, safer controller/sub-agent
 coordination, better benchmark-runner ergonomics, a more polished operator
 view, and creator/operator showcases that make the same control-plane value
 legible beyond software engineering.
+
+## Experimental
+
+These surfaces are useful for demos and product iteration, but they are not the
+main getting-started path yet.
+
+### Review Agent Work
+
+After a project is connected, LoopX can be used as a read-first management
+surface before it is trusted with more control. The local dashboard helps you
+inspect all connected projects, search todos, review user gates, compare agent
+lanes, and follow evidence without reading raw logs.
+
+```bash
+loopx serve-status --global-registry --port 8766 --limit 80
+cd ~/loopx/apps/dashboard && npm install && npm run dev
+```
+
+This surface is intentionally conservative: CLI state remains the source of
+truth, browser writes require explicit local opt-in, and review signals are
+kept separate from execution permission. See the
+[intelligent management surface](docs/product/intelligent-management-surface.md)
+and [project-level reward model](docs/product/project-level-reward-model.md)
+for the longer product direction.
+
+For a timed presenter walkthrough, use the
+[3-minute demo script](docs/outreach/frontstage-demo-script.md).
 
 ## License
 
