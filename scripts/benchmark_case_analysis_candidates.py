@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.benchmark_case_analysis import (  # noqa: E402
+    apply_accepted_case_analysis_records,
     build_case_analysis_candidate_report,
     load_json,
     render_case_analysis_candidate_report_markdown,
@@ -56,17 +57,68 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Maximum proposal records to include when --include-proposed-records is set.",
     )
+    parser.add_argument(
+        "--acceptance-policy",
+        choices=("proposal-only", "generated-safe"),
+        default="proposal-only",
+        help=(
+            "Policy for proposed records. generated-safe marks only narrow, "
+            "compact-ledger-derived records as accepted for explicit upsert."
+        ),
+    )
+    parser.add_argument(
+        "--apply-accepted",
+        action="store_true",
+        help=(
+            "Apply accepted generated-safe records to --output-analysis. "
+            "This never reads raw logs/task text/trajectories."
+        ),
+    )
+    parser.add_argument(
+        "--output-analysis",
+        type=Path,
+        default=None,
+        help="Output path for --apply-accepted. Required when applying.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    include_proposals = args.include_proposed_records or args.apply_accepted
+    if args.apply_accepted and args.acceptance_policy != "generated-safe":
+        raise SystemExit("--apply-accepted requires --acceptance-policy generated-safe")
+    if args.apply_accepted and args.output_analysis is None:
+        raise SystemExit("--apply-accepted requires --output-analysis")
+    ledger = load_json(args.ledger)
+    analysis = load_json(args.analysis)
     report = build_case_analysis_candidate_report(
-        ledger=load_json(args.ledger),
-        analysis=load_json(args.analysis),
-        include_proposed_records=args.include_proposed_records,
+        ledger=ledger,
+        analysis=analysis,
+        include_proposed_records=include_proposals,
         proposal_limit=args.proposal_limit,
+        acceptance_policy=args.acceptance_policy,
     )
+    if args.apply_accepted:
+        result = apply_accepted_case_analysis_records(
+            analysis=analysis,
+            records=report.get("proposed_records", []),
+        )
+        args.output_analysis.write_text(
+            json.dumps(
+                result["analysis"],
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        report["accepted_upsert"] = {
+            "output_written": True,
+            "added_count": result["added_count"],
+            "skipped_count": result["skipped_count"],
+        }
     if args.format == "markdown":
         sys.stdout.write(render_case_analysis_candidate_report_markdown(report))
     else:

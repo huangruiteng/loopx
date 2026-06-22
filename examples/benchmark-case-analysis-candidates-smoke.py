@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.benchmark_case_analysis import (  # noqa: E402
     BENCHMARK_CASE_ANALYSIS_CANDIDATE_REPORT_SCHEMA_VERSION,
     BENCHMARK_CASE_ANALYSIS_UPSERT_PROPOSAL_SCHEMA_VERSION,
+    apply_accepted_case_analysis_records,
     build_case_analysis_candidate_report,
     build_case_analysis_upsert_proposals,
     render_case_analysis_candidate_report_markdown,
@@ -149,6 +150,41 @@ def test_proposed_records_from_fixture() -> None:
     assert_public_safe(render_case_analysis_candidate_report_markdown(report))
 
 
+def test_generated_safe_acceptance_policy_from_fixture() -> None:
+    proposals = build_case_analysis_upsert_proposals(
+        ledger=fixture_ledger(),
+        analysis=fixture_analysis(),
+        acceptance_policy="generated-safe",
+    )
+    assert len(proposals) == 2, proposals
+    assert [proposal["proposal_status"] for proposal in proposals] == [
+        "accepted_generated_not_applied",
+        "accepted_generated_not_applied",
+    ], proposals
+    assert proposals[0]["classification"] == "generated_no_uplift_asset", proposals
+    assert proposals[0]["source_boundary"]["proposal_only"] is False, proposals
+    assert proposals[0]["source_boundary"]["accepted_generated_case_analysis"] is True
+    assert proposals[0]["acceptance_policy"]["accepted"] is True, proposals
+
+    result = apply_accepted_case_analysis_records(
+        analysis=fixture_analysis(),
+        records=proposals,
+    )
+    assert result["added_count"] == 2, result
+    assert result["skipped_count"] == 0, result
+    by_case = {
+        (case["benchmark_id"], case["case_id"]): case
+        for case in result["analysis"]["cases"]
+    }
+    generated = by_case[("bench@v1", "new-no-uplift")]
+    assert generated["classification"] == "generated_no_uplift_asset", generated
+    assert generated["evidence_status"] == (
+        "generated_from_compact_benchmark_run_ledger"
+    ), generated
+    assert generated["source_boundary"]["raw_logs_recorded"] is False, generated
+    assert_public_safe(json.dumps(result["analysis"], ensure_ascii=False))
+
+
 def test_candidate_cli_on_fixture() -> None:
     with tempfile.TemporaryDirectory(prefix="case-analysis-candidates-") as tmp:
         root = Path(tmp)
@@ -206,6 +242,35 @@ def test_candidate_cli_on_fixture() -> None:
             "proposal_only_not_applied"
         ), proposal_report
         assert_public_safe(proposals_output)
+        accepted_output = root / "accepted-analysis.json"
+        accepted_report_output = subprocess.check_output(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "benchmark_case_analysis_candidates.py"),
+                "--ledger",
+                str(ledger_path),
+                "--analysis",
+                str(analysis_path),
+                "--acceptance-policy",
+                "generated-safe",
+                "--apply-accepted",
+                "--output-analysis",
+                str(accepted_output),
+            ],
+            text=True,
+        )
+        accepted_report = json.loads(accepted_report_output)
+        assert accepted_report["accepted_record_count"] == 2, accepted_report
+        assert accepted_report["accepted_upsert"]["added_count"] == 2, (
+            accepted_report
+        )
+        accepted_analysis = json.loads(accepted_output.read_text(encoding="utf-8"))
+        accepted_cases = {
+            (case["benchmark_id"], case["case_id"])
+            for case in accepted_analysis["cases"]
+        }
+        assert ("bench@v1", "new-no-uplift") in accepted_cases, accepted_analysis
+        assert_public_safe(accepted_report_output)
 
 
 def test_loopx_benchmark_cli_on_fixture() -> None:
@@ -263,6 +328,36 @@ def test_loopx_benchmark_cli_on_fixture() -> None:
             "proposal_status"
         ] == "proposal_only_not_applied", proposals_payload
         assert_public_safe(proposals_output)
+        accepted_output = root / "accepted-loopx-analysis.json"
+        accepted_payload_output = subprocess.check_output(
+            [
+                str(REPO_ROOT / "scripts" / "loopx"),
+                "--format",
+                "json",
+                "benchmark",
+                "case-analysis-candidates",
+                "--run-ledger-path",
+                str(ledger_path),
+                "--case-analysis-path",
+                str(analysis_path),
+                "--acceptance-policy",
+                "generated-safe",
+                "--apply-accepted",
+                "--output-case-analysis-path",
+                str(accepted_output),
+            ],
+            text=True,
+        )
+        accepted_payload = json.loads(accepted_payload_output)
+        assert accepted_payload["ok"] is True, accepted_payload
+        assert accepted_payload["report"]["accepted_record_count"] == 2, (
+            accepted_payload
+        )
+        assert accepted_payload["accepted_upsert"]["added_count"] == 2, (
+            accepted_payload
+        )
+        assert accepted_output.exists(), accepted_payload
+        assert_public_safe(accepted_payload_output)
         markdown = subprocess.check_output(
             [
                 str(REPO_ROOT / "scripts" / "loopx"),
@@ -324,6 +419,7 @@ def test_default_assets_have_public_safe_candidates() -> None:
 def main() -> None:
     test_candidate_report_from_fixture()
     test_proposed_records_from_fixture()
+    test_generated_safe_acceptance_policy_from_fixture()
     test_candidate_cli_on_fixture()
     test_loopx_benchmark_cli_on_fixture()
     test_default_assets_have_public_safe_candidates()

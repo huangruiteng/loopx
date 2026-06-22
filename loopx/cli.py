@@ -125,6 +125,7 @@ from .benchmark_ledger import (
     update_benchmark_run_ledger,
 )
 from .benchmark_case_analysis import (
+    apply_accepted_case_analysis_records,
     build_case_analysis_candidate_report,
     load_json as load_benchmark_case_analysis_json,
     render_case_analysis_candidate_report_markdown,
@@ -3498,6 +3499,28 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=None,
         help="Maximum proposal records to include when --include-proposed-records is set.",
+    )
+    benchmark_case_analysis_candidates_parser.add_argument(
+        "--acceptance-policy",
+        choices=("proposal-only", "generated-safe"),
+        default="proposal-only",
+        help=(
+            "Policy for proposed records. generated-safe marks only narrow, "
+            "compact-ledger-derived records as accepted for explicit upsert."
+        ),
+    )
+    benchmark_case_analysis_candidates_parser.add_argument(
+        "--apply-accepted",
+        action="store_true",
+        help=(
+            "Apply accepted generated-safe records to --output-case-analysis-path. "
+            "This never reads raw logs/task text/trajectories."
+        ),
+    )
+    benchmark_case_analysis_candidates_parser.add_argument(
+        "--output-case-analysis-path",
+        default=None,
+        help="Output path for --apply-accepted. Required when applying.",
     )
 
     agentissue_runner_flow_parser = benchmark_sub.add_parser(
@@ -9072,6 +9095,17 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if payload.get("ok") else 1
         if args.benchmark_command == "case-analysis-candidates":
             try:
+                if (
+                    args.apply_accepted
+                    and args.acceptance_policy != "generated-safe"
+                ):
+                    raise ValueError(
+                        "--apply-accepted requires --acceptance-policy generated-safe"
+                    )
+                if args.apply_accepted and not args.output_case_analysis_path:
+                    raise ValueError(
+                        "--apply-accepted requires --output-case-analysis-path"
+                    )
                 ledger = load_benchmark_case_analysis_json(args.run_ledger_path)
                 analysis = load_benchmark_case_analysis_json(
                     args.case_analysis_path
@@ -9079,8 +9113,11 @@ def main(argv: list[str] | None = None) -> int:
                 report = build_case_analysis_candidate_report(
                     ledger=ledger,
                     analysis=analysis,
-                    include_proposed_records=args.include_proposed_records,
+                    include_proposed_records=(
+                        args.include_proposed_records or args.apply_accepted
+                    ),
                     proposal_limit=args.proposal_limit,
+                    acceptance_policy=args.acceptance_policy,
                 )
                 payload = {
                     "ok": True,
@@ -9097,6 +9134,27 @@ def main(argv: list[str] | None = None) -> int:
                         "upload_invoked": False,
                     },
                 }
+                if args.apply_accepted:
+                    result = apply_accepted_case_analysis_records(
+                        analysis=analysis,
+                        records=report.get("proposed_records", []),
+                    )
+                    output_path = Path(args.output_case_analysis_path)
+                    output_path.write_text(
+                        json.dumps(
+                            result["analysis"],
+                            ensure_ascii=False,
+                            indent=2,
+                            sort_keys=True,
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    payload["accepted_upsert"] = {
+                        "output_written": True,
+                        "added_count": result["added_count"],
+                        "skipped_count": result["skipped_count"],
+                    }
             except Exception as exc:
                 payload = {
                     "ok": False,

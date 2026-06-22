@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -11,8 +12,19 @@ BENCHMARK_CASE_ANALYSIS_CANDIDATE_REPORT_SCHEMA_VERSION = (
 BENCHMARK_CASE_ANALYSIS_UPSERT_PROPOSAL_SCHEMA_VERSION = (
     "benchmark_case_analysis_upsert_proposal_v0"
 )
+BENCHMARK_CASE_ANALYSIS_ACCEPTANCE_POLICY_SCHEMA_VERSION = (
+    "benchmark_case_analysis_acceptance_policy_v0"
+)
 
 NO_RUN_DECISIONS = {"", "no_runs_recorded"}
+CASE_ANALYSIS_ACCEPTANCE_POLICIES = {"proposal-only", "generated-safe"}
+GENERATED_SAFE_ACCEPTED_CLASSES = {
+    "paired_no_uplift_candidate": "generated_no_uplift_asset",
+    "baseline_solved_non_regression_candidate": (
+        "generated_baseline_solved_non_regression_asset"
+    ),
+    "baseline_solved_control_candidate": "generated_baseline_solved_control_asset",
+}
 
 
 def load_json(path: str | Path) -> dict[str, Any]:
@@ -156,6 +168,71 @@ def _proposal_classification(candidate_class: str) -> str:
     return mapping.get(candidate_class, "manual_classification_required_proposal")
 
 
+def _normalize_acceptance_policy(acceptance_policy: str | None) -> str:
+    policy = _compact_text(acceptance_policy or "proposal-only", limit=80)
+    if policy not in CASE_ANALYSIS_ACCEPTANCE_POLICIES:
+        allowed = ", ".join(sorted(CASE_ANALYSIS_ACCEPTANCE_POLICIES))
+        raise ValueError(
+            f"unsupported case-analysis acceptance policy {policy!r}; "
+            f"expected one of: {allowed}"
+        )
+    return policy
+
+
+def evaluate_case_analysis_acceptance(
+    candidate: dict[str, Any],
+    *,
+    acceptance_policy: str = "proposal-only",
+) -> dict[str, Any]:
+    policy = _normalize_acceptance_policy(acceptance_policy)
+    candidate_class = _compact_text(candidate.get("candidate_class"), limit=160)
+    latest_decision = _compact_text(candidate.get("latest_decision"), limit=160)
+    run_count = int(candidate.get("run_count") or 0)
+    accepted_classification = GENERATED_SAFE_ACCEPTED_CLASSES.get(candidate_class)
+    reason_codes: list[str] = []
+    if policy == "proposal-only":
+        return {
+            "schema_version": BENCHMARK_CASE_ANALYSIS_ACCEPTANCE_POLICY_SCHEMA_VERSION,
+            "policy": policy,
+            "accepted": False,
+            "status": "proposal_only_not_applied",
+            "accepted_classification": None,
+            "requires_manual_review": True,
+            "reason_codes": ["proposal_only_policy"],
+        }
+    if not accepted_classification:
+        reason_codes.append("candidate_class_requires_manual_review")
+    if candidate_class == "paired_no_uplift_candidate":
+        if latest_decision != "paired_no_score_uplift":
+            reason_codes.append("decision_not_paired_no_score_uplift")
+        if run_count < 2:
+            reason_codes.append("paired_candidate_needs_two_runs")
+    elif candidate_class == "baseline_solved_non_regression_candidate":
+        if latest_decision != "paired_baseline_solved_treatment_preserved":
+            reason_codes.append("decision_not_baseline_solved_treatment_preserved")
+        if run_count < 2:
+            reason_codes.append("paired_candidate_needs_two_runs")
+    elif candidate_class == "baseline_solved_control_candidate":
+        if latest_decision != "baseline_passed_not_current_treatment_priority":
+            reason_codes.append("decision_not_baseline_passed_control")
+        if run_count < 1:
+            reason_codes.append("control_candidate_needs_one_run")
+    accepted = bool(accepted_classification) and not reason_codes
+    return {
+        "schema_version": BENCHMARK_CASE_ANALYSIS_ACCEPTANCE_POLICY_SCHEMA_VERSION,
+        "policy": policy,
+        "accepted": accepted,
+        "status": (
+            "accepted_generated_not_applied"
+            if accepted
+            else "proposal_only_not_applied"
+        ),
+        "accepted_classification": accepted_classification if accepted else None,
+        "requires_manual_review": not accepted,
+        "reason_codes": reason_codes or ["generated_safe_policy_matched"],
+    }
+
+
 def _proposal_capability_signal(candidate: dict[str, Any]) -> str:
     candidate_class = _compact_text(candidate.get("candidate_class"), limit=120)
     decision = _compact_text(candidate.get("latest_decision"), limit=120)
@@ -203,6 +280,8 @@ def _proposal_control_plane_signal(candidate: dict[str, Any]) -> str:
 
 def proposed_case_analysis_record_from_candidate(
     candidate: dict[str, Any],
+    *,
+    acceptance_policy: str = "proposal-only",
 ) -> dict[str, Any]:
     benchmark_id = _compact_text(candidate.get("benchmark_id"), limit=160)
     case_id = _compact_text(candidate.get("case_id"), limit=200)
@@ -212,13 +291,22 @@ def proposed_case_analysis_record_from_candidate(
         for run_id in candidate.get("recent_run_ids", [])
         if run_id
     ]
-    return {
+    acceptance = evaluate_case_analysis_acceptance(
+        candidate,
+        acceptance_policy=acceptance_policy,
+    )
+    accepted = bool(acceptance.get("accepted"))
+    record = {
         "schema_version": BENCHMARK_CASE_ANALYSIS_UPSERT_PROPOSAL_SCHEMA_VERSION,
-        "proposal_status": "proposal_only_not_applied",
+        "proposal_status": _compact_text(acceptance.get("status"), limit=80),
         "analysis_id": _case_analysis_id(benchmark_id, case_id, candidate_class),
         "benchmark_id": benchmark_id,
         "case_id": case_id,
-        "classification": _proposal_classification(candidate_class),
+        "classification": (
+            _compact_text(acceptance.get("accepted_classification"), limit=160)
+            if accepted
+            else _proposal_classification(candidate_class)
+        ),
         "latest_ledger_decision": _compact_text(
             candidate.get("latest_decision"), limit=160
         ),
@@ -233,6 +321,7 @@ def proposed_case_analysis_record_from_candidate(
         "recommended_next_action": _compact_text(
             candidate.get("recommended_handling"), limit=260
         ),
+        "acceptance_policy": acceptance,
         "source_boundary": {
             "inputs": [
                 "compact benchmark-run-ledger candidate",
@@ -242,9 +331,11 @@ def proposed_case_analysis_record_from_candidate(
             "raw_task_text_recorded": False,
             "trajectory_recorded": False,
             "absolute_paths_recorded": False,
-            "proposal_only": True,
+            "proposal_only": not accepted,
+            "accepted_generated_case_analysis": accepted,
         },
     }
+    return record
 
 
 def build_case_analysis_upsert_proposals(
@@ -252,15 +343,126 @@ def build_case_analysis_upsert_proposals(
     ledger: dict[str, Any],
     analysis: dict[str, Any],
     limit: int | None = None,
+    acceptance_policy: str = "proposal-only",
 ) -> list[dict[str, Any]]:
+    policy = _normalize_acceptance_policy(acceptance_policy)
     candidates = find_case_analysis_candidates(ledger=ledger, analysis=analysis)
     proposals = [
-        proposed_case_analysis_record_from_candidate(candidate)
+        proposed_case_analysis_record_from_candidate(
+            candidate,
+            acceptance_policy=policy,
+        )
         for candidate in candidates
     ]
     if limit is not None:
         return proposals[: max(0, limit)]
     return proposals
+
+
+def case_analysis_record_from_accepted_upsert(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    if record.get("proposal_status") != "accepted_generated_not_applied":
+        raise ValueError("only accepted_generated_not_applied records can be applied")
+    boundary = (
+        record.get("source_boundary")
+        if isinstance(record.get("source_boundary"), dict)
+        else {}
+    )
+    return {
+        "analysis_id": _compact_text(record.get("analysis_id"), limit=260),
+        "benchmark_id": _compact_text(record.get("benchmark_id"), limit=160),
+        "case_id": _compact_text(record.get("case_id"), limit=200),
+        "classification": _compact_text(record.get("classification"), limit=160),
+        "decision": _compact_text(record.get("latest_ledger_decision"), limit=160),
+        "evidence_status": "generated_from_compact_benchmark_run_ledger",
+        "source_run_ids": [
+            _compact_text(run_id, limit=120)
+            for run_id in record.get("source_run_ids", [])
+            if run_id
+        ],
+        "source_run_count": int(record.get("source_run_count") or 0),
+        "capability_signal": _compact_text(
+            record.get("capability_signal"),
+            limit=320,
+        ),
+        "control_plane_signal": _compact_text(
+            record.get("control_plane_signal"),
+            limit=320,
+        ),
+        "routing_guidance": {
+            "repeat_policy": _compact_text(
+                record.get("recommended_next_action"),
+                limit=260,
+            )
+        },
+        "acceptance_policy": record.get("acceptance_policy"),
+        "source_boundary": {
+            "inputs": [
+                "compact benchmark-run-ledger candidate",
+                "benchmark-case-analysis existing keys",
+            ],
+            "raw_logs_recorded": bool(boundary.get("raw_logs_recorded", False)),
+            "raw_task_text_recorded": bool(
+                boundary.get("raw_task_text_recorded", False)
+            ),
+            "trajectory_recorded": bool(boundary.get("trajectory_recorded", False)),
+            "absolute_paths_recorded": bool(
+                boundary.get("absolute_paths_recorded", False)
+            ),
+            "generated_case_analysis": True,
+        },
+    }
+
+
+def apply_accepted_case_analysis_records(
+    *,
+    analysis: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    updated = deepcopy(analysis)
+    cases = updated.setdefault("cases", [])
+    if not isinstance(cases, list):
+        raise ValueError("case-analysis payload must contain a cases list")
+    existing = case_analysis_keys(updated)
+    added_records: list[dict[str, Any]] = []
+    skipped_records: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        key = (
+            _compact_text(record.get("benchmark_id"), limit=160),
+            _compact_text(record.get("case_id"), limit=200),
+        )
+        if record.get("proposal_status") != "accepted_generated_not_applied":
+            skipped_records.append(
+                {
+                    "benchmark_id": key[0],
+                    "case_id": key[1],
+                    "reason": "not_accepted_by_policy",
+                }
+            )
+            continue
+        if not key[0] or not key[1] or key in existing:
+            skipped_records.append(
+                {
+                    "benchmark_id": key[0],
+                    "case_id": key[1],
+                    "reason": "already_present_or_invalid_key",
+                }
+            )
+            continue
+        case_record = case_analysis_record_from_accepted_upsert(record)
+        cases.append(case_record)
+        existing.add(key)
+        added_records.append(case_record)
+    return {
+        "analysis": updated,
+        "added_count": len(added_records),
+        "skipped_count": len(skipped_records),
+        "added_records": added_records,
+        "skipped_records": skipped_records,
+    }
 
 
 def find_case_analysis_candidates(
@@ -333,7 +535,9 @@ def build_case_analysis_candidate_report(
     analysis: dict[str, Any],
     include_proposed_records: bool = False,
     proposal_limit: int | None = None,
+    acceptance_policy: str = "proposal-only",
 ) -> dict[str, Any]:
+    policy = _normalize_acceptance_policy(acceptance_policy)
     candidates = find_case_analysis_candidates(ledger=ledger, analysis=analysis)
     report: dict[str, Any] = {
         "schema_version": BENCHMARK_CASE_ANALYSIS_CANDIDATE_REPORT_SCHEMA_VERSION,
@@ -352,12 +556,28 @@ def build_case_analysis_candidate_report(
     }
     if include_proposed_records:
         proposed_records = [
-            proposed_case_analysis_record_from_candidate(candidate)
+            proposed_case_analysis_record_from_candidate(
+                candidate,
+                acceptance_policy=policy,
+            )
             for candidate in candidates
         ]
         if proposal_limit is not None:
             proposed_records = proposed_records[: max(0, proposal_limit)]
+        accepted_count = sum(
+            1
+            for record in proposed_records
+            if isinstance(record, dict)
+            and record.get("proposal_status") == "accepted_generated_not_applied"
+        )
+        report["acceptance_policy"] = {
+            "schema_version": BENCHMARK_CASE_ANALYSIS_ACCEPTANCE_POLICY_SCHEMA_VERSION,
+            "policy": policy,
+            "accepted_record_count": accepted_count,
+            "manual_review_record_count": len(proposed_records) - accepted_count,
+        }
         report["proposed_record_count"] = len(proposed_records)
+        report["accepted_record_count"] = accepted_count
         report["proposed_records"] = proposed_records
     return report
 
@@ -391,6 +611,7 @@ def render_case_analysis_candidate_report_markdown(report: dict[str, Any]) -> st
         )
     proposed_records = report.get("proposed_records")
     if isinstance(proposed_records, list):
+        acceptance_policy = report.get("acceptance_policy")
         lines.extend(
             [
                 "",
@@ -400,10 +621,21 @@ def render_case_analysis_candidate_report_markdown(report: dict[str, Any]) -> st
                 "case-analysis file should not be edited until the proposed",
                 "classification and handling are accepted.",
                 "",
-                "| Priority | Benchmark | Case | Classification | Source Runs |",
-                "| --- | --- | --- | --- | --- |",
+                "| Priority | Benchmark | Case | Classification | Status | Source Runs |",
+                "| --- | --- | --- | --- | --- | --- |",
             ]
         )
+        if isinstance(acceptance_policy, dict):
+            lines.extend(
+                [
+                    "",
+                    "- acceptance_policy: "
+                    f"`{acceptance_policy.get('policy')}`",
+                    "- accepted_record_count: "
+                    f"`{acceptance_policy.get('accepted_record_count', 0)}`",
+                    "",
+                ]
+            )
         for record in proposed_records:
             if not isinstance(record, dict):
                 continue
@@ -413,6 +645,7 @@ def render_case_analysis_candidate_report_markdown(report: dict[str, Any]) -> st
                 f"`{record.get('benchmark_id', '')}` | "
                 f"`{record.get('case_id', '')}` | "
                 f"`{record.get('classification', '')}` | "
+                f"`{record.get('proposal_status', '')}` | "
                 f"`{record.get('source_run_count', 0)}` |"
             )
     return "\n".join(lines) + "\n"
