@@ -40,6 +40,9 @@ def main() -> int:
     local_plan_source = (
         ROOT / "loopx" / "cli_commands" / "agents_last_exam_local_plan.py"
     ).read_text(encoding="utf-8")
+    runner_source_source = (
+        ROOT / "loopx" / "cli_commands" / "agents_last_exam_runner_source.py"
+    ).read_text(encoding="utf-8")
 
     leaked_markers = [
         "ale_local_preflight_parser = benchmark_sub.add_parser",
@@ -60,6 +63,8 @@ def main() -> int:
     assert_contains(init_source, "handle_agents_last_exam_command")
     assert_contains(init_source, "register_agents_last_exam_local_plan_commands")
     assert_contains(init_source, "handle_agents_last_exam_local_plan_command")
+    assert_contains(init_source, "register_agents_last_exam_runner_source_commands")
+    assert_contains(init_source, "handle_agents_last_exam_runner_source_command")
     assert_contains(ale_source, "AGENTS_LAST_EXAM_COMMANDS")
     assert_contains(ale_source, "ale-validation-run-gate")
     assert_contains(
@@ -69,6 +74,14 @@ def main() -> int:
     assert_contains(
         ale_source,
         "handle_agents_last_exam_local_plan_command(",
+    )
+    assert_contains(
+        ale_source,
+        "register_agents_last_exam_runner_source_commands(",
+    )
+    assert_contains(
+        ale_source,
+        "handle_agents_last_exam_runner_source_command(",
     )
     for marker in (
         "def render_agents_last_exam_local_preflight_markdown",
@@ -80,6 +93,17 @@ def main() -> int:
         if marker in ale_source:
             raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
         assert_contains(local_plan_source, marker)
+    for marker in (
+        "def render_agents_last_exam_local_runner_readiness_markdown",
+        "def render_agents_last_exam_local_source_readiness_markdown",
+        "build_agents_last_exam_local_runner_readiness(",
+        "build_agents_last_exam_local_source_readiness(",
+        'if args.benchmark_command == "ale-local-runner-readiness":',
+        'if args.benchmark_command == "ale-local-source-readiness":',
+    ):
+        if marker in ale_source:
+            raise AssertionError(f"{marker} leaked back into agents_last_exam.py")
+        assert_contains(runner_source_source, marker)
 
     help_result = run_cli("benchmark", "ale-validation-run-gate", "--help")
     if help_result.returncode != 0:
