@@ -96,5 +96,9 @@ runtime contract, benchmark route, or launch draft.
   bottom-layer LoopX capability increments needed by repo issue-fix loops,
   creator/self-media operations, and other repository scenario signals before
   domain-specific adapters are built.
+- [content_ops_surface_v0](../reference/protocols/content-ops-surface-v0.md):
+  compact creator/self-media operations state surface with source items,
+  angle candidates, draft items, feedback signals, publish gates, material
+  memory, and a public-safe projection/smoke contract.
 - [Naming decision packet](naming-decision-packet.md): historical naming
   context before the LoopX rename.

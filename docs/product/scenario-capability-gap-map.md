@@ -193,6 +193,13 @@ boundaries visible.
 | `publish_gate_v0` | Human approval record for external posting; no autopublish from draft existence. |
 | `material_memory_v0` | Durable source-safe library entry with attribution, rejected angles, and reuse boundary. |
 
+The first public-safe implementation is now anchored by
+`loopx/content_ops_surface.py`, `docs/reference/protocols/content-ops-surface-v0.md`,
+and `examples/content-ops-surface-fixture-smoke.py`. This keeps the MVP as a
+state-surface contract: source/draft/feedback/gate facts can promote into
+normal LoopX todos, but the projection itself is read-only and has no publish
+authority.
+
 The state flow should stay deliberately boring:
 
 ```text
@@ -226,6 +233,8 @@ P0 content-ops acceptance:
   available";
 - no connector, browser, or chat adapter writes raw private material into
   public LoopX state.
+- the public fixture and projection smoke pass before a connector or frontend
+  treats the surface as stable.
 
 ### Creator-Ops Gaps
 
@@ -318,8 +327,9 @@ P0: make issue-fix loops product-native.
 
 P0: make creator-ops feedback durable.
 
-5. Define `content_ops_surface_v0` over source items, angle candidates, drafts,
-   feedback signals, publish gates, and material memory.
+5. Defined `content_ops_surface_v0` over source items, angle candidates,
+   drafts, feedback signals, publish gates, and material memory, with a
+   public-safe fixture/projection helper and smoke.
 6. Promote `source_status_v0` and `feedback_writeback_v0` into reusable
    product contracts.
 7. Keep no-autopublish gates visible in status and frontend demo data.
