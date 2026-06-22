@@ -57,6 +57,10 @@ from .terminal_bench_adapter import (
     handle_terminal_bench_adapter_command,
     register_terminal_bench_adapter_commands,
 )
+from .terminal_bench_environment_result import (
+    handle_terminal_bench_environment_result_command,
+    register_terminal_bench_environment_result_commands,
+)
 from .todo import handle_todo_command, register_todo_command
 
 __all__ = [
@@ -91,6 +95,7 @@ __all__ = [
     "handle_review_packet_command",
     "handle_status_command",
     "handle_terminal_bench_adapter_command",
+    "handle_terminal_bench_environment_result_command",
     "handle_todo_command",
     "register_agents_last_exam_commands",
     "register_benchmark_boundary_commands",
@@ -103,5 +108,6 @@ __all__ = [
     "register_starter_commands",
     "register_status_commands",
     "register_terminal_bench_adapter_commands",
+    "register_terminal_bench_environment_result_commands",
     "register_todo_command",
 ]
