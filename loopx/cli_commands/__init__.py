@@ -10,6 +10,7 @@ The top-level CLI keeps global options, registry fallback, and dispatch order.
 
 from .doctor import handle_doctor_command, register_doctor_command
 from .dreaming import handle_dreaming_command, register_dreaming_commands
+from .history import handle_history_command, register_history_command
 from .ml_experiment import handle_ml_experiment_command, register_ml_experiment_commands
 from .quota import handle_quota_command, register_quota_command
 from .starter import (
@@ -64,6 +65,7 @@ __all__ = [
     "handle_demo_command",
     "handle_doctor_command",
     "handle_dreaming_command",
+    "handle_history_command",
     "handle_ml_experiment_command",
     "handle_new_project_prompt_command",
     "handle_quota_command",
@@ -72,6 +74,7 @@ __all__ = [
     "handle_todo_command",
     "register_doctor_command",
     "register_dreaming_commands",
+    "register_history_command",
     "register_ml_experiment_commands",
     "register_quota_command",
     "register_starter_commands",
