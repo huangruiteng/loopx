@@ -991,6 +991,63 @@ def test_skillsbench_product_mode_pair_blocks_shallow_lifecycle() -> None:
         assert "treatment_loopx_lifecycle_not_observed" in rendered, rendered
 
 
+def test_raw_max5_baseline_does_not_force_product_pair_without_product_treatment() -> None:
+    baseline = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "skillsbench@1.1",
+        "case_id": "ordinary-treatment-case",
+        "mode": "skillsbench_raw_codex_autonomous_max5_baseline",
+        "route": "raw-codex-autonomous-max5",
+        "official_task_score": {
+            "kind": "skillsbench_reward",
+            "value": 0.0,
+            "passed": False,
+        },
+        "score_failure_attribution": "official_verifier_solution_failure",
+        "round_reward_trace": {
+            "records": [{"agent_round": 1, "reward": 0.0, "passed": False}],
+            "max_rounds_budget": 5,
+            "official_feedback_blinded": True,
+            "reward_feedback_forwarded": False,
+        },
+    }
+    treatment = {
+        **baseline,
+        "mode": "skillsbench_loopx_blind_loop_treatment",
+        "route": "loopx-blind-loop-treatment",
+        "official_task_score": {
+            "kind": "skillsbench_reward",
+            "value": 0.0,
+            "passed": False,
+        },
+    }
+
+    with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-raw-with-ordinary-treatment-") as tmp:
+        root = Path(tmp)
+        ledger_path = root / "ledger.json"
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=baseline,
+            run_group_id="raw-with-ordinary-treatment-ledger-smoke",
+            cwd=root,
+        )
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=treatment,
+            run_group_id="raw-with-ordinary-treatment-ledger-smoke",
+            cwd=root,
+        )
+        ledger = load_benchmark_run_ledger(ledger_path)
+        case = ledger["benchmarks"]["skillsbench@1.1"]["cases"][
+            "ordinary-treatment-case"
+        ]
+        decision = case["latest_decision"]
+        assert decision["decision"] == "paired_no_score_uplift", decision
+        assert "product_mode_main_table_pair" not in decision, decision
+        rendered = render_benchmark_run_ledger_markdown(ledger)
+        assert "product_mode_pair_incomplete" not in rendered, rendered
+
+
 def stale_active_post_launch() -> dict[str, Any]:
     return {
         "schema_version": "terminal_bench_post_launch_materialization_v0",
@@ -1527,6 +1584,7 @@ if __name__ == "__main__":
     test_verified_bridge_official_zero_routes_to_no_uplift_not_alignment()
     test_skillsbench_product_mode_pair_review_is_ledgered()
     test_skillsbench_product_mode_pair_blocks_shallow_lifecycle()
+    test_raw_max5_baseline_does_not_force_product_pair_without_product_treatment()
     test_ledger_ingests_post_launch_stale_active_marker()
     test_ledger_ingests_post_launch_ended_active_marker()
     test_cli_harbor_ingest_updates_run_ledger()

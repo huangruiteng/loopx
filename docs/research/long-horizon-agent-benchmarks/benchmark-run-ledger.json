@@ -457,11 +457,27 @@
         "azure-bgp-oscillation-route-leak": {
           "case_id": "azure-bgp-oscillation-route-leak",
           "latest_decision": {
-            "baseline_failure_scope": "case_or_solution",
             "baseline_run_id": "788c64ee1ddd",
-            "decision": "paired_no_score_uplift",
-            "official_score_delta": 0.0,
-            "treatment_failure_scope": "case_or_solution",
+            "decision": "product_mode_pair_incomplete",
+            "product_mode_main_table_pair": {
+              "baseline_route_valid": true,
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "azure-bgp-oscillation-route-leak",
+              "claim_blocker": "treatment_loopx_lifecycle_not_observed",
+              "comparison_id": "skillsbench_product_mode_main_table_v0",
+              "headline_metrics": [
+                "best_score",
+                "final_score",
+                "first_success_round",
+                "declared_done_score"
+              ],
+              "main_table_claim_allowed": false,
+              "official_feedback_blinded": true,
+              "product_mode_pair_complete": false,
+              "schema_version": "benchmark_product_mode_comparison_v0",
+              "treatment_loopx_lifecycle_observed": false,
+              "treatment_route_valid": true
+            },
             "treatment_run_id": "4002396acce9"
           },
           "runs": [
@@ -4251,11 +4267,27 @@
         "paratransit-routing": {
           "case_id": "paratransit-routing",
           "latest_decision": {
-            "baseline_failure_scope": "case_or_solution",
             "baseline_run_id": "34966c13e416",
-            "decision": "paired_treatment_improved",
-            "official_score_delta": 1.0,
-            "treatment_failure_scope": "passed",
+            "decision": "product_mode_pair_incomplete",
+            "product_mode_main_table_pair": {
+              "baseline_route_valid": true,
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "paratransit-routing",
+              "claim_blocker": "treatment_loopx_lifecycle_not_observed",
+              "comparison_id": "skillsbench_product_mode_main_table_v0",
+              "headline_metrics": [
+                "best_score",
+                "final_score",
+                "first_success_round",
+                "declared_done_score"
+              ],
+              "main_table_claim_allowed": false,
+              "official_feedback_blinded": true,
+              "product_mode_pair_complete": false,
+              "schema_version": "benchmark_product_mode_comparison_v0",
+              "treatment_loopx_lifecycle_observed": false,
+              "treatment_route_valid": true
+            },
             "treatment_run_id": "c9e2eebe7a8e"
           },
           "runs": [
@@ -5920,15 +5952,27 @@
         "suricata-custom-exfil": {
           "case_id": "suricata-custom-exfil",
           "latest_decision": {
-            "baseline_failure_scope": "passed",
             "baseline_run_id": "793ed0aac6e3",
-            "decision": "paired_treatment_codex_acp_runtime_preflight_required",
-            "failure_class": "skillsbench_codex_acp_jsonrpc_internal_error",
-            "next_action": "prove the Codex ACP runtime can start inside the SkillsBench sandbox before rerunning or launching treatment; require compact dependency and launch preflight evidence instead of a generic ACP launch failure",
-            "official_score_delta": null,
-            "repair_class": "skillsbench_codex_acp_runtime_preflight",
-            "repair_priority": "P0",
-            "treatment_failure_scope": "score_missing",
+            "decision": "product_mode_pair_incomplete",
+            "product_mode_main_table_pair": {
+              "baseline_route_valid": false,
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "suricata-custom-exfil",
+              "claim_blocker": "baseline_not_raw_codex_autonomous_max5,treatment_official_feedback_not_blinded,treatment_reward_feedback_forwarding_not_disabled,treatment_compact_metrics_missing,treatment_loopx_lifecycle_not_observed",
+              "comparison_id": "skillsbench_product_mode_main_table_v0",
+              "headline_metrics": [
+                "best_score",
+                "final_score",
+                "first_success_round",
+                "declared_done_score"
+              ],
+              "main_table_claim_allowed": false,
+              "official_feedback_blinded": false,
+              "product_mode_pair_complete": false,
+              "schema_version": "benchmark_product_mode_comparison_v0",
+              "treatment_loopx_lifecycle_observed": false,
+              "treatment_route_valid": true
+            },
             "treatment_run_id": "d9949ec296f1"
           },
           "runs": [

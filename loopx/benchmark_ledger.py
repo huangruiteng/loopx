@@ -1707,9 +1707,7 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
 
     if latest_baseline and latest_treatment:
         product_mode_pair_review: dict[str, Any] | None = None
-        if _product_mode_baseline_run(latest_baseline) or _product_mode_treatment_run(
-            latest_treatment
-        ):
+        if _product_mode_treatment_run(latest_treatment):
             product_mode_pair_review = _compact_product_mode_pair_review(
                 classify_product_mode_main_table_pair(
                     baseline_run=latest_baseline,
