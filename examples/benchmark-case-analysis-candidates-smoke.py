@@ -70,7 +70,22 @@ def fixture_ledger() -> dict:
                         "runs": [],
                     },
                 },
-            }
+            },
+            "terminal-bench@2.0": {
+                "benchmark_id": "terminal-bench@2.0",
+                "cases": {
+                    "coverage-row-only": {
+                        "case_id": "coverage-row-only",
+                        "latest_decision": {
+                            "decision": "paired_baseline_solved_treatment_preserved"
+                        },
+                        "runs": [
+                            {"run_id": "baseline", "official_score": 1.0},
+                            {"run_id": "treatment", "official_score": 1.0},
+                        ],
+                    }
+                },
+            },
         },
     }
 
@@ -85,6 +100,16 @@ def fixture_analysis() -> dict:
                 "analysis_id": "bench__existing-case__paired_no_score_uplift",
             }
         ],
+        "terminal_bench_current_protocol_coverage": {
+            "schema_version": "terminal_bench_current_protocol_coverage_v0",
+            "rows": [
+                {
+                    "case_id": "coverage-row-only",
+                    "decision": "paired_baseline_solved_treatment_preserved",
+                    "case_analysis_status": "coverage_row_only_no_deep_case_note_yet",
+                }
+            ],
+        },
     }
 
 
