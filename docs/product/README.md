@@ -72,6 +72,10 @@ runtime contract, benchmark route, or launch draft.
 - [Non-technical operator status model](nontechnical-operator-status-model.md):
   first-screen card model for people who need to understand agent progress,
   blockers, next moves, and feedback paths without reading logs or CLI output.
+- [Intelligent management surface](intelligent-management-surface.md):
+  maintainer-first product design for signal inbox, selected anchors, agent
+  lanes, review feed, and performance review so long-running Loop Agents can be
+  evaluated by value, quality, cost, and user attention.
 - [Frontstage two-surface strategy](frontstage-two-surface-strategy.md): route,
   data-source, visual-freedom, validation, and roadmap boundaries between the
   public showcase/homepage surface and the real local ops control-plane
