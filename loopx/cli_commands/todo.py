@@ -1,0 +1,410 @@
+from __future__ import annotations
+
+import argparse
+from collections.abc import Callable
+from pathlib import Path
+
+from ..todos import (
+    archive_completed_todos,
+    add_goal_todo,
+    complete_goal_todo,
+    render_todo_markdown,
+    supersede_goal_todo,
+    update_goal_todo,
+)
+
+
+PrintPayload = Callable[
+    [dict[str, object], str, Callable[[dict[str, object]], str]],
+    None,
+]
+RolloutEventAppender = Callable[..., dict[str, object]]
+
+
+def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
+    todo_parser = subparsers.add_parser(
+        "todo",
+        help="Add a user or agent todo to a goal's active state.",
+    )
+    todo_parser.add_argument(
+        "todo_command",
+        nargs="?",
+        choices=[
+            "add",
+            "claim",
+            "update",
+            "complete",
+            "supersede",
+            "archive-completed",
+        ],
+        default="add",
+        help=(
+            "Use add to append a checkbox todo, claim to soft-claim by registered "
+            "agent id, update/complete/supersede to transition by todo_id, or "
+            "archive-completed to move older completed todos into Completed Work Archive."
+        ),
+    )
+    todo_parser.add_argument("--goal-id", required=True, help="Goal id whose active state should receive the todo.")
+    todo_parser.add_argument("--role", choices=["user", "agent"], help="Todo owner. Required for add; optional todo_id search scope for lifecycle commands. Defaults to agent for archive-completed.")
+    todo_parser.add_argument("--text", help="Todo text. Required for add; keep it short and public-safe enough for local status.")
+    todo_parser.add_argument("--todo-id", help="Structured todo id from status/quota, such as todo_ab12cd34ef56.")
+    todo_parser.add_argument("--status", choices=["open", "done", "blocked", "deferred"], help="For todo update, set the lifecycle status by todo_id.")
+    todo_parser.add_argument("--note", help="Public-safe note to attach to a lifecycle transition.")
+    todo_parser.add_argument("--evidence", help="Public-safe evidence pointer or short result for complete/update.")
+    todo_parser.add_argument("--reason", help="Public-safe reason for blocked/deferred/supersede transitions.")
+    todo_parser.add_argument(
+        "--task-class",
+        choices=["advancement_task", "continuous_monitor", "user_gate", "blocker"],
+        help=(
+            "For todo add/update, explicitly register the routing lane. Use "
+            "advancement_task for executable delivery work; continuous_monitor, "
+            "user_gate, and blocker are non-executable lanes."
+        ),
+    )
+    todo_parser.add_argument(
+        "--action-kind",
+        help=(
+            "For todo add, optional public-safe action token such as run_eval, "
+            "rebuild_score, compact_blocker_writeback, or monitor."
+        ),
+    )
+    todo_parser.add_argument(
+        "--required-write-scope",
+        dest="required_write_scopes",
+        action="append",
+        help=(
+            "For todo add/update, declare a required relative write scope such as "
+            "src/** or runners/openviking/**. Repeat for multiple scopes."
+        ),
+    )
+    todo_parser.add_argument(
+        "--required-capability",
+        dest="required_capabilities",
+        action="append",
+        help=(
+            "For todo add/update, declare an execution capability such as shell, "
+            "filesystem_write, network, benchmark_runner, or external_evidence_poll. "
+            "Repeat for multiple capabilities."
+        ),
+    )
+    todo_parser.add_argument(
+        "--target-capability",
+        dest="target_capabilities",
+        action="append",
+        help=(
+            "For todo add/update, declare a capability this todo is building, "
+            "repairing, materializing, or parity-checking. This is not a hard "
+            "execution prerequisite."
+        ),
+    )
+    todo_parser.add_argument(
+        "--claimed-by",
+        help=(
+            "For todo add/claim/update/complete, soft-claim the todo for a registered "
+            "public-safe agent id such as codex-main-control."
+        ),
+    )
+    todo_parser.add_argument(
+        "--blocks-agent",
+        help=(
+            "For todo add/update, mark that this todo unblocks a registered agent, "
+            "for example codex-side-bypass."
+        ),
+    )
+    todo_parser.add_argument(
+        "--unblocks-todo-id",
+        help=(
+            "For todo add/update, link this todo to the blocked todo it unblocks, "
+            "for example todo_ab12cd34ef56."
+        ),
+    )
+    todo_parser.add_argument(
+        "--clear-claim",
+        action="store_true",
+        help="For todo update, remove the soft claimed_by owner from the todo.",
+    )
+    todo_parser.add_argument("--next-agent-todo", help="For complete/supersede, atomically add or update the next agent todo.")
+    todo_parser.add_argument("--next-user-todo", help="For complete/supersede, atomically add or update the next user todo.")
+    todo_parser.add_argument(
+        "--next-claimed-by",
+        help=(
+            "For complete/supersede with --next-agent-todo, soft-claim the successor "
+            "todo for a registered agent. If omitted, claimed successors inherit the "
+            "completed/superseded todo owner when available; side-agent review handoffs "
+            "default to primary_agent."
+        ),
+    )
+    todo_parser.add_argument(
+        "--side-agent-self-merged",
+        action="store_true",
+        help=(
+            "For todo complete by a side agent, explicitly record that a small validated "
+            "side-agent change was self-merged; requires --evidence and bypasses the "
+            "default primary review successor todo."
+        ),
+    )
+    todo_parser.add_argument(
+        "--next-task-class",
+        choices=["advancement_task", "continuous_monitor", "user_gate", "blocker"],
+        help="Task class for --next-agent-todo. Defaults to advancement_task.",
+    )
+    todo_parser.add_argument("--next-action-kind", help="Action kind for --next-agent-todo.")
+    todo_parser.add_argument(
+        "--max-active-done",
+        type=int,
+        default=12,
+        help="For archive-completed, keep this many completed todos in the active section.",
+    )
+    todo_parser.add_argument("--project", help="Project root. Defaults to the registry goal repo.")
+    todo_parser.add_argument("--state-file", help="Active goal state path. Defaults to the registry goal state_file.")
+    todo_parser.add_argument("--dry-run", action="store_true", help="Preview the active-state edit without writing.")
+    todo_parser.add_argument("--execute", action="store_true", help="For archive-completed, write the active-state edit.")
+
+
+def handle_todo_command(
+    args: argparse.Namespace,
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    print_payload: PrintPayload,
+    append_cli_rollout_event: RolloutEventAppender,
+) -> int:
+    try:
+        if args.todo_command == "add":
+            if not args.role:
+                raise ValueError("todo add requires --role")
+            if not args.text:
+                raise ValueError("todo add requires --text")
+            if args.clear_claim:
+                raise ValueError("todo add accepts --claimed-by but not --clear-claim")
+            if args.next_claimed_by:
+                raise ValueError("todo add does not support --next-claimed-by")
+            if args.side_agent_self_merged:
+                raise ValueError("todo add does not support --side-agent-self-merged")
+            payload = add_goal_todo(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                role=args.role,
+                text=args.text,
+                task_class=args.task_class,
+                action_kind=args.action_kind,
+                required_write_scopes=args.required_write_scopes,
+                required_capabilities=args.required_capabilities,
+                target_capabilities=args.target_capabilities,
+                claimed_by=args.claimed_by,
+                blocks_agent=args.blocks_agent,
+                unblocks_todo_id=args.unblocks_todo_id,
+                project=Path(args.project).expanduser() if args.project else None,
+                state_file=Path(args.state_file).expanduser() if args.state_file else None,
+                dry_run=bool(args.dry_run),
+            )
+        elif args.todo_command == "claim":
+            if not args.todo_id:
+                raise ValueError("todo claim requires --todo-id")
+            if not args.claimed_by:
+                raise ValueError("todo claim requires --claimed-by")
+            if args.clear_claim:
+                raise ValueError("todo claim requires --claimed-by and does not support --clear-claim")
+            unsupported = [
+                flag
+                for flag, value in (
+                    ("--text", args.text),
+                    ("--status", args.status),
+                    ("--note", args.note),
+                    ("--evidence", args.evidence),
+                    ("--reason", args.reason),
+                    ("--task-class", args.task_class),
+                    ("--action-kind", args.action_kind),
+                    ("--required-write-scope", args.required_write_scopes),
+                    ("--required-capability", args.required_capabilities),
+                    ("--target-capability", args.target_capabilities),
+                    ("--blocks-agent", args.blocks_agent),
+                    ("--unblocks-todo-id", args.unblocks_todo_id),
+                    ("--next-agent-todo", args.next_agent_todo),
+                    ("--next-user-todo", args.next_user_todo),
+                    ("--next-claimed-by", args.next_claimed_by),
+                    ("--next-task-class", args.next_task_class),
+                    ("--next-action-kind", args.next_action_kind),
+                    ("--side-agent-self-merged", args.side_agent_self_merged),
+                )
+                if value
+            ]
+            if unsupported:
+                raise ValueError(
+                    "todo claim only accepts --todo-id, --claimed-by, optional --role, "
+                    "--project, --state-file, and --dry-run; unsupported: "
+                    + ", ".join(unsupported)
+                )
+            payload = update_goal_todo(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                todo_id=args.todo_id,
+                role=args.role,
+                claimed_by=args.claimed_by,
+                claim_only=True,
+                project=Path(args.project).expanduser() if args.project else None,
+                state_file=Path(args.state_file).expanduser() if args.state_file else None,
+                dry_run=bool(args.dry_run),
+            )
+        elif args.todo_command == "update":
+            if not args.todo_id:
+                raise ValueError("todo update requires --todo-id")
+            if args.claimed_by and args.clear_claim:
+                raise ValueError("todo update accepts either --claimed-by or --clear-claim, not both")
+            if not any([
+                args.text,
+                args.status,
+                args.note,
+                args.evidence,
+                args.reason,
+                args.task_class,
+                args.action_kind,
+                args.required_write_scopes,
+                args.required_capabilities,
+                args.target_capabilities,
+                args.claimed_by,
+                args.blocks_agent,
+                args.unblocks_todo_id,
+                args.clear_claim,
+            ]):
+                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, --blocks-agent, --unblocks-todo-id, or --clear-claim")
+            if args.next_claimed_by:
+                raise ValueError("todo update does not support --next-claimed-by")
+            if args.side_agent_self_merged:
+                raise ValueError("todo update does not support --side-agent-self-merged")
+            payload = update_goal_todo(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                todo_id=args.todo_id,
+                text=args.text,
+                status=args.status,
+                role=args.role,
+                note=args.note,
+                evidence=args.evidence,
+                reason=args.reason,
+                task_class=args.task_class,
+                action_kind=args.action_kind,
+                required_write_scopes=args.required_write_scopes,
+                required_capabilities=args.required_capabilities,
+                target_capabilities=args.target_capabilities,
+                claimed_by=args.claimed_by,
+                blocks_agent=args.blocks_agent,
+                unblocks_todo_id=args.unblocks_todo_id,
+                clear_claim=bool(args.clear_claim),
+                project=Path(args.project).expanduser() if args.project else None,
+                state_file=Path(args.state_file).expanduser() if args.state_file else None,
+                dry_run=bool(args.dry_run),
+            )
+        elif args.todo_command == "complete":
+            if not args.todo_id:
+                raise ValueError("todo complete requires --todo-id")
+            if args.claimed_by and args.clear_claim:
+                raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
+            if args.blocks_agent or args.unblocks_todo_id:
+                raise ValueError("todo complete does not support --blocks-agent or --unblocks-todo-id; use todo update before completion or side-agent review successor metadata")
+            payload = complete_goal_todo(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                todo_id=args.todo_id,
+                role=args.role,
+                evidence=args.evidence,
+                note=args.note,
+                claimed_by=args.claimed_by,
+                clear_claim=bool(args.clear_claim),
+                next_agent_todo=args.next_agent_todo,
+                next_user_todo=args.next_user_todo,
+                next_claimed_by=args.next_claimed_by,
+                next_task_class=args.next_task_class,
+                next_action_kind=args.next_action_kind,
+                side_agent_self_merged=bool(args.side_agent_self_merged),
+                project=Path(args.project).expanduser() if args.project else None,
+                state_file=Path(args.state_file).expanduser() if args.state_file else None,
+                dry_run=bool(args.dry_run),
+            )
+        elif args.todo_command == "supersede":
+            if not args.todo_id:
+                raise ValueError("todo supersede requires --todo-id")
+            if args.claimed_by or args.clear_claim:
+                raise ValueError("todo supersede does not support --claimed-by or --clear-claim")
+            if args.side_agent_self_merged:
+                raise ValueError("todo supersede does not support --side-agent-self-merged")
+            if args.blocks_agent or args.unblocks_todo_id:
+                raise ValueError("todo supersede does not support --blocks-agent or --unblocks-todo-id; update the source todo first so the successor can inherit dependency metadata")
+            payload = supersede_goal_todo(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                todo_id=args.todo_id,
+                role=args.role,
+                reason=args.reason,
+                next_agent_todo=args.next_agent_todo,
+                next_user_todo=args.next_user_todo,
+                next_claimed_by=args.next_claimed_by,
+                next_task_class=args.next_task_class,
+                next_action_kind=args.next_action_kind,
+                project=Path(args.project).expanduser() if args.project else None,
+                state_file=Path(args.state_file).expanduser() if args.state_file else None,
+                dry_run=bool(args.dry_run),
+            )
+        elif args.todo_command == "archive-completed":
+            if args.claimed_by or args.clear_claim:
+                raise ValueError("todo archive-completed does not support --claimed-by or --clear-claim")
+            if args.next_claimed_by:
+                raise ValueError("todo archive-completed does not support --next-claimed-by")
+            if args.side_agent_self_merged:
+                raise ValueError("todo archive-completed does not support --side-agent-self-merged")
+            payload = archive_completed_todos(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                role=args.role or "agent",
+                max_active_done=args.max_active_done,
+                project=Path(args.project).expanduser() if args.project else None,
+                state_file=Path(args.state_file).expanduser() if args.state_file else None,
+                dry_run=not bool(args.execute),
+            )
+        else:
+            raise ValueError("unsupported todo command")
+    except Exception as exc:
+        payload = {
+            "ok": False,
+            "dry_run": not bool(args.execute)
+            if args.todo_command == "archive-completed"
+            else bool(args.dry_run),
+            "added": False,
+            "already_exists": False,
+            "goal_id": args.goal_id,
+            "role": args.role,
+            "todo": args.text or "",
+            "error": str(exc),
+        }
+    todo_event_kinds = {
+        "add": "todo_add",
+        "claim": "todo_claim",
+        "update": "todo_update",
+        "complete": "todo_complete",
+        "supersede": "todo_supersede",
+        "archive-completed": "todo_archive_completed",
+    }
+    if payload.get("ok") and not payload.get("dry_run"):
+        append_cli_rollout_event(
+            payload,
+            registry_path=registry_path,
+            runtime_root_arg=runtime_root_arg,
+            event_kind=todo_event_kinds.get(args.todo_command, "todo_update"),
+            agent_id=args.claimed_by,
+            todo_id=args.todo_id or str(payload.get("todo_id") or "").strip() or None,
+            status=str(payload.get("status") or args.todo_command or "").strip(),
+            summary=(
+                f"todo {args.todo_command} recorded for "
+                f"{payload.get('todo_id') or args.todo_id or 'unstructured todo'}"
+            ),
+            details={
+                "command": "todo",
+                "todo_command": args.todo_command,
+                "role": payload.get("role") or args.role or "",
+                "changed": bool(payload.get("changed")),
+                "added": bool(payload.get("added")),
+                "already_exists": bool(payload.get("already_exists")),
+            },
+        )
+    print_payload(payload, args.format, render_todo_markdown)
+    return 0 if payload.get("ok") else 1

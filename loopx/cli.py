@@ -168,13 +168,17 @@ from .cli_commands import (
     handle_dreaming_command,
     handle_ml_experiment_command,
     handle_new_project_prompt_command,
+    handle_quota_command,
     handle_review_packet_command,
     handle_status_command,
+    handle_todo_command,
     register_doctor_command,
     register_dreaming_commands,
     register_ml_experiment_commands,
+    register_quota_command,
     register_starter_commands,
     register_status_commands,
+    register_todo_command,
 )
 from .execution_profile import DEFAULT_EXECUTION_PROFILE
 from .feedback import append_human_reward, compact_reward, render_reward_markdown
@@ -214,17 +218,6 @@ from .project_map import (
     render_read_only_project_map_markdown,
 )
 from .promotion_gate import build_promotion_gate, render_promotion_gate_markdown
-from .quota import (
-    build_quota_plan,
-    build_quota_should_run,
-    record_quota_monitor_poll,
-    render_quota_markdown,
-    render_quota_monitor_poll_markdown,
-    render_quota_should_run_markdown,
-    render_quota_slot_preview_markdown,
-    spend_quota_slot,
-    void_quota_slot,
-)
 from .registry import (
     inspect_registry,
     inspect_registry_boundary,
@@ -255,8 +248,6 @@ from .state_migration import (
     render_state_migration_markdown,
 )
 from .status import (
-    AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK,
-    collect_status,
     compact_active_user_assisted_pilot,
     compact_benchmark_comparison,
     compact_benchmark_experiment_report,
@@ -271,14 +262,6 @@ from .status_server import (
     DEFAULT_STATUS_PATH,
     DEFAULT_STATUS_PORT,
     serve_status,
-)
-from .todos import (
-    archive_completed_todos,
-    add_goal_todo,
-    complete_goal_todo,
-    render_todo_markdown,
-    supersede_goal_todo,
-    update_goal_todo,
 )
 from .self_update import build_update_plan, execute_update_plan, render_update_plan_markdown
 from .upgrade import build_upgrade_plan, render_upgrade_plan_markdown
@@ -6125,186 +6108,8 @@ def main(argv: list[str] | None = None) -> int:
 
     register_status_commands(sub, add_subcommand_format)
     register_dreaming_commands(sub, add_subcommand_format)
-
-    todo_parser = sub.add_parser(
-        "todo",
-        help="Add a user or agent todo to a goal's active state.",
-    )
-    todo_parser.add_argument(
-        "todo_command",
-        nargs="?",
-        choices=["add", "claim", "update", "complete", "supersede", "archive-completed"],
-        default="add",
-        help=(
-            "Use add to append a checkbox todo, claim to soft-claim by registered "
-            "agent id, update/complete/supersede to transition by todo_id, or "
-            "archive-completed to move older completed todos into Completed Work Archive."
-        ),
-    )
-    todo_parser.add_argument("--goal-id", required=True, help="Goal id whose active state should receive the todo.")
-    todo_parser.add_argument("--role", choices=["user", "agent"], help="Todo owner. Required for add; optional todo_id search scope for lifecycle commands. Defaults to agent for archive-completed.")
-    todo_parser.add_argument("--text", help="Todo text. Required for add; keep it short and public-safe enough for local status.")
-    todo_parser.add_argument("--todo-id", help="Structured todo id from status/quota, such as todo_ab12cd34ef56.")
-    todo_parser.add_argument("--status", choices=["open", "done", "blocked", "deferred"], help="For todo update, set the lifecycle status by todo_id.")
-    todo_parser.add_argument("--note", help="Public-safe note to attach to a lifecycle transition.")
-    todo_parser.add_argument("--evidence", help="Public-safe evidence pointer or short result for complete/update.")
-    todo_parser.add_argument("--reason", help="Public-safe reason for blocked/deferred/supersede transitions.")
-    todo_parser.add_argument(
-        "--task-class",
-        choices=["advancement_task", "continuous_monitor", "user_gate", "blocker"],
-        help=(
-            "For todo add/update, explicitly register the routing lane. Use "
-            "advancement_task for executable delivery work; continuous_monitor, "
-            "user_gate, and blocker are non-executable lanes."
-        ),
-    )
-    todo_parser.add_argument(
-        "--action-kind",
-        help=(
-            "For todo add, optional public-safe action token such as run_eval, "
-            "rebuild_score, compact_blocker_writeback, or monitor."
-        ),
-    )
-    todo_parser.add_argument(
-        "--required-write-scope",
-        dest="required_write_scopes",
-        action="append",
-        help=(
-            "For todo add/update, declare a required relative write scope such as "
-            "src/** or runners/openviking/**. Repeat for multiple scopes."
-        ),
-    )
-    todo_parser.add_argument(
-        "--required-capability",
-        dest="required_capabilities",
-        action="append",
-        help=(
-            "For todo add/update, declare an execution capability such as shell, "
-            "filesystem_write, network, benchmark_runner, or external_evidence_poll. "
-            "Repeat for multiple capabilities."
-        ),
-    )
-    todo_parser.add_argument(
-        "--target-capability",
-        dest="target_capabilities",
-        action="append",
-        help=(
-            "For todo add/update, declare a capability this todo is building, "
-            "repairing, materializing, or parity-checking. This is not a hard "
-            "execution prerequisite."
-        ),
-    )
-    todo_parser.add_argument(
-        "--claimed-by",
-        help=(
-            "For todo add/claim/update/complete, soft-claim the todo for a registered "
-            "public-safe agent id such as codex-main-control."
-        ),
-    )
-    todo_parser.add_argument(
-        "--blocks-agent",
-        help=(
-            "For todo add/update, mark that this todo unblocks a registered agent, "
-            "for example codex-side-bypass."
-        ),
-    )
-    todo_parser.add_argument(
-        "--unblocks-todo-id",
-        help=(
-            "For todo add/update, link this todo to the blocked todo it unblocks, "
-            "for example todo_ab12cd34ef56."
-        ),
-    )
-    todo_parser.add_argument(
-        "--clear-claim",
-        action="store_true",
-        help="For todo update, remove the soft claimed_by owner from the todo.",
-    )
-    todo_parser.add_argument("--next-agent-todo", help="For complete/supersede, atomically add or update the next agent todo.")
-    todo_parser.add_argument("--next-user-todo", help="For complete/supersede, atomically add or update the next user todo.")
-    todo_parser.add_argument(
-        "--next-claimed-by",
-        help=(
-            "For complete/supersede with --next-agent-todo, soft-claim the successor "
-            "todo for a registered agent. If omitted, claimed successors inherit the "
-            "completed/superseded todo owner when available; side-agent review handoffs "
-            "default to primary_agent."
-        ),
-    )
-    todo_parser.add_argument(
-        "--side-agent-self-merged",
-        action="store_true",
-        help=(
-            "For todo complete by a side agent, explicitly record that a small validated "
-            "side-agent change was self-merged; requires --evidence and bypasses the "
-            "default primary review successor todo."
-        ),
-    )
-    todo_parser.add_argument(
-        "--next-task-class",
-        choices=["advancement_task", "continuous_monitor", "user_gate", "blocker"],
-        help="Task class for --next-agent-todo. Defaults to advancement_task.",
-    )
-    todo_parser.add_argument("--next-action-kind", help="Action kind for --next-agent-todo.")
-    todo_parser.add_argument(
-        "--max-active-done",
-        type=int,
-        default=12,
-        help="For archive-completed, keep this many completed todos in the active section.",
-    )
-    todo_parser.add_argument("--project", help="Project root. Defaults to the registry goal repo.")
-    todo_parser.add_argument("--state-file", help="Active goal state path. Defaults to the registry goal state_file.")
-    todo_parser.add_argument("--dry-run", action="store_true", help="Preview the active-state edit without writing.")
-    todo_parser.add_argument("--execute", action="store_true", help="For archive-completed, write the active-state edit.")
-
-    quota_parser = sub.add_parser(
-        "quota",
-        help="Show agent-facing compute quota status or next-turn plan.",
-    )
-    quota_parser.add_argument(
-        "quota_command",
-        nargs="?",
-        choices=["status", "plan", "should-run", "monitor-poll", "spend-slot", "void-slot"],
-        default="status",
-        help="Use status for all groups, plan for next-turn groups, should-run for one goal, monitor-poll for no-spend quiet poll evidence, spend-slot for accounting, or void-slot for a non-destructive accounting correction.",
-    )
-    quota_parser.add_argument("--goal-id", help="Goal id to check. Required for `quota should-run`, `quota monitor-poll`, `quota spend-slot`, and `quota void-slot`.")
-    quota_parser.add_argument(
-        "--agent-id",
-        help=(
-            "Registered agent id for `quota should-run` and scoped quota accounting "
-            "commands; suppresses identity-upgrade warnings and records the identity "
-            "on appended monitor/spend/void events."
-        ),
-    )
-    quota_parser.add_argument(
-        "--available-capability",
-        dest="available_capabilities",
-        action="append",
-        help=(
-            "For `quota should-run` and `quota spend-slot`, declare a capability "
-            "available in this current agent environment. Repeat for multiple "
-            "capabilities; basic local shell/filesystem capabilities are assumed."
-        ),
-    )
-    quota_parser.add_argument("--slots", type=int, default=1, help="Slots to account for `quota spend-slot`.")
-    quota_parser.add_argument("--source", choices=["heartbeat", "controller", "adapter"], default="heartbeat", help="Source label for `quota spend-slot`.")
-    quota_parser.add_argument("--void-generated-at", help="generated_at timestamp of the quota_slot_spent run to void.")
-    quota_parser.add_argument("--reason-summary", help="Public-safe reason for `quota void-slot`.")
-    quota_parser.add_argument("--dry-run", action="store_true", help="Keep quota accounting writes as preview-only. This is the default.")
-    quota_parser.add_argument("--execute", action="store_true", help="Append the compact quota accounting runtime event for spend-slot or void-slot.")
-    quota_parser.add_argument(
-        "--scan-root",
-        default=default_public_scan_root(),
-        help="Public files to scan for obvious private material. Defaults to the LoopX install root.",
-    )
-    quota_parser.add_argument(
-        "--scan-path",
-        action="append",
-        default=[],
-        help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
-    )
-    quota_parser.add_argument("--limit", type=int, default=5)
+    register_todo_command(sub)
+    register_quota_command(sub)
 
     serve_status_parser = sub.add_parser("serve-status", help="Serve live status JSON for the local dashboard.")
     serve_status_parser.add_argument("--host", default=DEFAULT_STATUS_HOST, help="Bind host. Defaults to localhost only.")
@@ -10759,407 +10564,22 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.command == "todo":
-        try:
-            if args.todo_command == "add":
-                if not args.role:
-                    raise ValueError("todo add requires --role")
-                if not args.text:
-                    raise ValueError("todo add requires --text")
-                if args.clear_claim:
-                    raise ValueError("todo add accepts --claimed-by but not --clear-claim")
-                if args.next_claimed_by:
-                    raise ValueError("todo add does not support --next-claimed-by")
-                if args.side_agent_self_merged:
-                    raise ValueError("todo add does not support --side-agent-self-merged")
-                payload = add_goal_todo(
-                    registry_path=registry_path,
-                    goal_id=args.goal_id,
-                    role=args.role,
-                    text=args.text,
-                    task_class=args.task_class,
-                    action_kind=args.action_kind,
-                    required_write_scopes=args.required_write_scopes,
-                    required_capabilities=args.required_capabilities,
-                    target_capabilities=args.target_capabilities,
-                    claimed_by=args.claimed_by,
-                    blocks_agent=args.blocks_agent,
-                    unblocks_todo_id=args.unblocks_todo_id,
-                    project=Path(args.project).expanduser() if args.project else None,
-                    state_file=Path(args.state_file).expanduser() if args.state_file else None,
-                    dry_run=bool(args.dry_run),
-                )
-            elif args.todo_command == "claim":
-                if not args.todo_id:
-                    raise ValueError("todo claim requires --todo-id")
-                if not args.claimed_by:
-                    raise ValueError("todo claim requires --claimed-by")
-                if args.clear_claim:
-                    raise ValueError("todo claim requires --claimed-by and does not support --clear-claim")
-                unsupported = [
-                    flag
-                    for flag, value in (
-                        ("--text", args.text),
-                        ("--status", args.status),
-                        ("--note", args.note),
-                        ("--evidence", args.evidence),
-                        ("--reason", args.reason),
-                        ("--task-class", args.task_class),
-                        ("--action-kind", args.action_kind),
-                        ("--required-write-scope", args.required_write_scopes),
-                        ("--required-capability", args.required_capabilities),
-                        ("--target-capability", args.target_capabilities),
-                        ("--blocks-agent", args.blocks_agent),
-                        ("--unblocks-todo-id", args.unblocks_todo_id),
-                        ("--next-agent-todo", args.next_agent_todo),
-                        ("--next-user-todo", args.next_user_todo),
-                        ("--next-claimed-by", args.next_claimed_by),
-                        ("--next-task-class", args.next_task_class),
-                        ("--next-action-kind", args.next_action_kind),
-                        ("--side-agent-self-merged", args.side_agent_self_merged),
-                    )
-                    if value
-                ]
-                if unsupported:
-                    raise ValueError(
-                        "todo claim only accepts --todo-id, --claimed-by, optional --role, "
-                        "--project, --state-file, and --dry-run; unsupported: "
-                        + ", ".join(unsupported)
-                    )
-                payload = update_goal_todo(
-                    registry_path=registry_path,
-                    goal_id=args.goal_id,
-                    todo_id=args.todo_id,
-                    role=args.role,
-                    claimed_by=args.claimed_by,
-                    claim_only=True,
-                    project=Path(args.project).expanduser() if args.project else None,
-                    state_file=Path(args.state_file).expanduser() if args.state_file else None,
-                    dry_run=bool(args.dry_run),
-                )
-            elif args.todo_command == "update":
-                if not args.todo_id:
-                    raise ValueError("todo update requires --todo-id")
-                if args.claimed_by and args.clear_claim:
-                    raise ValueError("todo update accepts either --claimed-by or --clear-claim, not both")
-                if not any([
-                    args.text,
-                    args.status,
-                    args.note,
-                    args.evidence,
-                    args.reason,
-                    args.task_class,
-                    args.action_kind,
-                    args.required_write_scopes,
-                    args.required_capabilities,
-                    args.target_capabilities,
-                    args.claimed_by,
-                    args.blocks_agent,
-                    args.unblocks_todo_id,
-                    args.clear_claim,
-                ]):
-                    raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, --blocks-agent, --unblocks-todo-id, or --clear-claim")
-                if args.next_claimed_by:
-                    raise ValueError("todo update does not support --next-claimed-by")
-                if args.side_agent_self_merged:
-                    raise ValueError("todo update does not support --side-agent-self-merged")
-                payload = update_goal_todo(
-                    registry_path=registry_path,
-                    goal_id=args.goal_id,
-                    todo_id=args.todo_id,
-                    text=args.text,
-                    status=args.status,
-                    role=args.role,
-                    note=args.note,
-                    evidence=args.evidence,
-                    reason=args.reason,
-                    task_class=args.task_class,
-                    action_kind=args.action_kind,
-                    required_write_scopes=args.required_write_scopes,
-                    required_capabilities=args.required_capabilities,
-                    target_capabilities=args.target_capabilities,
-                    claimed_by=args.claimed_by,
-                    blocks_agent=args.blocks_agent,
-                    unblocks_todo_id=args.unblocks_todo_id,
-                    clear_claim=bool(args.clear_claim),
-                    project=Path(args.project).expanduser() if args.project else None,
-                    state_file=Path(args.state_file).expanduser() if args.state_file else None,
-                    dry_run=bool(args.dry_run),
-                )
-            elif args.todo_command == "complete":
-                if not args.todo_id:
-                    raise ValueError("todo complete requires --todo-id")
-                if args.claimed_by and args.clear_claim:
-                    raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
-                if args.blocks_agent or args.unblocks_todo_id:
-                    raise ValueError("todo complete does not support --blocks-agent or --unblocks-todo-id; use todo update before completion or side-agent review successor metadata")
-                payload = complete_goal_todo(
-                    registry_path=registry_path,
-                    goal_id=args.goal_id,
-                    todo_id=args.todo_id,
-                    role=args.role,
-                    evidence=args.evidence,
-                    note=args.note,
-                    claimed_by=args.claimed_by,
-                    clear_claim=bool(args.clear_claim),
-                    next_agent_todo=args.next_agent_todo,
-                    next_user_todo=args.next_user_todo,
-                    next_claimed_by=args.next_claimed_by,
-                    next_task_class=args.next_task_class,
-                    next_action_kind=args.next_action_kind,
-                    side_agent_self_merged=bool(args.side_agent_self_merged),
-                    project=Path(args.project).expanduser() if args.project else None,
-                    state_file=Path(args.state_file).expanduser() if args.state_file else None,
-                    dry_run=bool(args.dry_run),
-                )
-            elif args.todo_command == "supersede":
-                if not args.todo_id:
-                    raise ValueError("todo supersede requires --todo-id")
-                if args.claimed_by or args.clear_claim:
-                    raise ValueError("todo supersede does not support --claimed-by or --clear-claim")
-                if args.side_agent_self_merged:
-                    raise ValueError("todo supersede does not support --side-agent-self-merged")
-                if args.blocks_agent or args.unblocks_todo_id:
-                    raise ValueError("todo supersede does not support --blocks-agent or --unblocks-todo-id; update the source todo first so the successor can inherit dependency metadata")
-                payload = supersede_goal_todo(
-                    registry_path=registry_path,
-                    goal_id=args.goal_id,
-                    todo_id=args.todo_id,
-                    role=args.role,
-                    reason=args.reason,
-                    next_agent_todo=args.next_agent_todo,
-                    next_user_todo=args.next_user_todo,
-                    next_claimed_by=args.next_claimed_by,
-                    next_task_class=args.next_task_class,
-                    next_action_kind=args.next_action_kind,
-                    project=Path(args.project).expanduser() if args.project else None,
-                    state_file=Path(args.state_file).expanduser() if args.state_file else None,
-                    dry_run=bool(args.dry_run),
-                )
-            elif args.todo_command == "archive-completed":
-                if args.claimed_by or args.clear_claim:
-                    raise ValueError("todo archive-completed does not support --claimed-by or --clear-claim")
-                if args.next_claimed_by:
-                    raise ValueError("todo archive-completed does not support --next-claimed-by")
-                if args.side_agent_self_merged:
-                    raise ValueError("todo archive-completed does not support --side-agent-self-merged")
-                payload = archive_completed_todos(
-                    registry_path=registry_path,
-                    goal_id=args.goal_id,
-                    role=args.role or "agent",
-                    max_active_done=args.max_active_done,
-                    project=Path(args.project).expanduser() if args.project else None,
-                    state_file=Path(args.state_file).expanduser() if args.state_file else None,
-                    dry_run=not bool(args.execute),
-                )
-            else:
-                raise ValueError("unsupported todo command")
-        except Exception as exc:
-            payload = {
-                "ok": False,
-                "dry_run": not bool(args.execute)
-                if args.todo_command == "archive-completed"
-                else bool(args.dry_run),
-                "added": False,
-                "already_exists": False,
-                "goal_id": args.goal_id,
-                "role": args.role,
-                "todo": args.text or "",
-                "error": str(exc),
-            }
-        todo_event_kinds = {
-            "add": "todo_add",
-            "claim": "todo_claim",
-            "update": "todo_update",
-            "complete": "todo_complete",
-            "supersede": "todo_supersede",
-            "archive-completed": "todo_archive_completed",
-        }
-        if payload.get("ok") and not payload.get("dry_run"):
-            append_cli_rollout_event(
-                payload,
-                registry_path=registry_path,
-                runtime_root_arg=args.runtime_root,
-                event_kind=todo_event_kinds.get(args.todo_command, "todo_update"),
-                agent_id=args.claimed_by,
-                todo_id=args.todo_id or str(payload.get("todo_id") or "").strip() or None,
-                status=str(payload.get("status") or args.todo_command or "").strip(),
-                summary=(
-                    f"todo {args.todo_command} recorded for "
-                    f"{payload.get('todo_id') or args.todo_id or 'unstructured todo'}"
-                ),
-                details={
-                    "command": "todo",
-                    "todo_command": args.todo_command,
-                    "role": payload.get("role") or args.role or "",
-                    "changed": bool(payload.get("changed")),
-                    "added": bool(payload.get("added")),
-                    "already_exists": bool(payload.get("already_exists")),
-                },
-            )
-        print_payload(payload, args.format, render_todo_markdown)
-        return 0 if payload.get("ok") else 1
+        return handle_todo_command(
+            args,
+            registry_path=registry_path,
+            runtime_root_arg=args.runtime_root,
+            print_payload=print_payload,
+            append_cli_rollout_event=append_cli_rollout_event,
+        )
 
     if args.command == "quota":
-        try:
-            scan_roots = [Path(item).expanduser() for item in args.scan_path]
-            if not scan_roots:
-                scan_roots = [Path(args.scan_root).expanduser()]
-            status_limit = max(0, args.limit)
-            if args.quota_command == "should-run":
-                status_limit = max(status_limit, AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK)
-            status_payload = collect_status(
-                registry_path=registry_path,
-                runtime_root_override=args.runtime_root,
-                scan_roots=scan_roots,
-                limit=status_limit,
-            )
-            if args.quota_command == "should-run":
-                if not args.goal_id:
-                    raise ValueError("`loopx quota should-run` requires --goal-id")
-                payload = build_quota_should_run(
-                    status_payload,
-                    goal_id=args.goal_id,
-                    agent_id=args.agent_id,
-                    available_capabilities=args.available_capabilities,
-                )
-            elif args.quota_command == "monitor-poll":
-                if not args.goal_id:
-                    raise ValueError("`loopx quota monitor-poll` requires --goal-id")
-                if args.dry_run and args.execute:
-                    raise ValueError("`loopx quota monitor-poll` accepts only one of --dry-run or --execute")
-                payload = record_quota_monitor_poll(
-                    status_payload,
-                    goal_id=args.goal_id,
-                    execute=bool(args.execute),
-                    source=args.source,
-                    reason_summary=args.reason_summary,
-                    agent_id=args.agent_id,
-                )
-            elif args.quota_command == "spend-slot":
-                if not args.goal_id:
-                    raise ValueError("`loopx quota spend-slot` requires --goal-id")
-                if args.dry_run and args.execute:
-                    raise ValueError("`loopx quota spend-slot` accepts only one of --dry-run or --execute")
-                payload = spend_quota_slot(
-                    status_payload,
-                    goal_id=args.goal_id,
-                    slots=args.slots,
-                    execute=bool(args.execute),
-                    source=args.source,
-                    agent_id=args.agent_id,
-                    available_capabilities=args.available_capabilities,
-                )
-            elif args.quota_command == "void-slot":
-                if not args.goal_id:
-                    raise ValueError("`loopx quota void-slot` requires --goal-id")
-                if not args.void_generated_at:
-                    raise ValueError("`loopx quota void-slot` requires --void-generated-at")
-                if args.dry_run and args.execute:
-                    raise ValueError("`loopx quota void-slot` accepts only one of --dry-run or --execute")
-                payload = void_quota_slot(
-                    status_payload,
-                    goal_id=args.goal_id,
-                    voided_run_generated_at=args.void_generated_at,
-                    execute=bool(args.execute),
-                    source=args.source,
-                    reason_summary=args.reason_summary,
-                    agent_id=args.agent_id,
-                )
-            else:
-                payload = build_quota_plan(status_payload, mode=args.quota_command)
-        except Exception as exc:
-            if args.quota_command in {"should-run", "monitor-poll", "spend-slot", "void-slot"}:
-                payload = {
-                    "ok": False,
-                    "mode": args.quota_command,
-                    "goal_id": args.goal_id,
-                    "decision": "skip",
-                    "should_run": False,
-                    "reason": str(exc),
-                    "state": "blocked_health",
-                    "waiting_on": "codex",
-                    "status": "quota_collection_failed",
-                    "source": "quota",
-                    "recommended_action": "fix quota/status collection before spending automatic compute",
-                }
-            else:
-                payload = {
-                    "ok": False,
-                    "mode": args.quota_command,
-                    "registry": str(registry_path),
-                    "runtime_root": args.runtime_root,
-                    "error": str(exc),
-                    "summary": {
-                        "registered_goals": 0,
-                        "health_blockers": 1,
-                        "next_automatic_turn": None,
-                        "states": {},
-                    },
-                    "groups": {},
-                    "health_items": [
-                        {
-                            "goal_id": "loopx-quota",
-                            "status": "quota_collection_failed",
-                            "waiting_on": "codex",
-                            "severity": "high",
-                            "recommended_action": str(exc),
-                            "source": "quota",
-                        }
-                    ],
-                }
-        quota_event_kinds = {
-            "should-run": "quota_should_run",
-            "monitor-poll": "quota_monitor_poll",
-            "spend-slot": "quota_spend",
-            "void-slot": "quota_void",
-        }
-        should_log_quota = (
-            args.quota_command in quota_event_kinds
-            and (
-                args.quota_command == "should-run"
-                or (payload.get("ok") and bool(payload.get("appended")))
-            )
+        return handle_quota_command(
+            args,
+            registry_path=registry_path,
+            runtime_root_arg=args.runtime_root,
+            print_payload=print_payload,
+            append_cli_rollout_event=append_cli_rollout_event,
         )
-        if should_log_quota:
-            append_cli_rollout_event(
-                payload,
-                registry_path=registry_path,
-                runtime_root_arg=args.runtime_root,
-                event_kind=quota_event_kinds[args.quota_command],
-                agent_id=args.agent_id,
-                status=str(
-                    payload.get("effective_action")
-                    or payload.get("decision")
-                    or payload.get("mode")
-                    or args.quota_command
-                ),
-                summary=(
-                    f"quota {args.quota_command} decision="
-                    f"{payload.get('decision') or payload.get('mode')} "
-                    f"state={payload.get('state') or ''}"
-                ),
-                details={
-                    "command": "quota",
-                    "quota_command": args.quota_command,
-                    "ok": bool(payload.get("ok")),
-                    "should_run": bool(payload.get("should_run")),
-                    "appended": bool(payload.get("appended")),
-                    "slots": payload.get("slots") or "",
-                    "source": payload.get("source") or "",
-                },
-                allow_failed=args.quota_command == "should-run",
-            )
-        renderer = (
-            render_quota_should_run_markdown
-            if args.quota_command == "should-run"
-            else render_quota_monitor_poll_markdown
-            if args.quota_command == "monitor-poll"
-            else render_quota_slot_preview_markdown
-            if args.quota_command in {"spend-slot", "void-slot"}
-            else render_quota_markdown
-        )
-        print_payload(payload, args.format, renderer)
-        return 0 if payload.get("ok") else 1
 
     if args.command == "serve-status":
         try:
