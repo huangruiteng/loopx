@@ -43,10 +43,12 @@ def main() -> int:
         handle_demo_command,
         handle_check_command,
         handle_doctor_command,
+        handle_ml_experiment_command,
         handle_new_project_prompt_command,
         handle_review_packet_command,
         handle_status_command,
         register_doctor_command,
+        register_ml_experiment_commands,
         register_starter_commands,
         register_status_commands,
     )
@@ -54,9 +56,11 @@ def main() -> int:
     assert callable(handle_demo_command)
     assert callable(handle_check_command)
     assert callable(register_doctor_command)
+    assert callable(register_ml_experiment_commands)
     assert callable(register_starter_commands)
     assert callable(register_status_commands)
     assert callable(handle_doctor_command)
+    assert callable(handle_ml_experiment_command)
     assert callable(handle_new_project_prompt_command)
     assert callable(handle_review_packet_command)
     assert callable(handle_status_command)
@@ -104,6 +108,37 @@ def main() -> int:
     review = run_cli("review-packet", "--goal-id", "loopx-meta", "--limit", "1")
     assert review.get("ok") is True, review
     assert review.get("goal_id") == "loopx-meta", review
+
+    ml_preview = run_cli(
+        "ml-experiment",
+        "preview",
+        "--experiment-id",
+        "command-module-exp",
+        "--primary-metric",
+        "offline_auc",
+        "--baseline-value",
+        "0.42",
+        "--candidate-value",
+        "0.43",
+        "--train-window",
+        "train_2026w24",
+        "--eval-window",
+        "eval_2026w25",
+        "--hypothesis-id",
+        "h_command_module",
+        "--mechanism-family",
+        "routing",
+        "--route",
+        "route_a",
+        "--positive-evidence",
+        "compact_eval_delta",
+        "--next-candidate",
+        "holdout_eval",
+    )
+    assert ml_preview.get("ok") is True, ml_preview
+    assert ml_preview.get("mode") == "default_off_advisory_preview", ml_preview
+    assert ml_preview.get("result", {}).get("experiment_id") == "command-module-exp", ml_preview
+    assert ml_preview.get("pack", {}).get("pack") == "ml_experiment", ml_preview
 
     print("cli-command-module-contract-regression ok")
     return 0
