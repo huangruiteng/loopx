@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,15 @@ def wait_for_socket(path: Path, proc: subprocess.Popen[str]) -> None:
             return
         time.sleep(0.05)
     raise AssertionError(f"socket did not appear: {path}")
+
+
+def connect_only_probe(path: Path) -> None:
+    sock = socket.socket(socket.AF_UNIX)
+    try:
+        sock.settimeout(1)
+        sock.connect(str(path))
+    finally:
+        sock.close()
 
 
 def test_codex_client_writes_last_message_and_rewrites_bridge() -> None:
@@ -73,6 +83,8 @@ print('codex stderr ok', file=sys.stderr)
         )
         try:
             wait_for_socket(socket_path, server)
+            connect_only_probe(socket_path)
+            assert server.poll() is None
             client = root / "codex-client"
             subprocess.run(
                 [
@@ -167,6 +179,8 @@ print(json.dumps({
         )
         try:
             wait_for_socket(socket_path, server)
+            connect_only_probe(socket_path)
+            assert server.poll() is None
             client = root / "json-client"
             subprocess.run(
                 [

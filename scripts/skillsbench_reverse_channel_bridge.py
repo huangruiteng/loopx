@@ -229,6 +229,8 @@ def _serve_socket(
             with conn:
                 try:
                     payload = _recv_json_line(conn)
+                    if not payload:
+                        continue
                     response = handler(payload)
                 except Exception as exc:  # keep client deterministic
                     response = {
@@ -239,7 +241,12 @@ def _serve_socket(
                         "raw_task_text_recorded": False,
                         "credential_values_recorded": False,
                     }
-                _send_json_line(conn, response)
+                try:
+                    _send_json_line(conn, response)
+                except (BrokenPipeError, ConnectionResetError):
+                    if once:
+                        return 1
+                    continue
             if once:
                 return 0
     finally:

@@ -82,6 +82,7 @@ from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_LOOPX_REGISTRY_PATH,
     BENCHMARK_CASE_LOOPX_RUNTIME_ROOT,
     BENCHMARK_CASE_LOOPX_SOURCE_MOUNT_TARGET,
+    BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE,
     BENCHMARK_CASE_LOOPX_TODO_ID,
     benchmark_case_loopx_command_prefix,
     benchmark_case_loopx_install_payload,
@@ -138,6 +139,11 @@ DEFAULT_TIMEOUT_SEC = 7200
 DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
 DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "final-only"
 DEFAULT_MAX_ROUNDS = 8
+HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
+    "AI_ADDR",
+    "AI_PORT",
+    "GOAL_HARNESS_REMOTE_BENCH_ROOT",
+)
 _MISSING = object()
 SUPPORTED_ROUTES = (
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
@@ -787,6 +793,65 @@ def _host_local_acp_launch_command(
     return command
 
 
+def _host_local_acp_target_env(agent_env: object) -> dict[str, str]:
+    if not isinstance(agent_env, dict):
+        return {}
+    target_env: dict[str, str] = {}
+    for key in HOST_LOCAL_ACP_TARGET_ENV_KEYS:
+        value = agent_env.get(key)
+        if value is None:
+            continue
+        target_env[key] = str(value)
+    return target_env
+
+
+def _replace_option_value(command: list[str], option: str, value: str) -> list[str]:
+    updated = list(command)
+    for index, item in enumerate(updated[:-1]):
+        if item == option:
+            updated[index + 1] = value
+    return updated
+
+
+def _host_local_acp_docker_bridge_command(
+    env: Any,
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+) -> str | None:
+    compose_paths = getattr(env, "_docker_compose_paths", None)
+    environment_dir = getattr(env, "environment_dir", None)
+    session_id = getattr(env, "session_id", None)
+    if not compose_paths or environment_dir is None or not isinstance(session_id, str):
+        return None
+
+    try:
+        project_dir = str(Path(environment_dir).resolve().absolute())
+        compose_files = [str(Path(path).resolve().absolute()) for path in compose_paths]
+    except (TypeError, OSError):
+        return None
+    if not compose_files:
+        return None
+
+    project_name = session_id.lower().replace(".", "-")
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    prerequisites["host_local_acp_sandbox_bridge_configured"] = True
+    prerequisites["host_local_acp_sandbox_bridge_mode"] = "docker_compose"
+    prerequisites["host_local_acp_sandbox_bridge_compose_file_count"] = len(
+        compose_files
+    )
+    prerequisites["host_local_acp_sandbox_bridge_path_recorded"] = False
+    bridge_script = Path(args.loopx_source_dir or REPO_ROOT) / "scripts" / (
+        "skillsbench_docker_command_file_bridge.py"
+    )
+    command = [sys.executable, str(bridge_script)]
+    command.extend(["--project-name", project_name])
+    command.extend(["--project-dir", project_dir])
+    for compose_file in compose_files:
+        command.extend(["--compose-file", compose_file])
+    command.extend(["--service", "main"])
+    return shlex.join(command)
+
+
 def _host_local_acp_codex_exec_preflight_command(
     args: argparse.Namespace,
     plan: dict[str, Any],
@@ -1025,6 +1090,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_cleanup_status",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
+        "host_local_acp_sandbox_bridge_mode",
         "host_local_acp_codex_exec_preflight_status",
         "host_local_acp_codex_exec_preflight_stage",
         "host_local_acp_codex_exec_preflight_first_blocker",
@@ -1041,6 +1107,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_acp_runtime_launch_preflight",
         "codex_acp_runtime_launch_preflight_raw_logs_read",
         "host_local_acp_launch",
+        "host_local_acp_sandbox_bridge_configured",
+        "host_local_acp_sandbox_bridge_path_recorded",
+        "host_local_acp_target_env_forwarded",
         "host_local_acp_codex_exec_preflight_requested",
         "host_local_acp_codex_exec_preflight_ready",
         "container_codex_acp_install_skipped",
@@ -1143,11 +1212,20 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count",
         "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count",
         "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count",
+        "host_local_acp_sandbox_bridge_compose_file_count",
+        "host_local_acp_target_env_key_count",
         "host_local_acp_codex_exec_preflight_attempt_count",
         "host_local_acp_codex_exec_failure_trace_count",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
+    target_keys = value.get("host_local_acp_target_env_keys")
+    if isinstance(target_keys, list):
+        compact["host_local_acp_target_env_keys"] = [
+            key
+            for key in target_keys
+            if isinstance(key, str) and key in HOST_LOCAL_ACP_TARGET_ENV_KEYS
+        ][: len(HOST_LOCAL_ACP_TARGET_ENV_KEYS)]
     for field in (
         "remote_command_file_bridge_agent_operation_counts",
         "remote_command_file_bridge_agent_loopx_subcommand_counts",
@@ -1744,6 +1822,26 @@ def _runner_prerequisite_failure_attribution(
     if not isinstance(value, dict):
         return None
 
+    def count(key: str) -> int:
+        raw = value.get(key)
+        if isinstance(raw, int) and not isinstance(raw, bool):
+            return max(0, raw)
+        return 0
+
+    orchestrated_driver_lifecycle_satisfied = bool(
+        value.get("remote_command_file_bridge_driver_lifecycle_execution_style")
+        == BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE
+        and count("remote_command_file_bridge_driver_lifecycle_checkpoint_count") > 0
+        and count("remote_command_file_bridge_driver_lifecycle_success_count") > 0
+        and count("remote_command_file_bridge_driver_lifecycle_failure_count") == 0
+        and count("remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count")
+        > 0
+        and count("remote_command_file_bridge_driver_lifecycle_loopx_state_read_count")
+        > 0
+        and count("remote_command_file_bridge_driver_lifecycle_loopx_state_write_count")
+        > 0
+    )
+
     if (
         value.get("benchflow_setup_stall_timeout_triggered") is True
         and value.get("benchflow_setup_stall_before_agent_lifecycle") is True
@@ -1805,6 +1903,7 @@ def _runner_prerequisite_failure_attribution(
 
     if (
         value.get("remote_command_file_bridge_agent_operation_trace_required") is True
+        and not orchestrated_driver_lifecycle_satisfied
         and value.get("remote_command_file_bridge_agent_operation_trace_satisfied")
         is False
     ):
@@ -5001,9 +5100,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         **_ignored: Any,
     ) -> tuple[Any, Any, Any, str]:
         del (
-            env,
             agent_launch,
-            agent_env,
             sandbox_user,
             rollout_dir,
             environment,
@@ -5015,10 +5112,39 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
 
         prerequisites = plan.setdefault("runner_prerequisites", {})
         prerequisites["host_local_acp_launch_status"] = "connecting"
+        local_acp_command = list(host_local_acp_command)
+        sandbox_bridge_command = _host_local_acp_docker_bridge_command(
+            env,
+            args,
+            plan,
+        )
+        if sandbox_bridge_command:
+            local_acp_command = _replace_option_value(
+                local_acp_command,
+                "--remote-command-file-bridge-command",
+                sandbox_bridge_command,
+            )
+            local_acp_command = _replace_option_value(
+                local_acp_command,
+                "--remote-command-file-bridge-agent-command",
+                sandbox_bridge_command,
+            )
+        else:
+            prerequisites.setdefault(
+                "host_local_acp_sandbox_bridge_mode",
+                "configured_command_fallback",
+            )
+            prerequisites.setdefault("host_local_acp_sandbox_bridge_configured", False)
+            prerequisites.setdefault("host_local_acp_sandbox_bridge_path_recorded", False)
+        target_env = _host_local_acp_target_env(agent_env)
+        prerequisites["host_local_acp_target_env_forwarded"] = bool(target_env)
+        prerequisites["host_local_acp_target_env_key_count"] = len(target_env)
+        prerequisites["host_local_acp_target_env_keys"] = sorted(target_env)
         client = ACPClient(
             StdioTransport(
-                command=host_local_acp_command[0],
-                args=host_local_acp_command[1:],
+                command=local_acp_command[0],
+                args=local_acp_command[1:],
+                env=target_env,
                 cwd=str(REPO_ROOT),
             )
         )

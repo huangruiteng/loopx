@@ -19,12 +19,17 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     CodexExecConfig,
     SkillsBenchLocalAcpRelay,
+    SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER,
     run_skillsbench_local_acp_relay_probe,
 )
 from scripts.skillsbench_automation_loop import (  # noqa: E402
     _apply_agent_message_only_no_tool_calls_attribution,
+    _host_local_acp_docker_bridge_command,
     _host_local_acp_launch_command,
+    _host_local_acp_target_env,
     _merge_host_local_acp_relay_trace_summary,
+    _public_runner_prerequisites,
+    _replace_option_value,
     _run_host_local_acp_codex_exec_preflight,
     build_runner_failure_compact,
     ensure_benchflow_runtime,
@@ -33,6 +38,9 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
 SCRIPT = REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"
 RELAY_SCRIPT = REPO_ROOT / "scripts" / "skillsbench_local_acp_relay.py"
 BRIDGE_SCRIPT = REPO_ROOT / "scripts" / "skillsbench_remote_command_file_bridge.py"
+DOCKER_BRIDGE_SCRIPT = (
+    REPO_ROOT / "scripts" / "skillsbench_docker_command_file_bridge.py"
+)
 
 
 def main() -> int:
@@ -41,11 +49,75 @@ def main() -> int:
     assert "getattr(\n        benchflow_rollout_module, \"connect_acp\", _MISSING" in source
     assert "if original_rollout_connect_acp is not _MISSING:" in source
     assert "_filter_kwargs_for_signature(RolloutConfig, rollout_config_kwargs)" in source
+    assert "env=target_env" in source
+    assert "del (\n            env," not in source
+    target_env = _host_local_acp_target_env(
+        {
+            "AI_ADDR": "127.0.0.1",
+            "AI_PORT": 2022,
+            "GOAL_HARNESS_REMOTE_BENCH_ROOT": "/tmp/bench",
+            "SECRET_TOKEN": "must-not-forward",
+        }
+    )
+    assert target_env == {
+        "AI_ADDR": "127.0.0.1",
+        "AI_PORT": "2022",
+        "GOAL_HARNESS_REMOTE_BENCH_ROOT": "/tmp/bench",
+    }
+    replaced = _replace_option_value(
+        ["relay", "--remote-command-file-bridge-command", "old", "--keep", "x"],
+        "--remote-command-file-bridge-command",
+        "new",
+    )
+    assert replaced == [
+        "relay",
+        "--remote-command-file-bridge-command",
+        "new",
+        "--keep",
+        "x",
+    ]
     with tempfile.TemporaryDirectory(prefix="gh-skillsbench-plan-") as tmp:
         root = Path(tmp) / "skillsbench"
         task = root / "tasks" / "demo-task" / "environment"
         task.mkdir(parents=True)
         (task / "Dockerfile").write_text("FROM ubuntu:22.04\n", encoding="utf-8")
+        compose_file = Path(tmp) / "docker-compose.yaml"
+        compose_file.write_text("services:\n  main:\n    image: ubuntu:22.04\n", encoding="utf-8")
+        fake_env = SimpleNamespace(
+            _docker_compose_paths=[compose_file],
+            environment_dir=Path(tmp),
+            session_id="Demo.Session",
+        )
+        docker_plan = {"jobs_dir": tmp, "job_name": "bridge-job", "runner_prerequisites": {}}
+        docker_bridge_command = _host_local_acp_docker_bridge_command(
+            fake_env,
+            SimpleNamespace(loopx_source_dir=str(REPO_ROOT)),
+            docker_plan,
+        )
+        assert docker_bridge_command is not None
+        assert str(DOCKER_BRIDGE_SCRIPT) in docker_bridge_command
+        assert "--project-name demo-session" in docker_bridge_command
+        assert "--compose-file" in docker_bridge_command
+        assert "SECRET_TOKEN" not in docker_bridge_command
+        public_prerequisites = _public_runner_prerequisites(
+            {
+                **docker_plan["runner_prerequisites"],
+                "host_local_acp_target_env_forwarded": True,
+                "host_local_acp_target_env_key_count": 2,
+                "host_local_acp_target_env_keys": [
+                    "AI_ADDR",
+                    "AI_PORT",
+                    "SECRET_TOKEN",
+                ],
+            }
+        )
+        assert public_prerequisites["host_local_acp_sandbox_bridge_configured"] is True
+        assert public_prerequisites["host_local_acp_sandbox_bridge_mode"] == "docker_compose"
+        assert public_prerequisites["host_local_acp_sandbox_bridge_compose_file_count"] == 1
+        assert public_prerequisites["host_local_acp_target_env_keys"] == [
+            "AI_ADDR",
+            "AI_PORT",
+        ]
         original_import = builtins.__import__
 
         def fake_import(name, *args, **kwargs):
@@ -383,6 +455,8 @@ args = sys.argv[1:]
 prompt = args[-1]
 if "Private bridge command:" not in prompt:
     raise SystemExit(7)
+if """ + repr(SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER) + """ not in prompt:
+    raise SystemExit(11)
 bridge_command = prompt.split("Private bridge command:", 1)[1].strip().splitlines()[0]
 if not bridge_command:
     raise SystemExit(10)

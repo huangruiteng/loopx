@@ -8,6 +8,7 @@ from typing import Any, Iterable
 
 from ..benchmark_case_state import (
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
+    BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE,
     benchmark_case_active_state_path,
 )
 from ..benchmark_core import (
@@ -2686,11 +2687,45 @@ def build_skillsbench_benchflow_result_benchmark_run(
         return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
     product_mode_lifecycle_required = bool(route == "loopx-product-mode")
-    remote_agent_operation_trace_required = (
+    workflow_execution_style = controller_counters.get(
+        "remote_command_file_bridge_driver_lifecycle_execution_style"
+    )
+    driver_lifecycle_read_count = _controller_public_count(
+        "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count"
+    )
+    driver_lifecycle_write_count = _controller_public_count(
+        "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count"
+    )
+    driver_lifecycle_checkpoint_count = _controller_public_count(
+        "remote_command_file_bridge_driver_lifecycle_checkpoint_count"
+    )
+    driver_lifecycle_success_count = _controller_public_count(
+        "remote_command_file_bridge_driver_lifecycle_success_count"
+    )
+    driver_lifecycle_failure_count = _controller_public_count(
+        "remote_command_file_bridge_driver_lifecycle_failure_count"
+    )
+    driver_lifecycle_loopx_cli_call_count = _controller_public_count(
+        "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count"
+    )
+    orchestrated_driver_lifecycle_satisfied = bool(
+        workflow_execution_style == BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE
+        and driver_lifecycle_checkpoint_count > 0
+        and driver_lifecycle_success_count > 0
+        and driver_lifecycle_failure_count == 0
+        and driver_lifecycle_loopx_cli_call_count > 0
+        and driver_lifecycle_read_count > 0
+        and driver_lifecycle_write_count > 0
+    )
+    remote_agent_operation_trace_required_raw = (
         controller_counters.get(
             "remote_command_file_bridge_agent_operation_trace_required"
         )
         is True
+    )
+    remote_agent_operation_trace_required = bool(
+        remote_agent_operation_trace_required_raw
+        and not orchestrated_driver_lifecycle_satisfied
     )
     remote_agent_operation_trace_satisfied = (
         controller_counters.get(
@@ -2717,12 +2752,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
     )
     agent_bridge_lifecycle_write_count = _controller_public_count(
         "remote_command_file_bridge_agent_loopx_state_write_count"
-    )
-    driver_lifecycle_read_count = _controller_public_count(
-        "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count"
-    )
-    driver_lifecycle_write_count = _controller_public_count(
-        "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count"
     )
     lifecycle_read_sources = [
         _controller_public_count("loopx_state_reads"),
@@ -2791,6 +2820,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "agent_operation_trace_satisfied": remote_agent_operation_trace_satisfied,
         "agent_operation_trace_status": remote_agent_operation_trace_status,
         "agent_operation_trace_missing": remote_agent_operation_trace_missing,
+        "orchestrated_driver_lifecycle_satisfied": (
+            orchestrated_driver_lifecycle_satisfied
+        ),
         "agent_bridge_state_read_count": agent_bridge_lifecycle_read_count,
         "agent_bridge_state_write_count": agent_bridge_lifecycle_write_count,
         "driver_lifecycle_state_read_count": driver_lifecycle_read_count,
@@ -2810,9 +2842,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         if product_mode_lifecycle_missing
         else "",
     }
-    workflow_execution_style = controller_counters.get(
-        "remote_command_file_bridge_driver_lifecycle_execution_style"
-    )
     if isinstance(workflow_execution_style, str) and workflow_execution_style:
         product_mode_lifecycle_contract["execution_style"] = workflow_execution_style
     user_loop_final_verify_recovery_triggered = bool(
@@ -3088,6 +3117,17 @@ def build_skillsbench_benchflow_result_benchmark_run(
             and "skillsbench_reward_artifact_missing" not in failure_labels
         ):
             failure_labels.append("skillsbench_reward_artifact_missing")
+    elif (
+        official_passed
+        and score_failure_attribution == "skillsbench_runner_error"
+        and failure_labels == ["skillsbench_runner_error"]
+    ):
+        warning_labels.append("skillsbench_runner_error_after_official_pass_ignored")
+        exception_type = "none"
+        score_failure_attribution = "none"
+        runner_score_failure_attribution = "none"
+        failure_labels = []
+        runner_failure = None
 
     native_goal_worker_trace_count = controller_counters.get(
         "native_goal_worker_trace_count", 0

@@ -39,6 +39,10 @@ SKILLSBENCH_HOST_LOCAL_ACP_TRANSPORT_PROBE_SCHEMA_VERSION = (
 SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER = (
     "LOOPX_SKILLSBENCH_LOCAL_ACP_RELAY_READY"
 )
+SKILLSBENCH_LOCAL_ACP_RELAY_HEALTH_PROMPT = (
+    "LoopX relay health check. Reply exactly "
+    f"{SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER} and end the turn."
+)
 
 
 def _json_rpc_result(message_id: Any, result: dict[str, Any]) -> dict[str, Any]:
@@ -1526,7 +1530,12 @@ def run_skillsbench_local_acp_relay_probe(
                 "method": "session/prompt",
                 "params": {
                     "sessionId": session_id,
-                    "prompt": [{"type": "text", "text": "relay handshake probe"}],
+                    "prompt": [
+                        {
+                            "type": "text",
+                            "text": SKILLSBENCH_LOCAL_ACP_RELAY_HEALTH_PROMPT,
+                        }
+                    ],
                 },
             },
             timeout_at=started + timeout_sec,
@@ -1624,7 +1633,10 @@ def run_skillsbench_host_local_acp_transport_probe(
                 request_count += 1
                 await step("set_model", client.set_model("probe-model"))
                 request_count += 1
-                prompt = await step("prompt", client.prompt("relay handshake probe"))
+                prompt = await step(
+                    "prompt",
+                    client.prompt(SKILLSBENCH_LOCAL_ACP_RELAY_HEALTH_PROMPT),
+                )
                 request_count += 1
                 agent_name = str(getattr(initialize.agent_info, "name", "") or "")
                 session_id = str(getattr(session, "session_id", "") or "")

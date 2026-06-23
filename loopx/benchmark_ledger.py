@@ -403,6 +403,7 @@ def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
         "satisfied",
         "countable_treatment",
         "checkpoint_required",
+        "orchestrated_driver_lifecycle_satisfied",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]

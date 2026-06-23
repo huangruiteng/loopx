@@ -4074,6 +4074,7 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
             "agent_operation_trace_required": False,
             "agent_operation_trace_satisfied": False,
             "agent_operation_trace_missing": False,
+            "orchestrated_driver_lifecycle_satisfied": False,
             "agent_bridge_state_read_count": 0,
             "agent_bridge_state_write_count": 0,
             "driver_lifecycle_state_read_count": 0,
@@ -4102,6 +4103,8 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
                 ),
                 "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 1,
                 "remote_command_file_bridge_driver_lifecycle_request_count": 4,
+                "remote_command_file_bridge_driver_lifecycle_success_count": 4,
+                "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
                 "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
                 "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
                 "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
@@ -4142,6 +4145,9 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
         external_agent_controller_trace = dict(driver_controller_trace)
         external_agent_controller_trace.update(
             {
+                "remote_command_file_bridge_driver_lifecycle_execution_style": (
+                    "prompt_driven_loopx_cli"
+                ),
                 "remote_command_file_bridge_agent_command_configured": True,
                 "remote_command_file_bridge_agent_command_instrumented": False,
                 "remote_command_file_bridge_agent_operation_trace_required": True,
@@ -4191,6 +4197,55 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
             "skillsbench_remote_bridge_agent_operation_trace_missing"
             in external_agent_compact["failure_attribution_labels"]
         ), external_agent_compact
+        orchestrated_no_request_controller_trace = dict(driver_controller_trace)
+        orchestrated_no_request_controller_trace.update(
+            {
+                "remote_command_file_bridge_agent_command_configured": True,
+                "remote_command_file_bridge_agent_command_instrumented": True,
+                "remote_command_file_bridge_agent_operation_trace_required": True,
+                "remote_command_file_bridge_agent_operation_trace_satisfied": False,
+                "remote_command_file_bridge_agent_operation_trace_status": (
+                    "agent_operation_trace_present_no_requests"
+                ),
+                "remote_command_file_bridge_agent_operation_trace_count": 1,
+                "remote_command_file_bridge_agent_request_count": 0,
+                "remote_command_file_bridge_agent_loopx_state_read_count": 0,
+                "remote_command_file_bridge_agent_loopx_state_write_count": 0,
+            }
+        )
+        orchestrated_no_request_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=orchestrated_no_request_controller_trace,
+            )
+        )
+        assert orchestrated_no_request_compact is not None
+        orchestrated_no_request_contract = orchestrated_no_request_compact[
+            "product_mode_lifecycle_contract"
+        ]
+        assert orchestrated_no_request_contract["satisfied"] is True, (
+            orchestrated_no_request_compact
+        )
+        assert orchestrated_no_request_contract["countable_treatment"] is True, (
+            orchestrated_no_request_compact
+        )
+        assert (
+            orchestrated_no_request_contract[
+                "orchestrated_driver_lifecycle_satisfied"
+            ]
+            is True
+        ), orchestrated_no_request_contract
+        assert (
+            orchestrated_no_request_contract["agent_operation_trace_required"]
+            is False
+        ), orchestrated_no_request_contract
+        assert orchestrated_no_request_contract.get("missing_reason", "") == "", (
+            orchestrated_no_request_contract
+        )
+        assert "skillsbench_remote_bridge_agent_no_requests" not in (
+            orchestrated_no_request_compact["failure_attribution_labels"]
+        ), orchestrated_no_request_compact
         no_request_controller_trace = dict(external_agent_controller_trace)
         no_request_controller_trace.update(
             {
@@ -4975,6 +5030,62 @@ def test_skillsbench_runner_failure_compact_attributes_agent_no_requests() -> No
             "failure_attribution_labels"
         ], compact
         assert "case-local LoopX lifecycle request" not in json.dumps(compact), compact
+
+
+def test_skillsbench_product_mode_pass_clears_generic_runner_error() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-pass-runner-error-") as tmp:
+        root = Path(tmp)
+        result_path = write_official_skillsbench_result(root, reward=1.0)
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+        payload["error"] = "generic runner closeout noise after official scoring"
+        write_json(result_path, payload)
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "loopx_automation_loop": True,
+            "product_mode": True,
+            "official_feedback_blinded": True,
+            "reward_feedback_forwarded": False,
+            "remote_command_file_bridge_driver_lifecycle_trace_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_execution_style": (
+                "orchestrated_agentloop_loopx_cli"
+            ),
+            "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_success_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+            "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
+            "remote_command_file_bridge_agent_operation_trace_required": True,
+            "remote_command_file_bridge_agent_operation_trace_satisfied": False,
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_present_no_requests"
+            ),
+            "remote_command_file_bridge_agent_operation_trace_count": 1,
+            "remote_command_file_bridge_agent_request_count": 0,
+            "remote_command_file_bridge_agent_loopx_state_read_count": 0,
+            "remote_command_file_bridge_agent_loopx_state_write_count": 0,
+        }
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        assert compact["official_score"] == 1.0, compact
+        assert compact["score_failure_attribution"] == "none", compact
+        assert compact.get("failure_attribution_labels", []) == [], compact
+        assert compact.get("runner_failure") is None, compact
+        assert (
+            compact["product_mode_lifecycle_contract"]["countable_treatment"]
+            is True
+        ), compact
+        assert (
+            "skillsbench_runner_error_after_official_pass_ignored"
+            in compact["model_control"]["warning_labels"]
+        ), compact
 
 
 def test_skillsbench_runner_failure_prefers_structured_preflight_blocker() -> None:
@@ -6772,6 +6883,7 @@ if __name__ == "__main__":
     test_skillsbench_product_mode_declared_done_is_compacted()
     test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted()
     test_skillsbench_product_mode_no_tool_lifecycle_abort_is_compacted()
+    test_skillsbench_product_mode_pass_clears_generic_runner_error()
     test_skillsbench_product_mode_case_state_usage_is_compacted()
     test_skillsbench_product_mode_legacy_case_state_path_is_not_compacted()
     test_skillsbench_round_trace_records_best_round_score()
