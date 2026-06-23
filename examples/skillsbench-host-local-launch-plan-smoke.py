@@ -188,12 +188,18 @@ def main() -> int:
         fake_codex = Path(tmp) / "fake-codex"
         fake_codex.write_text(
             """#!/usr/bin/env python3
+import select
 import sys
 from pathlib import Path
 
 args = sys.argv[1:]
 if "Private bridge command:" not in args[-1]:
     raise SystemExit(7)
+ready, _, _ = select.select([sys.stdin], [], [], 0.2)
+if not ready:
+    raise SystemExit(8)
+if sys.stdin.read():
+    raise SystemExit(9)
 output = Path(args[args.index("--output-last-message") + 1])
 output.write_text("fake solver saw bridge packet\\n", encoding="utf-8")
 """,
