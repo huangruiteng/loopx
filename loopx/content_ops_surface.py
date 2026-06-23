@@ -34,6 +34,10 @@ CONTENT_OPS_CHATVIEW_CONNECTOR_REPORT_SCHEMA_VERSION = (
 CONTENT_OPS_WALKTHROUGH_ARTIFACT_SCHEMA_VERSION = (
     "content_ops_walkthrough_artifact_v0"
 )
+CONTENT_OPS_EXPLORATION_PLAN_PACKET_SCHEMA_VERSION = (
+    "content_ops_exploration_plan_packet_v0"
+)
+EXPLORATION_PLAN_SCHEMA_VERSION = "exploration_plan_v0"
 
 SOURCE_ITEM_SCHEMA_VERSION = "source_item_v0"
 ANGLE_CANDIDATE_SCHEMA_VERSION = "angle_candidate_v0"
@@ -98,6 +102,18 @@ ALLOWED_CONNECTOR_ACCESS_MODES = {
     "private_metadata_only",
     "synthetic_fixture_only",
 }
+ALLOWED_EXPLORATION_READ_STATUSES = {
+    "metadata_ready",
+    "not_read",
+    "blocked_until_owner_gate",
+    "compact_result_ready",
+}
+ALLOWED_EXPLORATION_EVIDENCE_QUALITIES = {
+    "primary_source_metadata",
+    "metadata_only",
+    "not_evidence_until_approved",
+    "compact_result_metadata",
+}
 
 
 def _as_mappings(values: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
@@ -127,6 +143,24 @@ def _ids(items: Sequence[Mapping[str, Any]], key: str) -> set[str]:
 
 def _counter(values: Sequence[Any]) -> dict[str, int]:
     return dict(sorted(Counter(str(value) for value in values if value).items()))
+
+
+def _normalise_exploration_label(value: Any, label: str) -> str:
+    text = _text(value, limit=80)
+    if not text:
+        raise ValueError(f"{label} is required")
+    lowered = text.lower()
+    if (
+        "http://" in lowered
+        or "https://" in lowered
+        or "/users/" in lowered
+        or "/private/" in lowered
+        or "bearer " in lowered
+        or "credential" in lowered
+        or "secret" in lowered
+    ):
+        raise ValueError(f"{label} must be a compact public-safe label")
+    return text
 
 
 def _normalise_public_https_url(url: str) -> tuple[str, Any]:
@@ -924,6 +958,304 @@ def build_content_ops_preview_packet(
         if isinstance(projection.get("first_screen"), Mapping)
         else None,
     }
+
+
+def build_content_ops_exploration_plan_packet(
+    *,
+    scenario: str = "mixed_connector_product_workflow",
+    generated_at: str | None = "2026-06-23T00:00:00Z",
+) -> dict[str, Any]:
+    """Build a fixture-only exploration plan packet.
+
+    The plan expresses source lanes, read status, gates, and promotion targets
+    before any connector reads source bodies or performs external writes.
+    """
+
+    scenario_label = _normalise_exploration_label(
+        scenario,
+        "scenario",
+    )
+    source_lanes = [
+        {
+            "lane_id": "repo_issue_public_metadata",
+            "surface": "repo_issue_fix",
+            "source_kind": "github_issue_or_pr",
+            "source_status": "public",
+            "access_mode": "public_metadata_only",
+            "read_status": "metadata_ready",
+            "route": "GitHub CLI or issue API metadata read",
+            "fallback": "browser permalink metadata or ask for a stable issue URL",
+            "evidence_quality": "primary_source_metadata",
+            "promotion_target": "loopx_agent_todo_candidate",
+            "requires_user_gate": False,
+            "source_body_captured": False,
+            "response_payload_captured": False,
+            "local_path_captured": False,
+            "external_write_allowed": False,
+        },
+        {
+            "lane_id": "public_social_signal_metadata",
+            "surface": "content_ops_signal_intake",
+            "source_kind": "public_social_handle",
+            "source_status": "public",
+            "access_mode": "public_metadata_only",
+            "read_status": "not_read",
+            "route": "HEAD-only public handle metadata probe",
+            "fallback": "operator-provided public permalink metadata",
+            "evidence_quality": "metadata_only",
+            "promotion_target": "source_item_v0",
+            "requires_user_gate": False,
+            "source_body_captured": False,
+            "response_payload_captured": False,
+            "local_path_captured": False,
+            "external_write_allowed": False,
+        },
+        {
+            "lane_id": "private_chat_metadata_gate",
+            "surface": "content_ops_private_material",
+            "source_kind": "private_chat_connector",
+            "source_status": "private_needs_review",
+            "access_mode": "private_metadata_only",
+            "read_status": "blocked_until_owner_gate",
+            "route": "owner-gate projection before connector read",
+            "fallback": "owner supplies compact count and topic labels",
+            "evidence_quality": "not_evidence_until_approved",
+            "promotion_target": "source_item_v0_after_owner_gate",
+            "requires_user_gate": True,
+            "user_gate": {
+                "role": "user",
+                "action_kind": "approve_private_metadata_intake",
+                "question": (
+                    "Approve metadata-only private connector intake, reject it, "
+                    "or narrow the source handle before source content use."
+                ),
+                "blocks": [
+                    "source content read",
+                    "source quote",
+                    "source summary",
+                    "external posting",
+                ],
+            },
+            "source_body_captured": False,
+            "response_payload_captured": False,
+            "local_path_captured": False,
+            "external_write_allowed": False,
+        },
+        {
+            "lane_id": "experiment_compact_result_metadata",
+            "surface": "experiment_state_surface",
+            "source_kind": "ml_experiment_run",
+            "source_status": "unpublished",
+            "access_mode": "synthetic_fixture_only",
+            "read_status": "compact_result_ready",
+            "route": "experiment reducer emits compact status counters",
+            "fallback": "operator supplies public-safe result card",
+            "evidence_quality": "compact_result_metadata",
+            "promotion_target": "experiment_state_surface_candidate",
+            "requires_user_gate": True,
+            "user_gate": {
+                "role": "user",
+                "action_kind": "approve_raw_experiment_material_use",
+                "question": (
+                    "Approve any raw experiment material read; compact status "
+                    "metadata can be used without raw logs."
+                ),
+                "blocks": [
+                    "raw run log read",
+                    "private dataset sample read",
+                    "credential or environment dump",
+                ],
+            },
+            "source_body_captured": False,
+            "response_payload_captured": False,
+            "local_path_captured": False,
+            "external_write_allowed": False,
+        },
+    ]
+    validation = validate_content_ops_exploration_plan_lanes(source_lanes)
+    user_gate_lanes = [
+        lane for lane in source_lanes if bool(lane.get("requires_user_gate"))
+    ]
+    plan = {
+        "schema_version": EXPLORATION_PLAN_SCHEMA_VERSION,
+        "scenario": scenario_label,
+        "generated_at": generated_at,
+        "selected_source_lanes": source_lanes,
+        "lane_counts": {
+            "total": len(source_lanes),
+            "user_gate_required": len(user_gate_lanes),
+            "metadata_ready": sum(
+                1 for lane in source_lanes if lane.get("read_status") == "metadata_ready"
+            ),
+            "blocked_until_owner_gate": sum(
+                1
+                for lane in source_lanes
+                if lane.get("read_status") == "blocked_until_owner_gate"
+            ),
+        },
+        "promotion_targets": _counter(
+            [lane.get("promotion_target") for lane in source_lanes]
+        ),
+        "first_screen": {
+            "waiting_on": "user" if user_gate_lanes else "agent",
+            "user_action_required": bool(user_gate_lanes),
+            "agent_can_continue": True,
+            "top_agent_action": (
+                "promote metadata-ready public lanes or ask concrete owner gates "
+                "before private/raw source use"
+            ),
+            "top_user_gate": user_gate_lanes[0].get("user_gate")
+            if user_gate_lanes
+            else None,
+        },
+        "boundary": {
+            "external_reads_performed": False,
+            "external_writes_performed": False,
+            "source_bodies_captured": False,
+            "response_payloads_captured": False,
+            "local_paths_captured": False,
+            "autopublish_allowed": False,
+        },
+        "truth_contract": {
+            "plan_is_writable": False,
+            "source_lanes_are_candidates": True,
+            "promotion_requires_target_surface_validation": True,
+            "private_boundary_crossing_requires_user_gate": True,
+        },
+    }
+    return {
+        "ok": bool(validation.get("ok")),
+        "schema_version": CONTENT_OPS_EXPLORATION_PLAN_PACKET_SCHEMA_VERSION,
+        "mode": "content-ops-exploration-plan",
+        "exploration_plan": plan,
+        "validation": validation,
+        "external_reads_performed": False,
+        "external_writes_performed": False,
+        "private_source_bodies_read": False,
+        "private_source_content_read": False,
+        "local_paths_captured": False,
+        "autopublish_allowed": False,
+        "next_safe_action": plan["first_screen"]["top_agent_action"],
+    }
+
+
+def validate_content_ops_exploration_plan_lanes(
+    source_lanes: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    errors: list[str] = []
+    if not source_lanes:
+        errors.append("at least one source lane is required")
+    seen_ids: set[str] = set()
+    for index, lane in enumerate(source_lanes):
+        lane_id = str(lane.get("lane_id") or "").strip()
+        if not lane_id:
+            errors.append(f"lane {index + 1}: lane_id is required")
+        elif lane_id in seen_ids:
+            errors.append(f"lane {index + 1}: duplicate lane_id {lane_id}")
+        seen_ids.add(lane_id)
+        if lane.get("source_status") not in ALLOWED_SOURCE_STATUSES:
+            errors.append(
+                f"{lane_id or index + 1}: source_status must be one of "
+                f"{sorted(ALLOWED_SOURCE_STATUSES)}"
+            )
+        if lane.get("access_mode") not in ALLOWED_CONNECTOR_ACCESS_MODES:
+            errors.append(
+                f"{lane_id or index + 1}: access_mode must be one of "
+                f"{sorted(ALLOWED_CONNECTOR_ACCESS_MODES)}"
+            )
+        if lane.get("read_status") not in ALLOWED_EXPLORATION_READ_STATUSES:
+            errors.append(
+                f"{lane_id or index + 1}: read_status must be one of "
+                f"{sorted(ALLOWED_EXPLORATION_READ_STATUSES)}"
+            )
+        if lane.get("evidence_quality") not in ALLOWED_EXPLORATION_EVIDENCE_QUALITIES:
+            errors.append(
+                f"{lane_id or index + 1}: evidence_quality must be one of "
+                f"{sorted(ALLOWED_EXPLORATION_EVIDENCE_QUALITIES)}"
+            )
+        if not str(lane.get("route") or "").strip():
+            errors.append(f"{lane_id or index + 1}: route is required")
+        if not str(lane.get("fallback") or "").strip():
+            errors.append(f"{lane_id or index + 1}: fallback is required")
+        if not str(lane.get("promotion_target") or "").strip():
+            errors.append(f"{lane_id or index + 1}: promotion_target is required")
+        if bool(lane.get("source_body_captured")):
+            errors.append(f"{lane_id or index + 1}: source_body_captured must be false")
+        if bool(lane.get("response_payload_captured")):
+            errors.append(
+                f"{lane_id or index + 1}: response_payload_captured must be false"
+            )
+        if bool(lane.get("local_path_captured")):
+            errors.append(f"{lane_id or index + 1}: local_path_captured must be false")
+        if bool(lane.get("external_write_allowed")):
+            errors.append(f"{lane_id or index + 1}: external_write_allowed must be false")
+        if bool(lane.get("requires_user_gate")) and not isinstance(
+            lane.get("user_gate"), Mapping
+        ):
+            errors.append(f"{lane_id or index + 1}: user_gate is required")
+    return {
+        "schema_version": "content_ops_exploration_plan_validation_v0",
+        "ok": not errors,
+        "errors": errors,
+        "lane_count": len(source_lanes),
+    }
+
+
+def render_content_ops_exploration_plan_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# LoopX Content-Ops Exploration Plan",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- schema_version: `{payload.get('schema_version')}`",
+        f"- external_reads_performed: `{payload.get('external_reads_performed')}`",
+        f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
+        f"- private_source_bodies_read: `{payload.get('private_source_bodies_read')}`",
+        f"- local_paths_captured: `{payload.get('local_paths_captured')}`",
+        f"- autopublish_allowed: `{payload.get('autopublish_allowed')}`",
+    ]
+    plan = payload.get("exploration_plan")
+    if isinstance(plan, Mapping):
+        first_screen = plan.get("first_screen")
+        if isinstance(first_screen, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "## First Screen",
+                    "",
+                    f"- waiting_on: `{first_screen.get('waiting_on')}`",
+                    f"- user_action_required: `{first_screen.get('user_action_required')}`",
+                    f"- agent_can_continue: `{first_screen.get('agent_can_continue')}`",
+                    f"- top_agent_action: {first_screen.get('top_agent_action')}",
+                ]
+            )
+        lanes = plan.get("selected_source_lanes")
+        if isinstance(lanes, Sequence) and not isinstance(lanes, (str, bytes)):
+            lines.extend(["", "## Source Lanes", ""])
+            for lane in lanes:
+                if not isinstance(lane, Mapping):
+                    continue
+                lines.extend(
+                    [
+                        f"- `{lane.get('lane_id')}`: status=`{lane.get('source_status')}`, "
+                        f"read=`{lane.get('read_status')}`, "
+                        f"promotion=`{lane.get('promotion_target')}`, "
+                        f"user_gate=`{lane.get('requires_user_gate')}`",
+                    ]
+                )
+    validation = payload.get("validation")
+    if isinstance(validation, Mapping):
+        errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
+        lines.extend(
+            [
+                "",
+                "## Validation",
+                "",
+                f"- validation_ok: `{validation.get('ok')}`",
+                f"- lane_count: `{validation.get('lane_count')}`",
+                f"- error_count: `{len(errors)}`",
+            ]
+        )
+    return "\n".join(lines) + "\n"
 
 
 def build_content_ops_public_handle_observation_packet(

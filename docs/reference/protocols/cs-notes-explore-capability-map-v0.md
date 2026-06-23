@@ -79,8 +79,15 @@ These are useful in CS-Notes but should not be copied into LoopX as-is:
 
 ## Recommended Next Step
 
-Implement `exploration_plan_packet_v0` first. It should combine the strongest
-parts of `material_intake_profile_v0` and `trusted_source_scan_plan_v0`:
+Implement `exploration_plan_packet_v0` first. The initial fixture entrypoint is
+now:
+
+```bash
+loopx content-ops exploration-plan --format json
+```
+
+It combines the strongest parts of `material_intake_profile_v0` and
+`trusted_source_scan_plan_v0`:
 
 - selected source lanes;
 - access/read status;

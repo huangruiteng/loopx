@@ -9,12 +9,14 @@ from typing import Any
 
 from ..content_ops_surface import (
     build_content_ops_chatview_report_packet,
+    build_content_ops_exploration_plan_packet,
     build_content_ops_packet_aggregation_packet,
     build_content_ops_preview_packet,
     build_content_ops_private_connector_gate_packet,
     build_content_ops_public_handle_observation_packet,
     build_content_ops_walkthrough_artifact_packet,
     render_content_ops_chatview_report_markdown,
+    render_content_ops_exploration_plan_markdown,
     render_content_ops_packet_aggregation_markdown,
     render_content_ops_preview_markdown,
     render_content_ops_private_connector_gate_markdown,
@@ -72,6 +74,24 @@ def register_content_ops_commands(
         "--generated-at",
         default="2026-06-23T00:00:00Z",
         help="Public-safe generated_at timestamp for the synthetic preview fixture.",
+    )
+    exploration_plan_parser = content_ops_sub.add_parser(
+        "exploration-plan",
+        help=(
+            "Build a fixture-only exploration_plan_v0 packet before connector "
+            "source reads."
+        ),
+    )
+    add_subcommand_format(exploration_plan_parser)
+    exploration_plan_parser.add_argument(
+        "--scenario",
+        default="mixed_connector_product_workflow",
+        help="Public-safe scenario label for the exploration plan fixture.",
+    )
+    exploration_plan_parser.add_argument(
+        "--generated-at",
+        default="2026-06-23T00:00:00Z",
+        help="Public-safe generated_at timestamp for the exploration plan.",
     )
     observe_parser = content_ops_sub.add_parser(
         "observe-public-handle",
@@ -337,6 +357,12 @@ def handle_content_ops_command(
         if args.content_ops_command == "preview":
             payload = build_content_ops_preview_packet(generated_at=args.generated_at)
             renderer = render_content_ops_preview_markdown
+        elif args.content_ops_command == "exploration-plan":
+            payload = build_content_ops_exploration_plan_packet(
+                scenario=args.scenario,
+                generated_at=args.generated_at,
+            )
+            renderer = render_content_ops_exploration_plan_markdown
         elif args.content_ops_command == "observe-public-handle":
             payload = build_content_ops_public_handle_observation_packet(
                 url=args.url,
@@ -402,9 +428,10 @@ def handle_content_ops_command(
             renderer = render_content_ops_walkthrough_artifact_markdown
         else:
             raise ValueError(
-                "content-ops requires `preview`, `observe-public-handle`, "
-                "`project-private-connector-gate`, `aggregate-packets`, or "
-                "`project-chatview-report`, or `walkthrough-artifact`"
+                "content-ops requires `preview`, `exploration-plan`, "
+                "`observe-public-handle`, `project-private-connector-gate`, "
+                "`aggregate-packets`, `project-chatview-report`, or "
+                "`walkthrough-artifact`"
             )
     except Exception as exc:
         payload = {

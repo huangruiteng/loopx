@@ -129,6 +129,22 @@ actions happened. Real connector adapters should first match this packet shape
 before they ingest any public platform metadata or private metadata-only source
 handle.
 
+Before a real connector even decides what to read, the generic exploration
+planner can render the selected source lanes, access/read status, route,
+fallback, evidence quality, promotion target, and owner gates:
+
+```bash
+loopx content-ops exploration-plan --format json
+```
+
+It returns `content_ops_exploration_plan_packet_v0` with an
+`exploration_plan_v0` fixture. This is the first reusable primitive selected
+from the CS-Notes exploration capability map: repo issues, public social
+signals, private chat metadata, and experiment result counters can all be
+represented as lanes before source bodies, response payloads, local paths, or
+external writes are captured. Private or raw-material lanes must project a
+concrete user gate rather than silently becoming readable work.
+
 The first reusable public connector adapter is the public-handle observation
 command:
 
