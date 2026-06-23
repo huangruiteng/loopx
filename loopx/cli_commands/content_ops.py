@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from ..content_ops_surface import (
+    build_content_ops_chatview_report_packet,
     build_content_ops_packet_aggregation_packet,
     build_content_ops_preview_packet,
     build_content_ops_private_connector_gate_packet,
     build_content_ops_public_handle_observation_packet,
+    render_content_ops_chatview_report_markdown,
     render_content_ops_packet_aggregation_markdown,
     render_content_ops_preview_markdown,
     render_content_ops_private_connector_gate_markdown,
@@ -35,6 +37,16 @@ def _load_json_object(path_text: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"{path_text} must contain a JSON object")
     return payload
+
+
+def _parse_path_counts(values: list[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError("--api-path-count must use PATH=COUNT")
+        path, raw_count = value.split("=", 1)
+        counts[path.strip()] = int(raw_count.strip())
+    return counts
 
 
 def register_content_ops_commands(
@@ -183,6 +195,64 @@ def register_content_ops_commands(
         default="2026-06-23T00:00:00Z",
         help="Public-safe generated_at timestamp for the aggregate surface.",
     )
+    chatview_parser = content_ops_sub.add_parser(
+        "project-chatview-report",
+        help=(
+            "Project a public-safe ChatView operator card as an "
+            "aggregation-compatible private connector gate packet."
+        ),
+    )
+    add_subcommand_format(chatview_parser)
+    chatview_parser.add_argument(
+        "--channel-count",
+        type=int,
+        required=True,
+        help="Compact channel collection count from the approved ChatView trial.",
+    )
+    chatview_parser.add_argument(
+        "--recent-record-count",
+        type=int,
+        required=True,
+        help="Compact recent record count from the approved ChatView trial.",
+    )
+    chatview_parser.add_argument(
+        "--report-count",
+        type=int,
+        required=True,
+        help="Compact report collection count from the approved ChatView trial.",
+    )
+    chatview_parser.add_argument(
+        "--api-request-count",
+        type=int,
+        required=True,
+        help="Total API request count observed during the approved ChatView trial.",
+    )
+    chatview_parser.add_argument(
+        "--api-path-count",
+        action="append",
+        default=[],
+        help="Normalized ChatView API path class count as PATH=COUNT. Repeatable.",
+    )
+    chatview_parser.add_argument(
+        "--connector-url",
+        default="https://chatview.zaynjarvis.com/",
+        help="Approved ChatView connector URL; must be public https.",
+    )
+    chatview_parser.add_argument(
+        "--source-item-id",
+        default="source_chatview_metadata_signal_001",
+        help="source_item_v0 id to reserve for the compact ChatView signal.",
+    )
+    chatview_parser.add_argument(
+        "--owner-label",
+        default="ChatView owner",
+        help="Public-safe owner label to show in the gate packet.",
+    )
+    chatview_parser.add_argument(
+        "--generated-at",
+        default="2026-06-23T00:00:00Z",
+        help="Public-safe generated_at timestamp for the ChatView report.",
+    )
 
 
 def handle_content_ops_command(
@@ -230,10 +300,24 @@ def handle_content_ops_command(
                 generated_at=args.generated_at,
             )
             renderer = render_content_ops_packet_aggregation_markdown
+        elif args.content_ops_command == "project-chatview-report":
+            payload = build_content_ops_chatview_report_packet(
+                channel_count=args.channel_count,
+                recent_record_count=args.recent_record_count,
+                report_count=args.report_count,
+                api_request_count=args.api_request_count,
+                api_path_counts=_parse_path_counts(args.api_path_count),
+                connector_url=args.connector_url,
+                source_item_id=args.source_item_id,
+                owner_label=args.owner_label,
+                generated_at=args.generated_at,
+            )
+            renderer = render_content_ops_chatview_report_markdown
         else:
             raise ValueError(
                 "content-ops requires `preview`, `observe-public-handle`, "
-                "`project-private-connector-gate`, or `aggregate-packets`"
+                "`project-private-connector-gate`, `aggregate-packets`, or "
+                "`project-chatview-report`"
             )
     except Exception as exc:
         payload = {

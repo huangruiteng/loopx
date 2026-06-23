@@ -28,6 +28,9 @@ CONTENT_OPS_CONNECTOR_RUNTIME_POLICY_SCHEMA_VERSION = (
     "content_ops_connector_runtime_policy_v0"
 )
 CONTENT_OPS_PACKET_AGGREGATION_SCHEMA_VERSION = "content_ops_packet_aggregation_v0"
+CONTENT_OPS_CHATVIEW_CONNECTOR_REPORT_SCHEMA_VERSION = (
+    "content_ops_chatview_connector_report_v0"
+)
 
 SOURCE_ITEM_SCHEMA_VERSION = "source_item_v0"
 ANGLE_CANDIDATE_SCHEMA_VERSION = "angle_candidate_v0"
@@ -1194,6 +1197,125 @@ def build_content_ops_private_connector_gate_packet(
     }
 
 
+def _non_negative_int(value: int, label: str) -> int:
+    count = int(value)
+    if count < 0:
+        raise ValueError(f"{label} must be non-negative")
+    return count
+
+
+def _normalise_api_path_counts(values: Mapping[str, Any] | None) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for raw_path, raw_count in (values or {}).items():
+        path = str(raw_path or "").strip()
+        if not path.startswith("/api/"):
+            raise ValueError("ChatView API path counts must use /api/ path classes")
+        counts[path] = _non_negative_int(int(raw_count), f"api path count for {path}")
+    return dict(sorted(counts.items()))
+
+
+def build_content_ops_chatview_report_packet(
+    *,
+    channel_count: int,
+    recent_record_count: int,
+    report_count: int,
+    api_request_count: int,
+    api_path_counts: Mapping[str, Any] | None = None,
+    connector_url: str = "https://chatview.zaynjarvis.com/",
+    source_item_id: str = "source_chatview_metadata_signal_001",
+    owner_label: str = "ChatView owner",
+    generated_at: str | None = "2026-06-23T00:00:00Z",
+) -> dict[str, Any]:
+    """Build a public-safe ChatView report that remains aggregation-compatible."""
+
+    channels = _non_negative_int(channel_count, "channel_count")
+    recent_records = _non_negative_int(recent_record_count, "recent_record_count")
+    reports = _non_negative_int(report_count, "report_count")
+    api_requests = _non_negative_int(api_request_count, "api_request_count")
+    path_counts = _normalise_api_path_counts(api_path_counts)
+    if not str(source_item_id or "").strip():
+        raise ValueError("source_item_id is required")
+    normalised_url, _parsed = _normalise_public_https_url(connector_url)
+
+    operator_card = (
+        f"{channels} channels, {recent_records} recent records, {reports} reports "
+        "detected; private source use remains gated."
+    )
+    packet = build_content_ops_private_connector_gate_packet(
+        connector_id="chatlog_alpha_chatview",
+        connector_name="chatlog-alpha/chatview",
+        surface="wechat_private_archive",
+        proposed_source_item_id=str(source_item_id).strip(),
+        source_kind="wechat_private_connector_metadata",
+        owner_label=owner_label,
+        freshness="fresh",
+    )
+    source_item = packet.get("source_item")
+    if isinstance(source_item, dict):
+        source_item["summary"] = (
+            "ChatView metadata signal: "
+            f"{operator_card} No source body or response payload was saved."
+        )
+        source_item["terms_note"] = (
+            "metadata-only ChatView connector report; owner approval is required "
+            "before any source content read, quote, summary, or publication"
+        )
+    user_todo = packet.get("user_todo_projection")
+    if isinstance(user_todo, dict):
+        user_todo["title"] = (
+            "Approve, reject, or narrow ChatView metadata use before LoopX reads "
+            "any private source content."
+        )
+        user_todo["validation_surface"] = (
+            "owner decision recorded after reviewing the public-safe operator card"
+        )
+
+    report = {
+        "schema_version": CONTENT_OPS_CHATVIEW_CONNECTOR_REPORT_SCHEMA_VERSION,
+        "generated_at": generated_at,
+        "connector_url": normalised_url,
+        "operator_card": operator_card,
+        "observed_shape": {
+            "channel_count": channels,
+            "recent_record_count": recent_records,
+            "report_count": reports,
+            "api_request_count": api_requests,
+            "api_path_counts": path_counts,
+        },
+        "aggregation": {
+            "aggregation_ready": True,
+            "private_gate_packet_schema_version": (
+                CONTENT_OPS_PRIVATE_CONNECTOR_GATE_PACKET_SCHEMA_VERSION
+            ),
+            "source_item_id": str(source_item_id).strip(),
+        },
+        "boundary": {
+            "source_bodies_saved": False,
+            "response_payloads_saved": False,
+            "external_write_performed": False,
+            "autopublish_allowed": False,
+        },
+    }
+    packet.update(
+        {
+            "mode": "content-ops-project-chatview-report",
+            "chatview_report": report,
+            "operator_card": operator_card,
+            "aggregation_ready": True,
+            "external_reads_performed": False,
+            "external_writes_performed": False,
+            "private_source_bodies_read": False,
+            "private_source_content_read": False,
+            "autopublish_allowed": False,
+            "next_safe_action": (
+                "aggregate this private gate packet with public source packets, "
+                "or ask the owner to approve a narrower ChatView source handle"
+            ),
+        }
+    )
+    return packet
+
+
 def _require_packet_flag(payload: Mapping[str, Any], key: str, expected: Any) -> None:
     if payload.get(key) != expected:
         raise ValueError(f"packet {key} must be {expected!r}")
@@ -1617,6 +1739,72 @@ def render_content_ops_packet_aggregation_markdown(payload: dict[str, Any]) -> s
                 "",
                 f"- validation_ok: `{validation.get('ok')}`",
                 f"- error_count: `{len(errors)}`",
+            ]
+        )
+    if payload.get("error"):
+        lines.extend(["", "## Error", "", str(payload.get("error"))])
+    return "\n".join(lines) + "\n"
+
+
+def render_content_ops_chatview_report_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# LoopX Content-Ops ChatView Report",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- schema_version: `{payload.get('schema_version')}`",
+        f"- aggregation_ready: `{payload.get('aggregation_ready')}`",
+        f"- external_reads_performed: `{payload.get('external_reads_performed')}`",
+        f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
+        f"- private_source_bodies_read: `{payload.get('private_source_bodies_read')}`",
+        f"- private_source_content_read: `{payload.get('private_source_content_read')}`",
+        f"- autopublish_allowed: `{payload.get('autopublish_allowed')}`",
+    ]
+    report = payload.get("chatview_report")
+    if isinstance(report, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Operator Card",
+                "",
+                str(report.get("operator_card") or payload.get("operator_card") or ""),
+            ]
+        )
+        observed_shape = report.get("observed_shape")
+        if isinstance(observed_shape, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "## Observed Shape",
+                    "",
+                    f"- channel_count: `{observed_shape.get('channel_count')}`",
+                    f"- recent_record_count: `{observed_shape.get('recent_record_count')}`",
+                    f"- report_count: `{observed_shape.get('report_count')}`",
+                    f"- api_request_count: `{observed_shape.get('api_request_count')}`",
+                    f"- api_path_counts: `{observed_shape.get('api_path_counts')}`",
+                ]
+            )
+        boundary = report.get("boundary")
+        if isinstance(boundary, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "## Boundary",
+                    "",
+                    f"- source_bodies_saved: `{boundary.get('source_bodies_saved')}`",
+                    f"- response_payloads_saved: `{boundary.get('response_payloads_saved')}`",
+                    f"- external_write_performed: `{boundary.get('external_write_performed')}`",
+                    f"- autopublish_allowed: `{boundary.get('autopublish_allowed')}`",
+                ]
+            )
+    todo = payload.get("user_todo_projection")
+    if isinstance(todo, Mapping):
+        lines.extend(
+            [
+                "",
+                "## User Todo Projection",
+                "",
+                f"- action_kind: `{todo.get('action_kind')}`",
+                f"- title: {todo.get('title')}",
             ]
         )
     if payload.get("error"):

@@ -181,6 +181,30 @@ approval. Before approval, the runtime policy forbids paths such as
 limited to storing the compact gate packet, surfacing the owner question, and
 fixture-only smoke coverage.
 
+Once an owner explicitly approves a bounded ChatView trial, turn only the
+approved counts and path classes into a visible operator card:
+
+```bash
+loopx content-ops project-chatview-report \
+  --channel-count 2 \
+  --recent-record-count 50 \
+  --report-count 5 \
+  --api-request-count 54 \
+  --api-path-count /api/channels=1 \
+  --api-path-count /api/messages=1 \
+  --api-path-count /api/channel-state=1 \
+  --api-path-count /api/reports=1 \
+  --api-path-count /api/messages/:id=50 \
+  --format json
+```
+
+It returns an aggregation-compatible
+`content_ops_private_connector_gate_packet_v0` with a
+`content_ops_chatview_connector_report_v0` operator card. The command does not
+open ChatView, does not save response payloads, does not emit source bodies, and
+does not authorize publication. Its output can be passed directly to
+`aggregate-packets` as a `--private-gate-packet-json` input.
+
 Connector packets can then be aggregated into the compact state surface:
 
 ```bash
@@ -208,6 +232,7 @@ python3 examples/content-ops-preview-cli-smoke.py
 python3 examples/content-ops-public-handle-observation-smoke.py
 python3 examples/content-ops-private-connector-gate-smoke.py
 python3 examples/content-ops-packet-aggregation-smoke.py
+python3 examples/content-ops-chatview-report-smoke.py
 ```
 
 The smoke checks record coverage, source/draft/gate references, first-screen
@@ -216,5 +241,7 @@ no-autopublish policy, public/private boundary hygiene, and the public-handle
 adapter's no-content/no-write guarantees. It also verifies that private
 connector intake projects an owner gate and a runtime deny policy before any
 private source-content read, and that packet aggregation promotes only compact
-source/gate records into the state surface. A live X HEAD probe is available
-only when `LOOPX_LIVE_PUBLIC_HANDLE_SMOKE=1` is explicitly set.
+source/gate records into the state surface. The ChatView report smoke verifies
+that a real-trial-shaped operator card remains metadata-only and can be
+aggregated without source bodies or response payloads. A live X HEAD probe is
+available only when `LOOPX_LIVE_PUBLIC_HANDLE_SMOKE=1` is explicitly set.
