@@ -129,13 +129,34 @@ actions happened. Real connector adapters should first match this packet shape
 before they ingest any public platform metadata or private metadata-only source
 handle.
 
+The first reusable public connector adapter is the public-handle observation
+command:
+
+```bash
+loopx content-ops observe-public-handle \
+  --url https://x.com/OpenAI \
+  --source-item-id source_x_openai_public_handle_20260623 \
+  --format json
+```
+
+It returns `content_ops_public_handle_observation_packet_v0` with a compact
+`source_item_v0`. By default it performs one HEAD-only metadata read against a
+public `https` URL, rejects localhost/private-address/credential-bearing/query
+URLs, does not follow redirects, does not read response content, does not send
+cookies, does not log in, does not write externally, and never grants
+autopublish permission. Deterministic tests and dry routing can use
+`--no-fetch` to build the same packet shape without external reads.
+
 The durable smoke is:
 
 ```bash
 python3 examples/content-ops-surface-fixture-smoke.py
 python3 examples/content-ops-preview-cli-smoke.py
+python3 examples/content-ops-public-handle-observation-smoke.py
 ```
 
 The smoke checks record coverage, source/draft/gate references, first-screen
 projection fields, connector metadata-trial routing, todo candidates,
-no-autopublish policy, and public/private boundary hygiene.
+no-autopublish policy, public/private boundary hygiene, and the public-handle
+adapter's no-content/no-write guarantees. A live X HEAD probe is available only
+when `LOOPX_LIVE_PUBLIC_HANDLE_SMOKE=1` is explicitly set.
