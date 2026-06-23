@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES, require_delivery_batch_scale
 from .delivery_outcome import DELIVERY_OUTCOME_CHOICES, require_delivery_outcome
 from .feedback import validate_public_safe_text
 from .file_lock import exclusive_file_lock
@@ -30,7 +31,6 @@ AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
 RECOMMENDED_ACTION_SECTION_LINE_LIMIT = 16
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
 CHECKBOX_PREFIX_RE = re.compile(r"^\[(?P<mark>[ xX])\]\s+")
-DELIVERY_BATCH_SCALE_CHOICES = ("test_only", "single_surface", "multi_surface", "implementation")
 ACTIVE_STATE_NEXT_ACTION_UPDATE_SCHEMA_VERSION = "active_state_next_action_update_v0"
 
 
@@ -483,10 +483,9 @@ def refresh_state_run(
         validate_public_safe_text("agent_lane", normalized_agent_lane)
     if normalized_agent_lane and not normalized_agent_id:
         raise ValueError("--agent-lane requires --agent-id so the lane has an owner")
-    if delivery_batch_scale and delivery_batch_scale not in DELIVERY_BATCH_SCALE_CHOICES:
-        raise ValueError(
-            "delivery_batch_scale must be one of: " + ", ".join(DELIVERY_BATCH_SCALE_CHOICES)
-        )
+    normalized_delivery_batch_scale = (
+        require_delivery_batch_scale(delivery_batch_scale).value if delivery_batch_scale else None
+    )
     normalized_delivery_outcome = (
         require_delivery_outcome(delivery_outcome).value if delivery_outcome else None
     )
@@ -550,7 +549,7 @@ def refresh_state_run(
         recommended_action=action,
         generated_at=generated_at,
         registry_goal=registry_goal,
-        delivery_batch_scale=delivery_batch_scale,
+        delivery_batch_scale=normalized_delivery_batch_scale,
         delivery_outcome=normalized_delivery_outcome,
         agent_id=normalized_agent_id or None,
         agent_lane=normalized_agent_lane or None,
@@ -571,8 +570,8 @@ def refresh_state_run(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
-    if delivery_batch_scale:
-        index_record["delivery_batch_scale"] = delivery_batch_scale
+    if normalized_delivery_batch_scale:
+        index_record["delivery_batch_scale"] = normalized_delivery_batch_scale
     if normalized_delivery_outcome:
         index_record["delivery_outcome"] = normalized_delivery_outcome
     if autonomous_replan_recorded:

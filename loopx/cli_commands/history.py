@@ -9,6 +9,7 @@ from pathlib import Path
 from ..benchmark_adapters.agents_last_exam import (
     build_agents_last_exam_result_benchmark_report,
 )
+from ..delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES
 from ..delivery_outcome import DELIVERY_OUTCOME_CHOICES
 from ..global_registry import sync_project_registry_to_global
 from ..history import (
@@ -33,7 +34,6 @@ from ..history import (
     render_index_duplicate_repair_markdown,
 )
 from ..paths import resolve_runtime_root
-from ..state_refresh import DELIVERY_BATCH_SCALE_CHOICES
 from ..status import (
     compact_active_user_assisted_pilot,
     compact_benchmark_comparison,

@@ -22,10 +22,10 @@ from ..benchmark_adapters.terminal_bench import (
     TERMINAL_BENCH_MANAGED_CODEX_LOOPX_KWARGS,
     agent_kwargs_from_invocation,
 )
+from ..delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES
 from ..delivery_outcome import DELIVERY_OUTCOME_CHOICES
 from ..global_registry import sync_project_registry_to_global
 from ..history import append_benchmark_comparison
-from ..state_refresh import DELIVERY_BATCH_SCALE_CHOICES
 from ..status import (
     compact_benchmark_comparison,
     compact_benchmark_learning_ledger,

@@ -9,6 +9,12 @@ from typing import Any
 
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .contract import check_contract
+from .delivery_batch_scale import (
+    SMALL_DELIVERY_BATCH_SCALES as STRUCTURED_SMALL_DELIVERY_BATCH_SCALES,
+    UNKNOWN_DELIVERY_BATCH_SCALE,
+    DeliveryBatchScale,
+    normalize_delivery_batch_scale,
+)
 from .delivery_outcome import (
     DELIVERY_OUTCOME_NOT_CONFIGURED,
     DELIVERY_OUTCOME_UNKNOWN,
@@ -242,9 +248,8 @@ DELIVERY_BATCH_SCALE_IMPLEMENTATION_CLASSIFICATION_HINTS = (
     "runner",
 )
 SMALL_DELIVERY_BATCH_SCALES = {
-    "single_surface",
-    "test_only",
-    "unknown",
+    *(scale.value for scale in STRUCTURED_SMALL_DELIVERY_BATCH_SCALES),
+    UNKNOWN_DELIVERY_BATCH_SCALE,
 }
 CONNECTED_ADAPTER_STATUSES = {
     "connected",
@@ -5890,20 +5895,22 @@ def is_custom_post_handoff_work_run(run: dict[str, Any]) -> bool:
 
 
 def delivery_batch_scale_for_run(run: dict[str, Any]) -> str:
-    explicit = str(run.get("delivery_batch_scale") or "").strip()
+    explicit = normalize_delivery_batch_scale(run.get("delivery_batch_scale"))
     if explicit:
-        return explicit
+        return explicit.value
+    if str(run.get("delivery_batch_scale") or "").strip():
+        return UNKNOWN_DELIVERY_BATCH_SCALE
     classification = str(run.get("classification") or "")
     if not classification:
-        return "unknown"
+        return UNKNOWN_DELIVERY_BATCH_SCALE
     normalized = classification.lower()
     if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_TEST_ONLY_CLASSIFICATION_HINTS):
-        return "test_only"
+        return DeliveryBatchScale.TEST_ONLY.value
     if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_MULTI_SURFACE_CLASSIFICATION_HINTS):
-        return "multi_surface"
+        return DeliveryBatchScale.MULTI_SURFACE.value
     if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_IMPLEMENTATION_CLASSIFICATION_HINTS):
-        return "implementation"
-    return "single_surface"
+        return DeliveryBatchScale.IMPLEMENTATION.value
+    return DeliveryBatchScale.SINGLE_SURFACE.value
 
 
 def _classification_contains_any(classification: str, hints: list[Any]) -> bool:

@@ -4,6 +4,7 @@ import argparse
 from collections.abc import Callable
 from pathlib import Path
 
+from ..delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES
 from ..delivery_outcome import DELIVERY_OUTCOME_CHOICES
 from ..feedback import LESSON_KINDS, append_human_reward, compact_reward, render_reward_markdown
 from ..operator_gate import (
@@ -20,7 +21,6 @@ from ..project_map import (
 from ..state_refresh import (
     DEFAULT_REFRESH_ACTION,
     DEFAULT_REFRESH_CLASSIFICATION,
-    DELIVERY_BATCH_SCALE_CHOICES,
     refresh_state_run,
     render_state_refresh_markdown,
 )

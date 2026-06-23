@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from .authority import goal_authority_registry_summary
 from .control_plane import compact_control_plane_policy
+from .delivery_batch_scale import require_delivery_batch_scale
 from .delivery_outcome import require_delivery_outcome
 from .doctor import PROMOTION_READINESS_CLASSIFICATIONS
 from .execution_profile import compact_execution_profile
@@ -42,6 +43,10 @@ def now_local() -> str:
 
 def _normalize_optional_delivery_outcome(value: str | None) -> str | None:
     return require_delivery_outcome(value).value if value else None
+
+
+def _normalize_optional_delivery_batch_scale(value: str | None) -> str | None:
+    return require_delivery_batch_scale(value).value if value else None
 
 
 def run_file_stem(generated_at: str) -> str:
@@ -195,6 +200,7 @@ def append_benchmark_run(
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     if benchmark_run.get("schema_version") != "benchmark_run_v0":
         raise ValueError("benchmark run must have schema_version=benchmark_run_v0")
+    delivery_batch_scale = _normalize_optional_delivery_batch_scale(delivery_batch_scale)
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
@@ -272,6 +278,7 @@ def append_benchmark_result(
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     if benchmark_result.get("schema_version") != "benchmark_result_v0":
         raise ValueError("benchmark result must have schema_version=benchmark_result_v0")
+    delivery_batch_scale = _normalize_optional_delivery_batch_scale(delivery_batch_scale)
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
@@ -349,6 +356,7 @@ def append_benchmark_comparison(
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     if benchmark_comparison.get("schema_version") != "benchmark_comparison_v0":
         raise ValueError("benchmark comparison must have schema_version=benchmark_comparison_v0")
+    delivery_batch_scale = _normalize_optional_delivery_batch_scale(delivery_batch_scale)
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
@@ -426,6 +434,7 @@ def append_benchmark_learning_ledger(
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     if benchmark_learning_ledger.get("schema_version") != "benchmark_learning_ledger_v0":
         raise ValueError("benchmark learning ledger must have schema_version=benchmark_learning_ledger_v0")
+    delivery_batch_scale = _normalize_optional_delivery_batch_scale(delivery_batch_scale)
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
@@ -503,6 +512,7 @@ def append_benchmark_experiment_report(
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     if benchmark_experiment_report.get("schema_version") != "benchmark_experiment_report_v0":
         raise ValueError("benchmark experiment report must have schema_version=benchmark_experiment_report_v0")
+    delivery_batch_scale = _normalize_optional_delivery_batch_scale(delivery_batch_scale)
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
@@ -580,6 +590,7 @@ def append_active_user_assisted_pilot(
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     if active_user_assisted_pilot.get("schema_version") != "active_user_assisted_pilot_v0":
         raise ValueError("active user assisted pilot must have schema_version=active_user_assisted_pilot_v0")
+    delivery_batch_scale = _normalize_optional_delivery_batch_scale(delivery_batch_scale)
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
