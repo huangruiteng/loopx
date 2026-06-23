@@ -1563,14 +1563,24 @@ def _apply_agent_message_only_no_tool_calls_attribution(
         return False
 
     label = "skillsbench_acp_agent_message_only_no_tool_calls"
-    compact["score_failure_attribution"] = label
-    compact.setdefault("first_blocker", label)
+    current_attribution = str(compact.get("score_failure_attribution") or "")
+    preserve_attributions = {
+        "skillsbench_codex_acp_provider_zero_activity",
+    }
+    if current_attribution not in preserve_attributions:
+        compact["score_failure_attribution"] = label
+        compact.setdefault("first_blocker", label)
+    elif not compact.get("first_blocker"):
+        compact["first_blocker"] = current_attribution
     existing_labels = [
         item
         for item in compact.get("failure_attribution_labels", [])
         if isinstance(item, str)
     ]
-    for item in (label, "skillsbench_agent_behavior_gap"):
+    extra_labels = [label]
+    if current_attribution not in preserve_attributions:
+        extra_labels.append("skillsbench_agent_behavior_gap")
+    for item in extra_labels:
         if item not in existing_labels:
             existing_labels.append(item)
     compact["failure_attribution_labels"] = existing_labels
