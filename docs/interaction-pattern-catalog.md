@@ -181,7 +181,33 @@ implementation. Keep diagrams public-safe and generic. Prefer diagrams that
 show actor boundaries, decision ownership, and fallback behavior without raw
 project or benchmark evidence.
 
-The smallest reusable diagram is the user / agent / LoopX routing loop:
+The runtime state machine is the most compact way to explain why LoopX may
+run, wait for a user, wait for evidence, repair a stale projection, or stay
+quiet without spending quota.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Registered
+    Registered --> Ready: registry + active_state loaded
+    Ready --> QuotaCheck: heartbeat / manual tick
+    QuotaCheck --> UserGate: requires human decision
+    QuotaCheck --> AwaitEvidence: external handle not terminal
+    QuotaCheck --> Running: eligible + runnable todo
+    QuotaCheck --> QuietNoop: no runnable scoped candidate after audit
+    QuotaCheck --> Repair: stale projection / boundary drift
+    Running --> Writeback: artifact + validation
+    Running --> Repair: contract drift / failed invariant
+    AwaitEvidence --> Ready: terminal evidence or blocker written
+    UserGate --> Ready: owner decision recorded
+    Writeback --> Ready: refresh-state + spend
+    Writeback --> Done: objective terminal
+    Repair --> Ready: projection repaired or blocker written
+    QuietNoop --> Ready: no spend
+    Done --> [*]
+```
+
+The smallest reusable routing diagram then shows how the quota guard projects
+those lifecycle states into an `interaction_contract` for the current tick:
 
 ```mermaid
 flowchart LR

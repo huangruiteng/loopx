@@ -201,6 +201,33 @@ and do not make the human rediscover the important gate from chat history.
 Human-in-the-loop means the human controls boundaries, reward, and route
 decisions; it does not mean every bounded agent step waits for manual approval.
 
+The runtime lifecycle is intentionally small. LoopX first resolves the registry
+and active state, then every heartbeat or manual tick runs the quota guard
+before any agent delivery. The guard chooses between human decision, external
+evidence waiting, bounded work, quiet no-op, or repair. Only validated
+writeback can change durable state or spend quota.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Registered
+    Registered --> Ready: registry + active_state loaded
+    Ready --> QuotaCheck: heartbeat / manual tick
+    QuotaCheck --> UserGate: requires human decision
+    QuotaCheck --> AwaitEvidence: external handle not terminal
+    QuotaCheck --> Running: eligible + runnable todo
+    QuotaCheck --> QuietNoop: no runnable scoped candidate after audit
+    QuotaCheck --> Repair: stale projection / boundary drift
+    Running --> Writeback: artifact + validation
+    Running --> Repair: contract drift / failed invariant
+    AwaitEvidence --> Ready: terminal evidence or blocker written
+    UserGate --> Ready: owner decision recorded
+    Writeback --> Ready: refresh-state + spend
+    Writeback --> Done: objective terminal
+    Repair --> Ready: projection repaired or blocker written
+    QuietNoop --> Ready: no spend
+    Done --> [*]
+```
+
 ```mermaid
 flowchart TB
   U["User / operator"] -->|"gate / reward / priority"| GH["LoopX state"]
@@ -219,6 +246,7 @@ flowchart TB
 This diagram is the compact contract behind the dashboard and heartbeat
 surfaces:
 
+- the runtime state machine explains which lifecycle transition is allowed;
 - if `can continue?` resolves to `bounded_delivery`, the agent must produce a
   validated artifact, blocker, or state writeback before spending;
 - if it resolves to `needs decision`, the user-facing surface must show a
