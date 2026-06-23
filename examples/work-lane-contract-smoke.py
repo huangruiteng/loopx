@@ -13,6 +13,7 @@ from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
 from loopx.status import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
+    compact_todo_group,
     compact_post_handoff_run,
     normalize_todo_task_class,
 )
@@ -1593,6 +1594,87 @@ def assert_agent_lane_next_action_prefers_explicit_next_action_todo_id() -> None
     assert "agent_lane_next_action: todo_id=todo_parity_slice" in markdown, markdown
 
 
+def assert_active_next_action_todo_survives_compact_candidate_limits() -> None:
+    filler_items = [
+        {
+            "index": index,
+            "text": f"[P1] Retained filler todo {index}.",
+            "role": "agent",
+            "status": "open",
+            "priority": "P1",
+            "task_class": "advancement_task",
+            "claimed_by": "codex-main-control",
+            "todo_id": f"todo_filler_{index}",
+            "required_capabilities": ["shell"],
+        }
+        for index in range(1, 20)
+    ]
+    target_action = (
+        "[P1] Debug SkillsBench product-mode lifecycle counter semantics before "
+        "expanding more cases."
+    )
+    target_item = {
+        "index": 20,
+        "text": target_action,
+        "role": "agent",
+        "status": "open",
+        "priority": "P1",
+        "task_class": "advancement_task",
+        "action_kind": "skillsbench_lifecycle_observer_counter_semantics",
+        "claimed_by": "codex-main-control",
+        "todo_id": "todo_skillsbench_lifecycle",
+        "required_capabilities": ["shell"],
+    }
+    agent_todos = compact_todo_group(
+        [*filler_items, target_item],
+        source_section="Agent Todo",
+        role="agent",
+        preferred_todo_ids={"todo_skillsbench_lifecycle"},
+    )
+    assert agent_todos is not None
+    assert all(
+        item.get("todo_id") != "todo_skillsbench_lifecycle"
+        for item in agent_todos["executable_backlog_items"]
+    ), agent_todos
+    assert agent_todos["active_next_action_executable_items"][0]["todo_id"] == (
+        "todo_skillsbench_lifecycle"
+    ), agent_todos
+
+    payload = status_payload(
+        status="active_next_action_candidate_limit_projection",
+        next_action=(
+            "codex-main-control: advance todo_skillsbench_lifecycle by debugging "
+            "SkillsBench product-mode lifecycle observation semantics."
+        ),
+        coordination={
+            "primary_agent": "codex-main-control",
+            "registered_agents": ["codex-main-control"],
+        },
+        agent_todo_items=[],
+    )
+    item = payload["attention_queue"]["items"][0]
+    item["agent_todos"] = agent_todos
+    item["project_asset"]["agent_todos"] = agent_todos
+
+    guard = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+    )
+    next_action = guard["agent_lane_next_action"]
+    assert next_action["todo_id"] == "todo_skillsbench_lifecycle", guard
+    assert next_action["selected_by"] == "active_next_action_todo", guard
+    assert next_action["source"] == (
+        "agent_todo_summary.active_next_action_executable_items"
+    ), next_action
+    assert guard["recommended_action"] == target_action, guard
+    primary_action = guard["interaction_contract"]["agent_channel"]["primary_action"]
+    assert primary_action.startswith("todo_skillsbench_lifecycle:"), guard
+    assert "Debug SkillsBench product-mode lifecycle" in primary_action, guard
+    markdown = render_quota_should_run_markdown(guard)
+    assert "agent_lane_next_action: todo_id=todo_skillsbench_lifecycle" in markdown, markdown
+
+
 def main() -> int:
     assert_dependency_monitor_requires_advancement()
     assert_primary_status_stays_advancement_lane()
@@ -1624,6 +1706,7 @@ def main() -> int:
     assert_agent_lane_next_action_prefers_capability_repair_candidate()
     assert_primary_agent_prioritizes_claimed_review_handoff()
     assert_agent_lane_next_action_prefers_explicit_next_action_todo_id()
+    assert_active_next_action_todo_survives_compact_candidate_limits()
     print("work-lane-contract-smoke ok")
     return 0
 

@@ -1073,9 +1073,25 @@ def _capability_gate(
 ) -> dict[str, Any] | None:
     if not isinstance(agent_todo_summary, dict):
         return None
+    active_next_action_executable_items = agent_todo_summary.get(
+        "active_next_action_executable_items"
+    )
     executable_backlog_items = agent_todo_summary.get("executable_backlog_items")
     first_executable_items = agent_todo_summary.get("first_executable_items")
-    if isinstance(executable_backlog_items, list) and executable_backlog_items:
+    if (
+        isinstance(active_next_action_executable_items, list)
+        and active_next_action_executable_items
+    ):
+        raw_items = [
+            *active_next_action_executable_items,
+            *(
+                executable_backlog_items
+                if isinstance(executable_backlog_items, list)
+                else []
+            ),
+        ]
+        source = "agent_todo_summary.active_next_action_executable_items"
+    elif isinstance(executable_backlog_items, list) and executable_backlog_items:
         raw_items = executable_backlog_items
         source = "agent_todo_summary.executable_backlog_items"
     elif isinstance(first_executable_items, list) and first_executable_items:
@@ -1084,6 +1100,21 @@ def _capability_gate(
     else:
         raw_items = []
         source = "agent_todo_summary.executable_backlog_items"
+    deduped_raw_items: list[Any] = []
+    seen_raw: set[tuple[str, str]] = set()
+    for item in raw_items:
+        if not isinstance(item, dict):
+            deduped_raw_items.append(item)
+            continue
+        identity = (
+            str(item.get("todo_id") or ""),
+            str(item.get("text") or "").strip(),
+        )
+        if identity in seen_raw:
+            continue
+        seen_raw.add(identity)
+        deduped_raw_items.append(item)
+    raw_items = deduped_raw_items
     candidates = [
         item
         for item in raw_items
@@ -1574,6 +1605,8 @@ def _deferred_visibility_lanes(
 
 def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
     source_keys = (
+        "active_next_action_items",
+        "active_next_action_executable_items",
         "first_open_items",
         "backlog_items",
         "unclaimed_priority_open_items",
@@ -1662,6 +1695,16 @@ def _summarize_user_todos(
         for item in open_items
         if _is_user_gate_todo_item(item)
     ]
+    active_next_action_items = [
+        _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        for item in (value.get("active_next_action_items") or [])
+        if isinstance(item, dict)
+    ] if isinstance(value.get("active_next_action_items"), list) else []
+    active_next_action_executable_items = [
+        _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        for item in (value.get("active_next_action_executable_items") or [])
+        if isinstance(item, dict)
+    ] if isinstance(value.get("active_next_action_executable_items"), list) else []
     open_count = value.get("open_count", len(all_open_items))
     if agent_scope_filter is not None:
         open_count = len(blocking_open_items)
@@ -1675,6 +1718,8 @@ def _summarize_user_todos(
         "first_executable_items": executable_items[:3],
         "gate_open_items": gate_items[:3],
         "monitor_open_items": monitor_items,
+        "active_next_action_items": active_next_action_items,
+        "active_next_action_executable_items": active_next_action_executable_items,
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
@@ -1768,6 +1813,16 @@ def _summarize_project_asset_todos(
         if _todo_item_is_actionable_open(item)
         if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
+    active_next_action_items = [
+        _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        for item in (value.get("active_next_action_items") or [])
+        if isinstance(item, dict)
+    ] if isinstance(value.get("active_next_action_items"), list) else []
+    active_next_action_executable_items = [
+        _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        for item in (value.get("active_next_action_executable_items") or [])
+        if isinstance(item, dict)
+    ] if isinstance(value.get("active_next_action_executable_items"), list) else []
     claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
     open_count = value.get("open", value.get("open_count", len(all_open_items)))
     if agent_scope_filter is not None:
@@ -1781,6 +1836,8 @@ def _summarize_project_asset_todos(
         "first_open_items": open_items[:3],
         "first_executable_items": executable_items[:3],
         "monitor_open_items": monitor_items,
+        "active_next_action_items": active_next_action_items,
+        "active_next_action_executable_items": active_next_action_executable_items,
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
@@ -2152,6 +2209,14 @@ def _agent_lane_next_action(
         return None
 
     candidate_sources: list[tuple[str, list[Any]]] = []
+    candidate_sources.append(
+        (
+            "agent_todo_summary.active_next_action_executable_items",
+            agent_todo_summary.get("active_next_action_executable_items")
+            if isinstance(agent_todo_summary.get("active_next_action_executable_items"), list)
+            else [],
+        )
+    )
     if isinstance(capability_gate, dict) and capability_gate.get("action") == "run":
         candidate_sources.append(
             (
@@ -2558,7 +2623,10 @@ def _selected_action_with_agent_lane(
 ) -> Any:
     if not isinstance(agent_lane_next_action, dict):
         return selected_action
-    if agent_lane_next_action.get("source") != "capability_gate.runnable_candidates":
+    if agent_lane_next_action.get("source") not in {
+        "capability_gate.runnable_candidates",
+        "agent_todo_summary.active_next_action_executable_items",
+    }:
         return selected_action
     selected_by = agent_lane_next_action.get("selected_by")
     confidence = agent_lane_next_action.get("confidence")
@@ -2941,6 +3009,15 @@ def _user_channel_action_required(payload: dict[str, Any]) -> bool:
 
 def _protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
     goal_id = str(payload.get("goal_id") or "")
+    agent_lane_next_action = (
+        payload.get("agent_lane_next_action")
+        if isinstance(payload.get("agent_lane_next_action"), dict)
+        else {}
+    )
+    lane_text = _protocol_action_label(agent_lane_next_action.get("text"))
+    if lane_text:
+        todo_id = str(agent_lane_next_action.get("todo_id") or "").strip()
+        return f"{todo_id}: {lane_text}" if todo_id else lane_text
     capability_gate = (
         payload.get("capability_gate")
         if isinstance(payload.get("capability_gate"), dict)

@@ -4394,6 +4394,20 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
     return compact
 
 
+def compact_active_next_action_todo_item(item: dict[str, Any]) -> dict[str, Any]:
+    compact = compact_todo_item(item)
+    for key in (
+        "note",
+        "evidence",
+        "reason",
+        "completed_at",
+        "updated_at",
+        "superseded_by",
+    ):
+        compact.pop(key, None)
+    return compact
+
+
 def todo_item_task_class(item: dict[str, Any]) -> str:
     return normalize_todo_task_class(
         item.get("task_class"),
@@ -4511,11 +4525,21 @@ def apply_resume_conditions(items: list[dict[str, Any]]) -> None:
         item["resume_ready"] = bool(condition.get("satisfied"))
 
 
+def active_next_action_todo_ids(value: Any) -> set[str]:
+    todo_ids: set[str] = set()
+    for match in re.findall(r"\btodo_[A-Za-z0-9_-]+\b", str(value or "")):
+        todo_id = normalize_todo_id(match)
+        if todo_id:
+            todo_ids.add(todo_id)
+    return todo_ids
+
+
 def compact_todo_group(
     items: list[dict[str, Any]],
     *,
     source_section: str | None,
     role: str | None = None,
+    preferred_todo_ids: set[str] | None = None,
 ) -> dict[str, Any] | None:
     if not items:
         return None
@@ -4562,6 +4586,21 @@ def compact_todo_group(
         for item in claimed_open_items
         if todo_item_is_actionable_open(item)
         if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
+    ]
+    preferred_ids = {
+        todo_id
+        for todo_id in (preferred_todo_ids or set())
+        if normalize_todo_id(todo_id)
+    }
+    active_next_action_items = [
+        item
+        for item in projected_open_items
+        if normalize_todo_id(item.get("todo_id")) in preferred_ids
+    ]
+    active_next_action_executable_items = [
+        item
+        for item in executable_items
+        if normalize_todo_id(item.get("todo_id")) in preferred_ids
     ]
     summary = {
         "schema_version": "todo_summary_v0",
@@ -4623,6 +4662,16 @@ def compact_todo_group(
         ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS],
         "items": budgeted_items[:MAX_STATUS_TODOS_PER_ROLE],
     }
+    if active_next_action_items:
+        summary["active_next_action_items"] = [
+            compact_active_next_action_todo_item(item)
+            for item in active_next_action_items
+        ]
+    if active_next_action_executable_items:
+        summary["active_next_action_executable_items"] = [
+            compact_active_next_action_todo_item(item)
+            for item in active_next_action_executable_items
+        ]
     if claimed_open_items:
         summary["claimed_open_count"] = len(claimed_open_items)
         summary["unclaimed_open_count"] = len(open_items) - len(claimed_open_items)
@@ -4661,7 +4710,13 @@ def redacted_status_todo_fields(fields: dict[str, Any]) -> dict[str, Any]:
     return redacted
 
 
-def parse_active_state_todos(state_text: str, *, goal: dict[str, Any] | None = None, state_path: Path | None = None) -> dict[str, Any]:
+def parse_active_state_todos(
+    state_text: str,
+    *,
+    goal: dict[str, Any] | None = None,
+    state_path: Path | None = None,
+    preferred_todo_ids: set[str] | None = None,
+) -> dict[str, Any]:
     role: str | None = None
     source_sections: dict[str, str | None] = {"user": None, "agent": None}
     items: dict[str, list[dict[str, Any]]] = {"user": [], "agent": []}
@@ -4705,8 +4760,18 @@ def parse_active_state_todos(state_text: str, *, goal: dict[str, Any] | None = N
             current_todo["text"] = normalize_todo_text(f"{current_todo.get('text', '')} {continuation}")
 
     result: dict[str, Any] = {}
-    user = compact_todo_group(items["user"], source_section=source_sections["user"], role="user")
-    agent = compact_todo_group(items["agent"], source_section=source_sections["agent"], role="agent")
+    user = compact_todo_group(
+        items["user"],
+        source_section=source_sections["user"],
+        role="user",
+        preferred_todo_ids=preferred_todo_ids,
+    )
+    agent = compact_todo_group(
+        items["agent"],
+        source_section=source_sections["agent"],
+        role="agent",
+        preferred_todo_ids=preferred_todo_ids,
+    )
     if user:
         result["user_todos"] = user
     if agent:
@@ -5440,7 +5505,12 @@ def project_asset_todo_summary(
     ]
     if executable_items:
         summary["first_executable_items"] = executable_items[:MAX_PROJECT_ASSET_TODO_ITEMS]
-    for lane in ("gate_open_items", "current_agent_claimed_open_items"):
+    for lane in (
+        "gate_open_items",
+        "current_agent_claimed_open_items",
+        "active_next_action_items",
+        "active_next_action_executable_items",
+    ):
         lane_items = todo_lane_items(
             todos,
             lane,
@@ -6271,11 +6341,19 @@ def active_state_todo_fields(goal: dict[str, Any]) -> dict[str, Any]:
         state_text = state_path.read_text(encoding="utf-8")
     except OSError:
         return {}
-    fields = parse_active_state_todos(state_text, goal=goal, state_path=state_path)
+    next_action_entries = active_state_next_action_entries(state_text, limit=3)
+    preferred_todo_ids: set[str] = set()
+    for entry in next_action_entries:
+        preferred_todo_ids.update(active_next_action_todo_ids(entry))
+    fields = parse_active_state_todos(
+        state_text,
+        goal=goal,
+        state_path=state_path,
+        preferred_todo_ids=preferred_todo_ids,
+    )
     issue_meta_surface = parse_issue_meta_surface(state_text)
     if issue_meta_surface:
         fields["issue_meta_surface"] = issue_meta_surface
-    next_action_entries = active_state_next_action_entries(state_text, limit=3)
     if next_action_entries:
         fields["active_state_next_action"] = next_action_entries[0]
         fields["active_state_next_action_entries"] = next_action_entries
