@@ -117,7 +117,11 @@ from loopx.benchmark_core.loop_protocol import (  # noqa: E402
     build_blind_loop_continuation_prompt,
     build_blind_loop_initial_prompt,
 )
-from loopx.benchmark_trajectory import summarize_public_acp_trajectory
+from loopx.benchmark_trajectory import (
+    loopx_cli_state_usage,
+    normalized_loopx_cli_call,
+    summarize_public_acp_trajectory,
+)
 
 
 class SkillsBenchRunnerInterrupted(RuntimeError):
@@ -4378,6 +4382,72 @@ def _trajectory_text_fragments(value: Any) -> list[str]:
     return fragments
 
 
+def _trajectory_tool_call_titles(value: Any) -> list[str]:
+    titles: list[str] = []
+    if isinstance(value, dict):
+        title = str(value.get("title") or "").strip()
+        event_type = str(value.get("type") or "").strip()
+        if title and (event_type == "tool_call" or "tool" in event_type):
+            titles.append(title)
+        for nested in value.values():
+            titles.extend(_trajectory_tool_call_titles(nested))
+        return titles
+    if isinstance(value, list):
+        for nested in value:
+            titles.extend(_trajectory_tool_call_titles(nested))
+    return titles
+
+
+def _merge_round_result_trajectory_lifecycle_summary(
+    round_result: Any,
+    trace: dict[str, Any],
+) -> None:
+    def trace_int(name: str) -> int:
+        value = trace.get(name, 0)
+        return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+    trajectory = getattr(round_result, "trajectory", None)
+    if not isinstance(trajectory, list):
+        return
+    read_count = 0
+    write_count = 0
+    call_count = 0
+    for title in _trajectory_tool_call_titles(trajectory):
+        if not re.search(r"(?:^|\s|/)loopx(?:\s|$)", title):
+            continue
+        call = normalized_loopx_cli_call(title, round_index=0)
+        usage = loopx_cli_state_usage(call)
+        call_count += 1
+        if usage == "state_read":
+            read_count += 1
+        elif usage == "state_write":
+            write_count += 1
+    if call_count <= 0:
+        return
+    trace["round_result_trajectory_lifecycle_summary_present"] = True
+    trace["round_result_loopx_cli_call_count"] = max(
+        trace_int("round_result_loopx_cli_call_count"),
+        call_count,
+    )
+    trace["round_result_loopx_cli_state_read_count"] = max(
+        trace_int("round_result_loopx_cli_state_read_count"),
+        read_count,
+    )
+    trace["round_result_loopx_cli_state_write_count"] = max(
+        trace_int("round_result_loopx_cli_state_write_count"),
+        write_count,
+    )
+    trace["loopx_state_reads"] = max(
+        trace_int("loopx_state_reads"),
+        read_count,
+    )
+    trace["loopx_state_writes"] = max(
+        trace_int("loopx_state_writes"),
+        write_count,
+    )
+    trace["raw_round_result_trajectory_recorded"] = False
+
+
 def _round_result_declared_done(round_result: Any) -> bool:
     trajectory = getattr(round_result, "trajectory", None)
     if not isinstance(trajectory, list):
@@ -4861,6 +4931,7 @@ def _build_product_mode_user(
             if round_result is not None:
                 _inc_counter(trace, "official_feedback_blinded_count")
                 if treatment:
+                    _merge_round_result_trajectory_lifecycle_summary(round_result, trace)
                     _merge_acp_trajectory_summary(plan or {}, trace)
                     _merge_host_local_acp_relay_trace_summary(plan or {}, trace)
                     no_tool_calls = _round_result_tool_call_count(round_result) == 0

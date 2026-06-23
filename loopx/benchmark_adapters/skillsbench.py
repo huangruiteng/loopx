@@ -3224,6 +3224,18 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "loopx_case_state_writes": controller_counters.get(
                 "loopx_case_state_writes", 0
             ),
+            "round_result_trajectory_lifecycle_summary_present": controller_counters.get(
+                "round_result_trajectory_lifecycle_summary_present", False
+            ),
+            "round_result_loopx_cli_call_count": controller_counters.get(
+                "round_result_loopx_cli_call_count", 0
+            ),
+            "round_result_loopx_cli_state_read_count": controller_counters.get(
+                "round_result_loopx_cli_state_read_count", 0
+            ),
+            "round_result_loopx_cli_state_write_count": controller_counters.get(
+                "round_result_loopx_cli_state_write_count", 0
+            ),
             "heartbeat_count": controller_counters.get("heartbeat_count", 0),
             "controller_trace_present": controller_trace_present,
             "controller_action_decisions": controller_counters.get(
