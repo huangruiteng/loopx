@@ -11,7 +11,7 @@ CLI_COMMANDS = ROOT / "loopx" / "cli_commands"
 DEFAULT_MAX_LINES = 500
 LEGACY_MODULE_LIMITS = {
     "benchmark_review_lifecycle.py": 1300,
-    "benchmark_run_ledger.py": 1360,
+    "benchmark_run_ledger.py": 820,
     "history.py": 720,
     "registry_admin.py": 780,
     "terminal_bench_adapter.py": 760,
