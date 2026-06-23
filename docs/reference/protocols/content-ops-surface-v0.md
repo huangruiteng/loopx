@@ -145,6 +145,23 @@ represented as lanes before source bodies, response payloads, local paths, or
 external writes are captured. Private or raw-material lanes must project a
 concrete user gate rather than silently becoming readable work.
 
+Repo issue fix work can promote the public issue lane into a concrete intake
+packet:
+
+```bash
+loopx content-ops issue-fix-intake --format json
+```
+
+It returns `content_ops_issue_fix_intake_packet_v0` with an
+`issue_fix_intake_v0` fixture built on `exploration_plan_v0`. The packet models
+public GitHub issue/PR metadata, selected code-context routes, candidate agent
+todos, owner/user gate projections, and the next safe action. It performs no
+external read, stores no issue body or comment body, records no local paths or
+private repo state, and does not authorize external issue comments, assignment,
+merge, or automerge. If a fix path needs private repro material, the packet
+keeps that as a conditional user gate while allowing metadata-only triage and
+focused smoke drafting to continue.
+
 The first reusable public connector adapter is the public-handle observation
 command:
 
