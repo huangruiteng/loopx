@@ -13,11 +13,13 @@ from ..content_ops_surface import (
     build_content_ops_preview_packet,
     build_content_ops_private_connector_gate_packet,
     build_content_ops_public_handle_observation_packet,
+    build_content_ops_walkthrough_artifact_packet,
     render_content_ops_chatview_report_markdown,
     render_content_ops_packet_aggregation_markdown,
     render_content_ops_preview_markdown,
     render_content_ops_private_connector_gate_markdown,
     render_content_ops_public_handle_observation_markdown,
+    render_content_ops_walkthrough_artifact_markdown,
 )
 
 
@@ -253,6 +255,76 @@ def register_content_ops_commands(
         default="2026-06-23T00:00:00Z",
         help="Public-safe generated_at timestamp for the ChatView report.",
     )
+    walkthrough_parser = content_ops_sub.add_parser(
+        "walkthrough-artifact",
+        help=(
+            "Build a public-safe X/ChatView connector walkthrough artifact "
+            "from compact metadata packets and owner gates."
+        ),
+    )
+    add_subcommand_format(walkthrough_parser)
+    walkthrough_parser.add_argument(
+        "--public-handle-url",
+        default="https://x.com/OpenAI",
+        help="Public https handle URL to use as the public metadata signal.",
+    )
+    walkthrough_parser.add_argument(
+        "--public-source-item-id",
+        default="source_x_public_handle_walkthrough",
+        help="source_item_v0 id for the public handle signal.",
+    )
+    walkthrough_parser.add_argument(
+        "--chatview-source-item-id",
+        default="source_chatview_metadata_signal_walkthrough",
+        help="source_item_v0 id for the compact ChatView signal.",
+    )
+    walkthrough_parser.add_argument(
+        "--channel-count",
+        type=int,
+        required=True,
+        help="Compact ChatView channel count from an approved private preview.",
+    )
+    walkthrough_parser.add_argument(
+        "--recent-record-count",
+        type=int,
+        required=True,
+        help="Compact recent record count from an approved private preview.",
+    )
+    walkthrough_parser.add_argument(
+        "--report-count",
+        type=int,
+        required=True,
+        help="Compact report count from an approved private preview.",
+    )
+    walkthrough_parser.add_argument(
+        "--api-request-count",
+        type=int,
+        required=True,
+        help="Compact API request count from an approved private preview.",
+    )
+    walkthrough_parser.add_argument(
+        "--api-path-count",
+        action="append",
+        default=[],
+        help="Normalized ChatView API path class count as PATH=COUNT. Repeatable.",
+    )
+    walkthrough_parser.add_argument(
+        "--private-preview-item-count",
+        type=int,
+        default=0,
+        help="Number of private preview records the operator inspected locally.",
+    )
+    walkthrough_parser.add_argument(
+        "--theme-signal",
+        action="append",
+        default=[],
+        help="Public-safe operator-curated theme label. Repeatable.",
+    )
+    walkthrough_parser.add_argument(
+        "--generated-at",
+        default="2026-06-23T00:00:00Z",
+        help="Public-safe generated_at timestamp for the walkthrough artifact.",
+    )
 
 
 def handle_content_ops_command(
@@ -313,11 +385,26 @@ def handle_content_ops_command(
                 generated_at=args.generated_at,
             )
             renderer = render_content_ops_chatview_report_markdown
+        elif args.content_ops_command == "walkthrough-artifact":
+            payload = build_content_ops_walkthrough_artifact_packet(
+                public_handle_url=args.public_handle_url,
+                public_source_item_id=args.public_source_item_id,
+                chatview_source_item_id=args.chatview_source_item_id,
+                channel_count=args.channel_count,
+                recent_record_count=args.recent_record_count,
+                report_count=args.report_count,
+                api_request_count=args.api_request_count,
+                api_path_counts=_parse_path_counts(args.api_path_count),
+                private_preview_item_count=args.private_preview_item_count,
+                theme_signals=args.theme_signal,
+                generated_at=args.generated_at,
+            )
+            renderer = render_content_ops_walkthrough_artifact_markdown
         else:
             raise ValueError(
                 "content-ops requires `preview`, `observe-public-handle`, "
                 "`project-private-connector-gate`, `aggregate-packets`, or "
-                "`project-chatview-report`"
+                "`project-chatview-report`, or `walkthrough-artifact`"
             )
     except Exception as exc:
         payload = {

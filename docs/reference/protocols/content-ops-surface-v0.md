@@ -224,6 +224,35 @@ private gate packet remains `needs_owner_gate`; this prevents the projection
 from scheduling another metadata trial after a public packet has already been
 collected.
 
+For an operator-visible end-to-end artifact, generate the walkthrough packet:
+
+```bash
+loopx content-ops walkthrough-artifact \
+  --public-handle-url https://x.com/OpenAI \
+  --channel-count 2 \
+  --recent-record-count 50 \
+  --report-count 2 \
+  --api-request-count 54 \
+  --api-path-count /api/channels=1 \
+  --api-path-count /api/messages=1 \
+  --api-path-count /api/channel-state=1 \
+  --api-path-count /api/reports=1 \
+  --api-path-count /api/messages/:id=50 \
+  --private-preview-item-count 12 \
+  --theme-signal "market-risk watch" \
+  --theme-signal "semiconductor earnings pressure" \
+  --format json
+```
+
+It returns `content_ops_walkthrough_artifact_v0`: public source cards, a
+ChatView operator card, aggregate projection, chain steps, draft gate, and a
+private operator preview summary. The preview summary may say how many private
+records were inspected locally and list operator-curated theme labels, but it
+must not persist source content, response payloads, local paths, credentials, or
+publication authority. This is the public-safe artifact shape for showing value:
+the user can see the live private material in the current operator session, while
+the repository records only compact counts, labels, gates, and validation.
+
 The durable smoke is:
 
 ```bash
@@ -233,6 +262,7 @@ python3 examples/content-ops-public-handle-observation-smoke.py
 python3 examples/content-ops-private-connector-gate-smoke.py
 python3 examples/content-ops-packet-aggregation-smoke.py
 python3 examples/content-ops-chatview-report-smoke.py
+python3 examples/content-ops-walkthrough-artifact-smoke.py
 ```
 
 The smoke checks record coverage, source/draft/gate references, first-screen
@@ -243,5 +273,7 @@ connector intake projects an owner gate and a runtime deny policy before any
 private source-content read, and that packet aggregation promotes only compact
 source/gate records into the state surface. The ChatView report smoke verifies
 that a real-trial-shaped operator card remains metadata-only and can be
-aggregated without source bodies or response payloads. A live X HEAD probe is
+aggregated without source bodies or response payloads. The walkthrough smoke
+verifies that the final operator artifact remains public-safe while still
+showing a concrete source-to-surface-to-draft-gate chain. A live X HEAD probe is
 available only when `LOOPX_LIVE_PUBLIC_HANDLE_SMOKE=1` is explicitly set.

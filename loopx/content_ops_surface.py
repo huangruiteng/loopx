@@ -31,6 +31,9 @@ CONTENT_OPS_PACKET_AGGREGATION_SCHEMA_VERSION = "content_ops_packet_aggregation_
 CONTENT_OPS_CHATVIEW_CONNECTOR_REPORT_SCHEMA_VERSION = (
     "content_ops_chatview_connector_report_v0"
 )
+CONTENT_OPS_WALKTHROUGH_ARTIFACT_SCHEMA_VERSION = (
+    "content_ops_walkthrough_artifact_v0"
+)
 
 SOURCE_ITEM_SCHEMA_VERSION = "source_item_v0"
 ANGLE_CANDIDATE_SCHEMA_VERSION = "angle_candidate_v0"
@@ -1214,6 +1217,27 @@ def _normalise_api_path_counts(values: Mapping[str, Any] | None) -> dict[str, in
     return dict(sorted(counts.items()))
 
 
+def _normalise_theme_signals(values: Sequence[str] | None) -> list[str]:
+    signals: list[str] = []
+    for raw_value in values or []:
+        signal = _text(raw_value, limit=80)
+        if not signal:
+            continue
+        lowered = signal.lower()
+        if (
+            "http://" in lowered
+            or "https://" in lowered
+            or "/users/" in lowered
+            or "/private/" in lowered
+            or "bearer " in lowered
+            or "credential" in lowered
+            or "secret" in lowered
+        ):
+            raise ValueError("theme_signal must be a compact public-safe label")
+        signals.append(signal)
+    return signals[:8]
+
+
 def build_content_ops_chatview_report_packet(
     *,
     channel_count: int,
@@ -1674,6 +1698,182 @@ def build_content_ops_packet_aggregation_packet(
     }
 
 
+def build_content_ops_walkthrough_artifact_packet(
+    *,
+    public_handle_url: str,
+    public_source_item_id: str = "source_x_public_handle_walkthrough",
+    public_surface: str = "x_public_feed",
+    public_source_kind: str = "x_public_profile_handle",
+    chatview_source_item_id: str = "source_chatview_metadata_signal_walkthrough",
+    channel_count: int,
+    recent_record_count: int,
+    report_count: int,
+    api_request_count: int,
+    api_path_counts: Mapping[str, Any] | None = None,
+    private_preview_item_count: int = 0,
+    theme_signals: Sequence[str] | None = None,
+    generated_at: str | None = "2026-06-23T00:00:00Z",
+) -> dict[str, Any]:
+    """Build the public-safe operator artifact for the content-ops chain."""
+
+    preview_count = _non_negative_int(
+        private_preview_item_count,
+        "private_preview_item_count",
+    )
+    themes = _normalise_theme_signals(theme_signals)
+    public_packet = build_content_ops_public_handle_observation_packet(
+        url=public_handle_url,
+        source_item_id=public_source_item_id,
+        surface=public_surface,
+        source_kind=public_source_kind,
+        freshness="fresh",
+        terms_note="metadata-only public handle signal for walkthrough artifact",
+        fetch=False,
+    )
+    chatview_packet = build_content_ops_chatview_report_packet(
+        channel_count=channel_count,
+        recent_record_count=recent_record_count,
+        report_count=report_count,
+        api_request_count=api_request_count,
+        api_path_counts=api_path_counts,
+        source_item_id=chatview_source_item_id,
+        generated_at=generated_at,
+    )
+    aggregate = build_content_ops_packet_aggregation_packet(
+        public_handle_packets=[public_packet],
+        private_connector_gate_packets=[chatview_packet],
+        surface_id="content_ops_walkthrough_artifact_surface",
+        generated_at=generated_at,
+    )
+
+    surface = aggregate.get("surface") if isinstance(aggregate.get("surface"), Mapping) else {}
+    projection = (
+        aggregate.get("projection")
+        if isinstance(aggregate.get("projection"), Mapping)
+        else {}
+    )
+    first_screen = (
+        projection.get("first_screen")
+        if isinstance(projection.get("first_screen"), Mapping)
+        else {}
+    )
+    source_items = _as_mappings(surface.get("source_items"))  # type: ignore[arg-type]
+    draft_items = _as_mappings(surface.get("draft_items"))  # type: ignore[arg-type]
+    publish_gates = _as_mappings(surface.get("publish_gates"))  # type: ignore[arg-type]
+    chatview_report = (
+        chatview_packet.get("chatview_report")
+        if isinstance(chatview_packet.get("chatview_report"), Mapping)
+        else {}
+    )
+    chatview_observed = (
+        chatview_report.get("observed_shape")
+        if isinstance(chatview_report.get("observed_shape"), Mapping)
+        else {}
+    )
+    gate = publish_gates[0] if publish_gates else {}
+    draft = draft_items[0] if draft_items else {}
+
+    operator_artifact = {
+        "headline": (
+            "Public and private connector signals can reach a draft plan, but "
+            "private source use and publication stay behind explicit gates."
+        ),
+        "source_cards": [
+            {
+                "source_item_id": item.get("source_item_id"),
+                "source_status": item.get("source_status"),
+                "allowed_use": item.get("allowed_use"),
+                "summary": item.get("summary"),
+            }
+            for item in source_items
+        ],
+        "private_operator_preview": {
+            "available_in_current_operator_session": preview_count > 0,
+            "sample_record_count": preview_count,
+            "theme_signals": themes,
+            "stored_in_repo": False,
+            "source_content_recorded": False,
+            "response_payload_recorded": False,
+        },
+        "draft_gate": {
+            "draft_id": draft.get("draft_id"),
+            "state": draft.get("state"),
+            "publish_gate_id": gate.get("gate_id"),
+            "publish_status": gate.get("status"),
+            "approval_required": gate.get("approval_required"),
+            "autopublish_allowed": gate.get("autopublish_allowed"),
+        },
+        "next_actions": [
+            "review the private connector owner gate before source use",
+            "draft only from source-mapped metadata until approval changes",
+            "ask for final publish approval before any external posting",
+        ],
+    }
+
+    chain_steps = [
+        {
+            "step": "public_signal_intake",
+            "result": "metadata-only public handle packet",
+            "source_item_id": public_source_item_id,
+            "external_write_performed": False,
+        },
+        {
+            "step": "private_connector_operator_card",
+            "result": chatview_report.get("operator_card"),
+            "observed_shape": chatview_observed,
+            "owner_gate_required": True,
+        },
+        {
+            "step": "aggregate_surface_projection",
+            "result": first_screen.get("next_safe_action"),
+            "waiting_on": first_screen.get("waiting_on"),
+            "user_action_required": first_screen.get("user_action_required"),
+        },
+        {
+            "step": "draft_publish_gate",
+            "result": gate.get("status"),
+            "approval_required": gate.get("approval_required"),
+            "autopublish_allowed": gate.get("autopublish_allowed"),
+        },
+    ]
+
+    return {
+        "ok": bool(aggregate.get("ok")),
+        "schema_version": CONTENT_OPS_WALKTHROUGH_ARTIFACT_SCHEMA_VERSION,
+        "mode": "content-ops-walkthrough-artifact",
+        "generated_at": generated_at,
+        "operator_artifact": operator_artifact,
+        "chain_steps": chain_steps,
+        "aggregation_projection": projection,
+        "validation": aggregate.get("validation"),
+        "packet_summary": {
+            "public_packet_schema_version": public_packet.get("schema_version"),
+            "chatview_packet_schema_version": chatview_packet.get("schema_version"),
+            "aggregation_schema_version": aggregate.get("schema_version"),
+            "source_item_count": aggregate.get("input_summary", {}).get(
+                "source_item_count"
+            )
+            if isinstance(aggregate.get("input_summary"), Mapping)
+            else None,
+            "owner_gate_required_count": aggregate.get("input_summary", {}).get(
+                "owner_gate_required_count"
+            )
+            if isinstance(aggregate.get("input_summary"), Mapping)
+            else None,
+        },
+        "external_reads_performed": False,
+        "external_writes_performed": False,
+        "private_source_bodies_read": False,
+        "private_source_content_read": False,
+        "autopublish_allowed": False,
+        "public_repo_safe": True,
+        "next_safe_action": (
+            "show the operator artifact, then collect owner approval before "
+            "private source use or publication"
+        ),
+    }
+
+
 def render_content_ops_packet_aggregation_markdown(payload: dict[str, Any]) -> str:
     lines = [
         "# LoopX Content-Ops Packet Aggregation",
@@ -1723,6 +1923,102 @@ def render_content_ops_packet_aggregation_markdown(payload: dict[str, Any]) -> s
                     "",
                     f"- states: `{connector_trials.get('states')}`",
                     f"- owner_gate_required_count: `{connector_trials.get('owner_gate_required_count')}`",
+                ]
+            )
+    validation = payload.get("validation")
+    if isinstance(validation, Mapping):
+        errors = (
+            validation.get("errors")
+            if isinstance(validation.get("errors"), list)
+            else []
+        )
+        lines.extend(
+            [
+                "",
+                "## Validation",
+                "",
+                f"- validation_ok: `{validation.get('ok')}`",
+                f"- error_count: `{len(errors)}`",
+            ]
+        )
+    if payload.get("error"):
+        lines.extend(["", "## Error", "", str(payload.get("error"))])
+    return "\n".join(lines) + "\n"
+
+
+def render_content_ops_walkthrough_artifact_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# LoopX Content-Ops Walkthrough Artifact",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- schema_version: `{payload.get('schema_version')}`",
+        f"- public_repo_safe: `{payload.get('public_repo_safe')}`",
+        f"- external_reads_performed: `{payload.get('external_reads_performed')}`",
+        f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
+        f"- private_source_bodies_read: `{payload.get('private_source_bodies_read')}`",
+        f"- private_source_content_read: `{payload.get('private_source_content_read')}`",
+        f"- autopublish_allowed: `{payload.get('autopublish_allowed')}`",
+    ]
+    artifact = payload.get("operator_artifact")
+    if isinstance(artifact, Mapping):
+        lines.extend(["", "## Operator Artifact", "", str(artifact.get("headline") or "")])
+        preview = artifact.get("private_operator_preview")
+        if isinstance(preview, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "## Private Operator Preview",
+                    "",
+                    (
+                        "- available_in_current_operator_session: "
+                        f"`{preview.get('available_in_current_operator_session')}`"
+                    ),
+                    f"- sample_record_count: `{preview.get('sample_record_count')}`",
+                    f"- theme_signals: `{preview.get('theme_signals')}`",
+                    f"- stored_in_repo: `{preview.get('stored_in_repo')}`",
+                    (
+                        "- source_content_recorded: "
+                        f"`{preview.get('source_content_recorded')}`"
+                    ),
+                    (
+                        "- response_payload_recorded: "
+                        f"`{preview.get('response_payload_recorded')}`"
+                    ),
+                ]
+            )
+        draft_gate = artifact.get("draft_gate")
+        if isinstance(draft_gate, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "## Draft Gate",
+                    "",
+                    f"- draft_id: `{draft_gate.get('draft_id')}`",
+                    f"- state: `{draft_gate.get('state')}`",
+                    f"- publish_status: `{draft_gate.get('publish_status')}`",
+                    f"- approval_required: `{draft_gate.get('approval_required')}`",
+                    f"- autopublish_allowed: `{draft_gate.get('autopublish_allowed')}`",
+                ]
+            )
+    chain_steps = payload.get("chain_steps")
+    if isinstance(chain_steps, Sequence) and not isinstance(chain_steps, (str, bytes)):
+        lines.extend(["", "## Chain Steps", ""])
+        for step in chain_steps:
+            if not isinstance(step, Mapping):
+                continue
+            lines.append(f"- `{step.get('step')}`: {step.get('result')}")
+    projection = payload.get("aggregation_projection")
+    if isinstance(projection, Mapping):
+        first_screen = projection.get("first_screen")
+        if isinstance(first_screen, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "## First Screen",
+                    "",
+                    f"- waiting_on: `{first_screen.get('waiting_on')}`",
+                    f"- user_action_required: `{first_screen.get('user_action_required')}`",
+                    f"- next_safe_action: {first_screen.get('next_safe_action')}",
                 ]
             )
     validation = payload.get("validation")
