@@ -147,6 +147,12 @@ cookies, does not log in, does not write externally, and never grants
 autopublish permission. Deterministic tests and dry routing can use
 `--no-fetch` to build the same packet shape without external reads.
 
+The packet also carries `content_ops_connector_runtime_policy_v0`. A live
+browser connector trial against X showed that opening a normal public profile
+page can autoload timelines, post text, media streams, analytics, and
+engagement data. Therefore the safe default for public-handle metadata intake
+is `head_only_metadata_probe`; browser opening is not the default metadata path.
+
 Private connectors use a gate-projection command before any source access:
 
 ```bash
@@ -166,6 +172,15 @@ surface the owner decision: approve metadata-only intake, reject it, or request
 a narrower source handle. Real chatlog-alpha/chatview ingestion must stay
 behind that gate.
 
+The private gate packet also carries `content_ops_connector_runtime_policy_v0`.
+A live browser connector trial against the public ChatView entrypoint showed
+that the default web app route can autoload message-list and message-detail API
+requests. LoopX must therefore not browser-open that default route before owner
+approval. Before approval, the runtime policy forbids paths such as
+`/api/messages`, `/api/reports`, and `/api/channel-state`; connector work is
+limited to storing the compact gate packet, surfacing the owner question, and
+fixture-only smoke coverage.
+
 The durable smoke is:
 
 ```bash
@@ -179,6 +194,6 @@ The smoke checks record coverage, source/draft/gate references, first-screen
 projection fields, connector metadata-trial routing, todo candidates,
 no-autopublish policy, public/private boundary hygiene, and the public-handle
 adapter's no-content/no-write guarantees. It also verifies that private
-connector intake projects an owner gate before any private source-content read.
-A live X HEAD probe is available only when
+connector intake projects an owner gate and a runtime deny policy before any
+private source-content read. A live X HEAD probe is available only when
 `LOOPX_LIVE_PUBLIC_HANDLE_SMOKE=1` is explicitly set.

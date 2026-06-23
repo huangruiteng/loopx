@@ -152,6 +152,7 @@ Projection, authority, write scope, and lease integrity.
 | P1 | IP-022 | Claimed Todo Visibility And Agent-Lane Next Action | Status/quota/frontstage | no interruption | keep scheduler candidates separate from claimed-work visibility lanes and expose the current agent's slice |
 | P1 | IP-023 | Status Neutral Run Window | Status/quota/history | no interruption | ignore neutral run noise for state authority while retaining it as stall evidence |
 | P1 | IP-025 | Experimental Diagnostic Sidecar Boundary | Runtime/protocol owners | no interruption unless an opt-in proof asks for user action | keep proof/debug verdicts as sidecar diagnostics until a product-general schema is validated |
+| P1 | IP-028 | Connector Runtime Boundary | Connector/runtime owners | notify only if the required owner decision is missing | enforce runtime allow/deny policy before browser or API connector reads can autoload raw material |
 
 ### Evidence Lifecycle
 
@@ -1591,6 +1592,60 @@ the stable schema.
 - `docs/product/codex-cli-same-open-tui-continuation-observation.md`
 - `examples/interaction-pattern-catalog-smoke.py`
 - `examples/codex-cli-visible-attach-acceptance-smoke.py`
+
+#### IP-028 Connector Runtime Boundary
+
+**Trigger**
+
+- a connector todo or packet proposes running a browser, chat, platform, or
+  document connector against a real service;
+- the source status is `private_needs_review`, `metadata_only`, or otherwise
+  constrained by an owner gate;
+- a live connector route can autoload source bodies, message lists, derived
+  reports, media, or engagement data before the agent can stop it.
+
+**Expected behavior**
+
+Connector packets must carry a machine-readable runtime policy before the first
+browser/API run. The policy says which probes are allowed before approval, which
+URLs or path prefixes are forbidden, whether browser open is allowed, and what
+owner decision unblocks the next stage. For private connectors, the safe default
+is gate projection only. For public metadata connectors, the safe default is a
+bounded metadata probe rather than opening a page that may autoload timelines,
+media, or analytics.
+
+This pattern complements IP-004. IP-004 makes the owner ask concrete; IP-028
+prevents the connector runtime from accidentally consuming the gated material
+while the ask is still pending.
+
+**State contract**
+
+```text
+connector_runtime_policy = {
+  schema_version: content_ops_connector_runtime_policy_v0,
+  access_mode: public_metadata_only | private_metadata_only | synthetic_fixture_only,
+  safe_default: head_only_metadata_probe | gate_projection_only | fixture_only,
+  browser_open_allowed_before_gate: false,
+  allowed_probe_methods: [...],
+  forbidden_url_path_prefixes_before_approval: [...],
+  forbidden_before_approval: [...]
+}
+```
+
+**Bad smell**
+
+An agent opens a private connector's default web route because the page looks
+like a convenient UI, but that route automatically calls message-list or
+message-detail APIs. Another bad smell is treating a public social profile as
+"metadata only" while the browser auto-downloads timelines, post bodies, media,
+or engagement streams.
+
+**Validation**
+
+- `docs/reference/protocols/content-ops-surface-v0.md`;
+- `examples/content-ops-public-handle-observation-smoke.py`;
+- `examples/content-ops-private-connector-gate-smoke.py`;
+- `examples/interaction-pattern-catalog-smoke.py`.
 
 ### Evidence Lifecycle
 

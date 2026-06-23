@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.content_ops_surface import (  # noqa: E402
+    CONTENT_OPS_CONNECTOR_RUNTIME_POLICY_SCHEMA_VERSION,
     CONTENT_OPS_PRIVATE_CONNECTOR_GATE_PACKET_SCHEMA_VERSION,
     CONTENT_OPS_PRIVATE_CONNECTOR_OWNER_GATE_SCHEMA_VERSION,
     SOURCE_ITEM_SCHEMA_VERSION,
@@ -79,6 +80,22 @@ def main() -> int:
     assert payload["private_source_bodies_read"] is False, payload
     assert payload["private_source_content_read"] is False, payload
     assert payload["autopublish_allowed"] is False, payload
+    runtime_policy = payload["runtime_policy"]
+    assert (
+        runtime_policy["schema_version"]
+        == CONTENT_OPS_CONNECTOR_RUNTIME_POLICY_SCHEMA_VERSION
+    ), runtime_policy
+    assert runtime_policy["safe_default"] == "gate_projection_only", runtime_policy
+    assert runtime_policy["browser_open_allowed_before_gate"] is False, runtime_policy
+    assert "/api/messages" in runtime_policy[
+        "forbidden_url_path_prefixes_before_approval"
+    ], runtime_policy
+    assert "/api/reports" in runtime_policy[
+        "forbidden_url_path_prefixes_before_approval"
+    ], runtime_policy
+    assert "message-detail API calls" in runtime_policy[
+        "forbidden_before_approval"
+    ], runtime_policy
 
     connector = payload["connector"]
     assert connector["connector_id"] == "chatlog_alpha_chatview", connector
@@ -96,6 +113,7 @@ def main() -> int:
     assert gate["approval_required"] is True, gate
     assert "source content read" in gate["forbidden_until_approved"], gate
     assert "autopublish" in gate["forbidden_until_approved"], gate
+    assert gate["runtime_policy"]["safe_default"] == "gate_projection_only", gate
 
     source_item = payload["source_item"]
     assert source_item["schema_version"] == SOURCE_ITEM_SCHEMA_VERSION, source_item

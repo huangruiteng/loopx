@@ -24,6 +24,9 @@ CONTENT_OPS_PRIVATE_CONNECTOR_GATE_PACKET_SCHEMA_VERSION = (
 CONTENT_OPS_PRIVATE_CONNECTOR_OWNER_GATE_SCHEMA_VERSION = (
     "content_ops_private_connector_owner_gate_v0"
 )
+CONTENT_OPS_CONNECTOR_RUNTIME_POLICY_SCHEMA_VERSION = (
+    "content_ops_connector_runtime_policy_v0"
+)
 
 SOURCE_ITEM_SCHEMA_VERSION = "source_item_v0"
 ANGLE_CANDIDATE_SCHEMA_VERSION = "angle_candidate_v0"
@@ -219,6 +222,94 @@ def _source_item_from_private_connector_gate(
             "signal; no source content was read or copied."
         ),
         "owner_gate": dict(gate),
+    }
+
+
+def build_content_ops_connector_runtime_policy(
+    *,
+    connector_id: str,
+    connector_name: str,
+    access_mode: str,
+    connector_url: str | None = None,
+) -> dict[str, Any]:
+    """Build the runtime policy that keeps connector runs inside source bounds."""
+
+    if access_mode not in ALLOWED_CONNECTOR_ACCESS_MODES:
+        allowed_modes = sorted(ALLOWED_CONNECTOR_ACCESS_MODES)
+        raise ValueError(f"access_mode must be one of {allowed_modes}")
+
+    if access_mode == "public_metadata_only":
+        return {
+            "schema_version": CONTENT_OPS_CONNECTOR_RUNTIME_POLICY_SCHEMA_VERSION,
+            "connector_id": connector_id,
+            "connector_name": connector_name,
+            "access_mode": access_mode,
+            "safe_default": "head_only_metadata_probe",
+            "browser_open_allowed_before_gate": False,
+            "browser_open_risk": (
+                "public browser pages can autoload timelines, post text, media, "
+                "video streams, analytics, and engagement counters"
+            ),
+            "allowed_probe_methods": ["HEAD"],
+            "allowed_before_approval": [
+                "verify URL and host",
+                "read response status and content-type headers",
+                "record attribution and freshness metadata",
+            ],
+            "forbidden_before_approval": [
+                "timeline body capture",
+                "media download",
+                "login-gated reads",
+                "posting or engagement actions",
+            ],
+        }
+
+    if access_mode == "private_metadata_only":
+        return {
+            "schema_version": CONTENT_OPS_CONNECTOR_RUNTIME_POLICY_SCHEMA_VERSION,
+            "connector_id": connector_id,
+            "connector_name": connector_name,
+            "access_mode": access_mode,
+            "connector_url": connector_url,
+            "safe_default": "gate_projection_only",
+            "browser_open_allowed_before_gate": False,
+            "browser_open_risk": (
+                "the default web app route may autoload private-source message "
+                "lists or message-detail APIs before an agent can intervene"
+            ),
+            "allowed_probe_methods": [],
+            "allowed_before_approval": [
+                "store this compact gate packet",
+                "display the owner question",
+                "prepare fixture-only smoke coverage",
+            ],
+            "forbidden_url_path_prefixes_before_approval": [
+                "/api/messages",
+                "/api/reports",
+                "/api/channel-state",
+            ],
+            "forbidden_before_approval": [
+                "browser-opening the default private connector route",
+                "private source content read",
+                "message-list API calls",
+                "message-detail API calls",
+                "derived report ingestion",
+                "source quote",
+                "source summary",
+                "external posting",
+                "autopublish",
+            ],
+        }
+
+    return {
+        "schema_version": CONTENT_OPS_CONNECTOR_RUNTIME_POLICY_SCHEMA_VERSION,
+        "connector_id": connector_id,
+        "connector_name": connector_name,
+        "access_mode": access_mode,
+        "safe_default": "fixture_only",
+        "browser_open_allowed_before_gate": False,
+        "allowed_before_approval": ["fixture-only validation"],
+        "forbidden_before_approval": ["external reads", "external writes"],
     }
 
 
@@ -915,6 +1006,12 @@ def build_content_ops_public_handle_observation_packet(
         parsed_url=parsed_url,
         observation=observation,
     )
+    runtime_policy = build_content_ops_connector_runtime_policy(
+        connector_id=f"{surface}_{source_kind}",
+        connector_name="public handle browser connector",
+        access_mode="public_metadata_only",
+        connector_url=normalised_url,
+    )
     return {
         "ok": True,
         "schema_version": CONTENT_OPS_PUBLIC_HANDLE_OBSERVATION_PACKET_SCHEMA_VERSION,
@@ -923,6 +1020,7 @@ def build_content_ops_public_handle_observation_packet(
         "source_item": source_item,
         "source_item_schema_version": SOURCE_ITEM_SCHEMA_VERSION,
         "observation": observation,
+        "runtime_policy": runtime_policy,
         "external_reads_performed": bool(fetch),
         "external_read_kind": "http_head" if fetch else "none",
         "external_writes_performed": False,
@@ -1007,6 +1105,14 @@ def build_content_ops_private_connector_gate_packet(
         raise ValueError(f"freshness must be one of {sorted(ALLOWED_FRESHNESS)}")
 
     gate_id = f"owner_gate_{str(connector_id).strip()}"
+    runtime_policy = build_content_ops_connector_runtime_policy(
+        connector_id=str(connector_id).strip(),
+        connector_name=str(connector_name).strip(),
+        access_mode="private_metadata_only",
+        connector_url="https://chatview.zaynjarvis.com/"
+        if str(connector_id).strip() == "chatlog_alpha_chatview"
+        else None,
+    )
     gate = {
         "schema_version": CONTENT_OPS_PRIVATE_CONNECTOR_OWNER_GATE_SCHEMA_VERSION,
         "gate_id": gate_id,
@@ -1034,6 +1140,7 @@ def build_content_ops_private_connector_gate_packet(
             "display the owner question",
             "prepare fixture-only smoke coverage",
         ],
+        "runtime_policy": runtime_policy,
     }
     source_item = _source_item_from_private_connector_gate(
         source_item_id=str(proposed_source_item_id).strip(),
@@ -1069,6 +1176,7 @@ def build_content_ops_private_connector_gate_packet(
             "promotion_target": "source_item_v0_after_owner_gate",
         },
         "owner_gate": gate,
+        "runtime_policy": runtime_policy,
         "source_item": source_item,
         "user_todo_projection": user_todo_projection,
         "external_reads_performed": False,

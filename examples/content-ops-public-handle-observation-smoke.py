@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.content_ops_surface import (  # noqa: E402
+    CONTENT_OPS_CONNECTOR_RUNTIME_POLICY_SCHEMA_VERSION,
     CONTENT_OPS_PUBLIC_HANDLE_OBSERVATION_PACKET_SCHEMA_VERSION,
     CONTENT_OPS_PUBLIC_HANDLE_OBSERVATION_SCHEMA_VERSION,
     SOURCE_ITEM_SCHEMA_VERSION,
@@ -71,6 +72,15 @@ def assert_observation_packet(payload: dict[str, Any], *, fetched: bool) -> None
     assert payload["private_source_content_read"] is False, payload
     assert payload["autopublish_allowed"] is False, payload
     assert payload["promotion_target"] == "source_item_v0", payload
+    runtime_policy = payload["runtime_policy"]
+    assert (
+        runtime_policy["schema_version"]
+        == CONTENT_OPS_CONNECTOR_RUNTIME_POLICY_SCHEMA_VERSION
+    ), runtime_policy
+    assert runtime_policy["safe_default"] == "head_only_metadata_probe", runtime_policy
+    assert runtime_policy["browser_open_allowed_before_gate"] is False, runtime_policy
+    assert "HEAD" in runtime_policy["allowed_probe_methods"], runtime_policy
+    assert "media download" in runtime_policy["forbidden_before_approval"], runtime_policy
 
     source_item = payload["source_item"]
     assert source_item["schema_version"] == SOURCE_ITEM_SCHEMA_VERSION, source_item
