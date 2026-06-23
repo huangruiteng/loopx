@@ -457,6 +457,7 @@ def add_todo_to_lines(
     blocks_agent: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
+    evidence: str | None = None,
 ) -> dict[str, Any]:
     todo_text = normalize_new_todo(text)
     bounds = section_bounds(lines, role)
@@ -496,6 +497,7 @@ def add_todo_to_lines(
             blocks_agent=blocks_agent,
             unblocks_todo_id=unblocks_todo_id,
             resume_when=resume_when,
+            evidence=evidence,
         )
         todo_line = "\n".join([f"- [ ] {todo_text}", metadata_line] if metadata_line else [f"- [ ] {todo_text}"])
         if bounds:
@@ -526,6 +528,8 @@ def add_todo_to_lines(
             updates["unblocks_todo_id"] = unblocks_todo_id
         if resume_when:
             updates["resume_when"] = resume_when
+        if evidence:
+            updates["evidence"] = evidence
         metadata_line = metadata_line_for_block(block, updates)
         metadata_updated = upsert_todo_metadata(lines, block, metadata_line)
         todo_id = str(block.get("todo_id") or "")
@@ -554,6 +558,7 @@ def add_todo_to_lines(
         "blocks_agent": normalize_todo_blocks_agent(effective_metadata.get("blocks_agent")),
         "unblocks_todo_id": normalize_todo_id(effective_metadata.get("unblocks_todo_id")),
         "resume_when": normalize_todo_resume_when(effective_metadata.get("resume_when")),
+        "evidence": effective_metadata.get("evidence") or evidence,
     }
 
 
