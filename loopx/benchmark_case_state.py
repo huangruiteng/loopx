@@ -280,6 +280,231 @@ def render_benchmark_case_lifecycle_contract_lines(
     return lines
 
 
+def _packet_line(indent: str, key: str, value: object) -> str:
+    rendered = str(value).lower() if isinstance(value, bool) else str(value)
+    return f"{indent}{key}: {rendered}"
+
+
+def build_benchmark_case_lifecycle_packet(
+    *,
+    packet_header: str | None = None,
+    packet_mode: str | None = None,
+    benchmark_family: str | None = None,
+    benchmark_id: str,
+    case_id: str,
+    arm_id: str,
+    max_rounds: int = 5,
+    indent: str = "",
+    include_case_paths: bool = False,
+    include_case_event_log: bool = False,
+    include_cli_commands: bool = True,
+    include_completion_hints: bool = False,
+) -> tuple[str, dict[str, object]]:
+    """Return the shared prompt-facing LoopX case lifecycle packet.
+
+    Benchmark runners differ in the surrounding access packet, but the
+    case-local product-mode lifecycle and CLI commands must stay identical.
+    Keeping this renderer next to the lifecycle contract prevents future CLI
+    parameter drift across SkillsBench, Terminal-Bench, and Harbor workers.
+    """
+
+    contract = benchmark_case_lifecycle_contract(
+        benchmark_id=benchmark_id,
+        case_id=case_id,
+        arm_id=arm_id,
+        max_rounds=max_rounds,
+    )
+    case_goal_id = str(contract["benchmark_case_goal_id"])
+    case_cli_prefix = benchmark_case_loopx_command_prefix(
+        case_cli_path=BENCHMARK_CASE_LOOPX_CLI_PATH,
+        case_registry_path=BENCHMARK_CASE_LOOPX_REGISTRY_PATH,
+        case_runtime_root=BENCHMARK_CASE_LOOPX_RUNTIME_ROOT,
+    )
+
+    lines: list[str] = []
+    if packet_header:
+        lines.append(packet_header)
+    if packet_mode is not None:
+        lines.append(_packet_line(indent, "packet_mode", packet_mode))
+    if benchmark_family is not None:
+        lines.append(_packet_line(indent, "benchmark_family", benchmark_family))
+    lines.extend(
+        [
+            _packet_line(
+                indent,
+                "loopx_formal_treatment_semantics",
+                BENCHMARK_CASE_LOOPX_FORMAL_TREATMENT_SEMANTICS,
+            ),
+            _packet_line(
+                indent,
+                "loopx_canonical_product_mode_lifecycle_driver",
+                True,
+            ),
+            _packet_line(
+                indent,
+                "loopx_product_path_primary_route",
+                BENCHMARK_CASE_LOOPX_PRODUCT_PATH_PRIMARY_ROUTE,
+            ),
+            _packet_line(
+                indent,
+                "loopx_prompt_driven_execution_style",
+                BENCHMARK_CASE_LOOPX_PROMPT_DRIVEN_EXECUTION_STYLE,
+            ),
+            _packet_line(
+                indent,
+                "loopx_workflow_orchestrated_execution_style",
+                BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE,
+            ),
+        ]
+    )
+    if include_case_paths:
+        lines.extend(
+            [
+                _packet_line(
+                    indent,
+                    "loopx_case_cli_path",
+                    BENCHMARK_CASE_LOOPX_CLI_PATH,
+                ),
+                _packet_line(
+                    indent,
+                    "loopx_case_registry_path",
+                    BENCHMARK_CASE_LOOPX_REGISTRY_PATH,
+                ),
+                _packet_line(
+                    indent,
+                    "loopx_case_runtime_root",
+                    BENCHMARK_CASE_LOOPX_RUNTIME_ROOT,
+                ),
+            ]
+        )
+    if include_case_event_log:
+        lines.append(
+            _packet_line(
+                indent,
+                "loopx_case_rollout_event_log_path",
+                benchmark_case_loopx_event_log_path(case_goal_id),
+            )
+        )
+    lines.extend(
+        [
+            _packet_line(
+                indent,
+                "loopx_case_agent_id",
+                BENCHMARK_CASE_LOOPX_AGENT_ID,
+            ),
+            _packet_line(indent, "loopx_case_todo_id", BENCHMARK_CASE_LOOPX_TODO_ID),
+            _packet_line(indent, "loopx_case_todo_seeded_open", True),
+            _packet_line(indent, "loopx_case_todo_preclaimed_by_host", False),
+            _packet_line(indent, "loopx_agent_must_claim_selected_case_todo", True),
+        ]
+    )
+    lines.extend(render_benchmark_case_lifecycle_contract_lines(contract))
+    if include_cli_commands:
+        lines.extend(
+            [
+                _packet_line(
+                    indent,
+                    "loopx_case_command_quota_should_run",
+                    (
+                        f"{case_cli_prefix} quota should-run "
+                        f"--goal-id {shlex.quote(case_goal_id)} "
+                        f"--agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID}"
+                    ),
+                ),
+                _packet_line(
+                    indent,
+                    "loopx_case_command_claim_todo",
+                    (
+                        f"{case_cli_prefix} todo claim "
+                        f"--goal-id {shlex.quote(case_goal_id)} "
+                        f"--todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} "
+                        f"--claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID}"
+                    ),
+                ),
+                _packet_line(
+                    indent,
+                    "loopx_case_command_status",
+                    (
+                        f"{case_cli_prefix} status --limit 5 "
+                        f"--agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID}"
+                    ),
+                ),
+                _packet_line(
+                    indent,
+                    "loopx_case_command_mark_todo_done_when_complete",
+                    (
+                        f"{case_cli_prefix} todo complete "
+                        f"--goal-id {shlex.quote(case_goal_id)} "
+                        f"--todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} "
+                        f"--claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID} "
+                        "--evidence local_validation_done"
+                    ),
+                ),
+                _packet_line(
+                    indent,
+                    "loopx_case_command_refresh_state",
+                    (
+                        f"{case_cli_prefix} refresh-state "
+                        f"--goal-id {shlex.quote(case_goal_id)} "
+                        "--classification benchmark_case_agent_progress "
+                        "--delivery-batch-scale implementation "
+                        "--delivery-outcome outcome_progress "
+                        f"--agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID} "
+                        "--agent-lane benchmark_case"
+                    ),
+                ),
+                _packet_line(
+                    indent,
+                    "loopx_case_command_spend_quota",
+                    (
+                        f"{case_cli_prefix} quota spend-slot "
+                        f"--goal-id {shlex.quote(case_goal_id)} "
+                        f"--agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID} "
+                        "--source adapter --execute"
+                    ),
+                ),
+            ]
+        )
+    if include_completion_hints:
+        lines.extend(
+            [
+                _packet_line(
+                    indent,
+                    "loopx_completion_source_of_truth",
+                    "case_local_active_todo",
+                ),
+                _packet_line(
+                    indent,
+                    "before_planning_call_loopx_case_quota_should_run_once",
+                    True,
+                ),
+                _packet_line(
+                    indent,
+                    "before_planning_claim_loopx_case_todo_once",
+                    True,
+                ),
+                _packet_line(indent, "when_task_complete_mark_case_todo_done", True),
+                _packet_line(
+                    indent,
+                    "before_finishing_review_loopx_case_status_or_history_once",
+                    True,
+                ),
+                _packet_line(indent, "separate_completion_file_required", False),
+                _packet_line(
+                    indent,
+                    "host_exit_condition",
+                    "confirmed_no_active_loopx_todo",
+                ),
+                _packet_line(
+                    indent,
+                    "loopx_case_cli_calls_are_part_of_the_treatment_flow",
+                    True,
+                ),
+            ]
+        )
+    return "\n".join(lines), contract
+
+
 def benchmark_case_active_state_seed_text(
     *,
     benchmark_name: str,

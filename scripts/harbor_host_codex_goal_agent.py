@@ -36,21 +36,17 @@ from codex_app_server_goal_driver import (
 )
 from loopx.benchmark_case_state import (
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
-    BENCHMARK_CASE_LOOPX_AGENT_ID,
     BENCHMARK_CASE_LOOPX_CLI_PATH,
     BENCHMARK_CASE_LOOPX_FORMAL_TREATMENT_SEMANTICS,
     BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE,
     BENCHMARK_CASE_LOOPX_PRODUCT_PATH_PRIMARY_ROUTE,
-    BENCHMARK_CASE_LOOPX_PROMPT_DRIVEN_EXECUTION_STYLE,
     BENCHMARK_CASE_LOOPX_REGISTRY_PATH,
     BENCHMARK_CASE_LOOPX_RUNTIME_ROOT,
     BENCHMARK_CASE_LOOPX_SCHEDULER_ROUTE,
     BENCHMARK_CASE_LOOPX_TODO_ID,
-    benchmark_case_loopx_command_prefix,
-    benchmark_case_loopx_event_log_path,
+    build_benchmark_case_lifecycle_packet,
     benchmark_case_loopx_install_payload,
     benchmark_case_lifecycle_contract,
-    render_benchmark_case_lifecycle_contract_lines,
 )
 from loopx.benchmark_core.loop_protocol import (
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
@@ -943,18 +939,15 @@ def build_loopx_access_packet(
     claim = classify_loopx_treatment_claim(
         {"benchmark_loop_contract": loop_contract}
     )
-    case_lifecycle = benchmark_case_lifecycle_contract(
+    case_lifecycle_packet, case_lifecycle = build_benchmark_case_lifecycle_packet(
         benchmark_id=benchmark_id,
         case_id=case_id,
         arm_id=arm_id,
         max_rounds=max_rounds,
-    )
-    case_goal_id = str(case_lifecycle["benchmark_case_goal_id"])
-    case_event_log_path = benchmark_case_loopx_event_log_path(case_goal_id)
-    case_cli_prefix = benchmark_case_loopx_command_prefix(
-        case_cli_path=BENCHMARK_CASE_LOOPX_CLI_PATH,
-        case_registry_path=BENCHMARK_CASE_LOOPX_REGISTRY_PATH,
-        case_runtime_root=BENCHMARK_CASE_LOOPX_RUNTIME_ROOT,
+        include_case_paths=True,
+        include_case_event_log=True,
+        include_cli_commands=cli_enabled,
+        include_completion_hints=cli_enabled,
     )
 
     lines = [
@@ -971,50 +964,22 @@ def build_loopx_access_packet(
         "do_not_record_raw_task_text_logs_trajectories_or_credentials: true",
         "use_loopx_for_planning_checkpoints_and_boundary_awareness_only: false",
         "task_environment_commands_still_must_use_harbor_env_exec_bridge: true",
-        f"loopx_formal_treatment_semantics: {BENCHMARK_CASE_LOOPX_FORMAL_TREATMENT_SEMANTICS}",
-        "loopx_canonical_product_mode_lifecycle_driver: true",
-        f"loopx_prompt_driven_execution_style: {BENCHMARK_CASE_LOOPX_PROMPT_DRIVEN_EXECUTION_STYLE}",
-        f"loopx_workflow_orchestrated_execution_style: {BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE}",
-        f"loopx_product_path_primary_route: {BENCHMARK_CASE_LOOPX_PRODUCT_PATH_PRIMARY_ROUTE}",
         "loopx_prompt_driven_loop_required: true",
         "loopx_scheduler_route_supported_for_smoke_or_fallback: true",
         "loopx_case_local_cli_installed_before_agent: true",
-        f"loopx_case_cli_path: {BENCHMARK_CASE_LOOPX_CLI_PATH}",
-        f"loopx_case_registry_path: {BENCHMARK_CASE_LOOPX_REGISTRY_PATH}",
-        f"loopx_case_runtime_root: {BENCHMARK_CASE_LOOPX_RUNTIME_ROOT}",
-        f"loopx_case_rollout_event_log_path: {case_event_log_path}",
-        f"loopx_case_agent_id: {BENCHMARK_CASE_LOOPX_AGENT_ID}",
-        f"loopx_case_todo_id: {BENCHMARK_CASE_LOOPX_TODO_ID}",
-        "loopx_case_todo_seeded_open: true",
-        "loopx_case_todo_preclaimed_by_host: false",
-        "loopx_agent_must_claim_selected_case_todo: true",
         f"loopx_treatment_evidence_tier: {claim['loopx_treatment_evidence_tier']}",
         f"strict_loopx_treatment_claim_allowed: {str(claim['strict_loopx_treatment_claim_allowed']).lower()}",
         f"loopx_treatment_claim_blocker: {claim['loopx_treatment_claim_blocker']}",
     ]
     lines.extend(render_loop_contract_packet_lines(loop_contract))
-    lines.extend(render_benchmark_case_lifecycle_contract_lines(case_lifecycle))
+    lines.extend(case_lifecycle_packet.splitlines())
     if cli_enabled:
         lines.extend(
             [
                 "primary_loopx_cli_surface: task_environment_case_local_cli",
-                f"loopx_case_command_quota_should_run: {case_cli_prefix} quota should-run --goal-id {shlex.quote(case_goal_id)} --agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID}",
-                f"loopx_case_command_claim_todo: {case_cli_prefix} todo claim --goal-id {shlex.quote(case_goal_id)} --todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} --claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID}",
-                f"loopx_case_command_status: {case_cli_prefix} status --limit 5 --agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID}",
-                f"loopx_case_command_mark_todo_done_when_complete: {case_cli_prefix} todo complete --goal-id {shlex.quote(case_goal_id)} --todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} --claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID} --evidence local_validation_done",
-                f"loopx_case_command_refresh_state: {case_cli_prefix} refresh-state --goal-id {shlex.quote(case_goal_id)} --classification benchmark_case_agent_progress --delivery-batch-scale implementation --delivery-outcome outcome_progress --agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID} --agent-lane benchmark_case",
-                f"loopx_case_command_spend_quota: {case_cli_prefix} quota spend-slot --goal-id {shlex.quote(case_goal_id)} --agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID} --source adapter --execute",
-                "loopx_completion_source_of_truth: case_local_active_todo",
-                "before_planning_call_loopx_case_quota_should_run_once: true",
-                "before_planning_claim_loopx_case_todo_once: true",
-                "when_task_complete_mark_case_todo_done: true",
-                "before_finishing_review_loopx_case_status_or_history_once: true",
-                "separate_completion_file_required: false",
-                "host_exit_condition: confirmed_no_active_loopx_todo",
                 f"loopx_global_command_check_optional_context: {base} check --scan-path {scan_path_arg}",
                 f"loopx_global_command_status_optional_context: {base} status --limit 5",
                 f"loopx_global_command_history_optional_context: {base} history --goal-id {goal_id_arg} --limit 5",
-                "loopx_case_cli_calls_are_part_of_the_treatment_flow: true",
             ]
         )
     else:

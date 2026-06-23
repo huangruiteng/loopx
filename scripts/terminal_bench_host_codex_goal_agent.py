@@ -33,19 +33,8 @@ from codex_app_server_goal_driver import (
     start_codex_app_server_goal_turn,
 )
 from loopx.benchmark_case_state import (
-    BENCHMARK_CASE_LOOPX_AGENT_ID,
-    BENCHMARK_CASE_LOOPX_CLI_PATH,
-    BENCHMARK_CASE_LOOPX_FORMAL_TREATMENT_SEMANTICS,
-    BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE,
-    BENCHMARK_CASE_LOOPX_PRODUCT_PATH_PRIMARY_ROUTE,
-    BENCHMARK_CASE_LOOPX_PROMPT_DRIVEN_EXECUTION_STYLE,
-    BENCHMARK_CASE_LOOPX_REGISTRY_PATH,
-    BENCHMARK_CASE_LOOPX_RUNTIME_ROOT,
-    BENCHMARK_CASE_LOOPX_TODO_ID,
-    benchmark_case_loopx_command_prefix,
+    build_benchmark_case_lifecycle_packet,
     benchmark_case_loopx_install_payload,
-    benchmark_case_lifecycle_contract,
-    render_benchmark_case_lifecycle_contract_lines,
 )
 
 LONG_RUN_DEFAULT_GOAL_TIMEOUT_SEC = 21600.0
@@ -150,39 +139,16 @@ def build_loopx_case_lifecycle_packet(
 ) -> tuple[str, dict[str, object] | None]:
     if mode != "codex_loopx" or packet_mode == "none":
         return "", None
-    contract = benchmark_case_lifecycle_contract(
+    return build_benchmark_case_lifecycle_packet(
+        packet_header="terminal_bench_loopx_case_lifecycle_packet_v0:",
+        packet_mode=packet_mode,
+        benchmark_family="terminal-bench",
         benchmark_id=benchmark_id,
         case_id=case_id,
         arm_id=arm_id,
         max_rounds=max_rounds,
+        indent="  ",
     )
-    case_goal_id = str(contract["benchmark_case_goal_id"])
-    case_cli_prefix = benchmark_case_loopx_command_prefix(
-        case_cli_path=BENCHMARK_CASE_LOOPX_CLI_PATH,
-        case_registry_path=BENCHMARK_CASE_LOOPX_REGISTRY_PATH,
-        case_runtime_root=BENCHMARK_CASE_LOOPX_RUNTIME_ROOT,
-    )
-    lines = [
-        "terminal_bench_loopx_case_lifecycle_packet_v0:",
-        f"  packet_mode: {packet_mode}",
-        "  benchmark_family: terminal-bench",
-        f"  loopx_formal_treatment_semantics: {BENCHMARK_CASE_LOOPX_FORMAL_TREATMENT_SEMANTICS}",
-        "  loopx_canonical_product_mode_lifecycle_driver: true",
-        f"  loopx_product_path_primary_route: {BENCHMARK_CASE_LOOPX_PRODUCT_PATH_PRIMARY_ROUTE}",
-        f"  loopx_prompt_driven_execution_style: {BENCHMARK_CASE_LOOPX_PROMPT_DRIVEN_EXECUTION_STYLE}",
-        f"  loopx_workflow_orchestrated_execution_style: {BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE}",
-        "  loopx_case_todo_seeded_open: true",
-        "  loopx_case_todo_preclaimed_by_host: false",
-        "  loopx_agent_must_claim_selected_case_todo: true",
-        f"  loopx_case_command_quota_should_run: {case_cli_prefix} quota should-run --goal-id {case_goal_id} --agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID}",
-        f"  loopx_case_command_claim_todo: {case_cli_prefix} todo claim --goal-id {case_goal_id} --todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} --claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID}",
-        f"  loopx_case_command_status: {case_cli_prefix} status --limit 5 --agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID}",
-        f"  loopx_case_command_mark_todo_done_when_complete: {case_cli_prefix} todo complete --goal-id {case_goal_id} --todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} --claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID} --evidence local_validation_done",
-        f"  loopx_case_command_refresh_state: {case_cli_prefix} refresh-state --goal-id {case_goal_id} --classification benchmark_case_agent_progress --delivery-batch-scale implementation --delivery-outcome outcome_progress --agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID} --agent-lane benchmark_case",
-        f"  loopx_case_command_spend_quota: {case_cli_prefix} quota spend-slot --goal-id {case_goal_id} --agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID} --source adapter --execute",
-    ]
-    lines.extend(render_benchmark_case_lifecycle_contract_lines(contract))
-    return "\n".join(lines), contract
 
 
 class HostCodexGoalAgent(BaseAgent):
