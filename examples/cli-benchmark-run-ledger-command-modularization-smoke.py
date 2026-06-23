@@ -53,6 +53,9 @@ def main() -> int:
     maintenance_source = (
         ROOT / "loopx" / "cli_commands" / "benchmark_run_ledger_maintenance.py"
     ).read_text(encoding="utf-8")
+    case_analysis_source = (
+        ROOT / "loopx" / "cli_commands" / "benchmark_run_ledger_case_analysis.py"
+    ).read_text(encoding="utf-8")
 
     leaked_markers = [
         "benchmark_run_parser = benchmark_sub.add_parser",
@@ -70,9 +73,16 @@ def main() -> int:
     assert_contains(dispatch_source, "handle_benchmark_run_ledger_command(")
     assert_contains(init_source, "register_benchmark_run_ledger_commands")
     assert_contains(init_source, "handle_benchmark_run_ledger_command")
+    assert_contains(init_source, "register_benchmark_run_ledger_case_analysis_commands")
+    assert_contains(init_source, "handle_benchmark_run_ledger_case_analysis_command")
     assert_contains(init_source, "register_benchmark_run_ledger_maintenance_commands")
     assert_contains(init_source, "handle_benchmark_run_ledger_maintenance_command")
     assert_contains(module_source, "BENCHMARK_RUN_LEDGER_COMMANDS")
+    assert_contains(
+        module_source,
+        "register_benchmark_run_ledger_case_analysis_commands(benchmark_subparsers)",
+    )
+    assert_contains(module_source, "handle_benchmark_run_ledger_case_analysis_command(")
     assert_contains(
         module_source,
         "register_benchmark_run_ledger_maintenance_commands(benchmark_subparsers)",
@@ -93,6 +103,19 @@ def main() -> int:
         if marker in module_source:
             raise AssertionError(f"{marker} leaked back into benchmark_run_ledger.py")
         assert_contains(maintenance_source, marker)
+
+    case_analysis_markers = [
+        "benchmark_case_analysis_candidates_parser = benchmark_subparsers.add_parser",
+        "def render_benchmark_case_analysis_candidates_markdown",
+        'if args.benchmark_command == "case-analysis-candidates":',
+        "build_case_analysis_candidate_report(",
+        "apply_accepted_case_analysis_records(",
+        "render_case_analysis_markdown(",
+    ]
+    for marker in case_analysis_markers:
+        if marker in module_source:
+            raise AssertionError(f"{marker} leaked back into benchmark_run_ledger.py")
+        assert_contains(case_analysis_source, marker)
 
     help_result = run_cli("benchmark", "run", "--help")
     if help_result.returncode != 0:
