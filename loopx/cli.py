@@ -10,6 +10,7 @@ from .cli_commands import (
     handle_benchmark_command,
     handle_bootstrap_connect_command,
     handle_check_command,
+    handle_content_ops_command,
     handle_diagnose_command,
     handle_doctor_command,
     handle_dreaming_command,
@@ -26,6 +27,7 @@ from .cli_commands import (
     handle_worker_bridge_command,
     register_benchmark_command_group,
     register_bootstrap_connect_command,
+    register_content_ops_commands,
     register_doctor_command,
     register_dreaming_commands,
     register_history_command,
@@ -108,6 +110,8 @@ def main(argv: list[str] | None = None) -> int:
     register_worker_bridge_commands(sub, add_subcommand_format)
 
     register_support_control_commands(sub, add_subcommand_format)
+
+    register_content_ops_commands(sub, add_subcommand_format)
 
     register_ml_experiment_commands(sub, add_subcommand_format)
 
@@ -200,6 +204,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ml-experiment":
         return handle_ml_experiment_command(args, output_format=output_format, print_payload=print_payload)
+
+    if args.command == "content-ops":
+        return handle_content_ops_command(args, output_format=output_format, print_payload=print_payload)
 
     registry_admin_result = handle_registry_admin_command(
         args,

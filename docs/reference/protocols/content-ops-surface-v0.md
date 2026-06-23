@@ -114,11 +114,26 @@ The public-safe fixture helper is implemented in
 - `build_content_ops_surface_fixture()`;
 - `validate_content_ops_surface(surface)`;
 - `project_content_ops_surface(surface)`.
+- `build_content_ops_preview_packet()`;
+
+The CLI preview is the first runnable connector-pilot entry point:
+
+```bash
+loopx content-ops preview --format json
+```
+
+It returns `content_ops_preview_packet_v0` with the fixture, projection,
+validation, connector-trial counts, and explicit booleans proving that no
+external reads, external writes, private source-body reads, or autopublish
+actions happened. Real connector adapters should first match this packet shape
+before they ingest any public platform metadata or private metadata-only source
+handle.
 
 The durable smoke is:
 
 ```bash
 python3 examples/content-ops-surface-fixture-smoke.py
+python3 examples/content-ops-preview-cli-smoke.py
 ```
 
 The smoke checks record coverage, source/draft/gate references, first-screen

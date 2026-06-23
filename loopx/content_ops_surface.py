@@ -7,6 +7,7 @@ from typing import Any
 
 CONTENT_OPS_SURFACE_SCHEMA_VERSION = "content_ops_surface_v0"
 CONTENT_OPS_SURFACE_PROJECTION_SCHEMA_VERSION = "content_ops_surface_projection_v0"
+CONTENT_OPS_PREVIEW_PACKET_SCHEMA_VERSION = "content_ops_preview_packet_v0"
 
 SOURCE_ITEM_SCHEMA_VERSION = "source_item_v0"
 ANGLE_CANDIDATE_SCHEMA_VERSION = "angle_candidate_v0"
@@ -673,3 +674,89 @@ def project_content_ops_surface(surface: Mapping[str, Any]) -> dict[str, Any]:
             ),
         },
     }
+
+
+def build_content_ops_preview_packet(
+    *, generated_at: str | None = "2026-06-23T00:00:00Z"
+) -> dict[str, Any]:
+    """Build a public-safe content-ops preview packet.
+
+    The preview uses synthetic/metadata-only connector trial records. It does
+    not read platform timelines, private chat archives, credentials, or source
+    bodies.
+    """
+
+    surface = build_content_ops_surface_fixture(generated_at=generated_at)
+    validation = validate_content_ops_surface(surface)
+    projection = project_content_ops_surface(surface)
+    return {
+        "ok": bool(validation.get("ok")),
+        "schema_version": CONTENT_OPS_PREVIEW_PACKET_SCHEMA_VERSION,
+        "mode": "content-ops-preview",
+        "surface": surface,
+        "projection": projection,
+        "validation": validation,
+        "connector_trials": projection.get("connector_trials"),
+        "external_reads_performed": False,
+        "external_writes_performed": False,
+        "private_source_bodies_read": False,
+        "autopublish_allowed": False,
+        "next_safe_action": projection.get("first_screen", {}).get("next_safe_action")
+        if isinstance(projection.get("first_screen"), Mapping)
+        else None,
+    }
+
+
+def render_content_ops_preview_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# LoopX Content-Ops Preview",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- schema_version: `{payload.get('schema_version')}`",
+        f"- external_reads_performed: `{payload.get('external_reads_performed')}`",
+        f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
+        f"- private_source_bodies_read: `{payload.get('private_source_bodies_read')}`",
+        f"- autopublish_allowed: `{payload.get('autopublish_allowed')}`",
+    ]
+    projection = payload.get("projection")
+    if isinstance(projection, Mapping):
+        first_screen = projection.get("first_screen")
+        if isinstance(first_screen, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "## First Screen",
+                    "",
+                    f"- waiting_on: `{first_screen.get('waiting_on')}`",
+                    f"- user_action_required: `{first_screen.get('user_action_required')}`",
+                    f"- agent_can_continue: `{first_screen.get('agent_can_continue')}`",
+                    f"- next_safe_action: {first_screen.get('next_safe_action')}",
+                ]
+            )
+        connector_trials = projection.get("connector_trials")
+        if isinstance(connector_trials, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "## Connector Trials",
+                    "",
+                    f"- count: `{connector_trials.get('count')}`",
+                    f"- ready_for_metadata_trial_count: `{connector_trials.get('ready_for_metadata_trial_count')}`",
+                    f"- owner_gate_required_count: `{connector_trials.get('owner_gate_required_count')}`",
+                    f"- surfaces: `{connector_trials.get('surfaces')}`",
+                    f"- access_modes: `{connector_trials.get('access_modes')}`",
+                ]
+            )
+    validation = payload.get("validation")
+    if isinstance(validation, Mapping):
+        errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
+        lines.extend(
+            [
+                "",
+                "## Validation",
+                "",
+                f"- validation_ok: `{validation.get('ok')}`",
+                f"- error_count: `{len(errors)}`",
+            ]
+        )
+    return "\n".join(lines) + "\n"

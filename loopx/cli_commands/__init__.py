@@ -76,6 +76,7 @@ from .bootstrap_connect import (
     handle_bootstrap_connect_command,
     register_bootstrap_connect_command,
 )
+from .content_ops import handle_content_ops_command, register_content_ops_commands
 from .doctor import handle_doctor_command, register_doctor_command
 from .dreaming import handle_dreaming_command, register_dreaming_commands
 from .history import handle_history_command, register_history_command
@@ -188,6 +189,7 @@ __all__ = [
     "handle_codex_cli_visible_driver_run_command",
     "handle_codex_cli_visible_driver_plan_command",
     "handle_codex_cli_visible_session_proof_command",
+    "handle_content_ops_command",
     "handle_diagnose_command",
     "handle_demo_command",
     "handle_doctor_command",
@@ -228,6 +230,7 @@ __all__ = [
     "register_benchmark_run_ledger_maintenance_commands",
     "register_benchmark_run_ledger_parity_commands",
     "register_bootstrap_connect_command",
+    "register_content_ops_commands",
     "register_doctor_command",
     "register_dreaming_commands",
     "register_history_command",
