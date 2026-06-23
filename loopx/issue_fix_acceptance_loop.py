@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,12 @@ from .issue_fix_intake_surface import build_content_ops_issue_fix_metadata_previ
 
 ISSUE_FIX_ACCEPTANCE_LOOP_SCHEMA_VERSION = "issue_fix_acceptance_loop_v0"
 ISSUE_FIX_VALIDATED_FIX_ARTIFACT_SCHEMA_VERSION = "issue_fix_validated_fix_artifact_v0"
+ISSUE_FIX_CALLER_REPO_BRANCH_PACKET_SCHEMA_VERSION = (
+    "issue_fix_caller_repo_branch_packet_v0"
+)
+ISSUE_FIX_CALLER_REPO_BRANCH_ARTIFACT_SCHEMA_VERSION = (
+    "issue_fix_caller_repo_branch_artifact_v0"
+)
 
 
 def _sha256_text(text: str) -> str:
@@ -63,6 +70,148 @@ def _run_git_step(
         "exit_code": result.returncode,
         "expected_exit_codes": list(expected_exit_codes),
         "passed": result.returncode in expected_exit_codes,
+        "stdout_captured": False,
+        "stderr_captured": False,
+        "local_path_captured": False,
+    }
+
+
+def _run_git_capture(
+    workspace: Path,
+    args: list[str],
+    *,
+    expected_exit_codes: tuple[int, ...] = (0,),
+    timeout: int = 10,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=workspace,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+    )
+    if result.returncode not in expected_exit_codes:
+        raise RuntimeError(
+            f"git {' '.join(args)} failed with exit code {result.returncode}"
+        )
+    return result
+
+
+def _validate_branch_name(branch: str, *, field: str) -> str:
+    value = str(branch or "").strip()
+    if not value:
+        raise ValueError(f"{field} is required")
+    if any(ch in value for ch in "\0\r\n"):
+        raise ValueError(f"{field} must be a single git branch name")
+    result = subprocess.run(
+        ["git", "check-ref-format", "--branch", value],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"{field} must be a valid git branch name")
+    return value
+
+
+def _branch_slug(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    chars = [ch if ch.isalnum() else "-" for ch in text]
+    slug = "-".join(part for part in "".join(chars).split("-") if part)
+    return slug[:60] or "public-issue"
+
+
+def _derive_issue_branch(metadata: Mapping[str, Any]) -> str:
+    kind = "pr" if metadata.get("kind") == "pull_request" else "issue"
+    number = metadata.get("number")
+    suffix = f"{kind}-{number}" if isinstance(number, int) else _branch_slug(metadata.get("issue_ref"))
+    return _validate_branch_name(f"codex/{suffix}-fix", field="issue_branch")
+
+
+def _git_branch_exists(workspace: Path, branch: str) -> bool:
+    result = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=workspace,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=10,
+    )
+    return result.returncode == 0
+
+
+def _git_current_branch(workspace: Path) -> str:
+    result = _run_git_capture(workspace, ["branch", "--show-current"])
+    return result.stdout.strip() or "detached"
+
+
+def _git_status_lines(workspace: Path) -> list[str]:
+    result = _run_git_capture(workspace, ["status", "--porcelain"])
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def _changed_files(workspace: Path, *, base_branch: str) -> tuple[list[str], bool]:
+    files: list[str] = []
+    truncated = False
+
+    def add_lines(lines: list[str]) -> None:
+        nonlocal truncated
+        for raw in lines:
+            path = raw.strip()
+            if not path or path.startswith("/"):
+                continue
+            if path not in files:
+                files.append(path)
+            if len(files) >= 20:
+                truncated = True
+                return
+
+    if _git_branch_exists(workspace, base_branch):
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"{base_branch}...HEAD"],
+            cwd=workspace,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            add_lines(result.stdout.splitlines())
+    for args in (["diff", "--name-only"], ["diff", "--cached", "--name-only"]):
+        result = _run_git_capture(workspace, args)
+        add_lines(result.stdout.splitlines())
+    for line in _git_status_lines(workspace):
+        if len(line) >= 4 and line[:2] == "??":
+            add_lines([line[3:]])
+    return files[:20], truncated
+
+
+def _run_caller_validation(
+    workspace: Path,
+    *,
+    validation_command: str,
+    validation_label: str,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    argv = shlex.split(validation_command)
+    if not argv:
+        raise ValueError("validation_command must not be empty")
+    result = subprocess.run(
+        argv,
+        cwd=workspace,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout_seconds,
+    )
+    return {
+        "schema_version": "issue_fix_validation_command_v0",
+        "command_label": validation_label or "caller-declared validation",
+        "exit_code": result.returncode,
+        "passed": result.returncode == 0,
         "stdout_captured": False,
         "stderr_captured": False,
         "local_path_captured": False,
@@ -395,6 +544,167 @@ def build_issue_fix_repo_branch_fixture_packet(
     return packet
 
 
+def build_issue_fix_caller_repo_branch_packet(
+    *,
+    repo_path: str,
+    repo: str = "approved_local_repo",
+    issue_ref: str = "issue_123_public_metadata",
+    url: str | None = None,
+    base_branch: str = "main",
+    issue_branch: str | None = None,
+    validation_command: str | None = None,
+    validation_label: str = "caller-declared validation",
+    execute: bool = False,
+    timeout_seconds: int = 60,
+    generated_at: str | None = "2026-06-23T00:00:00Z",
+) -> dict[str, Any]:
+    """Prepare or execute a caller-approved local repo issue branch workflow."""
+
+    metadata_packet, metadata = _build_metadata_packet(
+        repo=repo,
+        issue_ref=issue_ref,
+        url=url,
+        generated_at=generated_at,
+    )
+    base = _validate_branch_name(base_branch, field="base_branch")
+    branch = (
+        _validate_branch_name(issue_branch, field="issue_branch")
+        if issue_branch
+        else _derive_issue_branch(metadata)
+    )
+    validation_label = validation_label or "caller-declared validation"
+    workspace = Path(repo_path).expanduser()
+
+    git_steps: list[dict[str, Any]] = []
+    validation_command_result: dict[str, Any] = {
+        "schema_version": "issue_fix_validation_command_v0",
+        "command_label": validation_label,
+        "executed": False,
+        "passed": False,
+        "stdout_captured": False,
+        "stderr_captured": False,
+        "local_path_captured": False,
+    }
+    branch_action = "dry_run"
+    changed_files: list[str] = []
+    changed_files_truncated = False
+
+    if execute:
+        if not workspace.exists() or not workspace.is_dir():
+            raise ValueError("repo_path must point to an existing local git repository")
+        _run_git_capture(workspace, ["rev-parse", "--is-inside-work-tree"])
+        current_branch = _git_current_branch(workspace)
+        dirty_before = bool(_git_status_lines(workspace))
+        branch_exists = _git_branch_exists(workspace, branch)
+        base_exists = _git_branch_exists(workspace, base)
+        if current_branch == branch:
+            branch_action = "claimed_current"
+        else:
+            if dirty_before:
+                raise RuntimeError(
+                    "refusing to switch branches with uncommitted changes; "
+                    "rerun from the target issue branch or clean the repo after approval"
+                )
+            if branch_exists:
+                step = _run_git_step(workspace, ["checkout", branch], "git claim existing issue branch")
+                git_steps.append(step)
+                _require_passed(step)
+                branch_action = "claimed_existing"
+            else:
+                if not base_exists:
+                    raise RuntimeError("base_branch does not exist in the approved local repo")
+                if current_branch != base:
+                    step = _run_git_step(workspace, ["checkout", base], "git checkout approved base branch")
+                    git_steps.append(step)
+                    _require_passed(step)
+                step = _run_git_step(workspace, ["checkout", "-b", branch], "git create approved issue branch")
+                git_steps.append(step)
+                _require_passed(step)
+                branch_action = "created"
+        if not validation_command:
+            raise ValueError("validation_command is required when --execute is used")
+        validation_command_result = _run_caller_validation(
+            workspace,
+            validation_command=validation_command,
+            validation_label=validation_label,
+            timeout_seconds=timeout_seconds,
+        )
+        validation_command_result["executed"] = True
+        changed_files, changed_files_truncated = _changed_files(workspace, base_branch=base)
+
+    review_ready = bool(
+        execute
+        and validation_command_result.get("passed") is True
+        and len(changed_files) > 0
+    )
+    artifact = {
+        "schema_version": ISSUE_FIX_CALLER_REPO_BRANCH_ARTIFACT_SCHEMA_VERSION,
+        "repo_mode": "approved_local_repo",
+        "repo_label": metadata["repo"],
+        "repo_path_captured": False,
+        "base_branch": base,
+        "issue_branch": branch,
+        "branch_action": branch_action,
+        "branch_ready": execute and branch_action in {"claimed_current", "claimed_existing", "created"},
+        "external_remote_used": False,
+        "local_path_captured": False,
+        "validation": validation_command_result,
+        "changed_files": changed_files,
+        "changed_files_truncated": changed_files_truncated,
+        "changed_file_count": len(changed_files),
+    }
+    packet: dict[str, Any] = {
+        "ok": True,
+        "schema_version": ISSUE_FIX_CALLER_REPO_BRANCH_PACKET_SCHEMA_VERSION,
+        "mode": "issue-fix-caller-repo-branch",
+        "generated_at": generated_at,
+        "dry_run": not execute,
+        "workspace_mode": "approved_local_repo",
+        "metadata_preview_schema_version": metadata_packet["schema_version"],
+        "caller_repo_branch": artifact,
+        "issue_signal": {
+            "repo": metadata["repo"],
+            "issue_ref": metadata["issue_ref"],
+            "kind": metadata["kind"],
+            "labels": metadata["labels"],
+            "body_captured": False,
+            "comment_bodies_captured": False,
+        },
+        "review_packet": {
+            "schema_version": "issue_fix_pr_review_packet_v0",
+            "ready": review_ready,
+            "summary": (
+                "Approved local issue branch has validation evidence and repo-relative "
+                "change evidence."
+                if review_ready
+                else "Approved local issue branch prepared; validation or change evidence is not PR-ready yet."
+            ),
+            "files_changed": changed_files,
+            "files_changed_truncated": changed_files_truncated,
+            "validation_commands": [validation_label],
+            "external_issue_comment_performed": False,
+            "external_pr_created": False,
+            "merge_performed": False,
+        },
+        "external_reads_performed": False,
+        "external_writes_performed": False,
+        "issue_body_captured": False,
+        "comment_bodies_captured": False,
+        "local_paths_captured": False,
+        "private_repo_state_read": bool(execute),
+        "destructive_git_used": False,
+        "next_safe_action": (
+            "apply or review the branch-local fix and rerun this command until "
+            "validation passes with repo-relative change evidence; external PR/comment/merge "
+            "actions still require explicit caller action"
+        ),
+    }
+    validation = validate_issue_fix_caller_repo_branch_packet(packet)
+    packet["ok"] = bool(packet["ok"] and validation["ok"])
+    packet["validation"] = validation
+    return packet
+
+
 def validate_issue_fix_acceptance_loop_packet(packet: Mapping[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     if packet.get("schema_version") != ISSUE_FIX_ACCEPTANCE_LOOP_SCHEMA_VERSION:
@@ -488,6 +798,65 @@ def validate_issue_fix_acceptance_loop_packet(packet: Mapping[str, Any]) -> dict
     }
 
 
+def validate_issue_fix_caller_repo_branch_packet(packet: Mapping[str, Any]) -> dict[str, Any]:
+    errors: list[str] = []
+    if packet.get("schema_version") != ISSUE_FIX_CALLER_REPO_BRANCH_PACKET_SCHEMA_VERSION:
+        errors.append("packet schema_version must be issue_fix_caller_repo_branch_packet_v0")
+    for key in (
+        "external_reads_performed",
+        "external_writes_performed",
+        "issue_body_captured",
+        "comment_bodies_captured",
+        "local_paths_captured",
+        "destructive_git_used",
+    ):
+        if packet.get(key) is not False:
+            errors.append(f"packet {key} must be false")
+    artifact = (
+        packet.get("caller_repo_branch")
+        if isinstance(packet.get("caller_repo_branch"), Mapping)
+        else {}
+    )
+    if artifact.get("schema_version") != ISSUE_FIX_CALLER_REPO_BRANCH_ARTIFACT_SCHEMA_VERSION:
+        errors.append("caller repo branch artifact has wrong schema")
+    if artifact.get("repo_path_captured") is not False:
+        errors.append("caller repo path must not be captured")
+    if artifact.get("external_remote_used") is not False:
+        errors.append("caller repo branch must not use external remote")
+    if artifact.get("local_path_captured") is not False:
+        errors.append("caller repo branch local path must not be captured")
+    validation = (
+        artifact.get("validation")
+        if isinstance(artifact.get("validation"), Mapping)
+        else {}
+    )
+    for key in ("stdout_captured", "stderr_captured", "local_path_captured"):
+        if validation.get(key) is not False:
+            errors.append(f"validation {key} must be false")
+    files = artifact.get("changed_files")
+    if isinstance(files, list):
+        for path in files:
+            if not isinstance(path, str) or path.startswith("/"):
+                errors.append("changed files must be repo-relative public-safe paths")
+    else:
+        errors.append("changed_files must be a list")
+    review = (
+        packet.get("review_packet")
+        if isinstance(packet.get("review_packet"), Mapping)
+        else {}
+    )
+    for key in ("external_issue_comment_performed", "external_pr_created", "merge_performed"):
+        if review.get(key) is not False:
+            errors.append(f"review packet {key} must be false")
+    return {
+        "schema_version": "issue_fix_caller_repo_branch_validation_v0",
+        "ok": not errors,
+        "errors": errors,
+        "review_packet_ready": review.get("ready") is True,
+        "changed_file_count": artifact.get("changed_file_count"),
+    }
+
+
 def render_issue_fix_acceptance_loop_markdown(payload: dict[str, Any]) -> str:
     lines = [
         "# LoopX Issue Fix Acceptance Loop",
@@ -532,6 +901,36 @@ def render_issue_fix_acceptance_loop_markdown(payload: dict[str, Any]) -> str:
             )
         if isinstance(patch, Mapping):
             lines.append(f"- patch_file: `{patch.get('file')}`")
+    caller_repo = payload.get("caller_repo_branch")
+    if isinstance(caller_repo, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Caller Repo Branch",
+                "",
+                f"- repo_mode: `{caller_repo.get('repo_mode')}`",
+                f"- base_branch: `{caller_repo.get('base_branch')}`",
+                f"- issue_branch: `{caller_repo.get('issue_branch')}`",
+                f"- branch_action: `{caller_repo.get('branch_action')}`",
+                f"- branch_ready: `{caller_repo.get('branch_ready')}`",
+                f"- changed_file_count: `{caller_repo.get('changed_file_count')}`",
+            ]
+        )
+        validation_command = caller_repo.get("validation")
+        if isinstance(validation_command, Mapping):
+            lines.append(f"- validation_passed: `{validation_command.get('passed')}`")
+    review = payload.get("review_packet")
+    if isinstance(review, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Review Packet",
+                "",
+                f"- ready: `{review.get('ready')}`",
+                f"- external_pr_created: `{review.get('external_pr_created')}`",
+                f"- merge_performed: `{review.get('merge_performed')}`",
+            ]
+        )
     steps = payload.get("steps")
     if isinstance(steps, list):
         lines.extend(["", "## Steps", ""])

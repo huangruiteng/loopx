@@ -29,6 +29,29 @@ reruns validation, confirms the branch-local patch diff without exposing raw
 git output, and returns the same validated fix artifact shape with an extra
 `issue_fix_repo_branch_artifact_v0` section.
 
+The promoted caller-approved branch mode moves the same contract onto a real
+local repository selected by the caller:
+
+```bash
+loopx issue-fix caller-repo-branch \
+  --repo-path /path/to/approved/repo \
+  --url https://github.com/owner/repo/issues/123 \
+  --base-branch main \
+  --validation-command "python test_calculator.py" \
+  --validation-label "python test_calculator.py" \
+  --execute \
+  --format json
+```
+
+This mode creates or claims a `codex/` issue branch, runs only the
+caller-declared validation command, and returns
+`issue_fix_caller_repo_branch_packet_v0`. The public packet records the repo
+label, issue branch, validation pass/fail, repo-relative changed files, and PR
+review readiness. It does not expose the local repo path, validation stdout or
+stderr, raw issue body/comment content, external remotes, or raw git output.
+Without `--execute`, the command is a dry-run plan and does not inspect or
+modify the local repository.
+
 ## Product Contract
 
 The user-facing value is the validated repair path:
@@ -41,6 +64,11 @@ The user-facing value is the validated repair path:
 5. focused validation passes;
 6. a PR-review packet is ready, but no external comment, PR creation, merge, or
    publish action is performed by this fixture.
+
+For caller-approved local repositories, PR-review readiness is true only when
+the issue branch exists or is claimed, caller-declared validation passes, and
+there is repo-relative change evidence. External issue comments, PR creation,
+merge, and publish actions remain separate explicit caller decisions.
 
 This keeps the protocol useful for automation while preserving safe defaults.
 The packet is evidence of a completed repair loop, not a substitute for the
@@ -64,13 +92,12 @@ payloads in the artifact.
 
 ## Next Promotion
 
-The next implementation step is a caller-provided repo-local branch mode. It
-should accept a public issue URL plus an already-approved local repository,
-create or claim an issue branch, derive or run a focused repro, patch code
-through the agent, run validation, and prepare PR evidence. That mode may
-perform local repository reads and branch writes, but it still must not post
-external comments, create a PR, merge, or publish without the caller choosing
-that action explicitly.
+The next implementation step is agent-applied patch orchestration on top of the
+caller-approved repo branch mode: after the branch is prepared, the project
+agent should choose the minimal code route, apply a patch, rerun the declared
+validation, and then use the PR-ready packet as review evidence. External
+comments, PR creation, merge, or publish actions still require explicit caller
+action.
 
 ## Smoke
 
