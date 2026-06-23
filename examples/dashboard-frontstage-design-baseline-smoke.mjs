@@ -70,6 +70,12 @@ includes(frontstageSource, 'data-testid="frontstage-active-claims"', "active cla
 includes(frontstageSource, 'data-testid="frontstage-open-gates"', "open gates anchor");
 includes(frontstageSource, 'data-testid="frontstage-artifacts"', "artifacts anchor");
 includes(frontstageSource, 'data-testid="frontstage-timeline"', "timeline anchor");
+includes(frontstageSource, "long-horizon-self-iteration-rollout.public.json", "self-iteration rollout fixture import");
+includes(frontstageSource, 'data-testid="frontstage-self-iteration-timeline"', "public self-iteration timeline anchor");
+includes(frontstageSource, 'data-testid="frontstage-self-iteration-lane"', "public self-iteration lane anchor");
+includes(frontstageSource, 'data-testid="frontstage-self-iteration-event"', "public self-iteration event anchor");
+includes(frontstageSource, 'data-testid="frontstage-self-iteration-dashed-bridge"', "public self-iteration dashed bridge anchor");
+includes(frontstageSource, 'data-testid="frontstage-self-iteration-truth-contract"', "public self-iteration truth contract anchor");
 includes(frontstageSource, "human judgment", "human-gate plain-language copy");
 includes(frontstageSource, "agent lanes", "agent-lane showcase copy");
 includes(frontstageSource, "evidence writeback", "evidence writeback showcase copy");
@@ -89,6 +95,8 @@ includes(browserSmoke, "desktop-frontstage-live", "ops visual screenshot smoke")
 includes(browserSmoke, "mobile-frontstage", "mobile visual screenshot smoke");
 includes(browserSmoke, "assertNoHorizontalOverflow", "overflow visual acceptance");
 includes(browserSmoke, "frontstage-showcase-motion-beam", "showcase motion visual check");
+includes(browserSmoke, "frontstage-self-iteration-lane", "self-iteration lane browser check");
+includes(browserSmoke, "frontstage-self-iteration-dashed-bridge", "self-iteration bridge browser check");
 includes(browserSmoke, "frontstage-todo-search", "ops search interaction check");
 includes(browserSmoke, "frontstage-todo-lane-filter", "ops filter interaction check");
 includes(browserSmoke, "Ops statusUrl must be relative or loopback", "loopback-source guard smoke");

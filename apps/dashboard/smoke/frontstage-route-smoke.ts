@@ -191,7 +191,7 @@ includes(catalogSource, '"2026-06-17-blocked-p0-safe-rotation"', "blocked P0 sho
 includes(catalogSource, '"2026-06-19-dynamic-workflow-hardware-agent"', "hardware-agent showcase case");
 includes(catalogSource, '"2026-06-20-creator-operator-case-spec"', "creator operator showcase case");
 
-const motionSource = sourceBetween(frontstageSource, "function ShowcaseMotionBoard", "function ShowcaseCasePackPanel", "showcase motion board");
+const motionSource = sourceBetween(frontstageSource, "function ShowcaseMotionBoard", "function rolloutKindTone", "showcase motion board");
 includes(motionSource, "frontstageShowcases", "motion board catalog source");
 includes(motionSource, "journeySegments", "motion board journey summary");
 includes(motionSource, "activeCaseId", "motion board active case state");
