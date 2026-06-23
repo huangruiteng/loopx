@@ -88,6 +88,74 @@ agent todo. LLM-assisted interpretation belongs in a cold-path proposal or
 authoring helper; it may suggest converting prose into a structured todo, but
 must not decide delivery gates, spend policy, or write permission directly.
 
+## Optional OM/HITL Overlay Schemas
+
+The IP IDs below are stable interaction patterns. Do not create a new IP only
+because a dashboard, operator-management workflow, or human-in-the-loop review
+needs extra labels. Prefer optional overlays that attach to an existing quota,
+status, review-packet, run, or catalog pattern.
+
+These overlays are descriptive and analytic. They must not replace
+`interaction_contract`, `todo` metadata, `goal_boundary`, or run-bound reward
+events as the execution source of truth.
+
+### `human_ai_role_contract_v0`
+
+Use this overlay when a pattern needs to say who decides, who acts, and who
+checks the result without changing the underlying IP.
+
+```text
+human_ai_role_contract_v0 = {
+  applies_to: quota_payload | status_card | review_packet | catalog_pattern | run,
+  human_role: owner | reviewer | operator | evaluator | none,
+  ai_role: executor | observer | drafter | verifier | router,
+  decision_owner: human | ai | shared | external,
+  validation_owner: human | ai | tool | external,
+  handoff_contract?: "what must be true before the other party acts",
+  forbidden_substitution?: ["things the AI must not decide for the human"]
+}
+```
+
+### `ops_metric_overlay_v0`
+
+Use this overlay to measure operating load and quality around an interaction
+without changing routing semantics.
+
+```text
+ops_metric_overlay_v0 = {
+  operator_interruptions: integer,
+  concrete_user_todo_count: integer,
+  agent_delivery_attempts: integer,
+  quiet_noop_count: integer,
+  repair_delta_count: integer,
+  blocked_minutes?: number,
+  evidence_quality?: missing | surface | compact | verifier_backed,
+  notes?: "public-safe compact summary"
+}
+```
+
+### `escalation_failure_type_v0`
+
+Use this overlay when a bad case should classify why a handoff or escalation
+failed. It is an incident-analysis label, not a permission check.
+
+```text
+escalation_failure_type_v0 =
+  missing_concrete_user_todo
+  | wrong_agent_blocked
+  | stale_next_action
+  | hidden_blocked_priority
+  | no_repair_delta
+  | scope_projection_gap
+  | capability_bridge_missing
+  | private_boundary_ambiguous
+  | external_evidence_missing
+```
+
+The overlays should stay optional until a UI or controller path consumes them.
+When a runtime starts depending on one, add a focused smoke and update the
+relevant IP's validation list instead of renumbering the catalog.
+
 ## Pattern Families
 
 Use families as the first routing layer. They keep the catalog readable as the
