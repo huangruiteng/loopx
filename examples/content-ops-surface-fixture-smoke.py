@@ -38,6 +38,7 @@ REQUIRED_RECORD_GROUPS = {
     "feedback_signals",
     "publish_gates",
     "material_memory",
+    "connector_trials",
 }
 
 REQUIRED_OPERATOR_STATES = {
@@ -102,6 +103,28 @@ def assert_fixture_contract(surface: dict[str, object]) -> None:
         assert gate["autopublish_allowed"] is False, gate
         assert gate["status"] == "blocked_until_user_approval", gate
 
+    connector_trials = surface["connector_trials"]
+    assert isinstance(connector_trials, list) and len(connector_trials) == 2, (
+        connector_trials
+    )
+    surfaces = {trial["surface"] for trial in connector_trials}
+    assert {"x_public_feed", "wechat_private_archive"} == surfaces, connector_trials
+    access_modes = {trial["access_mode"] for trial in connector_trials}
+    assert {"public_metadata_only", "private_metadata_only"} == access_modes, (
+        connector_trials
+    )
+    assert all(trial["external_write_allowed"] is False for trial in connector_trials), (
+        connector_trials
+    )
+    private_trials = [
+        trial
+        for trial in connector_trials
+        if trial["access_mode"] == "private_metadata_only"
+    ]
+    assert private_trials and private_trials[0]["requires_user_gate"] is True, (
+        connector_trials
+    )
+
 
 def assert_projection_contract(projection: dict[str, object]) -> None:
     assert (
@@ -143,6 +166,22 @@ def assert_projection_contract(projection: dict[str, object]) -> None:
     assert "content_ops_draft_from_angle" in action_kinds, todo_candidates
     assert "content_ops_source_review" in action_kinds, todo_candidates
     assert "content_ops_publish_gate" in action_kinds, todo_candidates
+    assert "content_ops_connector_metadata_trial" in action_kinds, todo_candidates
+    assert "content_ops_connector_owner_gate" in action_kinds, todo_candidates
+
+    connector_projection = projection["connector_trials"]
+    assert isinstance(connector_projection, dict), connector_projection
+    assert connector_projection["count"] == 2, connector_projection
+    assert connector_projection["ready_for_metadata_trial_count"] == 1, (
+        connector_projection
+    )
+    assert connector_projection["owner_gate_required_count"] == 1, (
+        connector_projection
+    )
+    assert connector_projection["surfaces"] == {
+        "wechat_private_archive": 1,
+        "x_public_feed": 1,
+    }, connector_projection
 
 
 def main() -> int:

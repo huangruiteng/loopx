@@ -14,6 +14,7 @@ DRAFT_ITEM_SCHEMA_VERSION = "draft_item_v0"
 FEEDBACK_SIGNAL_SCHEMA_VERSION = "feedback_signal_v0"
 PUBLISH_GATE_SCHEMA_VERSION = "publish_gate_v0"
 MATERIAL_MEMORY_SCHEMA_VERSION = "material_memory_v0"
+CONNECTOR_TRIAL_SCHEMA_VERSION = "connector_trial_v0"
 CONTENT_OPS_VALIDATION_SCHEMA_VERSION = "content_ops_surface_validation_v0"
 
 RAW_MATERIAL_KEY_HINTS = (
@@ -57,6 +58,17 @@ ALLOWED_PUBLISH_GATE_STATUSES = {
     "approved",
     "denied",
     "needs_revision",
+}
+ALLOWED_CONNECTOR_TRIAL_STATES = {
+    "candidate",
+    "ready_for_metadata_trial",
+    "needs_owner_gate",
+    "blocked",
+}
+ALLOWED_CONNECTOR_ACCESS_MODES = {
+    "public_metadata_only",
+    "private_metadata_only",
+    "synthetic_fixture_only",
 }
 
 
@@ -231,6 +243,40 @@ def build_content_ops_surface_fixture(
             "preference_hints": ["quality and feedback beat raw article count"],
         }
     ]
+    connector_trials = [
+        {
+            "schema_version": CONNECTOR_TRIAL_SCHEMA_VERSION,
+            "trial_id": "trial_x_ego_lite_browser",
+            "surface": "x_public_feed",
+            "tool_hint": "ego-lite browser",
+            "access_mode": "public_metadata_only",
+            "source_status": "public",
+            "freshness": "unknown",
+            "allowed_use": "metadata_only",
+            "trial_state": "ready_for_metadata_trial",
+            "proposed_source_item_id": "source_x_public_signal_001",
+            "terms_note": "public/terms-aware signal intake; no login, posting, or raw timeline capture in LoopX state",
+            "promotion_target": "source_item_v0",
+            "requires_user_gate": False,
+            "external_write_allowed": False,
+        },
+        {
+            "schema_version": CONNECTOR_TRIAL_SCHEMA_VERSION,
+            "trial_id": "trial_wechat_chatlog_alpha",
+            "surface": "wechat_private_archive",
+            "tool_hint": "chatlog-alpha/chatview",
+            "access_mode": "private_metadata_only",
+            "source_status": "private_needs_review",
+            "freshness": "unknown",
+            "allowed_use": "metadata_only",
+            "trial_state": "needs_owner_gate",
+            "proposed_source_item_id": "source_wechat_metadata_signal_001",
+            "terms_note": "private material intake stays metadata-only until owner review approves any use",
+            "promotion_target": "source_item_v0",
+            "requires_user_gate": True,
+            "external_write_allowed": False,
+        },
+    ]
     return {
         "schema_version": CONTENT_OPS_SURFACE_SCHEMA_VERSION,
         "surface_id": "creator_ops_public_safe_demo",
@@ -242,6 +288,7 @@ def build_content_ops_surface_fixture(
         "feedback_signals": feedback_signals,
         "publish_gates": publish_gates,
         "material_memory": material_memory,
+        "connector_trials": connector_trials,
         "operator_states": [
             "waiting_for_source_review",
             "ready_to_draft",
@@ -268,6 +315,7 @@ def validate_content_ops_surface(surface: Mapping[str, Any]) -> dict[str, Any]:
     feedback_signals = _as_mappings(surface.get("feedback_signals"))  # type: ignore[arg-type]
     publish_gates = _as_mappings(surface.get("publish_gates"))  # type: ignore[arg-type]
     material_memory = _as_mappings(surface.get("material_memory"))  # type: ignore[arg-type]
+    connector_trials = _as_mappings(surface.get("connector_trials"))  # type: ignore[arg-type]
 
     errors: list[str] = []
     source_ids = _ids(source_items, "source_item_id")
@@ -289,6 +337,8 @@ def validate_content_ops_surface(surface: Mapping[str, Any]) -> dict[str, Any]:
         errors.append("at least one publish_gate_v0 record is required")
     if not material_memory:
         errors.append("at least one material_memory_v0 record is required")
+    if not connector_trials:
+        errors.append("at least one connector_trial_v0 record is required")
 
     for item in source_items:
         if item.get("schema_version") != SOURCE_ITEM_SCHEMA_VERSION:
@@ -368,6 +418,40 @@ def validate_content_ops_surface(surface: Mapping[str, Any]) -> dict[str, Any]:
         if source_id not in source_ids:
             errors.append(f"memory {item.get('memory_id')} references unknown source")
 
+    for item in connector_trials:
+        if item.get("schema_version") != CONNECTOR_TRIAL_SCHEMA_VERSION:
+            errors.append(f"connector trial {item.get('trial_id')} has wrong schema")
+        if item.get("source_status") not in ALLOWED_SOURCE_STATUSES:
+            errors.append(
+                f"connector trial {item.get('trial_id')} has invalid source_status"
+            )
+        if item.get("freshness") not in ALLOWED_FRESHNESS:
+            errors.append(
+                f"connector trial {item.get('trial_id')} has invalid freshness"
+            )
+        if item.get("allowed_use") not in ALLOWED_USE_POLICIES:
+            errors.append(
+                f"connector trial {item.get('trial_id')} has invalid allowed_use"
+            )
+        if item.get("trial_state") not in ALLOWED_CONNECTOR_TRIAL_STATES:
+            errors.append(
+                f"connector trial {item.get('trial_id')} has invalid trial_state"
+            )
+        if item.get("access_mode") not in ALLOWED_CONNECTOR_ACCESS_MODES:
+            errors.append(
+                f"connector trial {item.get('trial_id')} has invalid access_mode"
+            )
+        if item.get("external_write_allowed") is not False:
+            errors.append(
+                f"connector trial {item.get('trial_id')} must keep external_write_allowed=false"
+            )
+        if item.get("access_mode") == "private_metadata_only" and item.get(
+            "requires_user_gate"
+        ) is not True:
+            errors.append(
+                f"connector trial {item.get('trial_id')} must gate private metadata use"
+            )
+
     boundary = surface.get("boundary") if isinstance(surface.get("boundary"), Mapping) else {}
     if boundary.get("public_safe") is not True:
         errors.append("boundary.public_safe must be true")
@@ -390,6 +474,7 @@ def validate_content_ops_surface(surface: Mapping[str, Any]) -> dict[str, Any]:
         feedback_signals,
         publish_gates,
         material_memory,
+        connector_trials,
     )
     if raw_key_names:
         errors.append(
@@ -407,6 +492,7 @@ def validate_content_ops_surface(surface: Mapping[str, Any]) -> dict[str, Any]:
             "feedback_signals": len(feedback_signals),
             "publish_gates": len(publish_gates),
             "material_memory": len(material_memory),
+            "connector_trials": len(connector_trials),
         },
         "raw_material_key_names": raw_key_names,
     }
@@ -421,6 +507,7 @@ def project_content_ops_surface(surface: Mapping[str, Any]) -> dict[str, Any]:
     feedback_signals = _as_mappings(surface.get("feedback_signals"))  # type: ignore[arg-type]
     publish_gates = _as_mappings(surface.get("publish_gates"))  # type: ignore[arg-type]
     material_memory = _as_mappings(surface.get("material_memory"))  # type: ignore[arg-type]
+    connector_trials = _as_mappings(surface.get("connector_trials"))  # type: ignore[arg-type]
     validation = validate_content_ops_surface(surface)
 
     source_review_required = [
@@ -501,6 +588,40 @@ def project_content_ops_surface(surface: Mapping[str, Any]) -> dict[str, Any]:
                 "validation_surface": "publish gate decision recorded",
             }
         )
+    runnable_connector_trials = [
+        item
+        for item in connector_trials
+        if item.get("trial_state") == "ready_for_metadata_trial"
+        and item.get("external_write_allowed") is False
+    ]
+    gated_connector_trials = [
+        item for item in connector_trials if item.get("requires_user_gate") is True
+    ]
+    if runnable_connector_trials:
+        todo_candidates.append(
+            {
+                "role": "agent",
+                "action_kind": "content_ops_connector_metadata_trial",
+                "title": "Run a connector metadata-only observation trial",
+                "trial_ids": [
+                    str(item.get("trial_id")) for item in runnable_connector_trials
+                ],
+                "validation_surface": (
+                    "compact source_item_v0 produced; no raw platform or private material"
+                ),
+                "stop_condition": "stop before login-gated reads, posting, or private source use",
+            }
+        )
+    if gated_connector_trials:
+        todo_candidates.append(
+            {
+                "role": "user",
+                "action_kind": "content_ops_connector_owner_gate",
+                "title": "Approve or reject private connector metadata intake",
+                "trial_ids": [str(item.get("trial_id")) for item in gated_connector_trials],
+                "validation_surface": "connector trial gate decision recorded",
+            }
+        )
 
     return {
         "schema_version": CONTENT_OPS_SURFACE_PROJECTION_SCHEMA_VERSION,
@@ -523,6 +644,14 @@ def project_content_ops_surface(surface: Mapping[str, Any]) -> dict[str, Any]:
         "draft_states": _counter(item.get("state") for item in draft_items),
         "feedback_effects": feedback_effects,
         "publish_gate_statuses": _counter(item.get("status") for item in publish_gates),
+        "connector_trials": {
+            "count": len(connector_trials),
+            "states": _counter(item.get("trial_state") for item in connector_trials),
+            "access_modes": _counter(item.get("access_mode") for item in connector_trials),
+            "surfaces": _counter(item.get("surface") for item in connector_trials),
+            "ready_for_metadata_trial_count": len(runnable_connector_trials),
+            "owner_gate_required_count": len(gated_connector_trials),
+        },
         "material_memory": {
             "count": len(material_memory),
             "reuse_boundaries": _counter(

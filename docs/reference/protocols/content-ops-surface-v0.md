@@ -26,6 +26,7 @@ The surface is intentionally a meta layer over the generic LoopX model:
 | `feedback_signal_v0` | User or operator feedback with a typed effect: preference hint, source boundary correction, rewrite todo, or publish decision. |
 | `publish_gate_v0` | Human approval state for external posting. Draft existence never allows autopublish. |
 | `material_memory_v0` | Durable source-safe library entry with attribution, reuse boundary, rejected angles, and preference hints. |
+| `connector_trial_v0` | Metadata-only trial plan for a browser, chat, document, or platform connector before LoopX ingests real source records. |
 
 ## Source Status
 
@@ -49,6 +50,26 @@ This keeps connector output from becoming raw evidence by accident. Browser,
 chat, platform, and document connectors own raw retrieval; LoopX stores only the
 compact source contract.
 
+## Connector Trials
+
+`connector_trial_v0` lets an operator start testing a real connector without
+turning LoopX into a scraper, publisher, or private archive reader. The trial
+records only the connector handle, source status, freshness, allowed use, trial
+state, promotion target, and gates.
+
+The first creator-ops trial surface covers two suggested connector routes:
+
+- X via `ego-lite browser`: public/terms-aware signal intake with
+  `access_mode=public_metadata_only`, no posting, no login-gated timeline dump,
+  and promotion only to compact `source_item_v0` records.
+- WeChat via `chatlog-alpha/chatview`: private-needs-review material intake with
+  `access_mode=private_metadata_only`; LoopX stores metadata-only signals until
+  the owner explicitly approves source use.
+
+Every connector trial must set `external_write_allowed=false`. Private or
+metadata-only trials must expose a user gate before source body use, quoting, or
+publication.
+
 ## Projection
 
 `content_ops_surface_projection_v0` is the first-screen status view derived from
@@ -57,6 +78,7 @@ the compact surface. It should include:
 - `first_screen.waiting_on`: `user`, `operator`, or `agent`;
 - counts for source review, ready-to-draft angles, feedback waits, and publish
   decisions;
+- connector-trial counts by state, access mode, and owner gate;
 - `todo_candidates` that can promote into normal LoopX todos;
 - source-status, draft-state, feedback-effect, and publish-gate counts;
 - validation result and public/private boundary result;
@@ -100,5 +122,5 @@ python3 examples/content-ops-surface-fixture-smoke.py
 ```
 
 The smoke checks record coverage, source/draft/gate references, first-screen
-projection fields, todo candidates, no-autopublish policy, and public/private
-boundary hygiene.
+projection fields, connector metadata-trial routing, todo candidates,
+no-autopublish policy, and public/private boundary hygiene.
