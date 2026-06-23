@@ -49,7 +49,7 @@ STARTER_COMMAND_OWNERS = {
 }
 
 ADD_PARSER_RE = re.compile(
-    r"\.add_parser\(\s*(?:\n\s*)?[\"'](?P<command>[^\"']+)[\"']",
+    r"(?P<receiver>\w+)\.add_parser\(\s*(?:\n\s*)?[\"'](?P<command>[^\"']+)[\"']",
     re.MULTILINE,
 )
 
@@ -105,6 +105,8 @@ def command_registrations() -> dict[str, list[str]]:
     registrations: dict[str, list[str]] = {}
     for path in python_modules():
         for match in ADD_PARSER_RE.finditer(source(path)):
+            if match.group("receiver") != "subparsers":
+                continue
             registrations.setdefault(match.group("command"), []).append(path.name)
     return registrations
 

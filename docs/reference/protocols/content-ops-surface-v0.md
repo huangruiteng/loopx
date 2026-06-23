@@ -182,6 +182,18 @@ emits a `loopx_todo_writeback_preview_v0` candidate for the agent todo, but it
 does not write the todo unless a later command explicitly executes that
 writeback.
 
+Metadata preview is only the intake surface. The issue-fix product path should
+continue to an executable acceptance loop:
+
+```bash
+loopx issue-fix acceptance-fixture --format json
+```
+
+That command returns `issue_fix_acceptance_loop_v0` with a validated fix
+artifact: failing repro, minimal patch, passing focused validation, and a
+PR-review-ready evidence packet. See
+[`issue_fix_acceptance_loop_v0`](issue-fix-acceptance-loop-v0.md).
+
 The first reusable public connector adapter is the public-handle observation
 command:
 
