@@ -1319,6 +1319,44 @@ def _agent_claim_scoped_open_items(
     return selectable_items, claim_scope
 
 
+def _agent_scope_filter_user_gate_items(
+    open_items: list[dict[str, Any]],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
+    if not isinstance(agent_identity, dict):
+        return open_items, [], None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return open_items, [], None
+
+    current_agent_items: list[dict[str, Any]] = []
+    other_agent_scoped_items: list[dict[str, Any]] = []
+    for item in open_items:
+        blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+        if blocks_agent and blocks_agent != agent_id:
+            other_agent_scoped_items.append(item)
+            continue
+        current_agent_items.append(item)
+    if not other_agent_scoped_items:
+        return open_items, [], None
+
+    return (
+        current_agent_items,
+        other_agent_scoped_items,
+        {
+            "schema_version": "agent_scoped_user_gate_filter_v0",
+            "agent_id": agent_id,
+            "policy": (
+                "user todos with blocks_agent set to another registered agent "
+                "remain visible but do not block this agent's quota lane"
+            ),
+            "current_agent_blocking_open_count": len(current_agent_items),
+            "other_agent_scoped_open_count": len(other_agent_scoped_items),
+        },
+    )
+
+
 def _todo_summary_visibility_lanes(
     open_items: list[dict[str, Any]],
     *,
@@ -1582,6 +1620,7 @@ def _summarize_user_todos(
     value: Any,
     *,
     agent_identity: dict[str, Any] | None = None,
+    filter_user_gate_blocks_agent: bool = False,
 ) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
@@ -1589,8 +1628,20 @@ def _summarize_user_todos(
         _todo_summary_source_items(value),
         key=_todo_projection_sort_key,
     )
+    blocking_open_items = all_open_items
+    other_agent_scoped_items: list[dict[str, Any]] = []
+    agent_scope_filter: dict[str, Any] | None = None
+    if filter_user_gate_blocks_agent:
+        (
+            blocking_open_items,
+            other_agent_scoped_items,
+            agent_scope_filter,
+        ) = _agent_scope_filter_user_gate_items(
+            all_open_items,
+            agent_identity=agent_identity,
+        )
     open_items, claim_scope = _agent_claim_scoped_open_items(
-        all_open_items,
+        blocking_open_items,
         agent_identity=agent_identity,
     )
     executable_items = [
@@ -1605,17 +1656,20 @@ def _summarize_user_todos(
         if _todo_item_is_actionable_open(item)
         if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
-    claimed_open_items = [item for item in all_open_items if item.get("claimed_by")]
+    claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
     gate_items = [
         item
         for item in open_items
         if _is_user_gate_todo_item(item)
     ]
+    open_count = value.get("open_count", len(all_open_items))
+    if agent_scope_filter is not None:
+        open_count = len(blocking_open_items)
     summary = {
         "schema_version": value.get("schema_version"),
         "source_section": value.get("source_section"),
         "total_count": value.get("total_count"),
-        "open_count": value.get("open_count", len(all_open_items)),
+        "open_count": open_count,
         "done_count": value.get("done_count"),
         "first_open_items": open_items[:3],
         "first_executable_items": executable_items[:3],
@@ -1626,86 +1680,7 @@ def _summarize_user_todos(
     }
     summary.update(
         _todo_summary_visibility_lanes(
-            all_open_items,
-            agent_identity=agent_identity,
-        )
-    )
-    summary.update(
-        _deferred_visibility_lanes(
-            value,
-            agent_identity=agent_identity,
-        )
-    )
-    if claimed_open_items or value.get("claimed_open_count"):
-        summary["claimed_open_count"] = value.get("claimed_open_count", len(claimed_open_items))
-        summary["unclaimed_open_count"] = value.get(
-            "unclaimed_open_count",
-            max(0, int(value.get("open_count", len(all_open_items)) or 0) - len(claimed_open_items)),
-        )
-    if claim_scope:
-        summary["claim_scope"] = claim_scope
-    return summary
-
-
-def _summarize_project_asset_todos(
-    value: Any,
-    *,
-    agent_identity: dict[str, Any] | None = None,
-) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    if (
-        isinstance(value.get("items"), list)
-        or isinstance(value.get("first_open_items"), list)
-    ) and (
-        "total_count" in value or "open_count" in value or "done_count" in value
-    ):
-        return _summarize_user_todos(value, agent_identity=agent_identity)
-
-    all_open_items = sorted(
-        _todo_summary_source_items(value),
-        key=_todo_projection_sort_key,
-    )
-    if not all_open_items:
-        next_text = str(value.get("next") or "").strip()
-        next_index = value.get("next_index", 1)
-        all_open_items = [{"index": next_index, "text": next_text}] if next_text else []
-        next_claimed_by = str(value.get("next_claimed_by") or "").strip()
-        if all_open_items and next_claimed_by:
-            all_open_items[0]["claimed_by"] = next_claimed_by
-    open_items, claim_scope = _agent_claim_scoped_open_items(
-        all_open_items,
-        agent_identity=agent_identity,
-    )
-    executable_items = [
-        item
-        for item in open_items
-        if _todo_item_is_actionable_open(item)
-        if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-    ]
-    monitor_items = [
-        item
-        for item in open_items
-        if _todo_item_is_actionable_open(item)
-        if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
-    ]
-    claimed_open_items = [item for item in all_open_items if item.get("claimed_by")]
-    open_count = value.get("open", value.get("open_count", len(all_open_items)))
-    summary = {
-        "schema_version": value.get("schema_version"),
-        "source_section": value.get("source_section") or "project_asset",
-        "total_count": value.get("total", value.get("total_count")),
-        "open_count": open_count,
-        "done_count": value.get("done", value.get("done_count")),
-        "first_open_items": open_items[:3],
-        "first_executable_items": executable_items[:3],
-        "monitor_open_items": monitor_items,
-        "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
-        "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
-    }
-    summary.update(
-        _todo_summary_visibility_lanes(
-            all_open_items,
+            blocking_open_items,
             agent_identity=agent_identity,
         )
     )
@@ -1723,6 +1698,120 @@ def _summarize_project_asset_todos(
         )
     if claim_scope:
         summary["claim_scope"] = claim_scope
+    if agent_scope_filter:
+        summary["agent_scope_filter"] = agent_scope_filter
+        summary["all_open_count"] = value.get("open_count", len(all_open_items))
+        summary["other_agent_scoped_open_count"] = len(other_agent_scoped_items)
+        summary["other_agent_scoped_items"] = [
+            _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+            for item in other_agent_scoped_items[:TODO_VISIBILITY_LANE_LIMIT]
+        ]
+    return summary
+
+
+def _summarize_project_asset_todos(
+    value: Any,
+    *,
+    agent_identity: dict[str, Any] | None = None,
+    filter_user_gate_blocks_agent: bool = False,
+) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    if (
+        isinstance(value.get("items"), list)
+        or isinstance(value.get("first_open_items"), list)
+    ) and (
+        "total_count" in value or "open_count" in value or "done_count" in value
+    ):
+        return _summarize_user_todos(
+            value,
+            agent_identity=agent_identity,
+            filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
+        )
+
+    all_open_items = sorted(
+        _todo_summary_source_items(value),
+        key=_todo_projection_sort_key,
+    )
+    if not all_open_items:
+        next_text = str(value.get("next") or "").strip()
+        next_index = value.get("next_index", 1)
+        all_open_items = [{"index": next_index, "text": next_text}] if next_text else []
+        next_claimed_by = str(value.get("next_claimed_by") or "").strip()
+        if all_open_items and next_claimed_by:
+            all_open_items[0]["claimed_by"] = next_claimed_by
+    blocking_open_items = all_open_items
+    other_agent_scoped_items: list[dict[str, Any]] = []
+    agent_scope_filter: dict[str, Any] | None = None
+    if filter_user_gate_blocks_agent:
+        (
+            blocking_open_items,
+            other_agent_scoped_items,
+            agent_scope_filter,
+        ) = _agent_scope_filter_user_gate_items(
+            all_open_items,
+            agent_identity=agent_identity,
+        )
+    open_items, claim_scope = _agent_claim_scoped_open_items(
+        blocking_open_items,
+        agent_identity=agent_identity,
+    )
+    executable_items = [
+        item
+        for item in open_items
+        if _todo_item_is_actionable_open(item)
+        if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+    ]
+    monitor_items = [
+        item
+        for item in open_items
+        if _todo_item_is_actionable_open(item)
+        if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
+    ]
+    claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
+    open_count = value.get("open", value.get("open_count", len(all_open_items)))
+    if agent_scope_filter is not None:
+        open_count = len(blocking_open_items)
+    summary = {
+        "schema_version": value.get("schema_version"),
+        "source_section": value.get("source_section") or "project_asset",
+        "total_count": value.get("total", value.get("total_count")),
+        "open_count": open_count,
+        "done_count": value.get("done", value.get("done_count")),
+        "first_open_items": open_items[:3],
+        "first_executable_items": executable_items[:3],
+        "monitor_open_items": monitor_items,
+        "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
+        "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
+    }
+    summary.update(
+        _todo_summary_visibility_lanes(
+            blocking_open_items,
+            agent_identity=agent_identity,
+        )
+    )
+    summary.update(
+        _deferred_visibility_lanes(
+            value,
+            agent_identity=agent_identity,
+        )
+    )
+    if claimed_open_items or value.get("claimed_open_count"):
+        summary["claimed_open_count"] = value.get("claimed_open_count", len(claimed_open_items))
+        summary["unclaimed_open_count"] = value.get(
+            "unclaimed_open_count",
+            max(0, int(open_count or 0) - len(claimed_open_items)),
+        )
+    if claim_scope:
+        summary["claim_scope"] = claim_scope
+    if agent_scope_filter:
+        summary["agent_scope_filter"] = agent_scope_filter
+        summary["all_open_count"] = value.get("open", value.get("open_count", len(all_open_items)))
+        summary["other_agent_scoped_open_count"] = len(other_agent_scoped_items)
+        summary["other_agent_scoped_items"] = [
+            _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+            for item in other_agent_scoped_items[:TODO_VISIBILITY_LANE_LIMIT]
+        ]
     return summary
 
 
@@ -1742,14 +1831,17 @@ def _select_todo_summary(
     project_asset_value: Any,
     *,
     agent_identity: dict[str, Any] | None = None,
+    filter_user_gate_blocks_agent: bool = False,
 ) -> dict[str, Any] | None:
     canonical_summary = _summarize_user_todos(
         canonical_value,
         agent_identity=agent_identity,
+        filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
     )
     project_asset_summary = _summarize_project_asset_todos(
         project_asset_value,
         agent_identity=agent_identity,
+        filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
     )
     if _is_canonical_attention_todo_summary(canonical_value):
         return canonical_summary or project_asset_summary
@@ -2002,6 +2094,48 @@ def _first_executable_todo_text(agent_todo_summary: dict[str, Any] | None) -> st
         if text:
             return text
     return None
+
+
+def _agent_scoped_user_gate_override(
+    *,
+    state: str,
+    item: dict[str, Any],
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    agent_identity: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if state != "operator_gate":
+        return None
+    if not isinstance(agent_identity, dict):
+        return None
+    if not isinstance(user_todo_summary, dict):
+        return None
+    if _open_todo_count(user_todo_summary) > 0:
+        return None
+    other_count = _open_todo_count(
+        {"open_count": user_todo_summary.get("other_agent_scoped_open_count")}
+    )
+    if other_count <= 0:
+        return None
+    if item.get("operator_question") or item.get("missing_gates"):
+        return None
+    selected_action = _first_executable_todo_text(agent_todo_summary)
+    if not selected_action:
+        return None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    return {
+        "schema_version": "agent_scoped_user_gate_override_v0",
+        "kind": "agent_scoped_user_gate_override",
+        "agent_id": agent_id,
+        "from_state": "operator_gate",
+        "to_state": "eligible",
+        "other_agent_scoped_open_count": other_count,
+        "selected_action": selected_action,
+        "reason": (
+            "the open user gate is scoped to another agent via blocks_agent; "
+            "this agent still has an executable in-scope todo"
+        ),
+    }
 
 
 def _agent_lane_next_action(
@@ -5364,12 +5498,35 @@ def build_quota_should_run(
         user_todo_summary = _select_todo_summary(
             item.get("user_todos"),
             project_asset.get("user_todos") if project_asset else None,
+            agent_identity=agent_identity,
+            filter_user_gate_blocks_agent=True,
         )
         agent_todo_summary = _select_todo_summary(
             item.get("agent_todos"),
             project_asset.get("agent_todos") if project_asset else None,
             agent_identity=agent_identity,
         )
+        agent_scoped_user_gate_override = _agent_scoped_user_gate_override(
+            state=state,
+            item=item,
+            user_todo_summary=user_todo_summary,
+            agent_todo_summary=agent_todo_summary,
+            agent_identity=agent_identity,
+        )
+        if agent_scoped_user_gate_override:
+            quota = {
+                **quota,
+                "state": "eligible",
+                "agent_scoped_user_gate_override": agent_scoped_user_gate_override,
+                "reason": agent_scoped_user_gate_override["reason"],
+            }
+            state = "eligible"
+            normal_delivery_allowed = bool(plan.get("ok"))
+            recovery_allowed = _recovery_delivery_allowed(
+                quota,
+                plan_ok=bool(plan.get("ok")),
+            )
+            reason = str(agent_scoped_user_gate_override["reason"])
         outcome_floor_blocker_projected = (
             recovery_allowed
             and _outcome_floor_blocker_already_projected(agent_todo_summary)
@@ -5790,6 +5947,8 @@ def build_quota_should_run(
             payload["workspace_guard"] = workspace_guard
         if automation_prompt_upgrade:
             payload["automation_prompt_upgrade"] = automation_prompt_upgrade
+        if agent_scoped_user_gate_override:
+            payload["agent_scoped_user_gate_override"] = agent_scoped_user_gate_override
         if work_lane_contract:
             payload["work_lane_contract"] = work_lane_contract
         if capability_gate:
