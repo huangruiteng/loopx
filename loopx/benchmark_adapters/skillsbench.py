@@ -1996,6 +1996,31 @@ def _skillsbench_controller_trace_counters(
         "native_goal_worker_assistant_message_present_count": count(
             "native_goal_worker_assistant_message_present_count"
         ),
+        "remote_command_file_bridge_consumed_by_solver": controller_trace.get(
+            "remote_command_file_bridge_consumed_by_solver"
+        )
+        is True,
+        "remote_command_file_bridge_solver_trace_dir_present": controller_trace.get(
+            "remote_command_file_bridge_solver_trace_dir_present"
+        )
+        is True,
+        "remote_command_file_bridge_solver_public_trace_read": controller_trace.get(
+            "remote_command_file_bridge_solver_public_trace_read"
+        )
+        is True,
+        "remote_command_file_bridge_solver_raw_material_recorded": controller_trace.get(
+            "remote_command_file_bridge_solver_raw_material_recorded"
+        )
+        is True,
+        "remote_command_file_bridge_solver_trace_count": count(
+            "remote_command_file_bridge_solver_trace_count"
+        ),
+        "remote_command_file_bridge_solver_probe_ready_count": count(
+            "remote_command_file_bridge_solver_probe_ready_count"
+        ),
+        "remote_command_file_bridge_solver_operation_count": count(
+            "remote_command_file_bridge_solver_operation_count"
+        ),
         "heartbeat_count": count("heartbeat_count"),
         "raw_task_text_recorded": controller_trace.get("raw_task_text_recorded")
         is True,
@@ -3230,6 +3255,42 @@ def build_skillsbench_benchflow_result_benchmark_run(
                     "native_goal_worker_assistant_message_present_count", 0
                 )
             ),
+            "remote_command_file_bridge_consumed_by_solver": (
+                controller_counters.get(
+                    "remote_command_file_bridge_consumed_by_solver", False
+                )
+            ),
+            "remote_command_file_bridge_solver_trace_dir_present": (
+                controller_counters.get(
+                    "remote_command_file_bridge_solver_trace_dir_present", False
+                )
+            ),
+            "remote_command_file_bridge_solver_public_trace_read": (
+                controller_counters.get(
+                    "remote_command_file_bridge_solver_public_trace_read", False
+                )
+            ),
+            "remote_command_file_bridge_solver_raw_material_recorded": (
+                controller_counters.get(
+                    "remote_command_file_bridge_solver_raw_material_recorded",
+                    False,
+                )
+            ),
+            "remote_command_file_bridge_solver_trace_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_solver_trace_count", 0
+                )
+            ),
+            "remote_command_file_bridge_solver_probe_ready_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_solver_probe_ready_count", 0
+                )
+            ),
+            "remote_command_file_bridge_solver_operation_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_solver_operation_count", 0
+                )
+            ),
             "loopx_case_state_path_count": trajectory_summary.get(
                 "loopx_case_state_path_count", 0
             ),
@@ -3317,6 +3378,31 @@ def build_skillsbench_benchflow_result_benchmark_run(
                 "native_goal_worker_prompt_received_count", 0
             ),
             "native_goal_worker_trace_status": native_goal_worker_trace_status,
+            "remote_command_file_bridge_consumed_by_solver": (
+                controller_counters.get(
+                    "remote_command_file_bridge_consumed_by_solver", False
+                )
+            ),
+            "remote_command_file_bridge_solver_public_trace_read": (
+                controller_counters.get(
+                    "remote_command_file_bridge_solver_public_trace_read", False
+                )
+            ),
+            "remote_command_file_bridge_solver_trace_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_solver_trace_count", 0
+                )
+            ),
+            "remote_command_file_bridge_solver_probe_ready_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_solver_probe_ready_count", 0
+                )
+            ),
+            "remote_command_file_bridge_solver_operation_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_solver_operation_count", 0
+                )
+            ),
         },
         "authorization": {
             "real_case_execution_authorized": True,

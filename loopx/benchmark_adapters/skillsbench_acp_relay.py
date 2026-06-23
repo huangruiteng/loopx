@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from loopx.benchmark_adapters.skillsbench_remote_bridge import (
+    run_skillsbench_remote_command_file_bridge_probe,
+)
+
 
 SKILLSBENCH_LOCAL_ACP_RELAY_SCHEMA_VERSION = "skillsbench_local_acp_relay_v0"
 SKILLSBENCH_LOCAL_ACP_RELAY_PROBE_SCHEMA_VERSION = (
@@ -61,6 +65,7 @@ class CodexExecConfig:
     codex_bin: str = "codex"
     sandbox: str = "workspace-write"
     model: str | None = None
+    route: str = "unknown"
     timeout_sec: int = 7200
     dry_run_response: str | None = None
     app_server_goal_worker: bool = False
@@ -72,6 +77,8 @@ class CodexExecConfig:
     stream_heartbeat_interval_sec: float = 120.0
     reasoning_effort: str | None = "high"
     worker_public_trace_dir: str | None = None
+    remote_command_file_bridge_command: str | None = None
+    remote_command_file_bridge_timeout_sec: float = 10.0
 
 
 class SkillsBenchLocalAcpRelay:
@@ -208,9 +215,23 @@ class SkillsBenchLocalAcpRelay:
                 session_id=session_id,
                 stdout=stdout,
             )
-        cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
         with tempfile.TemporaryDirectory(prefix="gh-skillsbench-acp-") as tmp:
-            output_path = Path(tmp) / "last-message.txt"
+            tmp_path = Path(tmp)
+            output_path = tmp_path / "last-message.txt"
+            prompt_for_codex = prompt_text
+            cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
+            if self._config.remote_command_file_bridge_command:
+                bridge_probe = self._consume_remote_bridge_for_solver()
+                self._publish_remote_bridge_consumption_trace(bridge_probe)
+                if bridge_probe.get("ready") is not True:
+                    raise RuntimeError("remote command/file bridge probe failed")
+                local_cwd = tmp_path / "local-codex-cwd"
+                local_cwd.mkdir(parents=True, exist_ok=True)
+                cwd = str(local_cwd)
+                prompt_for_codex = self._prompt_with_remote_bridge_packet(
+                    prompt_text,
+                    bridge_probe=bridge_probe,
+                )
             cmd = [
                 self._config.codex_bin,
                 "exec",
@@ -227,7 +248,7 @@ class SkillsBenchLocalAcpRelay:
             model = self._config.model or session.get("model")
             if model:
                 cmd.extend(["--model", str(model)])
-            cmd.append(prompt_text)
+            cmd.append(prompt_for_codex)
             try:
                 proc = subprocess.run(
                     cmd,
@@ -246,6 +267,83 @@ class SkillsBenchLocalAcpRelay:
             except OSError as exc:
                 raise RuntimeError("local codex final message missing") from exc
             return response or "local codex returned an empty final message"
+
+    def _consume_remote_bridge_for_solver(self) -> dict[str, Any]:
+        return run_skillsbench_remote_command_file_bridge_probe(
+            self._config.remote_command_file_bridge_command,
+            timeout_sec=self._config.remote_command_file_bridge_timeout_sec,
+        )
+
+    def _prompt_with_remote_bridge_packet(
+        self,
+        prompt_text: str,
+        *,
+        bridge_probe: dict[str, Any],
+    ) -> str:
+        operation_count = bridge_probe.get("operation_count")
+        if not isinstance(operation_count, int) or isinstance(operation_count, bool):
+            operation_count = 0
+        bridge_command = self._config.remote_command_file_bridge_command or ""
+        packet = f"""
+
+LoopX SkillsBench remote workspace bridge:
+- This local Codex process is outside the scored SkillsBench sandbox.
+- Use the command below as a private JSON bridge for sandbox exec, file write, file read, and cleanup operations.
+- Send JSON requests on stdin and read compact JSON responses on stdout.
+- Do not upload, submit, expose credentials, quote the bridge command in final output, or record raw stdout/stderr/task text in public artifacts.
+- The bridge readiness probe completed with ready=true and operation_count={operation_count}.
+
+Private bridge command:
+{bridge_command}
+""".strip()
+        return f"{packet}\n\n{prompt_text}"
+
+    def _publish_remote_bridge_consumption_trace(
+        self,
+        bridge_probe: dict[str, Any],
+    ) -> None:
+        if not self._config.worker_public_trace_dir:
+            return
+        operation_count = bridge_probe.get("operation_count")
+        if not isinstance(operation_count, int) or isinstance(operation_count, bool):
+            operation_count = 0
+        boundary = {
+            "raw_command_recorded": bridge_probe.get("raw_command_recorded") is True,
+            "raw_stdout_recorded": bridge_probe.get("raw_stdout_recorded") is True,
+            "raw_stderr_recorded": bridge_probe.get("raw_stderr_recorded") is True,
+            "raw_task_text_recorded": bridge_probe.get("raw_task_text_recorded") is True,
+            "raw_logs_recorded": bridge_probe.get("raw_logs_recorded") is True,
+            "raw_trajectory_recorded": bridge_probe.get("raw_trajectory_recorded") is True,
+            "credential_values_recorded": (
+                bridge_probe.get("credential_values_recorded") is True
+            ),
+            "host_paths_recorded": bridge_probe.get("host_paths_recorded") is True,
+            "remote_paths_recorded": bridge_probe.get("remote_paths_recorded") is True,
+            "upload_performed": bridge_probe.get("upload_performed") is True,
+            "submit_performed": bridge_probe.get("submit_performed") is True,
+        }
+        trace = {
+            "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
+            "ok": bridge_probe.get("ready") is True,
+            "route": self._config.route,
+            "trace_kind": "remote_command_file_bridge_solver_consumption",
+            "benchmark_id": self._config.dataset,
+            "task_id": self._config.task_id,
+            "remote_command_file_bridge": {
+                "schema_version": "skillsbench_remote_command_file_bridge_solver_consumption_v0",
+                "consumed_by_solver": True,
+                "probe_ready": bridge_probe.get("ready") is True,
+                "operation_count": operation_count,
+                "first_blocker": str(bridge_probe.get("first_blocker") or "")[:120],
+                "stage": str(bridge_probe.get("stage") or "")[:80],
+                "bridge_command_invoked": (
+                    bridge_probe.get("bridge_command_invoked") is True
+                ),
+                "bridge_command_recorded": False,
+            },
+            "boundary": boundary,
+        }
+        self._write_worker_public_trace(trace)
 
     def _run_app_server_goal_worker(
         self,

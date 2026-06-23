@@ -37,6 +37,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Optional model passed to local codex exec.",
     )
     parser.add_argument(
+        "--route",
+        default="unknown",
+        help="Public route label used in compact relay trace files.",
+    )
+    parser.add_argument(
         "--timeout-sec",
         type=int,
         default=7200,
@@ -93,10 +98,26 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--worker-public-trace-dir",
         default=None,
         help=(
-            "Optional directory for public-safe host app-server Goal worker "
-            "compact traces. Response text and raw app-server streams are not "
-            "written there."
+            "Optional directory for public-safe relay or host app-server Goal "
+            "worker compact traces. Response text, bridge commands, raw "
+            "stdout/stderr, and raw app-server streams are not written there."
         ),
+    )
+    parser.add_argument(
+        "--remote-command-file-bridge-command",
+        default=None,
+        help=(
+            "Private command used by host-local ACP product-mode runs to reach "
+            "the scored SkillsBench sandbox through a bounded command/file "
+            "bridge. The command is injected only into the private solver "
+            "prompt and is never written to public compact traces."
+        ),
+    )
+    parser.add_argument(
+        "--remote-command-file-bridge-timeout-sec",
+        type=float,
+        default=10.0,
+        help="Timeout for the per-prompt remote command/file bridge readiness probe.",
     )
     return parser.parse_args(argv)
 
@@ -108,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
             codex_bin=args.codex_bin,
             sandbox=args.sandbox,
             model=args.model,
+            route=args.route,
             timeout_sec=args.timeout_sec,
             dry_run_response=args.dry_run_response,
             app_server_goal_worker=args.app_server_goal_worker,
@@ -119,6 +141,12 @@ def main(argv: list[str] | None = None) -> int:
             worker_script=args.worker_script,
             stream_heartbeat_interval_sec=args.stream_heartbeat_interval_sec,
             worker_public_trace_dir=args.worker_public_trace_dir,
+            remote_command_file_bridge_command=(
+                args.remote_command_file_bridge_command
+            ),
+            remote_command_file_bridge_timeout_sec=(
+                args.remote_command_file_bridge_timeout_sec
+            ),
         )
     )
     return relay.serve()

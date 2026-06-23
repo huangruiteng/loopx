@@ -132,6 +132,8 @@ BENCHMARK_VALIDATION_NEUTRAL_FALSE_FIELDS = {
     "native_goal_worker_trace_dir_present",
     "native_goal_worker_public_trace_read",
     "native_goal_worker_trace_observed",
+    "remote_command_file_bridge_consumed_by_solver",
+    "remote_command_file_bridge_solver_public_trace_read",
     "loopx_controller_trace_present",
     "leaderboard_claim_allowed",
     "official_score_claim_allowed",
@@ -540,6 +542,10 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "native_goal_worker_trace_dir_present",
         "native_goal_worker_public_trace_read",
         "native_goal_worker_raw_material_recorded",
+        "remote_command_file_bridge_consumed_by_solver",
+        "remote_command_file_bridge_solver_trace_dir_present",
+        "remote_command_file_bridge_solver_public_trace_read",
+        "remote_command_file_bridge_solver_raw_material_recorded",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -607,6 +613,9 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "native_goal_worker_turn_start_count",
         "native_goal_worker_turn_completed_observed_count",
         "native_goal_worker_assistant_message_present_count",
+        "remote_command_file_bridge_solver_trace_count",
+        "remote_command_file_bridge_solver_probe_ready_count",
+        "remote_command_file_bridge_solver_operation_count",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -976,6 +985,7 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_user_loop_recovery_stage",
         "benchflow_intermediate_soft_verify_policy",
         "benchflow_setup_stall_cleanup_status",
+        "remote_command_file_bridge_consumption_status",
     ):
         text = public_safe_compact_text(value.get(field), limit=180)
         if text:
@@ -995,6 +1005,12 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_agent_runtime_mount_source_recorded",
         "host_local_acp_launch",
         "remote_command_file_bridge_materialized",
+        "remote_command_file_bridge_command_configured",
+        "remote_command_file_bridge_solver_wiring_configured",
+        "remote_command_file_bridge_consumed_by_solver",
+        "remote_command_file_bridge_solver_trace_dir_present",
+        "remote_command_file_bridge_solver_public_trace_read",
+        "remote_command_file_bridge_solver_raw_material_recorded",
         "codex_app_server_goal_worker_adapter_present",
         "codex_app_server_goal_worker_turn_start_required",
         "codex_app_server_goal_worker_goal_get_required",
@@ -1042,6 +1058,9 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_cleanup_term_sent_count",
         "benchflow_setup_stall_cleanup_kill_sent_count",
         "benchflow_setup_stall_cleanup_alive_after_count",
+        "remote_command_file_bridge_solver_trace_count",
+        "remote_command_file_bridge_solver_probe_ready_count",
+        "remote_command_file_bridge_solver_operation_count",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -2163,6 +2182,10 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "native_goal_worker_trace_dir_present",
         "native_goal_worker_public_trace_read",
         "native_goal_worker_raw_material_recorded",
+        "remote_command_file_bridge_consumed_by_solver",
+        "remote_command_file_bridge_solver_trace_dir_present",
+        "remote_command_file_bridge_solver_public_trace_read",
+        "remote_command_file_bridge_solver_raw_material_recorded",
         "strict_loopx_treatment_claim_allowed",
         "controller_trace_present",
     ):
@@ -2202,6 +2225,9 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "native_goal_worker_turn_start_count",
         "native_goal_worker_turn_completed_observed_count",
         "native_goal_worker_assistant_message_present_count",
+        "remote_command_file_bridge_solver_trace_count",
+        "remote_command_file_bridge_solver_probe_ready_count",
+        "remote_command_file_bridge_solver_operation_count",
         "controller_max_round_observed",
         "controller_max_rounds_budget",
         "controller_initial_prompt_count",

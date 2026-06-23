@@ -661,6 +661,7 @@ def _host_local_acp_launch_command(
     if "--dry-run-response" in command:
         index = command.index("--dry-run-response")
         del command[index : index + 2]
+    relay_trace_dir = str(plan.get("host_local_acp_relay_trace_dir") or "")
     if args.route == "codex-app-server-goal-baseline":
         worker_trace_dir = str(plan.get("app_server_goal_worker_trace_dir") or "")
         command.extend(
@@ -682,8 +683,12 @@ def _host_local_acp_launch_command(
         )
         if worker_trace_dir:
             command.extend(["--worker-public-trace-dir", worker_trace_dir])
+    elif relay_trace_dir:
+        command.extend(["--worker-public-trace-dir", relay_trace_dir])
     command.extend(
         [
+            "--route",
+            args.route,
             "--codex-bin",
             args.local_codex_bin,
             "--sandbox",
@@ -694,6 +699,23 @@ def _host_local_acp_launch_command(
     )
     if args.model:
         command.extend(["--model", args.model])
+    if (
+        args.route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        and args.host_local_acp_launch
+        and args.remote_command_file_bridge_probe_command
+        and (
+            args.remote_command_file_bridge_ready
+            or args.remote_command_file_bridge_probe
+        )
+    ):
+        command.extend(
+            [
+                "--remote-command-file-bridge-command",
+                args.remote_command_file_bridge_probe_command,
+                "--remote-command-file-bridge-timeout-sec",
+                str(args.remote_command_file_bridge_probe_timeout_sec),
+            ]
+        )
     return command
 
 
@@ -830,6 +852,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_user_loop_recovery_stage",
         "benchflow_intermediate_soft_verify_policy",
         "benchflow_setup_stall_cleanup_status",
+        "remote_command_file_bridge_consumption_status",
     ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
@@ -843,6 +866,12 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "container_codex_acp_install_skipped",
         "benchflow_agent_install_skipped_by_runtime_layer",
         "remote_command_file_bridge_materialized",
+        "remote_command_file_bridge_command_configured",
+        "remote_command_file_bridge_solver_wiring_configured",
+        "remote_command_file_bridge_consumed_by_solver",
+        "remote_command_file_bridge_solver_trace_dir_present",
+        "remote_command_file_bridge_solver_public_trace_read",
+        "remote_command_file_bridge_solver_raw_material_recorded",
         "preinstalled_benchflow_agent_runtime_required",
         "benchflow_agent_runtime_layer_ready",
         "codex_acp_runtime_dependency_setup_skipped",
@@ -899,6 +928,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_cleanup_term_sent_count",
         "benchflow_setup_stall_cleanup_kill_sent_count",
         "benchflow_setup_stall_cleanup_alive_after_count",
+        "remote_command_file_bridge_solver_trace_count",
+        "remote_command_file_bridge_solver_probe_ready_count",
+        "remote_command_file_bridge_solver_operation_count",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -2353,6 +2385,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     app_server_goal_worker_trace_dir = (
         jobs_dir / job_name / "app_server_goal_worker_traces"
     )
+    host_local_acp_relay_trace_dir = (
+        jobs_dir / job_name / "host_local_acp_relay_traces"
+    )
     task_path = Path(args.skillsbench_root).expanduser() / "tasks" / task_id
     setup_preflight = skillsbench_task_setup_preflight(
         task_path=task_path,
@@ -2366,12 +2401,24 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         args.remote_command_file_bridge_ready
         or args.remote_command_file_bridge_probe
     )
-    remote_command_file_bridge_consumed_by_solver = False
-    remote_command_file_bridge_consumption_status = (
-        "probe_only_not_solver_wired"
-        if remote_command_file_bridge_materialized
-        else "missing"
+    remote_command_file_bridge_command_configured = bool(
+        args.remote_command_file_bridge_probe_command
     )
+    remote_command_file_bridge_solver_wiring_configured = bool(
+        args.host_local_acp_launch
+        and route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        and remote_command_file_bridge_materialized
+        and remote_command_file_bridge_command_configured
+    )
+    remote_command_file_bridge_consumed_by_solver = False
+    if remote_command_file_bridge_solver_wiring_configured:
+        remote_command_file_bridge_consumption_status = (
+            "solver_wiring_configured_pending_prompt"
+        )
+    elif remote_command_file_bridge_materialized:
+        remote_command_file_bridge_consumption_status = "probe_only_not_solver_wired"
+    else:
+        remote_command_file_bridge_consumption_status = "missing"
     app_server_goal_worker_contract = (
         build_skillsbench_app_server_goal_worker_contract(
             dataset=args.dataset,
@@ -2428,6 +2475,11 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "app_server_goal_worker_trace_dir": (
             str(app_server_goal_worker_trace_dir)
             if is_app_server_goal_route
+            else ""
+        ),
+        "host_local_acp_relay_trace_dir": (
+            str(host_local_acp_relay_trace_dir)
+            if args.host_local_acp_launch and not is_app_server_goal_route
             else ""
         ),
         "ledger_path": str(Path(args.ledger_path).expanduser()),
@@ -2505,12 +2557,24 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "remote_command_file_bridge_materialized": bool(
                 remote_command_file_bridge_materialized
             ),
+            "remote_command_file_bridge_command_configured": bool(
+                remote_command_file_bridge_command_configured
+            ),
+            "remote_command_file_bridge_solver_wiring_configured": bool(
+                remote_command_file_bridge_solver_wiring_configured
+            ),
             "remote_command_file_bridge_consumed_by_solver": (
                 remote_command_file_bridge_consumed_by_solver
             ),
             "remote_command_file_bridge_consumption_status": (
                 remote_command_file_bridge_consumption_status
             ),
+            "remote_command_file_bridge_solver_trace_dir_present": False,
+            "remote_command_file_bridge_solver_public_trace_read": False,
+            "remote_command_file_bridge_solver_raw_material_recorded": False,
+            "remote_command_file_bridge_solver_trace_count": 0,
+            "remote_command_file_bridge_solver_probe_ready_count": 0,
+            "remote_command_file_bridge_solver_operation_count": 0,
             "preinstalled_benchflow_agent_runtime_required": (
                 requires_preinstalled_runtime
             ),
@@ -3121,6 +3185,118 @@ def _merge_app_server_goal_worker_trace_summary(
     trace["native_goal_worker_raw_material_recorded"] = raw_material_recorded
     if worker_trace_count:
         trace["last_decision"] = "host_app_server_goal_worker_trace_recorded"
+
+
+def _merge_host_local_acp_relay_trace_summary(
+    plan: dict[str, Any],
+    trace: dict[str, Any] | None,
+) -> None:
+    if not isinstance(trace, dict):
+        return
+    raw_trace_dir = plan.get("host_local_acp_relay_trace_dir")
+    if not isinstance(raw_trace_dir, str) or not raw_trace_dir.strip():
+        return
+    trace_dir = Path(raw_trace_dir)
+    files = sorted(trace_dir.glob("*.compact.json")) if trace_dir.exists() else []
+    solver_trace_count = 0
+    probe_ready_count = 0
+    operation_count = 0
+    raw_material_recorded = False
+    for path in files:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if (
+            payload.get("schema_version")
+            != "skillsbench_host_local_acp_relay_public_trace_v0"
+        ):
+            continue
+        if payload.get("trace_kind") != "remote_command_file_bridge_solver_consumption":
+            continue
+        bridge = (
+            payload.get("remote_command_file_bridge")
+            if isinstance(payload.get("remote_command_file_bridge"), dict)
+            else {}
+        )
+        solver_trace_count += 1
+        if bridge.get("probe_ready") is True:
+            probe_ready_count += 1
+        bridge_operations = bridge.get("operation_count")
+        if isinstance(bridge_operations, int) and not isinstance(
+            bridge_operations, bool
+        ):
+            operation_count += max(0, bridge_operations)
+        boundary = (
+            payload.get("boundary")
+            if isinstance(payload.get("boundary"), dict)
+            else {}
+        )
+        raw_material_recorded = raw_material_recorded or any(
+            boundary.get(field) is True
+            for field in (
+                "raw_command_recorded",
+                "raw_stdout_recorded",
+                "raw_stderr_recorded",
+                "raw_task_text_recorded",
+                "raw_logs_recorded",
+                "raw_trajectory_recorded",
+                "credential_values_recorded",
+                "host_paths_recorded",
+                "remote_paths_recorded",
+                "upload_performed",
+                "submit_performed",
+            )
+        )
+    consumed_by_solver = solver_trace_count > 0 and probe_ready_count > 0
+    trace["remote_command_file_bridge_solver_trace_dir_present"] = trace_dir.exists()
+    trace["remote_command_file_bridge_solver_public_trace_read"] = (
+        solver_trace_count > 0
+    )
+    trace["remote_command_file_bridge_consumed_by_solver"] = consumed_by_solver
+    trace["remote_command_file_bridge_solver_trace_count"] = solver_trace_count
+    trace["remote_command_file_bridge_solver_probe_ready_count"] = probe_ready_count
+    trace["remote_command_file_bridge_solver_operation_count"] = operation_count
+    trace["remote_command_file_bridge_solver_raw_material_recorded"] = (
+        raw_material_recorded
+    )
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    prerequisites["remote_command_file_bridge_solver_trace_dir_present"] = (
+        trace_dir.exists()
+    )
+    prerequisites["remote_command_file_bridge_solver_public_trace_read"] = (
+        solver_trace_count > 0
+    )
+    prerequisites["remote_command_file_bridge_consumed_by_solver"] = (
+        consumed_by_solver
+    )
+    prerequisites["remote_command_file_bridge_solver_trace_count"] = (
+        solver_trace_count
+    )
+    prerequisites["remote_command_file_bridge_solver_probe_ready_count"] = (
+        probe_ready_count
+    )
+    prerequisites["remote_command_file_bridge_solver_operation_count"] = (
+        operation_count
+    )
+    prerequisites["remote_command_file_bridge_solver_raw_material_recorded"] = (
+        raw_material_recorded
+    )
+    if consumed_by_solver:
+        prerequisites["remote_command_file_bridge_consumption_status"] = (
+            "solver_prompt_probe_ready"
+        )
+        trace["last_decision"] = "remote_command_file_bridge_solver_trace_recorded"
+    elif solver_trace_count:
+        prerequisites["remote_command_file_bridge_consumption_status"] = (
+            "solver_prompt_probe_failed"
+        )
+    elif prerequisites.get("remote_command_file_bridge_solver_wiring_configured"):
+        prerequisites["remote_command_file_bridge_consumption_status"] = (
+            "solver_trace_missing"
+        )
 
 
 def _round_count_key(round_index: int) -> str:
@@ -4549,6 +4725,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             )
         _merge_acp_trajectory_summary(plan, controller_trace)
         _merge_app_server_goal_worker_trace_summary(plan, controller_trace)
+        _merge_host_local_acp_relay_trace_summary(plan, controller_trace)
         _write_controller_trace(plan, controller_trace)
     if result_path is None:
         result_path = discover_benchflow_result_path(plan)
@@ -4572,6 +4749,7 @@ def reduce_result(
     controller_trace = _read_controller_trace(plan)
     _merge_acp_trajectory_summary(plan, controller_trace)
     _merge_app_server_goal_worker_trace_summary(plan, controller_trace)
+    _merge_host_local_acp_relay_trace_summary(plan, controller_trace)
     _write_controller_trace(plan, controller_trace)
 
     benchmark_run = build_skillsbench_benchflow_result_benchmark_run(
@@ -5443,12 +5621,19 @@ def main(argv: list[str] | None = None) -> int:
             }
             print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
             return 2
+    product_host_local_bridge_materialized = bool(
+        args.remote_command_file_bridge_ready
+        or args.remote_command_file_bridge_probe
+    )
+    product_host_local_bridge_command_configured = bool(
+        args.remote_command_file_bridge_probe_command
+    )
     if (
         args.route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
         and args.host_local_acp_launch
-        and (
-            args.remote_command_file_bridge_ready
-            or args.remote_command_file_bridge_probe
+        and not (
+            product_host_local_bridge_materialized
+            and product_host_local_bridge_command_configured
         )
         and not args.local_driver_worker_handshake_preflight
         and not args.plan_only
@@ -5458,17 +5643,23 @@ def main(argv: list[str] | None = None) -> int:
             "error_type": "SkillsBenchReverseChannelBridgeNotSolverWired",
             "route": args.route,
             "reason": (
-                "the remote command/file bridge probe is materialized, but this "
-                "product-mode host-local ACP route does not yet pass that bridge "
-                "into the solver turn; launching would only prove the relay/probe "
-                "layer, not a countable reverse-channel treatment"
+                "product-mode host-local ACP runs execute Codex on the host while "
+                "the scored workspace lives in the BenchFlow sandbox; a materialized "
+                "remote command/file bridge and its private solver command are both "
+                "required before this is a countable reverse-channel treatment"
             ),
             "next_action": (
                 "wire the remote command/file bridge into the solver worker or "
                 "use a route whose compact public trace proves nonzero bridge "
                 "read/write during the agent turn before launching a scored case"
             ),
-            "remote_command_file_bridge_materialized": True,
+            "remote_command_file_bridge_materialized": (
+                product_host_local_bridge_materialized
+            ),
+            "remote_command_file_bridge_command_configured": (
+                product_host_local_bridge_command_configured
+            ),
+            "remote_command_file_bridge_solver_wiring_configured": False,
             "remote_command_file_bridge_consumed_by_solver": False,
             "raw_logs_recorded": False,
             "raw_task_text_read": False,
