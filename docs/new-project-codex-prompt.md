@@ -180,8 +180,8 @@ loopx new-project-prompt \
 
    只把输出的 handoff 交给目标项目 agent；完整 review packet 留给 operator view /
    evidence drill-down。
-6. 如果要给这个项目设置 recurring Codex App heartbeat，不要手抄 guard 和
-   spend 协议；先生成 task body，再把输出复制进 automation：
+6. 如果要给这个项目设置 recurring Codex App heartbeat，默认每 3 分钟一次；不要手抄
+   guard 和 spend 协议；先生成 task body，再把输出复制进 automation：
 
    ```bash
    loopx heartbeat-prompt \

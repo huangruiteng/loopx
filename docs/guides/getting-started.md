@@ -29,7 +29,8 @@ Then run `loopx doctor`. Work only from the current project root:
 2. If the project is not connected, prefer `loopx connect`; use
    `loopx bootstrap` only when goal state clearly needs initialization.
 3. Ensure `.loopx/`, `.codex/goals/`, and `.local/` are ignored.
-4. Set up the thin LoopX heartbeat for this surface.
+4. Set up the thin LoopX heartbeat for this surface. For Codex App, default
+   the recurring automation to every 3 minutes.
 5. Stop after setup and report the goal id, current user gate, top agent todo,
    and next safe action.
 
@@ -95,7 +96,7 @@ setup turn should not spend quota for delivery unless the user explicitly asks
 it to do delivery in the setup turn. The agent should still generate
 `heartbeat-prompt --thin` and install that body into the surface during setup:
 Codex CLI gets `/goal <thin task_body>`, while Codex App gets a heartbeat
-automation body.
+automation body that runs every 3 minutes.
 
 Once `loopx` is installed, generate a stricter repo-specific setup
 message:
@@ -567,7 +568,9 @@ loopx quota spend-slot \
 Do not append spend for quiet `should_run=false` skips, preflight failures, or
 pure dry-run previews.
 
-Generate a guarded Codex App heartbeat body:
+Generate a guarded Codex App heartbeat body. First-run Codex App onboarding
+should install this body on a 3-minute cadence unless the user explicitly asks
+for a different interval:
 
 ```bash
 loopx heartbeat-prompt --thin --goal-id your-project-goal

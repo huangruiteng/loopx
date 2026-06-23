@@ -43,9 +43,9 @@ curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/ins
 请复用，不要新建或覆盖 goal；如果尚未接入，优先用 `loopx connect`，只有明确
 缺少 goal 状态且需要初始化时才用 `loopx bootstrap`。确保 `.loopx/`、
 `.codex/goals/`、`.local/` 不会被提交。项目连接后，用
-`loopx heartbeat-prompt --thin` 设置或刷新这个 Codex App heartbeat。然后停止，
-不要在接入这轮开始长任务；只汇报 goal id、当前 user gate、top agent todo 和
-下一步安全动作。
+`loopx heartbeat-prompt --thin` 生成 task body，并设置或刷新这个 Codex App
+heartbeat 为每 3 分钟运行一次。然后停止，不要在接入这轮开始长任务；只汇报
+goal id、当前 user gate、top agent todo 和下一步安全动作。
 ```
 
 recurring heartbeat body 由 CLI 生成：

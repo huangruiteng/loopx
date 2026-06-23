@@ -285,7 +285,7 @@ def build_codex_cli_bootstrap_message(
         f"{cli_bin} doctor passed after no-clone install repair or existing install",
         "repo bootstrap/connect completed conservatively or a concrete install/connect blocker was shown",
         f"thin heartbeat task_body generated from {cli_bin} heartbeat-prompt --thin, not hand-written",
-        "current loop surface configured from the thin task_body: Codex CLI /goal or Codex App automation",
+        "current loop surface configured from the thin task_body: Codex CLI /goal or Codex App automation every 3 minutes",
         "quota/status guard checked with the registered agent id when available after bootstrap/connect",
         "current goal, concrete user gate or none, top todos, and next safe action shown in the TUI",
         "no raw Codex transcripts, session files, credentials, private paths, stdout, or stderr persisted",
@@ -317,6 +317,7 @@ def build_codex_cli_bootstrap_message(
         "heartbeat_prompt_json_command": heartbeat_prompt_json_command,
         "codex_cli_goal_prefix": "/goal ",
         "codex_app_loop_surface": "heartbeat automation task_body",
+        "codex_app_default_heartbeat_cadence": "3 minutes",
         "quota_guard_command": quota_guard_command,
         "refresh_command": refresh_command,
         "quota_spend_command": quota_spend_command,
@@ -471,7 +472,8 @@ heartbeat prompt. Complete the setup in order: install or repair LoopX
 if needed; bootstrap/connect this project; then configure the current loop
 surface from the generated thin heartbeat prompt. For Codex CLI, set the
 current TUI goal to `/goal ` plus the thin `task_body`. For Codex App, set or
-refresh the heartbeat automation to that same thin `task_body`. If the current
+refresh the heartbeat automation to run every 3 minutes with that same thin
+`task_body`. If the current
 surface cannot be mutated from this session, show the exact pasteable `/goal`
 or automation body and report that as a concrete user gate; do not claim setup
 success.
@@ -486,7 +488,7 @@ Success criteria for this first setup turn:
 - If LoopX is already installed and this repo is already connected,
   reuse the existing install/state and do not reinstall or duplicate bootstrap.
 - Configure the loop target after bootstrap: Codex CLI `/goal <thin task_body>`
-  or Codex App heartbeat automation `<thin task_body>`.
+  or Codex App heartbeat automation every 3 minutes with `<thin task_body>`.
 - Show me the current goal id, concrete user gate if any, top user todo if any,
   top agent todo, and next safe action.
 - Do not do longer delivery work in the setup turn unless I explicitly ask; the
@@ -518,7 +520,8 @@ hand-write or copy an old heartbeat body:
 
 Read `task_body` from the JSON result. Then configure the current surface:
 - Codex CLI TUI: set the current goal to `/goal ` followed by that `task_body`.
-- Codex App: set or update the heartbeat automation body to that `task_body`.
+- Codex App: set or update the heartbeat automation to run every 3 minutes
+  with that `task_body`.
 
 For review, the Markdown form is:
 
@@ -713,7 +716,7 @@ def render_prompt_text(
 ```
 
    只把输出的 handoff 交给目标项目 agent；完整 review packet 留给 operator view / evidence drill-down。
-7. 如果要给这个项目设置 recurring Codex App heartbeat，不要手抄 guard 和 spend 协议；先生成 task body，再把输出复制进 automation：
+7. 如果要给这个项目设置 recurring Codex App heartbeat，默认每 3 分钟一次；不要手抄 guard 和 spend 协议；先生成 task body，再把输出复制进 automation：
 
 ```bash
 {cli_bin} heartbeat-prompt --goal-id {goal_id} --active-state .codex/goals/{goal_id}/ACTIVE_GOAL_STATE.md
@@ -786,7 +789,8 @@ def render_codex_cli_bootstrap_message_markdown(payload: dict[str, Any]) -> str:
         goal_mode_note = (
             "\nThe generated block is a setup message, not the reusable heartbeat body. "
             "After install/bootstrap, it tells the agent to set Codex CLI goal mode "
-            "to `/goal <thin task_body>` or Codex App automation to `<thin task_body>`.\n"
+            "to `/goal <thin task_body>` or Codex App automation every 3 minutes "
+            "with `<thin task_body>`.\n"
         )
     return f"""# Codex CLI LoopX Bootstrap Message
 
@@ -815,7 +819,7 @@ Generate the thin task body after the project is connected:
 ```
 
 - Codex CLI TUI loop: set `/goal <task_body>`.
-- Codex App loop: set heartbeat automation body to `<task_body>`.
+- Codex App loop: set heartbeat automation every 3 minutes with `<task_body>`.
 
 ## Transcript-Free Validation Checklist
 

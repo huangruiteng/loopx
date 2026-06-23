@@ -82,9 +82,9 @@ already exists, reuse it and do not create or overwrite a goal; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
 and `.local/` are ignored. After the project is connected, set or refresh this
-thread's heartbeat automation from `loopx heartbeat-prompt --thin`. Then stop
-and report the goal id, current user gate, top agent todo, and next safe
-action.
+thread's heartbeat automation to run every 3 minutes using the task body from
+`loopx heartbeat-prompt --thin`. Then stop and report the goal id, current user
+gate, top agent todo, and next safe action.
 ```
 
 The generated heartbeat body is the recurring Codex App work surface:

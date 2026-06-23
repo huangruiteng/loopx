@@ -443,10 +443,12 @@ Do not ask for permissions when the current Codex session is already trusted.
 ## Minimal User-Facing Form
 
 When creating a heartbeat in Codex App, keep the visible instruction short and
-put the lifecycle in the automation task body:
+put the lifecycle in the automation task body. The default onboarding cadence
+is every 3 minutes; choose a different interval only when the user explicitly
+asks:
 
 ```text
-Create a heartbeat automation every <INTERVAL> for the current thread.
+Create a heartbeat automation every 3 minutes for the current thread.
 
 Task:
 Advance <GOAL_ID> using <ACTIVE_GOAL_STATE_PATH>. Before any delivery work,
