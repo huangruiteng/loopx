@@ -14,3 +14,4 @@ Current contracts:
 - [Action packet router comparison v0](protocol-action-packet-router-comparison-v0.md)
 - [task_graph_projection_v0](task-graph-projection-v0.md)
 - [content_ops_surface_v0](content-ops-surface-v0.md)
+- [cs_notes_explore_capability_map_v0](cs-notes-explore-capability-map-v0.md)
