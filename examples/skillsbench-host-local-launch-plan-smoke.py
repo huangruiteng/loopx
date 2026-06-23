@@ -54,9 +54,81 @@ def main() -> int:
         assert prerequisites["host_local_acp_launch"] is True
         assert prerequisites["host_local_acp_launch_status"] == "pending"
         assert prerequisites["remote_command_file_bridge_materialized"] is True
+        assert prerequisites["remote_command_file_bridge_consumed_by_solver"] is False
+        assert (
+            prerequisites["remote_command_file_bridge_consumption_status"]
+            == "probe_only_not_solver_wired"
+        )
         assert prerequisites["container_codex_acp_install_skipped"] is False
         assert plan["public_boundary"]["leaderboard_upload"] is False
         assert plan["public_boundary"]["public_submission"] is False
+        blocked = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--skillsbench-root",
+                str(root),
+                "--task-id",
+                "demo-task",
+                "--route",
+                "loopx-product-mode",
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+            ],
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert blocked.returncode == 2, blocked
+        failure = json.loads(blocked.stderr)
+        assert failure["error_type"] == (
+            "SkillsBenchReverseChannelBridgeNotSolverWired"
+        ), failure
+        assert failure["remote_command_file_bridge_materialized"] is True
+        assert failure["remote_command_file_bridge_consumed_by_solver"] is False
+        assert failure["raw_logs_recorded"] is False
+        assert failure["raw_task_text_read"] is False
+        preflight = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--skillsbench-root",
+                str(root),
+                "--task-id",
+                "demo-task",
+                "--route",
+                "loopx-product-mode",
+                "--local-driver-worker-handshake-preflight",
+                "--local-codex-cli-participant-ready",
+                "--local-acp-relay-probe",
+                "--host-local-acp-transport-probe",
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-probe",
+                "--remote-command-file-bridge-probe-command",
+                f"{sys.executable} {REPO_ROOT / 'scripts' / 'skillsbench_remote_command_file_bridge.py'} --serve-probe",
+            ],
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert preflight.returncode == 0, preflight.stderr
+        preflight_payload = json.loads(preflight.stdout)
+        assert (
+            preflight_payload.get("error_type")
+            != "SkillsBenchReverseChannelBridgeNotSolverWired"
+        ), preflight_payload
+        assert (
+            preflight_payload["local_driver_contract"][
+                "remote_command_file_bridge_materialized"
+            ]
+            is True
+        ), preflight_payload
     print("skillsbench host-local ACP launch plan smoke passed")
     return 0
 

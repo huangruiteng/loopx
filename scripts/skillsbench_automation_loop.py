@@ -2362,9 +2362,15 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     loopx_source_mount = _loopx_source_mount_contract(args)
     requires_preinstalled_runtime = bool(agent_runtime_layer.get("required"))
     is_app_server_goal_route = route == "codex-app-server-goal-baseline"
-    app_server_goal_bridge_ready = bool(
+    remote_command_file_bridge_materialized = bool(
         args.remote_command_file_bridge_ready
         or args.remote_command_file_bridge_probe
+    )
+    remote_command_file_bridge_consumed_by_solver = False
+    remote_command_file_bridge_consumption_status = (
+        "probe_only_not_solver_wired"
+        if remote_command_file_bridge_materialized
+        else "missing"
     )
     app_server_goal_worker_contract = (
         build_skillsbench_app_server_goal_worker_contract(
@@ -2407,8 +2413,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "include_task_skills": bool(args.include_task_skills),
         "host_local_acp_launch": bool(args.host_local_acp_launch),
         "remote_command_file_bridge_ready": bool(
-            args.remote_command_file_bridge_ready
-            or args.remote_command_file_bridge_probe
+            remote_command_file_bridge_materialized
         ),
         "benchflow_agent_runtime_layer": agent_runtime_layer,
         "loopx_source_mount": loopx_source_mount,
@@ -2498,8 +2503,13 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 True if is_app_server_goal_route else requires_preinstalled_runtime
             ),
             "remote_command_file_bridge_materialized": bool(
-                args.remote_command_file_bridge_ready
-                or args.remote_command_file_bridge_probe
+                remote_command_file_bridge_materialized
+            ),
+            "remote_command_file_bridge_consumed_by_solver": (
+                remote_command_file_bridge_consumed_by_solver
+            ),
+            "remote_command_file_bridge_consumption_status": (
+                remote_command_file_bridge_consumption_status
             ),
             "preinstalled_benchflow_agent_runtime_required": (
                 requires_preinstalled_runtime
@@ -2561,7 +2571,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 bool(app_server_goal_worker_contract)
             ),
             "codex_app_server_goal_worker_remote_command_file_bridge_ready": (
-                app_server_goal_bridge_ready
+                remote_command_file_bridge_materialized
                 if app_server_goal_worker_contract
                 else False
             ),
@@ -5433,6 +5443,40 @@ def main(argv: list[str] | None = None) -> int:
             }
             print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
             return 2
+    if (
+        args.route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        and args.host_local_acp_launch
+        and (
+            args.remote_command_file_bridge_ready
+            or args.remote_command_file_bridge_probe
+        )
+        and not args.local_driver_worker_handshake_preflight
+        and not args.plan_only
+    ):
+        payload = {
+            "ok": False,
+            "error_type": "SkillsBenchReverseChannelBridgeNotSolverWired",
+            "route": args.route,
+            "reason": (
+                "the remote command/file bridge probe is materialized, but this "
+                "product-mode host-local ACP route does not yet pass that bridge "
+                "into the solver turn; launching would only prove the relay/probe "
+                "layer, not a countable reverse-channel treatment"
+            ),
+            "next_action": (
+                "wire the remote command/file bridge into the solver worker or "
+                "use a route whose compact public trace proves nonzero bridge "
+                "read/write during the agent turn before launching a scored case"
+            ),
+            "remote_command_file_bridge_materialized": True,
+            "remote_command_file_bridge_consumed_by_solver": False,
+            "raw_logs_recorded": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_recorded": False,
+            "credential_values_recorded": False,
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+        return 2
     if args.local_codex_participant_ping:
         payload = materialize_local_codex_participant(
             codex_bin=args.local_codex_bin,
