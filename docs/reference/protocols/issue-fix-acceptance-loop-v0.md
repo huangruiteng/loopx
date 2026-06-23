@@ -16,6 +16,19 @@ fails, applies a minimal code patch, reruns the same focused validation, and
 returns an `issue_fix_validated_fix_artifact_v0`. The artifact is ready only
 when the repro failed before the patch and validation passed after the patch.
 
+The next fixture exercises the same repair path through a real temporary git
+repository and issue branch:
+
+```bash
+loopx issue-fix repo-branch-fixture --format json
+```
+
+It initializes a local fixture repo, commits the failing baseline, creates
+`codex/issue-123-public-metadata-fixture`, runs the repro, patches the branch,
+reruns validation, confirms the branch-local patch diff without exposing raw
+git output, and returns the same validated fix artifact shape with an extra
+`issue_fix_repo_branch_artifact_v0` section.
+
 ## Product Contract
 
 The user-facing value is the validated repair path:
@@ -51,12 +64,13 @@ payloads in the artifact.
 
 ## Next Promotion
 
-The next implementation step is a real repo-local branch mode. It should accept
-a public issue URL plus an already-approved local repository, create or claim an
-issue branch, derive or run a focused repro, patch code through the agent, run
-validation, and prepare PR evidence. That mode may perform local repository
-reads and branch writes, but it still must not post external comments, create a
-PR, merge, or publish without the caller choosing that action explicitly.
+The next implementation step is a caller-provided repo-local branch mode. It
+should accept a public issue URL plus an already-approved local repository,
+create or claim an issue branch, derive or run a focused repro, patch code
+through the agent, run validation, and prepare PR evidence. That mode may
+perform local repository reads and branch writes, but it still must not post
+external comments, create a PR, merge, or publish without the caller choosing
+that action explicitly.
 
 ## Smoke
 

@@ -42,6 +42,38 @@ def _run_fixture_smoke(workspace: Path) -> dict[str, Any]:
     }
 
 
+def _run_git_step(
+    workspace: Path,
+    args: list[str],
+    label: str | None = None,
+    *,
+    expected_exit_codes: tuple[int, ...] = (0,),
+) -> dict[str, Any]:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=workspace,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=10,
+    )
+    return {
+        "schema_version": "issue_fix_git_step_v0",
+        "command_label": label or "git " + " ".join(args),
+        "exit_code": result.returncode,
+        "expected_exit_codes": list(expected_exit_codes),
+        "passed": result.returncode in expected_exit_codes,
+        "stdout_captured": False,
+        "stderr_captured": False,
+        "local_path_captured": False,
+    }
+
+
+def _require_passed(step: Mapping[str, Any]) -> None:
+    if step.get("passed") is not True:
+        raise RuntimeError(f"{step.get('command_label')} failed with exit code {step.get('exit_code')}")
+
+
 def _write_fixture_workspace(workspace: Path) -> None:
     (workspace / "calculator.py").write_text(
         "\n".join(
@@ -94,15 +126,13 @@ def _apply_fixture_patch(workspace: Path) -> dict[str, Any]:
     }
 
 
-def build_issue_fix_acceptance_fixture_packet(
+def _build_metadata_packet(
     *,
-    repo: str = "public_repo_fixture",
-    issue_ref: str = "issue_123_public_metadata_fixture",
-    url: str | None = None,
-    generated_at: str | None = "2026-06-23T00:00:00Z",
-) -> dict[str, Any]:
-    """Run a deterministic issue-fix acceptance loop against a temp fixture."""
-
+    repo: str,
+    issue_ref: str,
+    url: str | None,
+    generated_at: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     metadata_packet = build_content_ops_issue_fix_metadata_preview_packet(
         repo=repo,
         issue_ref=issue_ref,
@@ -115,7 +145,24 @@ def build_issue_fix_acceptance_fixture_packet(
         },
         generated_at=generated_at,
     )
-    metadata = dict(metadata_packet["github_metadata_preview"])
+    return metadata_packet, dict(metadata_packet["github_metadata_preview"])
+
+
+def build_issue_fix_acceptance_fixture_packet(
+    *,
+    repo: str = "public_repo_fixture",
+    issue_ref: str = "issue_123_public_metadata_fixture",
+    url: str | None = None,
+    generated_at: str | None = "2026-06-23T00:00:00Z",
+) -> dict[str, Any]:
+    """Run a deterministic issue-fix acceptance loop against a temp fixture."""
+
+    metadata_packet, metadata = _build_metadata_packet(
+        repo=repo,
+        issue_ref=issue_ref,
+        url=url,
+        generated_at=generated_at,
+    )
 
     with tempfile.TemporaryDirectory(prefix="loopx-issue-fix-") as tmpdir:
         workspace = Path(tmpdir)
@@ -210,6 +257,144 @@ def build_issue_fix_acceptance_fixture_packet(
     return packet
 
 
+def build_issue_fix_repo_branch_fixture_packet(
+    *,
+    repo: str = "public_repo_fixture",
+    issue_ref: str = "issue_123_public_metadata_fixture",
+    url: str | None = None,
+    generated_at: str | None = "2026-06-23T00:00:00Z",
+) -> dict[str, Any]:
+    """Run the issue-fix loop through a real temporary git branch lifecycle."""
+
+    metadata_packet, metadata = _build_metadata_packet(
+        repo=repo,
+        issue_ref=issue_ref,
+        url=url,
+        generated_at=generated_at,
+    )
+    branch_name = "codex/issue-123-public-metadata-fixture"
+
+    with tempfile.TemporaryDirectory(prefix="loopx-issue-fix-git-") as tmpdir:
+        workspace = Path(tmpdir)
+        git_steps: list[dict[str, Any]] = []
+        for args, label in (
+            (["init", "-b", "main"], "git init fixture repo"),
+            (["config", "user.name", "LoopX Fixture"], "git config fixture user.name"),
+            (["config", "user.email", "loopx-fixture@example.invalid"], "git config fixture user.email"),
+        ):
+            step = _run_git_step(workspace, args, label)
+            git_steps.append(step)
+            _require_passed(step)
+
+        _write_fixture_workspace(workspace)
+        for args, label in (
+            (["add", "calculator.py", "test_calculator.py"], "git add fixture files"),
+            (["commit", "-m", "Add failing calculator fixture"], "git commit baseline fixture"),
+            (["checkout", "-b", branch_name], "git create issue fix branch"),
+        ):
+            step = _run_git_step(workspace, args, label)
+            git_steps.append(step)
+            _require_passed(step)
+
+        repro_before = _run_fixture_smoke(workspace)
+        route = {
+            "schema_version": "issue_fix_code_route_v0",
+            "route_id": "fixture_git_calculator_add_route",
+            "selected": True,
+            "source": "public issue labels plus local branch repro smoke",
+            "files_examined": ["calculator.py", "test_calculator.py"],
+            "requires_private_repo_state": False,
+            "reads_private_material": False,
+        }
+        patch_step = _apply_fixture_patch(workspace)
+        validation_after = _run_fixture_smoke(workspace)
+        diff_step = _run_git_step(
+            workspace,
+            ["diff", "--quiet", "--", "calculator.py"],
+            "git diff confirms branch patch",
+            expected_exit_codes=(1,),
+        )
+        git_steps.append(diff_step)
+        _require_passed(diff_step)
+
+    artifact = {
+        "schema_version": ISSUE_FIX_VALIDATED_FIX_ARTIFACT_SCHEMA_VERSION,
+        "fix_artifact_ready": validation_after["passed"],
+        "pr_review_packet_ready": validation_after["passed"],
+        "issue_signal": {
+            "repo": metadata["repo"],
+            "issue_ref": metadata["issue_ref"],
+            "kind": metadata["kind"],
+            "labels": metadata["labels"],
+            "body_captured": False,
+            "comment_bodies_captured": False,
+        },
+        "repo_branch": {
+            "schema_version": "issue_fix_repo_branch_artifact_v0",
+            "repo_mode": "temporary_git_repo",
+            "base_branch": "main",
+            "issue_branch": branch_name,
+            "branch_created": all(step.get("passed") for step in git_steps),
+            "external_remote_used": False,
+            "local_path_captured": False,
+        },
+        "git_steps": git_steps,
+        "repro_before": repro_before,
+        "code_route": route,
+        "patch": patch_step,
+        "validation_after": validation_after,
+        "review_packet": {
+            "schema_version": "issue_fix_pr_review_packet_v0",
+            "ready": validation_after["passed"],
+            "summary": (
+                "Temporary git repo issue branch created, focused repro failed, "
+                "minimal patch applied, focused validation passed."
+            ),
+            "files_changed": ["calculator.py"],
+            "validation_commands": ["python test_calculator.py"],
+            "external_issue_comment_performed": False,
+            "external_pr_created": False,
+            "merge_performed": False,
+        },
+    }
+    packet: dict[str, Any] = {
+        "ok": bool(
+            artifact["repo_branch"]["branch_created"]
+            and not repro_before["passed"]
+            and patch_step["patch_applied"]
+            and validation_after["passed"]
+        ),
+        "schema_version": ISSUE_FIX_ACCEPTANCE_LOOP_SCHEMA_VERSION,
+        "mode": "issue-fix-repo-branch-fixture",
+        "generated_at": generated_at,
+        "workspace_mode": "temporary_git_repo",
+        "metadata_preview_schema_version": metadata_packet["schema_version"],
+        "validated_fix_artifact": artifact,
+        "steps": [
+            {"step": "metadata_intake", "result": "public metadata preview built"},
+            {"step": "repo_branch", "result": f"created {branch_name} in a temporary git repo"},
+            {"step": "repro_smoke", "result": "failed before patch" if not repro_before["passed"] else "unexpected pass"},
+            {"step": "patch", "result": "minimal patch applied"},
+            {"step": "validation", "result": "passed after patch" if validation_after["passed"] else "failed after patch"},
+        ],
+        "external_reads_performed": False,
+        "external_writes_performed": False,
+        "issue_body_captured": False,
+        "comment_bodies_captured": False,
+        "local_paths_captured": False,
+        "private_repo_state_read": False,
+        "destructive_git_used": False,
+        "next_safe_action": (
+            "promote from the temporary git fixture to an approved caller-provided "
+            "local repo path with explicit branch and validation controls"
+        ),
+    }
+    validation = validate_issue_fix_acceptance_loop_packet(packet)
+    packet["ok"] = bool(packet["ok"] and validation["ok"])
+    packet["validation"] = validation
+    return packet
+
+
 def validate_issue_fix_acceptance_loop_packet(packet: Mapping[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     if packet.get("schema_version") != ISSUE_FIX_ACCEPTANCE_LOOP_SCHEMA_VERSION:
@@ -260,6 +445,29 @@ def validate_issue_fix_acceptance_loop_packet(packet: Mapping[str, Any]) -> dict
     if patch.get("local_path_captured") is not False:
         errors.append("patch local path must not be captured")
 
+    repo_branch = artifact.get("repo_branch")
+    if isinstance(repo_branch, Mapping):
+        if repo_branch.get("branch_created") is not True:
+            errors.append("repo branch must be created")
+        if repo_branch.get("external_remote_used") is not False:
+            errors.append("repo branch fixture must not use an external remote")
+        if repo_branch.get("local_path_captured") is not False:
+            errors.append("repo branch local path must not be captured")
+    git_steps = artifact.get("git_steps")
+    if isinstance(git_steps, list):
+        for step in git_steps:
+            if not isinstance(step, Mapping):
+                errors.append("git_steps must contain objects")
+                continue
+            if step.get("passed") is not True:
+                errors.append(f"git step failed: {step.get('command_label')}")
+            if step.get("stdout_captured") is not False:
+                errors.append("git stdout must not be captured")
+            if step.get("stderr_captured") is not False:
+                errors.append("git stderr must not be captured")
+            if step.get("local_path_captured") is not False:
+                errors.append("git local path must not be captured")
+
     review = (
         artifact.get("review_packet")
         if isinstance(artifact.get("review_packet"), Mapping)
@@ -303,6 +511,15 @@ def render_issue_fix_acceptance_loop_markdown(payload: dict[str, Any]) -> str:
                 f"- pr_review_packet_ready: `{artifact.get('pr_review_packet_ready')}`",
             ]
         )
+        repo_branch = artifact.get("repo_branch")
+        if isinstance(repo_branch, Mapping):
+            lines.extend(
+                [
+                    f"- repo_mode: `{repo_branch.get('repo_mode')}`",
+                    f"- issue_branch: `{repo_branch.get('issue_branch')}`",
+                    f"- branch_created: `{repo_branch.get('branch_created')}`",
+                ]
+            )
         repro = artifact.get("repro_before")
         after = artifact.get("validation_after")
         patch = artifact.get("patch")
