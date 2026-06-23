@@ -50,6 +50,9 @@ def main() -> int:
     module_source = (
         ROOT / "loopx" / "cli_commands" / "benchmark_run_ledger.py"
     ).read_text(encoding="utf-8")
+    maintenance_source = (
+        ROOT / "loopx" / "cli_commands" / "benchmark_run_ledger_maintenance.py"
+    ).read_text(encoding="utf-8")
 
     leaked_markers = [
         "benchmark_run_parser = benchmark_sub.add_parser",
@@ -63,15 +66,33 @@ def main() -> int:
     for marker in leaked_markers:
         if marker in cli_source:
             raise AssertionError(f"{marker} leaked back into loopx/cli.py")
-    assert_contains(
-        dispatch_source,
-        "register_benchmark_run_ledger_commands(benchmark_sub, add_subcommand_format)",
-    )
+    assert_contains(dispatch_source, "register_benchmark_run_ledger_commands(")
     assert_contains(dispatch_source, "handle_benchmark_run_ledger_command(")
     assert_contains(init_source, "register_benchmark_run_ledger_commands")
     assert_contains(init_source, "handle_benchmark_run_ledger_command")
+    assert_contains(init_source, "register_benchmark_run_ledger_maintenance_commands")
+    assert_contains(init_source, "handle_benchmark_run_ledger_maintenance_command")
     assert_contains(module_source, "BENCHMARK_RUN_LEDGER_COMMANDS")
-    assert_contains(module_source, "compact_benchmark_post_launch_materialization")
+    assert_contains(
+        module_source,
+        "register_benchmark_run_ledger_maintenance_commands(benchmark_subparsers)",
+    )
+    assert_contains(module_source, "handle_benchmark_run_ledger_maintenance_command(")
+
+    ownership_markers = [
+        "benchmark_run_ledger_upsert_parser = benchmark_subparsers.add_parser",
+        "benchmark_run_ledger_check_parser = benchmark_subparsers.add_parser",
+        "def render_benchmark_run_ledger_upsert_markdown",
+        "def render_benchmark_run_ledger_check_markdown",
+        'if args.benchmark_command == "run-ledger-upsert":',
+        'if args.benchmark_command == "run-ledger-check":',
+        "compact_benchmark_post_launch_materialization",
+        "check_benchmark_run_ledger_drift(",
+    ]
+    for marker in ownership_markers:
+        if marker in module_source:
+            raise AssertionError(f"{marker} leaked back into benchmark_run_ledger.py")
+        assert_contains(maintenance_source, marker)
 
     help_result = run_cli("benchmark", "run", "--help")
     if help_result.returncode != 0:

@@ -60,6 +60,10 @@ from .benchmark_run_ledger import (
     handle_benchmark_run_ledger_command,
     register_benchmark_run_ledger_commands,
 )
+from .benchmark_run_ledger_maintenance import (
+    handle_benchmark_run_ledger_maintenance_command,
+    register_benchmark_run_ledger_maintenance_commands,
+)
 from .bootstrap_connect import (
     handle_bootstrap_connect_command,
     register_bootstrap_connect_command,
@@ -155,6 +159,7 @@ __all__ = [
     "handle_benchmark_command",
     "handle_benchmark_review_lifecycle_command",
     "handle_benchmark_run_ledger_command",
+    "handle_benchmark_run_ledger_maintenance_command",
     "handle_bootstrap_connect_command",
     "handle_check_command",
     "handle_codex_cli_bounded_visible_pilot_adapter_command",
@@ -209,6 +214,7 @@ __all__ = [
     "register_benchmark_command_group",
     "register_benchmark_review_lifecycle_commands",
     "register_benchmark_run_ledger_commands",
+    "register_benchmark_run_ledger_maintenance_commands",
     "register_bootstrap_connect_command",
     "register_doctor_command",
     "register_dreaming_commands",
