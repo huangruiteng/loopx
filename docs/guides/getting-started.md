@@ -326,8 +326,24 @@ Keep three layers separate:
   docs. They can constrain contributors and agents in this repository, but they
   should not silently become global skill policy for every project.
 
-There is no dedicated uninstall command yet. For manual cleanup, remove only
-the reusable surfaces you intend to drop:
+To disconnect only the current project from LoopX, use the project-local
+uninstall command from that project root. It defaults to a dry-run preview and
+refuses to operate directly on the shared global registry:
+
+```bash
+loopx uninstall-project
+loopx uninstall-project --goal-id <goal-id> --archive-state --execute
+```
+
+`uninstall-project` removes the selected goal from `.loopx/registry.json` and
+from the shared global registry only when the global entry's `source_registry`
+points back to this project. It does not uninstall the LoopX CLI and does not
+delete other projects' runtime history. Pass `--archive-state` to move this
+project's `.codex/goals/<goal-id>/` directory under
+`.loopx/archived-project-state/` instead of leaving it in place.
+
+For manual cleanup of the reusable LoopX CLI and skill surfaces, remove only
+the pieces you intend to drop:
 
 ```bash
 rm -f ~/.local/bin/loopx ~/.local/bin/loopx-canary
@@ -760,6 +776,7 @@ upgrade-plan            plan local default-upgrade heartbeat propagation
 review-packet           package a CLI-visible handoff packet
 serve-status            serve local status JSON for the dashboard
 archive-runtime         archive obsolete runtime-only goal history
+uninstall-project       disconnect the current project without removing other projects
 sync-global             merge project registry into the global registry
 check                   run contract and public/private boundary checks
 ```
