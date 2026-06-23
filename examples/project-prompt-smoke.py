@@ -75,6 +75,7 @@ SPEND_MUST_HAVE = (
 )
 HEARTBEAT_PROMPT_MUST_HAVE = (
     "如果要给这个项目设置 recurring Codex App heartbeat",
+    "默认每 3 分钟一次",
     "loopx heartbeat-prompt",
     "--active-state .codex/goals/",
     "再把输出复制进 automation",

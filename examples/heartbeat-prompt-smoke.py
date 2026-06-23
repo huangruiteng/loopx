@@ -646,8 +646,10 @@ def main() -> int:
     getting_started = GETTING_STARTED.read_text(encoding="utf-8")
     assert "docs/guides/getting-started.md" in readme, readme
     assert "loopx heartbeat-prompt --thin" in readme, readme
+    assert "heartbeat automation to run every 3 minutes" in readme, readme
     assert "loopx quota spend-slot" in readme, readme
     assert "Generate a guarded Codex App heartbeat body" in getting_started, getting_started
+    assert "3-minute cadence" in getting_started, getting_started
     assert "loopx heartbeat-prompt --thin" in getting_started, getting_started
     assert "loopx heartbeat-prompt --compact" in getting_started, getting_started
     assert "loopx-canary" in getting_started, getting_started
@@ -656,6 +658,7 @@ def main() -> int:
     assert "safe-bypass or self-repair hints" in getting_started, getting_started
     assert "../heartbeat-automation-prompt.md" in getting_started, getting_started
     assert "execution_obligation" in doc, doc
+    assert "Create a heartbeat automation every 3 minutes" in doc, doc
     assert "must_attempt_work=true" in doc, doc
     assert "not an execution gate" in normalized(doc), doc
     assert "loopx heartbeat-prompt" in doc, doc
@@ -681,7 +684,7 @@ def main() -> int:
     assert "Two Prompt Layers" in doc, doc
     assert "Visible goal text" in doc, doc
     assert "Heartbeat automation task body" in doc, doc
-    assert "Do not use LoopX as an autonomous production controller" in readme, readme
+    assert "LoopX is not an autonomous production controller" in readme, readme
     assert "loopx heartbeat-prompt" in project_skill, project_skill
     assert "--compact" in project_skill, project_skill
     assert "--brief" in project_skill, project_skill

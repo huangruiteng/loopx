@@ -59,6 +59,7 @@ def assert_message_contract(payload: dict[str, object]) -> None:
     assert "--format json heartbeat-prompt" in str(payload["heartbeat_prompt_json_command"]), payload
     assert payload["codex_cli_goal_prefix"] == "/goal ", payload
     assert payload["codex_app_loop_surface"] == "heartbeat automation task_body", payload
+    assert payload["codex_app_default_heartbeat_cadence"] == "3 minutes", payload
     assert "--agent-scope 'Codex CLI /goal visible TUI loop'" in str(payload["heartbeat_prompt_command"]), payload
     checklist = payload["first_run_validation_checklist"]
     assert isinstance(checklist, list) and len(checklist) >= 5, payload
@@ -118,13 +119,14 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     assert "Hidden `codex exec` is not the default bootstrap path" in normalized_readme, readme
     assert "paste one setup message" in normalized_readme, readme
     assert "heartbeat setup, and status check" in normalized_readme, readme
+    assert "heartbeat automation to run every 3 minutes" in normalized_readme, readme
     assert "set the current Codex CLI goal to `/goal <thin task_body>`" in normalized_readme, readme
     assert "reuse it" in normalized_readme, readme
     assert "loopx codex-cli-bootstrap-message --project . --goal-id <goal-id>" not in readme, readme
     assert "report the goal id, current user gate, top agent todo, and next safe action" in normalized_readme, readme
     assert "first-run path should not require you to understand registry paths" in normalized_getting_started, getting_started
     assert "setup-first rewrite of the App onboarding experience" in normalized_getting_started, getting_started
-    assert "Codex App gets a heartbeat automation body" in normalized_getting_started, getting_started
+    assert "Codex App gets a heartbeat automation body that runs every 3 minutes" in normalized_getting_started, getting_started
     assert "transcript-free validation checklist" in normalized_getting_started, getting_started
     assert "installs the thin LoopX goal/heartbeat body immediately" in normalized_product_contract, product_contract
     assert "optional automation checks after the setup path works" in normalized_getting_started, getting_started
@@ -173,6 +175,7 @@ def main() -> int:
     assert "Copy the block below into Codex CLI TUI" in cli_markdown, cli_markdown
     assert "setup message, not the reusable heartbeat body" in cli_markdown, cli_markdown
     assert "`/goal <thin task_body>`" in cli_markdown, cli_markdown
+    assert "Codex App automation every 3 minutes" in cli_markdown, cli_markdown
     assert "heartbeat-prompt --thin" in cli_markdown, cli_markdown
     assert "Fresh Repo Install Repair" in cli_markdown, cli_markdown
     assert "Post-Bootstrap Thin Loop Prompt" in cli_markdown, cli_markdown
