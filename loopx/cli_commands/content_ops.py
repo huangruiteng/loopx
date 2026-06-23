@@ -23,6 +23,10 @@ from ..content_ops_surface import (
     render_content_ops_public_handle_observation_markdown,
     render_content_ops_walkthrough_artifact_markdown,
 )
+from ..issue_fix_intake_surface import (
+    build_content_ops_issue_fix_intake_packet,
+    render_content_ops_issue_fix_intake_markdown,
+)
 
 
 PrintPayload = Callable[
@@ -92,6 +96,35 @@ def register_content_ops_commands(
         "--generated-at",
         default="2026-06-23T00:00:00Z",
         help="Public-safe generated_at timestamp for the exploration plan.",
+    )
+    issue_fix_parser = content_ops_sub.add_parser(
+        "issue-fix-intake",
+        help=(
+            "Build a fixture-only issue_fix_intake_v0 packet from public "
+            "GitHub issue/PR metadata."
+        ),
+    )
+    add_subcommand_format(issue_fix_parser)
+    issue_fix_parser.add_argument(
+        "--repo",
+        default="public_repo_fixture",
+        help="Public-safe repository label for the metadata fixture.",
+    )
+    issue_fix_parser.add_argument(
+        "--issue-ref",
+        default="issue_123_public_metadata_fixture",
+        help="Public-safe issue or PR reference label for the metadata fixture.",
+    )
+    issue_fix_parser.add_argument(
+        "--issue-state",
+        default="open",
+        choices=("open", "closed", "unknown"),
+        help="Public issue state to project into the fixture.",
+    )
+    issue_fix_parser.add_argument(
+        "--generated-at",
+        default="2026-06-23T00:00:00Z",
+        help="Public-safe generated_at timestamp for the issue-fix intake.",
     )
     observe_parser = content_ops_sub.add_parser(
         "observe-public-handle",
@@ -363,6 +396,14 @@ def handle_content_ops_command(
                 generated_at=args.generated_at,
             )
             renderer = render_content_ops_exploration_plan_markdown
+        elif args.content_ops_command == "issue-fix-intake":
+            payload = build_content_ops_issue_fix_intake_packet(
+                repo=args.repo,
+                issue_ref=args.issue_ref,
+                issue_state=args.issue_state,
+                generated_at=args.generated_at,
+            )
+            renderer = render_content_ops_issue_fix_intake_markdown
         elif args.content_ops_command == "observe-public-handle":
             payload = build_content_ops_public_handle_observation_packet(
                 url=args.url,
@@ -429,8 +470,9 @@ def handle_content_ops_command(
         else:
             raise ValueError(
                 "content-ops requires `preview`, `exploration-plan`, "
-                "`observe-public-handle`, `project-private-connector-gate`, "
-                "`aggregate-packets`, `project-chatview-report`, or "
+                "`issue-fix-intake`, `observe-public-handle`, "
+                "`project-private-connector-gate`, `aggregate-packets`, "
+                "`project-chatview-report`, or "
                 "`walkthrough-artifact`"
             )
     except Exception as exc:
