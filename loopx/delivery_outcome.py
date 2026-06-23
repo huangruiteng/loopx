@@ -80,6 +80,13 @@ def normalize_delivery_turn_kind(value: Any) -> DeliveryTurnKind | None:
         return None
 
 
+def require_delivery_turn_kind(value: Any) -> DeliveryTurnKind:
+    kind = normalize_delivery_turn_kind(value)
+    if kind is None:
+        raise ValueError("delivery_turn_kind must be one of: " + ", ".join(DELIVERY_TURN_KIND_CHOICES))
+    return kind
+
+
 def delivery_turn_kind_for_run(
     run: dict[str, Any],
     *,
@@ -87,9 +94,10 @@ def delivery_turn_kind_for_run(
 ) -> str:
     """Classify the latest turn without relying on free-form classification text alone."""
 
-    explicit = normalize_delivery_turn_kind(run.get("delivery_turn_kind"))
-    if explicit:
-        return explicit.value
+    raw_explicit = str(run.get("delivery_turn_kind") or "").strip()
+    if raw_explicit:
+        explicit = normalize_delivery_turn_kind(raw_explicit)
+        return explicit.value if explicit else DeliveryTurnKind.UNKNOWN.value
 
     outcome = normalize_delivery_outcome(
         delivery_outcome if delivery_outcome is not None else run.get("delivery_outcome")
