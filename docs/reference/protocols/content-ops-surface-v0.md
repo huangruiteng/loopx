@@ -182,6 +182,22 @@ emits a `loopx_todo_writeback_preview_v0` candidate for the agent todo, but it
 does not write the todo unless a later command explicitly executes that
 writeback.
 
+A live public metadata read is available only as an explicit opt-in:
+
+```bash
+loopx content-ops issue-fix-metadata-preview \
+  --url https://github.com/owner/repo/issues/123 \
+  --fetch-metadata \
+  --format json
+```
+
+The opt-in path uses `gh api --jq` to emit only the body-free metadata fields
+consumed by the packet. The public artifact records `external_reads_performed:
+true` and `adapter_preview.live_read_performed: true`, but issue bodies,
+comment bodies, timeline events, raw provider responses, stdout/stderr, local
+paths, todo writes, external comments, PR creation, merge, and publish actions
+remain outside the artifact.
+
 Metadata preview is only the intake surface. The issue-fix product path should
 continue to an executable acceptance loop:
 

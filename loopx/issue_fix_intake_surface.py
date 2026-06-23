@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 from .content_ops_surface import (
     EXPLORATION_PLAN_SCHEMA_VERSION,
     _as_mappings,
     _normalise_exploration_label,
     build_content_ops_exploration_plan_packet,
+)
+from .issue_fix_metadata_preview import (
+    ALLOWED_ISSUE_FIX_INTAKE_STATES,
+    GITHUB_BODY_OR_COMMENT_KEYS,
+    GITHUB_ISSUE_METADATA_PREVIEW_SCHEMA_VERSION,
+    fetch_github_issue_metadata_payload,
+    github_metadata_from_provider_payload,
+    normalise_github_issue_reference,
 )
 
 
@@ -19,148 +26,8 @@ CONTENT_OPS_ISSUE_FIX_METADATA_PREVIEW_PACKET_SCHEMA_VERSION = (
     "content_ops_issue_fix_metadata_preview_packet_v0"
 )
 ISSUE_FIX_INTAKE_SCHEMA_VERSION = "issue_fix_intake_v0"
-GITHUB_ISSUE_METADATA_PREVIEW_SCHEMA_VERSION = "github_issue_metadata_preview_v0"
 
-ALLOWED_ISSUE_FIX_INTAKE_STATES = {"open", "closed", "unknown"}
 ALLOWED_ISSUE_FIX_ROUTE_STATUSES = {"candidate", "blocked_until_gate", "selected"}
-GITHUB_BODY_OR_COMMENT_KEYS = {
-    "body",
-    "body_text",
-    "comments",
-    "comment_bodies",
-    "timeline",
-    "events",
-    "raw",
-    "response_payload",
-}
-
-
-def _normalise_github_issue_reference(
-    *,
-    repo: str | None = None,
-    issue_ref: str | None = None,
-    url: str | None = None,
-) -> dict[str, Any]:
-    if url:
-        parsed = urlsplit(str(url).strip())
-        if parsed.scheme != "https":
-            raise ValueError("GitHub issue URL must use https")
-        if parsed.username or parsed.password:
-            raise ValueError("GitHub issue URL must not include credentials")
-        host = (parsed.hostname or "").lower().rstrip(".")
-        if host != "github.com":
-            raise ValueError("GitHub issue URL must use github.com")
-        if parsed.query or parsed.fragment:
-            raise ValueError("GitHub issue URL must not include query or fragment data")
-        parts = [part for part in parsed.path.split("/") if part]
-        if len(parts) != 4 or parts[2] not in {"issues", "pull"}:
-            raise ValueError("GitHub issue URL must look like /owner/repo/issues/123")
-        if not parts[3].isdigit():
-            raise ValueError("GitHub issue or PR number must be numeric")
-        repo_label = _normalise_exploration_label(f"{parts[0]}/{parts[1]}", "repo")
-        issue_label = f"{parts[2]}_{parts[3]}"
-        permalink = urlunsplit(("https", "github.com", "/" + "/".join(parts), "", ""))
-        return {
-            "repo": repo_label,
-            "issue_ref": issue_label,
-            "kind": "pull_request" if parts[2] == "pull" else "issue",
-            "number": int(parts[3]),
-            "permalink": permalink,
-        }
-
-    repo_label = _normalise_exploration_label(repo, "repo")
-    issue_label = _normalise_exploration_label(issue_ref, "issue_ref")
-    number = None
-    digits = "".join(ch for ch in issue_label if ch.isdigit())
-    if digits:
-        number = int(digits)
-    return {
-        "repo": repo_label,
-        "issue_ref": issue_label,
-        "kind": "issue",
-        "number": number,
-        "permalink": None,
-    }
-
-
-def _provider_payload_labels(payload: Mapping[str, Any]) -> list[str]:
-    labels: list[str] = []
-    raw_labels = payload.get("labels")
-    if not isinstance(raw_labels, Sequence) or isinstance(raw_labels, (str, bytes)):
-        return labels
-    for item in raw_labels:
-        if isinstance(item, Mapping):
-            label = _normalise_exploration_label(item.get("name"), "label")
-        else:
-            label = _normalise_exploration_label(item, "label")
-        if label and label not in labels:
-            labels.append(label)
-    return labels[:12]
-
-
-def _safe_int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    try:
-        number = int(value)
-    except (TypeError, ValueError):
-        return None
-    return number if number >= 0 else None
-
-
-def _github_metadata_from_provider_payload(
-    *,
-    reference: Mapping[str, Any],
-    provider_payload: Mapping[str, Any] | None,
-) -> tuple[dict[str, Any], list[str]]:
-    payload = provider_payload or {}
-    gated_keys = sorted(
-        str(key) for key in payload if str(key).lower() in GITHUB_BODY_OR_COMMENT_KEYS
-    )
-    labels = _provider_payload_labels(payload) or ["needs-triage"]
-    state = str(payload.get("state") or "unknown").strip().lower()
-    if state not in ALLOWED_ISSUE_FIX_INTAKE_STATES:
-        state = "unknown"
-    number = _safe_int(payload.get("number"))
-    if number is None:
-        number = reference.get("number") if isinstance(reference.get("number"), int) else None
-    comments_count = _safe_int(payload.get("comments_count"))
-    if comments_count is None:
-        comments_count = _safe_int(payload.get("comments"))
-    metadata = {
-        "schema_version": GITHUB_ISSUE_METADATA_PREVIEW_SCHEMA_VERSION,
-        "provider": "github",
-        "provider_mode": "mocked_metadata" if provider_payload else "reference_only",
-        "repo": reference["repo"],
-        "issue_ref": reference["issue_ref"],
-        "kind": payload.get("kind") or reference["kind"],
-        "number": number,
-        "state": state,
-        "title_summary": (
-            _normalise_exploration_label(payload.get("title"), "title")
-            if payload.get("title")
-            else "public GitHub issue metadata preview"
-        ),
-        "labels": labels,
-        "updated_at": _normalise_exploration_label(payload.get("updated_at"), "updated_at")
-        if payload.get("updated_at")
-        else None,
-        "author_association": _normalise_exploration_label(
-            payload.get("author_association"),
-            "author_association",
-        )
-        if payload.get("author_association")
-        else "unknown",
-        "comments_count": comments_count,
-        "permalink": reference.get("permalink"),
-        "body_captured": False,
-        "comment_bodies_captured": False,
-        "response_payload_captured": False,
-        "local_path_captured": False,
-        "private_repo_state_read": False,
-        "gated_provider_fields_present": gated_keys,
-    }
-    return metadata, gated_keys
 
 
 def build_content_ops_issue_fix_intake_packet(
@@ -382,18 +249,32 @@ def build_content_ops_issue_fix_metadata_preview_packet(
     issue_ref: str | None = "issue_123_public_metadata_fixture",
     url: str | None = None,
     provider_payload: Mapping[str, Any] | None = None,
+    fetch_metadata: bool = False,
+    fetch_timeout_seconds: int = 10,
     generated_at: str | None = "2026-06-23T00:00:00Z",
 ) -> dict[str, Any]:
     """Build a mocked GitHub metadata adapter preview for issue-fix intake."""
 
-    reference = _normalise_github_issue_reference(
+    reference = normalise_github_issue_reference(
         repo=repo,
         issue_ref=issue_ref,
         url=url,
     )
-    metadata, gated_keys = _github_metadata_from_provider_payload(
+    if fetch_metadata and provider_payload:
+        raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
+    live_read_performed = False
+    provider_mode: str | None = None
+    if fetch_metadata:
+        provider_payload = fetch_github_issue_metadata_payload(
+            reference,
+            timeout_seconds=fetch_timeout_seconds,
+        )
+        live_read_performed = True
+        provider_mode = "live_metadata"
+    metadata, gated_keys = github_metadata_from_provider_payload(
         reference=reference,
         provider_payload=provider_payload,
+        provider_mode=provider_mode,
     )
     intake_packet = build_content_ops_issue_fix_intake_packet(
         repo=metadata["repo"],
@@ -445,9 +326,15 @@ def build_content_ops_issue_fix_metadata_preview_packet(
     adapter_preview = {
         "schema_version": "github_issue_metadata_adapter_preview_v0",
         "adapter": "github_issue_metadata",
-        "provider": "mock",
-        "input_mode": "mocked_provider_payload" if provider_payload else "reference_only",
-        "live_read_performed": False,
+        "provider": "github" if live_read_performed else "mock",
+        "input_mode": (
+            "live_metadata"
+            if live_read_performed
+            else "mocked_provider_payload"
+            if provider_payload
+            else "reference_only"
+        ),
+        "live_read_performed": live_read_performed,
         "live_read_allowed_by_default": False,
         "default_allowed_fields": [
             "repo",
@@ -475,12 +362,12 @@ def build_content_ops_issue_fix_metadata_preview_packet(
         "top_agent_todo": candidate_todo_writeback_preview[0],
         "top_gate": gated_field_todos[0] if gated_field_todos else None,
         "next_safe_action": (
-            "review the mocked public GitHub metadata preview, then write the "
+            "review the public GitHub metadata preview, then write the "
             "candidate LoopX agent todo only after metadata fields stay body-free"
         ),
     }
     intake["boundary"] = {
-        "external_reads_performed": False,
+        "external_reads_performed": live_read_performed,
         "external_writes_performed": False,
         "issue_body_captured": False,
         "comment_bodies_captured": False,
@@ -499,7 +386,7 @@ def build_content_ops_issue_fix_metadata_preview_packet(
         "issue_fix_intake": intake,
         "github_metadata_preview": metadata,
         "adapter_preview": adapter_preview,
-        "external_reads_performed": False,
+        "external_reads_performed": live_read_performed,
         "external_writes_performed": False,
         "private_source_bodies_read": False,
         "private_source_content_read": False,
@@ -666,8 +553,15 @@ def validate_content_ops_issue_fix_metadata_preview_packet(
             "packet schema_version must be "
             "content_ops_issue_fix_metadata_preview_packet_v0"
         )
+    adapter_preview = (
+        packet.get("adapter_preview")
+        if isinstance(packet.get("adapter_preview"), Mapping)
+        else {}
+    )
+    live_read_performed = adapter_preview.get("live_read_performed") is True
+    if packet.get("external_reads_performed") is not live_read_performed:
+        errors.append("packet external_reads_performed must match live_read_performed")
     for key in (
-        "external_reads_performed",
         "external_writes_performed",
         "private_source_bodies_read",
         "private_source_content_read",
@@ -702,15 +596,12 @@ def validate_content_ops_issue_fix_metadata_preview_packet(
         if metadata.get(key) is not False:
             errors.append(f"github metadata {key} must be false")
 
-    adapter_preview = (
-        packet.get("adapter_preview")
-        if isinstance(packet.get("adapter_preview"), Mapping)
-        else {}
-    )
-    if adapter_preview.get("provider") != "mock":
-        errors.append("adapter preview provider must be mock")
-    if adapter_preview.get("live_read_performed") is not False:
-        errors.append("adapter preview live_read_performed must be false")
+    if adapter_preview.get("provider") not in {"mock", "github"}:
+        errors.append("adapter preview provider must be mock or github")
+    if adapter_preview.get("provider") == "mock" and live_read_performed:
+        errors.append("mock adapter preview must not mark live_read_performed")
+    if adapter_preview.get("provider") == "github" and not live_read_performed:
+        errors.append("github adapter preview must mark live_read_performed")
     if adapter_preview.get("live_read_allowed_by_default") is not False:
         errors.append("adapter preview live_read_allowed_by_default must be false")
 
@@ -737,8 +628,9 @@ def validate_content_ops_issue_fix_metadata_preview_packet(
     boundary = (
         intake.get("boundary") if isinstance(intake.get("boundary"), Mapping) else {}
     )
+    if boundary.get("external_reads_performed") is not live_read_performed:
+        errors.append("boundary.external_reads_performed must match live_read_performed")
     for key in (
-        "external_reads_performed",
         "external_writes_performed",
         "issue_body_captured",
         "comment_bodies_captured",
