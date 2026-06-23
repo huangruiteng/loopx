@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 from ..content_ops_surface import (
+    build_content_ops_packet_aggregation_packet,
     build_content_ops_preview_packet,
     build_content_ops_private_connector_gate_packet,
     build_content_ops_public_handle_observation_packet,
+    render_content_ops_packet_aggregation_markdown,
     render_content_ops_preview_markdown,
     render_content_ops_private_connector_gate_markdown,
     render_content_ops_public_handle_observation_markdown,
@@ -19,6 +25,16 @@ PrintPayload = Callable[
 ]
 FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
+
+
+def _load_json_object(path_text: str) -> dict[str, Any]:
+    if path_text == "-":
+        payload = json.loads(sys.stdin.read())
+    else:
+        payload = json.loads(Path(path_text).expanduser().read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path_text} must contain a JSON object")
+    return payload
 
 
 def register_content_ops_commands(
@@ -131,6 +147,42 @@ def register_content_ops_commands(
         choices=("fresh", "stale", "unknown"),
         help="Freshness value for the metadata-only placeholder.",
     )
+    aggregate_parser = content_ops_sub.add_parser(
+        "aggregate-packets",
+        help=(
+            "Aggregate public source_item packets and private owner_gate packets "
+            "into a compact content_ops_surface_v0 projection."
+        ),
+    )
+    add_subcommand_format(aggregate_parser)
+    aggregate_parser.add_argument(
+        "--public-packet-json",
+        action="append",
+        default=[],
+        help=(
+            "Path to a content_ops_public_handle_observation_packet_v0 JSON object. "
+            "Repeat for multiple public source packets. Use '-' to read stdin."
+        ),
+    )
+    aggregate_parser.add_argument(
+        "--private-gate-packet-json",
+        action="append",
+        default=[],
+        help=(
+            "Path to a content_ops_private_connector_gate_packet_v0 JSON object. "
+            "Repeat for multiple private connector gates."
+        ),
+    )
+    aggregate_parser.add_argument(
+        "--surface-id",
+        default="content_ops_connector_packet_aggregation",
+        help="Stable surface_id for the generated content_ops_surface_v0.",
+    )
+    aggregate_parser.add_argument(
+        "--generated-at",
+        default="2026-06-23T00:00:00Z",
+        help="Public-safe generated_at timestamp for the aggregate surface.",
+    )
 
 
 def handle_content_ops_command(
@@ -166,10 +218,22 @@ def handle_content_ops_command(
                 freshness=args.freshness,
             )
             renderer = render_content_ops_private_connector_gate_markdown
+        elif args.content_ops_command == "aggregate-packets":
+            payload = build_content_ops_packet_aggregation_packet(
+                public_handle_packets=[
+                    _load_json_object(path) for path in args.public_packet_json
+                ],
+                private_connector_gate_packets=[
+                    _load_json_object(path) for path in args.private_gate_packet_json
+                ],
+                surface_id=args.surface_id,
+                generated_at=args.generated_at,
+            )
+            renderer = render_content_ops_packet_aggregation_markdown
         else:
             raise ValueError(
-                "content-ops requires `preview`, `observe-public-handle`, or "
-                "`project-private-connector-gate`"
+                "content-ops requires `preview`, `observe-public-handle`, "
+                "`project-private-connector-gate`, or `aggregate-packets`"
             )
     except Exception as exc:
         payload = {

@@ -181,6 +181,25 @@ approval. Before approval, the runtime policy forbids paths such as
 limited to storing the compact gate packet, surfacing the owner question, and
 fixture-only smoke coverage.
 
+Connector packets can then be aggregated into the compact state surface:
+
+```bash
+loopx content-ops aggregate-packets \
+  --public-packet-json public-handle-packet.json \
+  --private-gate-packet-json private-connector-gate-packet.json \
+  --surface-id content_ops_connector_packet_aggregation \
+  --format json
+```
+
+It returns `content_ops_packet_aggregation_v0` with a generated
+`content_ops_surface_v0`, its read-only projection, validation details, and
+boundary booleans. The aggregation does not re-open connector URLs, read source
+bodies, read private material, write externally, or authorize publication. A
+public packet becomes a `metadata_packet_collected` connector trial, while a
+private gate packet remains `needs_owner_gate`; this prevents the projection
+from scheduling another metadata trial after a public packet has already been
+collected.
+
 The durable smoke is:
 
 ```bash
@@ -188,6 +207,7 @@ python3 examples/content-ops-surface-fixture-smoke.py
 python3 examples/content-ops-preview-cli-smoke.py
 python3 examples/content-ops-public-handle-observation-smoke.py
 python3 examples/content-ops-private-connector-gate-smoke.py
+python3 examples/content-ops-packet-aggregation-smoke.py
 ```
 
 The smoke checks record coverage, source/draft/gate references, first-screen
@@ -195,5 +215,6 @@ projection fields, connector metadata-trial routing, todo candidates,
 no-autopublish policy, public/private boundary hygiene, and the public-handle
 adapter's no-content/no-write guarantees. It also verifies that private
 connector intake projects an owner gate and a runtime deny policy before any
-private source-content read. A live X HEAD probe is available only when
-`LOOPX_LIVE_PUBLIC_HANDLE_SMOKE=1` is explicitly set.
+private source-content read, and that packet aggregation promotes only compact
+source/gate records into the state surface. A live X HEAD probe is available
+only when `LOOPX_LIVE_PUBLIC_HANDLE_SMOKE=1` is explicitly set.

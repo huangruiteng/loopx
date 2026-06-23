@@ -27,6 +27,7 @@ CONTENT_OPS_PRIVATE_CONNECTOR_OWNER_GATE_SCHEMA_VERSION = (
 CONTENT_OPS_CONNECTOR_RUNTIME_POLICY_SCHEMA_VERSION = (
     "content_ops_connector_runtime_policy_v0"
 )
+CONTENT_OPS_PACKET_AGGREGATION_SCHEMA_VERSION = "content_ops_packet_aggregation_v0"
 
 SOURCE_ITEM_SCHEMA_VERSION = "source_item_v0"
 ANGLE_CANDIDATE_SCHEMA_VERSION = "angle_candidate_v0"
@@ -81,6 +82,7 @@ ALLOWED_PUBLISH_GATE_STATUSES = {
 }
 ALLOWED_CONNECTOR_TRIAL_STATES = {
     "candidate",
+    "metadata_packet_collected",
     "ready_for_metadata_trial",
     "needs_owner_gate",
     "blocked",
@@ -1190,6 +1192,436 @@ def build_content_ops_private_connector_gate_packet(
             "until an owner decision updates the gate"
         ),
     }
+
+
+def _require_packet_flag(payload: Mapping[str, Any], key: str, expected: Any) -> None:
+    if payload.get(key) != expected:
+        raise ValueError(f"packet {key} must be {expected!r}")
+
+
+def _connector_trial_from_public_packet(
+    packet: Mapping[str, Any],
+    index: int,
+) -> dict[str, Any]:
+    source_item = packet.get("source_item")
+    if not isinstance(source_item, Mapping):
+        raise ValueError("public handle packet must include source_item")
+    observation = (
+        packet.get("observation")
+        if isinstance(packet.get("observation"), Mapping)
+        else {}
+    )
+    runtime_policy = (
+        packet.get("runtime_policy")
+        if isinstance(packet.get("runtime_policy"), Mapping)
+        else {}
+    )
+    surface = str(packet.get("surface") or observation.get("surface") or "public_feed")
+    source_item_id = str(source_item.get("source_item_id") or "").strip()
+    if not source_item_id:
+        raise ValueError("public handle packet source_item_id is required")
+    return {
+        "schema_version": CONNECTOR_TRIAL_SCHEMA_VERSION,
+        "trial_id": f"trial_public_packet_{index + 1}",
+        "surface": surface,
+        "tool_hint": str(
+            runtime_policy.get("connector_name") or "public metadata connector"
+        ),
+        "access_mode": "public_metadata_only",
+        "source_status": str(source_item.get("source_status") or "public"),
+        "freshness": str(source_item.get("freshness") or "unknown"),
+        "allowed_use": str(source_item.get("allowed_use") or "metadata_only"),
+        "trial_state": "metadata_packet_collected",
+        "proposed_source_item_id": source_item_id,
+        "terms_note": str(
+            source_item.get("terms_note")
+            or "metadata-only public source packet already collected"
+        ),
+        "promotion_target": "source_item_v0",
+        "requires_user_gate": False,
+        "external_write_allowed": False,
+    }
+
+
+def _connector_trial_from_private_gate_packet(
+    packet: Mapping[str, Any],
+    index: int,
+) -> dict[str, Any]:
+    connector = (
+        packet.get("connector")
+        if isinstance(packet.get("connector"), Mapping)
+        else {}
+    )
+    source_item = packet.get("source_item")
+    if not isinstance(source_item, Mapping):
+        raise ValueError("private connector gate packet must include source_item")
+    source_item_id = str(source_item.get("source_item_id") or "").strip()
+    if not source_item_id:
+        raise ValueError("private connector gate source_item_id is required")
+    return {
+        "schema_version": CONNECTOR_TRIAL_SCHEMA_VERSION,
+        "trial_id": f"trial_private_gate_packet_{index + 1}",
+        "surface": str(
+            packet.get("surface") or connector.get("surface") or "private_archive"
+        ),
+        "tool_hint": str(
+            connector.get("connector_name") or "private metadata connector"
+        ),
+        "access_mode": "private_metadata_only",
+        "source_status": "private_needs_review",
+        "freshness": str(source_item.get("freshness") or "unknown"),
+        "allowed_use": "metadata_only",
+        "trial_state": "needs_owner_gate",
+        "proposed_source_item_id": source_item_id,
+        "terms_note": str(
+            source_item.get("terms_note")
+            or "private connector metadata remains gated before source use"
+        ),
+        "promotion_target": "source_item_v0_after_owner_gate",
+        "requires_user_gate": True,
+        "external_write_allowed": False,
+    }
+
+
+def build_content_ops_surface_from_connector_packets(
+    *,
+    public_handle_packets: Sequence[Mapping[str, Any]],
+    private_connector_gate_packets: Sequence[Mapping[str, Any]],
+    surface_id: str = "content_ops_connector_packet_aggregation",
+    generated_at: str | None = "2026-06-23T00:00:00Z",
+) -> dict[str, Any]:
+    """Aggregate connector packets into a compact content-ops state surface."""
+
+    public_packets = [dict(packet) for packet in public_handle_packets]
+    private_packets = [dict(packet) for packet in private_connector_gate_packets]
+    if not public_packets:
+        raise ValueError("at least one public handle observation packet is required")
+    if not private_packets:
+        raise ValueError("at least one private connector gate packet is required")
+
+    source_items: list[dict[str, Any]] = []
+    connector_trials: list[dict[str, Any]] = []
+
+    for index, packet in enumerate(public_packets):
+        if (
+            packet.get("schema_version")
+            != CONTENT_OPS_PUBLIC_HANDLE_OBSERVATION_PACKET_SCHEMA_VERSION
+        ):
+            raise ValueError(
+                "public packet schema_version must be "
+                "content_ops_public_handle_observation_packet_v0"
+            )
+        _require_packet_flag(packet, "ok", True)
+        _require_packet_flag(packet, "external_writes_performed", False)
+        _require_packet_flag(packet, "private_source_content_read", False)
+        _require_packet_flag(packet, "autopublish_allowed", False)
+        runtime_policy = (
+            packet.get("runtime_policy")
+            if isinstance(packet.get("runtime_policy"), Mapping)
+            else {}
+        )
+        if runtime_policy.get("safe_default") != "head_only_metadata_probe":
+            raise ValueError("public packet runtime policy must be HEAD-only")
+        if runtime_policy.get("browser_open_allowed_before_gate") is not False:
+            raise ValueError("public packet must not allow browser open before gate")
+        source_item = packet.get("source_item")
+        if not isinstance(source_item, Mapping):
+            raise ValueError("public packet must include source_item")
+        source_items.append(dict(source_item))
+        connector_trials.append(_connector_trial_from_public_packet(packet, index))
+
+    for index, packet in enumerate(private_packets):
+        if (
+            packet.get("schema_version")
+            != CONTENT_OPS_PRIVATE_CONNECTOR_GATE_PACKET_SCHEMA_VERSION
+        ):
+            raise ValueError(
+                "private gate packet schema_version must be "
+                "content_ops_private_connector_gate_packet_v0"
+            )
+        _require_packet_flag(packet, "ok", True)
+        _require_packet_flag(packet, "owner_gate_required", True)
+        _require_packet_flag(packet, "external_reads_performed", False)
+        _require_packet_flag(packet, "external_writes_performed", False)
+        _require_packet_flag(packet, "private_source_content_read", False)
+        _require_packet_flag(packet, "autopublish_allowed", False)
+        runtime_policy = (
+            packet.get("runtime_policy")
+            if isinstance(packet.get("runtime_policy"), Mapping)
+            else {}
+        )
+        if runtime_policy.get("safe_default") != "gate_projection_only":
+            raise ValueError("private packet runtime policy must be gate-only")
+        if runtime_policy.get("browser_open_allowed_before_gate") is not False:
+            raise ValueError("private packet must not allow browser open before gate")
+        source_item = packet.get("source_item")
+        if not isinstance(source_item, Mapping):
+            raise ValueError("private gate packet must include source_item")
+        source_items.append(dict(source_item))
+        connector_trials.append(_connector_trial_from_private_gate_packet(packet, index))
+
+    public_source_ids = [
+        str(item.get("source_item_id"))
+        for item in source_items
+        if item.get("source_status") == "public"
+    ]
+    private_source_ids = [
+        str(item.get("source_item_id"))
+        for item in source_items
+        if item.get("source_status") == "private_needs_review"
+    ]
+    aggregate_angle_id = "angle_connector_packet_aggregation"
+    publish_gate_id = "publish_gate_connector_packet_aggregation"
+    draft_id = "draft_connector_packet_aggregation_outline"
+
+    angle_candidates = [
+        {
+            "schema_version": ANGLE_CANDIDATE_SCHEMA_VERSION,
+            "angle_id": aggregate_angle_id,
+            "source_item_ids": public_source_ids,
+            "audience": "creator operators evaluating bounded automation",
+            "topic": "connector-bounded content operations",
+            "novelty": "combines public metadata packets with explicit private owner gates",
+            "preference_fit": "medium",
+            "evidence_quality": "metadata_only_connector_packet",
+            "decision": "draft",
+        }
+    ]
+    if private_source_ids:
+        angle_candidates.append(
+            {
+                "schema_version": ANGLE_CANDIDATE_SCHEMA_VERSION,
+                "angle_id": "angle_private_connector_source_quote",
+                "source_item_ids": private_source_ids,
+                "audience": "creator operators evaluating bounded automation",
+                "topic": "private connector source quote",
+            "novelty": "blocked by private-source owner gate",
+            "preference_fit": "unknown",
+            "evidence_quality": "needs_owner_review",
+            "decision": "reject",
+            "rejection_reason": (
+                "private connector material cannot be quoted or summarized "
+                "before owner approval"
+            ),
+            }
+        )
+
+    draft_items = [
+        {
+            "schema_version": DRAFT_ITEM_SCHEMA_VERSION,
+            "draft_id": draft_id,
+            "angle_id": aggregate_angle_id,
+            "state": "outline",
+            "source_map": [
+                {"source_item_id": source_id, "use": "metadata-only premise"}
+                for source_id in public_source_ids
+            ],
+            "preference_hints": [
+                "explain connector value as bounded signal intake",
+                "keep private-source use and publishing behind explicit gates",
+            ],
+            "publish_gate_id": publish_gate_id,
+            "validation_surface": (
+                "public source map present; private connector represented only by owner gate"
+            ),
+        }
+    ]
+    feedback_signals = [
+        {
+            "schema_version": FEEDBACK_SIGNAL_SCHEMA_VERSION,
+            "feedback_id": "feedback_connector_packet_boundary",
+            "target_id": private_source_ids[0],
+            "signal": "private_connector_stays_gated",
+            "effect": "source_boundary_correction",
+            "writes_todo": True,
+            "summary": "Private connector packets remain owner-gated before source use.",
+        }
+    ]
+    publish_gates = [
+        {
+            "schema_version": PUBLISH_GATE_SCHEMA_VERSION,
+            "gate_id": publish_gate_id,
+            "draft_id": draft_id,
+            "status": "blocked_until_user_approval",
+            "approval_required": True,
+            "autopublish_allowed": False,
+            "required_review": [
+                "source attribution",
+                "private connector owner gate",
+                "tone/style",
+                "final publish destination",
+            ],
+        }
+    ]
+    material_memory = [
+        {
+            "schema_version": MATERIAL_MEMORY_SCHEMA_VERSION,
+            "memory_id": f"memory_{source_id}",
+            "source_item_id": source_id,
+            "attribution": "content-ops packet aggregation",
+            "reuse_boundary": "metadata_only_public_handle",
+            "rejected_angles": ["angle_private_connector_source_quote"],
+            "preference_hints": ["bounded connector intake before drafting"],
+        }
+        for source_id in public_source_ids
+    ]
+    material_memory.extend(
+        {
+            "schema_version": MATERIAL_MEMORY_SCHEMA_VERSION,
+            "memory_id": f"memory_{source_id}",
+            "source_item_id": source_id,
+            "attribution": "content-ops private connector gate",
+            "reuse_boundary": "private_owner_gate_required",
+            "rejected_angles": ["angle_private_connector_source_quote"],
+            "preference_hints": ["do not quote or summarize before owner approval"],
+        }
+        for source_id in private_source_ids
+    )
+
+    return {
+        "schema_version": CONTENT_OPS_SURFACE_SCHEMA_VERSION,
+        "surface_id": surface_id,
+        "generated_at": generated_at,
+        "mode": "compact_state_surface",
+        "source_items": source_items,
+        "angle_candidates": angle_candidates,
+        "draft_items": draft_items,
+        "feedback_signals": feedback_signals,
+        "publish_gates": publish_gates,
+        "material_memory": material_memory,
+        "connector_trials": connector_trials,
+        "operator_states": [
+            "waiting_for_source_review",
+            "ready_to_draft",
+            "waiting_for_feedback",
+            "ready_for_publish_decision",
+            "safe_side_work_available",
+        ],
+        "boundary": {
+            "public_safe": True,
+            "raw_private_material_recorded": False,
+            "raw_platform_data_recorded": False,
+            "credentials_recorded": False,
+            "autopublish_allowed": False,
+            "publish_requires_user_gate": True,
+            "connector_bodies_are_source_of_truth": False,
+        },
+    }
+
+
+def build_content_ops_packet_aggregation_packet(
+    *,
+    public_handle_packets: Sequence[Mapping[str, Any]],
+    private_connector_gate_packets: Sequence[Mapping[str, Any]],
+    surface_id: str = "content_ops_connector_packet_aggregation",
+    generated_at: str | None = "2026-06-23T00:00:00Z",
+) -> dict[str, Any]:
+    surface = build_content_ops_surface_from_connector_packets(
+        public_handle_packets=public_handle_packets,
+        private_connector_gate_packets=private_connector_gate_packets,
+        surface_id=surface_id,
+        generated_at=generated_at,
+    )
+    validation = validate_content_ops_surface(surface)
+    projection = project_content_ops_surface(surface)
+    return {
+        "ok": bool(validation.get("ok")),
+        "schema_version": CONTENT_OPS_PACKET_AGGREGATION_SCHEMA_VERSION,
+        "mode": "content-ops-aggregate-packets",
+        "surface": surface,
+        "projection": projection,
+        "validation": validation,
+        "input_summary": {
+            "public_handle_packet_count": len(public_handle_packets),
+            "private_connector_gate_packet_count": len(private_connector_gate_packets),
+            "source_item_count": len(surface.get("source_items") or []),
+            "owner_gate_required_count": projection.get("connector_trials", {}).get(
+                "owner_gate_required_count"
+            )
+            if isinstance(projection.get("connector_trials"), Mapping)
+            else None,
+        },
+        "external_reads_performed": False,
+        "external_writes_performed": False,
+        "private_source_bodies_read": False,
+        "private_source_content_read": False,
+        "autopublish_allowed": False,
+        "next_safe_action": projection.get("first_screen", {}).get("next_safe_action")
+        if isinstance(projection.get("first_screen"), Mapping)
+        else None,
+    }
+
+
+def render_content_ops_packet_aggregation_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# LoopX Content-Ops Packet Aggregation",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- schema_version: `{payload.get('schema_version')}`",
+        f"- external_reads_performed: `{payload.get('external_reads_performed')}`",
+        f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
+        f"- private_source_bodies_read: `{payload.get('private_source_bodies_read')}`",
+        f"- private_source_content_read: `{payload.get('private_source_content_read')}`",
+        f"- autopublish_allowed: `{payload.get('autopublish_allowed')}`",
+    ]
+    input_summary = payload.get("input_summary")
+    if isinstance(input_summary, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Inputs",
+                "",
+                f"- public_handle_packet_count: `{input_summary.get('public_handle_packet_count')}`",
+                f"- private_connector_gate_packet_count: `{input_summary.get('private_connector_gate_packet_count')}`",
+                f"- source_item_count: `{input_summary.get('source_item_count')}`",
+                f"- owner_gate_required_count: `{input_summary.get('owner_gate_required_count')}`",
+            ]
+        )
+    projection = payload.get("projection")
+    if isinstance(projection, Mapping):
+        first_screen = projection.get("first_screen")
+        if isinstance(first_screen, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "## First Screen",
+                    "",
+                    f"- waiting_on: `{first_screen.get('waiting_on')}`",
+                    f"- user_action_required: `{first_screen.get('user_action_required')}`",
+                    f"- agent_can_continue: `{first_screen.get('agent_can_continue')}`",
+                    f"- next_safe_action: {first_screen.get('next_safe_action')}",
+                ]
+            )
+        connector_trials = projection.get("connector_trials")
+        if isinstance(connector_trials, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "## Connector Trials",
+                    "",
+                    f"- states: `{connector_trials.get('states')}`",
+                    f"- owner_gate_required_count: `{connector_trials.get('owner_gate_required_count')}`",
+                ]
+            )
+    validation = payload.get("validation")
+    if isinstance(validation, Mapping):
+        errors = (
+            validation.get("errors")
+            if isinstance(validation.get("errors"), list)
+            else []
+        )
+        lines.extend(
+            [
+                "",
+                "## Validation",
+                "",
+                f"- validation_ok: `{validation.get('ok')}`",
+                f"- error_count: `{len(errors)}`",
+            ]
+        )
+    if payload.get("error"):
+        lines.extend(["", "## Error", "", str(payload.get("error"))])
+    return "\n".join(lines) + "\n"
 
 
 def render_content_ops_private_connector_gate_markdown(payload: dict[str, Any]) -> str:
