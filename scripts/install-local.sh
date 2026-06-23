@@ -163,27 +163,26 @@ if [[ "$install_skill" != "0" && -d "$skills_source" ]]; then
   skill_line="${skill_line%$'\n'}"
 fi
 
-# loopx-goal-mode: the Claude Code counterpart of Codex's native goal mode.
-# loopx ships a constructed goal-mode — PreToolUse gate (should_run + write_scope
-# + destructive-bash) + a deterministic Stop hook for in-session continuation +
-# MCP + statusline + /loopx — installed into ~/.claude here. No OS sandbox (for
-# strong isolation, run inside a dev container/VM). Skipped when the `claude` CLI
-# is not on PATH, so a Codex-only machine does not get stray ~/.claude config.
-claude_line="- loopx-goal-mode: skipped"
-install_claude="${LOOPX_INSTALL_CLAUDE:-1}"
+# loopx Claude Code adapter: OPT-IN, OFF by default — the normal loopx install
+# never touches ~/.claude. The run loop is Claude Code's native /loop; loopx
+# provides the should_run protocol (MCP) + a /loopx setup helper, and NO global
+# hooks by default. Enable explicitly with LOOPX_INSTALL_CLAUDE=1 (installs at
+# USER scope: MCP + /loopx command). Add the optional should_run gate later with
+# `install.py --scope <user|project> --harden`. Prefer PROJECT scope:
+# `python <release>/loopx/claude_goal_mode/scripts/install.py --scope project`.
 claude_installer="$release_dir/loopx/claude_goal_mode/scripts/install.py"
+install_claude="${LOOPX_INSTALL_CLAUDE:-0}"
+claude_line="- loopx Claude adapter: skipped (opt-in; LOOPX_INSTALL_CLAUDE=1, or run install.py --scope project|user)"
 if [[ "$install_claude" != "0" && -f "$claude_installer" ]]; then
   if ! command -v claude >/dev/null 2>&1; then
-    # No Claude Code on PATH -> do NOT run the plugin installer (it would create
-    # stray ~/.claude config on a machine that has no Claude Code to use it).
-    claude_line="- loopx-goal-mode: skipped (Claude Code not found on PATH)"
+    claude_line="- loopx Claude adapter: skipped (Claude Code not found on PATH)"
   else
     claude_python="${LOOPX_PYTHON:-python3}"
     command -v "$claude_python" >/dev/null 2>&1 || claude_python="python"
-    if "$claude_python" "$claude_installer" >/dev/null 2>&1; then
-      claude_line="- loopx-goal-mode: ~/.claude (PreToolUse+Stop hooks + statusLine + MCP + /loopx)"
+    if "$claude_python" "$claude_installer" --scope user >/dev/null 2>&1; then
+      claude_line="- loopx Claude adapter: ~/.claude (MCP + /loopx, user scope; no hooks — add with --harden)"
     else
-      claude_line="- loopx-goal-mode: install attempted; run manually: $claude_python \"$claude_installer\""
+      claude_line="- loopx Claude adapter: install attempted; run manually: $claude_python \"$claude_installer\" --scope user"
     fi
   fi
 fi

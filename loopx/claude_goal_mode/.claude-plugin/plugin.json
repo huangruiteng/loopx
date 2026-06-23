@@ -1,10 +1,9 @@
 {
   "name": "loopx-goal-mode",
   "version": "0.1.0",
-  "description": "LoopX goal-mode for Claude Code: loopx (a deterministic control plane) gates each tool call (should_run + write_scope + destructive-bash denylist) and keeps the session advancing across turns via a Stop hook. No OS sandbox — for strong isolation, run inside a dev container/VM. Toggle with /loopx.",
+  "description": "LoopX adapter for Claude Code: the loopx control-plane MCP (should_run / claim_task / complete_task) + the /loopx setup command + statusline. The run loop is Claude Code's native /loop, driven by a .claude/loop.md that /loopx writes; the optional should_run PreToolUse gate (hooks/goal_policy.py) is added deliberately via install.py --harden, NOT by default.",
   "author": "loopx",
   "commands": "./commands",
-  "hooks": "./hooks/hooks.json",
   "statusLine": {
     "type": "command",
     "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/statusline/goal_status.py\""

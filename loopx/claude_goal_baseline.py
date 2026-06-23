@@ -5,17 +5,20 @@ Codex exposes a NATIVE goal feature: an app-server JSON-RPC surface
 (``thread/goal/set`` / ``thread/goal/get``) plus a ``/goal`` slash command. The
 Codex baseline (``codex_goal_baseline.py``) speaks that protocol directly.
 
-Claude Code has **no equivalent native goal API today**. So the supported
-goal-mode surface for Claude Code is *constructed* by loopx:
+Claude Code has no equivalent native goal OBJECT, but it DOES have native
+scheduling: ``/loop`` re-runs a prompt each iteration. So the supported loopx
+surface on Claude Code is:
 
-- **permission gating** via a Claude Code ``PreToolUse`` hook (deterministic
-  allow/deny from loopx state), and
-- **the run loop** via an external heartbeat driver (``goal_run.py`` calling
-  ``claude -p``), because there is no native cross-turn goal object to persist.
+- **the run loop** = Claude Code's native ``/loop``, driven by a project
+  ``.claude/loop.md`` that encodes the loopx tick protocol;
+- **the control plane** = the loopx MCP tools (``should_run`` / ``claim_task`` /
+  ``complete_task``), where ``should_run`` is the deterministic per-tick gate;
+- ``/loopx`` writes the loop.md and registers the goal/agent;
+- an OPTIONAL ``PreToolUse`` should_run gate (opt-in) adds per-tool enforcement.
 
 This module makes that contract explicit and machine-checkable, mirroring the
 shape of the Codex baseline so dashboards/regressions can treat both backends
-uniformly. It does NOT pretend a native API exists.
+uniformly. It does NOT pretend a native goal API exists.
 """
 from __future__ import annotations
 
@@ -25,12 +28,13 @@ from typing import Any
 CLAUDE_CODE_GOAL_BASELINE_SCHEMA_VERSION = "claude_code_goal_baseline_v0"
 CLAUDE_CODE_GOAL_BASELINE_PROOF_SCHEMA_VERSION = "claude_code_goal_baseline_proof_v0"
 
-# Claude Code extension points used to construct goal-mode (vs Codex's native API).
+# Claude Code seams loopx uses (vs Codex's native goal API).
 CLAUDE_CODE_GOAL_SEAMS = (
-    "pretooluse_hook_permission_gate",   # replaces Codex sandbox/approvalPolicy
-    "mcp_server_goal_state",             # list/claim/complete todos
-    "external_heartbeat_driver",         # claude -p loop (replaces Codex timer + native goal)
-    "slash_command_goal_toggle",         # /goal on|off|status
+    "native_loop_runtime",             # Claude Code /loop is the scheduler/executor
+    "loop_md_tick_protocol",           # .claude/loop.md encodes the loopx tick
+    "mcp_should_run_control_plane",    # should_run/claim/complete (should_run = the gate)
+    "slash_command_loopx_setup",       # /loopx writes loop.md + registers goal/agent
+    "optional_pretooluse_hardening",   # opt-in per-tool should_run gate
 )
 
 
@@ -63,12 +67,13 @@ def build_claude_code_goal_baseline_plan(
         "baseline_mode": "claude_code_goal_mode",
         "native_goal_api_present": False,
         "native_api_note": (
-            "Claude Code has no thread/goal/set equivalent; goal-mode is constructed "
-            "from PreToolUse hook gating + an external heartbeat driver."
+            "Claude Code has no thread/goal/set equivalent; loopx uses native /loop as the "
+            "runtime and the MCP should_run protocol as the per-tick gate (the PreToolUse "
+            "hook is optional hardening)."
         ),
         "seams": list(CLAUDE_CODE_GOAL_SEAMS),
-        "permission_model": "pretooluse_hook_deny_allow",
-        "loop_model": "external_heartbeat_driver_claude_p",
+        "permission_model": "mcp_should_run_per_tick_gate_optional_pretooluse_hook",
+        "loop_model": "native_loop_runtime",
         "persistence_owner": "loopx_state",  # registry + active state + run history
         "objective_sha256": stable_text_digest(objective_text),
         "objective_chars": len(objective_text),

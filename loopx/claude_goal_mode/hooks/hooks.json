@@ -1,4 +1,5 @@
 {
+  "_comment": "OPTIONAL should_run hardening (added via install.py --harden, not by default). The run loop is native /loop; this PreToolUse gate is extra per-tool enforcement.",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,17 +9,6 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/goal_policy.py\"",
             "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/goal_stop.py\"",
-            "timeout": 15
           }
         ]
       }

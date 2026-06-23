@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""PreToolUse policy gate for goal-mode — loopx's deterministic gate.
+"""PreToolUse policy gate for goal-mode — OPTIONAL deterministic hardening.
 
-There is no OS sandbox in this design (loopx drives Claude Code directly): this
-hook IS the whole gate. It emits a deterministic permission decision from loopx
-state and does the containment at the tool layer:
+In the native-`/loop` design, Claude Code's `/loop` is the runtime and loopx's
+MCP `should_run` is the per-tick gate. This hook is NOT installed by default —
+it is opt-in (`install.py --harden` / `connect.py --harden`), project-scoped, and
+adds a per-TOOL-CALL gate on top of the loop:
 
 - should_run gate (fail-closed)  -> may the agent spend this turn right now?
 - Edit/Write -> write_scope        -> deny file edits outside the goal's scope
 - Bash -> destructive denylist     -> deny obviously dangerous commands
 
+It only acts in a project where loopx is armed (a `.claude/loop.md` exists).
+
 Limitation (by design): Bash is gated only by a denylist, so a determined shell
-command can still write outside write_scope or reach the network. This is the
-loopx-original posture — fine for trusted local work. For STRONG isolation
-(untrusted code / unattended high-stakes), run Claude Code inside a dev
+command can still write outside write_scope or reach the network. For STRONG
+isolation (untrusted code / unattended high-stakes), run Claude Code inside a dev
 container or VM, which contains the whole process at the environment level.
 
 Behavior (only while goal-mode is ARMED for the event's project):
@@ -44,8 +46,8 @@ import sys
 from pathlib import Path
 
 # Goal context is resolved PER PROJECT from the event's cwd via the registry, and
-# "armed" = the per-goal launchd heartbeat exists (see goal_state.py). No separate
-# active-state file — the registry is the single source of truth, like Codex.
+# "armed" = the project's .claude/loop.md exists (see goal_state.py). The registry
+# is the single source of truth; there is no separate active-state file.
 from goal_state import active_context
 
 # Read-only tools are always allowed under goal-mode. Edit/Write are scoped to
@@ -114,7 +116,7 @@ def decide(ev: dict) -> dict:
     Edit/Write write_scope + a destructive-Bash denylist."""
     # Claude Code feeds the session's working directory on the event; resolve the
     # goal from THAT project's registry, and gate only while goal-mode is armed
-    # (the project's heartbeat plist exists). Unrelated/unarmed projects -> no-op.
+    # (the project's .claude/loop.md exists). Unrelated/unarmed projects -> no-op.
     cwd = ev.get("cwd") or (ev.get("workspace") or {}).get("current_dir")
     ctx = active_context(cwd)
     if not ctx:

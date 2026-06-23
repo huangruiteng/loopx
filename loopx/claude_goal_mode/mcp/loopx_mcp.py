@@ -5,11 +5,14 @@ Tools: list_todos, claim_task, complete_task, should_run.
 Each shells out to the loopx CLI (deterministic control plane).
 
 Requires: pip install mcp
-Config (registry/goal/agent) read from the goal-mode state file. The file is
-resolved PER PROJECT from this process's cwd (see goal_state.py): each Claude Code
-session launches its own stdio MCP subprocess inheriting the session's working
-directory, so the same goal scoping the hooks use applies here too — no global
-state shared across sessions.
+Config (registry/goal/agent) is resolved PER PROJECT from this process's cwd via
+the `.loopx/registry.json` (see goal_state.py): each Claude Code session launches
+its own stdio MCP subprocess inheriting the session's working directory, so the
+goal scoping is per-project — no global state shared across sessions.
+
+These tools are the loopx control-plane protocol that native `/loop` drives each
+iteration (via `.claude/loop.md`): should_run -> claim_task -> bounded work ->
+verify -> complete_task (which also spends one quota slot after writeback).
 """
 from __future__ import annotations
 
@@ -25,7 +28,7 @@ except Exception as e:  # pragma: no cover
 
 # share the registry-driven resolver with the hooks (sibling hooks/ dir)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hooks"))
-from goal_state import active_context
+from goal_state import goal_context
 
 mcp = FastMCP("loopx")
 
@@ -37,8 +40,9 @@ def _gh_prefix():
     return [_exe] if _exe else [__import__("sys").executable, "-m", "loopx.cli"]
 
 def _state() -> dict:
-    # registry-derived context for this project, only when goal-mode is armed
-    return active_context(Path.cwd()) or {}
+    # registry-derived context for THIS project (cwd) — the control-plane tools
+    # work whenever a goal exists, independent of the optional hook/loop.md.
+    return goal_context(Path.cwd()) or {}
 
 
 def _ctx():
