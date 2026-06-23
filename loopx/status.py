@@ -40,6 +40,7 @@ from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
 from .rollout_event_log import load_rollout_events, rollout_event_log_path
+from .session_runtime import SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION
 from .state_projection import (
     active_state_next_action_entries,
     next_action_projection_warning,
@@ -280,6 +281,10 @@ RUN_COMPACT_FIELDS = (
     "json_exists",
     "markdown_exists",
 )
+SESSION_RUNTIME_READONLY_PROJECTION_KEYS = (
+    "session_runtime_readonly_projection",
+    "session_runtime_projection",
+)
 USAGE_PROXY_NOTE = "run-history proxy; excludes token counts and raw thread logs"
 HUMAN_REWARD_COMPACT_FIELDS = (
     "recorded_at",
@@ -474,6 +479,134 @@ def public_safe_compact_list(value: Any, *, limit: int = MAX_SUBAGENT_SCOPE_ITEM
         if len(result) >= limit:
             break
     return result
+
+
+def compact_session_runtime_source(source: Any) -> dict[str, Any]:
+    if not isinstance(source, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    host_kind = public_safe_compact_text(source.get("host_kind"), limit=80)
+    if host_kind:
+        compact["host_kind"] = host_kind
+    latest_fact_at = public_safe_compact_text(source.get("latest_fact_at"), limit=80)
+    if latest_fact_at:
+        compact["latest_fact_at"] = latest_fact_at
+    source_refs = source.get("source_refs")
+    if isinstance(source_refs, dict):
+        counts = {
+            str(key): len(value)
+            for key, value in source_refs.items()
+            if isinstance(value, list) and value
+        }
+        if counts:
+            compact["source_ref_counts"] = counts
+    return compact
+
+
+def compact_session_runtime_boundary(boundary: Any) -> dict[str, Any]:
+    if not isinstance(boundary, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    for field in (
+        "raw_transcript_copied",
+        "raw_logs_copied",
+        "credentials_copied",
+        "runtime_writeback_allowed",
+        "runtime_mutation_allowed",
+        "raw_material_detected",
+    ):
+        if field in boundary:
+            compact[field] = bool(boundary.get(field))
+    raw_keys = public_safe_compact_list(boundary.get("raw_material_key_names"), limit=8)
+    if raw_keys:
+        compact["raw_material_key_names"] = raw_keys
+    return compact
+
+
+def compact_session_runtime_first_screen(first_screen: Any) -> dict[str, Any]:
+    if not isinstance(first_screen, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    for field in (
+        "waiting_on",
+        "first_user_todo",
+        "first_agent_todo",
+        "latest_validation",
+        "latest_blocker",
+        "gate_state",
+        "recommended_action",
+    ):
+        value = public_safe_compact_text(first_screen.get(field), limit=260)
+        if value:
+            compact[field] = value
+    for field in ("user_action_required", "agent_can_continue"):
+        if field in first_screen:
+            compact[field] = bool(first_screen.get(field))
+    return compact
+
+
+def compact_session_runtime_work_lane(contract: Any) -> dict[str, Any]:
+    if not isinstance(contract, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    lane = public_safe_compact_text(contract.get("lane"), limit=80)
+    if lane:
+        compact["lane"] = lane
+    for field in ("must_attempt_work", "user_gate_blocks_delivery", "monitor_only"):
+        if field in contract:
+            compact[field] = bool(contract.get(field))
+    return compact
+
+
+def compact_session_runtime_attention_item(attention_item: Any) -> dict[str, Any]:
+    if not isinstance(attention_item, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    for field in ("kind", "priority", "title", "waiting_on"):
+        value = public_safe_compact_text(attention_item.get(field), limit=220)
+        if value:
+            compact[field] = value
+    return compact
+
+
+def compact_session_runtime_readonly_projection(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    if value.get("schema_version") != SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION:
+        return None
+    compact: dict[str, Any] = {
+        "schema_version": SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION,
+        "mode": "read_only",
+    }
+    goal_id = public_safe_compact_text(value.get("goal_id"), limit=120)
+    if goal_id:
+        compact["goal_id"] = goal_id
+    source = compact_session_runtime_source(value.get("source"))
+    if source:
+        compact["source"] = source
+    boundary = compact_session_runtime_boundary(value.get("boundary"))
+    if boundary:
+        compact["boundary"] = boundary
+    first_screen = compact_session_runtime_first_screen(value.get("first_screen"))
+    if first_screen:
+        compact["first_screen"] = first_screen
+    work_lane = compact_session_runtime_work_lane(value.get("work_lane_contract"))
+    if work_lane:
+        compact["work_lane_contract"] = work_lane
+    attention = compact_session_runtime_attention_item(value.get("attention_item"))
+    if attention:
+        compact["attention_item"] = attention
+    return compact
+
+
+def compact_session_runtime_projection_from_run(run: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(run, dict):
+        return None
+    for key in SESSION_RUNTIME_READONLY_PROJECTION_KEYS:
+        projection = compact_session_runtime_readonly_projection(run.get(key))
+        if projection:
+            return projection
+    return compact_session_runtime_readonly_projection(run)
 
 
 def _compact_numeric_map(value: Any, *, keys: tuple[str, ...] | None = None) -> dict[str, Any]:
@@ -6977,6 +7110,65 @@ def legacy_runtime_goal_attention(
     )
 
 
+def session_runtime_status_waiting_on(value: Any, *, monitor_only: bool = False) -> str:
+    waiting_on = str(value or "").strip().lower()
+    if waiting_on in {"agent", "codex"}:
+        return "codex"
+    if waiting_on in {"controller", "human", "operator", "owner", "user", "user_or_controller"}:
+        return "user_or_controller"
+    if waiting_on in {"runtime", "external_evidence"}:
+        return "external_evidence"
+    if waiting_on in {"none", "monitor", MONITOR_SIGNAL_WAITING_ON} or monitor_only:
+        return MONITOR_SIGNAL_WAITING_ON
+    return "codex"
+
+
+def session_runtime_status_label(projection: dict[str, Any]) -> str:
+    work_lane = projection.get("work_lane_contract") if isinstance(projection.get("work_lane_contract"), dict) else {}
+    lane = public_safe_compact_text(work_lane.get("lane"), limit=80) or "projection"
+    return f"session_runtime_{lane}"
+
+
+def attach_session_runtime_projection(item: dict[str, Any], projection: dict[str, Any]) -> None:
+    item["session_runtime_projection"] = projection
+    project_asset = item.get("project_asset")
+    if isinstance(project_asset, dict):
+        project_asset["session_runtime_projection"] = projection
+
+
+def session_runtime_projection_attention(
+    goal: dict[str, Any],
+    current_run: dict[str, Any] | None,
+    projection: dict[str, Any],
+) -> dict[str, Any]:
+    first_screen = projection.get("first_screen") if isinstance(projection.get("first_screen"), dict) else {}
+    work_lane = projection.get("work_lane_contract") if isinstance(projection.get("work_lane_contract"), dict) else {}
+    boundary = projection.get("boundary") if isinstance(projection.get("boundary"), dict) else {}
+    monitor_only = bool(work_lane.get("monitor_only"))
+    waiting_on = session_runtime_status_waiting_on(
+        first_screen.get("waiting_on"),
+        monitor_only=monitor_only,
+    )
+    recommended_action = public_safe_compact_text(
+        first_screen.get("recommended_action") or (current_run or {}).get("recommended_action"),
+        limit=320,
+    ) or "inspect the session-runtime projection and choose the next safe action"
+    severity = "watch" if waiting_on in {"external_evidence", MONITOR_SIGNAL_WAITING_ON} else "action"
+    if boundary.get("raw_material_detected"):
+        severity = "high"
+    item = attention_item(
+        goal_id=str(goal.get("id") or projection.get("goal_id") or "unknown-goal"),
+        status=session_runtime_status_label(projection),
+        waiting_on=waiting_on,
+        severity=severity,
+        recommended_action=recommended_action,
+        source="session_runtime_projection",
+        **goal_lifecycle_fields(goal, current_run),
+    )
+    attach_session_runtime_projection(item, projection)
+    return item
+
+
 def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
     goal_id = str(goal.get("id") or "unknown-goal")
     adapter_status = str(goal.get("adapter_status") or "")
@@ -7038,6 +7230,10 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
             **attention_fields,
             **lifecycle_fields,
         )
+
+    session_projection = compact_session_runtime_projection_from_run(current_run)
+    if session_projection:
+        return session_runtime_projection_attention(goal, current_run, session_projection)
 
     classification = str(current_run.get("classification") or "unknown")
     action = str(current_run.get("recommended_action") or "inspect the latest run and choose one next action")
@@ -7614,6 +7810,9 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     active_user_pilot = compact_active_user_assisted_pilot(run)
     if active_user_pilot:
         compact["active_user_assisted_pilot_summary"] = active_user_pilot
+    session_projection = compact_session_runtime_projection_from_run(run)
+    if session_projection:
+        compact["session_runtime_projection"] = session_projection
     return compact
 
 
@@ -9032,6 +9231,47 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"classification={_markdown_scalar(latest_validation.get('classification') or '')} "
                     f"at={_markdown_scalar(latest_validation.get('generated_at') or '')}"
                 )
+            session_projection = (
+                project_asset.get("session_runtime_projection")
+                if isinstance(project_asset.get("session_runtime_projection"), dict)
+                else {}
+            )
+            if session_projection:
+                first_screen = (
+                    session_projection.get("first_screen")
+                    if isinstance(session_projection.get("first_screen"), dict)
+                    else {}
+                )
+                boundary = (
+                    session_projection.get("boundary")
+                    if isinstance(session_projection.get("boundary"), dict)
+                    else {}
+                )
+                source = (
+                    session_projection.get("source")
+                    if isinstance(session_projection.get("source"), dict)
+                    else {}
+                )
+                lines.append(
+                    "    - session_runtime_projection: "
+                    f"waiting_on={_markdown_scalar(first_screen.get('waiting_on') or '')} "
+                    f"agent_can_continue={first_screen.get('agent_can_continue')} "
+                    f"user_action_required={first_screen.get('user_action_required')} "
+                    f"gate={_markdown_scalar(first_screen.get('gate_state') or '')} "
+                    f"raw_material_detected={boundary.get('raw_material_detected')} "
+                    f"runtime_writeback_allowed={boundary.get('runtime_writeback_allowed')} "
+                    f"host={_markdown_scalar(source.get('host_kind') or '')}"
+                )
+                if first_screen.get("first_user_todo"):
+                    lines.append(
+                        "      - session_runtime_user_todo: "
+                        f"{_markdown_scalar(first_screen.get('first_user_todo') or '')}"
+                    )
+                if first_screen.get("first_agent_todo"):
+                    lines.append(
+                        "      - session_runtime_agent_todo: "
+                        f"{_markdown_scalar(first_screen.get('first_agent_todo') or '')}"
+                    )
             handoff_readiness = (
                 item.get("handoff_readiness")
                 if isinstance(item.get("handoff_readiness"), dict)
