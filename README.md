@@ -12,26 +12,48 @@ LoopX is a local control plane for loop engineering. It helps Codex,
 Claude Code, Cursor, and other agent runtimes keep working on goals that span
 hours, days, handoffs, and changing human feedback.
 
-LoopX turns a one-shot prompt or static goal into a dynamic, reviewable loop
-state: goals, gates, todos, claims, scopes, evidence, run history, quota, and
-human decisions stay in one compact layer. User gates stay explicit; safe
-fallback lanes keep moving; every automatic turn has a boundary, validation
-surface, and writeback trail.
+Use it when an agent is already useful for one session, but the work is too
+long, too gated, or too easy to lose across restarts. LoopX turns a one-shot
+prompt into a reviewable Loop Agent: a worker with a stable objective, explicit
+human gates, scoped next actions, evidence, and handoff state.
 
-The same state also feeds a local management surface: operators can inspect
-projects, agent lanes, user gates, todos, evidence, and review signals before
-granting more autonomy.
+Under the hood, LoopX keeps goals, gates, todos, claims, scopes, evidence, run
+history, quota, and human decisions in one compact layer. Product surfaces fold
+those mechanics into five questions a user can act on: what is the goal, what
+is next, what needs human judgment, what evidence changed, and whether the loop
+can be handed back to the agent.
 
 LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地方明确等人，
 不该空等的安全侧路继续推进，下一轮 agent 总能读到目标、边界、证据和交接。
 
-[Quick Start](#quick-start) · [See It In Action](#see-it-in-action) ·
+[Quick Start](#quick-start) · [Who Should Try It](#who-should-try-it) · [See It In Action](#see-it-in-action) ·
 [Getting Started](docs/guides/getting-started.md) · [Showcases](docs/showcases/README.md) ·
 [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
 [Community](#community--feedback) · [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
 [Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
 
 > Keep the loop moving. Keep the judgment human.
+
+## Who Should Try It
+
+LoopX is for people who already have an agent that can do useful work, and now
+need that work to continue without turning into stale chat memory.
+
+Start here if you are running:
+
+- multi-day engineering, research, benchmark, or experiment goals;
+- issue/PR fixing loops where the agent must preserve scope, evidence, and
+  review state across turns;
+- recurring heartbeat or monitor-style agent work;
+- projects with owner/SOP gates, human reward judgments, or public/private
+  boundary checks;
+- controller/side-agent workflows where todo ownership and handoff matter;
+- creator, research, or operations workflows where non-engineering users need
+  agent progress translated into clear state, blockers, and feedback prompts.
+
+LoopX is not an autonomous production controller. It is a local coordination
+substrate: dangerous permissions, publishing, production writes, and final
+ownership stay with the human/operator.
 
 ## Quick Start
 
@@ -198,6 +220,22 @@ writeback, and public/private boundaries stay visible to the next turn.
 
 ![LoopX control-plane board](docs/assets/control-plane-board.svg)
 
+## User Mental Model
+
+LoopX has more kernel concepts than a user should have to think about every
+day. The product surface should collapse them into five questions:
+
+| User question | Kernel objects behind it | What the user should see |
+| --- | --- | --- |
+| Goal | goal state, scope | What are we trying to move, and what is out of bounds? |
+| Next step | todo, claim, quota | What small action can the agent or human take now? |
+| Judgment | user gate, boundary authority | What needs human approval, route choice, or reward feedback? |
+| Evidence | run history, artifacts, validation | Why should we believe the state changed? |
+| Handoff | active state, handoff packet | Can the next agent turn continue safely, and from where? |
+
+The CLI keeps the full contract available for debugging. The dashboard and
+frontstage should start from these five questions, not from raw logs.
+
 ## Why Loop Engineering Needs A Control Plane
 
 Short agent tasks usually fail because the model makes a bad local choice.
@@ -258,25 +296,6 @@ or the
 - **Public/private boundary checks**: local scans and docs rules to keep raw
   private state, credentials, logs, traces, and benchmark material out of
   public artifacts.
-
-## Good Fits
-
-Use LoopX when agent work spans time, people, projects, or safety
-boundaries:
-
-- multi-day or multi-week engineering and research goals;
-- recurring heartbeat or monitor-style agent turns;
-- benchmark and experiment loops that must wait for evidence;
-- projects with owner/SOP gates or human reward judgments;
-- controller agents that spawn scoped side agents;
-- creator, research, or operations workflows where non-engineering users need
-  agent progress translated into clear state, blockers, and feedback prompts;
-- public/private boundary checks before publishing artifacts;
-- local dashboards that should foreground user decisions before raw logs.
-
-Do not use LoopX as an autonomous production controller. It is a local
-coordination substrate; project ownership and dangerous permissions stay with
-the human/operator.
 
 ## Community & Feedback
 
@@ -389,11 +408,23 @@ workflows make state drift easy to see. The broader product direction is a
 dynamic goal control plane for any long-running agent work where humans need
 clear progress, gates, feedback, and recovery without reading raw logs.
 
-One medium-term productization case is a creator-operator workflow: a
+The near-term open-source path is maintainer-first: help people manage agents
+that read issues, propose fixes, open PRs, resolve review feedback, run
+benchmarks, and keep evidence attached to the work. That path is valuable even
+before LoopX controls execution, because it gives maintainers a readable queue
+of goals, gates, todos, evidence, cost, and feedback.
+
+The broader product shape is a Loop Agent: an agent with a relatively stable
+responsibility, a continuing stream of external signals, and a recurring need
+to prove that its output quality, cost, and human-attention footprint are
+improving. A Loop Agent could be a coding maintainer, an experiment optimizer,
+a research assistant, or a creator/operator assistant. LoopX is the control
+plane that keeps those loops reviewable before they become more autonomous.
+
+A medium-term productization case is a creator-operator workflow: a
 non-engineering user asks an agent to track social-platform trends, map them to
 personal creative preferences, extract insights, draft content, and maintain a
-material library. The bottleneck is not only model capability. The product has
-to translate agent work into a friendly first screen: what happened, what is
+material library. The same control-plane shape applies: what happened, what is
 happening, where it is blocked, what comes next, and how user feedback changes
 the plan.
 
@@ -412,7 +443,7 @@ contract.
 - [Codex CLI packaged install](docs/product/codex-cli-packaged-install.md):
   no-clone install/update/start path for Codex CLI users.
 - [Integration guide](docs/integration.md): how to connect a project to Goal
-  Harness.
+  LoopX.
 - [Showcase catalog](docs/showcases/README.md): public-safe cases and future
   frontend data.
 - [Benchmark developer workflow](docs/benchmark-developer-workflow.md):
@@ -454,10 +485,10 @@ operator gates, human reward, structured todos, quota-aware heartbeats,
 read-only project maps, benchmark control-plane evidence, and a small
 multi-project dashboard.
 
-The next milestones are stronger project adapters, safer controller/sub-agent
-coordination, better benchmark-runner ergonomics, a more polished operator
-view, and creator/operator showcases that make the same control-plane value
-legible beyond software engineering.
+The next milestones are a clearer maintainer workflow for issue/PR loops,
+stronger project adapters, safer controller/sub-agent coordination, better
+benchmark-runner ergonomics, and a more polished management surface that maps
+kernel state into the five user questions above.
 
 ## Experimental
 
