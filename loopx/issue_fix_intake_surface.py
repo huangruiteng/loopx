@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from .content_ops_surface import (
     EXPLORATION_PLAN_SCHEMA_VERSION,
@@ -14,10 +15,152 @@ from .content_ops_surface import (
 CONTENT_OPS_ISSUE_FIX_INTAKE_PACKET_SCHEMA_VERSION = (
     "content_ops_issue_fix_intake_packet_v0"
 )
+CONTENT_OPS_ISSUE_FIX_METADATA_PREVIEW_PACKET_SCHEMA_VERSION = (
+    "content_ops_issue_fix_metadata_preview_packet_v0"
+)
 ISSUE_FIX_INTAKE_SCHEMA_VERSION = "issue_fix_intake_v0"
+GITHUB_ISSUE_METADATA_PREVIEW_SCHEMA_VERSION = "github_issue_metadata_preview_v0"
 
 ALLOWED_ISSUE_FIX_INTAKE_STATES = {"open", "closed", "unknown"}
 ALLOWED_ISSUE_FIX_ROUTE_STATUSES = {"candidate", "blocked_until_gate", "selected"}
+GITHUB_BODY_OR_COMMENT_KEYS = {
+    "body",
+    "body_text",
+    "comments",
+    "comment_bodies",
+    "timeline",
+    "events",
+    "raw",
+    "response_payload",
+}
+
+
+def _normalise_github_issue_reference(
+    *,
+    repo: str | None = None,
+    issue_ref: str | None = None,
+    url: str | None = None,
+) -> dict[str, Any]:
+    if url:
+        parsed = urlsplit(str(url).strip())
+        if parsed.scheme != "https":
+            raise ValueError("GitHub issue URL must use https")
+        if parsed.username or parsed.password:
+            raise ValueError("GitHub issue URL must not include credentials")
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if host != "github.com":
+            raise ValueError("GitHub issue URL must use github.com")
+        if parsed.query or parsed.fragment:
+            raise ValueError("GitHub issue URL must not include query or fragment data")
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) != 4 or parts[2] not in {"issues", "pull"}:
+            raise ValueError("GitHub issue URL must look like /owner/repo/issues/123")
+        if not parts[3].isdigit():
+            raise ValueError("GitHub issue or PR number must be numeric")
+        repo_label = _normalise_exploration_label(f"{parts[0]}/{parts[1]}", "repo")
+        issue_label = f"{parts[2]}_{parts[3]}"
+        permalink = urlunsplit(("https", "github.com", "/" + "/".join(parts), "", ""))
+        return {
+            "repo": repo_label,
+            "issue_ref": issue_label,
+            "kind": "pull_request" if parts[2] == "pull" else "issue",
+            "number": int(parts[3]),
+            "permalink": permalink,
+        }
+
+    repo_label = _normalise_exploration_label(repo, "repo")
+    issue_label = _normalise_exploration_label(issue_ref, "issue_ref")
+    number = None
+    digits = "".join(ch for ch in issue_label if ch.isdigit())
+    if digits:
+        number = int(digits)
+    return {
+        "repo": repo_label,
+        "issue_ref": issue_label,
+        "kind": "issue",
+        "number": number,
+        "permalink": None,
+    }
+
+
+def _provider_payload_labels(payload: Mapping[str, Any]) -> list[str]:
+    labels: list[str] = []
+    raw_labels = payload.get("labels")
+    if not isinstance(raw_labels, Sequence) or isinstance(raw_labels, (str, bytes)):
+        return labels
+    for item in raw_labels:
+        if isinstance(item, Mapping):
+            label = _normalise_exploration_label(item.get("name"), "label")
+        else:
+            label = _normalise_exploration_label(item, "label")
+        if label and label not in labels:
+            labels.append(label)
+    return labels[:12]
+
+
+def _safe_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
+def _github_metadata_from_provider_payload(
+    *,
+    reference: Mapping[str, Any],
+    provider_payload: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    payload = provider_payload or {}
+    gated_keys = sorted(
+        str(key) for key in payload if str(key).lower() in GITHUB_BODY_OR_COMMENT_KEYS
+    )
+    labels = _provider_payload_labels(payload) or ["needs-triage"]
+    state = str(payload.get("state") or "unknown").strip().lower()
+    if state not in ALLOWED_ISSUE_FIX_INTAKE_STATES:
+        state = "unknown"
+    number = _safe_int(payload.get("number"))
+    if number is None:
+        number = reference.get("number") if isinstance(reference.get("number"), int) else None
+    comments_count = _safe_int(payload.get("comments_count"))
+    if comments_count is None:
+        comments_count = _safe_int(payload.get("comments"))
+    metadata = {
+        "schema_version": GITHUB_ISSUE_METADATA_PREVIEW_SCHEMA_VERSION,
+        "provider": "github",
+        "provider_mode": "mocked_metadata" if provider_payload else "reference_only",
+        "repo": reference["repo"],
+        "issue_ref": reference["issue_ref"],
+        "kind": payload.get("kind") or reference["kind"],
+        "number": number,
+        "state": state,
+        "title_summary": (
+            _normalise_exploration_label(payload.get("title"), "title")
+            if payload.get("title")
+            else "public GitHub issue metadata preview"
+        ),
+        "labels": labels,
+        "updated_at": _normalise_exploration_label(payload.get("updated_at"), "updated_at")
+        if payload.get("updated_at")
+        else None,
+        "author_association": _normalise_exploration_label(
+            payload.get("author_association"),
+            "author_association",
+        )
+        if payload.get("author_association")
+        else "unknown",
+        "comments_count": comments_count,
+        "permalink": reference.get("permalink"),
+        "body_captured": False,
+        "comment_bodies_captured": False,
+        "response_payload_captured": False,
+        "local_path_captured": False,
+        "private_repo_state_read": False,
+        "gated_provider_fields_present": gated_keys,
+    }
+    return metadata, gated_keys
 
 
 def build_content_ops_issue_fix_intake_packet(
@@ -233,6 +376,145 @@ def build_content_ops_issue_fix_intake_packet(
     return packet
 
 
+def build_content_ops_issue_fix_metadata_preview_packet(
+    *,
+    repo: str | None = "public_repo_fixture",
+    issue_ref: str | None = "issue_123_public_metadata_fixture",
+    url: str | None = None,
+    provider_payload: Mapping[str, Any] | None = None,
+    generated_at: str | None = "2026-06-23T00:00:00Z",
+) -> dict[str, Any]:
+    """Build a mocked GitHub metadata adapter preview for issue-fix intake."""
+
+    reference = _normalise_github_issue_reference(
+        repo=repo,
+        issue_ref=issue_ref,
+        url=url,
+    )
+    metadata, gated_keys = _github_metadata_from_provider_payload(
+        reference=reference,
+        provider_payload=provider_payload,
+    )
+    intake_packet = build_content_ops_issue_fix_intake_packet(
+        repo=metadata["repo"],
+        issue_ref=metadata["issue_ref"],
+        issue_state=str(metadata["state"]),
+        generated_at=generated_at,
+    )
+    intake = dict(intake_packet["issue_fix_intake"])
+    intake["issue_metadata"] = metadata
+
+    candidate_todo_writeback_preview = [
+        {
+            "schema_version": "loopx_todo_writeback_preview_v0",
+            "command_preview": "loopx todo add",
+            "role": "agent",
+            "status": "preview_only",
+            "task_class": "advancement_task",
+            "action_kind": "issue_fix_public_metadata_triage",
+            "claimed_by": "codex-product-capability",
+            "text": (
+                "[P2] Triage public GitHub metadata for "
+                f"{metadata['repo']} {metadata['issue_ref']}: create or identify "
+                "a focused repro smoke, then inspect the code-context route."
+            ),
+            "would_write": False,
+            "requires_execute_flag": True,
+        }
+    ]
+    gated_field_todos = []
+    if gated_keys:
+        gated_field_todos.append(
+            {
+                "schema_version": "loopx_todo_writeback_preview_v0",
+                "command_preview": "loopx todo add",
+                "role": "user",
+                "status": "preview_only",
+                "task_class": "user_gate",
+                "action_kind": "approve_github_issue_body_or_comment_read",
+                "text": (
+                    "Approve a gated read before LoopX uses GitHub issue body, "
+                    "comment bodies, timeline events, or raw provider payloads."
+                ),
+                "gated_fields": gated_keys,
+                "would_write": False,
+                "requires_execute_flag": True,
+            }
+        )
+
+    adapter_preview = {
+        "schema_version": "github_issue_metadata_adapter_preview_v0",
+        "adapter": "github_issue_metadata",
+        "provider": "mock",
+        "input_mode": "mocked_provider_payload" if provider_payload else "reference_only",
+        "live_read_performed": False,
+        "live_read_allowed_by_default": False,
+        "default_allowed_fields": [
+            "repo",
+            "issue_ref",
+            "kind",
+            "number",
+            "state",
+            "title_summary",
+            "labels",
+            "updated_at",
+            "author_association",
+            "comments_count",
+            "permalink",
+        ],
+        "gated_provider_fields_present": gated_keys,
+        "candidate_loopx_todo_writeback_preview": (
+            candidate_todo_writeback_preview + gated_field_todos
+        ),
+    }
+    intake["adapter_preview"] = adapter_preview
+    intake["first_screen"] = {
+        "waiting_on": "agent",
+        "user_action_required": False,
+        "agent_can_continue": True,
+        "top_agent_todo": candidate_todo_writeback_preview[0],
+        "top_gate": gated_field_todos[0] if gated_field_todos else None,
+        "next_safe_action": (
+            "review the mocked public GitHub metadata preview, then write the "
+            "candidate LoopX agent todo only after metadata fields stay body-free"
+        ),
+    }
+    intake["boundary"] = {
+        "external_reads_performed": False,
+        "external_writes_performed": False,
+        "issue_body_captured": False,
+        "comment_bodies_captured": False,
+        "response_payloads_captured": False,
+        "local_paths_captured": False,
+        "private_repo_state_read": False,
+        "todo_write_performed": False,
+        "automerge_allowed": False,
+    }
+    packet: dict[str, Any] = {
+        "ok": True,
+        "schema_version": CONTENT_OPS_ISSUE_FIX_METADATA_PREVIEW_PACKET_SCHEMA_VERSION,
+        "mode": "content-ops-issue-fix-metadata-preview",
+        "exploration_plan_schema_version": EXPLORATION_PLAN_SCHEMA_VERSION,
+        "issue_fix_intake_schema_version": ISSUE_FIX_INTAKE_SCHEMA_VERSION,
+        "issue_fix_intake": intake,
+        "github_metadata_preview": metadata,
+        "adapter_preview": adapter_preview,
+        "external_reads_performed": False,
+        "external_writes_performed": False,
+        "private_source_bodies_read": False,
+        "private_source_content_read": False,
+        "local_paths_captured": False,
+        "todo_write_performed": False,
+        "autopublish_allowed": False,
+        "automerge_allowed": False,
+        "next_safe_action": intake["first_screen"]["next_safe_action"],
+    }
+    validation = validate_content_ops_issue_fix_metadata_preview_packet(packet)
+    packet["ok"] = bool(validation["ok"])
+    packet["validation"] = validation
+    return packet
+
+
 def validate_content_ops_issue_fix_intake_packet(
     packet: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -370,6 +652,204 @@ def validate_content_ops_issue_fix_intake_packet(
         "agent_todo_candidate_count": len(todos),
         "gate_projection_count": len(gates),
     }
+
+
+def validate_content_ops_issue_fix_metadata_preview_packet(
+    packet: Mapping[str, Any],
+) -> dict[str, Any]:
+    errors: list[str] = []
+    if (
+        packet.get("schema_version")
+        != CONTENT_OPS_ISSUE_FIX_METADATA_PREVIEW_PACKET_SCHEMA_VERSION
+    ):
+        errors.append(
+            "packet schema_version must be "
+            "content_ops_issue_fix_metadata_preview_packet_v0"
+        )
+    for key in (
+        "external_reads_performed",
+        "external_writes_performed",
+        "private_source_bodies_read",
+        "private_source_content_read",
+        "local_paths_captured",
+        "todo_write_performed",
+        "autopublish_allowed",
+        "automerge_allowed",
+    ):
+        if packet.get(key) is not False:
+            errors.append(f"packet {key} must be false")
+
+    metadata = (
+        packet.get("github_metadata_preview")
+        if isinstance(packet.get("github_metadata_preview"), Mapping)
+        else {}
+    )
+    if metadata.get("schema_version") != GITHUB_ISSUE_METADATA_PREVIEW_SCHEMA_VERSION:
+        errors.append(
+            "github_metadata_preview schema_version must be "
+            "github_issue_metadata_preview_v0"
+        )
+    for key in GITHUB_BODY_OR_COMMENT_KEYS:
+        if key in metadata:
+            errors.append(f"github metadata must not include raw field {key}")
+    for key in (
+        "body_captured",
+        "comment_bodies_captured",
+        "response_payload_captured",
+        "local_path_captured",
+        "private_repo_state_read",
+    ):
+        if metadata.get(key) is not False:
+            errors.append(f"github metadata {key} must be false")
+
+    adapter_preview = (
+        packet.get("adapter_preview")
+        if isinstance(packet.get("adapter_preview"), Mapping)
+        else {}
+    )
+    if adapter_preview.get("provider") != "mock":
+        errors.append("adapter preview provider must be mock")
+    if adapter_preview.get("live_read_performed") is not False:
+        errors.append("adapter preview live_read_performed must be false")
+    if adapter_preview.get("live_read_allowed_by_default") is not False:
+        errors.append("adapter preview live_read_allowed_by_default must be false")
+
+    todo_previews = _as_mappings(
+        adapter_preview.get("candidate_loopx_todo_writeback_preview")  # type: ignore[arg-type]
+    )
+    if not todo_previews:
+        errors.append("at least one todo writeback preview is required")
+    for todo in todo_previews:
+        if todo.get("schema_version") != "loopx_todo_writeback_preview_v0":
+            errors.append(f"todo preview {todo.get('action_kind')} has wrong schema")
+        if todo.get("would_write") is not False:
+            errors.append(f"todo preview {todo.get('action_kind')} must not write")
+        if todo.get("requires_execute_flag") is not True:
+            errors.append(
+                f"todo preview {todo.get('action_kind')} must require execute flag"
+            )
+
+    intake = (
+        packet.get("issue_fix_intake")
+        if isinstance(packet.get("issue_fix_intake"), Mapping)
+        else {}
+    )
+    boundary = (
+        intake.get("boundary") if isinstance(intake.get("boundary"), Mapping) else {}
+    )
+    for key in (
+        "external_reads_performed",
+        "external_writes_performed",
+        "issue_body_captured",
+        "comment_bodies_captured",
+        "response_payloads_captured",
+        "local_paths_captured",
+        "private_repo_state_read",
+        "todo_write_performed",
+        "automerge_allowed",
+    ):
+        if boundary.get(key) is not False:
+            errors.append(f"boundary.{key} must be false")
+    first_screen = (
+        intake.get("first_screen")
+        if isinstance(intake.get("first_screen"), Mapping)
+        else {}
+    )
+    if first_screen.get("waiting_on") != "agent":
+        errors.append("first_screen.waiting_on must be agent")
+    if first_screen.get("user_action_required") is not False:
+        errors.append("first_screen.user_action_required must be false")
+    if first_screen.get("agent_can_continue") is not True:
+        errors.append("first_screen.agent_can_continue must be true")
+
+    return {
+        "schema_version": "content_ops_issue_fix_metadata_preview_validation_v0",
+        "ok": not errors,
+        "errors": errors,
+        "metadata_field_count": len(metadata),
+        "gated_provider_field_count": len(
+            metadata.get("gated_provider_fields_present") or []
+        ),
+        "todo_writeback_preview_count": len(todo_previews),
+    }
+
+
+def render_content_ops_issue_fix_metadata_preview_markdown(
+    payload: dict[str, Any],
+) -> str:
+    lines = [
+        "# LoopX Repo Issue Fix Metadata Preview",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- schema_version: `{payload.get('schema_version')}`",
+        f"- external_reads_performed: `{payload.get('external_reads_performed')}`",
+        f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
+        f"- todo_write_performed: `{payload.get('todo_write_performed')}`",
+        f"- private_source_bodies_read: `{payload.get('private_source_bodies_read')}`",
+        f"- local_paths_captured: `{payload.get('local_paths_captured')}`",
+        f"- automerge_allowed: `{payload.get('automerge_allowed')}`",
+    ]
+    metadata = payload.get("github_metadata_preview")
+    if isinstance(metadata, Mapping):
+        lines.extend(
+            [
+                "",
+                "## GitHub Metadata Preview",
+                "",
+                f"- repo: `{metadata.get('repo')}`",
+                f"- issue_ref: `{metadata.get('issue_ref')}`",
+                f"- kind: `{metadata.get('kind')}`",
+                f"- state: `{metadata.get('state')}`",
+                f"- labels: `{metadata.get('labels')}`",
+                f"- gated_provider_fields_present: "
+                f"`{metadata.get('gated_provider_fields_present')}`",
+                f"- body_captured: `{metadata.get('body_captured')}`",
+                f"- comment_bodies_captured: "
+                f"`{metadata.get('comment_bodies_captured')}`",
+            ]
+        )
+    adapter = payload.get("adapter_preview")
+    if isinstance(adapter, Mapping):
+        todos = adapter.get("candidate_loopx_todo_writeback_preview")
+        lines.extend(
+            [
+                "",
+                "## Adapter Preview",
+                "",
+                f"- provider: `{adapter.get('provider')}`",
+                f"- input_mode: `{adapter.get('input_mode')}`",
+                f"- live_read_performed: `{adapter.get('live_read_performed')}`",
+                f"- live_read_allowed_by_default: "
+                f"`{adapter.get('live_read_allowed_by_default')}`",
+            ]
+        )
+        if isinstance(todos, Sequence) and not isinstance(todos, (str, bytes)):
+            lines.extend(["", "## Todo Writeback Preview", ""])
+            for todo in todos:
+                if isinstance(todo, Mapping):
+                    lines.append(
+                        f"- `{todo.get('role')}` `{todo.get('action_kind')}`: "
+                        f"would_write=`{todo.get('would_write')}`"
+                    )
+    validation = payload.get("validation")
+    if isinstance(validation, Mapping):
+        errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
+        lines.extend(
+            [
+                "",
+                "## Validation",
+                "",
+                f"- validation_ok: `{validation.get('ok')}`",
+                f"- gated_provider_field_count: "
+                f"`{validation.get('gated_provider_field_count')}`",
+                f"- todo_writeback_preview_count: "
+                f"`{validation.get('todo_writeback_preview_count')}`",
+                f"- error_count: `{len(errors)}`",
+            ]
+        )
+    if payload.get("error"):
+        lines.extend(["", "## Error", "", str(payload.get("error"))])
+    return "\n".join(lines) + "\n"
 
 
 def render_content_ops_issue_fix_intake_markdown(payload: dict[str, Any]) -> str:

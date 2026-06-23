@@ -25,7 +25,9 @@ from ..content_ops_surface import (
 )
 from ..issue_fix_intake_surface import (
     build_content_ops_issue_fix_intake_packet,
+    build_content_ops_issue_fix_metadata_preview_packet,
     render_content_ops_issue_fix_intake_markdown,
+    render_content_ops_issue_fix_metadata_preview_markdown,
 )
 
 
@@ -125,6 +127,42 @@ def register_content_ops_commands(
         "--generated-at",
         default="2026-06-23T00:00:00Z",
         help="Public-safe generated_at timestamp for the issue-fix intake.",
+    )
+    issue_fix_metadata_parser = content_ops_sub.add_parser(
+        "issue-fix-metadata-preview",
+        help=(
+            "Preview public GitHub issue/PR metadata intake with mocked provider "
+            "data and gated body/comment fields."
+        ),
+    )
+    add_subcommand_format(issue_fix_metadata_parser)
+    issue_fix_metadata_parser.add_argument(
+        "--repo",
+        default="public_repo_fixture",
+        help="Public-safe repository label for the metadata preview.",
+    )
+    issue_fix_metadata_parser.add_argument(
+        "--issue-ref",
+        default="issue_123_public_metadata_fixture",
+        help="Public-safe issue or PR reference label for the metadata preview.",
+    )
+    issue_fix_metadata_parser.add_argument(
+        "--url",
+        default=None,
+        help="Optional https://github.com/owner/repo/issues/123 or /pull/123 URL.",
+    )
+    issue_fix_metadata_parser.add_argument(
+        "--metadata-json",
+        default=None,
+        help=(
+            "Path to mocked provider JSON metadata, or '-' for stdin. "
+            "Body/comment fields stay gated and are not copied."
+        ),
+    )
+    issue_fix_metadata_parser.add_argument(
+        "--generated-at",
+        default="2026-06-23T00:00:00Z",
+        help="Public-safe generated_at timestamp for the metadata preview.",
     )
     observe_parser = content_ops_sub.add_parser(
         "observe-public-handle",
@@ -404,6 +442,17 @@ def handle_content_ops_command(
                 generated_at=args.generated_at,
             )
             renderer = render_content_ops_issue_fix_intake_markdown
+        elif args.content_ops_command == "issue-fix-metadata-preview":
+            payload = build_content_ops_issue_fix_metadata_preview_packet(
+                repo=args.repo,
+                issue_ref=args.issue_ref,
+                url=args.url,
+                provider_payload=_load_json_object(args.metadata_json)
+                if args.metadata_json
+                else None,
+                generated_at=args.generated_at,
+            )
+            renderer = render_content_ops_issue_fix_metadata_preview_markdown
         elif args.content_ops_command == "observe-public-handle":
             payload = build_content_ops_public_handle_observation_packet(
                 url=args.url,
@@ -470,9 +519,9 @@ def handle_content_ops_command(
         else:
             raise ValueError(
                 "content-ops requires `preview`, `exploration-plan`, "
-                "`issue-fix-intake`, `observe-public-handle`, "
-                "`project-private-connector-gate`, `aggregate-packets`, "
-                "`project-chatview-report`, or "
+                "`issue-fix-intake`, `issue-fix-metadata-preview`, "
+                "`observe-public-handle`, `project-private-connector-gate`, "
+                "`aggregate-packets`, `project-chatview-report`, or "
                 "`walkthrough-artifact`"
             )
     except Exception as exc:

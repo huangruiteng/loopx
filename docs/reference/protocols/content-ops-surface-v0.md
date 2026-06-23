@@ -162,6 +162,26 @@ merge, or automerge. If a fix path needs private repro material, the packet
 keeps that as a conditional user gate while allowing metadata-only triage and
 focused smoke drafting to continue.
 
+The next step toward a real issue-fix workflow is the mocked GitHub metadata
+adapter preview:
+
+```bash
+loopx content-ops issue-fix-metadata-preview \
+  --url https://github.com/owner/repo/issues/123 \
+  --metadata-json mocked-provider.json \
+  --format json
+```
+
+It returns `content_ops_issue_fix_metadata_preview_packet_v0`. The default path
+does not perform a live GitHub read; it accepts either a public issue/PR
+reference or mocked provider JSON and copies only allowlisted metadata fields
+such as repo, issue ref, state, labels, updated_at, and comments_count. Raw
+fields such as issue body, comment bodies, timeline events, or provider
+response payloads are represented only as gated field names. The packet also
+emits a `loopx_todo_writeback_preview_v0` candidate for the agent todo, but it
+does not write the todo unless a later command explicitly executes that
+writeback.
+
 The first reusable public connector adapter is the public-handle observation
 command:
 
