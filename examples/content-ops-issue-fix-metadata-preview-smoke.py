@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -54,11 +55,17 @@ def assert_public_safe(payload: dict[str, Any] | str) -> None:
     assert not leaked, leaked
 
 
-def run_cli(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    args: list[str],
+    *,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=check,
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -173,6 +180,85 @@ def main() -> int:
     assert reference_only["adapter_preview"]["input_mode"] == "reference_only"
     assert reference_only["validation"]["gated_provider_field_count"] == 0
     assert_public_safe(reference_only)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fake_bin = Path(tmpdir)
+        gh = fake_bin / "gh"
+        gh.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env python3",
+                    "import json",
+                    "import sys",
+                    "argv = sys.argv[1:]",
+                    "assert argv[:2] == ['api', '-H'], argv",
+                    "assert 'repos/huangruiteng/loopx/issues/123' in argv, argv",
+                    "assert '--jq' in argv, argv",
+                    "json.dump({",
+                    "  'number': 123,",
+                    "  'state': 'open',",
+                    "  'title': 'Crash on metadata adapter preview',",
+                    "  'labels': ['bug', 'needs-repro'],",
+                    "  'updated_at': '2026-06-23T00:00:00Z',",
+                    "  'author_association': 'CONTRIBUTOR',",
+                    "  'comments_count': 2,",
+                    "  'kind': 'issue',",
+                    "}, sys.stdout)",
+                    "sys.stdout.write('\\n')",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        gh.chmod(0o755)
+        live_env = {**os.environ, "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"}
+        live_payload = json.loads(
+            run_cli(
+                [
+                    "--format",
+                    "json",
+                    "content-ops",
+                    "issue-fix-metadata-preview",
+                    "--url",
+                    "https://github.com/huangruiteng/loopx/issues/123",
+                    "--fetch-metadata",
+                ],
+                env=live_env,
+            ).stdout
+        )
+    assert live_payload["ok"] is True, live_payload
+    assert live_payload["external_reads_performed"] is True, live_payload
+    assert live_payload["private_source_bodies_read"] is False, live_payload
+    assert live_payload["github_metadata_preview"]["provider_mode"] == "live_metadata"
+    assert live_payload["github_metadata_preview"]["body_captured"] is False
+    assert live_payload["github_metadata_preview"]["comment_bodies_captured"] is False
+    assert live_payload["github_metadata_preview"]["gated_provider_fields_present"] == []
+    assert live_payload["adapter_preview"]["provider"] == "github"
+    assert live_payload["adapter_preview"]["input_mode"] == "live_metadata"
+    assert live_payload["adapter_preview"]["live_read_performed"] is True
+    assert live_payload["adapter_preview"]["live_read_allowed_by_default"] is False
+    assert live_payload["issue_fix_intake"]["boundary"]["external_reads_performed"] is True
+    assert live_payload["issue_fix_intake"]["boundary"]["issue_body_captured"] is False
+    assert live_payload["issue_fix_intake"]["boundary"]["comment_bodies_captured"] is False
+    assert_public_safe(live_payload)
+
+    rejected_fetch_mix = run_cli(
+        [
+            "--format",
+            "json",
+            "content-ops",
+            "issue-fix-metadata-preview",
+            "--url",
+            "https://github.com/huangruiteng/loopx/issues/123",
+            "--metadata-json",
+            "-",
+            "--fetch-metadata",
+        ],
+        check=False,
+    )
+    assert rejected_fetch_mix.returncode == 1, rejected_fetch_mix
+    rejected_fetch_mix_payload = json.loads(rejected_fetch_mix.stdout)
+    assert rejected_fetch_mix_payload["ok"] is False, rejected_fetch_mix_payload
+    assert "cannot be combined" in rejected_fetch_mix_payload["error"]
 
     markdown = run_cli(["content-ops", "issue-fix-metadata-preview"]).stdout
     assert "LoopX Repo Issue Fix Metadata Preview" in markdown, markdown

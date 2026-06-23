@@ -95,6 +95,20 @@ def register_content_ops_issue_fix_commands(
         ),
     )
     issue_fix_metadata_parser.add_argument(
+        "--fetch-metadata",
+        action="store_true",
+        help=(
+            "Explicitly fetch public GitHub issue/PR metadata with gh api --jq. "
+            "Only body-free metadata fields are captured."
+        ),
+    )
+    issue_fix_metadata_parser.add_argument(
+        "--fetch-timeout-seconds",
+        type=int,
+        default=10,
+        help="Timeout for --fetch-metadata.",
+    )
+    issue_fix_metadata_parser.add_argument(
         "--generated-at",
         default="2026-06-23T00:00:00Z",
         help="Public-safe generated_at timestamp for the metadata preview.",
@@ -115,6 +129,8 @@ def handle_content_ops_issue_fix_command(
             render_content_ops_issue_fix_intake_markdown,
         )
     if args.content_ops_command == "issue-fix-metadata-preview":
+        if args.fetch_metadata and args.metadata_json:
+            raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
         return (
             build_content_ops_issue_fix_metadata_preview_packet(
                 repo=args.repo,
@@ -123,6 +139,8 @@ def handle_content_ops_issue_fix_command(
                 provider_payload=_load_json_object(args.metadata_json)
                 if args.metadata_json
                 else None,
+                fetch_metadata=args.fetch_metadata,
+                fetch_timeout_seconds=args.fetch_timeout_seconds,
                 generated_at=args.generated_at,
             ),
             render_content_ops_issue_fix_metadata_preview_markdown,
