@@ -1138,6 +1138,74 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
     assert "quiet_noop_allowed=True" in markdown, markdown
 
 
+def assert_scoped_user_gate_does_not_steal_other_agent_fallback() -> None:
+    gated_action = (
+        "[P0] Sync the local long-horizon protocol packet into the approved "
+        "Lark Kanban target."
+    )
+    primary_fallback = "[P0] Review and merge PR #623 for follow-up capture."
+    guard = build_quota_should_run(
+        status_payload(
+            status="side_agent_scoped_gate_other_agent_fallback",
+            next_action=gated_action,
+            coordination={
+                "primary_agent": "codex-main-control",
+                "registered_agents": ["codex-main-control", "codex-product-capability"],
+            },
+            user_todo_items=[
+                {
+                    "index": 1,
+                    "text": (
+                        "[P0-user] Choose the Lark Kanban target for local "
+                        "long-horizon protocol management."
+                    ),
+                    "role": "user",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "user_gate",
+                    "action_kind": "lark_kanban_target_decision",
+                    "todo_id": "todo_lark_gate",
+                },
+            ],
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": gated_action,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "advancement_task",
+                    "action_kind": "lark_kanban_target_decision",
+                    "claimed_by": "codex-main-control",
+                    "todo_id": "todo_product_kanban_sync",
+                    "required_capabilities": ["shell"],
+                },
+                {
+                    "index": 2,
+                    "text": primary_fallback,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "advancement_task",
+                    "action_kind": "review",
+                    "claimed_by": "codex-main-control",
+                    "todo_id": "todo_primary_review_623",
+                    "required_capabilities": ["shell"],
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-product-capability",
+    )
+    assert "scoped_user_gate_fallback" not in guard, guard
+    assert guard["safe_bypass_kind"] != "scoped_user_gate_fallback", guard
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is False, guard
+    assert guard["interaction_contract"]["agent_channel"]["delivery_allowed"] is False, guard
+    assert "todo_primary_review_623" not in guard.get("recommended_action", ""), guard
+    markdown = render_quota_should_run_markdown(guard)
+    assert "scoped_user_gate_fallback" not in markdown, markdown
+
+
 def assert_side_agent_replans_when_deferred_successor_is_ready() -> None:
     deferred_action = "[P1] Continue the issue meta surface fixture implementation."
     payload = status_payload(
@@ -1509,6 +1577,7 @@ def main() -> int:
     assert_launch_then_poll_todo_without_handle_routes_to_advancement()
     assert_side_agent_next_action_projects_without_stealing_goal_next_action()
     assert_side_agent_waits_when_only_other_agent_has_claimed_work()
+    assert_scoped_user_gate_does_not_steal_other_agent_fallback()
     assert_side_agent_replans_when_deferred_successor_is_ready()
     assert_side_agent_can_take_unclaimed_work()
     assert_agent_lane_next_action_prefers_capability_repair_candidate()

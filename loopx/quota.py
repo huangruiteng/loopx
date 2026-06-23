@@ -1903,6 +1903,18 @@ def _scoped_user_gate_fallback(
         else []
     )
     executable_items = [item for item in executable_items if isinstance(item, dict)]
+    claim_scope = (
+        agent_todo_summary.get("claim_scope")
+        if isinstance(agent_todo_summary.get("claim_scope"), dict)
+        else None
+    )
+    if claim_scope:
+        agent_id = normalize_todo_claimed_by(claim_scope.get("agent_id"))
+        executable_items = [
+            item
+            for item in executable_items
+            if normalize_todo_claimed_by(item.get("claimed_by")) in {"", agent_id}
+        ]
     if len(executable_items) < 2:
         return None
 
