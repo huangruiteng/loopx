@@ -134,12 +134,14 @@ def test_json_client_forwards_stdin_to_bridge_command() -> None:
         fake_bridge = root / "fake-json-bridge"
         fake_bridge.write_text(
             """#!/usr/bin/env python3
-import json, sys, time
+import json, os, sys, time
 payload = json.loads(sys.stdin.read() or '{}')
 time.sleep(0.35)
 print(json.dumps({
     'ok': True,
     'operation': payload.get('operation'),
+    'ai_addr_present': bool(os.environ.get('AI_ADDR')),
+    'ai_port_present': bool(os.environ.get('AI_PORT')),
     'raw_task_text_recorded': False,
     'credential_values_recorded': False,
 }))
@@ -186,6 +188,8 @@ print(json.dumps({
             env = os.environ.copy()
             env["LOOPX_REVERSE_CONNECT_TIMEOUT_SEC"] = "0.1"
             env["LOOPX_REVERSE_RESPONSE_TIMEOUT_SEC"] = "5"
+            env["AI_ADDR"] = "127.0.0.1"
+            env["AI_PORT"] = "2022"
             proc = subprocess.run(
                 [str(client)],
                 input=json.dumps({"operation": "exec", "cwd": "/app"}),
@@ -199,6 +203,95 @@ print(json.dumps({
             response = json.loads(proc.stdout)
             assert response["ok"] is True
             assert response["operation"] == "exec"
+            assert response["ai_addr_present"] is True
+            assert response["ai_port_present"] is True
+            assert response["raw_task_text_recorded"] is False
+            assert response["credential_values_recorded"] is False
+        finally:
+            server.wait(timeout=5)
+
+
+def test_json_client_expands_allowed_env_template_for_nested_bridge() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-reverse-json-env-smoke-") as tmp:
+        root = Path(tmp)
+        fake_bridge = root / "fake-nested-json-bridge"
+        fake_bridge.write_text(
+            """#!/usr/bin/env python3
+import json, os, sys
+
+assignments = sys.argv[1:]
+payload = json.loads(sys.stdin.read() or '{}')
+print(json.dumps({
+    'ok': True,
+    'operation': payload.get('operation'),
+    'argv_has_ai_addr': any(item.startswith('AI_ADDR=') for item in assignments),
+    'argv_has_ai_port': any(item.startswith('AI_PORT=') for item in assignments),
+    'argv_has_runtime_root': any(item.startswith('GOAL_HARNESS_REMOTE_BENCH_ROOT=') for item in assignments),
+    'raw_task_text_recorded': False,
+    'credential_values_recorded': False,
+}))
+""",
+            encoding="utf-8",
+        )
+        fake_bridge.chmod(0o700)
+        socket_path = root / "json-env.sock"
+        server = subprocess.Popen(
+            [
+                sys.executable,
+                str(BRIDGE),
+                "serve-json",
+                "--socket",
+                str(socket_path),
+                "--bridge-command",
+                f"{fake_bridge} {{loopx_allowed_env}}",
+                "--once",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            wait_for_socket(socket_path, server)
+            client = root / "json-client"
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(BRIDGE),
+                    "write-client",
+                    "--kind",
+                    "json",
+                    "--socket",
+                    str(socket_path),
+                    "--output",
+                    str(client),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            env = os.environ.copy()
+            env["LOOPX_REVERSE_CONNECT_TIMEOUT_SEC"] = "0.1"
+            env["LOOPX_REVERSE_RESPONSE_TIMEOUT_SEC"] = "5"
+            env["AI_ADDR"] = "127.0.0.1"
+            env["AI_PORT"] = "2022"
+            env["GOAL_HARNESS_REMOTE_BENCH_ROOT"] = "/tmp/loopx-bench"
+            proc = subprocess.run(
+                [str(client)],
+                input=json.dumps({"operation": "exec", "cwd": "/app"}),
+                check=False,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            assert proc.returncode == 0, proc.stderr
+            response = json.loads(proc.stdout)
+            assert response["ok"] is True
+            assert response["operation"] == "exec"
+            assert response["argv_has_ai_addr"] is True
+            assert response["argv_has_ai_port"] is True
+            assert response["argv_has_runtime_root"] is True
             assert response["raw_task_text_recorded"] is False
             assert response["credential_values_recorded"] is False
         finally:
@@ -229,6 +322,7 @@ def test_socket_probe_reports_missing_or_orphaned() -> None:
 def main() -> int:
     test_codex_client_writes_last_message_and_rewrites_bridge()
     test_json_client_forwards_stdin_to_bridge_command()
+    test_json_client_expands_allowed_env_template_for_nested_bridge()
     test_socket_probe_reports_missing_or_orphaned()
     print("skillsbench reverse-channel bridge smoke passed")
     return 0

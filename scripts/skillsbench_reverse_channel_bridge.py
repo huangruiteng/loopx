@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import socket
 import subprocess
 import sys
@@ -24,6 +25,7 @@ from typing import Any
 CLIENT_SCHEMA_VERSION = "skillsbench_reverse_channel_client_v0"
 SERVER_RESPONSE_SCHEMA_VERSION = "skillsbench_reverse_channel_response_v0"
 SOCKET_PROBE_SCHEMA_VERSION = "skillsbench_reverse_channel_socket_probe_v0"
+ALLOWED_PAYLOAD_ENV_KEYS = ("AI_ADDR", "AI_PORT", "GOAL_HARNESS_REMOTE_BENCH_ROOT")
 
 
 def _send_json_line(sock: socket.socket, payload: dict[str, Any]) -> None:
@@ -44,13 +46,28 @@ def _recv_json_line(conn: socket.socket) -> dict[str, Any]:
 
 def _safe_env(extra: object) -> dict[str, str]:
     env = os.environ.copy()
+    env.update(_allowed_payload_env(extra))
+    return env
+
+
+def _allowed_payload_env(extra: object) -> dict[str, str]:
+    env: dict[str, str] = {}
     if isinstance(extra, dict):
         for key, value in extra.items():
             if not isinstance(key, str):
                 continue
-            if key in {"AI_ADDR", "AI_PORT", "GOAL_HARNESS_REMOTE_BENCH_ROOT"}:
+            if key in ALLOWED_PAYLOAD_ENV_KEYS:
                 env[key] = str(value)
     return env
+
+
+def _allowed_env_assignments(extra: object) -> str:
+    env = _allowed_payload_env(extra)
+    return " ".join(f"{key}={shlex.quote(value)}" for key, value in env.items())
+
+
+def _bridge_command_with_payload_env(command: str, extra: object) -> str:
+    return command.replace("{loopx_allowed_env}", _allowed_env_assignments(extra))
 
 
 def _replace_output_last_message(args: list[str], replacement: Path) -> str | None:
@@ -153,10 +170,12 @@ def _run_json_bridge_payload(
 ) -> dict[str, Any]:
     timeout = max(1.0, float(default_timeout_sec))
     stdin_text = str(payload.get("stdin") or "")
-    env = _safe_env(payload.get("env"))
+    payload_env = payload.get("env")
+    env = _safe_env(payload_env)
+    command = _bridge_command_with_payload_env(bridge_command, payload_env)
     try:
         proc = subprocess.run(
-            bridge_command,
+            command,
             input=stdin_text,
             text=True,
             stdout=subprocess.PIPE,
@@ -350,7 +369,14 @@ def main(argv: list[str] | None = None) -> int:
 
     json_server = sub.add_parser("serve-json")
     json_server.add_argument("--socket", required=True)
-    json_server.add_argument("--bridge-command", required=True)
+    json_server.add_argument(
+        "--bridge-command",
+        required=True,
+        help=(
+            "Private JSON bridge command. Use {loopx_allowed_env} inside nested "
+            "remote commands to forward AI_ADDR/AI_PORT without logging values."
+        ),
+    )
     json_server.add_argument("--timeout-sec", type=float, default=300.0)
     json_server.add_argument("--once", action="store_true")
 
