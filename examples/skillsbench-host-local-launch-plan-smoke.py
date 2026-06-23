@@ -209,6 +209,10 @@ output.write_text("fake solver saw bridge packet\\n", encoding="utf-8")
                 str(fake_codex),
                 "--route",
                 "loopx-product-mode",
+                "--dataset",
+                "skillsbench-v1.1",
+                "--task-id",
+                "demo-task",
                 "--worker-public-trace-dir",
                 str(trace_dir),
                 "--remote-command-file-bridge-command",
@@ -229,6 +233,8 @@ output.write_text("fake solver saw bridge packet\\n", encoding="utf-8")
         assert bridge_trace["trace_kind"] == (
             "remote_command_file_bridge_solver_consumption"
         )
+        assert bridge_trace["benchmark_id"] == "skillsbench-v1.1"
+        assert bridge_trace["task_id"] == "demo-task"
         bridge = bridge_trace["remote_command_file_bridge"]
         assert bridge["consumed_by_solver"] is True
         assert bridge["probe_ready"] is True

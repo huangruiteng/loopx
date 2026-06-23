@@ -667,10 +667,6 @@ def _host_local_acp_launch_command(
         command.extend(
             [
                 "--app-server-goal-worker",
-                "--dataset",
-                args.dataset,
-                "--task-id",
-                args.task_id,
                 "--approval-policy",
                 "never",
                 "--reasoning-effort",
@@ -689,6 +685,10 @@ def _host_local_acp_launch_command(
         [
             "--route",
             args.route,
+            "--dataset",
+            args.dataset,
+            "--task-id",
+            args.task_id,
             "--codex-bin",
             args.local_codex_bin,
             "--sandbox",
