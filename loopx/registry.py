@@ -65,17 +65,33 @@ PRIVATE_REGISTRY_TEXT_RE = re.compile(
 def _registry_git_probe(path: Path) -> dict[str, Any]:
     probe_dir = path if path.is_dir() else path.parent
 
-    def run_git(*args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", *args],
-            cwd=probe_dir,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
+    def unavailable() -> dict[str, Any]:
+        return {
+            "available": False,
+            "probe_status": "git_unavailable",
+            "inside_worktree": False,
+            "tracked": False,
+            "ignored": False,
+            "worktree_root_recorded": False,
+        }
+
+    def run_git(*args: str, cwd: Path = probe_dir) -> subprocess.CompletedProcess[str] | None:
+        try:
+            return subprocess.run(
+                ["git", *args],
+                cwd=cwd,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=1.5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
 
     root = run_git("rev-parse", "--show-toplevel")
+    if root is None:
+        return unavailable()
     inside = root.returncode == 0
     tracked = False
     ignored = False
@@ -85,29 +101,13 @@ def _registry_git_probe(path: Path) -> dict[str, Any]:
             rel_path = os.path.relpath(path.resolve(), root_path)
         except (OSError, ValueError):
             rel_path = path.name
-        tracked = (
-            subprocess.run(
-                ["git", "ls-files", "--error-unmatch", "--", rel_path],
-                cwd=root_path,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False,
-            ).returncode
-            == 0
-        )
-        ignored = (
-            subprocess.run(
-                ["git", "check-ignore", "-q", "--", rel_path],
-                cwd=root_path,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False,
-            ).returncode
-            == 0
-        )
+        tracked_result = run_git("ls-files", "--error-unmatch", "--", rel_path, cwd=root_path)
+        ignored_result = run_git("check-ignore", "-q", "--", rel_path, cwd=root_path)
+        tracked = tracked_result is not None and tracked_result.returncode == 0
+        ignored = ignored_result is not None and ignored_result.returncode == 0
     return {
+        "available": True,
+        "probe_status": "ok",
         "inside_worktree": inside,
         "tracked": tracked,
         "ignored": ignored,
