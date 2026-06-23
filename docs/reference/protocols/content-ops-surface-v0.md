@@ -109,7 +109,7 @@ The surface is valid only when:
 ## Fixture And Smoke
 
 The public-safe fixture helper is implemented in
-`loopx/content_ops_surface.py`. It provides:
+`loopx/capabilities/content_ops/surface.py`. It provides:
 
 - `build_content_ops_surface_fixture()`;
 - `validate_content_ops_surface(surface)`;

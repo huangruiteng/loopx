@@ -76,11 +76,10 @@ from .bootstrap_connect import (
     handle_bootstrap_connect_command,
     register_bootstrap_connect_command,
 )
-from .content_ops import handle_content_ops_command, register_content_ops_commands
+from .capability import handle_capability_command, register_capability_commands
 from .doctor import handle_doctor_command, register_doctor_command
 from .dreaming import handle_dreaming_command, register_dreaming_commands
 from .history import handle_history_command, register_history_command
-from .issue_fix import handle_issue_fix_command, register_issue_fix_commands
 from .lark_kanban import handle_lark_kanban_command, register_lark_kanban_commands
 from .ml_experiment import handle_ml_experiment_command, register_ml_experiment_commands
 from .project_lifecycle import (
@@ -174,6 +173,7 @@ __all__ = [
     "handle_benchmark_run_ledger_maintenance_command",
     "handle_benchmark_run_ledger_parity_command",
     "handle_bootstrap_connect_command",
+    "handle_capability_command",
     "handle_check_command",
     "handle_codex_cli_bounded_visible_pilot_adapter_command",
     "handle_codex_cli_bootstrap_message_command",
@@ -191,13 +191,11 @@ __all__ = [
     "handle_codex_cli_visible_driver_run_command",
     "handle_codex_cli_visible_driver_plan_command",
     "handle_codex_cli_visible_session_proof_command",
-    "handle_content_ops_command",
     "handle_diagnose_command",
     "handle_demo_command",
     "handle_doctor_command",
     "handle_dreaming_command",
     "handle_history_command",
-    "handle_issue_fix_command",
     "handle_lark_kanban_command",
     "handle_ml_experiment_command",
     "handle_new_project_prompt_command",
@@ -234,11 +232,10 @@ __all__ = [
     "register_benchmark_run_ledger_maintenance_commands",
     "register_benchmark_run_ledger_parity_commands",
     "register_bootstrap_connect_command",
-    "register_content_ops_commands",
+    "register_capability_commands",
     "register_doctor_command",
     "register_dreaming_commands",
     "register_history_command",
-    "register_issue_fix_commands",
     "register_lark_kanban_commands",
     "register_ml_experiment_commands",
     "register_project_lifecycle_commands",

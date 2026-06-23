@@ -6,16 +6,23 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .capabilities.content_ops.cli import (
+    handle_content_ops_command,
+    register_content_ops_commands,
+)
+from .capabilities.issue_fix.cli import (
+    handle_issue_fix_command,
+    register_issue_fix_commands,
+)
 from .cli_commands import (
     handle_benchmark_command,
     handle_bootstrap_connect_command,
+    handle_capability_command,
     handle_check_command,
-    handle_content_ops_command,
     handle_diagnose_command,
     handle_doctor_command,
     handle_dreaming_command,
     handle_history_command,
-    handle_issue_fix_command,
     handle_lark_kanban_command,
     handle_ml_experiment_command,
     handle_project_lifecycle_command,
@@ -29,11 +36,10 @@ from .cli_commands import (
     handle_worker_bridge_command,
     register_benchmark_command_group,
     register_bootstrap_connect_command,
-    register_content_ops_commands,
+    register_capability_commands,
     register_doctor_command,
     register_dreaming_commands,
     register_history_command,
-    register_issue_fix_commands,
     register_lark_kanban_commands,
     register_ml_experiment_commands,
     register_project_lifecycle_commands,
@@ -114,6 +120,8 @@ def main(argv: list[str] | None = None) -> int:
     register_worker_bridge_commands(sub, add_subcommand_format)
 
     register_support_control_commands(sub, add_subcommand_format)
+
+    register_capability_commands(sub, add_subcommand_format)
 
     register_content_ops_commands(sub, add_subcommand_format)
 
@@ -209,6 +217,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if support_control_result is not None:
         return support_control_result
+
+    capability_result = handle_capability_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if capability_result is not None:
+        return capability_result
 
     if args.command == "ml-experiment":
         return handle_ml_experiment_command(args, output_format=output_format, print_payload=print_payload)

@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from .content_ops_surface import _normalise_exploration_label
+from ..content_ops.surface import _normalise_exploration_label
 
 
 GITHUB_ISSUE_METADATA_PREVIEW_SCHEMA_VERSION = "github_issue_metadata_preview_v0"

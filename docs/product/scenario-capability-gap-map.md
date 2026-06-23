@@ -194,7 +194,7 @@ boundaries visible.
 | `material_memory_v0` | Durable source-safe library entry with attribution, rejected angles, and reuse boundary. |
 
 The first public-safe implementation is now anchored by
-`loopx/content_ops_surface.py`, `docs/reference/protocols/content-ops-surface-v0.md`,
+`loopx/capabilities/content_ops/surface.py`, `docs/reference/protocols/content-ops-surface-v0.md`,
 and `examples/content-ops-surface-fixture-smoke.py`. This keeps the MVP as a
 state-surface contract: source/draft/feedback/gate facts can promote into
 normal LoopX todos, but the projection itself is read-only and has no publish
