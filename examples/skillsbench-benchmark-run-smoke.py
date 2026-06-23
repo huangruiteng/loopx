@@ -137,6 +137,58 @@ def test_skillsbench_append_history_missing_registry_is_nonfatal() -> None:
         assert "/missing/.loopx/" not in json.dumps(payload), payload
 
 
+def test_skillsbench_final_verifier_timeout_override_records_public_state() -> None:
+    class FakeRollout:
+        def __init__(self) -> None:
+            self._env = types.SimpleNamespace()
+
+        async def verify(self) -> None:
+            return await self._env.exec("/verifier/test.sh", timeout_sec=9999)
+
+        async def soft_verify(self) -> None:
+            return await self._env.exec("echo soft", timeout_sec=10)
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def fake_exec(command: str, **kwargs: Any) -> Any:
+        calls.append((command, dict(kwargs)))
+        if "/verifier/test.sh" in command:
+            raise asyncio.TimeoutError("final verifier timed out")
+        return types.SimpleNamespace(return_code=0)
+
+    rollout = FakeRollout()
+    rollout._env.exec = fake_exec
+    plan = {"runner_prerequisites": {}}
+    trace: dict[str, Any] = {}
+    original_verify, original_soft_verify = install_benchflow_verifier_prep_timeout_override(
+        FakeRollout,
+        timeout_sec=120,
+        final_verifier_timeout_sec=7,
+        plan=plan,
+        trace=trace,
+    )
+    try:
+        try:
+            asyncio.run(rollout.verify())
+        except asyncio.TimeoutError:
+            pass
+        else:  # pragma: no cover - defensive, this is a smoke script
+            raise AssertionError("expected final verifier timeout")
+    finally:
+        FakeRollout.verify = original_verify
+        FakeRollout.soft_verify = original_soft_verify
+
+    assert calls == [("/verifier/test.sh", {"timeout_sec": 7})], calls
+    prereqs = plan["runner_prerequisites"]
+    assert prereqs["benchflow_final_verifier_timeout_enabled"] is True, prereqs
+    assert prereqs["benchflow_final_verifier_timeout_sec"] == 7, prereqs
+    assert prereqs["benchflow_final_verifier_timeout_override_count"] == 1, prereqs
+    assert prereqs["benchflow_final_verifier_timeout_triggered"] is True, prereqs
+    assert prereqs["benchflow_final_verifier_timeout_raw_command_recorded"] is False
+    assert prereqs["benchflow_final_verifier_timeout_raw_output_recorded"] is False
+    assert trace["benchflow_final_verifier_timeout_triggered"] is True, trace
+
+
 def test_skillsbench_local_driver_a2a_contract_keeps_codex_local() -> None:
     payload = build_skillsbench_local_driver_a2a_contract(
         task_id="ada-bathroom-plan-repair",
@@ -2894,6 +2946,12 @@ def test_skillsbench_runner_prerequisites_are_compacted() -> None:
             "benchflow_verify_prep_timeout_override_count": 1,
             "benchflow_soft_verify_prep_timeout_override_count": 1,
             "benchflow_verifier_prep_timeout_raw_command_recorded": False,
+            "benchflow_final_verifier_timeout_enabled": True,
+            "benchflow_final_verifier_timeout_sec": 600,
+            "benchflow_final_verifier_timeout_override_count": 1,
+            "benchflow_final_verifier_timeout_triggered": True,
+            "benchflow_final_verifier_timeout_raw_command_recorded": False,
+            "benchflow_final_verifier_timeout_raw_output_recorded": False,
             "benchflow_setup_stall_cleanup_requested": True,
             "benchflow_setup_stall_cleanup_raw_logs_read": False,
             "benchflow_setup_stall_cleanup_status": "terminated",
@@ -2939,6 +2997,12 @@ def test_skillsbench_runner_prerequisites_are_compacted() -> None:
                 "benchflow_verify_prep_timeout_override_count": 1,
                 "benchflow_soft_verify_prep_timeout_override_count": 1,
                 "benchflow_verifier_prep_timeout_raw_command_recorded": False,
+                "benchflow_final_verifier_timeout_enabled": True,
+                "benchflow_final_verifier_timeout_sec": 600,
+                "benchflow_final_verifier_timeout_override_count": 1,
+                "benchflow_final_verifier_timeout_triggered": True,
+                "benchflow_final_verifier_timeout_raw_command_recorded": False,
+                "benchflow_final_verifier_timeout_raw_output_recorded": False,
                 "benchflow_setup_stall_cleanup_requested": True,
                 "benchflow_setup_stall_cleanup_raw_logs_read": False,
                 "benchflow_setup_stall_cleanup_status": "terminated",
@@ -4661,6 +4725,63 @@ def test_skillsbench_runner_failure_marks_build_stall_timeout() -> None:
         ] is False, compact
         compact_text = json.dumps(compact, sort_keys=True)
         assert "skillsbench docker compose build/setup stall timeout" not in compact_text
+        assert "/private/" not in compact_text
+
+
+def test_skillsbench_runner_failure_marks_final_verifier_timeout() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-final-verifier-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "powerlifting-coef-calc",
+                "--route",
+                "loopx-product-mode",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-powerlifting-final-verifier-timeout-fixture",
+                "--final-verifier-timeout-sec",
+                "600",
+            ]
+        )
+        plan = build_plan(args)
+        plan.setdefault("runner_prerequisites", {}).update(
+            {
+                "benchflow_final_verifier_timeout_enabled": True,
+                "benchflow_final_verifier_timeout_sec": 600,
+                "benchflow_final_verifier_timeout_override_count": 1,
+                "benchflow_final_verifier_timeout_triggered": True,
+                "benchflow_final_verifier_timeout_raw_command_recorded": False,
+                "benchflow_final_verifier_timeout_raw_output_recorded": False,
+            }
+        )
+
+        compact = build_runner_failure_compact(
+            args,
+            plan,
+            asyncio.TimeoutError("final verifier timed out"),
+        )
+
+        assert compact["first_blocker"] == "skillsbench_final_verifier_timeout"
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_final_verifier_timeout"
+        )
+        assert "skillsbench_verifier_timeout" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert_prerequisites_include(
+            compact["runner_prerequisites"],
+            {
+                "benchflow_final_verifier_timeout_enabled": True,
+                "benchflow_final_verifier_timeout_sec": 600,
+                "benchflow_final_verifier_timeout_override_count": 1,
+                "benchflow_final_verifier_timeout_triggered": True,
+                "benchflow_final_verifier_timeout_raw_command_recorded": False,
+                "benchflow_final_verifier_timeout_raw_output_recorded": False,
+            },
+        )
+        compact_text = json.dumps(compact, sort_keys=True)
+        assert "final verifier timed out" not in compact_text
         assert "/private/" not in compact_text
 
 

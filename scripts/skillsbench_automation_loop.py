@@ -899,6 +899,10 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_raw_output_recorded",
         "benchflow_verifier_prep_timeout_override_enabled",
         "benchflow_verifier_prep_timeout_raw_command_recorded",
+        "benchflow_final_verifier_timeout_enabled",
+        "benchflow_final_verifier_timeout_triggered",
+        "benchflow_final_verifier_timeout_raw_command_recorded",
+        "benchflow_final_verifier_timeout_raw_output_recorded",
         "benchflow_setup_stall_timeout_enabled",
         "benchflow_setup_stall_timeout_triggered",
         "benchflow_setup_stall_raw_logs_read",
@@ -922,6 +926,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_call_count",
         "benchflow_intermediate_soft_verify_skipped_count",
         "benchflow_verifier_prep_timeout_sec",
+        "benchflow_final_verifier_timeout_sec",
+        "benchflow_final_verifier_timeout_override_count",
         "benchflow_verifier_prep_timeout_override_count",
         "benchflow_verify_prep_timeout_override_count",
         "benchflow_soft_verify_prep_timeout_override_count",
@@ -1097,27 +1103,50 @@ def install_benchflow_verifier_prep_timeout_override(
     rollout_cls: Any,
     *,
     timeout_sec: int,
+    final_verifier_timeout_sec: int = 0,
     plan: dict[str, Any],
     trace: dict[str, Any] | None,
 ) -> tuple[Any, Any]:
-    """Raise verifier-phase prep exec timeouts without changing scoring."""
+    """Raise verifier prep timeouts and optionally bound final official verify."""
 
     original_verify = rollout_cls.verify
     original_soft_verify = rollout_cls.soft_verify
     prerequisites = plan.setdefault("runner_prerequisites", {})
     enabled = timeout_sec > 10
+    final_timeout_enabled = final_verifier_timeout_sec > 0
     prerequisites["benchflow_verifier_prep_timeout_override_enabled"] = enabled
     prerequisites["benchflow_verifier_prep_timeout_raw_command_recorded"] = False
+    prerequisites["benchflow_final_verifier_timeout_enabled"] = final_timeout_enabled
+    prerequisites["benchflow_final_verifier_timeout_raw_command_recorded"] = False
     if enabled:
         prerequisites["benchflow_verifier_prep_timeout_sec"] = timeout_sec
+    if final_timeout_enabled:
+        prerequisites["benchflow_final_verifier_timeout_sec"] = (
+            final_verifier_timeout_sec
+        )
     if isinstance(trace, dict):
         trace["benchflow_verifier_prep_timeout_override_enabled"] = enabled
         trace["benchflow_verifier_prep_timeout_raw_command_recorded"] = False
+        trace["benchflow_final_verifier_timeout_enabled"] = final_timeout_enabled
+        trace["benchflow_final_verifier_timeout_raw_command_recorded"] = False
         if enabled:
             trace["benchflow_verifier_prep_timeout_sec"] = timeout_sec
+        if final_timeout_enabled:
+            trace["benchflow_final_verifier_timeout_sec"] = final_verifier_timeout_sec
+
+    def _looks_like_final_verifier_exec(
+        exec_args: tuple[Any, ...],
+        exec_kwargs: dict[str, Any],
+    ) -> bool:
+        command = exec_kwargs.get("command")
+        if command is None and exec_args:
+            command = exec_args[0]
+        if not isinstance(command, str):
+            return False
+        return "/verifier/test.sh" in command
 
     async def _run_with_override(self: Any, phase: str, original: Any) -> Any:
-        if not enabled:
+        if not enabled and not final_timeout_enabled:
             return await original(self)
 
         env = getattr(self, "_env", None)
@@ -1126,18 +1155,45 @@ def install_benchflow_verifier_prep_timeout_override(
             return await original(self)
 
         override_count = 0
+        final_timeout_override_count = 0
 
         async def exec_with_verifier_prep_timeout(*args: Any, **kwargs: Any) -> Any:
-            nonlocal override_count
+            nonlocal override_count, final_timeout_override_count
             if kwargs.get("timeout_sec") == 10:
                 kwargs = dict(kwargs)
                 kwargs["timeout_sec"] = timeout_sec
                 override_count += 1
+            if (
+                phase == "verify"
+                and final_timeout_enabled
+                and _looks_like_final_verifier_exec(args, kwargs)
+            ):
+                current_timeout = kwargs.get("timeout_sec")
+                if (
+                    not isinstance(current_timeout, (int, float))
+                    or current_timeout <= 0
+                    or current_timeout > final_verifier_timeout_sec
+                ):
+                    kwargs = dict(kwargs)
+                    kwargs["timeout_sec"] = final_verifier_timeout_sec
+                    final_timeout_override_count += 1
             return await original_exec(*args, **kwargs)
 
         try:
             env.exec = exec_with_verifier_prep_timeout
             return await original(self)
+        except Exception as exc:
+            if final_timeout_override_count and _runner_exception_indicates_timeout(exc):
+                prerequisites["benchflow_final_verifier_timeout_triggered"] = True
+                prerequisites["benchflow_final_verifier_timeout_raw_output_recorded"] = (
+                    False
+                )
+                if isinstance(trace, dict):
+                    trace["benchflow_final_verifier_timeout_triggered"] = True
+                    trace["benchflow_final_verifier_timeout_raw_output_recorded"] = (
+                        False
+                    )
+            raise
         finally:
             env.exec = original_exec
             phase_key = f"benchflow_{phase}_prep_timeout_override_count"
@@ -1151,6 +1207,17 @@ def install_benchflow_verifier_prep_timeout_override(
             if isinstance(trace, dict):
                 trace[phase_key] = int(trace.get(phase_key) or 0) + override_count
                 trace[total_key] = int(trace.get(total_key) or 0) + override_count
+            if final_timeout_override_count:
+                count_key = "benchflow_final_verifier_timeout_override_count"
+                prerequisites[count_key] = (
+                    int(prerequisites.get(count_key) or 0)
+                    + final_timeout_override_count
+                )
+                if isinstance(trace, dict):
+                    trace[count_key] = (
+                        int(trace.get(count_key) or 0)
+                        + final_timeout_override_count
+                    )
 
     async def verify_with_prep_timeout_override(self: Any) -> Any:
         return await _run_with_override(self, "verify", original_verify)
@@ -1454,6 +1521,14 @@ def _runner_prerequisite_failure_attribution(
             label,
             "skillsbench_docker_compose_setup_failure",
             "skillsbench_environment_setup_error",
+        ]
+
+    if value.get("benchflow_final_verifier_timeout_triggered") is True:
+        label = "skillsbench_final_verifier_timeout"
+        return label, label, [
+            label,
+            "skillsbench_verifier_timeout",
+            "skillsbench_runner_error",
         ]
 
     if (
@@ -2656,6 +2731,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "benchflow_intermediate_soft_verify_call_count": 0,
             "benchflow_intermediate_soft_verify_skipped_count": 0,
             "benchflow_intermediate_soft_verify_raw_output_recorded": False,
+            "benchflow_final_verifier_timeout_enabled": (
+                int(args.final_verifier_timeout_sec or 0) > 0
+            ),
+            "benchflow_final_verifier_timeout_raw_command_recorded": False,
         },
         "public_boundary": {
             "leaderboard_upload": False,
@@ -4565,6 +4644,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         install_benchflow_verifier_prep_timeout_override(
             Rollout,
             timeout_sec=args.verifier_prep_timeout_sec,
+            final_verifier_timeout_sec=args.final_verifier_timeout_sec,
             plan=plan,
             trace=controller_trace,
         )
@@ -5269,6 +5349,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Timeout for BenchFlow verifier-phase prep/hardening shell calls. "
             "This does not change the task verifier scoring timeout."
+        ),
+    )
+    parser.add_argument(
+        "--final-verifier-timeout-sec",
+        type=int,
+        default=0,
+        help=(
+            "Optional timeout for the final official verifier command. "
+            "0 preserves upstream verifier behavior; nonzero failures close "
+            "out with compact public-safe verifier-timeout attribution and no "
+            "raw verifier output."
         ),
     )
     parser.add_argument(
