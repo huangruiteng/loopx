@@ -30,10 +30,6 @@ from ..benchmark_adapters.terminal_bench import (
     collect_terminal_bench_loopx_cli_bridge_trace,
     terminal_bench_recommended_action,
 )
-from ..benchmark_core import (
-    build_codex_app_parity_posthoc_check,
-    render_codex_app_parity_posthoc_check_markdown,
-)
 from ..benchmark_ledger import (
     BENCHMARK_RUN_LEDGER_DEFAULT_PATH,
     update_benchmark_run_ledger,
@@ -60,6 +56,11 @@ from .benchmark_run_ledger_maintenance import (
     handle_benchmark_run_ledger_maintenance_command,
     register_benchmark_run_ledger_maintenance_commands,
 )
+from .benchmark_run_ledger_parity import (
+    BENCHMARK_RUN_LEDGER_PARITY_COMMANDS,
+    handle_benchmark_run_ledger_parity_command,
+    register_benchmark_run_ledger_parity_commands,
+)
 
 
 PrintPayload = Callable[
@@ -71,11 +72,11 @@ AppendBenchmarkRunRolloutEvent = Callable[..., dict[str, object]]
 
 BENCHMARK_RUN_LEDGER_COMMANDS = (
     {
-        "parity-check",
         "run",
     }
     | BENCHMARK_RUN_LEDGER_CASE_ANALYSIS_COMMANDS
     | BENCHMARK_RUN_LEDGER_MAINTENANCE_COMMANDS
+    | BENCHMARK_RUN_LEDGER_PARITY_COMMANDS
 )
 
 
@@ -83,18 +84,9 @@ def register_benchmark_run_ledger_commands(
     benchmark_subparsers: argparse._SubParsersAction,
     add_subcommand_format: Callable[[argparse.ArgumentParser], None],
 ) -> None:
-    benchmark_parity_check_parser = benchmark_subparsers.add_parser(
-        "parity-check",
-        help=(
-            "Posthoc-check whether a compact benchmark_run_v0 has enough "
-            "public-safe evidence to support Codex App product-path attribution."
-        ),
-    )
-    add_subcommand_format(benchmark_parity_check_parser)
-    benchmark_parity_check_parser.add_argument(
-        "--benchmark-run-json",
-        required=True,
-        help="Path to a compact benchmark_run_v0 JSON object. Use '-' to read stdin.",
+    register_benchmark_run_ledger_parity_commands(
+        benchmark_subparsers,
+        add_subcommand_format,
     )
 
     benchmark_run_parser = benchmark_subparsers.add_parser(
@@ -348,44 +340,13 @@ def handle_benchmark_run_ledger_command(
     if args.benchmark_command not in BENCHMARK_RUN_LEDGER_COMMANDS:
         return None
 
-    if args.benchmark_command == "parity-check":
-        try:
-            if args.benchmark_run_json == "-":
-                run_input = json.loads(sys.stdin.read())
-            else:
-                run_input = json.loads(
-                    Path(args.benchmark_run_json).expanduser().read_text(
-                        encoding="utf-8"
-                    )
-                )
-            benchmark_run = compact_benchmark_run(run_input)
-            if not benchmark_run:
-                raise ValueError(
-                    "--benchmark-run-json did not contain a compactable benchmark_run_v0 object"
-                )
-            payload = {
-                "ok": True,
-                "codex_app_parity_posthoc_check": (
-                    build_codex_app_parity_posthoc_check(benchmark_run)
-                ),
-            }
-        except Exception as exc:
-            payload = {
-                "ok": False,
-                "codex_app_parity_posthoc_check": {
-                    "full_product_claim_allowed": False,
-                    "claim_level": "invalid_or_unreadable_compact_benchmark_run",
-                },
-                "error": str(exc),
-            }
-        print_payload(
-            payload,
-            args.format,
-            lambda value: render_codex_app_parity_posthoc_check_markdown(
-                value["codex_app_parity_posthoc_check"]
-            ),
-        )
-        return 0 if payload.get("ok") else 1
+    parity_result = handle_benchmark_run_ledger_parity_command(
+        args,
+        print_payload=print_payload,
+        output_format=output_format,
+    )
+    if parity_result is not None:
+        return parity_result
 
     ledger_maintenance_result = handle_benchmark_run_ledger_maintenance_command(
         args,
