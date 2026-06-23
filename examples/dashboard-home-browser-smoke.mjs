@@ -704,6 +704,20 @@ async function main() {
     }
 
     await page.goto(`${baseUrl}/?view=ops&goalId=loopx-meta&statusUrl=/${fixtureName}`, { waitUntil: "networkidle" });
+    await page.waitForSelector('[data-testid="operator-mental-model-panel"]', { timeout: 10_000 });
+    const operatorModelText = await page.locator('[data-testid="operator-mental-model-panel"]').innerText();
+    const requiredOperatorModelText = [
+      "Operator Model",
+      "Goal",
+      "Next step",
+      "Needs your judgment",
+      "Evidence",
+      "Can continue",
+    ];
+    const missingOperatorModelText = requiredOperatorModelText.filter((text) => !operatorModelText.includes(text));
+    if (missingOperatorModelText.length) {
+      throw new Error(`Missing operator mental model text: ${missingOperatorModelText.join(", ")}`);
+    }
     await page.waitForSelector('[data-testid="project-todo-explorer"]', { timeout: 10_000 });
     const todoExplorer = page.locator('[data-testid="project-todo-explorer"]');
     const initialTodoExplorerText = await todoExplorer.innerText();
