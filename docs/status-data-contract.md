@@ -1667,6 +1667,27 @@ The command appends a compact overlay row to the goal's `index.jsonl`. History
 loading merges later rows with the same run key, so feedback can be added
 without rewriting the original run JSON or Markdown payload.
 
+When the operator feedback is a route, priority, benchmark-protocol, safety, or
+operating-rule correction, the overlay may also include a compact lesson:
+
+```bash
+loopx reward \
+  --goal-id example-experiment-goal \
+  --decision route_correction \
+  --reward mixed \
+  --reason-summary "run the driver repair before expanding cases" \
+  --lesson-kind route \
+  --lesson-summary "Do not expand cases before driver repair is validated" \
+  --lesson-avoid "expand cases before driver repair" \
+  --lesson-prefer "validate driver repair first"
+```
+
+`human_reward.lesson` is a warning/rebase signal, not write-control. Status
+exports the compact lesson, and `quota should-run` may emit
+`reward_lesson_projection_warning` when the current `recommended_action`
+overlaps a recent lesson's `avoid` phrase. Agents should then update the
+affected todo or Next Action before continuing.
+
 Both dry-run and append responses include:
 
 ```json

@@ -534,6 +534,27 @@ The run-bound `human_reward` overlay remains the source of truth. Active state
 is only the human-readable pointer and next-action summary; a dashboard Review
 Packet is only an immediate handoff artifact.
 
+For explicit user corrections, add a compact lesson to the same run-bound
+overlay instead of creating a separate memory store:
+
+```bash
+loopx reward \
+  --goal-id project-goal \
+  --decision route_correction \
+  --reward mixed \
+  --reason-summary "fix lifecycle counters before adding more benchmark cases" \
+  --lesson-kind benchmark_protocol \
+  --lesson-summary "Do not expand cases until lifecycle counters are validated" \
+  --lesson-avoid "expand cases before lifecycle counters" \
+  --lesson-prefer "validate lifecycle counters first" \
+  --write-active-state-summary
+```
+
+The lesson is advisory. `loopx status` exposes it under `human_reward`, and
+`loopx quota should-run` warns when a future `recommended_action` appears to
+contradict the lesson. It does not authorize writes, launch benchmarks, or
+replace formal todo/Next Action updates.
+
 The Markdown output includes a `Write Effect` section that summarizes the
 selected run, run-overlay write or preview state, active-state writeback state,
 and the project-agent history lookup before the detailed reward fields.

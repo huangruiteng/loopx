@@ -287,6 +287,7 @@ HUMAN_REWARD_COMPACT_FIELDS = (
     "reward",
     "reason_summary",
     "follow_up",
+    "lesson",
 )
 OPERATOR_GATE_COMPACT_FIELDS = (
     "recorded_at",
@@ -7399,6 +7400,13 @@ def compact_human_reward(reward: Any) -> dict[str, Any] | None:
     if not isinstance(reward, dict):
         return None
     compact = {field: reward[field] for field in HUMAN_REWARD_COMPACT_FIELDS if field in reward}
+    lesson = compact.get("lesson")
+    if isinstance(lesson, dict):
+        compact["lesson"] = {
+            field: lesson[field]
+            for field in ("schema_version", "kind", "summary", "avoid", "prefer")
+            if field in lesson
+        }
     return compact or None
 
 
@@ -7498,6 +7506,20 @@ def _append_human_reward_markdown(lines: list[str], goal_id: Any, reward: dict[s
     follow_up = reward.get("follow_up")
     if follow_up:
         lines.append(f"      - follow_up: {_markdown_scalar(follow_up)}")
+    lesson = reward.get("lesson") if isinstance(reward.get("lesson"), dict) else {}
+    if lesson:
+        lines.append(
+            "      - lesson: "
+            f"kind={_markdown_scalar(lesson.get('kind') or '')} "
+            f"summary={_markdown_scalar(lesson.get('summary') or '')}"
+        )
+        for field in ("avoid", "prefer"):
+            values = lesson.get(field) if isinstance(lesson.get(field), list) else []
+            if values:
+                lines.append(
+                    f"        - lesson_{field}: "
+                    + ", ".join(_markdown_scalar(value) for value in values[:5])
+                )
     if goal_id:
         lines.append(
             "      - project_agent_visibility: "

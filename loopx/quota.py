@@ -5151,6 +5151,95 @@ def _promotion_readiness_warning(status_payload: dict[str, Any]) -> dict[str, An
     }
 
 
+def _recent_reward_lessons(status_payload: dict[str, Any], *, goal_id: str) -> list[dict[str, Any]]:
+    run_history = (
+        status_payload.get("run_history")
+        if isinstance(status_payload.get("run_history"), dict)
+        else {}
+    )
+    goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
+    goal = next(
+        (
+            candidate
+            for candidate in goals
+            if isinstance(candidate, dict) and str(candidate.get("id") or "") == goal_id
+        ),
+        None,
+    )
+    if not isinstance(goal, dict):
+        return []
+    lessons: list[dict[str, Any]] = []
+    for run in goal.get("latest_runs") or []:
+        if not isinstance(run, dict):
+            continue
+        reward = run.get("human_reward") if isinstance(run.get("human_reward"), dict) else {}
+        lesson = reward.get("lesson") if isinstance(reward.get("lesson"), dict) else {}
+        if not lesson:
+            continue
+        lessons.append(
+            {
+                "generated_at": run.get("generated_at"),
+                "decision": reward.get("decision"),
+                "reward": reward.get("reward"),
+                "kind": lesson.get("kind"),
+                "summary": lesson.get("summary"),
+                "avoid": lesson.get("avoid") if isinstance(lesson.get("avoid"), list) else [],
+                "prefer": lesson.get("prefer") if isinstance(lesson.get("prefer"), list) else [],
+            }
+        )
+    return lessons
+
+
+def _reward_lesson_projection_warning(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    recommended_action: str | None,
+) -> dict[str, Any] | None:
+    action = str(recommended_action or "").strip()
+    if not action:
+        return None
+    action_lower = action.lower()
+    action_tokens = _action_scope_tokens_from_text(action)
+    matches: list[dict[str, Any]] = []
+    for lesson in _recent_reward_lessons(status_payload, goal_id=goal_id):
+        for avoid in lesson.get("avoid") or []:
+            avoid_text = str(avoid or "").strip()
+            if not avoid_text:
+                continue
+            avoid_tokens = _action_scope_tokens_from_text(avoid_text)
+            exact_match = avoid_text.lower() in action_lower
+            if not exact_match and not avoid_tokens:
+                continue
+            token_overlap = sorted(action_tokens & avoid_tokens)
+            if not exact_match and len(token_overlap) < min(2, len(avoid_tokens)):
+                continue
+            matches.append(
+                {
+                    "generated_at": lesson.get("generated_at"),
+                    "decision": lesson.get("decision"),
+                    "kind": lesson.get("kind"),
+                    "summary": lesson.get("summary"),
+                    "avoid": avoid_text,
+                    "token_overlap": token_overlap[:5],
+                }
+            )
+    if not matches:
+        return None
+    return {
+        "schema_version": "reward_lesson_projection_warning_v0",
+        "source": "run_history.human_reward.lesson",
+        "goal_id": goal_id,
+        "message": (
+            "recommended_action overlaps a recent human_reward lesson avoid rule; "
+            "rebase the route or update the affected todo/next action before continuing"
+        ),
+        "recommended_action": action,
+        "match_count": len(matches),
+        "matches": matches[:3],
+    }
+
+
 def _registry_goal_by_id(status_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     registry_value = status_payload.get("registry")
     if not registry_value:
@@ -5858,6 +5947,13 @@ def build_quota_should_run(
         promotion_warning = _promotion_readiness_warning(status_payload)
         if promotion_warning:
             payload["promotion_readiness_warning"] = promotion_warning
+        reward_lesson_warning = _reward_lesson_projection_warning(
+            status_payload,
+            goal_id=safe_goal_id,
+            recommended_action=selected_recommended_action,
+        )
+        if reward_lesson_warning:
+            payload["reward_lesson_projection_warning"] = reward_lesson_warning
         gate_prompt = _build_gate_prompt(item) if state == "operator_gate" else None
         if gate_prompt:
             payload["gate_prompt"] = gate_prompt
@@ -7657,6 +7753,29 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if promotion_readiness_warning.get("reason"):
             lines.append(f"- promotion_readiness_reason: {promotion_readiness_warning.get('reason')}")
+    reward_lesson_warning = (
+        payload.get("reward_lesson_projection_warning")
+        if isinstance(payload.get("reward_lesson_projection_warning"), dict)
+        else {}
+    )
+    if reward_lesson_warning:
+        lines.append(
+            "- reward_lesson_projection_warning: "
+            f"matches={reward_lesson_warning.get('match_count')} "
+            f"source={reward_lesson_warning.get('source')}"
+        )
+        if reward_lesson_warning.get("message"):
+            lines.append(f"- reward_lesson_action: {reward_lesson_warning.get('message')}")
+        for match in (reward_lesson_warning.get("matches") or [])[:3]:
+            if not isinstance(match, dict):
+                continue
+            lines.append(
+                "- reward_lesson_match: "
+                f"kind={match.get('kind')} "
+                f"decision={match.get('decision')} "
+                f"avoid={match.get('avoid')} "
+                f"summary={match.get('summary')}"
+            )
     goal_boundary = payload.get("goal_boundary") if isinstance(payload.get("goal_boundary"), dict) else {}
     if goal_boundary:
         adapter = goal_boundary.get("adapter") if isinstance(goal_boundary.get("adapter"), dict) else {}

@@ -198,7 +198,7 @@ def main() -> None:
     for command, options in {
         "refresh-state": ("--delivery-outcome", "--agent-id", "--dry-run"),
         "read-only-map": ("--recommended-action", "--dry-run"),
-        "reward": ("--write-active-state-summary", "--dry-run"),
+        "reward": ("--write-active-state-summary", "--lesson-kind", "--lesson-avoid", "--dry-run"),
         "operator-gate": ("--agent-command", "--no-global-sync"),
     }.items():
         help_text = require_success(run_cli(command, "--help"))
@@ -269,6 +269,14 @@ def main() -> None:
                 "synthetic dry-run reward",
                 "--follow-up",
                 "continue modularization smoke",
+                "--lesson-kind",
+                "route",
+                "--lesson-summary",
+                "Keep modularization dry-run checks ahead of broad lifecycle rewrites.",
+                "--lesson-avoid",
+                "broad lifecycle rewrite before dry-run check",
+                "--lesson-prefer",
+                "modularization dry-run check",
                 "--dry-run",
                 "--format",
                 "json",
@@ -279,6 +287,12 @@ def main() -> None:
         require(
             (reward_payload.get("human_reward") or {}).get("reward") == "positive",
             "reward payload polarity changed",
+        )
+        reward_lesson = (reward_payload.get("human_reward") or {}).get("lesson") or {}
+        require(reward_lesson.get("kind") == "route", "reward lesson kind changed")
+        require(
+            reward_lesson.get("avoid") == ["broad lifecycle rewrite before dry-run check"],
+            "reward lesson avoid changed",
         )
 
         gate_payload = require_json_success(

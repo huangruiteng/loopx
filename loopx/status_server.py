@@ -32,6 +32,10 @@ REWARD_REQUEST_FIELDS = {
     "reward",
     "reason_summary",
     "follow_up",
+    "lesson_kind",
+    "lesson_summary",
+    "lesson_avoid",
+    "lesson_prefer",
 }
 REWARD_APPEND_FIELDS = REWARD_REQUEST_FIELDS | {
     "preview_id",
@@ -159,6 +163,16 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
         run_generated_at = body.get("run_generated_at")
         follow_up_value = body.get("follow_up")
         follow_up = str(follow_up_value).strip() if follow_up_value else None
+        lesson_kind = str(body.get("lesson_kind") or "").strip()
+        lesson_summary = str(body.get("lesson_summary") or "").strip()
+        lesson = None
+        if lesson_kind or lesson_summary or body.get("lesson_avoid") or body.get("lesson_prefer"):
+            lesson = {
+                "kind": lesson_kind,
+                "summary": lesson_summary,
+                "avoid": body.get("lesson_avoid") or [],
+                "prefer": body.get("lesson_prefer") or [],
+            }
         if not goal_id:
             raise ValueError("goal_id is required")
         if append and not run_generated_at:
@@ -174,6 +188,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             reward=reward_value,
             reason_summary=reason_summary,
             follow_up=follow_up,
+            lesson=lesson,
         )
         return goal_id, str(run_generated_at).strip() if run_generated_at else None, reward
 

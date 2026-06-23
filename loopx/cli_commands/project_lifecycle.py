@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ..delivery_outcome import DELIVERY_OUTCOME_CHOICES
-from ..feedback import append_human_reward, compact_reward, render_reward_markdown
+from ..feedback import LESSON_KINDS, append_human_reward, compact_reward, render_reward_markdown
 from ..operator_gate import (
     DEFAULT_OPERATOR_GATE,
     OPERATOR_GATE_DECISIONS,
@@ -177,6 +177,27 @@ def register_project_lifecycle_commands(
     )
     reward_parser.add_argument("--follow-up", help="Optional next handoff or experiment condition.")
     reward_parser.add_argument(
+        "--lesson-kind",
+        choices=sorted(LESSON_KINDS),
+        help="Optional public-safe lesson kind when this reward records an explicit user correction.",
+    )
+    reward_parser.add_argument(
+        "--lesson-summary",
+        help="Short public-safe lesson summary. Required when --lesson-kind is set.",
+    )
+    reward_parser.add_argument(
+        "--lesson-avoid",
+        action="append",
+        default=[],
+        help="Public-safe phrase/action that future recommended_action should avoid. Repeatable.",
+    )
+    reward_parser.add_argument(
+        "--lesson-prefer",
+        action="append",
+        default=[],
+        help="Public-safe phrase/action that future recommended_action should prefer. Repeatable.",
+    )
+    reward_parser.add_argument(
         "--state-file",
         help="Active goal state path for optional summary writeback. Defaults to the registry goal state_file.",
     )
@@ -329,6 +350,14 @@ def handle_project_lifecycle_command(
                 reward=args.reward,
                 reason_summary=args.reason_summary,
                 follow_up=args.follow_up,
+                lesson={
+                    "kind": args.lesson_kind,
+                    "summary": args.lesson_summary,
+                    "avoid": args.lesson_avoid,
+                    "prefer": args.lesson_prefer,
+                }
+                if args.lesson_kind
+                else None,
             )
             payload = append_human_reward(
                 registry_path=registry_path,

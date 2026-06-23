@@ -12,6 +12,13 @@ from .registry import registry_goals, resolve_state_file
 
 
 REWARD_VALUES = {"positive", "negative", "mixed", "neutral"}
+LESSON_KINDS = {
+    "route",
+    "priority",
+    "benchmark_protocol",
+    "safety_boundary",
+    "operating_rule",
+}
 PRIVATE_TEXT_PATTERNS = (
     re.compile(r"/" + r"Users/"),
     re.compile(r"/" + r"ext_data/"),
@@ -30,6 +37,7 @@ HUMAN_REWARD_FIELDS = (
     "reward",
     "reason_summary",
     "follow_up",
+    "lesson",
 )
 RUN_OVERLAY_FIELDS = (
     "generated_at",
@@ -69,6 +77,7 @@ def compact_reward(
     reward: str,
     reason_summary: str,
     follow_up: str | None,
+    lesson: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if reward not in REWARD_VALUES:
         raise ValueError(f"reward must be one of: {', '.join(sorted(REWARD_VALUES))}")
@@ -83,6 +92,38 @@ def compact_reward(
     }
     if follow_up:
         payload["follow_up"] = follow_up
+    if lesson:
+        payload["lesson"] = compact_reward_lesson(lesson)
+    return payload
+
+
+def compact_reward_lesson(lesson: dict[str, Any]) -> dict[str, Any]:
+    kind = str(lesson.get("kind") or "").strip()
+    summary = str(lesson.get("summary") or "").strip()
+    if kind not in LESSON_KINDS:
+        raise ValueError(f"lesson kind must be one of: {', '.join(sorted(LESSON_KINDS))}")
+    if not summary:
+        raise ValueError("lesson summary is required when lesson metadata is provided")
+    validate_public_safe_text("lesson summary", summary)
+    payload: dict[str, Any] = {
+        "schema_version": "human_reward_lesson_v0",
+        "kind": kind,
+        "summary": summary,
+    }
+    for field in ("avoid", "prefer"):
+        raw_items = lesson.get(field) or []
+        if isinstance(raw_items, str):
+            raw_items = [raw_items]
+        items: list[str] = []
+        for raw_item in raw_items:
+            item = str(raw_item or "").strip()
+            if not item:
+                continue
+            validate_public_safe_text(f"lesson {field}", item)
+            if item not in items:
+                items.append(item)
+        if items:
+            payload[field] = items[:5]
     return payload
 
 
@@ -145,14 +186,23 @@ def build_reward_coordination(
     follow_up = reward.get("follow_up")
     if follow_up:
         summary = f"{summary} follow_up：{follow_up}"
+    lesson = reward.get("lesson") if isinstance(reward.get("lesson"), dict) else {}
+    if lesson:
+        summary = (
+            f"{summary} lesson[{lesson.get('kind')}]: "
+            f"{lesson.get('summary')}"
+        )
+    visibility = {
+        "source_of_truth": "run_bound_human_reward_overlay",
+        "history_command": f"loopx history --goal-id {goal_id} --limit 3",
+        "active_state_role": "summary_only",
+        "review_packet_role": "optional_handoff_only",
+    }
+    if lesson:
+        visibility["lesson_role"] = "route_warning_only_not_write_control"
     return {
         "active_state_summary": summary,
-        "project_agent_visibility": {
-            "source_of_truth": "run_bound_human_reward_overlay",
-            "history_command": f"loopx history --goal-id {goal_id} --limit 3",
-            "active_state_role": "summary_only",
-            "review_packet_role": "optional_handoff_only",
-        },
+        "project_agent_visibility": visibility,
     }
 
 
@@ -416,6 +466,14 @@ def render_reward_markdown(payload: dict[str, Any]) -> str:
     )
     if reward.get("follow_up"):
         lines.append(f"- follow_up: {reward.get('follow_up')}")
+    lesson = reward.get("lesson") if isinstance(reward.get("lesson"), dict) else {}
+    if lesson:
+        lines.append(f"- lesson_kind: `{lesson.get('kind')}`")
+        lines.append(f"- lesson_summary: {lesson.get('summary')}")
+        for field in ("avoid", "prefer"):
+            values = lesson.get(field) if isinstance(lesson.get(field), list) else []
+            if values:
+                lines.append(f"- lesson_{field}: {', '.join(str(value) for value in values[:5])}")
     if payload.get("active_state_summary"):
         lines.extend(["", "## Active-State Summary", str(payload.get("active_state_summary"))])
     if state_update:
