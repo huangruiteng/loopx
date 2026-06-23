@@ -1,0 +1,18 @@
+{
+  "name": "loopx-goal-mode",
+  "version": "0.1.0",
+  "description": "LoopX goal-mode for Claude Code: loopx (a deterministic control plane) gates each tool call (should_run + write_scope + destructive-bash denylist) and keeps the session advancing across turns via a Stop hook. No OS sandbox — for strong isolation, run inside a dev container/VM. Toggle with /loopx.",
+  "author": "loopx",
+  "commands": "./commands",
+  "hooks": "./hooks/hooks.json",
+  "statusLine": {
+    "type": "command",
+    "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/statusline/goal_status.py\""
+  },
+  "mcpServers": {
+    "loopx": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/loopx_mcp.py"]
+    }
+  }
+}

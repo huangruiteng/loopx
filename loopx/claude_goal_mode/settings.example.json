@@ -1,0 +1,30 @@
+{
+  "_comment": "Manual wiring if NOT installing as a plugin. Merge into ~/.claude/settings.json (or .claude/settings.json in a project). Replace <PLUGIN_DIR> with the absolute path to loopx/claude_goal_mode. If your machine has `python` but not `python3`, replace `python3` below with `python` (or an absolute interpreter path). loopx drives Claude Code directly (no OS sandbox); the PreToolUse hook is the whole gate (should_run + Edit/Write write_scope + destructive-Bash denylist). For STRONG isolation, run Claude Code inside a dev container or VM.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "python3 \"<PLUGIN_DIR>/hooks/goal_policy.py\"", "timeout": 10 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"<PLUGIN_DIR>/hooks/goal_stop.py\"", "timeout": 15 }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 \"<PLUGIN_DIR>/statusline/goal_status.py\""
+  },
+  "mcpServers": {
+    "loopx": {
+      "command": "python3",
+      "args": ["<PLUGIN_DIR>/mcp/loopx_mcp.py"]
+    }
+  }
+}
