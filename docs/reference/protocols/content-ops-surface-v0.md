@@ -147,16 +147,38 @@ cookies, does not log in, does not write externally, and never grants
 autopublish permission. Deterministic tests and dry routing can use
 `--no-fetch` to build the same packet shape without external reads.
 
+Private connectors use a gate-projection command before any source access:
+
+```bash
+loopx content-ops project-private-connector-gate \
+  --connector-id chatlog_alpha_chatview \
+  --connector-name chatlog-alpha/chatview \
+  --surface wechat_private_archive \
+  --proposed-source-item-id source_wechat_metadata_signal_001 \
+  --format json
+```
+
+It returns `content_ops_private_connector_gate_packet_v0` with an
+`owner_gate`, a metadata-only `source_item_v0` placeholder, and a concrete
+`user_todo_projection`. It performs no external read, no private source-content
+read, no external write, and no publish action. The only safe next action is to
+surface the owner decision: approve metadata-only intake, reject it, or request
+a narrower source handle. Real chatlog-alpha/chatview ingestion must stay
+behind that gate.
+
 The durable smoke is:
 
 ```bash
 python3 examples/content-ops-surface-fixture-smoke.py
 python3 examples/content-ops-preview-cli-smoke.py
 python3 examples/content-ops-public-handle-observation-smoke.py
+python3 examples/content-ops-private-connector-gate-smoke.py
 ```
 
 The smoke checks record coverage, source/draft/gate references, first-screen
 projection fields, connector metadata-trial routing, todo candidates,
 no-autopublish policy, public/private boundary hygiene, and the public-handle
-adapter's no-content/no-write guarantees. A live X HEAD probe is available only
-when `LOOPX_LIVE_PUBLIC_HANDLE_SMOKE=1` is explicitly set.
+adapter's no-content/no-write guarantees. It also verifies that private
+connector intake projects an owner gate before any private source-content read.
+A live X HEAD probe is available only when
+`LOOPX_LIVE_PUBLIC_HANDLE_SMOKE=1` is explicitly set.

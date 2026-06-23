@@ -5,8 +5,10 @@ from collections.abc import Callable
 
 from ..content_ops_surface import (
     build_content_ops_preview_packet,
+    build_content_ops_private_connector_gate_packet,
     build_content_ops_public_handle_observation_packet,
     render_content_ops_preview_markdown,
+    render_content_ops_private_connector_gate_markdown,
     render_content_ops_public_handle_observation_markdown,
 )
 
@@ -88,6 +90,47 @@ def register_content_ops_commands(
         action="store_true",
         help="Build the metadata-only packet without any external read.",
     )
+    private_gate_parser = content_ops_sub.add_parser(
+        "project-private-connector-gate",
+        help="Project an owner gate before private connector metadata intake.",
+    )
+    add_subcommand_format(private_gate_parser)
+    private_gate_parser.add_argument(
+        "--connector-id",
+        default="chatlog_alpha_chatview",
+        help="Stable connector id for the private metadata-only gate.",
+    )
+    private_gate_parser.add_argument(
+        "--connector-name",
+        default="chatlog-alpha/chatview",
+        help="Human-readable connector name for the owner gate.",
+    )
+    private_gate_parser.add_argument(
+        "--surface",
+        default="wechat_private_archive",
+        help="Content-ops surface name for this private connector.",
+    )
+    private_gate_parser.add_argument(
+        "--proposed-source-item-id",
+        default="source_wechat_metadata_signal_001",
+        help="source_item_v0 id to reserve after owner approval.",
+    )
+    private_gate_parser.add_argument(
+        "--source-kind",
+        default="wechat_private_connector_metadata",
+        help="source_item_v0 source_kind for the metadata-only placeholder.",
+    )
+    private_gate_parser.add_argument(
+        "--owner-label",
+        default="WeChat archive owner",
+        help="Public-safe owner label to show in the gate packet.",
+    )
+    private_gate_parser.add_argument(
+        "--freshness",
+        default="unknown",
+        choices=("fresh", "stale", "unknown"),
+        help="Freshness value for the metadata-only placeholder.",
+    )
 
 
 def handle_content_ops_command(
@@ -112,9 +155,21 @@ def handle_content_ops_command(
                 fetch=not args.no_fetch,
             )
             renderer = render_content_ops_public_handle_observation_markdown
+        elif args.content_ops_command == "project-private-connector-gate":
+            payload = build_content_ops_private_connector_gate_packet(
+                connector_id=args.connector_id,
+                connector_name=args.connector_name,
+                surface=args.surface,
+                proposed_source_item_id=args.proposed_source_item_id,
+                source_kind=args.source_kind,
+                owner_label=args.owner_label,
+                freshness=args.freshness,
+            )
+            renderer = render_content_ops_private_connector_gate_markdown
         else:
             raise ValueError(
-                "content-ops requires `preview` or `observe-public-handle`"
+                "content-ops requires `preview`, `observe-public-handle`, or "
+                "`project-private-connector-gate`"
             )
     except Exception as exc:
         payload = {
@@ -122,6 +177,6 @@ def handle_content_ops_command(
             "mode": "content-ops",
             "error": str(exc),
         }
-        renderer = render_content_ops_public_handle_observation_markdown
+        renderer = render_content_ops_private_connector_gate_markdown
     print_payload(payload, output_format(args), renderer)
     return 0 if payload.get("ok") else 1

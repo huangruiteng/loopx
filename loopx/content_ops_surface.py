@@ -18,6 +18,12 @@ CONTENT_OPS_PUBLIC_HANDLE_OBSERVATION_PACKET_SCHEMA_VERSION = (
 CONTENT_OPS_PUBLIC_HANDLE_OBSERVATION_SCHEMA_VERSION = (
     "content_ops_public_handle_observation_v0"
 )
+CONTENT_OPS_PRIVATE_CONNECTOR_GATE_PACKET_SCHEMA_VERSION = (
+    "content_ops_private_connector_gate_packet_v0"
+)
+CONTENT_OPS_PRIVATE_CONNECTOR_OWNER_GATE_SCHEMA_VERSION = (
+    "content_ops_private_connector_owner_gate_v0"
+)
 
 SOURCE_ITEM_SCHEMA_VERSION = "source_item_v0"
 ANGLE_CANDIDATE_SCHEMA_VERSION = "angle_candidate_v0"
@@ -184,6 +190,35 @@ def _source_item_from_public_handle_observation(
             "captured and no external write was attempted."
         ),
         "observation": dict(observation),
+    }
+
+
+def _source_item_from_private_connector_gate(
+    *,
+    source_item_id: str,
+    source_kind: str,
+    freshness: str,
+    connector_name: str,
+    owner_label: str,
+    gate: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": SOURCE_ITEM_SCHEMA_VERSION,
+        "source_item_id": source_item_id,
+        "source_kind": source_kind,
+        "source_status": "private_needs_review",
+        "freshness": freshness,
+        "terms_note": (
+            "private connector metadata-only placeholder; owner approval is "
+            "required before any source content read, quote, summary, or publication"
+        ),
+        "allowed_use": "metadata_only",
+        "attribution": f"{owner_label} via {connector_name}",
+        "summary": (
+            "Private connector is represented only as an owner-gated metadata "
+            "signal; no source content was read or copied."
+        ),
+        "owner_gate": dict(gate),
     }
 
 
@@ -941,6 +976,161 @@ def render_content_ops_public_handle_observation_markdown(
                 f"- url_effective: `{observation.get('url_effective')}`",
                 f"- content_bytes_read: `{observation.get('content_bytes_read')}`",
                 f"- external_write_performed: `{observation.get('external_write_performed')}`",
+            ]
+        )
+    if payload.get("error"):
+        lines.extend(["", "## Error", "", str(payload.get("error"))])
+    return "\n".join(lines) + "\n"
+
+
+def build_content_ops_private_connector_gate_packet(
+    *,
+    connector_id: str = "chatlog_alpha_chatview",
+    connector_name: str = "chatlog-alpha/chatview",
+    surface: str = "wechat_private_archive",
+    proposed_source_item_id: str = "source_wechat_metadata_signal_001",
+    source_kind: str = "wechat_private_connector_metadata",
+    owner_label: str = "WeChat archive owner",
+    freshness: str = "unknown",
+) -> dict[str, Any]:
+    """Project a concrete owner gate before private connector intake.
+
+    This packet is a routing artifact only. It does not connect to private
+    sources, read source content, quote material, or authorize publication.
+    """
+
+    if not str(connector_id or "").strip():
+        raise ValueError("connector_id is required")
+    if not str(proposed_source_item_id or "").strip():
+        raise ValueError("proposed_source_item_id is required")
+    if freshness not in ALLOWED_FRESHNESS:
+        raise ValueError(f"freshness must be one of {sorted(ALLOWED_FRESHNESS)}")
+
+    gate_id = f"owner_gate_{str(connector_id).strip()}"
+    gate = {
+        "schema_version": CONTENT_OPS_PRIVATE_CONNECTOR_OWNER_GATE_SCHEMA_VERSION,
+        "gate_id": gate_id,
+        "connector_id": str(connector_id).strip(),
+        "connector_name": str(connector_name).strip(),
+        "surface": surface,
+        "status": "blocked_until_user_approval",
+        "approval_required": True,
+        "owner_label": str(owner_label).strip(),
+        "requested_decision": "approve_metadata_only_intake_or_reject",
+        "approval_options": [
+            "approve metadata-only intake",
+            "reject connector intake",
+            "request a narrower source handle",
+        ],
+        "forbidden_until_approved": [
+            "source content read",
+            "source quote",
+            "source summary",
+            "external posting",
+            "autopublish",
+        ],
+        "allowed_before_approval": [
+            "store this compact gate packet",
+            "display the owner question",
+            "prepare fixture-only smoke coverage",
+        ],
+    }
+    source_item = _source_item_from_private_connector_gate(
+        source_item_id=str(proposed_source_item_id).strip(),
+        source_kind=source_kind,
+        freshness=freshness,
+        connector_name=str(connector_name).strip(),
+        owner_label=str(owner_label).strip(),
+        gate=gate,
+    )
+    user_todo_projection = {
+        "role": "user",
+        "action_kind": "content_ops_private_connector_owner_gate",
+        "title": (
+            f"Approve, reject, or narrow metadata-only intake for {connector_name} "
+            "before LoopX reads any private source content."
+        ),
+        "gate_id": gate_id,
+        "connector_id": str(connector_id).strip(),
+        "source_item_id": source_item["source_item_id"],
+        "validation_surface": "owner decision recorded before private source use",
+    }
+    return {
+        "ok": True,
+        "schema_version": CONTENT_OPS_PRIVATE_CONNECTOR_GATE_PACKET_SCHEMA_VERSION,
+        "mode": "content-ops-project-private-connector-gate",
+        "surface": surface,
+        "connector": {
+            "connector_id": str(connector_id).strip(),
+            "connector_name": str(connector_name).strip(),
+            "access_mode": "private_metadata_only",
+            "source_status": "private_needs_review",
+            "allowed_use": "metadata_only",
+            "promotion_target": "source_item_v0_after_owner_gate",
+        },
+        "owner_gate": gate,
+        "source_item": source_item,
+        "user_todo_projection": user_todo_projection,
+        "external_reads_performed": False,
+        "external_writes_performed": False,
+        "private_source_bodies_read": False,
+        "private_source_content_read": False,
+        "autopublish_allowed": False,
+        "owner_gate_required": True,
+        "next_safe_action": (
+            "surface the projected owner gate; do not read private source content "
+            "until an owner decision updates the gate"
+        ),
+    }
+
+
+def render_content_ops_private_connector_gate_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# LoopX Content-Ops Private Connector Gate",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- schema_version: `{payload.get('schema_version')}`",
+        f"- owner_gate_required: `{payload.get('owner_gate_required')}`",
+        f"- external_reads_performed: `{payload.get('external_reads_performed')}`",
+        f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
+        f"- private_source_bodies_read: `{payload.get('private_source_bodies_read')}`",
+        f"- autopublish_allowed: `{payload.get('autopublish_allowed')}`",
+    ]
+    connector = payload.get("connector")
+    if isinstance(connector, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Connector",
+                "",
+                f"- connector_id: `{connector.get('connector_id')}`",
+                f"- connector_name: `{connector.get('connector_name')}`",
+                f"- access_mode: `{connector.get('access_mode')}`",
+                f"- allowed_use: `{connector.get('allowed_use')}`",
+            ]
+        )
+    gate = payload.get("owner_gate")
+    if isinstance(gate, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Owner Gate",
+                "",
+                f"- gate_id: `{gate.get('gate_id')}`",
+                f"- status: `{gate.get('status')}`",
+                f"- approval_required: `{gate.get('approval_required')}`",
+                f"- requested_decision: `{gate.get('requested_decision')}`",
+            ]
+        )
+    todo = payload.get("user_todo_projection")
+    if isinstance(todo, Mapping):
+        lines.extend(
+            [
+                "",
+                "## User Todo Projection",
+                "",
+                f"- action_kind: `{todo.get('action_kind')}`",
+                f"- title: {todo.get('title')}",
             ]
         )
     if payload.get("error"):
