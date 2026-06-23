@@ -376,6 +376,14 @@ The best long-term implementation is explicit scope metadata:
 text or `action_kind` inference is only a compatibility bridge for older goal
 states.
 
+When a user gate carries `blocks_agent=<agent-id>`, that metadata is already a
+hard scope boundary. The target agent must still stop and surface the concrete
+user decision. Other agents should keep the gate diagnostically visible but
+must not count it as their own `open_count`, `gate_open_items`, or
+`user_channel.action_required` if they have an independent executable todo.
+For those agents, an `operator_gate` state derived only from the other-agent
+gate should become an agent-scoped eligible lane, not a global owner gate.
+
 **Visual Model**
 
 ```mermaid
@@ -400,11 +408,21 @@ The opposite bad smell is also dangerous: the agent silently continues work
 without naming the blocked user decision, so the fallback becomes the main
 story and the human loses the critical gate.
 
+A third bad smell is an agent-scoped user gate overreach. A user todo says it
+blocks one registered product or side agent, but quota treats it as a global
+operator gate for every `--agent-id` call. The non-target agent then stops even
+though it has its own runnable todo. This is not IP-026 scope exhaustion; it is
+IP-003 scope metadata being ignored by the user-todo blocking summary.
+
 **Validation**
 
 - `regression/scoped-user-gate-fallback-contract.py`
 - `examples/protocol-action-packet-smoke.py`
 - `examples/work-lane-contract-smoke.py`
+- `examples/quota-agent-scoped-user-gate-smoke.py` for `blocks_agent` scoped
+  user gates that block only the target agent while preserving other-agent
+  delivery.
+- `docs/archive/incidents/agent-scoped-user-gate-overreach-incident-20260624.md`
 
 #### IP-021 Per-Todo Capability Gate
 
@@ -1454,6 +1472,11 @@ claim a newly exposed in-scope todo before delivery becomes allowed again.
 This pattern is the runtime counterpart of IP-022. IP-022 makes claimed,
 deferred, and agent-lane work visible; IP-026 says what to do when the scoped
 open frontier is empty and IP-027 has not found a ready deferred gate resume.
+If the only apparent blocker is a user todo with `blocks_agent` pointing at a
+different agent, IP-003 owns the case before IP-026: filter that other-agent
+gate out of the current agent's blocking user summary, then decide whether the
+current agent still has runnable work. If it does, delivery may continue; if it
+does not, IP-026 can classify the remaining empty frontier.
 
 **Visual Model**
 
@@ -1494,6 +1517,9 @@ tasks.
 - `docs/project-agent-todo-contract.md`
 - `docs/quota-allocation.md`
 - `docs/status-data-contract.md`
+- `examples/quota-agent-scoped-user-gate-smoke.py` for the nearby case where
+  a user gate is real but scoped to a different agent and therefore must not
+  create current-agent scope exhaustion.
 - `skills/loopx-self-repair/references/repair-patterns.md` records
   `agent_scoped_no_candidate_gap` for incident triage.
 
