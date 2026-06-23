@@ -2098,6 +2098,211 @@ function QuotaChip({ quota }: { quota?: ComputeQuota | null }) {
   return <Badge variant={view.variant}>{view.label}</Badge>;
 }
 
+type OperatorMentalModelItem = {
+  label: string;
+  badge: string;
+  value: string;
+  detail: string;
+  icon: React.ComponentType<{ className?: string }>;
+  variant: BadgeVariant;
+};
+
+function firstUsefulText(...values: Array<string | null | undefined>) {
+  return values.find((value) => Boolean(value?.trim()))?.trim() ?? "";
+}
+
+function buildCanContinueView({
+  agentTodo,
+  quota,
+  row,
+  userTodo,
+}: {
+  agentTodo?: TodoItem;
+  quota?: ComputeQuota | null;
+  row: GoalDirectoryRow;
+  userTodo?: TodoItem;
+}) {
+  const state = quota?.state ?? row.waitingOn;
+  if (state === "eligible") {
+    return {
+      value: agentTodo ? "Agent can continue" : "Ready, needs next todo",
+      detail: agentTodo
+        ? "There is runnable agent work and the quota guard is open."
+        : "The guard is open, but no first agent todo is projected for this goal.",
+      variant: agentTodo ? "success" : "warning",
+    } as const;
+  }
+  if (state === "operator_gate" || row.waitingOn === "user_or_controller" || row.waitingOn === "controller") {
+    return {
+      value: "Needs judgment first",
+      detail: userTodo
+        ? "The next safe transition starts with the user/controller todo."
+        : "A human or controller gate is active before delivery can continue.",
+      variant: "warning",
+    } as const;
+  }
+  if (row.waitingOn === "external_evidence" || state === "waiting") {
+    return {
+      value: "Watching evidence",
+      detail: "Continue only after the external evidence or terminal marker changes.",
+      variant: "info",
+    } as const;
+  }
+  if (state === "blocked_health") {
+    return {
+      value: "Repair first",
+      detail: "The control plane is asking for a health repair before delivery.",
+      variant: "danger",
+    } as const;
+  }
+  if (state === "throttled" || state === "paused" || state === "focus_wait") {
+    return {
+      value: "Hold",
+      detail: buildQuotaView(quota)?.shortLine ?? "The current control-plane state is not open for delivery.",
+      variant: state === "paused" ? "neutral" : "warning",
+    } as const;
+  }
+  return {
+    value: "Check control plane",
+    detail: buildQuotaView(quota)?.shortLine ?? row.status,
+    variant: "neutral",
+  } as const;
+}
+
+function buildOperatorMentalModelItems(row?: GoalDirectoryRow): OperatorMentalModelItem[] {
+  if (!row) {
+    return [];
+  }
+  const projectAsset = row.queueItem?.project_asset;
+  const userTodos = todosFromProjectAssetSummary(projectAsset?.user_todos, row.queueItem?.user_todos, "project_asset.user_todos");
+  const agentTodos = todosFromProjectAssetSummary(projectAsset?.agent_todos, row.queueItem?.agent_todos, "project_asset.agent_todos");
+  const userTodo = firstOpenTodo(userTodos);
+  const agentTodo = firstOpenTodo(agentTodos);
+  const quota = row.queueItem?.quota ?? projectAsset?.quota ?? row.goal.quota;
+  const canContinue = buildCanContinueView({ agentTodo, quota, row, userTodo });
+  const evidence = firstUsefulText(
+    formatLatestValidation(projectAsset?.latest_validation),
+    row.latestRun?.health_check,
+    row.latestRun?.classification
+      ? `${row.latestRun.classification}${row.latestRun.generated_at ? ` at ${row.latestRun.generated_at}` : ""}`
+      : null,
+  );
+  const nextStep = firstUsefulText(
+    agentTodo?.text,
+    projectAsset?.next_action,
+    row.queueItem?.recommended_action,
+    row.latestRun?.recommended_action,
+  );
+  const judgment = firstUsefulText(
+    userTodo?.text,
+    row.queueItem?.operator_question,
+    row.queueItem?.next_handoff_condition,
+  );
+
+  return [
+    {
+      label: "Goal",
+      badge: row.severity === "clear" ? "clear" : row.severity,
+      value: row.goal.id,
+      detail: `${row.status}; ${waitingLabel[row.waitingOn] ?? row.waitingOn}; ${row.lifecyclePhase}`,
+      icon: GitBranch,
+      variant: row.severity === "clear" ? "success" : severityVariant[row.severity] ?? "neutral",
+    },
+    {
+      label: "Next step",
+      badge: agentTodo ? "todo" : "fallback",
+      value: nextStep || "No next step projected",
+      detail: agentTodo ? "From projected agent todo." : "From project asset, queue recommendation, or latest run.",
+      icon: Terminal,
+      variant: agentTodo ? "info" : "neutral",
+    },
+    {
+      label: "Needs your judgment",
+      badge: judgment ? "gate" : "clear",
+      value: judgment || "No human judgment queued",
+      detail: userTodo ? "User/controller todo is the first handoff." : "No user gate is projected for this goal.",
+      icon: ShieldCheck,
+      variant: judgment ? "warning" : "success",
+    },
+    {
+      label: "Evidence",
+      badge: evidence ? "seen" : "empty",
+      value: evidence || "No compact evidence yet",
+      detail: evidence ? "Latest validation or run-history signal." : "Open the run history or status source when debugging.",
+      icon: FileCheck2,
+      variant: evidence ? "info" : "neutral",
+    },
+    {
+      label: "Can continue",
+      badge: "guard",
+      value: canContinue.value,
+      detail: canContinue.detail,
+      icon: Gauge,
+      variant: canContinue.variant,
+    },
+  ];
+}
+
+function OperatorMentalModelPanel({
+  row,
+  onSelectGoal,
+}: {
+  row?: GoalDirectoryRow;
+  onSelectGoal: (goalId: string) => void;
+}) {
+  const items = buildOperatorMentalModelItems(row);
+  if (!row || items.length === 0) {
+    return null;
+  }
+  return (
+    <Card data-testid="operator-mental-model-panel">
+      <CardHeader className="flex-wrap">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <LayoutDashboard className="h-4 w-4" />
+            Operator Model
+          </CardTitle>
+          <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
+            The first screen folds kernel state into five operator questions.
+          </p>
+        </div>
+        <Button onClick={() => onSelectGoal(row.goal.id)} size="sm" variant="secondary">
+          <Search className="h-4 w-4" />
+          Inspect
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 lg:grid-cols-5">
+          {items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div
+                className="min-h-32 rounded-lg border border-slate-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950"
+                data-testid={`operator-model-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                key={item.label}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-zinc-50">
+                    <Icon className="h-4 w-4 text-slate-500 dark:text-zinc-400" />
+                    {item.label}
+                  </div>
+                  <Badge variant={item.variant}>{item.badge}</Badge>
+                </div>
+                <p className="mt-3 line-clamp-3 break-words text-sm leading-6 text-slate-800 dark:text-zinc-200">
+                  {item.value}
+                </p>
+                <p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-slate-500 dark:text-zinc-400">
+                  {item.detail}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function controlPlaneForTarget(goal?: RunGoal, queueItem?: QueueItem): ControlPlanePolicy | null {
   return queueItem?.control_plane ?? queueItem?.project_asset?.control_plane ?? goal?.control_plane ?? null;
 }
@@ -5929,6 +6134,9 @@ export function DashboardPage() {
       ?? userActionItems[0];
   }, [search.actionKind, search.goalId, selectedGoalId, userActionItems]);
   const selectedReviewGoalId = selectedActionItem?.goalId ?? selectedGoalId;
+  const selectedMentalModelRow = goalRows.find((row) => row.goal.id === selectedReviewGoalId)
+    ?? goalRows.find((row) => row.goal.id === selectedGoalId)
+    ?? goalRows[0];
 
   function selectGoal(goalId: string) {
     void navigate({
@@ -6000,6 +6208,10 @@ export function DashboardPage() {
 
             <div className="space-y-5 p-4 sm:p-6">
               <StatusContractFreshnessWarning payload={payload} source={source} />
+
+              <section>
+                <OperatorMentalModelPanel row={selectedMentalModelRow} onSelectGoal={selectGoal} />
+              </section>
 
               <section>
                 <TodoFocusPanel rows={goalRows} onSelectGoal={selectGoal} selectedGoalId={selectedReviewGoalId} />
