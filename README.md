@@ -4,18 +4,20 @@
 
 **Loop engineering for long-running AI agents.**
 
-**Turn static goals into dynamic, human-in-the-loop agent loops.**
+**Manage long-running agents like digital workers.**
 
-**让复杂目标持续流转：人把控判断，agent 接力执行，状态不漂移。**
+**把会干活的 Agent，接成可管理、可复盘、可持续改进的数字员工。**
 
 LoopX is a local control plane for loop engineering. It helps Codex,
 Claude Code, Cursor, and other agent runtimes keep working on goals that span
 hours, days, handoffs, and changing human feedback.
 
 Use it when an agent is already useful for one session, but the work is too
-long, too gated, or too easy to lose across restarts. LoopX turns a one-shot
-prompt into a reviewable Loop Agent: a worker with a stable objective, explicit
-human gates, scoped next actions, evidence, and handoff state.
+long, too gated, or too easy to lose across restarts. LoopX turns that agent
+surface into a reviewable Loop Agent: stable objective, explicit gates, scoped
+next actions, evidence, cost, and handoff state. The agent still needs a CLI,
+goal mode, automation hook, or loop scheduler; LoopX supplies the control
+plane, not hidden autonomy.
 
 Under the hood, LoopX keeps goals, gates, todos, claims, scopes, evidence, run
 history, quota, and human decisions in one compact layer. Product surfaces fold
@@ -420,6 +422,8 @@ to prove that its output quality, cost, and human-attention footprint are
 improving. A Loop Agent could be a coding maintainer, an experiment optimizer,
 a research assistant, or a creator/operator assistant. LoopX is the control
 plane that keeps those loops reviewable before they become more autonomous.
+LoopX makes the "digital worker" idea operational: goals, gates, evidence,
+cost, and feedback stay reviewable over time.
 
 A medium-term productization case is a creator-operator workflow: a
 non-engineering user asks an agent to track social-platform trends, map them to
@@ -443,7 +447,7 @@ contract.
 - [Codex CLI packaged install](docs/product/codex-cli-packaged-install.md):
   no-clone install/update/start path for Codex CLI users.
 - [Integration guide](docs/integration.md): how to connect a project to Goal
-  LoopX.
+  LoopX state.
 - [Showcase catalog](docs/showcases/README.md): public-safe cases and future
   frontend data.
 - [Benchmark developer workflow](docs/benchmark-developer-workflow.md):
