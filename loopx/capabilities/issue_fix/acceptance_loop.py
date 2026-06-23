@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from .issue_fix_intake_surface import build_content_ops_issue_fix_metadata_preview_packet
+from .intake_surface import build_content_ops_issue_fix_metadata_preview_packet
 
 
 ISSUE_FIX_ACCEPTANCE_LOOP_SCHEMA_VERSION = "issue_fix_acceptance_loop_v0"

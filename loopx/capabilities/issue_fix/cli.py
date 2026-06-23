@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 
-from ..issue_fix_acceptance_loop import (
+from .acceptance_loop import (
     build_issue_fix_acceptance_fixture_packet,
     build_issue_fix_caller_repo_branch_packet,
     build_issue_fix_repo_branch_fixture_packet,

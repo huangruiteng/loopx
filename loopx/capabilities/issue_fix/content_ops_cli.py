@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ..issue_fix_intake_surface import (
+from .intake_surface import (
     build_content_ops_issue_fix_intake_packet,
     build_content_ops_issue_fix_metadata_preview_packet,
     render_content_ops_issue_fix_intake_markdown,

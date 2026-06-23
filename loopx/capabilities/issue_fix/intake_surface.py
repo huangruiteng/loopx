@@ -3,13 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from .content_ops_surface import (
+from ..content_ops.surface import (
     EXPLORATION_PLAN_SCHEMA_VERSION,
     _as_mappings,
     _normalise_exploration_label,
     build_content_ops_exploration_plan_packet,
 )
-from .issue_fix_metadata_preview import (
+from .metadata_preview import (
     ALLOWED_ISSUE_FIX_INTAKE_STATES,
     GITHUB_BODY_OR_COMMENT_KEYS,
     GITHUB_ISSUE_METADATA_PREVIEW_SCHEMA_VERSION,

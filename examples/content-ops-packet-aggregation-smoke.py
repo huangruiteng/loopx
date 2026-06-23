@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.content_ops_surface import (  # noqa: E402
+from loopx.capabilities.content_ops.surface import (  # noqa: E402
     CONTENT_OPS_PACKET_AGGREGATION_SCHEMA_VERSION,
     CONTENT_OPS_SURFACE_PROJECTION_SCHEMA_VERSION,
     CONTENT_OPS_SURFACE_SCHEMA_VERSION,

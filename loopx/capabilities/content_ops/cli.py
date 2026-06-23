@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ..content_ops_surface import (
+from .surface import (
     build_content_ops_chatview_report_packet,
     build_content_ops_exploration_plan_packet,
     build_content_ops_packet_aggregation_packet,
@@ -23,7 +23,7 @@ from ..content_ops_surface import (
     render_content_ops_public_handle_observation_markdown,
     render_content_ops_walkthrough_artifact_markdown,
 )
-from .content_ops_issue_fix import (
+from ..issue_fix.content_ops_cli import (
     handle_content_ops_issue_fix_command,
     register_content_ops_issue_fix_commands,
 )
