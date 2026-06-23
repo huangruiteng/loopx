@@ -948,6 +948,9 @@ raise SystemExit(proc.returncode)
                 "first_blocker": _public_bridge_label(
                     bridge_probe.get("first_blocker"), limit=120
                 ),
+                "response_first_blocker": _public_bridge_label(
+                    bridge_probe.get("response_first_blocker"), limit=120
+                ),
                 "stage": _public_bridge_label(bridge_probe.get("stage"), limit=80),
                 "bridge_command_invoked": (
                     bridge_probe.get("bridge_command_invoked") is True

@@ -344,11 +344,15 @@ def _bridge_probe_payload(
                 op_summaries.append(summary)
 
     response_schema = None
+    response_first_blocker = None
     if isinstance(response, dict):
         response_schema = _public_safe_label(response.get("schema_version"), limit=120)
+        response_first_blocker = _public_safe_label(
+            response.get("first_blocker"), limit=120
+        )
 
     elapsed = max(0, min(int(elapsed_ms), 600_000))
-    return {
+    payload = {
         "schema_version": SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_SCHEMA_VERSION,
         "ready": ready,
         "first_blocker": _public_safe_label(first_blocker, limit=120)
@@ -387,6 +391,9 @@ def _bridge_probe_payload(
         "upload_performed": False,
         "submit_performed": False,
     }
+    if response_first_blocker:
+        payload["response_first_blocker"] = response_first_blocker
+    return payload
 
 
 def _command_to_argv(command: str | list[str] | tuple[str, ...]) -> list[str]:

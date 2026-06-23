@@ -598,6 +598,9 @@ output.write_text("fake solver saw bridge packet\\n", encoding="utf-8")
                 "first_blocker": (
                     "skillsbench_remote_command_file_bridge_operation_failed"
                 ),
+                "response_first_blocker": (
+                    "skillsbench_remote_bridge_target_env_missing"
+                ),
                 "stage": "probe",
                 "response_schema_version": (
                     "skillsbench_remote_command_file_bridge_probe_response_v0"
@@ -637,6 +640,10 @@ output.write_text("fake solver saw bridge packet\\n", encoding="utf-8")
         )
         bridge_failure = bridge_failure_trace["remote_command_file_bridge"]
         assert bridge_failure["probe_ready"] is False
+        assert (
+            bridge_failure["response_first_blocker"]
+            == "skillsbench_remote_bridge_target_env_missing"
+        )
         assert bridge_failure["failed_operations"] == ["read_file"]
         assert bridge_failure["operations"][1]["status"] == "failed"
         assert bridge_failure["operations"][1]["content_match"] is False

@@ -1209,6 +1209,7 @@ def _skillsbench_public_remote_command_file_bridge_probe(
     for field in (
         "schema_version",
         "first_blocker",
+        "response_first_blocker",
         "stage",
         "request_schema_version",
         "response_schema_version",

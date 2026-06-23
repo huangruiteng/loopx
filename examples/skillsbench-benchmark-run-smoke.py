@@ -442,6 +442,57 @@ def test_skillsbench_remote_command_file_bridge_probe_fake_bridge_ready() -> Non
         assert forbidden not in text, forbidden
 
 
+def test_skillsbench_remote_command_file_bridge_probe_preserves_response_blocker() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        fake_bridge = Path(tmp) / "fake-bridge-failure.py"
+        fake_bridge.write_text(
+            f"""#!/usr/bin/env python3
+import json
+import sys
+
+sys.path.insert(0, {str(REPO_ROOT)!r})
+from loopx.benchmark_adapters.skillsbench_remote_bridge import (
+    build_skillsbench_remote_command_file_bridge_probe_response,
+)
+
+print(json.dumps(build_skillsbench_remote_command_file_bridge_probe_response(
+    ready=False,
+    first_blocker="skillsbench_remote_bridge_target_env_missing",
+    stage="remote_ssh_probe",
+    operations=[
+        {{"kind": "exec", "label": "bounded_noop_command", "status": "blocked", "exit_code_zero": False}},
+        {{"kind": "write_file", "label": "probe_marker_write", "status": "blocked"}},
+        {{"kind": "read_file", "label": "probe_marker_read", "status": "blocked", "content_match": False}},
+        {{"kind": "cleanup", "label": "probe_marker_cleanup", "status": "blocked"}},
+    ],
+), sort_keys=True))
+""",
+            encoding="utf-8",
+        )
+        fake_bridge.chmod(0o755)
+
+        payload = run_skillsbench_remote_command_file_bridge_probe(
+            [sys.executable, str(fake_bridge)]
+        )
+
+    assert payload["ready"] is False, payload
+    assert (
+        payload["first_blocker"]
+        == "skillsbench_remote_command_file_bridge_operation_failed"
+    ), payload
+    assert (
+        payload["response_first_blocker"]
+        == "skillsbench_remote_bridge_target_env_missing"
+    ), payload
+    assert payload["failed_operations"] == [
+        "exec",
+        "write_file",
+        "read_file",
+        "cleanup",
+    ], payload
+    assert payload["stage"] == "remote_ssh_probe", payload
+
+
 def test_skillsbench_worker_handshake_preflight_accepts_bridge_probe() -> None:
     command = [
         sys.executable,
@@ -6673,6 +6724,7 @@ if __name__ == "__main__":
     test_skillsbench_worker_handshake_preflight_distinguishes_remote_bridge()
     test_skillsbench_remote_command_file_bridge_probe_requires_command()
     test_skillsbench_remote_command_file_bridge_probe_fake_bridge_ready()
+    test_skillsbench_remote_command_file_bridge_probe_preserves_response_blocker()
     test_skillsbench_worker_handshake_preflight_accepts_bridge_probe()
     test_skillsbench_local_acp_relay_probe_completes_stdio_handshake()
     test_skillsbench_host_local_acp_transport_probe_uses_benchflow_client()
