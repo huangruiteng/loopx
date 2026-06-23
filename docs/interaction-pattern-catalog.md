@@ -98,7 +98,7 @@ scanning every IP.
 | Family | Purpose | Start Here When |
 | --- | --- | --- |
 | Work Routing | Decide whether the agent should deliver, fallback, recover, or stay quiet. | quota/status says work may run, but the next action is blocked, monitor-only, or outcome-thin |
-| Human Decision | Represent user, owner, simulator, reward, and approval moments without hiding the exact ask. | a user action, correction, approval, or run-bound judgment changes what the agent should do |
+| Human Decision | Represent user, owner, simulator, reward, approval, and deferred-resume moments without hiding the exact ask. | a user action, correction, approval, deferred gate, or run-bound judgment changes what the agent should do |
 | State And Boundary | Keep compact control-plane truth aligned with todos, scopes, leases, authority, and write boundaries. | state says one thing but todos, permissions, or authority sources imply another |
 | Evidence Lifecycle | Make external evidence and benchmark work countable without copying raw logs or task data. | a benchmark, CI, model run, or external handle must advance through observable lifecycle states |
 | Planning Governance | Control replanning, dreaming, cadence, and future-work writeback without turning chat into state. | the agent is planning, widening work, proposing future routes, or publishing top todos |
@@ -131,6 +131,7 @@ Human asks, approvals, interventions, and reward-derived lessons.
 | Importance | ID | Name | Primary Owner | User Channel | Agent Channel |
 | --- | --- | --- | --- | --- | --- |
 | P0 | IP-004 | Concrete User Todo Projection | User | ask or notify with concrete todo/question | do not hide behind generic "owner gate" text |
+| P0 | IP-027 | Deferred Gate Resume | Status/quota plus controller | notify only when the resume gate is still user-held | keep deferred work visible after open lanes; when ready, require lifecycle replan instead of no-candidate wait |
 | P0 | IP-014 | Decision Write Preview And Append | User/operator | explicit preview/apply decision | append only exact run-bound reward or gate decision event |
 | P1 | IP-017 | User Reward Lesson Promotion | User plus LoopX | acknowledge only when lesson changes route/priority/boundary | promote correction into durable lesson, todo, or projection before continuing |
 | P2 | IP-009 | Active User Assistance | User simulator / operator | bounded intervention | inject audited user help without leaking reward/oracle signals |
@@ -601,6 +602,91 @@ needed.
 - `docs/heartbeat-automation-prompt.md`
 - `examples/quota-plan-smoke.py`
 - `examples/heartbeat-quota-flow-smoke.py`
+
+#### IP-027 Deferred Gate Resume
+
+**Trigger**
+
+- a todo has `status=deferred` and a machine-readable resume condition such as
+  `resume_when=todo_done:<todo_id>` or an unblock link such as
+  `unblocks_todo_id`;
+- status can evaluate the condition into `resume_condition` and
+  `resume_ready`;
+- the deferred item is current-agent claimed or unclaimed for the scoped agent
+  that is awake; and
+- no ordinary open current-agent or unclaimed advancement todo should outrank
+  the resume handoff.
+
+**Expected behavior**
+
+Deferred todos represent parked work behind a resume gate. The gate may be a
+user todo, primary-review handoff, prerequisite implementation todo, resource
+decision, or another bounded control-plane condition. That makes this a
+Human Decision / gate-resume pattern, not a no-todo pattern.
+
+Status and quota should keep deferred work visible after sorted open todo
+lanes:
+
+- `deferred_items`: bounded visibility for deferred todos;
+- `deferred_resume_candidates`: bounded visibility for ready deferred todos;
+- `current_agent_deferred_resume_candidates`,
+  `unclaimed_deferred_resume_candidates`, and
+  `other_agent_deferred_resume_candidates` for agent-scoped payloads.
+
+Ready deferred work is not a no-candidate state. If a current-agent or
+unclaimed deferred item is ready and no open current-agent/unclaimed
+advancement todo outranks it, quota should return the existing
+`successor_replan_required` / `deferred_resume_projection` contract:
+
+```text
+effective_action=successor_replan_required
+normal_delivery_allowed=false
+execution_obligation.contract=deferred_resume_projection
+interaction_contract.agent_channel.must_attempt=true
+interaction_contract.agent_channel.quiet_noop_allowed=false
+```
+
+The bounded action is lifecycle repair: reopen the deferred todo, supersede it
+with a current successor, or record a public-safe no-follow-up rationale. Only
+after that writeback may normal delivery resume. If the resume condition is
+still user-held or ambiguous, IP-004 / IP-003 owns the user-facing ask. If no
+ready deferred item exists, IP-026 may classify the scoped frontier as
+`scope_exhausted`, `primary_review_wait`, or `reassignment_required`.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  D["deferred todo"] --> G{"resume gate satisfied?"}
+  G -->|"no, user-held"| U["IP-004 / IP-003 concrete user gate"]
+  G -->|"no, system prerequisite"| W["wait; keep deferred visible after open lanes"]
+  G -->|"yes"| C{"current-agent or unclaimed?"}
+  C -->|"other-agent claimed"| O["diagnostic visibility only"]
+  C -->|"current or unclaimed"| R["successor_replan_required"]
+  R --> L["reopen / supersede / no-follow-up rationale"]
+  L --> Q["rerun quota; normal delivery may resume"]
+```
+
+**Bad smell**
+
+A ready deferred successor is rendered only inside an agent-scoped
+no-candidate payload. The side agent reports "nothing runnable" even though the
+system knows a previous gate is now satisfied. The opposite failure is also
+bad: deferred items are mixed into ordinary open backlog before the lifecycle
+step, so stale or future work outranks live open tasks.
+
+**Validation**
+
+- `examples/work-lane-contract-smoke.py` covers a ready deferred successor
+  returning `successor_replan_required` instead of a quiet no-op.
+- `examples/todo-durability-fixture-smoke.py` covers parsing
+  `resume_when=todo_done:<todo_id>` and projecting ready deferred candidates
+  after open items.
+- `docs/project-agent-todo-contract.md`
+- `docs/quota-allocation.md`
+- `docs/status-data-contract.md`
+- `skills/loopx-self-repair/references/repair-patterns.md` records
+  `deferred_gate_resume_misclassified` for incident triage.
 
 #### IP-014 Decision Write Preview And Append
 
@@ -1291,7 +1377,8 @@ monitor work to crowd out the selected advancement lane.
   `interaction_contract.agent_channel.must_attempt=true`;
 - the same payload has no `agent_lane_next_action`;
 - `current_agent_claimed_advancement_items` is empty;
-- no runnable candidate is projected for that agent; and
+- no runnable candidate is projected for that agent;
+- no current-agent or unclaimed deferred resume candidate is ready; and
 - the recommended action points at another agent's lane, an out-of-scope lane,
   or a goal-level route the current agent cannot safely advance.
 
@@ -1299,50 +1386,14 @@ monitor work to crowd out the selected advancement lane.
 
 Agent-scoped quota must distinguish "the goal has runnable work" from "this
 agent has runnable work." When the current agent has no in-scope candidate,
-quota should not force a delivery turn. It first checks whether the scoped
-frontier is truly empty or whether a deferred successor has become ready.
+quota should not force a delivery turn. This pattern applies only after the
+guard has also checked IP-027 and found no ready current-agent or unclaimed
+deferred resume candidate. If a deferred resume candidate is ready, IP-027 owns
+the `successor_replan_required` path; IP-026 must not swallow it as
+"nothing runnable."
 
-Deferred work should stay machine-readable without becoming executable backlog
-too early. A deferred todo may carry `resume_when=<token>`, initially
-`resume_when=todo_done:<todo_id>`. Status evaluates the condition, adds
-`resume_condition`, and marks `resume_ready=true` only after the target todo is
-done. Status and quota expose deferred work after sorted open lanes through
-bounded visibility fields:
-
-- `deferred_items`: sorted visibility for deferred todos;
-- `deferred_resume_candidates`: sorted visibility for ready deferred todos;
-- default cap: 8 deferred items per lane.
-
-These fields are visibility and replan input, not normal delivery permission.
-Consumers must not merge them into `first_open_items` or executable backlog
-until a lifecycle command reopens or supersedes the todo.
-
-For agent-scoped quota, ready deferred candidates are split by claim:
-
-- `current_agent_deferred_resume_candidates`;
-- `unclaimed_deferred_resume_candidates`;
-- `other_agent_deferred_resume_candidates`.
-
-Only current-agent and unclaimed ready deferred candidates can wake that side
-agent. Other-agent deferred candidates remain diagnostic visibility. If the
-side agent has no open current-agent or unclaimed advancement todo but does
-have a ready current-agent/unclaimed deferred candidate, quota should return:
-
-```text
-effective_action=successor_replan_required
-should_run=true
-normal_delivery_allowed=false
-execution_obligation.contract=deferred_resume_projection
-interaction_contract.agent_channel.must_attempt=true
-interaction_contract.agent_channel.quiet_noop_allowed=false
-```
-
-The bounded action is to reopen the deferred todo, supersede it with a current
-successor, or record a public-safe no-follow-up rationale. Only after that
-writeback may normal delivery resume.
-
-If no ready current-agent or unclaimed deferred successor exists, quota should
-project one of these machine states instead:
+When the scoped frontier is truly empty, quota should project one of these
+machine states:
 
 - `scope_exhausted`: no current-agent or unclaimed candidate matches the
   registered agent profile and boundary;
@@ -1365,8 +1416,8 @@ goal-level route. A side agent should be allowed to no-op without spend, or
 claim a newly exposed in-scope todo before delivery becomes allowed again.
 
 This pattern is the runtime counterpart of IP-022. IP-022 makes claimed,
-deferred, and agent-lane work visible; IP-026 says what to do when that scoped
-frontier is empty or when a deferred successor makes it non-empty again.
+deferred, and agent-lane work visible; IP-026 says what to do when the scoped
+open frontier is empty and IP-027 has not found a ready deferred gate resume.
 
 **Visual Model**
 
@@ -1375,10 +1426,8 @@ flowchart TD
   Q["quota should-run --agent-id side"] --> F{"current-agent frontier?"}
   F -->|"current-agent candidate"| D["bounded delivery allowed"]
   F -->|"unclaimed in-scope candidate"| C["agent may claim before delivery"]
-  F -->|"no open candidate"| R{"ready current/unclaimed deferred successor?"}
-  R -->|"yes"| P["successor_replan_required"]
-  P --> U["reopen, supersede, or no-follow-up rationale"]
-  U --> Q
+  F -->|"no open candidate"| R{"IP-027 ready deferred resume?"}
+  R -->|"yes"| P["defer to IP-027"]
   R -->|"no"| X["scope_exhausted / primary_review_wait"]
   F -->|"only other-agent or out-of-scope work"| X
   X --> N["quiet no-op, no spend"]
@@ -1393,11 +1442,11 @@ A side-agent heartbeat receives `should_run=true`,
 `agent_lane_next_action=None`, `current_agent_claimed_advancement_items=[]`,
 and the only recommendation is a primary-owned benchmark or runtime lane. The
 agent either churns through repeated empty heartbeats or risks working outside
-its registered scope. A related failure is a ready deferred successor that
-remains visible only in a quiet no-candidate payload; the side agent reports
-"nothing runnable" until a human notices and asks for the next productization
-layer. The opposite bad smell is also harmful: deferred items are mixed into
-the open todo list, so stale or future work outranks live open tasks.
+its registered scope. A related failure is treating a ready deferred successor
+as part of this no-candidate pattern instead of routing it through IP-027's
+gate-resume lifecycle. The opposite bad smell is also harmful: deferred items
+are mixed into the open todo list, so stale or future work outranks live open
+tasks.
 
 **Validation**
 
@@ -1405,12 +1454,7 @@ the open todo list, so stale or future work outranks live open tasks.
   work is claimed by the primary and the side-agent `--agent-id` call returns
   `scope_exhausted` or `primary_review_wait`;
 - `examples/work-lane-contract-smoke.py` should cover that an empty
-  current-agent frontier cannot produce `delivery_allowed=true`, and that a
-  ready deferred successor returns `successor_replan_required` instead of a
-  quiet no-op;
-- `examples/todo-durability-fixture-smoke.py` covers parsing
-  `resume_when=todo_done:<todo_id>` and projecting ready deferred candidates
-  after open items;
+  current-agent frontier cannot produce `delivery_allowed=true`;
 - `docs/project-agent-todo-contract.md`
 - `docs/quota-allocation.md`
 - `docs/status-data-contract.md`

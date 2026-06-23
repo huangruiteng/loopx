@@ -336,17 +336,20 @@ same-priority backlog, even if the goal-level `Next Action` prose is stale.
 This is only a scheduling hint: capability gates, write-scope checks, user
 gates, and validation still apply.
 
-Deferred todo visibility is a separate quota lane, not executable backlog.
-Status/quota may expose up to eight sorted `deferred_items` and up to eight
-ready `deferred_resume_candidates` after the sorted open todo lanes. In
-agent-scoped `quota should-run --agent-id <side-agent>`, all deferred items may
-remain visible for diagnosis, but only ready candidates claimed by the current
-agent or left unclaimed can wake that side agent. If such a candidate exists
-and no open current-agent/unclaimed advancement todo exists, quota returns
-`effective_action=successor_replan_required`,
-`normal_delivery_allowed=false`, and `execution_obligation.contract =
-deferred_resume_projection`. The worker must reopen, supersede, or record a
-public-safe no-follow-up rationale before ordinary delivery work.
+Deferred todo visibility is a separate gate-resume lane, not executable
+backlog and not part of the no-candidate quiet-wait semantics. Status/quota may
+expose up to eight sorted `deferred_items` and up to eight ready
+`deferred_resume_candidates` after the sorted open todo lanes. In agent-scoped
+`quota should-run --agent-id <side-agent>`, all deferred items may remain
+visible for diagnosis, but only ready candidates claimed by the current agent
+or left unclaimed can wake that side agent. If such a candidate exists and no
+open current-agent/unclaimed advancement todo exists, quota returns
+`effective_action=successor_replan_required`, `normal_delivery_allowed=false`,
+and `execution_obligation.contract = deferred_resume_projection`. The worker
+must reopen, supersede, or record a public-safe no-follow-up rationale before
+ordinary delivery work. Only when no ready current-agent/unclaimed deferred
+resume exists should agent-scoped quota fall through to `primary_review_wait`,
+`reassignment_required`, or `scope_exhausted`.
 
 External-evidence waits have an additional CLI-level observation contract. When
 the selected goal is `state=waiting`, `waiting_on=external_evidence`, and its

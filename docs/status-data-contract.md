@@ -891,15 +891,16 @@ Item fields:
   current agent's own claimed work or unclaimed work.
   Deferred todos are projected after sorted open todo lanes through
   `deferred_items` and, when a machine-readable resume condition is satisfied,
-  `deferred_resume_candidates`. The default deferred visibility cap is eight
-  items. Parsed deferred items may include `resume_when`,
+  `deferred_resume_candidates`. This is a gate-resume lane, not no-candidate
+  evidence and not executable backlog. The default deferred visibility cap is
+  eight items. Parsed deferred items may include `resume_when`,
   `resume_condition`, and `resume_ready`; consumers should not merge these into
   `first_open_items` or executable backlog until a lifecycle command reopens or
   supersedes the todo. Agent-scoped quota may further split ready candidates
   into `current_agent_deferred_resume_candidates`,
   `unclaimed_deferred_resume_candidates`, and
   `other_agent_deferred_resume_candidates`, where only the first two can wake
-  the current side agent.
+  the current side agent before an agent-scoped no-candidate wait is allowed.
   Optional future fields such as `created_at`, lease TTLs, dependencies, or
   evidence links should extend this item shape rather than inventing another
   todo surface.

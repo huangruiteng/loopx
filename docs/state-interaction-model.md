@@ -245,6 +245,11 @@ surfaces:
   selected fallback; the gated action itself must not run.
 - `user_todo_blocker_push`: the user owns an open todo. The agent notifies,
   does not spend, and should not describe the turn as "no user action".
+- `successor_replan_required`: a deferred todo's resume gate is satisfied, but
+  the item is still deferred. The agent does not run ordinary delivery yet; it
+  reopens the todo, supersedes it with a current successor, or records a
+  public-safe no-follow-up rationale, then reruns the guard. This is a
+  gate-resume mode, not an agent-scoped no-candidate wait.
 - `external_evidence_observation`: Codex does not run benchmark/model/Docker
   delivery. It must first verify an observable handle such as a thread id, job
   id, marker, or compact writeback channel. This applies both to explicit

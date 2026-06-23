@@ -147,8 +147,9 @@ Deferred todos may carry a machine-readable resume condition with
 `resume_when=todo_done:<todo_id>`, meaning the deferred todo should become a
 successor replan candidate after the referenced todo reaches `status=done`.
 Status and quota expose deferred todos as a visibility lane after sorted open
-todo lanes; they are not runnable work until an agent reopens, supersedes, or
-records a no-follow-up rationale for the deferred item.
+todo lanes. This is a deferred gate-resume lane: it is not runnable work, and
+it is not evidence that the current agent has no todo, until an agent reopens,
+supersedes, or records a no-follow-up rationale for the deferred item.
 
 ```bash
 loopx configure-goal \
@@ -374,7 +375,8 @@ optional `action_kind`, `claimed_by`, `required_capabilities`, and
 `blocks_agent` and `unblocks_todo_id` to show which agent/todo they release.
 Deferred successors may carry `resume_when`, `resume_condition`, and
 `resume_ready`; `resume_ready=true` means the deferred item should be considered
-for a successor replan, not that normal delivery may skip the todo lifecycle.
+for a successor replan before any agent-scoped no-candidate wait, not that
+normal delivery may skip the todo lifecycle.
 The `todo_id` is first-class when written by the CLI.
 `claimed_by` values are normalized public-safe agent ids and should correspond to
 `coordination.registered_agents`. Legacy Markdown without metadata still gets a
