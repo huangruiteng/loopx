@@ -816,6 +816,132 @@ def test_product_mode_missing_lifecycle_prompts_exact_checkpoint() -> None:
         assert trace["stop_decision_count"] == 0
 
 
+def test_product_mode_no_tool_call_stops_before_checkpoint_loop() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-no-tool-lifecycle-") as tmp:
+        root = Path(tmp)
+        jobs_dir = root / "jobs"
+        job_name = "skillsbench_no_tool_lifecycle_fixture"
+        rollout_name = "case__loopx_product_mode"
+        trajectory_path = (
+            jobs_dir / job_name / rollout_name / "agent" / "acp_trajectory.jsonl"
+        )
+        trajectory_path.parent.mkdir(parents=True)
+        trajectory_path.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "user_message",
+                            "text": "LoopX product-mode treatment round 1.",
+                        },
+                        sort_keys=True,
+                    ),
+                    json.dumps(
+                        {
+                            "type": "agent_message",
+                            "text": "I cannot continue without more context.",
+                        },
+                        sort_keys=True,
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
+            "loopx_state_reads": 0,
+            "loopx_state_writes": 0,
+            "loopx_case_state_reads": 0,
+            "loopx_case_state_writes": 0,
+            "heartbeat_count": 0,
+            "controller_action_decisions": 0,
+            "initial_prompt_count": 0,
+            "followup_prompt_count": 0,
+            "stop_decision_count": 0,
+            "reward_observation_count": 0,
+            "round_rewards": [],
+        }
+        plan = {
+            "jobs_dir": str(jobs_dir),
+            "job_name": job_name,
+            "rollout_name": rollout_name,
+        }
+        saved_modules = {
+            name: sys.modules.get(name)
+            for name in (
+                "benchflow",
+                "benchflow.sandbox",
+                "benchflow.sandbox.user",
+            )
+        }
+        fake_benchflow = types.ModuleType("benchflow")
+        fake_sandbox = types.ModuleType("benchflow.sandbox")
+        fake_user = types.ModuleType("benchflow.sandbox.user")
+
+        class FakeBaseUser:
+            pass
+
+        class FakeRoundResultBase:
+            pass
+
+        fake_user.BaseUser = FakeBaseUser
+        fake_user.RoundResult = FakeRoundResultBase
+        sys.modules["benchflow"] = fake_benchflow
+        sys.modules["benchflow.sandbox"] = fake_sandbox
+        sys.modules["benchflow.sandbox.user"] = fake_user
+        try:
+            user = _build_product_mode_user(
+                route="loopx-product-mode",
+                max_rounds=8,
+                trace=trace,
+                plan=plan,
+            )
+        finally:
+            for name, module in saved_modules.items():
+                if module is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = module
+
+        class FakeRoundResult:
+            rewards = {}
+            trajectory = [
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "I cannot continue without more context.",
+                        }
+                    ],
+                }
+            ]
+            n_tool_calls = 0
+
+        prompt = asyncio.run(
+            user.run(
+                1,
+                "Fix the fixture.",
+                round_result=FakeRoundResult(),
+            )
+        )
+        assert prompt is None, trace
+        assert (
+            trace["last_decision"]
+            == "stop_after_product_mode_no_tool_calls_without_lifecycle"
+        )
+        assert trace["product_mode_lifecycle_checkpoint_required"] is True
+        assert trace["product_mode_lifecycle_checkpoint_count"] == 1
+        assert trace["product_mode_lifecycle_checkpoint_round"] == 1
+        assert trace["product_mode_no_tool_call_lifecycle_abort"] is True
+        assert trace["product_mode_no_tool_call_lifecycle_abort_count"] == 1
+        assert trace["product_mode_no_tool_call_lifecycle_abort_round"] == 1
+        assert trace["followup_prompt_count"] == 0
+        assert trace["stop_decision_count"] == 1
+
+
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -3559,6 +3685,58 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
         ), compact_again
 
 
+def test_skillsbench_product_mode_no_tool_lifecycle_abort_is_compacted() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-no-tool-compact-") as tmp:
+        root = Path(tmp)
+        result_path = write_official_skillsbench_result(root, reward=0.0)
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "product_mode": True,
+            "heartbeat_count": 2,
+            "controller_action_decisions": 2,
+            "initial_prompt_count": 1,
+            "followup_prompt_count": 0,
+            "stop_decision_count": 1,
+            "product_mode_lifecycle_checkpoint_required": True,
+            "product_mode_lifecycle_checkpoint_count": 1,
+            "product_mode_lifecycle_checkpoint_round": 1,
+            "product_mode_lifecycle_checkpoint_missing_reason": (
+                "missing_case_local_loopx_state_read_or_write"
+            ),
+            "product_mode_no_tool_call_lifecycle_abort": True,
+            "product_mode_no_tool_call_lifecycle_abort_count": 1,
+            "product_mode_no_tool_call_lifecycle_abort_round": 1,
+            "loopx_state_reads": 0,
+            "loopx_state_writes": 0,
+            "loopx_case_state_reads": 0,
+            "loopx_case_state_writes": 0,
+            "last_decision": "stop_after_product_mode_no_tool_calls_without_lifecycle",
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        counters = compact["interaction_counters"]
+        assert counters["product_mode_no_tool_call_lifecycle_abort"] is True
+        assert counters["product_mode_no_tool_call_lifecycle_abort_count"] == 1
+        assert counters["product_mode_no_tool_call_lifecycle_abort_round"] == 1
+        assert counters["controller_stop_decision_count"] == 1
+        assert counters["controller_followup_prompt_count"] == 0
+        assert (
+            counters["last_decision"]
+            == "stop_after_product_mode_no_tool_calls_without_lifecycle"
+        )
+
+
 def test_skillsbench_product_mode_case_state_usage_is_compacted() -> None:
     assert PRODUCT_MODE_CASE_STATE_PATH == (
         "/app/.codex/goals/skillsbench-case/ACTIVE_GOAL_STATE.md"
@@ -5894,6 +6072,7 @@ if __name__ == "__main__":
     test_product_mode_case_state_seed_uses_active_goal_shape()
     test_product_mode_declared_done_requires_case_state_depth()
     test_product_mode_missing_lifecycle_prompts_exact_checkpoint()
+    test_product_mode_no_tool_call_stops_before_checkpoint_loop()
     test_skillsbench_skeleton_builder()
     test_skillsbench_official_result_builder()
     test_skillsbench_result_reward_artifact_recovery()
@@ -5926,6 +6105,7 @@ if __name__ == "__main__":
     test_skillsbench_controller_trace_counts_are_compacted()
     test_skillsbench_product_mode_declared_done_is_compacted()
     test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted()
+    test_skillsbench_product_mode_no_tool_lifecycle_abort_is_compacted()
     test_skillsbench_product_mode_case_state_usage_is_compacted()
     test_skillsbench_product_mode_legacy_case_state_path_is_not_compacted()
     test_skillsbench_round_trace_records_best_round_score()

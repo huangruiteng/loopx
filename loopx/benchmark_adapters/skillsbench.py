@@ -2050,6 +2050,16 @@ def _skillsbench_controller_trace_counters(
         "product_mode_lifecycle_checkpoint_round": count(
             "product_mode_lifecycle_checkpoint_round"
         ),
+        "product_mode_no_tool_call_lifecycle_abort": controller_trace.get(
+            "product_mode_no_tool_call_lifecycle_abort"
+        )
+        is True,
+        "product_mode_no_tool_call_lifecycle_abort_count": count(
+            "product_mode_no_tool_call_lifecycle_abort_count"
+        ),
+        "product_mode_no_tool_call_lifecycle_abort_round": count(
+            "product_mode_no_tool_call_lifecycle_abort_round"
+        ),
     }
     last_decision = _skillsbench_public_safe_label(
         controller_trace.get("last_decision") or ""
@@ -3104,6 +3114,15 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "product_mode_lifecycle_checkpoint_missing_reason": controller_counters.get(
                 "product_mode_lifecycle_checkpoint_missing_reason", ""
+            ),
+            "product_mode_no_tool_call_lifecycle_abort": controller_counters.get(
+                "product_mode_no_tool_call_lifecycle_abort", False
+            ),
+            "product_mode_no_tool_call_lifecycle_abort_count": controller_counters.get(
+                "product_mode_no_tool_call_lifecycle_abort_count", 0
+            ),
+            "product_mode_no_tool_call_lifecycle_abort_round": controller_counters.get(
+                "product_mode_no_tool_call_lifecycle_abort_round", 0
             ),
             "agent_declared_done": controller_counters.get(
                 "agent_declared_done", False

@@ -3325,6 +3325,26 @@ def _record_product_mode_lifecycle_checkpoint_gap(
     trace["product_mode_lifecycle_checkpoint_count"] = current + 1
 
 
+def _round_result_tool_call_count(round_result: Any) -> int | None:
+    value = getattr(round_result, "n_tool_calls", None)
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
+def _record_product_mode_no_tool_call_lifecycle_abort(
+    trace: dict[str, Any],
+    *,
+    agent_round: int,
+) -> None:
+    trace["product_mode_no_tool_call_lifecycle_abort"] = True
+    trace["product_mode_no_tool_call_lifecycle_abort_round"] = agent_round
+    current = trace.get("product_mode_no_tool_call_lifecycle_abort_count")
+    if not isinstance(current, int) or isinstance(current, bool):
+        current = 0
+    trace["product_mode_no_tool_call_lifecycle_abort_count"] = current + 1
+
+
 def _trajectory_candidate_paths(plan: dict[str, Any]) -> list[Path]:
     jobs_dir = Path(str(plan.get("jobs_dir") or "")).expanduser()
     job_name = str(plan.get("job_name") or "").strip()
@@ -3691,9 +3711,28 @@ def _build_product_mode_user(
             )
             if round_result is not None:
                 _inc_counter(trace, "official_feedback_blinded_count")
+                if treatment:
+                    _merge_acp_trajectory_summary(plan or {}, trace)
+                    if (
+                        _round_result_tool_call_count(round_result) == 0
+                        and not _product_mode_depth_gate_satisfied(trace)
+                    ):
+                        _record_product_mode_lifecycle_checkpoint_gap(
+                            trace,
+                            agent_round=round,
+                        )
+                        _record_product_mode_no_tool_call_lifecycle_abort(
+                            trace,
+                            agent_round=round,
+                        )
+                        _inc_counter(trace, "controller_action_decisions")
+                        _inc_counter(trace, "stop_decision_count")
+                        trace["last_decision"] = (
+                            "stop_after_product_mode_no_tool_calls_without_lifecycle"
+                        )
+                        return None
                 if _round_result_declared_done(round_result):
                     if treatment:
-                        _merge_acp_trajectory_summary(plan or {}, trace)
                         if not _product_mode_depth_gate_satisfied(trace):
                             _record_product_mode_depth_gate_gap(
                                 trace,
