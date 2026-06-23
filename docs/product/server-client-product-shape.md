@@ -26,6 +26,8 @@ long-running facts become coherent:
   history;
 - registered agent identity, role, scope, worktree policy, and review handoff
   defaults;
+- maintainer-facing signal inbox, selected anchors, and performance-review
+  summaries;
 - per-todo claim and future lease state;
 - quota, spend, idempotency, and concurrency policy;
 - compact public/private boundary summaries;
@@ -44,6 +46,13 @@ The server should stay conservative. Planning lanes may rank candidate todos,
 surface refactor warnings, or propose evidence probes, but they do not execute
 protected work, read private material, or spend delivery quota until promoted
 through the normal gate, quota, and boundary path.
+
+For the maintainer-first product surface, the server should treat external
+signals as candidates before they become work. A GitHub issue, pull request,
+failing check, Lark feedback, or document change can enter the signal inbox;
+only selected high-value anchors become todos, owner-routing requests, or
+showcase candidates. This keeps "always running" from turning into "always
+busy."
 
 ### Delivery And Planning Queues
 
@@ -151,7 +160,7 @@ agent runtime
 
 ### Client
 
-The client is the user's agent-facing proxy. It turns human intent into
+The client is the maintainer's agent-facing proxy. It turns human intent into
 governed control-plane transitions and turns raw agent activity back into an
 operator-readable surface.
 
@@ -159,7 +168,10 @@ The client can be a CLI, dashboard, Lark document workflow, browser UI, or host
 adapter. The important product responsibility is the same:
 
 - explain what the goal is trying to accomplish now;
+- show the signal inbox and selected high-value anchors;
 - show what happened, what is blocked, and what will happen next;
+- show whether a Loop Agent is earning value, respecting control, and staying
+  cost-aware;
 - collect user judgment, taste, approval, rejection, deferral, or reward;
 - translate that input into gates, preferences, todo changes, or handoffs;
 - route executor loops toward the current state without embedding stale policy;
@@ -168,6 +180,12 @@ adapter. The important product responsibility is the same:
 This is why the client is more than intent classification. It is a product
 surface for long-running work: it carries context, permission, feedback,
 visibility, and trust.
+
+Issue / PR solver pilots should therefore appear first as anchor-management
+flows, not as a separate issue-fix product. The client can show: why this issue
+or PR is worth acting on, who owns implementation, what action is allowed, what
+evidence will be accepted, and whether the outcome can graduate into public
+showcase material.
 
 ### Executor Loop
 
@@ -207,6 +225,42 @@ into an agent instruction. The executor should not bypass the client by hiding
 important decisions in chat or local memory. LoopX exists so user
 judgment, agent work, evidence, and future planning remain visible in the same
 control plane.
+
+## Decoupled Display And Control
+
+The intelligent display surface can be adopted before the full LoopX control
+loop. This separation matters for early users and partner teams.
+
+In **display-only mode**, the server or local state store can ingest agent work
+products and review signals without owning the executor's next action:
+
+```text
+external agent artifacts
+  -> signal / evidence ingestion
+  -> review_event_v0
+  -> performance_review_v0
+  -> maintainer dashboard
+```
+
+This mode quantifies value but does not steer execution. It is appropriate for
+existing Codex, Claude Code, OpenViking-style solver, office-operations, or
+internal agent workflows where the user first wants to inspect and score work.
+
+In **LoopX control mode**, accepted review output becomes governed state:
+
+```text
+performance_review_v0
+  -> gate / todo / anchor / reward / preference writeback
+  -> quota and boundary checked LoopX work
+  -> new evidence
+  -> next review event
+```
+
+Both modes should live in one product system and preferably one repository for
+now. The code boundary should still be explicit: the display app may run
+read-only, while writeback paths must call LoopX schemas, gates, quota, and
+boundary checks. This lets frontend collaborators build a polished surface
+without accidentally creating a second source of truth.
 
 ## Capability Boundaries
 
@@ -253,10 +307,18 @@ The first product slices should remain small and compatible with CLI-only mode.
    signals, or proposed todos that can receive user feedback and later produce
    `feedback_signal_v0`, `todo_update`, `anchor_update`, or
    `performance_review_note`.
-9. **`advisory_summary_v0`**: optional model-backed summary of recent state,
+9. **`anchor_candidate_v0`**: selected external signals that may become work.
+   The minimal record should include source kind, public/private boundary,
+   reason to care, allowed action, owner split, stop condition, expected
+   evidence, and showcase-consent status.
+10. **`project_level_reward_v0`**: aggregate value estimate for long-running
+   agent work across a project. It combines quantity, human-scored quality,
+   token spend, and user-attention spend so benchmark evidence can be compared
+   with maintainer value without reducing everything to a single task score.
+11. **`advisory_summary_v0`**: optional model-backed summary of recent state,
    used only for wording or clustering. It is default-off for control and cannot
    mutate state unless converted into a typed object above.
-10. **`handoff_packet_v0`**: compact executor input that carries the selected
+12. **`handoff_packet_v0`**: compact executor input that carries the selected
    todo, stop condition, validation expectation, boundary notes, and writeback
    target without copying the whole project history.
 
@@ -280,7 +342,8 @@ The near-term roadmap should therefore prefer:
 - local concurrency correctness before broad server scheduling;
 - side-agent scope and worktree policy before autonomous multi-agent merging;
 - planning proposals before background execution;
-- user feedback modeling before personalization claims.
+- user feedback and performance-review modeling before personalization claims;
+- anchor selection before domain-specific solver UIs.
 
 The product promise stays the same across these layers: make the human decision
 explicit, keep safe side work moving when it is independent, and make every
