@@ -74,7 +74,11 @@ and do not use hidden headless execution.
 
 ### 其他 Agent / 手动 Shell
 
-Claude Code、Cursor、其他终端 agent 或手动 shell 都走同一个 no-clone installer：
+Claude Code、Cursor、其他终端 agent 或手动 shell 都走同一个 no-clone installer。
+但这里要更谨慎：非 Codex agent 只有在至少具备一种可被 LoopX 驱动的控制能力时才适合
+走 agent-first 路径，例如能运行 shell/CLI、支持 goal/task 指令、能接入 automation
+或 heartbeat、或者自身有 loop/scheduler。否则 LoopX 仍可记录项目状态，但用户需要把
+下面的 shell 命令手动跑完。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash

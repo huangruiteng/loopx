@@ -10,6 +10,12 @@ dashboard use, development checks, and command discovery.
 If you already use Codex, Claude Code, Cursor, or another terminal agent, paste
 this into the agent from your project repo:
 
+Compatibility check for non-Codex agents: the agent surface needs at least one
+control hook for LoopX to drive it, such as shell/CLI execution, a goal/task
+command, an automation or heartbeat hook, or its own loop/scheduler. Without
+one of those, use the manual shell commands instead; LoopX can preserve project
+state, but it cannot make an agent continue automatically.
+
 ```text
 Install and connect LoopX for this project end to end. Do not stop at a
 plan.

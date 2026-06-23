@@ -103,7 +103,12 @@ A successful connection looks like this:
 ### Other Agents And Manual Shell
 
 For Claude Code, Cursor, another terminal agent, or a manual shell, use the
-same no-clone installer:
+same no-clone installer. Be cautious with non-Codex agents: LoopX can only
+drive the agent path if that surface has at least one usable control hook, such
+as shell/CLI execution, a goal/task command, an automation or heartbeat hook,
+or its own loop/scheduler. If the agent has none of those capabilities, LoopX
+can still track the project state, but the user must run the shell commands
+manually.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
