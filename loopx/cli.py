@@ -159,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
             "new-project-prompt",
             "heartbeat-prompt",
             "sync-global",
+            "uninstall-project",
             "version",
         }
         and not user_supplied_registry(argv)

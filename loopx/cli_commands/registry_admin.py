@@ -19,6 +19,7 @@ from ..configure_goal import configure_goal, render_configure_goal_markdown
 from ..global_registry import render_global_sync_markdown, sync_project_registry_to_global
 from ..history import load_registry
 from ..paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
+from ..project_uninstall import render_project_uninstall_markdown, uninstall_project
 from ..registry import registry_goals
 from ..runtime import archive_runtime_goal, render_archive_runtime_markdown
 from ..state_migration import (
@@ -40,6 +41,7 @@ REGISTRY_ADMIN_COMMANDS = {
     "configure-goal",
     "register-agent",
     "archive-runtime",
+    "uninstall-project",
     "sync-global",
     "migrate-state",
     "register-authority-source",
@@ -306,6 +308,32 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         help="Actually move the runtime directory. Without this flag the command is a dry-run.",
     )
 
+    uninstall_project_parser = subparsers.add_parser(
+        "uninstall-project",
+        help="Disconnect the current project from LoopX without uninstalling the LoopX CLI or other projects.",
+    )
+    uninstall_project_parser.add_argument(
+        "--goal-id",
+        action="append",
+        default=None,
+        help="Goal id to disconnect. Repeatable; defaults to every goal in this project registry.",
+    )
+    uninstall_project_parser.add_argument(
+        "--archive-state",
+        action="store_true",
+        help="Move each selected project-local .codex/goals/<goal-id> state directory into .loopx/archived-project-state/.",
+    )
+    uninstall_project_parser.add_argument(
+        "--remove-empty-registry",
+        action="store_true",
+        help="Remove .loopx/registry.json when all local goals are uninstalled. A backup is written first on --execute.",
+    )
+    uninstall_project_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write registry changes. Without this flag, uninstall-project is a dry-run preview.",
+    )
+
     sync_global_parser = subparsers.add_parser(
         "sync-global",
         help="Merge this project-local registry into the shared global registry.",
@@ -570,6 +598,31 @@ def handle_registry_admin_command(
                 "error": str(exc),
             }
         print_payload(payload, args.format, render_archive_runtime_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "uninstall-project":
+        try:
+            payload = uninstall_project(
+                registry_path=registry_path,
+                runtime_root_override=args.runtime_root,
+                goal_ids=args.goal_id,
+                archive_state=bool(args.archive_state),
+                remove_empty_registry=bool(args.remove_empty_registry),
+                execute=bool(args.execute),
+            )
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "schema_version": "loopx_project_uninstall_v0",
+                "dry_run": not bool(args.execute),
+                "execute": bool(args.execute),
+                "registry": str(registry_path),
+                "goal_ids": args.goal_id or [],
+                "wrote_local_registry": False,
+                "wrote_global_registry": False,
+                "error": str(exc),
+            }
+        print_payload(payload, args.format, render_project_uninstall_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "sync-global":

@@ -66,6 +66,9 @@ def write_fixture(project: Path) -> tuple[Path, Path, Path, Path]:
     doc_registry_path = project / "DOC_REGISTRY.yaml"
     obsolete_runtime = runtime_root / "goals" / "obsolete-runtime-goal" / "runs"
     obsolete_runtime.mkdir(parents=True, exist_ok=True)
+    state_file = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text("# Registry Admin Smoke State\n", encoding="utf-8")
     (project / "README.md").write_text("# Registry Admin Smoke\n", encoding="utf-8")
 
     goal = {
@@ -150,6 +153,7 @@ def main() -> None:
         'if args.command == "configure-goal":',
         'if args.command == "register-agent":',
         'if args.command == "archive-runtime":',
+        'if args.command == "uninstall-project":',
         'if args.command == "sync-global":',
         'if args.command == "migrate-state":',
         'if args.command == "register-authority-source":',
@@ -165,6 +169,7 @@ def main() -> None:
         "configure-goal",
         "register-agent",
         "archive-runtime",
+        "uninstall-project",
         "sync-global",
         "migrate-state",
         "register-authority-source",
@@ -180,6 +185,7 @@ def main() -> None:
         "configure-goal": ("--quota-compute", "--registered-agent", "--execute"),
         "register-agent": ("--agent-id", "--primary-agent", "--execute"),
         "archive-runtime": ("--archive-root", "--allow-registered", "--execute"),
+        "uninstall-project": ("--goal-id", "--archive-state", "--remove-empty-registry", "--execute"),
         "sync-global": ("--replace-state", "--dry-run"),
         "migrate-state": ("--legacy-registry", "--goal-id-map", "--copy-runtime"),
         "register-authority-source": ("--source-ref", "--boundary", "--no-global-sync"),
@@ -223,6 +229,12 @@ def main() -> None:
         require(archive_payload.get("dry_run") is True, "archive-runtime should dry-run by default")
         require(archive_payload.get("archived") is False, "archive-runtime preview should not move")
         require((runtime_root / "goals" / "obsolete-runtime-goal").exists(), "archive-runtime preview moved source")
+
+        uninstall_payload = run_json(command_prefix, "uninstall-project", "--goal-id", GOAL_ID, "--archive-state")
+        require(uninstall_payload.get("dry_run") is True, "uninstall-project should dry-run by default")
+        require(uninstall_payload.get("wrote_local_registry") is False, "uninstall-project preview should not write local registry")
+        require(uninstall_payload.get("wrote_global_registry") is False, "uninstall-project preview should not write global registry")
+        require(registry_path.read_text(encoding="utf-8") == registry_before, "uninstall-project preview changed registry")
 
         sync_payload = run_json(command_prefix, "sync-global", "--goal-id", GOAL_ID, "--dry-run")
         require(sync_payload.get("dry_run") is True, "sync-global should honor --dry-run")
