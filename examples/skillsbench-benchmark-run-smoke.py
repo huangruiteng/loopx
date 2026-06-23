@@ -71,6 +71,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     cleanup_benchflow_setup_stall_children,
     install_benchflow_user_loop_final_verify_recovery,
     install_benchflow_verifier_prep_timeout_override,
+    append_history,
     build_runner_failure_compact,
     main as skillsbench_automation_loop_main,
     materialize_local_codex_participant,
@@ -97,6 +98,43 @@ def test_skillsbench_default_blind_loop_budget_is_eight() -> None:
     assert args.max_rounds == DEFAULT_MAX_ROUNDS == 8, args
     assert "blind-loop" in args.route, args
     assert args.route != "codex-goal-mode-baseline", args
+
+
+def test_skillsbench_append_history_missing_registry_is_nonfatal() -> None:
+    with tempfile.TemporaryDirectory(prefix="gh-skillsbench-history-") as tmp:
+        root = Path(tmp)
+        compact_path = root / "benchmark_run.compact.json"
+        compact_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "benchmark_run_v0",
+                    "benchmark": "skillsbench",
+                    "case_id": "hello-world",
+                    "score": 0.0,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        args = parse_args(
+            [
+                "--route",
+                "loopx-product-mode",
+                "--append-history",
+                "--registry",
+                str(root / "missing" / ".loopx" / "registry.json"),
+                "--runtime-root",
+                str(root / "runtime"),
+            ]
+        )
+        payload = append_history(args, compact_path)
+        assert payload["schema_version"] == "skillsbench_history_append_result_v0"
+        assert payload["requested"] is True
+        assert payload["appended"] is False
+        assert payload["failure_kind"] == "missing_registry", payload
+        assert payload["registry_exists"] is False, payload
+        assert payload["raw_cli_output_recorded"] is False, payload
+        assert "/missing/.loopx/" not in json.dumps(payload), payload
 
 
 def test_skillsbench_local_driver_a2a_contract_keeps_codex_local() -> None:

@@ -4911,7 +4911,7 @@ def reduce_official_result_after_runner_exception(
         encoding="utf-8",
     )
     ledger_update = update_ledger(args, compact, compact_path=compact_path)
-    append_history(args, compact_path)
+    history_append = append_history(args, compact_path)
     return {
         "ok": True,
         "plan_only": False,
@@ -4923,6 +4923,7 @@ def reduce_official_result_after_runner_exception(
         "official_task_score": compact.get("official_task_score"),
         "score_failure_attribution": compact.get("score_failure_attribution"),
         "ledger_update": ledger_update,
+        "history_append": history_append,
     }
 
 
@@ -5097,9 +5098,13 @@ def update_ledger(
     )
 
 
-def append_history(args: argparse.Namespace, compact_path: Path) -> None:
+def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, Any]:
     if not args.append_history:
-        return
+        return {
+            "schema_version": "skillsbench_history_append_result_v0",
+            "requested": False,
+            "appended": False,
+        }
     classification_by_route = {
         "loopx-blind-loop-treatment": "skillsbench_loopx_blind_loop_treatment_result_v0",
         "loopx-prompt-polling-test": "skillsbench_loopx_prompt_polling_test_result_v0",
@@ -5134,7 +5139,37 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> None:
         classification,
         "--execute",
     ]
-    subprocess.run(cmd, cwd=REPO_ROOT, check=True)
+    registry_exists = Path(args.registry).expanduser().exists()
+    proc = subprocess.run(
+        cmd,
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return {
+            "schema_version": "skillsbench_history_append_result_v0",
+            "requested": True,
+            "appended": True,
+            "classification": classification,
+            "raw_cli_output_recorded": False,
+        }
+    combined = f"{proc.stdout}\n{proc.stderr}"
+    failure_kind = "cli_failed"
+    if not registry_exists or "registry file does not exist" in combined:
+        failure_kind = "missing_registry"
+    return {
+        "schema_version": "skillsbench_history_append_result_v0",
+        "requested": True,
+        "appended": False,
+        "classification": classification,
+        "failure_kind": failure_kind,
+        "returncode": proc.returncode,
+        "registry_exists": registry_exists,
+        "raw_cli_output_recorded": False,
+    }
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -5553,7 +5588,7 @@ async def async_main(
         encoding="utf-8",
     )
     ledger_update = update_ledger(args, compact, compact_path=compact_path)
-    append_history(args, compact_path)
+    history_append = append_history(args, compact_path)
     return {
         "ok": True,
         "plan_only": False,
@@ -5564,6 +5599,7 @@ async def async_main(
         "official_task_score": compact.get("official_task_score"),
         "score_failure_attribution": compact.get("score_failure_attribution"),
         "ledger_update": ledger_update,
+        "history_append": history_append,
     }
 
 
@@ -5793,12 +5829,13 @@ def main(argv: list[str] | None = None) -> int:
                 encoding="utf-8",
             )
             ledger_update = update_ledger(args, compact, compact_path=compact_path)
-            append_history(args, compact_path)
+            history_append = append_history(args, compact_path)
             closeout_recorded = True
         except Exception:
             compact = None
             compact_path = None
             ledger_update = None
+            history_append = None
         payload = {
             "ok": False,
             "error_type": type(exc).__name__,
@@ -5807,6 +5844,7 @@ def main(argv: list[str] | None = None) -> int:
             "task_id": args.task_id,
             "compact_benchmark_run_json": str(compact_path) if compact_path else None,
             "ledger_update": ledger_update,
+            "history_append": history_append,
         }
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 0 if closeout_recorded else 1
