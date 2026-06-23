@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import ipaddress
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 CONTENT_OPS_SURFACE_SCHEMA_VERSION = "content_ops_surface_v0"
 CONTENT_OPS_SURFACE_PROJECTION_SCHEMA_VERSION = "content_ops_surface_projection_v0"
 CONTENT_OPS_PREVIEW_PACKET_SCHEMA_VERSION = "content_ops_preview_packet_v0"
+CONTENT_OPS_PUBLIC_HANDLE_OBSERVATION_PACKET_SCHEMA_VERSION = (
+    "content_ops_public_handle_observation_packet_v0"
+)
+CONTENT_OPS_PUBLIC_HANDLE_OBSERVATION_SCHEMA_VERSION = (
+    "content_ops_public_handle_observation_v0"
+)
 
 SOURCE_ITEM_SCHEMA_VERSION = "source_item_v0"
 ANGLE_CANDIDATE_SCHEMA_VERSION = "angle_candidate_v0"
@@ -100,6 +110,81 @@ def _ids(items: Sequence[Mapping[str, Any]], key: str) -> set[str]:
 
 def _counter(values: Sequence[Any]) -> dict[str, int]:
     return dict(sorted(Counter(str(value) for value in values if value).items()))
+
+
+def _normalise_public_https_url(url: str) -> tuple[str, Any]:
+    text = str(url or "").strip()
+    parsed = urlsplit(text)
+    if parsed.scheme != "https":
+        raise ValueError("public handle observation requires an https URL")
+    if parsed.username or parsed.password:
+        raise ValueError("public handle URL must not include credentials")
+    if parsed.query or parsed.fragment:
+        raise ValueError("public handle URL must not include query or fragment data")
+
+    host = parsed.hostname
+    if not host:
+        raise ValueError("public handle URL must include a host")
+    lowered_host = host.lower().rstrip(".")
+    if lowered_host in {"localhost"} or lowered_host.endswith((".localhost", ".local")):
+        raise ValueError("public handle URL must not target localhost or local hosts")
+    if parsed.port not in (None, 443):
+        raise ValueError("public handle URL must use the default https port")
+
+    try:
+        address = ipaddress.ip_address(lowered_host.strip("[]"))
+    except ValueError:
+        address = None
+    if address is not None and (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+    ):
+        raise ValueError("public handle URL must not target private or local addresses")
+
+    path = parsed.path or "/"
+    normalised = urlunsplit(("https", parsed.netloc, path, "", ""))
+    return normalised, parsed._replace(path=path, query="", fragment="")
+
+
+class _NoFollowPublicHandleRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        _normalise_public_https_url(newurl)
+        return None
+
+
+def _public_handle_attribution(parsed: Any) -> str:
+    path = parsed.path.rstrip("/") or "/"
+    return f"{parsed.hostname}{path}"
+
+
+def _source_item_from_public_handle_observation(
+    *,
+    source_item_id: str,
+    source_kind: str,
+    freshness: str,
+    terms_note: str,
+    parsed_url: Any,
+    observation: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": SOURCE_ITEM_SCHEMA_VERSION,
+        "source_item_id": source_item_id,
+        "source_kind": source_kind,
+        "source_status": "public",
+        "freshness": freshness,
+        "terms_note": terms_note,
+        "allowed_use": "metadata_only",
+        "attribution": _public_handle_attribution(parsed_url),
+        "summary": (
+            "Public handle observed as metadata-only; no source content was "
+            "captured and no external write was attempted."
+        ),
+        "observation": dict(observation),
+    }
 
 
 def _raw_material_key_names(*groups: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -705,6 +790,162 @@ def build_content_ops_preview_packet(
         if isinstance(projection.get("first_screen"), Mapping)
         else None,
     }
+
+
+def build_content_ops_public_handle_observation_packet(
+    *,
+    url: str,
+    source_item_id: str,
+    surface: str = "x_public_feed",
+    source_kind: str = "x_public_profile_handle",
+    freshness: str = "fresh",
+    terms_note: str | None = None,
+    timeout_seconds: float = 10.0,
+    fetch: bool = True,
+) -> dict[str, Any]:
+    """Observe a public handle as a metadata-only ``source_item_v0`` record.
+
+    The live path issues at most one HEAD request. It never reads response
+    content, sends cookies, logs in, posts, or follows redirects.
+    """
+
+    if not str(source_item_id or "").strip():
+        raise ValueError("source_item_id is required")
+    if freshness not in ALLOWED_FRESHNESS:
+        raise ValueError(f"freshness must be one of {sorted(ALLOWED_FRESHNESS)}")
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
+
+    normalised_url, parsed_url = _normalise_public_https_url(url)
+    effective_terms_note = terms_note or (
+        "public metadata-only handle observation; no login, body capture, "
+        "posting, or private source use"
+    )
+    observation: dict[str, Any] = {
+        "schema_version": CONTENT_OPS_PUBLIC_HANDLE_OBSERVATION_SCHEMA_VERSION,
+        "surface": surface,
+        "input_url": normalised_url,
+        "url_effective": normalised_url,
+        "url_host": parsed_url.hostname,
+        "url_path": parsed_url.path,
+        "http_method": "HEAD" if fetch else "none",
+        "http_status": None,
+        "content_type": None,
+        "redirect_location": None,
+        "content_bytes_read": 0,
+        "external_write_performed": False,
+        "login_used": False,
+        "cookies_sent": False,
+        "private_source_content_read": False,
+        "autopublish_allowed": False,
+    }
+
+    if fetch:
+        request = Request(
+            normalised_url,
+            headers={"User-Agent": "loopx-content-ops-public-handle-metadata/0.1"},
+            method="HEAD",
+        )
+        opener = build_opener(_NoFollowPublicHandleRedirect)
+        response = None
+        try:
+            response = opener.open(request, timeout=timeout_seconds)
+            observation["http_status"] = response.getcode()
+            observation["url_effective"] = response.geturl()
+            observation["content_type"] = response.headers.get("Content-Type")
+        except HTTPError as exc:
+            observation["http_status"] = exc.code
+            observation["url_effective"] = exc.geturl()
+            observation["content_type"] = exc.headers.get("Content-Type")
+            location = exc.headers.get("Location")
+            if location:
+                redirect_url = urljoin(normalised_url, location)
+                _normalise_public_https_url(redirect_url)
+                observation["redirect_location"] = redirect_url
+        except URLError as exc:
+            raise RuntimeError(f"public handle HEAD observation failed: {exc.reason}") from exc
+        finally:
+            if response is not None:
+                response.close()
+
+        _normalise_public_https_url(str(observation["url_effective"]))
+    else:
+        observation["observation_status"] = "not_fetched"
+
+    source_item = _source_item_from_public_handle_observation(
+        source_item_id=str(source_item_id).strip(),
+        source_kind=source_kind,
+        freshness=freshness,
+        terms_note=effective_terms_note,
+        parsed_url=parsed_url,
+        observation=observation,
+    )
+    return {
+        "ok": True,
+        "schema_version": CONTENT_OPS_PUBLIC_HANDLE_OBSERVATION_PACKET_SCHEMA_VERSION,
+        "mode": "content-ops-observe-public-handle",
+        "surface": surface,
+        "source_item": source_item,
+        "source_item_schema_version": SOURCE_ITEM_SCHEMA_VERSION,
+        "observation": observation,
+        "external_reads_performed": bool(fetch),
+        "external_read_kind": "http_head" if fetch else "none",
+        "external_writes_performed": False,
+        "private_source_bodies_read": False,
+        "private_source_content_read": False,
+        "autopublish_allowed": False,
+        "promotion_target": "source_item_v0",
+        "next_safe_action": (
+            "promote the compact source_item_v0 into content_ops_surface_v0 "
+            "only after attribution and allowed_use remain metadata_only"
+        ),
+    }
+
+
+def render_content_ops_public_handle_observation_markdown(
+    payload: dict[str, Any],
+) -> str:
+    lines = [
+        "# LoopX Content-Ops Public Handle Observation",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- schema_version: `{payload.get('schema_version')}`",
+        f"- external_reads_performed: `{payload.get('external_reads_performed')}`",
+        f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
+        f"- private_source_bodies_read: `{payload.get('private_source_bodies_read')}`",
+        f"- autopublish_allowed: `{payload.get('autopublish_allowed')}`",
+    ]
+    source_item = payload.get("source_item")
+    if isinstance(source_item, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Source Item",
+                "",
+                f"- source_item_id: `{source_item.get('source_item_id')}`",
+                f"- source_kind: `{source_item.get('source_kind')}`",
+                f"- source_status: `{source_item.get('source_status')}`",
+                f"- allowed_use: `{source_item.get('allowed_use')}`",
+                f"- attribution: `{source_item.get('attribution')}`",
+            ]
+        )
+    observation = payload.get("observation")
+    if isinstance(observation, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Observation",
+                "",
+                f"- http_method: `{observation.get('http_method')}`",
+                f"- http_status: `{observation.get('http_status')}`",
+                f"- url_effective: `{observation.get('url_effective')}`",
+                f"- content_bytes_read: `{observation.get('content_bytes_read')}`",
+                f"- external_write_performed: `{observation.get('external_write_performed')}`",
+            ]
+        )
+    if payload.get("error"):
+        lines.extend(["", "## Error", "", str(payload.get("error"))])
+    return "\n".join(lines) + "\n"
 
 
 def render_content_ops_preview_markdown(payload: dict[str, Any]) -> str:
