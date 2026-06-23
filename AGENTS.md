@@ -57,6 +57,17 @@ private/security-sensitive material that must not be posted publicly.
 Do not leave actionable PR blockers only in chat memory. The final user report
 should include the PR comment URL and a compact summary of the posted findings.
 
+## Automation And Monitor Todos
+
+Do not hard-code one-off project or PR monitor logic into a generic heartbeat
+automation prompt. Recurring project-specific watches, such as "monitor PR #532
+until merge", belong in LoopX state as `continuous_monitor` todos with compact
+metadata such as `claimed_by`, `unblocks_todo_id`, and evidence notes. The
+heartbeat prompt should remain generic and discover monitor work through
+status, quota, and todo projection. Only update an automation prompt when the
+heartbeat lifecycle contract itself changes or the user explicitly asks to
+change the scheduler.
+
 ## Smoke Retention Policy
 
 Keep a smoke test only when it validates a durable public behavior:

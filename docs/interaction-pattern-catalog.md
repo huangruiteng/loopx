@@ -1384,6 +1384,15 @@ owner. The opposite bad smell is also harmful: a large claimed-work list is fed
 directly into the scheduler or heartbeat prompt, causing noisy routing and
 monitor work to crowd out the selected advancement lane.
 
+Another concrete bad case: an operator asks the agent to monitor one PR until
+merge, but the agent edits a generic heartbeat automation prompt to include
+that PR-specific polling logic. That couples one monitor target to the
+scheduler, makes the automation harder to regenerate from `heartbeat-prompt`,
+and risks deleting or mutating the whole heartbeat when the PR closes. The
+correct representation is a `continuous_monitor` todo, optionally with
+`unblocks_todo_id`, while the heartbeat remains generic and discovers the
+monitor through status/quota/todo projection.
+
 **Validation**
 
 - `docs/status-data-contract.md`
