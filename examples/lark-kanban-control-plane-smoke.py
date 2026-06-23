@@ -16,9 +16,12 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.lark_kanban import (  # noqa: E402
     CLAIM_UNCLAIMED,
+    STATUS_CLAIMED,
+    STATUS_USER_GATE,
     STATUS_REVIEW,
     STATUS_TODO,
     LarkKanbanConfig,
+    _lark_record_from_todo_block,
     build_create_board_plan,
     default_lark_kanban_config_path,
     lark_kanban_feasibility_cases,
@@ -323,6 +326,9 @@ def main() -> int:
                     "- [ ] [P2] Wire conservative board sync",
                     "  <!-- loopx: todo_id=todo_agent_sync status=open task_class=advancement_task action_kind=sync_board required_write_scopes=loopx claimed_by=codex-main-control -->",
                     "",
+                    "- [ ] [P1] Keep malformed metadata executable",
+                    "  <!-- loopx: todo_id=todo_agent_malformed status=blocked_typo task_class=user_gate_typo action_kind=sync_board claimed_by=codex-main-control -->",
+                    "",
                 ]
             ),
             encoding="utf-8",
@@ -352,11 +358,50 @@ def main() -> int:
             execute=False,
         )
         assert sync_payload["ok"] is True, sync_payload
-        assert sync_payload["todo_count"] == 2, sync_payload
+        assert sync_payload["todo_count"] == 3, sync_payload
         assert any(item["values"]["Status"] == "User Gate" for item in sync_payload["records"]), sync_payload
+        malformed = next(
+            item for item in sync_payload["records"] if item["todo_id"] == "todo_agent_malformed"
+        )
+        assert malformed["values"]["Status"] == STATUS_CLAIMED, malformed
+        assert malformed["values"]["Task Class"] == "advancement_task", malformed
+        assert malformed["values"]["Run History"].endswith("status=open"), malformed
         assert all(item["values"]["Workdir"] == "" for item in sync_payload["records"]), sync_payload
         assert str(root) not in json.dumps(sync_payload["records"], ensure_ascii=False), sync_payload
         assert all(item["command"]["executed"] is False for item in sync_payload["records"]), sync_payload
+
+    sink_record = _lark_record_from_todo_block(
+        {
+            "role": "agent",
+            "status": "blocked_typo",
+            "task_class": "user_gate_typo",
+            "claimed_by": "codex-main-control",
+            "text": "[P1] Keep malformed sink input executable",
+            "todo_id": "todo_sink_malformed",
+        },
+        goal_id="goal_lark_sync_fixture",
+        state_file=Path("active-state.md"),
+        priority="P1",
+    )
+    assert sink_record["Status"] == STATUS_CLAIMED, sink_record
+    assert sink_record["Task Class"] == "advancement_task", sink_record
+    assert sink_record["User Gate"] == "", sink_record
+    assert sink_record["Run History"].endswith("status=open"), sink_record
+
+    user_sink_record = _lark_record_from_todo_block(
+        {
+            "role": "user",
+            "status": "open",
+            "task_class": "advancement_task_typo",
+            "text": "[P1] Choose board target",
+            "todo_id": "todo_user_target",
+        },
+        goal_id="goal_lark_sync_fixture",
+        state_file=Path("active-state.md"),
+        priority="P1",
+    )
+    assert user_sink_record["Status"] == STATUS_USER_GATE, user_sink_record
+    assert user_sink_record["Task Class"] == "user_gate", user_sink_record
 
     print("lark-kanban-control-plane-smoke: ok")
     return 0

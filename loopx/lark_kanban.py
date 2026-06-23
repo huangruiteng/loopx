@@ -10,6 +10,18 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import parse_qs, urlparse
 
+from .todo_contract import (
+    TODO_STATUS_BLOCKED,
+    TODO_STATUS_DEFERRED,
+    TODO_STATUS_DONE,
+    TODO_STATUS_OPEN,
+    TODO_TASK_CLASS_ADVANCEMENT,
+    TODO_TASK_CLASS_BLOCKER,
+    TODO_TASK_CLASS_USER_GATE,
+    normalize_explicit_todo_task_class,
+    normalize_todo_status,
+)
+
 
 LARK_KANBAN_SCHEMA_VERSION = "loopx_lark_kanban_control_plane_v0"
 LARK_KANBAN_HEARTBEAT_VERSION = "loopx_lark_kanban_heartbeat_v0"
@@ -2038,15 +2050,18 @@ def _lark_record_from_todo_block(
     priority: str,
 ) -> dict[str, Any]:
     role = str(block.get("role") or "agent")
-    status = str(block.get("status") or "").strip()
-    task_class = str(block.get("task_class") or ("user_gate" if role == "user" else "advancement_task")).strip()
+    raw_status = str(block.get("status") or "").strip()
+    status = normalize_todo_status(raw_status) or TODO_STATUS_OPEN
+    task_class = normalize_explicit_todo_task_class(block.get("task_class")) or (
+        TODO_TASK_CLASS_USER_GATE if role == "user" else TODO_TASK_CLASS_ADVANCEMENT
+    )
     claimed_by = str(block.get("claimed_by") or "").strip()
     lark_status = STATUS_TODO
-    if block.get("done") or status == "done":
+    if block.get("done") or status == TODO_STATUS_DONE:
         lark_status = STATUS_DONE
-    elif status == "blocked" or task_class == "blocker":
+    elif status == TODO_STATUS_BLOCKED or task_class == TODO_TASK_CLASS_BLOCKER:
         lark_status = STATUS_BLOCKED
-    elif role == "user" or task_class == "user_gate" or status == "deferred":
+    elif role == "user" or task_class == TODO_TASK_CLASS_USER_GATE or status == TODO_STATUS_DEFERRED:
         lark_status = STATUS_USER_GATE
     elif claimed_by:
         lark_status = STATUS_CLAIMED
@@ -2076,7 +2091,7 @@ def _lark_record_from_todo_block(
         "User Gate": text if lark_status == STATUS_USER_GATE else "",
         "Handoff": f"Synced from LoopX active state: {state_file.name}",
         "Evidence": evidence,
-        "Run History": f"synced from LoopX todo status={status or 'open'}",
+        "Run History": f"synced from LoopX todo status={status}",
         "Worker Command": "",
         "Workdir": "",
         "Last Error": "",
