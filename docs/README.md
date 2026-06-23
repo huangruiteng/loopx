@@ -11,8 +11,9 @@ incident report, or launch draft.
 - [Getting started](guides/getting-started.md): agent-first start, manual
   installation, project connection, diagnosis, daily workflow, heartbeats,
   dashboard, development, and command reference.
-- [Product vision](product/vision.md): long-term product direction and the
-  creator-operator medium-term case.
+- [Product vision](product/vision.md): long-term product direction, Loop Agent
+  definition, maintainer-first management surface, and open-source anchor
+  strategy.
 - [Codex CLI TUI-first loop](product/codex-cli-tui-loop.md): first-class
   Codex CLI onboarding target where one visible TUI message starts LoopX, with
   session-attached automation as the preferred follow-up.
@@ -75,6 +76,7 @@ incident report, or launch draft.
 - [Codex CLI TUI-first loop](product/codex-cli-tui-loop.md)
 - [Reward-style replanning hints](product/reward-style-replanning.md)
 - [Frontstage channel and lease roadmap](frontstage-channel-lease-roadmap.md)
+- [Non-technical operator status model](product/nontechnical-operator-status-model.md)
 - [Long-task cadence policy](long-task-cadence-policy.md)
 - [Dreaming exploration lane](dreaming-exploration-lane.md)
 - [Session runtime control-plane adapter](session-runtime-control-plane-adapter.md)

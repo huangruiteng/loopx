@@ -8,8 +8,11 @@ control plane: a way to turn a static agent goal into long-running, reviewable
 state that stays understandable and recoverable across many turns.
 
 The long-term product should help humans who do not want to inspect prompts,
-logs, or traces. A user should be able to run multiple agents across tools and
-off-hours, then open a first screen and understand:
+logs, or traces. The first customer is the maintainer/operator of a Loop Agent:
+someone who needs to manage always-running digital workers, external signals,
+human gates, evidence, and value over time. A user should be able to run
+multiple agents across tools and off-hours, then open a first screen and
+understand:
 
 - what the agent has done;
 - what the agent is doing now;
@@ -17,6 +20,23 @@ off-hours, then open a first screen and understand:
 - what will happen next;
 - what the agent needs from the user;
 - how user feedback changes the plan.
+
+## Loop Agent
+
+A Loop Agent is an always-running digital worker with:
+
+- a relatively stable responsibility;
+- a relatively consistent work objective;
+- external signals it watches or receives;
+- work products that match its responsibility;
+- organized evidence of what it did and why it mattered;
+- human feedback through a lightweight performance-review loop;
+- explicit focus and cost controls.
+
+LoopX should not try to make every worker smarter by hiding more autonomy in
+the executor. It should make the worker more manageable: selectable work,
+visible gates, bounded execution, compact evidence, reviewable outcomes, and
+clear next improvement targets.
 
 ## First-Screen Copy
 
@@ -37,6 +57,130 @@ primary and side agents can continue bounded work, while human gates,
 capability gates, quota, evidence, and project boundaries remain explicit. In
 that sense, LoopX is not just a longer prompt or a bigger todo list; it
 is the dynamic goal state around executor loops.
+
+## Maintainer-First Management Surface
+
+The highest-priority product surface is an intelligent management view for the
+maintainer/operator. It should answer:
+
+- what signals arrived since the last check;
+- which signals are high-value anchors worth acting on;
+- which Loop Agent owns each active lane;
+- which human gates need attention;
+- what evidence proves progress or explains a stop;
+- where the agent earned or lost performance-review credit;
+- what next management action matters most.
+
+This surface comes before a domain-specific issue-fix UI. Open-source issue and
+PR work is valuable because it creates visible artifacts and measurable
+feedback, but it should feed the maintainer surface rather than define the
+whole product.
+
+### Agent Work Feed
+
+The ideal first interaction is closer to a recommendation feed than to a
+project dashboard. The user should be able to review agent work the way they
+review a stream of cards: quickly decide whether each output was useful,
+misdirected, risky, or worth turning into the next anchor.
+
+The feed item is not a raw task and not a raw log. It is an agent work card:
+
+- what the agent produced;
+- why the card deserves attention now;
+- what evidence backs the claim;
+- what it cost in quota or user attention;
+- what the agent proposes next;
+- which one-tap feedback choices are available.
+
+Useful feedback should be lightweight but structured:
+
+- useful; continue this direction;
+- not useful; lower this pattern's priority;
+- wrong direction; correct the goal or reward;
+- evidence is insufficient; add validation;
+- promote to anchor, showcase, or follow-up todo;
+- risky or private; trigger boundary review or a gate.
+
+This turns performance review from a periodic report into a continuous
+human-in-the-loop signal. LoopX should sort the feed for management value, not
+addiction: unresolved gates, high-value uncertain work, expensive repeated
+patterns, evidence gaps, and showcase candidates should surface before routine
+activity.
+
+## Display Surface Adoption Path
+
+The intelligent display surface and the LoopX control loop should be
+decoupled at adoption time, but designed to grow together.
+
+The first step can be read-only:
+
+- ingest existing agent artifacts, issues, PRs, docs, run summaries, or chat
+  feedback;
+- show what the agent did, what evidence exists, and what deserves review;
+- let the maintainer score value, quality, control, cost, and learning;
+- produce a performance-review summary without changing the agent's next
+  action.
+
+This mode is useful even before a team adopts LoopX. It gives a maintainer a
+low-friction way to inspect and quantify whether an always-running agent is
+useful.
+
+The second step is control writeback:
+
+- accepted feedback becomes gates, todo changes, preference hints, reward
+  notes, or anchor selection;
+- low-quality work becomes blocker evidence, scope correction, or next
+  improvement targets;
+- selected anchors become bounded LoopX work with explicit evidence and stop
+  conditions.
+
+In short, the display surface makes agent work visible and reviewable; LoopX
+makes that review change the next loop. The two surfaces can be adopted in
+sequence, but they should share schemas such as `signal_v0`, `anchor_v0`,
+`review_event_v0`, and `performance_review_v0`.
+
+## Open-Source Anchors
+
+Open-source issue / PR solver pilots are strong value-proof candidates when
+they are chosen as high-value anchors:
+
+- visible public artifact: issue, PR, failing check, stale review, or conflict;
+- credible maintainer pain;
+- bounded risk and clear stop conditions;
+- measurable outcome: routed, diagnosed, fixed, merged, rejected, or gated;
+- public-safe story potential.
+
+LoopX's maintainer-side role is to choose anchors, define the candidate packet,
+record the evidence boundary, capture human review signals, and graduate
+approved outcomes into showcase material. The actual solver implementation may
+belong to a repo-specific collaborator or adapter.
+
+## Office Operations Connectors
+
+Office and content-operations workflows are another useful showcase lane. The
+point is not to make an agent produce more posts. The point is to show that a
+Loop Agent can connect to more information surfaces, select higher-quality
+signals, propose useful actions, and learn from human feedback.
+
+A public-safe workflow can look like:
+
+```text
+connector
+  -> information
+  -> signal / trend / anchor candidate
+  -> draft or action proposal
+  -> human scoring / feedback
+  -> optional publish or outreach gate
+  -> performance review / next improvement
+```
+
+Good connector examples include browser-based social research, local-first chat
+archive search, issue / PR metadata, meeting notes, task systems, and document
+changes. Publishing or outreach should remain explicitly gated.
+
+The right metrics are not raw draft count. Better signals are accepted anchors,
+useful insights, qualified conversations, user-rated draft quality, feedback
+learning, source-boundary correctness, and cost per useful signal.
 
 ## Creator-Operator Case
 
@@ -61,21 +205,22 @@ feedback, boundaries, and next actions.
 
 ## Productization Tracks
 
-The current roadmap for this case should land as four public-safe tracks:
+The current roadmap should land as four public-safe tracks:
 
-1. **Creator-operator case spec**: write the scenario as a concrete public
-   showcase with synthetic or redacted evidence. The case should explain the
-   user's job-to-be-done, the agent's long-running loop, where human taste or
-   publishing judgment gates progress, and what LoopX contributes.
+1. **Maintainer management surface**: design first-screen cards for signal
+   inbox, selected anchors, active lanes, gates, evidence quality, performance
+   review, value/cost trend, and next management action.
 2. **Non-technical operator status model**: design first-screen cards that say
    what happened, what is happening, where the agent is blocked, what comes
    next, and what user feedback would change. This model should avoid internal
    CLI jargon and translate control-plane state into plain language.
-3. **Fake-data demo storyboard**: prototype a frontend-ready flow for trend
-   discovery, preference mapping, insight extraction, draft queues, material
-   libraries, feedback, and controlled replanning. The first demo should use
-   synthetic or public-safe data.
-4. **Feedback and boundary contract**: define how user feedback becomes gates,
+3. **Open-source anchor packet**: define how an issue, PR, failing check, stale
+   review, or conflict becomes a candidate with owner, risk, allowed action,
+   evidence boundary, human gate, and showcase consent.
+4. **Office-operations connector showcase**: prototype a public-safe
+   connector-to-signal-to-feedback loop using synthetic or consented data, with
+   an explicit publish/outreach gate and metrics beyond article count.
+5. **Feedback and boundary contract**: define how user feedback becomes gates,
    preferences, todo updates, or product-improvement notes while preserving
    source attribution, platform terms, no-autopublish gates, and private
    creative-material boundaries.

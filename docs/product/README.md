@@ -5,11 +5,14 @@ runtime contract, benchmark route, or launch draft.
 
 - [Product vision](vision.md): how LoopX grows from an engineering
   control plane into a human-friendly dynamic goal control plane for
-  long-running agent work, including the creator-operator productization case.
+  long-running agent work, centered on Loop Agents, maintainer-first management,
+  Agent Work Feed review, performance review, high-value open-source anchors,
+  and office-operations connector showcases.
 - [Server-client product shape](server-client-product-shape.md): the medium-term
-  product model where the server owns durable state, delivery/planning queue
-  boundaries, and governed proposal promotion, the client acts as the user's
-  intent proxy, and executor loops perform bounded work with evidence writeback.
+  product model where the server owns durable state, signal inbox, selected
+  anchors, delivery/planning queue boundaries, performance-review summaries,
+  and governed proposal promotion, the client acts as the maintainer proxy, and
+  executor loops perform bounded work with evidence writeback.
 - [Codex CLI TUI-first LoopX loop](codex-cli-tui-loop.md): the
   first-class Codex CLI product contract where one TUI message starts the Goal
   Harness loop, later automation tries to steer the same visible session, and
@@ -74,8 +77,10 @@ runtime contract, benchmark route, or launch draft.
   review handoff policy, while keeping todo ownership in `claimed_by` and future
   leases.
 - [Non-technical operator status model](nontechnical-operator-status-model.md):
-  first-screen card model for people who need to understand agent progress,
-  blockers, next moves, and feedback paths without reading logs or CLI output.
+  first-screen Agent Work Feed and card model for people who need to review
+  agent outputs, progress, blockers, next moves, signal inbox, anchor
+  selection, performance review, and feedback paths without reading logs or CLI
+  output.
 - [Intelligent management surface](intelligent-management-surface.md):
   maintainer-first product design for signal inbox, selected anchors, agent
   lanes, review feed, and performance review so long-running Loop Agents can be
