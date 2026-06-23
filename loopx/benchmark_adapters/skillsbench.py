@@ -1275,6 +1275,20 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
     """Classify public-safe SkillsBench runner/setup failures."""
 
     text = error_text.lower()
+    if (
+        "suspected provider api error" in text
+        and "zero tokens" in text
+        and "zero tool calls" in text
+    ) or (
+        "agent ended with zero tokens" in text
+        and "no scoreable model activity" in text
+    ):
+        label = "skillsbench_codex_acp_provider_zero_activity"
+        return label, label, [
+            label,
+            "skillsbench_codex_acp_provider_error",
+            "skillsbench_acp_zero_tool_call_observed",
+        ]
     if "acp error -32603" in text and "internal error" in text:
         label = "skillsbench_codex_acp_jsonrpc_internal_error"
         return label, label, [label, "skillsbench_codex_acp_transport_error"]
@@ -2483,9 +2497,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "skillsbench_result_json_reward_missing_recovered_from_reward_txt"
         )
     elif verifier_error_text:
-        exception_type = "skillsbench_verifier_error"
-        failure_labels.append("verifier_infrastructure_failure")
-        score_failure_attribution = "verifier_infrastructure_failure"
+        if score_failure_attribution in {"none", "skillsbench_runner_error"}:
+            exception_type = "skillsbench_verifier_error"
+            failure_labels.append("verifier_infrastructure_failure")
+            score_failure_attribution = "verifier_infrastructure_failure"
+        elif "verifier_infrastructure_failure" not in failure_labels:
+            failure_labels.append("verifier_infrastructure_failure")
 
     n_tool_calls = result.get("n_tool_calls")
     tool_calls = n_tool_calls if isinstance(n_tool_calls, int) else 0
@@ -2854,7 +2871,10 @@ def build_skillsbench_benchflow_result_benchmark_run(
         contract_official_score_comparable_to_native_codex = False
         contract_official_score_comparable_to_loopx_treatment = False
         product_mode_lifecycle_contract["countable_treatment"] = False
-        if not official_passed:
+        preserve_primary_attribution = score_failure_attribution in {
+            "skillsbench_codex_acp_provider_zero_activity",
+        }
+        if not official_passed and not preserve_primary_attribution:
             exception_type = label
             score_failure_attribution = label
             runner_score_failure_attribution = label

@@ -57,6 +57,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     PRODUCT_MODE_CASE_STATE_PATH,
     PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
     _tail,
+    _apply_agent_message_only_no_tool_calls_attribution,
     _blind_loop_persistent_continuation_clause,
     _build_product_mode_user,
     _product_mode_depth_gate_satisfied,
@@ -1581,6 +1582,34 @@ def write_official_skillsbench_codex_acp_internal_error(root: Path) -> Path:
     return result_path
 
 
+def write_official_skillsbench_codex_acp_provider_zero_activity(root: Path) -> Path:
+    run_dir = root / "official" / "2026-06-23__06-23-26" / "powerlifting__zero"
+    result_path = run_dir / "result.json"
+    write_json(
+        result_path,
+        {
+            "task_name": "powerlifting-coef-calc",
+            "rollout_name": "powerlifting-coef-calc__loopx_product_mode",
+            "rewards": None,
+            "agent": "codex-acp",
+            "agent_name": "@agentclientprotocol/codex-acp",
+            "model": "gpt-5.5",
+            "n_tool_calls": 0,
+            "n_prompts": 1,
+            "error": (
+                "suspected provider api error: agent ended with zero tokens "
+                "and zero tool calls (no scoreable model activity)"
+            ),
+            "error_category": "suspected_api_error",
+            "verifier_error": "verifier timed out after 600.0s",
+            "partial_trajectory": False,
+            "trajectory_source": "acp",
+        },
+    )
+    write_json(run_dir / "timing.json", {"agent_execution": 5.0, "total": 600.0})
+    return result_path
+
+
 def test_skillsbench_official_result_builder() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-result-builder-") as tmp:
         result_path = write_official_skillsbench_result(Path(tmp))
@@ -2176,6 +2205,70 @@ def test_skillsbench_codex_acp_internal_error_attribution() -> None:
             "skillsbench_codex_acp_runtime_preflight"
         ), update
         assert update["case_decision"]["decision"] == "single_arm_recorded", update
+
+
+def test_skillsbench_codex_acp_provider_zero_activity_attribution() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-codex-acp-zero-activity-") as tmp:
+        result_path = write_official_skillsbench_codex_acp_provider_zero_activity(
+            Path(tmp)
+        )
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+            )
+        )
+        assert compact is not None
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_codex_acp_provider_zero_activity"
+        ), compact
+        assert "skillsbench_codex_acp_provider_error" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert "skillsbench_acp_zero_tool_call_observed" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert compact["runner_failure"] == {
+            "exception_type": "skillsbench_codex_acp_provider_zero_activity",
+            "failure_class": "skillsbench_codex_acp_provider_zero_activity",
+            "raw_error_recorded": False,
+            "raw_logs_read": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_read": False,
+            "schema_version": "skillsbench_runner_failure_v0",
+        }, compact
+
+
+def test_skillsbench_no_tool_postprocess_preserves_provider_zero_activity() -> None:
+    compact = {
+        "official_score_status": "missing",
+        "score_failure_attribution": "skillsbench_codex_acp_provider_zero_activity",
+        "first_blocker": "skillsbench_codex_acp_provider_zero_activity",
+        "failure_attribution_labels": [
+            "skillsbench_codex_acp_provider_zero_activity",
+            "skillsbench_codex_acp_provider_error",
+        ],
+        "interaction_counters": {
+            "private_trajectory_event_count": 2,
+            "private_trajectory_round_count": 1,
+            "private_trajectory_tool_call_count": 0,
+            "controller_action_decisions": 1,
+        },
+    }
+
+    assert _apply_agent_message_only_no_tool_calls_attribution(compact) is True
+    assert compact["score_failure_attribution"] == (
+        "skillsbench_codex_acp_provider_zero_activity"
+    ), compact
+    assert compact["first_blocker"] == (
+        "skillsbench_codex_acp_provider_zero_activity"
+    ), compact
+    assert "skillsbench_acp_agent_message_only_no_tool_calls" in compact[
+        "failure_attribution_labels"
+    ], compact
+    assert "skillsbench_agent_behavior_gap" not in compact[
+        "failure_attribution_labels"
+    ], compact
 
 
 def test_skillsbench_codex_acp_post_success_trace_recovers_score() -> None:
@@ -6087,6 +6180,8 @@ if __name__ == "__main__":
     test_skillsbench_codex_acp_glibc_failure_attribution()
     test_skillsbench_codex_acp_launch_preflight_attribution()
     test_skillsbench_codex_acp_internal_error_attribution()
+    test_skillsbench_codex_acp_provider_zero_activity_attribution()
+    test_skillsbench_no_tool_postprocess_preserves_provider_zero_activity()
     test_skillsbench_codex_acp_post_success_trace_recovers_score()
     test_skillsbench_codex_acp_post_success_finalization_route()
     test_skillsbench_docker_task_staging_adds_app_skills_mount()
