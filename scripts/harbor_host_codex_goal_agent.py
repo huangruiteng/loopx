@@ -60,6 +60,7 @@ from loopx.benchmark_core.loop_protocol import (
     classify_loopx_treatment_claim,
     render_loop_contract_packet_lines,
 )
+from loopx.todo_contract import todo_terminal_for_status
 
 LONG_RUN_DEFAULT_GOAL_TIMEOUT_SEC = 21600.0
 
@@ -344,9 +345,7 @@ def _case_scheduler_closeout_summary(
     }
     if result_kind == "timeout_blocker":
         closeout["timeout_preserves_open_todo"] = (
-            not case_todo
-            or str(case_todo.get("status") or "").strip().lower()
-            not in {"done", "completed", "closed"}
+            not case_todo or not todo_terminal_for_status(case_todo.get("status"))
         )
     return closeout
 
@@ -392,9 +391,8 @@ def _case_scheduler_active_todo_exit_state(trace: dict[str, Any]) -> dict[str, A
         if isinstance(agent_summary.get("case_todo"), dict)
         else {}
     )
-    terminal_statuses = {"done", "completed", "closed", "archived"}
     case_status = str(case_todo.get("status") or "").strip().lower()
-    case_todo_active = bool(case_status and case_status not in terminal_statuses)
+    case_todo_active = bool(case_status and not todo_terminal_for_status(case_status))
     agent_open_count = _todo_open_count(agent_summary)
     user_open_count = _todo_open_count(user_summary)
     agent_has_active = case_todo_active or (
@@ -605,12 +603,7 @@ def _build_solution_phase_counters(
         or closeout.get("case_todo_status")
         or ""
     )
-    self_declared_done_count = 1 if case_todo_status.lower() in {
-        "done",
-        "completed",
-        "closed",
-        "archived",
-    } else 0
+    self_declared_done_count = 1 if todo_terminal_for_status(case_todo_status) else 0
     loopx_cli_count = bridge_phase_counts.get("loopx_cli", 0)
     task_command_count = sum(
         count

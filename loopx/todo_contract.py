@@ -38,6 +38,7 @@ TODO_STATUS_VALUES = {
     TODO_STATUS_DEFERRED,
 }
 TODO_TERMINAL_STATUS_VALUES = {TODO_STATUS_DONE, TODO_STATUS_DEFERRED}
+TODO_LEGACY_TERMINAL_STATUS_VALUES = {"completed", "closed", "archived"}
 
 TODO_ACTION_KIND_ADVANCEMENT_VALUES = {
     "advance",
@@ -249,6 +250,14 @@ def normalize_todo_status(value: Any) -> str | None:
 
 def todo_done_for_status(status: Any) -> bool:
     return normalize_todo_status(status) in TODO_TERMINAL_STATUS_VALUES
+
+
+def todo_terminal_for_status(status: Any) -> bool:
+    candidate = str(status or "").strip().lower()
+    return (
+        normalize_todo_status(candidate) in TODO_TERMINAL_STATUS_VALUES
+        or candidate in TODO_LEGACY_TERMINAL_STATUS_VALUES
+    )
 
 
 def todo_status_from_marker(marker: Any) -> str:
