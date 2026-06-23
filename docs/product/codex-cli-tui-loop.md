@@ -9,10 +9,10 @@ daemon instead of Codex." The target is:
 1. A user opens Codex CLI TUI inside a project repo.
 2. The user sends one short message.
 3. Codex discovers or installs LoopX without requiring a manual repo
-   clone, connects the repo, reads quota and todo state, and enters the Goal
-   Harness loop.
-4. If the guard permits work, that first TUI turn claims or chooses one runnable
-   agent todo and completes one bounded validated segment.
+   clone, connects the repo conservatively, reads gate/todo state, and reports
+   the next safe action.
+4. The setup turn installs the thin LoopX goal/heartbeat body immediately, then
+   stops before longer delivery work.
 5. Later automation can steer the same visible session when safe, while the
    user can still watch, interrupt, review, or take over.
 
@@ -21,29 +21,36 @@ daemon instead of Codex." The target is:
 The best first-run experience is one TUI setup message:
 
 ```text
-Install and connect LoopX for this repo from this visible Codex CLI TUI.
-If `loopx` is missing, install it with the official no-clone GitHub
-installer; if it is already installed, reuse it. Bootstrap or connect this
-project, then generate the thin heartbeat prompt and set the current Codex CLI
-goal to `/goal <thin task_body>`. Show me the current goal, concrete user gate
-if any, top todos, and next safe action before longer work. Keep me in this TUI
-and do not use hidden headless execution.
+Connect this repo to LoopX from this visible Codex CLI TUI. Do not clone the
+LoopX repository for ordinary use. If `loopx` is not on PATH, install or repair
+it with the official no-clone installer:
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+
+Then run `loopx doctor`. Work only from this project root: if LoopX state
+already exists, reuse it and do not create or overwrite a goal; if the project
+is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
+goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
+and `.local/` are ignored. Keep me in this TUI, do not use hidden headless
+execution. After the project is connected, generate the thin heartbeat prompt
+and set the current Codex CLI goal to `/goal <thin task_body>`. Then stop and
+report the goal id, current user gate, top agent todo, and next safe action.
 ```
 
 That text should be a Codex CLI-native setup path for the same lifecycle App
-uses: setup first, then install the thin loop prompt into the surface. In Codex
-CLI the loop is `/goal <thin task_body>`; in Codex App the loop is heartbeat
-automation `<thin task_body>`. The message should be enough for a terminal
-agent to:
+uses: setup first, including immediate installation of the thin loop prompt into
+the surface. In Codex CLI the loop is `/goal <thin task_body>`; in Codex App
+the loop is heartbeat automation `<thin task_body>`. The message should be
+enough for a terminal agent to:
 
 - run `loopx doctor`;
 - install or repair the local CLI if it is missing, using the no-clone archive
   installer before asking the user to clone the LoopX repo;
-- connect or bootstrap the repo;
-- read onboarding candidates and ask the user what to accept when required;
+- reuse existing LoopX state without creating or overwriting a goal;
+- connect the repo when needed, using bootstrap only for clear initialization;
+- ensure `.loopx/`, `.codex/goals/`, and `.local/` stay local;
 - generate `heartbeat-prompt --thin`;
 - set the current Codex CLI goal to `/goal <thin task_body>`;
-- run `quota should-run` for the first control-plane snapshot;
+- report the goal id, user gate, top agent todo, and next safe action;
 - write back setup status without spending delivery quota unless delivery was
   explicitly requested and validated.
 
@@ -67,10 +74,10 @@ and the user's live console.
 
 This is the first supported path. The user starts in Codex CLI TUI and pastes a
 single LoopX setup request. The agent performs install/connect,
-surfaces onboarding decisions, generates the thin heartbeat prompt, and sets the
-current Codex CLI goal to `/goal <thin task_body>`. It should not stop after
-describing the product, and it should not spend delivery quota for setup-only
-work.
+generates the thin heartbeat prompt, sets the current Codex CLI goal to
+`/goal <thin task_body>`, reports the current gate/todo/next-action snapshot,
+and stops. It should not stop after describing the product, and it should not
+spend delivery quota for setup-only work.
 
 This mode preserves the TUI completely because the human explicitly starts the
 loop there.
@@ -85,7 +92,7 @@ Copy the generated setup message into Codex CLI TUI. It tells the agent to
 repair/install LoopX if needed, connect the repo conservatively,
 generate the thin heartbeat body, set Codex CLI goal mode to `/goal <thin
 task_body>`, run the quota/status guard for the first snapshot, obey
-`interaction_contract`, and preserve the visible TUI.
+`interaction_contract`, preserve the visible TUI, and stop before longer work.
 
 Transcript-free first-run smoke packet:
 

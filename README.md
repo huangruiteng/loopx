@@ -48,17 +48,22 @@ Best when you want LoopX to keep working through Codex App heartbeats. Paste
 this from the project repo:
 
 ```text
-Install and connect LoopX for this project end to end. Do not stop at a
-plan. If `loopx` is missing, install it with the official no-clone
-GitHub installer. Then run doctor, connect or bootstrap this repo, ensure local
-LoopX state is ignored, and report the goal id, current user gate, top
-agent todo, and next safe action before longer work. After the project is
-connected, set or refresh this thread's heartbeat automation from
-`loopx heartbeat-prompt --thin`.
+Connect this project to LoopX: <project repo URL or current repo>.
+Do not clone the LoopX repository for ordinary use. If `loopx` is not on PATH,
+install or repair it with the official no-clone installer:
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+
+Then run `loopx doctor`. Work only from the target project root: if LoopX state
+already exists, reuse it and do not create or overwrite a goal; if the project
+is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
+goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
+and `.local/` are ignored. After the project is connected, set or refresh this
+thread's heartbeat automation from `loopx heartbeat-prompt --thin`. Then stop
+and report the goal id, current user gate, top agent todo, and next safe
+action.
 ```
 
-After the project is connected, the agent should install the generated
-heartbeat body:
+The generated heartbeat body is the recurring Codex App work surface:
 
 ```bash
 loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
@@ -77,16 +82,22 @@ codex
 Then paste one setup message:
 
 ```text
-Install and connect LoopX for this repo from this visible Codex CLI TUI.
-If `loopx` is missing, install it with the official no-clone GitHub
-installer; if it is already installed, reuse it. Bootstrap or connect this
-project, then generate the thin heartbeat prompt and set the current Codex CLI
-goal to `/goal <thin task_body>`. Show me the current goal, concrete user gate
-if any, top todos, and next safe action before longer work. Keep me in this TUI
-and do not use hidden headless execution.
+Connect this repo to LoopX from this visible Codex CLI TUI. Do not clone the
+LoopX repository for ordinary use. If `loopx` is not on PATH, install or repair
+it with the official no-clone installer:
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+
+Then run `loopx doctor`. Work only from this project root: if LoopX state
+already exists, reuse it and do not create or overwrite a goal; if the project
+is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
+goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
+and `.local/` are ignored. Keep me in this TUI, do not use hidden headless
+execution. After the project is connected, generate the thin heartbeat prompt
+and set the current Codex CLI goal to `/goal <thin task_body>`. Then stop and
+report the goal id, current user gate, top agent todo, and next safe action.
 ```
 
-That one message is the install, connect, status check, and loop activation.
+That one message is the install, connect, heartbeat setup, and status check.
 The first useful TUI response should show the current goal, any concrete user
 gate, top todos, and next safe action. Hidden `codex exec` is not the default
 bootstrap path. Details for generated messages, later same-TUI automation, and

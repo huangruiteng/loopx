@@ -99,25 +99,28 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
 
     for text in (readme, getting_started, product_contract):
         assert "Codex CLI" in text and "TUI" in text, text[:500]
-        assert "Install and connect LoopX" in text, text[:500]
+        assert "Connect this repo to LoopX" in text, text[:500]
+        assert "Do not clone the" in text, text[:500]
+        assert "do not create or overwrite a goal" in text, text[:500]
+        assert "heartbeat" in text, text[:500]
     for text in (getting_started, product_contract):
         assert "loopx codex-cli-bootstrap-message --project . --goal-id <goal-id>" in text, text[:500]
 
     normalized_readme = " ".join(readme.split())
     normalized_getting_started = " ".join(getting_started.split())
     normalized_product_contract = " ".join(product_contract.split())
-    assert "Hidden `codex exec` is not part of the default TUI bootstrap" in normalized_readme, readme
+    assert "Hidden `codex exec` is not the default bootstrap path" in normalized_readme, readme
     assert "paste one setup message" in normalized_readme, readme
+    assert "heartbeat setup, and status check" in normalized_readme, readme
     assert "set the current Codex CLI goal to `/goal <thin task_body>`" in normalized_readme, readme
     assert "reuse it" in normalized_readme, readme
-    assert "You do not need to run a separate setup command first or paste a second prompt" in normalized_readme, readme
-    assert "template generators" in normalized_readme, readme
     assert "loopx codex-cli-bootstrap-message --project . --goal-id <goal-id>" not in readme, readme
-    assert "show the current goal, user gate, top todos, and next safe action" in normalized_readme, readme
+    assert "report the goal id, current user gate, top agent todo, and next safe action" in normalized_readme, readme
     assert "first-run path should not require you to understand registry paths" in normalized_getting_started, getting_started
     assert "setup-first rewrite of the App onboarding experience" in normalized_getting_started, getting_started
     assert "Codex App gets a heartbeat automation body" in normalized_getting_started, getting_started
     assert "transcript-free validation checklist" in normalized_getting_started, getting_started
+    assert "installs the thin LoopX goal/heartbeat body immediately" in normalized_product_contract, product_contract
     assert "optional automation checks after the setup path works" in normalized_getting_started, getting_started
     assert "first useful TUI response should be a control-plane snapshot" in normalized_product_contract, product_contract
     assert "setup-only work" in normalized_product_contract, product_contract

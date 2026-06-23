@@ -17,39 +17,25 @@ one of those, use the manual shell commands instead; LoopX can preserve project
 state, but it cannot make an agent continue automatically.
 
 ```text
-Install and connect LoopX for this project end to end. Do not stop at a
-plan.
-
-If `loopx` is not on PATH:
-- install it without making me clone the repo:
-
+Connect this project to LoopX: <project repo URL or current repo>.
+Do not clone the LoopX repository for ordinary use. If `loopx` is not on PATH,
+install or repair it with the official no-clone installer:
 curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
 export PATH="$HOME/.local/bin:$PATH"
 
-Then:
-1. Run `loopx doctor`.
-2. Choose a stable goal id from this repo name unless I gave one explicitly.
-3. Read the project goal doc if present (`GOAL.md`, `README.md`, or the doc I
-   name); otherwise ask me for a one-sentence objective.
-4. Run `loopx connect` or `loopx bootstrap` for this repo with
-   that goal id, objective, domain, and goal doc.
-5. Read the `Onboarding Scan`, `Proposed Onboarding Candidates`,
-   `Accept Candidate Commands`, and `Autonomy Choice` from the connect output.
-   Briefly explain the candidate agent todos to me and ask:
-   - which candidates I accept, edit, or reject;
-   - whether `autonomous=yes`, meaning you may start the first accepted agent
-     todo after the quota guard passes.
-   Do not make me run the acceptance commands manually; run the accepted
-   `loopx todo add ...` commands yourself. If I choose
-   `autonomous=no`, stop after `loopx refresh-state`.
-6. Ensure `.loopx/` and `.codex/goals/` are ignored in this project.
-7. Run `loopx registry`, `loopx status`, and
-   `loopx check --scan-root .`.
-8. Report the goal id, created files, current user todo, current agent todo,
+Then run `loopx doctor`. Work only from the target project root:
+1. If LoopX state already exists, reuse it and do not create or overwrite a
+   goal.
+2. If the project is not connected, prefer `loopx connect`; use
+   `loopx bootstrap` only when goal state clearly needs initialization.
+3. Ensure `.loopx/`, `.codex/goals/`, and `.local/` are ignored.
+4. Set up the thin LoopX heartbeat for this surface.
+5. Stop after setup and report the goal id, current user gate, top agent todo,
    and next safe action.
 
-Do not commit `.loopx/`, `.codex/goals/`, live ACTIVE_GOAL_STATE files,
-runtime registries, raw logs, credentials, or private local paths.
+Do not commit `.loopx/`, `.codex/goals/`, `.local/`, live ACTIVE_GOAL_STATE
+files, runtime registries, raw logs, credentials, or private local paths. Do
+not start longer delivery work in this setup turn.
 ```
 
 For a longer generated handoff prompt, install once and run:
@@ -75,33 +61,41 @@ Success looks like this:
 
 For Codex CLI users, the product target is: start in the Codex TUI, send one
 LoopX setup message, and let the agent install or reuse LoopX,
-bootstrap/connect the project, then set the current Codex goal to the thin
-heartbeat prompt. Later automation should stay visible and interruptible in
-that TUI whenever the CLI exposes a safe session-attachment primitive. The
-first-run path should not require you to understand registry paths, runtime
-roots, JSON payloads, session files, or heartbeat prompt syntax.
+connect the project, and stop with the current gate/todo/next-action report.
+As part of that setup, the agent sets the current Codex goal to the thin
+heartbeat prompt so the user immediately feels the loop is live. Later
+automation should stay visible and interruptible in that TUI whenever the CLI
+exposes a safe session-attachment primitive. The first-run path should not
+require you to understand registry paths, runtime roots, JSON payloads, session
+files, or heartbeat prompt syntax.
 
 First-run path:
 
 ```text
-Install and connect LoopX for this repo from this visible Codex CLI TUI.
-If `loopx` is missing, install it with the official no-clone GitHub
-installer; if it is already installed, reuse it. Bootstrap or connect this
-project, then generate the thin heartbeat prompt and set the current Codex CLI
-goal to `/goal <thin task_body>`. Show me the current goal, concrete user gate
-if any, top todos, and next safe action before longer work. Keep me in this TUI
-and do not use hidden headless execution.
+Connect this repo to LoopX from this visible Codex CLI TUI. Do not clone the
+LoopX repository for ordinary use. If `loopx` is not on PATH, install or repair
+it with the official no-clone installer:
+curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+
+Then run `loopx doctor`. Work only from this project root: if LoopX state
+already exists, reuse it and do not create or overwrite a goal; if the project
+is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
+goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
+and `.local/` are ignored. Keep me in this TUI, do not use hidden headless
+execution. After the project is connected, generate the thin heartbeat prompt
+and set the current Codex CLI goal to `/goal <thin task_body>`. Then stop and
+report the goal id, current user gate, top agent todo, and next safe action.
 ```
 
 The generated paste block is a setup-first rewrite of the App onboarding
-experience, not the heartbeat body itself. After the project is connected, the
-agent generates `heartbeat-prompt --thin` and installs that body into the
-surface: Codex CLI gets `/goal <thin task_body>`, while Codex App gets a
-heartbeat automation body. The first useful response should show the current
-goal id, concrete user gate if one exists, top user todo if any, top agent
-todo, and next safe action before longer delivery work. The setup turn should
-not spend quota for delivery unless the user explicitly asks it to do delivery
-after loop activation.
+experience, not the heartbeat body itself. The first useful response should
+show the current goal id, concrete user gate if one exists, top user todo if
+any, top agent todo, and next safe action before longer delivery work. The
+setup turn should not spend quota for delivery unless the user explicitly asks
+it to do delivery in the setup turn. The agent should still generate
+`heartbeat-prompt --thin` and install that body into the surface during setup:
+Codex CLI gets `/goal <thin task_body>`, while Codex App gets a heartbeat
+automation body.
 
 Once `loopx` is installed, generate a stricter repo-specific setup
 message:
