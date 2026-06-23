@@ -13,6 +13,7 @@ from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
 from loopx.status import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
+    compact_post_handoff_run,
     normalize_todo_task_class,
 )
 
@@ -180,7 +181,46 @@ def assert_structured_surface_only_run_requires_outcome_followthrough() -> None:
         "outcome_followthrough_required",
     ], lane
     assert lane["outcome_followthrough"]["latest_delivery_outcome"] == "surface_only", lane
+    assert (
+        lane["outcome_followthrough"]["latest_delivery_turn_kind"]
+        == "contract_only_preparation"
+    ), lane
+    assert lane["outcome_followthrough"]["accepted_resolution_kinds"] == [
+        "product_path_execution",
+        "compact_evidence",
+        "blocker_writeback",
+    ], lane
     assert "contract-only" in lane["action"], lane
+    markdown = render_quota_should_run_markdown(guard)
+    assert "work_lane_outcome_followthrough:" in markdown, markdown
+    assert "latest_kind=contract_only_preparation" in markdown, markdown
+
+
+def assert_blocker_writeback_satisfies_contract_followthrough() -> None:
+    compact = compact_post_handoff_run(
+        {
+            "classification": "runner_precise_blocker_writeback",
+            "delivery_batch_scale": "implementation",
+            "delivery_outcome": "outcome_gap",
+            "health_check": "precise blocker writeback: remote runner auth unavailable",
+        }
+    )
+    assert compact["delivery_turn_kind"] == "blocker_writeback", compact
+
+    guard = build_quota_should_run(
+        status_payload(
+            status="runner_blocker_written",
+            next_action="Choose the next independent runnable todo after the blocker.",
+            post_handoff_latest_run=compact,
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["should_run"] is True, guard
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["obligation"] == "advance_one_bounded_segment", lane
+    assert lane["reason_codes"] == ["open_agent_todo"], lane
+    assert "outcome_followthrough" not in lane, lane
 
 
 def assert_contract_word_alone_does_not_trigger_outcome_followthrough() -> None:
@@ -1557,6 +1597,7 @@ def main() -> int:
     assert_dependency_monitor_requires_advancement()
     assert_primary_status_stays_advancement_lane()
     assert_structured_surface_only_run_requires_outcome_followthrough()
+    assert_blocker_writeback_satisfies_contract_followthrough()
     assert_contract_word_alone_does_not_trigger_outcome_followthrough()
     assert_monitor_only_todo_waits_quietly()
     assert_monitor_only_with_user_todo_surfaces_user_action_without_transition()

@@ -21,6 +21,8 @@ from .delivery_outcome import (
     ACCOUNTABLE_DELIVERY_OUTCOMES,
     DeliveryOutcome,
     FOLLOWTHROUGH_REQUIRED_DELIVERY_OUTCOMES,
+    DeliveryTurnKind,
+    delivery_turn_kind_for_run,
     normalize_delivery_outcome,
 )
 from .execution_profile import (
@@ -107,6 +109,7 @@ POST_HANDOFF_RUN_COMPACT_FIELDS = (
     "progress_scope",
     "delivery_batch_scale",
     "delivery_outcome",
+    "delivery_turn_kind",
     "health_check",
     "json_exists",
     "markdown_exists",
@@ -466,17 +469,39 @@ def _outcome_followthrough_hint(item: dict[str, Any]) -> dict[str, Any] | None:
         return None
     explicit_required = latest_run.get("outcome_followthrough_required") is True
     delivery_outcome = normalize_delivery_outcome(latest_run.get("delivery_outcome"))
+    delivery_turn_kind = delivery_turn_kind_for_run(
+        latest_run,
+        delivery_outcome=delivery_outcome,
+    )
     if delivery_outcome == DeliveryOutcome.PRIMARY_GOAL_OUTCOME:
         return None
+    if (
+        not explicit_required
+        and delivery_turn_kind == DeliveryTurnKind.BLOCKER_WRITEBACK.value
+    ):
+        return None
     classification = str(latest_run.get("classification") or "").strip()
-    if not explicit_required and delivery_outcome not in FOLLOWTHROUGH_REQUIRED_DELIVERY_OUTCOMES:
+    kind_requires_followthrough = (
+        delivery_turn_kind == DeliveryTurnKind.CONTRACT_ONLY_PREPARATION.value
+    )
+    if (
+        not explicit_required
+        and delivery_outcome not in FOLLOWTHROUGH_REQUIRED_DELIVERY_OUTCOMES
+        and not kind_requires_followthrough
+    ):
         return None
     return {
         "source": "post_handoff_latest_run",
         "required": True,
         "latest_classification": classification,
         "latest_delivery_outcome": delivery_outcome.value if delivery_outcome else None,
+        "latest_delivery_turn_kind": delivery_turn_kind,
         "obligation": "advance_primary_outcome_or_write_blocker",
+        "accepted_resolution_kinds": [
+            DeliveryTurnKind.PRODUCT_PATH_EXECUTION.value,
+            DeliveryTurnKind.COMPACT_EVIDENCE.value,
+            DeliveryTurnKind.BLOCKER_WRITEBACK.value,
+        ],
         "spend_policy": (
             "do not spend for another contract/preparation-only slice; spend only "
             "after validated product-path evidence, benchmark/case evidence, or a "
@@ -7392,6 +7417,18 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- work_lane_monitor_policy: {work_lane_contract.get('monitor_policy')}")
         if work_lane_contract.get("action"):
             lines.append(f"- work_lane_action: {work_lane_contract.get('action')}")
+        outcome_followthrough = (
+            work_lane_contract.get("outcome_followthrough")
+            if isinstance(work_lane_contract.get("outcome_followthrough"), dict)
+            else {}
+        )
+        if outcome_followthrough:
+            lines.append(
+                "- work_lane_outcome_followthrough: "
+                f"latest_outcome={outcome_followthrough.get('latest_delivery_outcome')} "
+                f"latest_kind={outcome_followthrough.get('latest_delivery_turn_kind')} "
+                f"obligation={outcome_followthrough.get('obligation')}"
+            )
     interface_budget_cadence = (
         payload.get("interface_budget_cadence")
         if isinstance(payload.get("interface_budget_cadence"), dict)

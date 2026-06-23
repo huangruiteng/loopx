@@ -14,6 +14,7 @@ from .delivery_outcome import (
     DELIVERY_OUTCOME_UNKNOWN,
     DeliveryOutcome,
     PROGRESS_DELIVERY_OUTCOMES,
+    delivery_turn_kind_for_run,
     normalize_delivery_outcome,
 )
 from .doctor import (
@@ -5960,6 +5961,10 @@ def compact_post_handoff_run(run: dict[str, Any], profile: dict[str, Any] | None
     outcome = delivery_outcome_for_run(run, profile)
     if outcome != DELIVERY_OUTCOME_NOT_CONFIGURED:
         compact["delivery_outcome"] = outcome
+    compact["delivery_turn_kind"] = delivery_turn_kind_for_run(
+        run,
+        delivery_outcome=outcome,
+    )
     benchmark_run = compact_benchmark_run(run)
     if benchmark_run:
         compact["benchmark_run_summary"] = benchmark_run
@@ -9328,12 +9333,19 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                             " "
                             f"outcome={_markdown_scalar(latest_handoff_run.get('delivery_outcome') or '')}"
                         )
+                    turn_kind_suffix = ""
+                    if latest_handoff_run.get("delivery_turn_kind"):
+                        turn_kind_suffix = (
+                            " "
+                            f"turn_kind={_markdown_scalar(latest_handoff_run.get('delivery_turn_kind') or '')}"
+                        )
                     lines.append(
                         "      - post_handoff_run: "
                         f"classification={_markdown_scalar(latest_handoff_run.get('classification') or '')} "
                         f"at={_markdown_scalar(latest_handoff_run.get('generated_at') or '')} "
                         f"scale={_markdown_scalar(latest_handoff_run.get('delivery_batch_scale') or '')}"
                         f"{outcome_suffix}"
+                        f"{turn_kind_suffix}"
                     )
                 recent_handoff_runs = (
                     handoff_readiness.get("post_handoff_recent_runs")
@@ -9352,6 +9364,14 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                         if isinstance(run, dict) and run.get("delivery_outcome")
                     ]
                     outcome_text = f" outcome={','.join(recent_outcomes)}" if recent_outcomes else ""
+                    recent_turn_kinds = [
+                        _markdown_scalar(str(run.get("delivery_turn_kind") or ""))
+                        for run in recent_handoff_runs
+                        if isinstance(run, dict) and run.get("delivery_turn_kind")
+                    ]
+                    turn_kind_text = (
+                        f" turn_kind={','.join(recent_turn_kinds)}" if recent_turn_kinds else ""
+                    )
                     gap_text = (
                         f" outcome_gap_streak={handoff_readiness.get('post_handoff_outcome_gap_streak')}"
                         if "post_handoff_outcome_gap_streak" in handoff_readiness
@@ -9362,6 +9382,7 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                         f"{','.join(recent_scales)} "
                         f"small_streak={handoff_readiness.get('post_handoff_small_scale_streak', 0)}"
                         f"{outcome_text}"
+                        f"{turn_kind_text}"
                         f"{gap_text}"
                     )
                 if handoff_readiness.get("next_probe"):
