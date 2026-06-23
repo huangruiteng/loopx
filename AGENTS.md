@@ -46,6 +46,27 @@ raw evidence, private state, credentials, local paths, or generated logs.
 After self-merging, sync local `main`, leave unrelated untracked local artifacts
 alone, and continue with the next safe project batch.
 
+## Public And Private Boundary
+
+Do not commit internal department, team, customer, meeting, reporting,
+strategy, or local operating context into the public repository. This includes
+planning notes, status narratives, rollout stories, fixtures, screenshots,
+examples, catalog rows, PR descriptions, and review artifacts whose value
+depends on private organizational context rather than reusable public product
+behavior.
+
+Keep private planning and incident evidence in ignored local state such as
+`.local/`, or another explicitly ignored owner-approved location. Only commit
+material after it has been generalized into public-safe product, maintainer, or
+developer language and no longer reveals internal actors, timelines, reporting
+needs, local paths, raw logs, private links, or private decision context.
+
+Before staging public docs, fixtures, examples, catalogs, or metadata, scan the
+candidate paths for internal/private wording and ignored local artifact
+references. If such context was already pushed, stop normal delivery, run
+LoopX self-repair, clean the current public heads, and record any remaining
+PR-ref or cached-view cleanup as an explicit user/support gate.
+
 ## PR Review Comments
 
 When the user asks the agent to review a GitHub PR, treat PR feedback as a
