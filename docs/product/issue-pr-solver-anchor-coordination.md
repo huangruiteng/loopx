@@ -194,6 +194,22 @@ The coordination lane should write normal LoopX objects:
 - a compact metric-board update;
 - a case-catalog or showcase todo only after consent.
 
+For the first repo-local projection, an active state may also include a compact
+`## Issue Meta Surface` section. `loopx status` lifts each public-safe
+key-value bullet into `issue_meta_surface_v0` and mirrors it under
+`project_asset.issue_meta_surface`:
+
+```md
+## Issue Meta Surface
+
+- anchor_id=issue_anchor_parser_bug repo=sample-org/sample-repo issue=#128 labels=bug,good-first-issue owner_route=repo_maintainer_review related_code=src/parser.py validation=unit_smoke promotion_target=agent_todo:todo_issue_fix status=selected_anchor freshness=fresh
+```
+
+This is the small state face for issue/PR anchor selection. It keeps labels,
+owner route, related-code hint, validation surface, and promotion target visible
+to agents and dashboards without storing issue bodies, private source context,
+raw solver traces, or publication authority.
+
 This keeps open-source PR-led growth connected to LoopX's core promise:
 long-running agent work should be selectable, bounded, reviewable, and improved
 through human feedback.

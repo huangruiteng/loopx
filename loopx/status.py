@@ -360,10 +360,14 @@ MAX_PROJECT_ASSET_TODO_ITEMS = 3
 MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS = 8
 MAX_TODO_VISIBILITY_LANE_ITEMS = 16
 MAX_DEFERRED_TODO_VISIBILITY_ITEMS = 8
+MAX_ISSUE_META_SURFACE_ITEMS = 8
+MAX_ISSUE_META_LABELS = 8
 MAX_TODO_INDEX_ITEMS = 240
 MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL = 500
 TODO_PROJECTION_VIEW_SCHEMA_VERSION = "todo_projection_view_v0"
 TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION = "todo_projection_detail_pointer_v0"
+ISSUE_META_SURFACE_SCHEMA_VERSION = "issue_meta_surface_v0"
+ISSUE_META_SURFACE_ITEM_SCHEMA_VERSION = "issue_meta_surface_item_v0"
 MAX_DEPENDENCY_BLOCKERS = 4
 MAX_AUTONOMOUS_BACKLOG_CANDIDATES = 6
 MAX_SUBAGENT_ACTIVITY_ITEMS = 5
@@ -376,6 +380,10 @@ AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK = 30
 AUTONOMOUS_PRIORITY_PATTERN = re.compile(r"^\s*\[(P[0-4][^\]]*)\]\s*(.+)$", re.IGNORECASE)
 BACKLOG_HYGIENE_SECTION_HEADINGS = ("Next Action", "Operating Lessons")
 BACKLOG_HYGIENE_BULLET_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$")
+ISSUE_META_SURFACE_SECTION_HEADINGS = ("Issue Meta Surface", "Issue/PR Meta Surface")
+ISSUE_META_SURFACE_FIELD_PATTERN = re.compile(
+    r"(?P<key>[a-z_][a-z0-9_-]*)=(?P<value>\"[^\"]+\"|'[^']+'|[^\s]+)"
+)
 BACKLOG_HYGIENE_HINT_PATTERN = re.compile(
     r"(?i)(?:\[p[0-4]\]|todo|backlog|follow[- ]?up|queue|audit|regression|smoke|cadence|mirror|monitor|sub-?agent|待办|回归|审计|修复|检查|推进)"
 )
@@ -4449,6 +4457,117 @@ def active_state_sections(state_text: str, headings: tuple[str, ...]) -> dict[st
     return sections
 
 
+def issue_meta_surface_blocks(lines: list[str]) -> list[str]:
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("- ", "* ")):
+            if current:
+                blocks.append(" ".join(current))
+            current = [stripped[2:].strip()]
+            continue
+        if current and line.startswith((" ", "\t")):
+            current.append(stripped)
+    if current:
+        blocks.append(" ".join(current))
+    return blocks
+
+
+def issue_meta_public_value(value: Any, *, limit: int = 120) -> str | None:
+    text = public_safe_compact_text(value, limit=limit)
+    if not text:
+        return None
+    if "<" in text or ">" in text:
+        return None
+    return text.strip("\"'")
+
+
+def issue_meta_list(value: Any, *, limit: int = MAX_ISSUE_META_LABELS) -> list[str]:
+    if value is None:
+        return []
+    raw_values = re.split(r"[,;|]", str(value or ""))
+    items: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        item = issue_meta_public_value(raw, limit=80)
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        items.append(item)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def parse_issue_meta_surface_block(block: str, *, index: int) -> dict[str, Any] | None:
+    fields: dict[str, str] = {}
+    for match in ISSUE_META_SURFACE_FIELD_PATTERN.finditer(block):
+        key = str(match.group("key") or "").strip().lower().replace("-", "_")
+        value = str(match.group("value") or "").strip().strip("\"'")
+        if key and value:
+            fields[key] = value
+    if not fields:
+        return None
+
+    item: dict[str, Any] = {
+        "schema_version": ISSUE_META_SURFACE_ITEM_SCHEMA_VERSION,
+        "index": index,
+    }
+    alias_map = {
+        "anchor_id": ("anchor_id", "id"),
+        "repo_handle": ("repo_handle", "repo"),
+        "issue_handle": ("issue_handle", "issue", "issue_or_pr", "issue_or_pr_handle"),
+        "owner_route": ("owner_route", "owner"),
+        "related_code_hint": ("related_code_hint", "related_code", "code"),
+        "validation_surface": ("validation_surface", "validation"),
+        "promotion_target": ("promotion_target", "promotion"),
+        "status": ("status",),
+        "freshness": ("freshness",),
+    }
+    for output_key, aliases in alias_map.items():
+        raw_value = next((fields[alias] for alias in aliases if alias in fields), None)
+        value = issue_meta_public_value(raw_value)
+        if value:
+            item[output_key] = value
+    labels = issue_meta_list(fields.get("labels") or fields.get("label"))
+    if labels:
+        item["labels"] = labels
+
+    required = ("repo_handle", "owner_route", "validation_surface", "promotion_target")
+    if not all(item.get(key) for key in required):
+        return None
+    if not item.get("anchor_id"):
+        repo = str(item.get("repo_handle") or "")
+        issue = str(item.get("issue_handle") or "")
+        anchor_basis = "|".join(part for part in (repo, issue, str(index)) if part)
+        item["anchor_id"] = f"issue_anchor_{hashlib.sha1(anchor_basis.encode('utf-8')).hexdigest()[:10]}"
+    return item
+
+
+def parse_issue_meta_surface(state_text: str) -> dict[str, Any] | None:
+    section_map = active_state_sections(state_text, ISSUE_META_SURFACE_SECTION_HEADINGS)
+    for heading in ISSUE_META_SURFACE_SECTION_HEADINGS:
+        lines = section_map.get(heading) or []
+        blocks = issue_meta_surface_blocks(lines)
+        items = [
+            item
+            for index, block in enumerate(blocks, start=1)
+            for item in [parse_issue_meta_surface_block(block, index=index)]
+            if item
+        ]
+        if items:
+            return {
+                "schema_version": ISSUE_META_SURFACE_SCHEMA_VERSION,
+                "source_section": heading,
+                "item_count": len(items),
+                "items": items[:MAX_ISSUE_META_SURFACE_ITEMS],
+            }
+    return None
+
+
 def active_state_section_entries(lines: list[str]) -> list[str]:
     entries: list[str] = []
     current: list[str] = []
@@ -5875,6 +5994,9 @@ def active_state_todo_fields(goal: dict[str, Any]) -> dict[str, Any]:
     except OSError:
         return {}
     fields = parse_active_state_todos(state_text, goal=goal, state_path=state_path)
+    issue_meta_surface = parse_issue_meta_surface(state_text)
+    if issue_meta_surface:
+        fields["issue_meta_surface"] = issue_meta_surface
     next_action_entries = active_state_next_action_entries(state_text, limit=3)
     if next_action_entries:
         fields["active_state_next_action"] = next_action_entries[0]
@@ -6914,6 +7036,13 @@ def build_attention_queue(
                     active_next_action = item.get("active_state_next_action")
                     if active_next_action:
                         item["project_asset"]["active_state_next_action"] = active_next_action
+                    issue_meta_surface = (
+                        item.get("issue_meta_surface")
+                        if isinstance(item.get("issue_meta_surface"), dict)
+                        else None
+                    )
+                    if issue_meta_surface:
+                        item["project_asset"]["issue_meta_surface"] = issue_meta_surface
                     next_action_warning = next_action_projection_warning(
                         active_state_next_action=active_next_action,
                         latest_run_recommended_action=item.get("latest_run_recommended_action"),

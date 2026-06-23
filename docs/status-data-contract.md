@@ -817,6 +817,14 @@ Item fields:
   primary action surface, while monitor items are supplemental context that
   should not consume the selected goal's advancement slot unless they record a
   material transition or blocker.
+- `issue_meta_surface`: optional public-safe issue/PR anchor projection parsed
+  from an active-state `## Issue Meta Surface` section and mirrored under
+  `project_asset.issue_meta_surface`. Schema `issue_meta_surface_v0` carries a
+  bounded list of compact `issue_meta_surface_item_v0` rows with
+  `repo_handle`, `issue_handle`, GitHub-style `labels`, `owner_route`,
+  `related_code_hint`, `validation_surface`, `promotion_target`, `status`, and
+  `freshness`. It is a scenario state surface for issue/PR solver anchors, not
+  a command to read private source, publish comments, or open PRs.
 - `capability_gate`: optional per-goal quota projection derived from visible
   executable agent todos that declare `required_capabilities`. When
   `action=run`, the gate projects `runnable_candidates` and
