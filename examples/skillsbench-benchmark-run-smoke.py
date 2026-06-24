@@ -2705,6 +2705,37 @@ def test_skillsbench_no_tool_postprocess_preserves_provider_zero_activity() -> N
     ], compact
 
 
+def test_skillsbench_no_tool_postprocess_preserves_agent_bridge_activity() -> None:
+    compact = {
+        "official_score_status": "missing",
+        "score_failure_attribution": "verifier_infrastructure_failure",
+        "failure_attribution_labels": [
+            "skillsbench_runner_error",
+            "verifier_infrastructure_failure",
+        ],
+        "interaction_counters": {
+            "private_trajectory_event_count": 3,
+            "private_trajectory_round_count": 1,
+            "private_trajectory_tool_call_count": 0,
+            "controller_action_decisions": 1,
+            "remote_command_file_bridge_agent_request_count": 28,
+            "remote_command_file_bridge_agent_loopx_state_write_count": 14,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 12,
+        },
+    }
+
+    assert _apply_agent_message_only_no_tool_calls_attribution(compact) is False
+    assert compact["score_failure_attribution"] == (
+        "verifier_infrastructure_failure"
+    ), compact
+    assert "skillsbench_acp_agent_message_only_no_tool_calls" not in compact[
+        "failure_attribution_labels"
+    ], compact
+    assert "skillsbench_agent_behavior_gap" not in compact[
+        "failure_attribution_labels"
+    ], compact
+
+
 def test_skillsbench_codex_acp_post_success_trace_recovers_score() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-acp-trace-score-") as tmp:
         result_path = write_official_skillsbench_codex_acp_internal_error(Path(tmp))
@@ -7078,6 +7109,7 @@ if __name__ == "__main__":
     test_skillsbench_codex_acp_internal_error_attribution()
     test_skillsbench_codex_acp_provider_zero_activity_attribution()
     test_skillsbench_no_tool_postprocess_preserves_provider_zero_activity()
+    test_skillsbench_no_tool_postprocess_preserves_agent_bridge_activity()
     test_skillsbench_codex_acp_post_success_trace_recovers_score()
     test_skillsbench_codex_acp_post_success_finalization_route()
     test_skillsbench_docker_task_staging_adds_app_skills_mount()
