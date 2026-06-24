@@ -135,9 +135,18 @@ A successful connection looks like this:
 - `loopx status` shows who should act next;
 - local runtime state is ignored, not committed.
 
+### Claude Code
+
+LoopX runs on Claude Code as **native `/loop` + a LoopX control-plane MCP**: the
+`/loop` runtime drives each tick and LoopX's `should_run` gates it. The adapter is
+**opt-in** and never writes `~/.claude` unless you ask. Once enabled, drive it from
+Claude Code with `/loopx <task>` then `/loop`. Opt-in install, scope choice, the
+optional `--harden` gate, and uninstall are in
+[loopx/claude_goal_mode/README.md](loopx/claude_goal_mode/README.md).
+
 ### Other Agents And Manual Shell
 
-For Claude Code, Cursor, another terminal agent, or a manual shell, use the
+For Cursor, another terminal agent, or a manual shell, use the
 same no-clone installer. Be cautious with non-Codex agents: LoopX can only
 drive the agent path if that surface has at least one usable control hook, such
 as shell/CLI execution, a goal/task command, an automation or heartbeat hook,
