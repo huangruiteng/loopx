@@ -373,6 +373,7 @@ def _compact_product_mode_pair_review(review: dict[str, Any]) -> dict[str, Any]:
         "claim_blocker",
         "benchmark_id",
         "case_id",
+        "max_rounds_budget",
         "baseline_route_valid",
         "treatment_route_valid",
         "treatment_loopx_lifecycle_observed",
