@@ -82,9 +82,17 @@ curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/ins
 这条消息就是安装、连接、heartbeat 设置和状态检查。更细的生成模板、idle/proof 边界见
 [Getting Started](docs/guides/getting-started.md)。
 
+### Claude Code
+
+在 Claude Code 上,LoopX 以**原生 `/loop` + LoopX 控制面 MCP** 的方式运行:`/loop`
+作为运行时驱动每一轮,LoopX 的 `should_run` 负责把关。适配器是 **opt-in 的**,不显式开启
+就绝不写 `~/.claude`。开启后,在 Claude Code 里用 `/loopx <任务>` 设目标、再 `/loop` 推进。
+opt-in 安装、scope 选择、可选的 `--harden` 闸门与卸载详见
+[loopx/claude_goal_mode/README.md](loopx/claude_goal_mode/README.md)。
+
 ### 其他 Agent / 手动 Shell
 
-Claude Code、Cursor、其他终端 agent 或手动 shell 都走同一个 no-clone installer。
+Cursor、其他终端 agent 或手动 shell 都走同一个 no-clone installer。
 但这里要更谨慎：非 Codex agent 只有在至少具备一种可被 LoopX 驱动的控制能力时才适合
 走 agent-first 路径，例如能运行 shell/CLI、支持 goal/task 指令、能接入 automation
 或 heartbeat、或者自身有 loop/scheduler。否则 LoopX 仍可记录项目状态，但用户需要把
