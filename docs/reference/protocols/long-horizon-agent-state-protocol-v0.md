@@ -228,8 +228,11 @@ Not yet aligned:
 
 - `rollback_packet_v0` is specified and smoke-tested, but no command yet emits
   or executes packets.
-- PR lifecycle resume conditions such as `pr_merged:#532` are not supported;
-  only `resume_when=todo_done:<todo_id>` exists today.
+- PR lifecycle resume conditions are limited to structured rollout-event
+  evidence: `resume_when=pr_merged:#532` and
+  `resume_when=pr_merged:owner/repo#532` can wake deferred todos after the
+  matching `pr_merge` event appears in the local rollout log. LoopX does not
+  infer this from prose.
 - `global_manager_command_v0` is specified and smoke-tested, but no host
   integration or CLI command emits it yet.
 - Historical human-gate impact must be inferred from public-safe evidence.

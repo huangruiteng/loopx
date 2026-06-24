@@ -54,6 +54,8 @@ from .state_projection import (
     state_projection_gap_warning,
 )
 from .todo_contract import (
+    TODO_RESUME_KIND_PR_MERGED,
+    TODO_RESUME_KIND_TODO_DONE,
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
@@ -378,6 +380,19 @@ MAX_ISSUE_META_SURFACE_ITEMS = 8
 MAX_ISSUE_META_LABELS = 8
 MAX_TODO_INDEX_ITEMS = 240
 MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL = 500
+PR_MERGED_EVENT_KINDS = {
+    "pr_merge",
+    "pr_merged",
+    "pull_request_merge",
+    "pull_request_merged",
+}
+PR_REF_PATTERN = re.compile(
+    r"^(?:(?P<repo>[a-z0-9_.-]{1,80}/[a-z0-9_.-]{1,100}))?#(?P<number>[1-9][0-9]{0,8})$"
+)
+GITHUB_PULL_URL_PATTERN = re.compile(
+    r"^https://github\.com/(?P<repo>[a-z0-9_.-]{1,80}/[a-z0-9_.-]{1,100})/pull/(?P<number>[1-9][0-9]{0,8})/?$",
+    re.IGNORECASE,
+)
 TODO_PROJECTION_VIEW_SCHEMA_VERSION = "todo_projection_view_v0"
 TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION = "todo_projection_detail_pointer_v0"
 ISSUE_META_SURFACE_SCHEMA_VERSION = "issue_meta_surface_v0"
@@ -4496,7 +4511,98 @@ def todo_item_is_deferred(item: dict[str, Any]) -> bool:
     return (normalize_todo_status(item.get("status")) or TODO_STATUS_OPEN) == "deferred"
 
 
-def apply_resume_conditions(items: list[dict[str, Any]]) -> None:
+def normalized_pr_ref_parts(value: Any) -> dict[str, Any] | None:
+    candidate = str(value or "").strip().lower()
+    if not candidate:
+        return None
+    pull_url_match = GITHUB_PULL_URL_PATTERN.match(candidate)
+    if pull_url_match:
+        return {
+            "repo": pull_url_match.group("repo"),
+            "number": int(pull_url_match.group("number")),
+            "normalized": f"{pull_url_match.group('repo')}#{pull_url_match.group('number')}",
+        }
+    match = PR_REF_PATTERN.match(candidate)
+    if not match:
+        return None
+    repo = match.group("repo")
+    number = int(match.group("number"))
+    normalized = f"{repo}#{number}" if repo else f"#{number}"
+    return {"repo": repo, "number": number, "normalized": normalized}
+
+
+def rollout_event_pr_refs(event: dict[str, Any]) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    code_refs = event.get("code_refs") if isinstance(event.get("code_refs"), dict) else {}
+    for value in (code_refs.get("pr_ref"), event.get("pr_ref")):
+        parsed = normalized_pr_ref_parts(value)
+        if parsed:
+            refs.append(parsed)
+    source_refs = event.get("source_refs")
+    if isinstance(source_refs, list):
+        for source_ref in source_refs:
+            if not isinstance(source_ref, dict):
+                continue
+            if str(source_ref.get("kind") or "").strip().lower() not in {
+                "pull_request",
+                "pr",
+            }:
+                continue
+            parsed = normalized_pr_ref_parts(source_ref.get("ref"))
+            if parsed:
+                refs.append(parsed)
+    unique: list[dict[str, Any]] = []
+    seen: set[tuple[str | None, int]] = set()
+    for ref in refs:
+        key = (ref.get("repo"), int(ref.get("number") or 0))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(ref)
+    return unique
+
+
+def pr_merged_condition(target: str, rollout_events: list[dict[str, Any]]) -> dict[str, Any]:
+    condition: dict[str, Any] = {
+        "pr_number": None,
+        "pr_repo": None,
+        "source": "rollout_event_log",
+    }
+    target_ref = normalized_pr_ref_parts(target)
+    if not target_ref:
+        condition["invalid_target"] = True
+        return condition
+    condition["pr_number"] = target_ref["number"]
+    if target_ref.get("repo"):
+        condition["pr_repo"] = target_ref["repo"]
+    for event in rollout_events:
+        if not isinstance(event, dict):
+            continue
+        if str(event.get("event_kind") or "").strip().lower() not in PR_MERGED_EVENT_KINDS:
+            continue
+        for event_ref in rollout_event_pr_refs(event):
+            if int(event_ref.get("number") or 0) != int(target_ref["number"]):
+                continue
+            if target_ref.get("repo") and event_ref.get("repo") != target_ref.get("repo"):
+                continue
+            condition.update(
+                {
+                    "satisfied": True,
+                    "matched_event_id": event.get("event_id"),
+                    "matched_event_kind": event.get("event_kind"),
+                    "matched_pr_ref": event_ref.get("normalized"),
+                    "matched_event_at": event.get("recorded_at"),
+                }
+            )
+            return condition
+    return condition
+
+
+def apply_resume_conditions(
+    items: list[dict[str, Any]],
+    *,
+    rollout_events: list[dict[str, Any]] | None = None,
+) -> None:
     by_id = {
         str(item.get("todo_id") or ""): item
         for item in items
@@ -4515,7 +4621,7 @@ def apply_resume_conditions(items: list[dict[str, Any]]) -> None:
         condition["kind"] = kind
         if separator:
             condition["target"] = target
-        if kind == "todo_done" and target:
+        if kind == TODO_RESUME_KIND_TODO_DONE and target:
             target_item = by_id.get(target)
             condition["target_todo_id"] = target
             condition["target_status"] = (
@@ -4524,6 +4630,8 @@ def apply_resume_conditions(items: list[dict[str, Any]]) -> None:
                 else None
             )
             condition["satisfied"] = condition["target_status"] == "done"
+        elif kind == TODO_RESUME_KIND_PR_MERGED and target:
+            condition.update(pr_merged_condition(target, rollout_events or []))
         else:
             condition["unsupported"] = True
         item["resume_condition"] = condition
@@ -4545,6 +4653,7 @@ def compact_todo_group(
     source_section: str | None,
     role: str | None = None,
     preferred_todo_ids: set[str] | None = None,
+    rollout_events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     if not items:
         return None
@@ -4554,7 +4663,7 @@ def compact_todo_group(
         else item
         for item in items
     ]
-    apply_resume_conditions(items)
+    apply_resume_conditions(items, rollout_events=rollout_events)
     open_items = [item for item in items if not item.get("done")]
     terminal_items = [item for item in items if item.get("done")]
     deferred_items = [item for item in terminal_items if todo_item_is_deferred(item)]
@@ -4721,6 +4830,7 @@ def parse_active_state_todos(
     goal: dict[str, Any] | None = None,
     state_path: Path | None = None,
     preferred_todo_ids: set[str] | None = None,
+    rollout_events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     role: str | None = None
     source_sections: dict[str, str | None] = {"user": None, "agent": None}
@@ -4770,12 +4880,14 @@ def parse_active_state_todos(
         source_section=source_sections["user"],
         role="user",
         preferred_todo_ids=preferred_todo_ids,
+        rollout_events=rollout_events,
     )
     agent = compact_todo_group(
         items["agent"],
         source_section=source_sections["agent"],
         role="agent",
         preferred_todo_ids=preferred_todo_ids,
+        rollout_events=rollout_events,
     )
     if user:
         result["user_todos"] = user
@@ -6338,7 +6450,11 @@ def build_project_asset(
     return asset
 
 
-def active_state_todo_fields(goal: dict[str, Any]) -> dict[str, Any]:
+def active_state_todo_fields(
+    goal: dict[str, Any],
+    *,
+    runtime_root: Path | None = None,
+) -> dict[str, Any]:
     state_path = resolve_goal_local_path(goal.get("state_file"), goal, fallback_base=Path.cwd())
     if state_path is None or not state_path.exists():
         return {}
@@ -6350,11 +6466,19 @@ def active_state_todo_fields(goal: dict[str, Any]) -> dict[str, Any]:
     preferred_todo_ids: set[str] = set()
     for entry in next_action_entries:
         preferred_todo_ids.update(active_next_action_todo_ids(entry))
+    rollout_events: list[dict[str, Any]] = []
+    goal_id = str(goal.get("id") or "").strip()
+    if runtime_root is not None and goal_id:
+        rollout_events = load_rollout_events(
+            rollout_event_log_path(runtime_root, goal_id),
+            limit=MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
+        )
     fields = parse_active_state_todos(
         state_text,
         goal=goal,
         state_path=state_path,
         preferred_todo_ids=preferred_todo_ids,
+        rollout_events=rollout_events,
     )
     issue_meta_surface = parse_issue_meta_surface(state_text)
     if issue_meta_surface:
@@ -7452,6 +7576,7 @@ def build_attention_queue(
     contract: dict[str, Any],
     history: dict[str, Any],
     global_registry: dict[str, Any],
+    runtime_root: Path | None = None,
 ) -> dict[str, Any]:
     health_items: list[dict[str, Any]] = []
     history_items: list[dict[str, Any]] = []
@@ -7474,7 +7599,7 @@ def build_attention_queue(
         active_state_item: dict[str, Any] | None = None
         current_status_run = latest_run(goal)
         if goal.get("registry_member"):
-            active_state_fields = active_state_todo_fields(goal)
+            active_state_fields = active_state_todo_fields(goal, runtime_root=runtime_root)
             active_state_item = active_state_todo_attention_item(goal, active_state_fields, current_status_run)
         if active_state_item and active_state_item.get("waiting_on") in {"controller", "user_or_controller"}:
             item = active_state_item
@@ -7532,7 +7657,7 @@ def build_attention_queue(
                     item["project_asset"]["stale_latest_run_warning"] = projection_warning
             if goal.get("registry_member"):
                 if active_state_fields is None:
-                    active_state_fields = active_state_todo_fields(goal)
+                    active_state_fields = active_state_todo_fields(goal, runtime_root=runtime_root)
                 item.update(active_state_fields)
                 if isinstance(item.get("project_asset"), dict):
                     active_next_action = item.get("active_state_next_action")
@@ -8627,7 +8752,12 @@ def collect_status(
         scan_roots=scan_roots,
         limit=limit,
     )
-    queue = build_attention_queue(contract=contract, history=history, global_registry=global_registry)
+    queue = build_attention_queue(
+        contract=contract,
+        history=history,
+        global_registry=global_registry,
+        runtime_root=runtime_root,
+    )
     run_history = build_run_history(history, display_limit=display_limit)
     event_ledger_summary = build_event_ledger_summary(history)
     promotion_readiness_summary = build_promotion_readiness_summary(

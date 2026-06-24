@@ -619,7 +619,7 @@ def add_goal_todo(
             raise ValueError("unblocks_todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")
         normalized_resume_when = normalize_todo_resume_when(resume_when) if resume_when else None
         if resume_when and not normalized_resume_when:
-            raise ValueError("resume_when must be a public-safe token such as todo_done:todo_ab12cd34ef56")
+            raise ValueError("resume_when must be public-safe, e.g. todo_done:todo_ab12cd34ef56 or pr_merged:#532")
         add_result = add_todo_to_lines(
             lines,
             role=role,
@@ -861,7 +861,7 @@ def update_goal_todo(
             raise ValueError("unblocks_todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")
         normalized_resume_when = normalize_todo_resume_when(resume_when) if resume_when else None
         if resume_when and not normalized_resume_when:
-            raise ValueError("resume_when must be a public-safe token such as todo_done:todo_ab12cd34ef56")
+            raise ValueError("resume_when must be public-safe, e.g. todo_done:todo_ab12cd34ef56 or pr_merged:#532")
         update_result = apply_todo_update_to_lines(
             lines,
             todo_id=todo_id,

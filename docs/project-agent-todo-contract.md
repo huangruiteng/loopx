@@ -151,9 +151,14 @@ runnable work in the same claim/priority bucket so capability-building todos do
 not require fragile active-state reordering.
 
 Deferred todos may carry a machine-readable resume condition with
-`resume_when=<token>`. The first supported condition is
-`resume_when=todo_done:<todo_id>`, meaning the deferred todo should become a
-successor replan candidate after the referenced todo reaches `status=done`.
+`resume_when=<token>`. Supported conditions are:
+
+- `resume_when=todo_done:<todo_id>`: the deferred todo becomes a successor
+  replan candidate after the referenced todo reaches `status=done`.
+- `resume_when=pr_merged:#532` or
+  `resume_when=pr_merged:owner/repo#532`: the deferred todo becomes a successor
+  candidate after a structured rollout event records that PR merge.
+
 Status and quota expose deferred todos as a visibility lane after sorted open
 todo lanes. This is a deferred gate-resume lane: it is not runnable work, and
 it is not evidence that the current agent has no todo, until an agent reopens,

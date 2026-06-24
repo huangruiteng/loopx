@@ -13,7 +13,12 @@ TODO_ACTION_KIND_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 TODO_ID_PATTERN = re.compile(r"^todo_[a-z0-9_-]{3,64}$")
 TODO_AGENT_CLAIM_PATTERN = re.compile(r"^[a-z][a-z0-9_.:@-]{0,79}$")
 TODO_CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9_:-]{0,63}$")
+TODO_RESUME_KIND_TODO_DONE = "todo_done"
+TODO_RESUME_KIND_PR_MERGED = "pr_merged"
 TODO_RESUME_WHEN_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}(?::[a-z0-9_.:@-]{1,96})?$")
+TODO_RESUME_PR_MERGED_PATTERN = re.compile(
+    r"^pr_merged:(?:(?:[a-z0-9_.-]{1,80})/(?:[a-z0-9_.-]{1,100}))?#[1-9][0-9]{0,8}$"
+)
 TODO_WRITE_SCOPE_MAX_CHARS = 160
 
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
@@ -159,6 +164,8 @@ def normalize_todo_blocks_agent(value: Any) -> str | None:
 
 def normalize_todo_resume_when(value: Any) -> str | None:
     candidate = compact_todo_text(value).lower()
+    if candidate and TODO_RESUME_PR_MERGED_PATTERN.match(candidate):
+        return candidate
     if candidate and TODO_RESUME_WHEN_PATTERN.match(candidate):
         return candidate
     return None
@@ -431,7 +438,7 @@ def format_todo_metadata_line(
         fields.append(f"unblocks_todo_id={encode_metadata_value(normalized_unblocks_todo_id)}")
     normalized_resume_when = normalize_todo_resume_when(resume_when)
     if resume_when and not normalized_resume_when:
-        raise ValueError("resume_when must be a public-safe token such as todo_done:todo_ab12cd34ef56")
+        raise ValueError("resume_when must be public-safe, e.g. todo_done:todo_ab12cd34ef56 or pr_merged:#532")
     if normalized_resume_when:
         fields.append(f"resume_when={encode_metadata_value(normalized_resume_when)}")
     for key, value in (
