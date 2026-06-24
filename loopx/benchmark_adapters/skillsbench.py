@@ -412,6 +412,11 @@ def _skillsbench_attempt_failure_class(
 ) -> BenchmarkFailureClass:
     if _skillsbench_attempt_setup_blocked(failure_labels):
         return BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED
+    if score_failure_attribution in {
+        "skillsbench_product_mode_solver_activity_gap",
+        "skillsbench_acp_agent_message_only_no_tool_calls",
+    }:
+        return BenchmarkFailureClass.SOLVER_FAILED
     if verifier_error_text and reward_value is None:
         return BenchmarkFailureClass.VERIFIER_FAILED
     if reward_value is None and score_failure_attribution != "none":
@@ -2938,6 +2943,76 @@ def build_skillsbench_benchflow_result_benchmark_run(
         controller_counters["product_mode_no_lifecycle_request_abort"] = False
         controller_counters["product_mode_no_lifecycle_request_abort_count"] = 0
         controller_counters["product_mode_no_lifecycle_request_abort_round"] = 0
+    agent_bridge_final_closeout_satisfied = bool(
+        agent_bridge_todo_closeout_count > 0
+        and agent_bridge_refresh_state_count > 0
+        and agent_bridge_quota_spend_slot_count > 0
+    )
+    agent_bridge_activity_observed = bool(
+        _controller_public_count("remote_command_file_bridge_agent_request_count") > 0
+        or _controller_public_count(
+            "remote_command_file_bridge_agent_operation_trace_count"
+        )
+        > 0
+        or remote_agent_operation_trace_satisfied
+    )
+    declared_done_round_count = _controller_public_count("declared_done_round")
+    trajectory_tool_calls = _trajectory_public_count("tool_call_count")
+    no_solver_tool_calls = bool(tool_calls == 0 and trajectory_tool_calls == 0)
+    product_mode_solver_activity_gap_derived = bool(
+        product_mode_lifecycle_required
+        and product_mode_lifecycle_satisfied
+        and controller_trace_present
+        and controller_counters.get("agent_declared_done") is True
+        and declared_done_round_count > 0
+        and reward_value is None
+        and no_solver_tool_calls
+        and agent_bridge_activity_observed
+        and not agent_bridge_final_closeout_satisfied
+    )
+    if product_mode_solver_activity_gap_derived:
+        controller_counters["product_mode_solver_activity_required"] = True
+        controller_counters["product_mode_solver_activity_gap"] = True
+        controller_counters["product_mode_solver_activity_gap_count"] = max(
+            1,
+            _controller_public_count("product_mode_solver_activity_gap_count"),
+        )
+        controller_counters["product_mode_solver_activity_gap_round"] = max(
+            declared_done_round_count,
+            _controller_public_count("product_mode_solver_activity_gap_round"),
+        )
+        controller_counters.setdefault(
+            "product_mode_solver_activity_missing_reason",
+            "missing_task_facing_activity_or_agent_closeout_before_declared_done",
+        )
+    product_mode_solver_activity_gap_observed = bool(
+        controller_counters.get("product_mode_solver_activity_gap") is True
+    )
+    if (
+        product_mode_solver_activity_gap_observed
+        and reward_value is None
+        and not official_passed
+    ):
+        label = "skillsbench_product_mode_solver_activity_gap"
+        exception_type = label
+        if score_failure_attribution in {
+            "",
+            "none",
+            "skillsbench_runner_error",
+            "verifier_infrastructure_failure",
+        }:
+            score_failure_attribution = label
+            runner_score_failure_attribution = label
+        for item in (
+            label,
+            "skillsbench_agent_behavior_gap",
+            "skillsbench_reward_artifact_missing",
+            "skillsbench_verifier_error_subtype_unavailable_public"
+            if verifier_error_text
+            else "",
+        ):
+            if item and item not in failure_labels:
+                failure_labels.append(item)
     user_loop_final_verify_recovery_triggered = bool(
         controller_counters.get("benchflow_user_loop_final_verify_recovery_triggered")
     )
