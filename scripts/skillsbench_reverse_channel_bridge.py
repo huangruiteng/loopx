@@ -25,7 +25,12 @@ from typing import Any
 CLIENT_SCHEMA_VERSION = "skillsbench_reverse_channel_client_v0"
 SERVER_RESPONSE_SCHEMA_VERSION = "skillsbench_reverse_channel_response_v0"
 SOCKET_PROBE_SCHEMA_VERSION = "skillsbench_reverse_channel_socket_probe_v0"
-ALLOWED_PAYLOAD_ENV_KEYS = ("AI_ADDR", "AI_PORT", "GOAL_HARNESS_REMOTE_BENCH_ROOT")
+ALLOWED_PAYLOAD_ENV_KEYS = (
+    "AI_ADDR",
+    "AI_PORT",
+    "GOAL_HARNESS_REMOTE_BENCH_ROOT",
+    "LOOPX_REMOTE_AGENT_OPS_SUMMARY_PATH",
+)
 
 
 def _send_json_line(sock: socket.socket, payload: dict[str, Any]) -> None:
@@ -95,6 +100,111 @@ def _rewrite_private_bridge_command(prompt: str, replacement: str | None) -> str
     return re.sub(pattern, r"\1" + replacement, prompt, count=1)
 
 
+def _write_instrumented_prompt_bridge(
+    *,
+    tmp_path: Path,
+    bridge_command: str,
+) -> tuple[Path, Path]:
+    """Wrap a local prompt bridge and emit public-safe agent operation records."""
+
+    wrapper_path = tmp_path / "loopx-local-prompt-bridge"
+    summary_path = tmp_path / "agent-bridge-ops.jsonl"
+    script = f"""#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import re
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+SUMMARY_PATH = Path({str(summary_path)!r})
+BRIDGE_COMMAND = {bridge_command!r}
+
+def loopx_subcommands(command: str) -> list[str]:
+    try:
+        tokens = shlex.split(command or "")
+    except ValueError:
+        tokens = (command or "").split()
+    idx = -1
+    for i, token in enumerate(tokens):
+        if token == "loopx" or token.endswith("/loopx"):
+            idx = i
+            break
+    if idx < 0:
+        return []
+    out: list[str] = []
+    skip = False
+    for token in tokens[idx + 1:]:
+        if skip:
+            skip = False
+            continue
+        if token.startswith("--"):
+            if "=" not in token and token in {{"--goal-id", "--todo-id", "--claimed-by", "--status", "--note", "--evidence", "--classification", "--registry", "--runtime-root", "--slots", "--source", "--format"}}:
+                skip = True
+            continue
+        if token.startswith("-"):
+            continue
+        if re.match(r"^[A-Za-z][A-Za-z0-9_-]{{0,40}}$", token):
+            out.append(token)
+            if len(out) >= 2:
+                break
+    return out
+
+raw = sys.stdin.read()
+record: dict[str, object] = {{
+    "schema_version": "skillsbench_remote_bridge_agent_operation_v0",
+    "raw_request_recorded": False,
+    "raw_stdout_recorded": False,
+    "raw_stderr_recorded": False,
+    "raw_task_text_recorded": False,
+    "credential_values_recorded": False,
+    "host_paths_recorded": False,
+    "remote_paths_recorded": False,
+}}
+try:
+    payload = json.loads(raw)
+except Exception:
+    payload = {{}}
+operation = payload.get("operation") if isinstance(payload, dict) else ""
+record["operation"] = operation if isinstance(operation, str) else "unknown"
+subcommands: list[str] = []
+if isinstance(payload, dict) and payload.get("operation") == "exec":
+    command_text = payload.get("command")
+    if isinstance(command_text, str):
+        subcommands = loopx_subcommands(command_text)
+record["loopx_cli_call"] = bool(subcommands)
+record["loopx_subcommands"] = subcommands[:2]
+record["loopx_state_read"] = subcommands[:2] in (["quota", "should-run"], ["status"], ["diagnose"])
+record["loopx_state_write"] = bool(subcommands and (
+    subcommands[0] in {{"todo", "refresh-state"}}
+    or subcommands[:2] == ["quota", "spend-slot"]
+))
+proc = subprocess.run(
+    BRIDGE_COMMAND,
+    input=raw,
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    shell=True,
+)
+record["returncode"] = int(proc.returncode)
+try:
+    SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with SUMMARY_PATH.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, sort_keys=True) + "\\n")
+except OSError:
+    pass
+sys.stdout.write(proc.stdout)
+sys.stderr.write(proc.stderr)
+raise SystemExit(proc.returncode)
+"""
+    wrapper_path.write_text(script, encoding="utf-8")
+    wrapper_path.chmod(0o700)
+    return wrapper_path, summary_path
+
+
 def _run_codex_payload(
     payload: dict[str, Any],
     *,
@@ -119,8 +229,18 @@ def _run_codex_payload(
         local_cwd.mkdir(parents=True, exist_ok=True)
         remote_last_message_path = _replace_output_last_message(args, last_message_path)
         _replace_remote_cwd(args, local_cwd)
+        agent_operations_summary_path: Path | None = None
         if prompt_bridge_command and args:
-            args[-1] = _rewrite_private_bridge_command(args[-1], prompt_bridge_command)
+            instrumented_bridge, agent_operations_summary_path = (
+                _write_instrumented_prompt_bridge(
+                    tmp_path=tmp_path,
+                    bridge_command=prompt_bridge_command,
+                )
+            )
+            args[-1] = _rewrite_private_bridge_command(
+                args[-1],
+                str(instrumented_bridge),
+            )
         cmd = [codex_bin, *args]
         try:
             proc = subprocess.run(
@@ -137,6 +257,12 @@ def _run_codex_payload(
                 last_message = last_message_path.read_text(encoding="utf-8")
             except OSError:
                 last_message = ""
+            agent_operations_jsonl = ""
+            if agent_operations_summary_path and agent_operations_summary_path.exists():
+                agent_operations_jsonl = agent_operations_summary_path.read_text(
+                    encoding="utf-8",
+                    errors="replace",
+                )[:200_000]
             return {
                 "schema_version": SERVER_RESPONSE_SCHEMA_VERSION,
                 "exit_code": int(proc.returncode),
@@ -144,6 +270,8 @@ def _run_codex_payload(
                 "stderr": proc.stderr or "",
                 "last_message": last_message,
                 "remote_last_message_path": remote_last_message_path,
+                "agent_operations_jsonl": agent_operations_jsonl,
+                "agent_operations_raw_material_recorded": False,
                 "raw_task_text_recorded": False,
                 "credential_values_recorded": False,
             }
@@ -157,6 +285,8 @@ def _run_codex_payload(
                 "stderr": stderr,
                 "last_message": "",
                 "remote_last_message_path": remote_last_message_path,
+                "agent_operations_jsonl": "",
+                "agent_operations_raw_material_recorded": False,
                 "raw_task_text_recorded": False,
                 "credential_values_recorded": False,
             }
@@ -264,7 +394,7 @@ SOCK = {socket_path!r}
 payload = {{
     'schema_version': {CLIENT_SCHEMA_VERSION!r},
     'args': sys.argv[1:],
-    'env': {{k: os.environ.get(k, '') for k in ('AI_ADDR','AI_PORT','GOAL_HARNESS_REMOTE_BENCH_ROOT')}},
+    'env': {{k: os.environ.get(k, '') for k in ('AI_ADDR','AI_PORT','GOAL_HARNESS_REMOTE_BENCH_ROOT','LOOPX_REMOTE_AGENT_OPS_SUMMARY_PATH')}},
     'timeout_sec': float(os.environ.get('LOOPX_REVERSE_CODEX_TIMEOUT_SEC', '7200')),
 }}
 s=socket.socket(socket.AF_UNIX)
@@ -292,6 +422,14 @@ if isinstance(last, str) and isinstance(remote_path, str) and remote_path:
     os.makedirs(os.path.dirname(remote_path) or '.', exist_ok=True)
     with open(remote_path, 'w', encoding='utf-8') as fh:
         fh.write(last)
+ops = resp.get('agent_operations_jsonl')
+ops_path = os.environ.get('LOOPX_REMOTE_AGENT_OPS_SUMMARY_PATH', '')
+if isinstance(ops, str) and ops and ops_path:
+    os.makedirs(os.path.dirname(ops_path) or '.', exist_ok=True)
+    with open(ops_path, 'a', encoding='utf-8') as fh:
+        fh.write(ops)
+        if not ops.endswith('\\n'):
+            fh.write('\\n')
 sys.exit(int(resp.get('exit_code') or 0))
 """
     output_path.write_text(script, encoding="utf-8")

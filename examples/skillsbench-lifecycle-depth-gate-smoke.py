@@ -38,6 +38,23 @@ def main() -> None:
     assert trace["round_result_loopx_cli_state_write_count"] == 1
     assert _product_mode_depth_gate_satisfied(trace)
 
+    orchestrated_driver_trace = {
+        "remote_command_file_bridge_driver_lifecycle_execution_style": (
+            "orchestrated_agentloop_loopx_cli"
+        ),
+        "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 1,
+        "remote_command_file_bridge_driver_lifecycle_success_count": 4,
+        "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+        "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
+        "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
+        "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
+        "remote_command_file_bridge_agent_operation_trace_status": (
+            "agent_operation_trace_present_no_requests"
+        ),
+        "remote_command_file_bridge_agent_request_count": 0,
+    }
+    assert _product_mode_depth_gate_satisfied(orchestrated_driver_trace)
+
 
 if __name__ == "__main__":
     main()

@@ -1951,6 +1951,14 @@ def _skillsbench_controller_trace_counters(
             "product_mode_lifecycle_checkpoint_required"
         )
         is True,
+        "product_mode_solver_activity_required": controller_trace.get(
+            "product_mode_solver_activity_required"
+        )
+        is True,
+        "product_mode_solver_activity_gap": controller_trace.get(
+            "product_mode_solver_activity_gap"
+        )
+        is True,
         "agent_declared_done": controller_trace.get("agent_declared_done") is True,
         "agent_declared_no_remaining_goals": controller_trace.get(
             "agent_declared_no_remaining_goals"
@@ -2152,6 +2160,12 @@ def _skillsbench_controller_trace_counters(
         "product_mode_lifecycle_checkpoint_round": count(
             "product_mode_lifecycle_checkpoint_round"
         ),
+        "product_mode_solver_activity_gap_count": count(
+            "product_mode_solver_activity_gap_count"
+        ),
+        "product_mode_solver_activity_gap_round": count(
+            "product_mode_solver_activity_gap_round"
+        ),
         "product_mode_no_tool_call_lifecycle_abort": controller_trace.get(
             "product_mode_no_tool_call_lifecycle_abort"
         )
@@ -2217,6 +2231,13 @@ def _skillsbench_controller_trace_counters(
     if lifecycle_missing_reason:
         counters["product_mode_lifecycle_checkpoint_missing_reason"] = (
             lifecycle_missing_reason
+        )
+    solver_activity_missing_reason = _skillsbench_public_safe_label(
+        controller_trace.get("product_mode_solver_activity_missing_reason") or ""
+    )
+    if solver_activity_missing_reason:
+        counters["product_mode_solver_activity_missing_reason"] = (
+            solver_activity_missing_reason
         )
     workflow_style = _skillsbench_public_safe_label(
         controller_trace.get(
@@ -3363,6 +3384,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "product_mode_lifecycle_checkpoint_required": controller_counters.get(
                 "product_mode_lifecycle_checkpoint_required", False
             ),
+            "product_mode_solver_activity_required": controller_counters.get(
+                "product_mode_solver_activity_required", False
+            ),
+            "product_mode_solver_activity_gap": controller_counters.get(
+                "product_mode_solver_activity_gap", False
+            ),
             "product_mode_lifecycle_checkpoint_count": controller_counters.get(
                 "product_mode_lifecycle_checkpoint_count", 0
             ),
@@ -3371,6 +3398,15 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "product_mode_lifecycle_checkpoint_missing_reason": controller_counters.get(
                 "product_mode_lifecycle_checkpoint_missing_reason", ""
+            ),
+            "product_mode_solver_activity_gap_count": controller_counters.get(
+                "product_mode_solver_activity_gap_count", 0
+            ),
+            "product_mode_solver_activity_gap_round": controller_counters.get(
+                "product_mode_solver_activity_gap_round", 0
+            ),
+            "product_mode_solver_activity_missing_reason": controller_counters.get(
+                "product_mode_solver_activity_missing_reason", ""
             ),
             "product_mode_no_tool_call_lifecycle_abort": controller_counters.get(
                 "product_mode_no_tool_call_lifecycle_abort", False
