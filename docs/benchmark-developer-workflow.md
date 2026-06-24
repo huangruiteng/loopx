@@ -1280,6 +1280,16 @@ contract rather than inventing benchmark-specific state markers. A runner that
 only performs internal prompt polling without this lifecycle remains
 `packet_only_observation` or incomplete treatment evidence.
 
+For strict `loopx-product-mode`, "the agent touched LoopX" is not enough. The
+test arm is countable only when compact evidence shows both task-facing solver
+activity and an agent-side case closeout: `todo complete`, `refresh-state`, and
+`quota spend-slot --source adapter --execute` for the isolated case goal. Driver
+orchestrated checkpoints may prove the control plane is reachable, but they do
+not substitute for the agent completing and spending the case turn. Prompt
+packets and reducer checks must use the same closeout contract; if the prompt
+only suggests spend-slot as optional, treat the run as a product-path mismatch
+until the prompt and compact reducer are aligned.
+
 `codex exec` is still useful as a tiny connectivity smoke on the cloud host,
 but a successful `codex exec` run is not by itself a Codex Goal baseline. Do not
 rename a polling loop, resume loop, or prompt-prefixed `/goal` experiment into a

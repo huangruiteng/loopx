@@ -64,6 +64,12 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     _apply_agent_message_only_no_tool_calls_attribution,
     _blind_loop_persistent_continuation_clause,
     _build_product_mode_user,
+    _copy_loopx_source_subset,
+    _host_local_acp_launch_command,
+    _loopx_case_init_failure_blocker,
+    _loopx_case_source_path_for_container,
+    _loopx_source_mount_contract,
+    _loopx_source_mounts,
     _product_mode_depth_gate_satisfied,
     _merge_app_server_goal_worker_trace_summary,
     _merge_acp_trajectory_summary,
@@ -84,6 +90,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     product_mode_case_state_seed_text,
     product_mode_soft_verify_policy_for_route,
     reduce_result,
+    _runner_prerequisite_failure_attribution,
     summarize_acp_trajectory,
     stage_task_for_sandbox,
 )
@@ -1243,7 +1250,13 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
         )
         assert prompt is not None, trace
         assert "Mandatory product-mode solver checkpoint" in prompt
+        assert "full agent closeout evidence" in prompt
+        assert "todo complete" in prompt
+        assert "benchmark_case_agent_closeout" in prompt
+        assert "quota spend-slot" in prompt
+        assert "--source adapter --execute" in prompt
         assert "Read-only LoopX calls" in prompt
+        assert "state edits without a spend event" in prompt
         assert "Do not answer with prose only" in prompt
         assert (
             trace["last_decision"]
@@ -3602,6 +3615,9 @@ def test_skillsbench_runner_prerequisites_are_compacted() -> None:
             "benchflow_final_verifier_timeout_triggered": True,
             "benchflow_final_verifier_timeout_raw_command_recorded": False,
             "benchflow_final_verifier_timeout_raw_output_recorded": False,
+            "remote_command_file_bridge_agent_todo_closeout_count": 4,
+            "remote_command_file_bridge_agent_refresh_state_count": 3,
+            "remote_command_file_bridge_agent_quota_spend_slot_count": 2,
             "benchflow_setup_stall_cleanup_requested": True,
             "benchflow_setup_stall_cleanup_raw_logs_read": False,
             "benchflow_setup_stall_cleanup_status": "terminated",
@@ -3653,6 +3669,9 @@ def test_skillsbench_runner_prerequisites_are_compacted() -> None:
                 "benchflow_final_verifier_timeout_triggered": True,
                 "benchflow_final_verifier_timeout_raw_command_recorded": False,
                 "benchflow_final_verifier_timeout_raw_output_recorded": False,
+                "remote_command_file_bridge_agent_todo_closeout_count": 4,
+                "remote_command_file_bridge_agent_refresh_state_count": 3,
+                "remote_command_file_bridge_agent_quota_spend_slot_count": 2,
                 "benchflow_setup_stall_cleanup_requested": True,
                 "benchflow_setup_stall_cleanup_raw_logs_read": False,
                 "benchflow_setup_stall_cleanup_status": "terminated",
@@ -3688,6 +3707,166 @@ def test_skillsbench_runner_plan_supports_product_mode_routes() -> None:
             assert plan["rollout_name"] == (
                 f"software-dependency-audit__{suffix}"
             ), plan
+
+
+def test_loopx_product_mode_full_run_requires_canonical_driver() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"),
+            "--task-id",
+            "software-dependency-audit",
+            "--route",
+            "loopx-product-mode",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 2, result
+    payload = json.loads(result.stderr)
+    assert payload["error_type"] == "SkillsBenchProductModeCanonicalDriverRequired", (
+        payload
+    )
+    assert payload["canonical_product_mode_lifecycle_driver_required"] is True, payload
+    assert "--host-local-acp-launch" in payload["next_action"], payload
+    assert payload["raw_trajectory_recorded"] is False, payload
+
+
+def test_loopx_case_init_failure_blocker_is_public_safe() -> None:
+    assert (
+        _loopx_case_init_failure_blocker(
+            "loopx_case_init_phase:ensure_cli\n"
+            "LoopX local source install requested but python is missing"
+        )
+        == "loopx_case_python_missing"
+    )
+    assert (
+        _loopx_case_init_failure_blocker(
+            "loopx_case_init_phase:ensure_cli\n"
+            "/usr/bin/env: 'bash': No such file or directory"
+        )
+        == "loopx_case_bash_missing"
+    )
+    assert (
+        _loopx_case_init_failure_blocker("ModuleNotFoundError: No module named loopx")
+        == "loopx_case_source_import_failed"
+    )
+
+
+def test_product_mode_case_state_seed_runs_after_host_local_sandbox_install() -> None:
+    source = (REPO_ROOT / "scripts" / "skillsbench_automation_loop.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'host_local_acp_install_stage"] = "seed_loopx_case_state"' in source
+    assert '"loopx_source_upload_fallback"' in source
+    assert "env.is_file(source_cli)" in source
+    assert "await upload_dir(staged_source" in source
+    assert "host_local_acp_after_sandbox_install" in source
+    assert "host_local_acp_rollout_planes_available" in source
+    assert "benchflow_rollout_module._snapshot_build_config" in source
+    assert "benchflow_rollout_module.deploy_skills" in source
+    assert (
+        'if args.route == "loopx-product-mode" and not args.host_local_acp_launch:'
+        in source
+    )
+
+
+def test_loopx_source_mount_contract_uses_real_cli_source_not_local_installer() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-source-contract-") as tmp:
+        source_dir = Path(tmp)
+        (source_dir / "loopx").mkdir()
+        (source_dir / "loopx" / "cli.py").write_text("# source fixture\n")
+        args = parse_args(
+            [
+                "--route",
+                "loopx-product-mode",
+                "--loopx-source-dir",
+                str(source_dir),
+            ]
+        )
+        contract = _loopx_source_mount_contract(args)
+        assert contract["requested"] is True
+        assert contract["ready"] is True
+        assert contract["status"] == "ready"
+
+
+def test_host_local_product_mode_uses_source_upload_not_docker_bind_mount() -> None:
+    args = parse_args(
+        [
+            "--route",
+            "loopx-product-mode",
+            "--host-local-acp-launch",
+            "--remote-command-file-bridge-ready",
+            "--loopx-source-dir",
+            str(REPO_ROOT),
+        ]
+    )
+    assert _loopx_source_mount_contract(args)["ready"] is True
+    assert _loopx_source_mounts(args) == []
+    assert _loopx_case_source_path_for_container(args) == "/app/.loopx-source"
+
+
+def test_host_local_product_mode_auto_bridge_keeps_lifecycle_checkpoint_args() -> None:
+    args = parse_args(
+        [
+            "--route",
+            "loopx-product-mode",
+            "--host-local-acp-launch",
+            "--remote-command-file-bridge-ready",
+            "--task-id",
+            "3d-scan-calc",
+        ]
+    )
+    command = _host_local_acp_launch_command(args, build_plan(args))
+    assert "--loopx-workflow-lifecycle-checkpoint" in command
+    assert "--loopx-case-goal-id" in command
+    assert "--loopx-case-cli-path" in command
+    assert "--remote-command-file-bridge-command" not in command
+
+
+def test_host_local_acp_connect_contract_matches_benchflow_runtime() -> None:
+    source = (REPO_ROOT / "scripts" / "skillsbench_automation_loop.py").read_text(
+        encoding="utf-8"
+    )
+    assert "benchflow.agents.protocol" not in source
+    assert "ACPSessionAdapter" not in source
+    assert ") -> tuple[Any, Any, str]:" in source
+    assert "return client, session, agent_name" in source
+    assert 'if "mcp_servers" in inspect.signature(client.session_new).parameters:' in source
+    assert "client.session_new(cwd=agent_cwd, mcp_servers=mcp_servers)" not in source
+
+
+def test_loopx_source_upload_subset_is_public_safe_and_minimal() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-source-subset-") as tmp:
+        source_dir = Path(tmp) / "checkout"
+        target_dir = Path(tmp) / "upload"
+        (source_dir / "loopx").mkdir(parents=True)
+        (source_dir / "loopx" / "cli.py").write_text("# source fixture\n")
+        (source_dir / "scripts").mkdir()
+        (source_dir / "scripts" / "install-local.sh").write_text("# old installer\n")
+        target_dir.mkdir()
+        file_count = _copy_loopx_source_subset(source_dir, target_dir)
+        assert file_count == 1
+        assert (target_dir / "loopx" / "cli.py").exists()
+        assert not (target_dir / "scripts" / "install-local.sh").exists()
+
+
+def test_remote_bridge_auto_wiring_pending_is_not_final_failure_attribution() -> None:
+    prereqs = {
+        "remote_command_file_bridge_agent_operation_trace_required": True,
+        "remote_command_file_bridge_agent_operation_trace_satisfied": False,
+        "remote_command_file_bridge_agent_operation_trace_status": (
+            "relay_generated_wrapper_pending_prompt"
+        ),
+        "remote_command_file_bridge_consumption_status": (
+            "sandbox_bridge_auto_wiring_pending"
+        ),
+        "remote_command_file_bridge_agent_operation_trace_count": 0,
+        "remote_command_file_bridge_agent_request_count": 0,
+    }
+    assert _runner_prerequisite_failure_attribution(prereqs) is None
 
 
 def test_skillsbench_task_staging_metadata_is_compacted() -> None:
@@ -7655,6 +7834,15 @@ if __name__ == "__main__":
     test_skillsbench_volume_mount_failure_attribution()
     test_skillsbench_runner_plan_supports_baseline_route()
     test_skillsbench_runner_plan_supports_product_mode_routes()
+    test_loopx_product_mode_full_run_requires_canonical_driver()
+    test_loopx_case_init_failure_blocker_is_public_safe()
+    test_product_mode_case_state_seed_runs_after_host_local_sandbox_install()
+    test_loopx_source_mount_contract_uses_real_cli_source_not_local_installer()
+    test_host_local_product_mode_uses_source_upload_not_docker_bind_mount()
+    test_host_local_product_mode_auto_bridge_keeps_lifecycle_checkpoint_args()
+    test_host_local_acp_connect_contract_matches_benchflow_runtime()
+    test_loopx_source_upload_subset_is_public_safe_and_minimal()
+    test_remote_bridge_auto_wiring_pending_is_not_final_failure_attribution()
     test_skillsbench_codex_acp_model_control_warning()
     test_skillsbench_runner_prerequisites_are_compacted()
     test_skillsbench_task_staging_metadata_is_compacted()
