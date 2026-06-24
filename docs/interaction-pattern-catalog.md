@@ -1216,9 +1216,11 @@ loopx todo complete \
 If the self-merged lane has an obvious same-scope continuation, the completion
 may atomically add a successor and claim it back to the same side agent. If the
 work is broad, risky, unclear, or outside the side scope, completion must create
-a primary review todo claimed by the primary agent instead. `claimed_by` remains
-a soft owner and not a permission grant: quota, user gates, public/private
-boundary checks, write scopes, and repository rules still apply.
+a review todo claimed by the configured side-agent review agent when
+`coordination.side_agent_review_agent` is set, otherwise by the primary agent.
+`claimed_by` remains a soft owner and not a permission grant: quota, user
+gates, public/private boundary checks, write scopes, and repository rules still
+apply.
 
 Because prompt text alone is not a reliable guard, `quota should-run --agent-id
 <side-agent-id>` should also project `workspace_guard` when the side agent is

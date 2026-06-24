@@ -25,6 +25,8 @@ SIDE_TODO = "Refine todo ownership contract from a side worktree."
 SIDE_CONTINUATION_TODO = "Continue the small side-agent productization lane after self-merge."
 SIDE_REVIEW_TODO = "Refine todo ownership contract with primary review required."
 REVIEW_TODO = "Primary agent review, verify, and merge the side-agent ownership contract work."
+SIDE_BYPASS_REVIEW_SOURCE_TODO = "Refine todo ownership contract with configured side-bypass review."
+SIDE_BYPASS_REVIEW_TODO = "Side-bypass review, verify, and continue the side-agent ownership work."
 HANDOFF_SOURCE_TODO = "Prepare successor handoff routing from the primary agent."
 HANDOFF_SUCCESSOR_TODO = "Continue successor handoff routing from the side agent."
 UNCLAIMED_SOURCE_TODO = "Prepare an unclaimed successor routing check."
@@ -127,7 +129,66 @@ def parsed_items(state_file: Path) -> list[dict]:
     return fields["agent_todos"]["items"]
 
 
+def assert_configured_side_agent_review() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-side-agent-review-smoke-") as tmp:
+        root = Path(tmp)
+        registry_path, state_file = write_fixture(root)
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry["goals"][0]["coordination"]["side_agent_review_agent"] = "codex-side-bypass"
+        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        side_bypass_review_added = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            SIDE_BYPASS_REVIEW_SOURCE_TODO,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--task-class",
+            "advancement_task",
+            "--action-kind",
+            "contract_refine",
+        )
+        side_bypass_review_completed = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            side_bypass_review_added["todo_id"],
+            "--claimed-by",
+            "codex-side-bypass",
+            "--evidence",
+            "side-worktree-contract-diff",
+            "--next-agent-todo",
+            SIDE_BYPASS_REVIEW_TODO,
+            "--next-claimed-by",
+            "codex-side-bypass",
+        )
+        assert side_bypass_review_completed["changed"] is True, side_bypass_review_completed
+        side_bypass_successor_id = side_bypass_review_completed["next_todos"][0]["todo_id"]
+        assert side_bypass_review_completed["next_todos"][0]["claimed_by"] == "codex-side-bypass", (
+            side_bypass_review_completed
+        )
+        assert side_bypass_review_completed["next_todos"][0]["blocks_agent"] == "codex-side-bypass", (
+            side_bypass_review_completed
+        )
+        side_bypass_successor = next(
+            item for item in parsed_items(state_file) if item["todo_id"] == side_bypass_successor_id
+        )
+        assert side_bypass_successor["action_kind"] == "side_agent_review", side_bypass_successor
+        assert side_bypass_successor["claimed_by"] == "codex-side-bypass", side_bypass_successor
+
+
 def main() -> int:
+    assert_configured_side_agent_review()
+
     with tempfile.TemporaryDirectory(prefix="loopx-todo-lifecycle-smoke-") as tmp:
         root = Path(tmp)
         registry_path, state_file = write_fixture(root)
@@ -350,7 +411,7 @@ def main() -> int:
             "--next-claimed-by",
             "codex-side-bypass",
         )
-        assert "side-agent completion review todo must be claimed_by primary_agent" in (
+        assert "side-agent completion review todo must be claimed_by side_agent_review_agent='codex-main-control'" in (
             side_review_claim_error["error"]
         ), side_review_claim_error
 

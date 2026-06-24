@@ -155,7 +155,8 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
             "For complete/supersede with --next-agent-todo, soft-claim the successor "
             "todo for a registered agent. If omitted, claimed successors inherit the "
             "completed/superseded todo owner when available; side-agent review handoffs "
-            "default to primary_agent."
+            "default to coordination.side_agent_review_agent when configured, otherwise "
+            "primary_agent."
         ),
     )
     todo_parser.add_argument(
@@ -164,7 +165,7 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "For todo complete by a side agent, explicitly record that a small validated "
             "side-agent change was self-merged; requires --evidence and bypasses the "
-            "default primary review successor todo."
+            "default review successor todo."
         ),
     )
     todo_parser.add_argument(

@@ -260,21 +260,26 @@ loopx todo complete \
   --todo-id <todo_id> \
   --claimed-by codex-side-bypass \
   --evidence "<public-safe artifact or result>" \
-  --next-agent-todo "Primary agent review, verify, and merge this side-agent work." \
-  --next-claimed-by codex-main-control
+  --next-agent-todo "Review, verify, and merge this side-agent work."
 ```
 
 If `--claimed-by` names a side agent, broad side-agent completion defaults to
-requiring a successor primary review todo and defaults that successor todo's
-`claimed_by` to the goal's `primary_agent`. Passing `--next-claimed-by` is
-allowed only when it matches the primary agent. This keeps broad side-agent
-handoff visible to the shared control plane.
+requiring a successor review todo. By default that successor is claimed by the
+goal's `primary_agent`. A goal may instead set
+`coordination.side_agent_review_agent` to another registered agent, such as a
+side-bypass reviewer; in that case the successor review todo defaults to that
+agent and `--next-claimed-by` is allowed only when it matches the configured
+review agent. This keeps broad side-agent handoff visible to the shared control
+plane without hard-coding the primary agent as the only review surface.
 
-That generated primary review successor also records `action_kind=primary_review`,
-`blocks_agent=<side-agent-id>`, and `unblocks_todo_id=<completed-todo-id>`.
-These fields are a small unblock hint, not a general dependency graph: they let
-quota and dashboards recognize that reviewing this todo releases another agent's
-lane without parsing prose or PR numbers.
+The generated review successor records `action_kind=primary_review` for the
+default primary-agent path, or `action_kind=side_agent_review` when
+`coordination.side_agent_review_agent` is configured. It also records
+`blocks_agent=<side-agent-id>` and
+`unblocks_todo_id=<completed-todo-id>`. These fields are a small unblock hint,
+not a general dependency graph: they let quota and dashboards recognize that
+reviewing this todo releases another agent's lane without parsing prose or PR
+numbers.
 
 For primary-agent completions and self-merged same-lane continuations, a
 successor created with `--next-agent-todo` inherits the completed todo's
