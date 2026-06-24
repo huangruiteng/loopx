@@ -600,9 +600,9 @@ prompt, then let the agent soft-claim matching todos with a registered
 `--claimed-by` id:
 
 ```bash
-loopx configure-goal --goal-id your-project-goal \
-  --registered-agent codex-main-control \
-  --registered-agent codex-side-bypass \
+loopx register-agent --goal-id your-project-goal \
+  --agent-id codex-main-control \
+  --agent-id codex-side-bypass \
   --primary-agent codex-main-control \
   --execute
 
@@ -617,6 +617,14 @@ surface an upgrade error instead of silently running without identity or
 scope. Old goal registries without `coordination.registered_agents` also fail
 closed when a scoped heartbeat or todo claim names an agent; register the agent
 identity first instead of letting workers invent claim ids.
+
+`register-agent` resolves the existing global entry's `source_registry`, writes
+the project-local source of truth, and then syncs the shared global projection.
+If `~/.codex/loopx/registry.global.json` is not writable, the command fails
+before changing the source registry and reports a `global_registry_write_denied`
+health error. Fix the shared runtime permission or run from a host that can
+write the LoopX runtime root, then rerun the command. Use `--no-global-sync`
+only when you intentionally want an explicit local-only connection.
 
 Set exactly one `coordination.primary_agent`: that primary agent owns final
 review, verification, merge, publication, and high-risk side-agent review. Side

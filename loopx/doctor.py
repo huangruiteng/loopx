@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .paths import DEFAULT_RUNTIME_ROOT
+from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path
+from .registry_writability import probe_registry_write_path
 
 
 PROMOTION_READINESS_CLASSIFICATIONS = {
@@ -344,6 +345,8 @@ def collect_doctor() -> dict[str, Any]:
         repo_root=repo_root,
         skills=skills,
     )
+    default_global_registry = global_registry_path(DEFAULT_RUNTIME_ROOT)
+    global_registry_writability = probe_registry_write_path(default_global_registry, create_parent=True)
     checks = [
         {
             "id": "command_on_path",
@@ -425,6 +428,14 @@ def collect_doctor() -> dict[str, Any]:
                 f"{name}={skill.get('required_phrases')}" for name, skill in sorted(skills.items())
             ),
         },
+        {
+            "id": "global_registry_writable",
+            "required": True,
+            "ok": bool(global_registry_writability.get("ok")),
+            "detail": str(default_global_registry)
+            if global_registry_writability.get("ok")
+            else str(global_registry_writability.get("error") or default_global_registry),
+        },
     ]
     return {
         "ok": all(check["ok"] for check in checks if check["required"]),
@@ -449,6 +460,7 @@ def collect_doctor() -> dict[str, Any]:
             "wrapper_script": str(wrapper_script),
         },
         "release_provenance": release_provenance,
+        "global_registry_writability": global_registry_writability,
         "install_freshness": install_freshness,
         "upgrade_hint": install_freshness,
         "skill": {
@@ -480,6 +492,7 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
         f"- installed_skill: `{(payload.get('skill') or {}).get('path')}`",
         f"- installed_skill_delivery_hints: `{(payload.get('skill') or {}).get('delivery_hints')}`",
         f"- installed_required_skills: `{','.join(sorted((payload.get('skills') or {}).keys()))}`",
+        f"- global_registry_writable: `{(payload.get('global_registry_writability') or {}).get('ok')}`",
         f"- user_local_bin_on_path: `{(payload.get('path') or {}).get('user_local_bin_on_path')}`",
         f"- python: `{(payload.get('python') or {}).get('executable')}`",
         "",
@@ -552,4 +565,7 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
         )
     if not payload.get("ok"):
         lines.extend(["", "## Fix", str(payload.get("fix"))])
+        writable = payload.get("global_registry_writability")
+        if isinstance(writable, dict) and not writable.get("ok") and writable.get("recommended_action"):
+            lines.append(str(writable.get("recommended_action")))
     return "\n".join(lines)

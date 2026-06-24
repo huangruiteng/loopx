@@ -19,6 +19,7 @@ from .orchestration import (
     MULTI_SUBAGENT_ORCHESTRATION_MODE,
 )
 from .paths import DEFAULT_RUNTIME_ROOT, rel_or_abs
+from .registry_writability import probe_registry_write_path
 from .todos import add_todo_to_lines
 
 
@@ -592,7 +593,74 @@ def bootstrap_project(
             }
         )
 
+    candidates = onboarding_candidates(onboarding_scan)
+    accept_candidate_commands = [
+        todo_add_command(
+            project=project,
+            registry_path=registry_path,
+            goal_id=goal_id,
+            candidate=candidate,
+        )
+        for candidate in candidates
+    ]
+
     global_sync: dict[str, Any] | None = None
+    global_writability: dict[str, Any] | None = None
+    if sync_global and not dry_run:
+        global_writability = probe_registry_write_path(runtime_root / "registry.global.json", create_parent=True)
+        if not global_writability.get("ok"):
+            for action in actions:
+                if action.get("path") == str(runtime_root / "registry.global.json"):
+                    action["action"] = "blocked-write-denied"
+            global_sync = {
+                "ok": False,
+                "enabled": True,
+                "dry_run": dry_run,
+                "global_registry": str(runtime_root / "registry.global.json"),
+                "synced_goal_ids": [],
+                "wrote": False,
+                "write_denied": True,
+                "error_kind": "global_registry_write_denied",
+                "global_registry_writability": global_writability,
+                "requires_global_registry_repair": True,
+                "requires_host_permission": bool(global_writability.get("requires_host_permission")),
+                "recommended_action": global_writability.get("recommended_action"),
+            }
+            return {
+                "ok": False,
+                "dry_run": dry_run,
+                "project": str(project),
+                "goal_id": goal_id,
+                "registry": str(registry_path),
+                "state_file": str(state_file),
+                "goal_doc": str(goal_doc) if goal_doc else None,
+                "goal_doc_exists": bool(goal_doc and goal_doc.exists()),
+                "runtime_root": str(runtime_root),
+                "registry_goal_action": registry_goal_action,
+                "state_action": state_action,
+                "execution_profile": execution_profile,
+                "onboarding_scan": onboarding_scan,
+                "onboarding_agent_todo_candidates": candidates,
+                "accept_onboarding_agent_todos": accept_onboarding_agent_todos,
+                "begin_autonomous_advance": begin_autonomous_advance,
+                "onboarding_acceptance_required": bool(onboarding_scan and not accept_onboarding_agent_todos),
+                "autonomous_advance_choice_required": bool(onboarding_scan and not begin_autonomous_advance),
+                "onboarding_todos_written": False,
+                "accept_candidate_commands": accept_candidate_commands,
+                "global_sync": global_sync,
+                "actions": actions,
+                "next_commands": [
+                    "Fix global registry write access, then rerun this command.",
+                    "Use --no-global-sync only for an explicit local-only setup.",
+                ],
+                "install_repair_command": NO_CLONE_INSTALL_REPAIR_COMMAND,
+                "install_repair_note": (
+                    "If this local LoopX install is missing or stale, rerun the no-clone installer, "
+                    "refresh PATH, and confirm with loopx doctor before continuing project delivery."
+                ),
+                "private_boundary_note": "Add .loopx/ and .codex/goals/ to the project .gitignore if the goal state contains private evidence.",
+                "error": str(global_writability.get("error") or "global registry is not writable"),
+            }
     if not dry_run:
         write_json(registry_path, registry)
         if state_action in {"created", "replaced"}:
@@ -620,16 +688,6 @@ def bootstrap_project(
                 allow_route_replacement=allow_global_route_replacement,
             )
 
-    candidates = onboarding_candidates(onboarding_scan)
-    accept_candidate_commands = [
-        todo_add_command(
-            project=project,
-            registry_path=registry_path,
-            goal_id=goal_id,
-            candidate=candidate,
-        )
-        for candidate in candidates
-    ]
     return {
         "ok": True,
         "dry_run": dry_run,

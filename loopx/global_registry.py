@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import errno
 import json
 import os
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ from .authority import compact_authority_registry
 from .history import load_registry
 from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
 from .registry import registry_goals
+from .registry_writability import is_write_denied_error, probe_registry_write_path
 
 
 ATTENTION_OVERRIDE_FIELDS = (
@@ -43,6 +45,61 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temp_path.replace(path)
+
+
+def global_write_denied_payload(
+    *,
+    registry_path: Path,
+    global_path: Path,
+    runtime_root: Path,
+    dry_run: bool,
+    goals: list[dict[str, Any]],
+    merged_goals: list[Any],
+    actions: list[str],
+    attempted_goal_ids: list[str],
+    route_collisions: list[dict[str, Any]],
+    allow_route_replacement: bool,
+    backup_path: str | None,
+    synced_at: str,
+    exc: BaseException,
+    writability: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    errno_value = getattr(exc, "errno", None)
+    return {
+        "ok": False,
+        "dry_run": dry_run,
+        "skipped": False,
+        "registry": str(registry_path),
+        "global_registry": str(global_path),
+        "runtime_root": str(runtime_root),
+        "source_goal_count": len(goals),
+        "global_goal_count": len(merged_goals),
+        "synced_goal_ids": [],
+        "attempted_goal_ids": attempted_goal_ids,
+        "actions": actions,
+        "route_collisions": route_collisions,
+        "route_replacement_allowed": allow_route_replacement,
+        "backup_path": backup_path,
+        "updated_at": synced_at,
+        "wrote": False,
+        "write_denied": True,
+        "error_kind": "global_registry_write_denied",
+        "errno": errno_value,
+        "error": str(exc),
+        "project_registry_usable": True,
+        "fallback_registry": str(registry_path),
+        "global_registry_writability": writability or {},
+        "requires_global_registry_repair": True,
+        "requires_host_permission": bool(
+            (writability or {}).get("requires_host_permission") or is_write_denied_error(exc)
+        ),
+        "recommended_action": (
+            f"Fix write access for `{global_path}` and rerun `loopx sync-global` "
+            f"from `{registry_path}`. Project-local state is still available through "
+            f"`loopx --registry {registry_path} ...`, but shared status/quota is not healthy "
+            "until the global registry can be written."
+        ),
+    }
 
 
 def sanitize_goal_for_global(goal: dict[str, Any], *, source_registry: Path, synced_at: str) -> dict[str, Any]:
@@ -236,11 +293,7 @@ def sync_project_registry_to_global(
         incoming,
         allow_route_replacement=allow_route_replacement,
     )
-    backup_path = (
-        write_recovery_backup(global_path, existing, dry_run=dry_run)
-        if collisions and allow_route_replacement
-        else None
-    )
+    backup_path = None
     payload = dict(existing)
     payload["schema_version"] = str(payload.get("schema_version") or project_registry.get("schema_version") or "0.1")
     payload["updated_at"] = synced_at
@@ -248,8 +301,59 @@ def sync_project_registry_to_global(
     payload["registry_role"] = "global-local"
     payload["goals"] = merged_goals
 
+    writability = None
     if not dry_run:
-        write_json(global_path, payload)
+        writability = probe_registry_write_path(global_path, create_parent=True)
+        if not writability.get("ok"):
+            exc = PermissionError(
+                writability.get("errno") if isinstance(writability.get("errno"), int) else errno.EPERM,
+                str(writability.get("error") or "global registry is not writable"),
+                str(global_path),
+            )
+            return global_write_denied_payload(
+                registry_path=registry_path,
+                global_path=global_path,
+                runtime_root=runtime_root,
+                dry_run=dry_run,
+                goals=goals,
+                merged_goals=merged_goals,
+                actions=actions,
+                attempted_goal_ids=synced_ids,
+                route_collisions=collisions,
+                allow_route_replacement=allow_route_replacement,
+                backup_path=backup_path,
+                synced_at=synced_at,
+                exc=exc,
+                writability=writability,
+            )
+
+    try:
+        backup_path = (
+            write_recovery_backup(global_path, existing, dry_run=dry_run)
+            if collisions and allow_route_replacement
+            else None
+        )
+        if not dry_run:
+            write_json(global_path, payload)
+    except OSError as exc:
+        if not is_write_denied_error(exc):
+            raise
+        return global_write_denied_payload(
+            registry_path=registry_path,
+            global_path=global_path,
+            runtime_root=runtime_root,
+            dry_run=dry_run,
+            goals=goals,
+            merged_goals=merged_goals,
+            actions=actions,
+            attempted_goal_ids=synced_ids,
+            route_collisions=collisions,
+            allow_route_replacement=allow_route_replacement,
+            backup_path=backup_path,
+            synced_at=synced_at,
+            exc=exc,
+            writability=writability,
+        )
 
     return {
         "ok": True,
@@ -267,6 +371,7 @@ def sync_project_registry_to_global(
         "backup_path": backup_path,
         "updated_at": synced_at,
         "wrote": not dry_run,
+        "global_registry_writability": writability or {},
     }
 
 
@@ -285,6 +390,12 @@ def render_global_sync_markdown(payload: dict[str, Any]) -> str:
     ]
     if payload.get("error"):
         lines.append(f"- error: {payload.get('error')}")
+        if payload.get("write_denied"):
+            lines.append(f"- error_kind: `{payload.get('error_kind')}`")
+            lines.append(f"- fallback_registry: `{payload.get('fallback_registry')}`")
+            lines.append(f"- project_registry_usable: `{payload.get('project_registry_usable')}`")
+            if payload.get("recommended_action"):
+                lines.append(f"- recommended_action: {payload.get('recommended_action')}")
         return "\n".join(lines)
     if payload.get("reason"):
         lines.append(f"- reason: {payload.get('reason')}")
