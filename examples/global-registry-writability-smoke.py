@@ -167,6 +167,8 @@ def assert_register_agent_fails_before_source_write(root: Path) -> None:
     assert data["ok"] is False, data
     assert data["written"] is False, data
     assert data["global_sync"]["write_denied"] is True, data
+    assert data["host_loop_activation"]["activated"] is False, data
+    assert data["host_loop_activation"]["recommended_action"], data
     assert only_goal(source_registry)["coordination"]["registered_agents"] == ["codex-main-control"]
 
 

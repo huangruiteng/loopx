@@ -17,6 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import showcaseCatalog from "../../../../docs/showcases/showcase-catalog.json";
+import rolloutFixture from "../../../../examples/fixtures/long-horizon-self-iteration-rollout.public.json";
 import { frontstageRoute } from "../router";
 import {
   GoalChannelProjection,
@@ -83,6 +84,50 @@ const selfIterationShowcase = showcaseCases.find(
   (item) => item.id === "2026-06-19-loopx-self-iteration",
 );
 const frontstageShowcases = showcaseCases.filter((item) => item.frontend_card);
+
+type RolloutLane = {
+  lane_id: string;
+  agent_id: string;
+  role: string;
+  display_name: string;
+};
+
+type RolloutAnimationEvent = {
+  animation_event_id: string;
+  lane_id: string;
+  kind: string;
+  title: string;
+  source_event_ids: string[];
+  state_transition?: {
+    from_state?: string;
+    to_state?: string;
+  };
+  human_effect?: {
+    decision_id?: string;
+    changes?: string[];
+  };
+  confidence: string;
+  display_hint?: string;
+  evidence_refs?: string[];
+  inference_reason?: string;
+};
+
+type LongHorizonRolloutFixture = {
+  schema_version: string;
+  fixture_id: string;
+  lanes: RolloutLane[];
+  animation_events: RolloutAnimationEvent[];
+  truth_contract: {
+    event_ledger_is_source_of_truth: boolean;
+    projection_is_writable: boolean;
+    write_authority: string;
+  };
+  frontend_acceptance: {
+    must_render: string[];
+  };
+};
+
+const selfIterationRollout = rolloutFixture as LongHorizonRolloutFixture;
 
 type ProjectionOption = {
   goalId: string;
@@ -617,6 +662,155 @@ function ShowcaseMotionBoard() {
               </button>
             );
           })}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function rolloutKindTone(kind: string): BadgeTone {
+  if (kind === "human_gate") {
+    return "warning";
+  }
+  if (kind === "validation" || kind === "deliverable") {
+    return "success";
+  }
+  if (kind === "handoff") {
+    return "info";
+  }
+  if (kind === "synthetic_bridge") {
+    return "neutral";
+  }
+  return "neutral";
+}
+
+function SelfIterationTimelinePanel() {
+  const eventsByLane = new Map<string, RolloutAnimationEvent[]>();
+  for (const event of selfIterationRollout.animation_events) {
+    const laneEvents = eventsByLane.get(event.lane_id) ?? [];
+    laneEvents.push(event);
+    eventsByLane.set(event.lane_id, laneEvents);
+  }
+
+  const acceptance = selfIterationRollout.frontend_acceptance.must_render.slice(0, 4);
+  const eventCount = selfIterationRollout.animation_events.length;
+
+  return (
+    <Panel icon={GitBranch} title="Self-Iteration Timeline">
+      <div className="space-y-4 p-4" data-testid="frontstage-self-iteration-timeline">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-950">Three-lane control-plane story</h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+              A public fixture turns LoopX self-iteration into visible lanes: primary control, product capability, and implementation handoff, with human gates and evidence writeback kept explicit.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="info">{selfIterationRollout.lanes.length} agent lanes</Badge>
+            <Badge variant="success">{eventCount} timeline events</Badge>
+            <Badge variant="neutral">public fixture</Badge>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-slate-900 bg-slate-950 p-3 text-white">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-normal text-cyan-200">
+                Public rollout fixture
+              </div>
+              <p className="mt-1 text-sm font-semibold leading-6 text-white">
+                Human decisions change lane ownership; evidence makes the next run safe to resume.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {acceptance.map((item) => (
+                <Badge key={item} variant="neutral">{item}</Badge>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          {selfIterationRollout.lanes.map((lane) => {
+            const events = eventsByLane.get(lane.lane_id) ?? [];
+            return (
+              <article
+                className="min-w-0 rounded-md border border-slate-200 bg-slate-50"
+                data-testid="frontstage-self-iteration-lane"
+                key={lane.lane_id}
+              >
+                <div className="border-b border-slate-200 bg-white px-3 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="info">{lane.role}</Badge>
+                    <Badge variant="neutral">{lane.lane_id}</Badge>
+                  </div>
+                  <h4 className="mt-2 text-sm font-semibold leading-6 text-slate-950">{lane.display_name}</h4>
+                  <p className="mt-1 break-words text-xs font-medium leading-5 text-slate-500">{lane.agent_id}</p>
+                </div>
+                <div className="space-y-2 p-3">
+                  {events.map((event) => {
+                    const isBridge = event.display_hint === "dashed_edge" || event.kind === "synthetic_bridge";
+                    return (
+                      <div
+                        className={cn(
+                          "rounded-md border bg-white px-3 py-2",
+                          isBridge ? "border-dashed border-slate-300" : "border-slate-200",
+                        )}
+                        data-testid="frontstage-self-iteration-event"
+                        key={event.animation_event_id}
+                      >
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant={rolloutKindTone(event.kind)}>{event.kind}</Badge>
+                          <Badge variant="neutral">{event.confidence}</Badge>
+                        </div>
+                        <div className="mt-2 text-sm font-semibold leading-6 text-slate-950">{event.title}</div>
+                        {event.state_transition ? (
+                          <div className="mt-1 text-xs font-medium leading-5 text-slate-600">
+                            {event.state_transition.from_state ?? "n/a"} -&gt; {event.state_transition.to_state ?? "n/a"}
+                          </div>
+                        ) : null}
+                        {event.human_effect?.decision_id ? (
+                          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-medium leading-5 text-amber-950">
+                            human gate: {event.human_effect.decision_id}
+                          </div>
+                        ) : null}
+                        {isBridge ? (
+                          <div data-testid="frontstage-self-iteration-dashed-bridge" className="mt-2 text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+                            inferred display bridge
+                          </div>
+                        ) : null}
+                        {event.evidence_refs?.length ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {event.evidence_refs.slice(0, 2).map((ref) => (
+                              <Badge key={ref} variant="success">{ref}</Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div
+          className="grid gap-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-xs font-medium leading-5 text-slate-600 md:grid-cols-3"
+          data-testid="frontstage-self-iteration-truth-contract"
+        >
+          <div>
+            <span className="font-semibold text-slate-950">Truth source: </span>
+            {selfIterationRollout.truth_contract.event_ledger_is_source_of_truth ? "event ledger" : "fixture"}
+          </div>
+          <div>
+            <span className="font-semibold text-slate-950">Projection: </span>
+            {selfIterationRollout.truth_contract.projection_is_writable ? "writable" : "read-only"}
+          </div>
+          <div>
+            <span className="font-semibold text-slate-950">Write authority: </span>
+            {selfIterationRollout.truth_contract.write_authority}
+          </div>
         </div>
       </div>
     </Panel>
@@ -1380,6 +1574,8 @@ function FrontstageRoute({
           </div>
 
           {!isDeveloperMode ? <EfficiencyEvidencePanel /> : null}
+
+          {isShowcaseMode ? <SelfIterationTimelinePanel /> : null}
 
           {!isDeveloperMode ? <ShowcaseMotionBoard /> : null}
 

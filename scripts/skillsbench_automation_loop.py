@@ -1491,11 +1491,7 @@ def install_benchflow_verifier_prep_timeout_override(
                 and _looks_like_final_verifier_exec(args, kwargs)
             ):
                 current_timeout = kwargs.get("timeout_sec")
-                if (
-                    not isinstance(current_timeout, (int, float))
-                    or current_timeout <= 0
-                    or current_timeout > final_verifier_timeout_sec
-                ):
+                if current_timeout != final_verifier_timeout_sec:
                     kwargs = dict(kwargs)
                     kwargs["timeout_sec"] = final_verifier_timeout_sec
                     final_timeout_override_count += 1

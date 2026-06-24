@@ -102,9 +102,13 @@ The route currently exposes these durable anchors:
   `frontstage-artifacts`, and `frontstage-timeline` for the operator workspace.
 - `frontstage-showcase-motion-beam` and `frontstage-state-flow-beam` for
   human-gate and state-flow animation checks.
+- `frontstage-self-iteration-timeline`, `frontstage-self-iteration-lane`,
+  `frontstage-self-iteration-event`, `frontstage-self-iteration-dashed-bridge`,
+  and `frontstage-self-iteration-truth-contract` for the public three-lane
+  self-iteration timeline.
 - `examples/fixtures/long-horizon-self-iteration-rollout.public.json` for a
   public-safe multi-lane rollout fixture with human gate, handoff, validation,
-  and inferred display bridge coverage.
+  inferred display bridge coverage, and visible frontstage consumption.
 
 `npm run smoke:frontstage-browser` remains the visual acceptance check for this
 surface. It captures desktop and mobile screenshots, checks animated showcase
@@ -115,4 +119,4 @@ lane filtering, goal selection, and loopback-source rejection.
 CSS shell classes, package scripts, and README entry points aligned.
 
 `python3 examples/long-horizon-self-iteration-rollout-fixture-smoke.py` keeps
-the public fixture safe and useful for future timeline consumption.
+the public fixture safe and useful for frontstage timeline consumption.

@@ -315,6 +315,15 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- control_plane: {payload.get('control_plane_summary')}")
     if payload.get("orchestration_summary"):
         lines.append(f"- orchestration: {payload.get('orchestration_summary')}")
+    activation = payload.get("host_loop_activation")
+    if isinstance(activation, dict):
+        lines.append(
+            f"- host_loop_activation: `{activation.get('host_surface')}` "
+            f"status=`{activation.get('status')}` "
+            f"activated=`{activation.get('activated')}`"
+        )
+        if activation.get("activated") is not True:
+            lines.append(f"- host_loop_action: {activation.get('recommended_action')}")
     lines.extend(
         [
             "",

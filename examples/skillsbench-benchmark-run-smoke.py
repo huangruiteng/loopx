@@ -190,6 +190,50 @@ def test_skillsbench_final_verifier_timeout_override_records_public_state() -> N
     assert trace["benchflow_final_verifier_timeout_triggered"] is True, trace
 
 
+def test_skillsbench_final_verifier_timeout_override_can_extend_timeout() -> None:
+    class FakeRollout:
+        def __init__(self) -> None:
+            self._env = types.SimpleNamespace()
+
+        async def verify(self) -> None:
+            return await self._env.exec("/verifier/test.sh", timeout_sec=900)
+
+        async def soft_verify(self) -> None:
+            return await self._env.exec("echo soft", timeout_sec=10)
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def fake_exec(command: str, **kwargs: Any) -> Any:
+        calls.append((command, dict(kwargs)))
+        return types.SimpleNamespace(return_code=0)
+
+    rollout = FakeRollout()
+    rollout._env.exec = fake_exec
+    plan = {"runner_prerequisites": {}}
+    trace: dict[str, Any] = {}
+    original_verify, original_soft_verify = install_benchflow_verifier_prep_timeout_override(
+        FakeRollout,
+        timeout_sec=120,
+        final_verifier_timeout_sec=1800,
+        plan=plan,
+        trace=trace,
+    )
+    try:
+        asyncio.run(rollout.verify())
+    finally:
+        FakeRollout.verify = original_verify
+        FakeRollout.soft_verify = original_soft_verify
+
+    assert calls == [("/verifier/test.sh", {"timeout_sec": 1800})], calls
+    prereqs = plan["runner_prerequisites"]
+    assert prereqs["benchflow_final_verifier_timeout_enabled"] is True, prereqs
+    assert prereqs["benchflow_final_verifier_timeout_sec"] == 1800, prereqs
+    assert prereqs["benchflow_final_verifier_timeout_override_count"] == 1, prereqs
+    assert "benchflow_final_verifier_timeout_triggered" not in prereqs, prereqs
+    assert prereqs["benchflow_final_verifier_timeout_raw_command_recorded"] is False
+    assert "test.sh" not in json.dumps(prereqs)
+
+
 def test_skillsbench_local_driver_a2a_contract_keeps_codex_local() -> None:
     payload = build_skillsbench_local_driver_a2a_contract(
         task_id="ada-bathroom-plan-repair",

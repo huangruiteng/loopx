@@ -194,7 +194,7 @@ includes(catalogSource, '"public_safe_interactive_case"', "hardware-agent intera
 includes(catalogSource, '"interactive_page"', "hardware-agent interactive page field");
 includes(catalogSource, '"2026-06-20-creator-operator-case-spec"', "creator operator showcase case");
 
-const motionSource = sourceBetween(frontstageSource, "function ShowcaseMotionBoard", "function ShowcaseCasePackPanel", "showcase motion board");
+const motionSource = sourceBetween(frontstageSource, "function ShowcaseMotionBoard", "function rolloutKindTone", "showcase motion board");
 includes(motionSource, "frontstageShowcases", "motion board catalog source");
 includes(motionSource, "journeySegments", "motion board journey summary");
 includes(motionSource, "activeCaseId", "motion board active case state");

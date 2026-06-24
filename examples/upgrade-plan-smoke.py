@@ -20,6 +20,8 @@ from loopx.upgrade import build_upgrade_plan, prompt_digest, render_upgrade_plan
 
 GOAL_ID = "upgrade-plan-goal"
 DEFERRED_GOAL_ID = "planned-main-control"
+REGISTERED_GOAL_ID = "registered-agent-upgrade-plan-goal"
+REGISTERED_AGENT_ID = "codex-current"
 
 
 def write_fixture(root: Path) -> tuple[Path, Path]:
@@ -262,6 +264,133 @@ def write_codex_app_automation(codex_home: Path, *, prompt: str) -> Path:
     return automation_path
 
 
+def write_registered_fixture(root: Path) -> Path:
+    project = root / "registered-project"
+    runtime = root / "registered-runtime"
+    state_file = project / ".codex" / "goals" / REGISTERED_GOAL_ID / "ACTIVE_GOAL_STATE.md"
+    state_file.parent.mkdir(parents=True)
+    state_file.write_text(
+        "---\n"
+        "status: active\n"
+        "updated_at: 2026-01-01T00:00:00+00:00\n"
+        "---\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] Keep the registered-agent heartbeat prompt current.\n",
+        encoding="utf-8",
+    )
+    registry_path = project / ".loopx" / "registry.json"
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [
+                    {
+                        "id": REGISTERED_GOAL_ID,
+                        "domain": "fixture",
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": f".codex/goals/{REGISTERED_GOAL_ID}/ACTIVE_GOAL_STATE.md",
+                        "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
+                        "coordination": {
+                            "registered_agents": [REGISTERED_AGENT_ID],
+                            "primary_agent": REGISTERED_AGENT_ID,
+                        },
+                        "quota": {"compute": 1.0, "window_hours": 24},
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return registry_path
+
+
+def write_registered_codex_app_automation(codex_home: Path, *, prompt: str) -> Path:
+    automation_path = codex_home / "automations" / REGISTERED_GOAL_ID / "automation.toml"
+    automation_path.parent.mkdir(parents=True, exist_ok=True)
+    automation_path.write_text(
+        "\n".join(
+            [
+                "version = 1",
+                f'id = "{REGISTERED_GOAL_ID}"',
+                'kind = "heartbeat"',
+                'name = "Registered Agent Fixture"',
+                f"prompt = {json.dumps(prompt)}",
+                'status = "ACTIVE"',
+                'rrule = "RRULE:FREQ=MINUTELY;INTERVAL=3"',
+                'target_thread_id = "fixture-thread"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return automation_path
+
+
+def assert_registered_agent_activation_is_checked(root: Path) -> None:
+    registry_path = write_registered_fixture(root)
+    payload = build_upgrade_plan(registry_path=registry_path, cli_bin="loopx")
+    assert payload["summary"]["managed_goal_count"] == 1, payload
+    assert payload["summary"]["unknown_prompt_count"] == 1, payload
+    assert payload["summary"]["host_loop_activated_goal_count"] == 0, payload
+    assert payload["summary"]["host_loop_missing_goal_count"] == 1, payload
+    assert payload["summary"]["ready_for_default_promotion"] is False, payload
+    assert "activate missing host loops" in payload["recommended_action"], payload
+    goal = payload["managed_heartbeats"][0]
+    assert goal["requires_update"] is True, payload
+    assert goal["registered_agents"] == [REGISTERED_AGENT_ID], payload
+    assert goal["primary_agent"] == REGISTERED_AGENT_ID, payload
+    assert "thin:codex-current" in goal["generated_prompts"], payload
+    assert "thin:codex-current" in goal["installed_prompts"], payload
+    activation = goal["host_loop_activation"]
+    assert activation["status"] == "missing", payload
+    assert activation["activated"] is False, payload
+    assert activation["missing_targets"] == ["thin:codex-current"], payload
+    assert "do not claim LoopX setup complete" in activation["recommended_action"], payload
+
+    rendered = build_heartbeat_prompt(
+        goal_id=REGISTERED_GOAL_ID,
+        active_state=None,
+        active_state_source="registry",
+        resolved_active_state=Path(goal["state_file"]),
+        thin=True,
+        cli_bin="loopx",
+        agent_id=REGISTERED_AGENT_ID,
+        registered_agents=[REGISTERED_AGENT_ID],
+        primary_agent=REGISTERED_AGENT_ID,
+    )["task_body"]
+    expected_sha = goal["generated_prompts"]["thin:codex-current"]["sha256"]
+    assert prompt_digest(rendered) == expected_sha, payload
+    write_registered_codex_app_automation(root / "registered-codex-home", prompt=rendered)
+    old_codex_home = os.environ.get("CODEX_HOME")
+    os.environ["CODEX_HOME"] = str(root / "registered-codex-home")
+    try:
+        current_payload = build_upgrade_plan(registry_path=registry_path, cli_bin="loopx")
+    finally:
+        if old_codex_home is None:
+            os.environ.pop("CODEX_HOME", None)
+        else:
+            os.environ["CODEX_HOME"] = old_codex_home
+    current_goal = current_payload["managed_heartbeats"][0]
+    assert current_payload["summary"]["current_prompt_count"] == 1, current_payload
+    assert current_payload["summary"]["host_loop_activated_goal_count"] == 1, current_payload
+    assert current_payload["summary"]["host_loop_missing_goal_count"] == 0, current_payload
+    assert current_payload["summary"]["ready_for_default_promotion"] is True, current_payload
+    assert current_goal["installed_prompts"]["thin:codex-current"]["status"] == "current", current_payload
+    assert current_goal["requires_update"] is False, current_payload
+    assert current_goal["installed_prompts"]["thin:codex-current"]["agent_id"] == REGISTERED_AGENT_ID, current_payload
+    assert current_payload["installed_manifest"]["entries"][0]["agent_id"] == REGISTERED_AGENT_ID, current_payload
+    assert current_goal["host_loop_activation"]["activated"] is True, current_payload
+    markdown = render_upgrade_plan_markdown(current_payload)
+    assert "host_loop_activation: surface=`codex_app_heartbeat` status=`current` activated=`True`" in markdown, markdown
+
+
 def assert_codex_app_automation_is_discovered(registry_path: Path, codex_home: Path, first_payload: dict) -> None:
     rendered = build_heartbeat_prompt(
         goal_id=GOAL_ID,
@@ -361,6 +490,7 @@ def main() -> int:
             assert_stage_deferred_selection_is_not_upgrade_work(registry_path)
             assert_codex_app_automation_is_discovered(registry_path, root / "codex-home", first_payload)
             assert_codex_app_stale_policy_prompt_is_flagged(registry_path, root / "codex-home")
+            assert_registered_agent_activation_is_checked(root)
         finally:
             if old_codex_home is None:
                 os.environ.pop("CODEX_HOME", None)

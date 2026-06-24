@@ -467,6 +467,14 @@ async function main() {
         "STATE FLOW CONTROL PLANE",
         "Work keeps moving. Judgment stays in charge.",
         "safe work moves",
+        "Self-Iteration Timeline",
+        "Three-lane control-plane story",
+        "Primary control",
+        "Product capability",
+        "Implementation lane",
+        "human gate: decision_frontstage_to_implementation_lane",
+        "INFERRED DISPLAY BRIDGE",
+        "Truth source: event ledger",
         "ASYNCHRONOUS AGENT RHYTHM",
         "Agent teams work across turns and off-hours",
         "SEARCH PUBLIC SHOWCASES",
@@ -485,6 +493,24 @@ async function main() {
       const stateFlowBeamBox = await desktopPage.locator('[data-testid="frontstage-state-flow-beam"]').boundingBox();
       if (stateFlowTrackCount !== 1 || !stateFlowBeamBox || stateFlowBeamBox.width < 20) {
         throw new Error("Showcase state-flow animation rail did not render");
+      }
+      const selfIterationLaneCount = await desktopPage
+        .locator('[data-testid="frontstage-self-iteration-lane"]')
+        .count();
+      if (selfIterationLaneCount !== 3) {
+        throw new Error(`Self-iteration timeline should render three lanes; saw ${selfIterationLaneCount}`);
+      }
+      const selfIterationEventCount = await desktopPage
+        .locator('[data-testid="frontstage-self-iteration-event"]')
+        .count();
+      if (selfIterationEventCount < 6) {
+        throw new Error(`Self-iteration timeline should render at least six events; saw ${selfIterationEventCount}`);
+      }
+      const selfIterationBridgeCount = await desktopPage
+        .locator('[data-testid="frontstage-self-iteration-dashed-bridge"]')
+        .count();
+      if (selfIterationBridgeCount < 1) {
+        throw new Error("Self-iteration timeline did not render the inferred dashed bridge");
       }
       const showcaseMotionBeamBox = await desktopPage
         .locator('[data-testid="frontstage-showcase-motion-beam"]')
