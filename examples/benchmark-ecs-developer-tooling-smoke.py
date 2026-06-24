@@ -170,6 +170,142 @@ def main() -> int:
         assert reduced["boundary"]["raw_logs_read"] is False
         assert reduced["boundary"]["private_paths_recorded"] is False
 
+        compose_setup_path = tmp_path / "compose_setup.public.json"
+        compose_setup_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "terminal_bench_compose_setup_diagnostic_v0",
+                    "status": "blocked",
+                    "failure_class": "environment_setup_failure",
+                    "runner_error_len_bucket": "compact",
+                    "next_diagnostic_action": "repair_terminal_bench_compose_setup",
+                    "compose_setup_failure": True,
+                    "apt_setup_risk_detected": True,
+                    "apt_retry_patch_required": True,
+                    "raw_error_recorded": False,
+                    "raw_logs_read": False,
+                    "raw_task_text_read": False,
+                    "raw_trajectory_read": False,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        no_rebuild_guard_path = tmp_path / "no_rebuild_guard.public.json"
+        no_rebuild_guard_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "terminal_bench_no_rebuild_guard_v0",
+                    "ok": False,
+                    "first_blocker": "terminal_bench_no_rebuild_guard_not_applied",
+                    "private_root_recorded": False,
+                    "apply": False,
+                    "manager_file_count": 1,
+                    "patched_file_count": 0,
+                    "files": [
+                        {
+                            "relative_path": "terminal_bench/terminal/docker_compose_manager.py",
+                            "status": "needs_guard_patch",
+                            "patchable": True,
+                            "patched": False,
+                        }
+                    ],
+                    "contract": {
+                        "no_rebuild_implies_compose_no_build": True,
+                        "score_or_task_behavior_changed": False,
+                        "runner_surface_changed": "docker_compose_startup_only",
+                    },
+                    "boundary": {
+                        "raw_logs_read": False,
+                        "raw_task_text_read": False,
+                        "trajectory_read": False,
+                        "private_paths_recorded": False,
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        task_image_bootstrap_path = tmp_path / "task_image_bootstrap.public.json"
+        task_image_bootstrap_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "terminal_bench_task_image_bootstrap_v0",
+                    "ok": True,
+                    "first_blocker": "",
+                    "execute": False,
+                    "private_work_dir_recorded": False,
+                    "apt_packages": ["tmux", "asciinema"],
+                    "required_commands": ["tmux", "asciinema"],
+                    "apt_mirror_host": "mirrors.tuna.tsinghua.edu.cn",
+                    "security_mirror_host": "mirrors.tuna.tsinghua.edu.cn",
+                    "use_host_network": True,
+                    "timeout_sec": 600,
+                    "build_returncode": None,
+                    "command_checks": {},
+                    "contract": {
+                        "score_or_task_behavior_changed": False,
+                        "runner_surface_changed": "task_image_startup_prerequisites_only",
+                        "case_runtime_agent_install_forbidden": True,
+                    },
+                    "boundary": {
+                        "raw_logs_read": False,
+                        "raw_task_text_read": False,
+                        "trajectory_read": False,
+                        "private_paths_recorded": False,
+                        "credential_values_read": False,
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        attributed = run_json(
+            [
+                "scripts/terminal_bench_compose_startup_reducer.py",
+                "--post-launch-json",
+                str(post_launch_path),
+                "--compose-setup-json",
+                str(compose_setup_path),
+                "--no-rebuild-guard-json",
+                str(no_rebuild_guard_path),
+                "--task-image-bootstrap-json",
+                str(task_image_bootstrap_path),
+            ]
+        )
+        decision = attributed["cause_fix_decision"]
+        assert (
+            decision["schema_version"]
+            == "terminal_bench_compose_cause_fix_decision_v0"
+        )
+        assert decision["classification"] == "no_rebuild_guard_blocker"
+        assert decision["next_action"] == "apply_terminal_bench_no_rebuild_guard"
+        assert attributed["next_action"] == "apply_terminal_bench_no_rebuild_guard"
+        assert "compose_setup_diagnostic_present" in decision["reason_codes"]
+        assert (
+            "terminal_bench_no_rebuild_guard_not_applied"
+            in decision["reason_codes"]
+        )
+        assert (
+            "fast_mirror_bootstrap_fallback_available"
+            in decision["reason_codes"]
+        )
+        assert (
+            attributed["compose_setup_diagnostic"]["boundary"]["raw_logs_read"]
+            is False
+        )
+        assert (
+            attributed["no_rebuild_guard"]["file_statuses"][0]["patchable"]
+            is True
+        )
+        assert (
+            attributed["task_image_bootstrap"]["contract"][
+                "case_runtime_agent_install_forbidden"
+            ]
+            is True
+        )
+        assert attributed["boundary"]["raw_task_text_read"] is False
+
         skillsbench_prewarm = run_json(
             [
                 "scripts/skillsbench_verifier_prewarm_plan.py",
