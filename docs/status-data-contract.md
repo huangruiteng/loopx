@@ -1204,7 +1204,14 @@ changes, final checks, and loop self-stop never spend quota. Host schedulers
 apply `recommended_interval_minutes` as the next target interval and multiply
 subsequent unchanged intervals by `unchanged_poll_backoff_multiplier` until
 `max_interval_minutes`; `example_progression_minutes` exposes the compact
-human-readable sequence.
+human-readable sequence. The hint also includes
+`reset_policy.schema_version=scheduler_reset_policy_v0`: hosts compare its
+`identity_snapshot` between polls and clear the unchanged/backoff streak when
+that snapshot or scheduler action changes, or when a user reply,
+new/reassigned todo, resolved gate, or material transition makes the goal
+actionable again. The reset moves Codex App/local cadence back to the current
+profile's initial interval before unchanged backoff resumes, and does not spend
+quota.
 The payload also includes `execution_obligation`, which is the compatibility
 entry point for older workers deciding whether a quiet no-op is allowed.
 `heartbeat_recommendation.notify` is only a user-facing notification policy. It

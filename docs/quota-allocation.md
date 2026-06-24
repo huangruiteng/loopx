@@ -515,6 +515,20 @@ JSON or Markdown decision:
       "unchanged_poll_limit": 3,
       "after_limit": "stop_loop",
       "final_quota_replan_check": {"enabled": true}
+    },
+    "reset_policy": {
+      "schema_version": "scheduler_reset_policy_v0",
+      "reset_to": "profile_initial_interval",
+      "codex_app_initial_interval_minutes": 30,
+      "clear_unchanged_poll_state": true,
+      "reset_conditions": [
+        "quota_identity_snapshot_changed",
+        "scheduler_action_changed",
+        "user_feedback",
+        "new_or_reassigned_todo",
+        "gate_resolved",
+        "material_transition"
+      ]
     }
   },
   "operator_question": "是否同意 project-main-control 先做 read-only map dry-run？",
@@ -641,6 +655,14 @@ can move to `[30, 60, 120]` after the concrete user todo has been surfaced.
 Agent-scope waits use a more conservative adjustment curve such as
 `[10, 20, 30]`, so a 600-second local tick stays close to the existing
 agent-to-agent interaction cadence before cooling further.
+Each hint also carries `reset_policy.schema_version=scheduler_reset_policy_v0`.
+Hosts should compare `reset_policy.identity_snapshot` across unchanged polls
+and reset the unchanged streak whenever the snapshot or scheduler action
+changes. They should also reset when an external event makes the goal
+actionable again, such as user feedback in the thread, a new or reassigned todo,
+a resolved gate, or material evidence transition. A reset applies
+`codex_app_initial_interval_minutes` (and the matching local scheduler initial
+interval) before starting unchanged backoff again; it never spends quota.
 For Codex CLI TUI and Claude Code loops, `unchanged_poll_limit=3` means the
 third unchanged poll triggers `final_quota_replan_check`; if the rerun is still
 unchanged, the loop applies `after_limit`.
