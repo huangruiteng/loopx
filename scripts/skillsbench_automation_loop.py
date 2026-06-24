@@ -4121,6 +4121,16 @@ def _merge_host_local_acp_relay_trace_summary(
     trace["remote_command_file_bridge_agent_loopx_subcommand_counts"] = dict(
         sorted(agent_bridge_loopx_subcommand_counts.items())
     )
+    trace["remote_command_file_bridge_agent_todo_closeout_count"] = (
+        agent_bridge_loopx_subcommand_counts.get("todo complete", 0)
+        + agent_bridge_loopx_subcommand_counts.get("todo update", 0)
+    )
+    trace["remote_command_file_bridge_agent_refresh_state_count"] = (
+        agent_bridge_loopx_subcommand_counts.get("refresh-state", 0)
+    )
+    trace["remote_command_file_bridge_agent_quota_spend_slot_count"] = (
+        agent_bridge_loopx_subcommand_counts.get("quota spend-slot", 0)
+    )
     trace["remote_command_file_bridge_driver_lifecycle_trace_count"] = (
         driver_lifecycle_trace_count
     )

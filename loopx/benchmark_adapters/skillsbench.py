@@ -1861,6 +1861,17 @@ def _skillsbench_controller_trace_counters(
             return value
         return None
 
+    def subcommand_count(command: str) -> int:
+        counts = controller_trace.get(
+            "remote_command_file_bridge_agent_loopx_subcommand_counts"
+        )
+        if not isinstance(counts, dict):
+            return 0
+        value = counts.get(command)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+        return 0
+
     def round_reward_records() -> list[dict[str, Any]]:
         raw_records = controller_trace.get("round_rewards")
         if not isinstance(raw_records, list):
@@ -2067,6 +2078,15 @@ def _skillsbench_controller_trace_counters(
         ),
         "remote_command_file_bridge_agent_loopx_state_write_count": count(
             "remote_command_file_bridge_agent_loopx_state_write_count"
+        ),
+        "remote_command_file_bridge_agent_todo_closeout_count": (
+            subcommand_count("todo complete") + subcommand_count("todo update")
+        ),
+        "remote_command_file_bridge_agent_refresh_state_count": subcommand_count(
+            "refresh-state"
+        ),
+        "remote_command_file_bridge_agent_quota_spend_slot_count": subcommand_count(
+            "quota spend-slot"
         ),
         "remote_command_file_bridge_agent_task_facing_operation_count": count(
             "remote_command_file_bridge_agent_task_facing_operation_count"
@@ -2777,6 +2797,21 @@ def build_skillsbench_benchflow_result_benchmark_run(
     agent_bridge_lifecycle_write_count = _controller_public_count(
         "remote_command_file_bridge_agent_loopx_state_write_count"
     )
+    agent_bridge_todo_closeout_count = _controller_public_count(
+        "remote_command_file_bridge_agent_todo_closeout_count"
+    )
+    agent_bridge_refresh_state_count = _controller_public_count(
+        "remote_command_file_bridge_agent_refresh_state_count"
+    )
+    agent_bridge_quota_spend_slot_count = _controller_public_count(
+        "remote_command_file_bridge_agent_quota_spend_slot_count"
+    )
+    agent_bridge_closeout_satisfied = bool(
+        remote_agent_operation_trace_satisfied
+        and agent_bridge_todo_closeout_count > 0
+        and agent_bridge_refresh_state_count > 0
+        and agent_bridge_quota_spend_slot_count > 0
+    )
     lifecycle_read_sources = [
         _controller_public_count("loopx_state_reads"),
         _controller_public_count("loopx_case_state_reads"),
@@ -2816,6 +2851,20 @@ def build_skillsbench_benchflow_result_benchmark_run(
         or controller_stop_decision_count > 0
         or controller_max_rounds_budget > 1
     )
+    product_mode_lifecycle_closeout_required = bool(
+        remote_agent_operation_trace_required
+        or agent_bridge_lifecycle_read_count > 0
+        or agent_bridge_lifecycle_write_count > 0
+        or _controller_public_count(
+            "remote_command_file_bridge_driver_lifecycle_trace_count"
+        )
+        > 0
+    )
+    product_mode_lifecycle_closeout_satisfied = bool(
+        not product_mode_lifecycle_closeout_required
+        or orchestrated_driver_lifecycle_satisfied
+        or agent_bridge_closeout_satisfied
+    )
     product_mode_lifecycle_satisfied = bool(
         not product_mode_lifecycle_required
         or (
@@ -2823,6 +2872,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
             and
             product_mode_lifecycle_read_count > 0
             and product_mode_lifecycle_write_count > 0
+            and product_mode_lifecycle_closeout_satisfied
         )
     )
     product_mode_lifecycle_missing = bool(
@@ -2840,6 +2890,8 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "state_write_count": product_mode_lifecycle_write_count,
         "checkpoint_required": product_mode_lifecycle_checkpoint_required,
         "checkpoint_count": product_mode_lifecycle_checkpoint_count,
+        "closeout_required": product_mode_lifecycle_closeout_required,
+        "closeout_satisfied": product_mode_lifecycle_closeout_satisfied,
         "agent_operation_trace_required": remote_agent_operation_trace_required,
         "agent_operation_trace_satisfied": remote_agent_operation_trace_satisfied,
         "agent_operation_trace_status": remote_agent_operation_trace_status,
@@ -2849,6 +2901,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ),
         "agent_bridge_state_read_count": agent_bridge_lifecycle_read_count,
         "agent_bridge_state_write_count": agent_bridge_lifecycle_write_count,
+        "agent_bridge_todo_closeout_count": agent_bridge_todo_closeout_count,
+        "agent_bridge_refresh_state_count": agent_bridge_refresh_state_count,
+        "agent_bridge_quota_spend_slot_count": agent_bridge_quota_spend_slot_count,
         "driver_lifecycle_state_read_count": driver_lifecycle_read_count,
         "driver_lifecycle_state_write_count": driver_lifecycle_write_count,
         "checkpoint_round": controller_counters.get(
@@ -2859,6 +2914,13 @@ def build_skillsbench_benchflow_result_benchmark_run(
             if remote_agent_operation_trace_no_requests
             else "remote_command_file_bridge_agent_operation_trace_missing"
             if remote_agent_operation_trace_missing
+            else "missing_case_local_loopx_closeout"
+            if (
+                product_mode_lifecycle_closeout_required
+                and not product_mode_lifecycle_closeout_satisfied
+                and product_mode_lifecycle_read_count > 0
+                and product_mode_lifecycle_write_count > 0
+            )
             else controller_counters.get(
                 "product_mode_lifecycle_checkpoint_missing_reason", ""
             )
@@ -2868,6 +2930,14 @@ def build_skillsbench_benchflow_result_benchmark_run(
     }
     if isinstance(workflow_execution_style, str) and workflow_execution_style:
         product_mode_lifecycle_contract["execution_style"] = workflow_execution_style
+    if product_mode_lifecycle_required and product_mode_lifecycle_satisfied:
+        controller_counters["product_mode_lifecycle_checkpoint_missing_reason"] = ""
+        controller_counters["product_mode_no_tool_call_lifecycle_abort"] = False
+        controller_counters["product_mode_no_tool_call_lifecycle_abort_count"] = 0
+        controller_counters["product_mode_no_tool_call_lifecycle_abort_round"] = 0
+        controller_counters["product_mode_no_lifecycle_request_abort"] = False
+        controller_counters["product_mode_no_lifecycle_request_abort_count"] = 0
+        controller_counters["product_mode_no_lifecycle_request_abort_round"] = 0
     user_loop_final_verify_recovery_triggered = bool(
         controller_counters.get("benchflow_user_loop_final_verify_recovery_triggered")
     )
@@ -3547,6 +3617,23 @@ def build_skillsbench_benchflow_result_benchmark_run(
                     "remote_command_file_bridge_agent_operation_trace_count", 0
                 )
             ),
+            "remote_command_file_bridge_agent_operation_trace_required": (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_operation_trace_required",
+                    False,
+                )
+            ),
+            "remote_command_file_bridge_agent_operation_trace_satisfied": (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_operation_trace_satisfied",
+                    False,
+                )
+            ),
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_operation_trace_status", ""
+                )
+            ),
             "remote_command_file_bridge_agent_request_count": (
                 controller_counters.get(
                     "remote_command_file_bridge_agent_request_count", 0
@@ -3565,6 +3652,21 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "remote_command_file_bridge_agent_loopx_state_write_count": (
                 controller_counters.get(
                     "remote_command_file_bridge_agent_loopx_state_write_count", 0
+                )
+            ),
+            "remote_command_file_bridge_agent_todo_closeout_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_todo_closeout_count", 0
+                )
+            ),
+            "remote_command_file_bridge_agent_refresh_state_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_refresh_state_count", 0
+                )
+            ),
+            "remote_command_file_bridge_agent_quota_spend_slot_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_quota_spend_slot_count", 0
                 )
             ),
             "remote_command_file_bridge_agent_task_facing_operation_count": (
