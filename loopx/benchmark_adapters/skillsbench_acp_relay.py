@@ -762,7 +762,7 @@ def loopx_subcommands(command: str) -> list[str]:
             skip = False
             continue
         if token.startswith("--"):
-            if "=" not in token and token in {{"--goal-id", "--todo-id", "--claimed-by", "--status", "--note", "--evidence", "--classification", "--registry", "--runtime-root", "--slots", "--source"}}:
+            if "=" not in token and token in {{"--goal-id", "--todo-id", "--claimed-by", "--status", "--note", "--evidence", "--classification", "--registry", "--runtime-root", "--slots", "--source", "--format"}}:
                 skip = True
             continue
         if token.startswith("-"):

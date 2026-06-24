@@ -127,7 +127,7 @@ subprocess.run(
     input=json.dumps({
         "operation": "exec",
         "cwd": "/app",
-        "command": "/app/.local/bin/loopx quota should-run --goal-id skillsbench-case --agent-id codex-benchmark-agent",
+        "command": "/app/.local/bin/loopx --format json quota should-run --goal-id skillsbench-case --agent-id codex-benchmark-agent",
     }),
     text=True,
     shell=True,
