@@ -647,8 +647,10 @@ def main() -> int:
         assert "not a self-stop signal" in first_guard["automation_liveness"]["reason"], first_guard
         assert first_guard["scheduler_hint"]["action"] == "backoff_until_material_transition", first_guard
         assert first_guard["scheduler_hint"]["codex_app"]["recommended_interval_minutes"] == 15, first_guard
+        assert first_guard["scheduler_hint"]["codex_app"]["example_progression_minutes"] == [15, 30, 60], first_guard
         assert first_guard["scheduler_hint"]["local_scheduler"]["max_interval_minutes"] == 60, first_guard
         assert first_guard["scheduler_hint"]["codex_cli_tui"]["unchanged_poll_limit"] == 3, first_guard
+        assert first_guard["scheduler_hint"]["codex_cli_tui"]["final_quota_replan_check"]["enabled"] is True, first_guard
         assert "automation=keep_active_quiet" in first_guard["protocol_action_packet"]["summary"], first_guard
         assert "scheduler=backoff_until_material_transition" in first_guard["protocol_action_packet"]["summary"], first_guard
         assert "pause_allowed=false" in first_guard["protocol_action_packet"]["summary"], first_guard

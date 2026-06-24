@@ -361,7 +361,7 @@ def main() -> int:
         'never only "owner gate"',
         "If false/0: 无用户待办/无需通知 or quiet",
         "具体 user todo 未投影，需修复 LoopX 状态投影",
-        "Apply `scheduler_hint` for wait backoff and CLI/Claude unchanged self-stop; no spend",
+        "Apply `scheduler_hint` for wait backoff and CLI/Claude final-check/self-stop; no spend",
         "Bounded batch/quiet no-op; spend after writeback",
         "Plans/done -> LoopX todo/rationale; 2 no-progress -> self-repair",
         "If P0 is blocked but CLI contract permits safe work",

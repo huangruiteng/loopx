@@ -97,7 +97,8 @@ loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-
 The 3-minute interval is only the bootstrap cadence. On long waits,
 `quota should-run` returns `scheduler_hint`: Codex App automations should back
 off toward the recommended interval, while Codex CLI TUI and Claude Code loops
-should exit/stop after the unchanged-poll limit instead of polling forever.
+should run a final quota/replan check after the unchanged-poll limit and then
+exit/stop if the guard is still unchanged instead of polling forever.
 
 ### Codex CLI
 

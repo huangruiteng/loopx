@@ -286,8 +286,11 @@ def assert_agent_without_advancement_candidate_waits_for_primary() -> None:
     assert scheduler["schema_version"] == "scheduler_hint_v0", scheduler
     assert scheduler["action"] == "backoff_until_reassigned", scheduler
     assert scheduler["codex_app"]["recommended_interval_minutes"] == 30, scheduler
-    assert scheduler["codex_cli_tui"]["unchanged_poll_limit"] == 2, scheduler
+    assert scheduler["codex_app"]["example_progression_minutes"] == [30, 60, 120], scheduler
+    assert scheduler["codex_cli_tui"]["unchanged_poll_limit"] == 3, scheduler
+    assert scheduler["codex_cli_tui"]["final_quota_replan_check"]["enabled"] is True, scheduler
     assert scheduler["claude_code_loop"]["after_limit"] == "stop_loop", scheduler
+    assert scheduler["claude_code_loop"]["unchanged_poll_limit"] == 3, scheduler
     assert "scheduler=backoff_until_reassigned" in payload["protocol_action_packet"]["summary"], payload
 
 
