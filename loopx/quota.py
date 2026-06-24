@@ -1068,10 +1068,102 @@ def _capability_candidate_item(
     return payload
 
 
+def _primary_agent_unblock_handoff_rank(
+    raw_item: dict[str, Any],
+    *,
+    agent_id: str | None,
+    primary_agent: str | None,
+) -> int:
+    claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
+    blocks_agent = normalize_todo_blocks_agent(raw_item.get("blocks_agent"))
+    unblocks_todo_id = normalize_todo_id(raw_item.get("unblocks_todo_id"))
+    return (
+        0
+        if agent_id
+        and primary_agent
+        and agent_id == primary_agent
+        and claimed_by == agent_id
+        and blocks_agent
+        and blocks_agent != agent_id
+        and unblocks_todo_id
+        else 1
+    )
+
+
+def _primary_review_rank(raw_item: dict[str, Any], *, agent_id: str | None) -> int:
+    claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
+    action_kind = str(raw_item.get("action_kind") or "").strip()
+    return (
+        0
+        if agent_id
+        and claimed_by == agent_id
+        and (action_kind == "primary_review" or action_kind.startswith("primary_review_"))
+        else 1
+    )
+
+
+def _agent_lane_candidate_sort_key(
+    raw_item: dict[str, Any],
+    *,
+    agent_id: str | None,
+    primary_agent: str | None,
+    preferred_todo_ids: set[str] | None = None,
+) -> tuple[int, int, int, int, int, int, int]:
+    preferred_todo_ids = preferred_todo_ids or set()
+    todo_id = str(raw_item.get("todo_id") or "").strip()
+    active_next_rank = 0 if todo_id and todo_id in preferred_todo_ids else 1
+    claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
+    claim_rank = 0 if agent_id and claimed_by == agent_id else 1
+    repair_rank = 0 if raw_item.get("capability_repair_mode") is True else 1
+    return (
+        active_next_rank,
+        claim_rank,
+        _todo_priority_rank(raw_item),
+        _primary_agent_unblock_handoff_rank(
+            raw_item,
+            agent_id=agent_id,
+            primary_agent=primary_agent,
+        ),
+        _primary_review_rank(raw_item, agent_id=agent_id),
+        repair_rank,
+        _todo_index_rank(raw_item),
+    )
+
+
+def _sort_capability_runnable_candidates(
+    runnable: list[dict[str, Any]],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], str | None]:
+    if not isinstance(agent_identity, dict):
+        return runnable, None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return runnable, None
+    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+    policy = (
+        "active_next_then_claim_then_priority_then_primary_agent_unblock_handoff_then_repair"
+        if primary_agent and agent_id == primary_agent
+        else "active_next_then_claim_then_priority_then_repair"
+    )
+    return (
+        sorted(
+            runnable,
+            key=lambda item: _agent_lane_candidate_sort_key(
+                item,
+                agent_id=agent_id,
+                primary_agent=primary_agent,
+            ),
+        ),
+        policy,
+    )
+
+
 def _capability_gate(
     agent_todo_summary: dict[str, Any] | None,
     *,
     available_capabilities: list[str],
+    agent_identity: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(agent_todo_summary, dict):
         return None
@@ -1153,6 +1245,10 @@ def _capability_gate(
     if not saw_requirement and not blocked:
         return None
     if runnable:
+        runnable, candidate_order_policy = _sort_capability_runnable_candidates(
+            runnable,
+            agent_identity=agent_identity,
+        )
         runnable_required: list[str] = []
         blocked_missing: list[str] = []
         repair_missing: list[str] = []
@@ -1177,6 +1273,7 @@ def _capability_gate(
             "action": "run",
             "decision_owner": "agent",
             "selection_policy": "agent_steering_audit_over_runnable_candidates",
+            "candidate_order_policy": candidate_order_policy or "projection_order",
             "runnable_count": len(runnable),
             "runnable_candidates": runnable,
             "blocked_candidates": blocked,
@@ -2249,41 +2346,6 @@ def _agent_lane_next_action(
 
     primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
 
-    def lane_candidate_sort_key(raw_item: dict[str, Any]) -> tuple[int, int, int, int, int, int, int]:
-        todo_id = str(raw_item.get("todo_id") or "").strip()
-        active_next_rank = 0 if todo_id and todo_id in preferred_todo_ids else 1
-        claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
-        claim_rank = 0 if claimed_by == agent_id else 1
-        action_kind = str(raw_item.get("action_kind") or "").strip()
-        blocks_agent = normalize_todo_blocks_agent(raw_item.get("blocks_agent"))
-        unblocks_todo_id = normalize_todo_id(raw_item.get("unblocks_todo_id"))
-        explicit_unblock_rank = (
-            0
-            if agent_id == primary_agent
-            and claimed_by == agent_id
-            and blocks_agent
-            and blocks_agent != agent_id
-            and unblocks_todo_id
-            else 1
-        )
-        primary_review_rank = (
-            0
-            if agent_id == primary_agent
-            and claimed_by == agent_id
-            and (action_kind == "primary_review" or action_kind.startswith("primary_review_"))
-            else 1
-        )
-        repair_rank = 0 if raw_item.get("capability_repair_mode") is True else 1
-        return (
-            explicit_unblock_rank,
-            active_next_rank,
-            claim_rank,
-            primary_review_rank,
-            repair_rank,
-            _todo_priority_rank(raw_item),
-            _todo_index_rank(raw_item),
-        )
-
     seen: set[tuple[str, str]] = set()
     for source, raw_items in candidate_sources:
         source_candidates: list[dict[str, Any]] = []
@@ -2305,7 +2367,15 @@ def _agent_lane_next_action(
                 continue
             seen.add(identity)
             source_candidates.append(raw_item)
-        for raw_item in sorted(source_candidates, key=lane_candidate_sort_key):
+        for raw_item in sorted(
+            source_candidates,
+            key=lambda item: _agent_lane_candidate_sort_key(
+                item,
+                agent_id=agent_id,
+                primary_agent=primary_agent,
+                preferred_todo_ids=preferred_todo_ids,
+            ),
+        ):
             text = _protocol_action_text(raw_item.get("text"), limit=500)
             claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
             todo_id = str(raw_item.get("todo_id") or "").strip()
@@ -5921,6 +5991,7 @@ def build_quota_should_run(
         capability_gate = _capability_gate(
             agent_todo_summary,
             available_capabilities=_available_capabilities(available_capabilities),
+            agent_identity=agent_identity,
         )
         capability_repair_allowed = False
         workspace_repair_allowed = False

@@ -535,6 +535,10 @@ When `capability_gate.action=run`, the decision contract is:
 - `decision_owner=agent`;
 - `selection_policy=agent_steering_audit_over_runnable_candidates`;
 - `runnable_candidates` is the allowed candidate set for this turn;
+- for a primary agent, same-priority candidates that unblock another agent via
+  `blocks_agent` plus `unblocks_todo_id` are ordered before ordinary backlog,
+  so the candidate list and `agent_lane_next_action` expose the same handoff
+  priority;
 - candidates with `capability_repair_mode=true` are allowed repair/development
   work for a missing `target_capabilities` bridge, not direct execution through
   that missing bridge;

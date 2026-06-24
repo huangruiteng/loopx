@@ -333,6 +333,9 @@ For multi-agent goals, executable primary-review handoffs can carry
 agent is the primary agent and the handoff is already claimed by that primary
 agent, `agent_lane_next_action` ranks that explicit unblock ahead of ordinary
 same-priority backlog, even if the goal-level `Next Action` prose is stale.
+The same tie-breaker orders `capability_gate.runnable_candidates`, so the
+first visible runnable candidate matches the selected inter-agent unblock
+rather than burying it behind ordinary same-priority work.
 This is only a scheduling hint: capability gates, write-scope checks, user
 gates, and validation still apply.
 
