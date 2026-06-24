@@ -80,9 +80,13 @@ def _has_mcp(py) -> bool:
         return False
 
 
-def provision_mcp_python(dry: bool) -> str:
+def provision_mcp_python(dry: bool, allow_system_pip: bool = False) -> str:
     """Return an interpreter that can `import mcp`, installing it into a dedicated
-    venv if needed (works under PEP 668 externally-managed pythons)."""
+    venv if needed (works under PEP 668 externally-managed pythons).
+
+    We install `mcp` ONLY into a dedicated venv we own. We never silently mutate
+    the user's active/system interpreter (`pip install --break-system-packages`);
+    that is gated behind an explicit ``allow_system_pip`` opt-in."""
     if _has_mcp(sys.executable):
         print(f"[deps] mcp already importable by {sys.executable}")
         return sys.executable
@@ -105,18 +109,28 @@ def provision_mcp_python(dry: bool) -> str:
         print("[deps] venv pip install failed:\n" + (pip.stdout + pip.stderr)[:300])
     else:
         print("[deps] venv creation failed:\n" + (r.stdout + r.stderr)[:300])
-    print("[deps] last resort: pip install --break-system-packages mcp")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--break-system-packages", "mcp"],
-                   capture_output=True, text=True)
-    if _has_mcp(sys.executable):
-        return sys.executable
-    print("[deps] WARNING: could not install `mcp`; the loopx MCP tools will NOT load until you run:\n"
-          f"       {sys.executable} -m venv {MCP_VENV} && {vpy} -m pip install mcp")
+    # The dedicated venv is the only place we install `mcp`. Do NOT touch the
+    # user's active/system interpreter unless they explicitly opted in.
+    if allow_system_pip:
+        print("[deps] --allow-system-pip: pip install --break-system-packages mcp")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--break-system-packages", "mcp"],
+                       capture_output=True, text=True)
+        if _has_mcp(sys.executable):
+            return sys.executable
+    print("[deps] WARNING: could not provision `mcp` into a dedicated venv, and we will\n"
+          "       NOT modify your system Python. The loopx MCP tools will not load until\n"
+          "       you install `mcp` yourself, e.g.:\n"
+          f"       {sys.executable} -m venv {MCP_VENV} && {vpy} -m pip install mcp\n"
+          "       (or re-run install.py with --allow-system-pip to use the active interpreter).")
     return _python_cmd()
 
 
-def install_mcp(dry: bool, py: str, scope: str):
-    """Register the loopx MCP server at the chosen scope via `claude mcp add`."""
+def install_mcp(dry: bool, py: str, scope: str, migrate_goal_harness: bool = False):
+    """Register the loopx MCP server at the chosen scope via `claude mcp add`.
+
+    We replace only OUR `loopx` entry. A legacy/user-owned `goal-harness` MCP is
+    left untouched by default — we don't delete a server we don't own. If one
+    exists we print a manual cleanup hint; `--migrate-goal-harness` removes it."""
     claude = shutil.which("claude")
     mcp_path = _p("mcp", "loopx_mcp.py")
     add = ["mcp", "add", "--scope", scope, "loopx", "--", py, mcp_path]
@@ -127,7 +141,15 @@ def install_mcp(dry: bool, py: str, scope: str):
     if dry:
         return
     subprocess.run([claude, "mcp", "remove", "--scope", scope, "loopx"], capture_output=True, text=True)
-    subprocess.run([claude, "mcp", "remove", "--scope", scope, "goal-harness"], capture_output=True, text=True)
+    has_gh = subprocess.run([claude, "mcp", "get", "goal-harness"], capture_output=True, text=True).returncode == 0
+    if has_gh:
+        if migrate_goal_harness:
+            print(f"[mcp] --migrate-goal-harness: removing legacy goal-harness MCP at {scope} scope")
+            subprocess.run([claude, "mcp", "remove", "--scope", scope, "goal-harness"], capture_output=True, text=True)
+        else:
+            print("[mcp] note: a legacy `goal-harness` MCP entry exists — left untouched. Remove it "
+                  f"yourself with `claude mcp remove --scope {scope} goal-harness`, or re-run with "
+                  "--migrate-goal-harness.")
     r = subprocess.run([claude, *add], capture_output=True, text=True)
     if r.returncode != 0:
         print("  (mcp add failed; add manually:\n   claude " + " ".join(add) + "\n  " + (r.stdout + r.stderr)[:200] + ")")
@@ -214,6 +236,13 @@ def main():
                     help="ALSO install the optional PreToolUse should_run gate + statusline")
     ap.add_argument("--skip-mcp", action="store_true",
                     help="skip MCP venv provisioning + `claude mcp add` (for tests/CI)")
+    ap.add_argument("--allow-system-pip", action="store_true",
+                    help="if the dedicated mcp venv can't be built, fall back to "
+                         "`pip install --break-system-packages mcp` into the active interpreter "
+                         "(off by default — we don't mutate your system Python)")
+    ap.add_argument("--migrate-goal-harness", action="store_true",
+                    help="also remove a legacy `goal-harness` MCP entry at this scope "
+                         "(off by default — we don't delete MCP servers we don't own)")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     dry = a.dry_run
@@ -231,8 +260,8 @@ def main():
     if a.skip_mcp:
         print("[mcp] skipped (--skip-mcp)")
     else:
-        mcp_python = provision_mcp_python(dry)
-        install_mcp(dry, mcp_python, a.scope)
+        mcp_python = provision_mcp_python(dry, a.allow_system_pip)
+        install_mcp(dry, mcp_python, a.scope, a.migrate_goal_harness)
     install_command(dry, claude_dir / "commands")
 
     settings_path = claude_dir / "settings.json"

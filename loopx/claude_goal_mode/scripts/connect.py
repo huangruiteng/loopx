@@ -46,9 +46,16 @@ def main():
         print("[connect]", " ".join(cmd))
         if not dry:
             try:
-                subprocess.run(cmd, cwd=str(proj), check=False, timeout=120)
+                rc = subprocess.run(cmd, cwd=str(proj), timeout=120)
             except Exception as e:
-                print("  (connect skipped/failed:", e, ")")
+                print(f"[connect] FAILED to run loopx connect: {e}")
+                sys.exit(1)
+            if rc.returncode != 0:
+                # Fail closed: a non-zero connect (e.g. a global route collision)
+                # must stop the helper rather than print a misleading "next steps".
+                print(f"[connect] FAILED (exit {rc.returncode}) — not continuing. "
+                      "Resolve the error above and re-run.")
+                sys.exit(rc.returncode)
 
     # 2. mark agent_backends += claude in the project registry (additive)
     if a.registry:
@@ -79,7 +86,12 @@ def main():
     if dry:
         inst.append("--dry-run")
     print("[install]", " ".join(inst))
-    subprocess.run(inst, check=False)
+    ri = subprocess.run(inst)
+    if ri.returncode != 0:
+        # Fail closed: don't claim success / print next steps if the adapter
+        # install failed.
+        print(f"[install] FAILED (exit {ri.returncode}).")
+        sys.exit(ri.returncode)
 
     print("\nNext: open Claude Code in the project, then:")
     print("    /loopx <task>     # set the goal, write .claude/loop.md, do the first segment")

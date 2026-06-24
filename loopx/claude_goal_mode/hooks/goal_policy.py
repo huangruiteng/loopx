@@ -53,7 +53,11 @@ from goal_state import active_context
 # Read-only tools are always allowed under goal-mode. Edit/Write are scoped to
 # write_scope; Bash is gated by a destructive-command denylist. (No OS sandbox in
 # this design — the hook is the whole gate; see the module docstring.)
-READONLY_TOOLS = {"Read", "Glob", "Grep", "NotebookRead", "TodoWrite", "Task", "WebFetch", "WebSearch", "ToolSearch"}
+# NOTE: `Task` is deliberately NOT here. It can launch a subagent that performs
+# writes, so allowing it unconditionally would bypass the gate when
+# should_run=false. It must go through the gate: denied when should_run=false,
+# otherwise deferred to Claude Code's normal permission flow (unknown tool).
+READONLY_TOOLS = {"Read", "Glob", "Grep", "NotebookRead", "TodoWrite", "WebFetch", "WebSearch", "ToolSearch"}
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 DESTRUCTIVE = (
     "rm -rf", "rm -fr", "mkfs", "dd if=", ":(){", "shutdown", "reboot",
