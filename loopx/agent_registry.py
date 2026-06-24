@@ -59,17 +59,17 @@ def primary_agent_id_for_goal(goal: dict[str, Any] | None) -> str | None:
     return None
 
 
-def side_agent_review_agent_id_for_goal(goal: dict[str, Any] | None) -> str | None:
+def side_agent_handoff_agent_id_for_goal(goal: dict[str, Any] | None) -> str | None:
     if not isinstance(goal, dict):
         return None
     candidates: list[Any] = []
     coordination = goal.get("coordination")
     if isinstance(coordination, dict):
-        candidates.append(coordination.get("side_agent_review_agent"))
-    candidates.append(goal.get("side_agent_review_agent"))
+        candidates.append(coordination.get("side_agent_handoff_agent"))
+    candidates.append(goal.get("side_agent_handoff_agent"))
     spawn_policy = goal.get("spawn_policy")
     if isinstance(spawn_policy, dict):
-        candidates.append(spawn_policy.get("side_agent_review_agent"))
+        candidates.append(spawn_policy.get("side_agent_handoff_agent"))
     for candidate in candidates:
         agent = normalize_todo_claimed_by(candidate)
         if agent:
@@ -121,8 +121,8 @@ def primary_agent_id_from_registry(registry_path: Path, goal_id: str) -> str | N
     return primary_agent_id_for_goal(load_goal_from_registry(registry_path, goal_id))
 
 
-def side_agent_review_agent_id_from_registry(registry_path: Path, goal_id: str) -> str | None:
-    return side_agent_review_agent_id_for_goal(load_goal_from_registry(registry_path, goal_id))
+def side_agent_handoff_agent_id_from_registry(registry_path: Path, goal_id: str) -> str | None:
+    return side_agent_handoff_agent_id_for_goal(load_goal_from_registry(registry_path, goal_id))
 
 
 def agent_profile_from_registry(registry_path: Path, goal_id: str, agent_id: str | None) -> dict[str, Any] | None:

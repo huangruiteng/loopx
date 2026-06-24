@@ -1216,11 +1216,14 @@ loopx todo complete \
 If the self-merged lane has an obvious same-scope continuation, the completion
 may atomically add a successor and claim it back to the same side agent. If the
 work is broad, risky, unclear, or outside the side scope, completion must create
-a review todo claimed by the configured side-agent review agent when
-`coordination.side_agent_review_agent` is set, otherwise by the primary agent.
-`claimed_by` remains a soft owner and not a permission grant: quota, user
-gates, public/private boundary checks, write scopes, and repository rules still
-apply.
+a successor handoff todo claimed by the configured
+`coordination.side_agent_handoff_agent` when set, otherwise by the primary
+agent. LoopX does not need a separate kernel-level "review" object here: the
+machine-readable contract is the successor todo plus `claimed_by`,
+`blocks_agent`, and `unblocks_todo_id`. Same-agent broad handoff is rejected;
+use `--side-agent-self-merged --evidence` for same-agent delivery. `claimed_by`
+remains a soft owner and not a permission grant: quota, user gates,
+public/private boundary checks, write scopes, and repository rules still apply.
 
 Because prompt text alone is not a reliable guard, `quota should-run --agent-id
 <side-agent-id>` should also project `workspace_guard` when the side agent is
@@ -1256,8 +1259,8 @@ flowchart TD
   I --> K{"same-scope continuation?"}
   K -->|"yes"| N["complete + add successor claimed_by same side agent"]
   K -->|"no"| X["complete with no successor or no-follow-up rationale"]
-  V -->|"no"| R["complete with primary review successor"]
-  R --> P["successor claimed_by primary_agent"]
+  V -->|"no"| R["complete with successor handoff todo"]
+  R --> P["successor claimed_by handoff owner, else primary_agent"]
 ```
 
 **Bad smell**

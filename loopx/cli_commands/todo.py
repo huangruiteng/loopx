@@ -154,9 +154,10 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "For complete/supersede with --next-agent-todo, soft-claim the successor "
             "todo for a registered agent. If omitted, claimed successors inherit the "
-            "completed/superseded todo owner when available; side-agent review handoffs "
-            "default to coordination.side_agent_review_agent when configured, otherwise "
-            "primary_agent."
+            "completed/superseded todo owner when available; broad side-agent handoffs "
+            "default to coordination.side_agent_handoff_agent when configured, otherwise "
+            "primary_agent. Same-agent broad handoff is rejected; use "
+            "--side-agent-self-merged with --evidence for same-agent delivery."
         ),
     )
     todo_parser.add_argument(
@@ -373,7 +374,7 @@ def handle_todo_command(
             if args.claimed_by and args.clear_claim:
                 raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
             if args.blocks_agent or args.unblocks_todo_id or args.resume_when:
-                raise ValueError("todo complete does not support --blocks-agent, --unblocks-todo-id, or --resume-when; use todo update before completion or side-agent review successor metadata")
+                raise ValueError("todo complete does not support --blocks-agent, --unblocks-todo-id, or --resume-when; use todo update before completion or side-agent handoff successor metadata")
             if args.followups:
                 raise ValueError("todo complete does not support --follow-up; use `todo capture-followups`")
             payload = complete_goal_todo(

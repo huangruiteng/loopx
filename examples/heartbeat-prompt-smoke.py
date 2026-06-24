@@ -300,7 +300,7 @@ def main() -> int:
     thin_scoped_task = normalized(str(thin_scoped_payload["task_body"]))
     assert "role: side-agent" in thin_scoped_task, thin_scoped_task
     assert "independent git worktree/branch" in thin_scoped_task, thin_scoped_task
-    assert "primary review todo claimed_by `codex-main-control`" in thin_scoped_task, thin_scoped_task
+    assert "handoff todo claimed_by primary_agent `codex-main-control`" in thin_scoped_task, thin_scoped_task
     assert "--active-state" not in registry_default_payload["expanded_prompt_command"], registry_default_payload
     assert brief_payload["brief"] is True, brief_payload
     assert brief_payload["compact"] is False, brief_payload

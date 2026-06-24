@@ -149,7 +149,7 @@ def render_agent_scope_instruction(
     agent_scopes: list[str],
     primary_agent: str | None,
     cli_bin: str,
-    side_agent_review_agent: str | None = None,
+    side_agent_handoff_agent: str | None = None,
     compact: bool = False,
     thin: bool = False,
 ) -> str:
@@ -163,21 +163,21 @@ def render_agent_scope_instruction(
         if agent_id
         else f"{cli_bin} todo claim --goal-id {goal_id} --todo-id <todo_id> --claimed-by <agent_id>"
     )
-    review_agent = side_agent_review_agent or primary_agent
-    review_owner_label = (
-        f"side-agent review todo claimed_by `{side_agent_review_agent}`"
-        if side_agent_review_agent
-        else f"primary review todo claimed_by `{primary_agent or '<primary_agent>'}`"
+    handoff_agent = side_agent_handoff_agent or primary_agent
+    handoff_owner_label = (
+        f"handoff todo claimed_by `{side_agent_handoff_agent}`"
+        if side_agent_handoff_agent
+        else f"handoff todo claimed_by primary_agent `{primary_agent or '<primary_agent>'}`"
     )
-    review_todo_text = (
-        "Side-agent review, verify, and continue this side-agent work."
-        if side_agent_review_agent
-        else "Primary agent review, verify, and merge this side-agent work."
+    handoff_todo_text = (
+        "Review, verify, and continue this side-agent handoff."
+        if side_agent_handoff_agent
+        else "Review, verify, and merge this side-agent work."
     )
     completion_command = (
         f"{cli_bin} todo complete --goal-id {goal_id} --todo-id <todo_id> "
         f"--claimed-by {agent_id or '<agent_id>'} --next-agent-todo "
-        f"{shlex.quote(review_todo_text)} --next-claimed-by {review_agent or '<review_agent>'}"
+        f"{shlex.quote(handoff_todo_text)} --next-claimed-by {handoff_agent or '<handoff_agent>'}"
     )
     self_merge_command = (
         f"{cli_bin} todo complete --goal-id {goal_id} --todo-id <todo_id> "
@@ -189,27 +189,32 @@ def render_agent_scope_instruction(
             role_rule = "Primary: own review, verification, merge/publication, and reassignment."
         else:
             role_rule = (
-                "Side-agent: use independent git worktree/branch; self-merge only "
-                "small AGENTS-eligible validated changes; otherwise finish with a "
-                f"{review_owner_label}."
+                "Side-agent: independent git worktree/branch; self-merge only small "
+                "validated changes with evidence; otherwise finish with a "
+                f"{handoff_owner_label}."
             )
         return (
             f"Agent: `{identity}`; role: {agent_role}; primary: `{primary_agent}`; "
-            f"scope: {scope_text}. {role_rule} Claim in-scope todo: "
-            f"`{claim_command}`. Do not write scope into todo metadata."
+            f"scope: {scope_text}. {role_rule} Claim: `{claim_command}`. "
+            "Do not write scope into todo metadata."
         )
     if compact or thin:
         if agent_role == "primary-agent":
+            primary_handoff_tail = (
+                "side-agent handoff todos claimed_by you."
+                if not side_agent_handoff_agent or side_agent_handoff_agent == primary_agent
+                else f"final review and reassignment; handoff todos may route to `{side_agent_handoff_agent}`."
+            )
             role_rule = (
                 "You are the single primary agent: own review, verification, "
-                "merge/publication, reassignment, and side-agent review todos."
+                f"merge/publication, {primary_handoff_tail}"
             )
         else:
             role_rule = (
                 "You are a side-agent. Use an independent git worktree/branch. "
                 "Self-merge only small AGENTS-eligible validated changes with "
-                "`--side-agent-self-merged --evidence`; otherwise create a review "
-                f"todo with `--next-agent-todo` and `--next-claimed-by {review_agent}`."
+                "`--side-agent-self-merged --evidence`; otherwise create a handoff "
+                f"todo with `--next-agent-todo` and `--next-claimed-by {handoff_agent}`."
             )
         return (
             f"Agent identity and scope: agent_id `{identity}`; role: {agent_role}; "
@@ -219,10 +224,15 @@ def render_agent_scope_instruction(
             "report none. Do not write scope into todo metadata."
         )
     if agent_role == "primary-agent":
+        primary_handoff_tail = (
+            "Side-agent handoff todos claimed_by you are your responsibility."
+            if not side_agent_handoff_agent or side_agent_handoff_agent == primary_agent
+            else f"Side-agent handoff todos may route to `{side_agent_handoff_agent}`; you still own final review and reassignment."
+        )
         role_rule = (
             "You are the single primary agent for this goal: own final review, "
-            "verification, merge/publication decisions, and reassignment. Side-agent "
-            "review todos claimed_by you are your responsibility."
+            "verification, merge/publication decisions, and reassignment. "
+            f"{primary_handoff_tail}"
         )
     else:
         role_rule = (
@@ -232,14 +242,14 @@ def render_agent_scope_instruction(
             "never self-merge runtime, benchmark, permission, production, destructive "
             "git, or public evidence-policy changes that need review. For a "
             f"self-merge, complete with `{self_merge_command}`. Otherwise complete "
-            f"with a review todo, for example `{completion_command}`."
+            f"with a handoff todo, for example `{completion_command}`."
         )
     return f"""Agent identity and scope:
 
 - agent_id: `{identity}`
 - role: `{agent_role}`
 - primary_agent: `{primary_agent}`
-- side_agent_review_agent: `{side_agent_review_agent}`
+- side_agent_handoff_agent: `{side_agent_handoff_agent}`
 - scope: {scope_text}
 
 {role_rule}
@@ -297,7 +307,7 @@ def build_heartbeat_prompt(
     agent_profile: dict[str, Any] | None = None,
     registered_agents: list[str] | tuple[str, ...] | None = None,
     primary_agent: str | None = None,
-    side_agent_review_agent: str | None = None,
+    side_agent_handoff_agent: str | None = None,
 ) -> dict[str, Any]:
     effective_resolved_active_state = resolved_active_state or active_state
     active_state_text = str(active_state.expanduser()) if active_state else "the registry-declared active state"
@@ -321,11 +331,11 @@ def build_heartbeat_prompt(
     normalized_primary_agent = normalize_todo_claimed_by(primary_agent) if primary_agent else None
     if primary_agent and not normalized_primary_agent:
         raise ValueError("primary_agent must be a public-safe registered agent id")
-    normalized_side_agent_review_agent = (
-        normalize_todo_claimed_by(side_agent_review_agent) if side_agent_review_agent else None
+    normalized_side_agent_handoff_agent = (
+        normalize_todo_claimed_by(side_agent_handoff_agent) if side_agent_handoff_agent else None
     )
-    if side_agent_review_agent and not normalized_side_agent_review_agent:
-        raise ValueError("side_agent_review_agent must be a public-safe registered agent id")
+    if side_agent_handoff_agent and not normalized_side_agent_handoff_agent:
+        raise ValueError("side_agent_handoff_agent must be a public-safe registered agent id")
     if normalized_registered_agents and not normalized_agent_id:
         raise ValueError(
             build_identity_required_error(
@@ -361,12 +371,12 @@ def build_heartbeat_prompt(
             f"registered_agents={', '.join(normalized_registered_agents)}"
         )
     if (
-        normalized_side_agent_review_agent
+        normalized_side_agent_handoff_agent
         and normalized_registered_agents
-        and normalized_side_agent_review_agent not in normalized_registered_agents
+        and normalized_side_agent_handoff_agent not in normalized_registered_agents
     ):
         raise ValueError(
-            f"side_agent_review_agent={normalized_side_agent_review_agent!r} is not registered; "
+            f"side_agent_handoff_agent={normalized_side_agent_handoff_agent!r} is not registered; "
             f"registered_agents={', '.join(normalized_registered_agents)}"
         )
     agent_role = (
@@ -387,7 +397,7 @@ def build_heartbeat_prompt(
         agent_scopes=normalized_agent_scopes,
         primary_agent=normalized_primary_agent,
         cli_bin=cli_bin,
-        side_agent_review_agent=normalized_side_agent_review_agent,
+        side_agent_handoff_agent=normalized_side_agent_handoff_agent,
         compact=compact or brief,
         thin=thin,
     )
@@ -445,7 +455,7 @@ def build_heartbeat_prompt(
         "agent_profile": agent_profile_prompt_projection(agent_profile),
         "registered_agents": normalized_registered_agents,
         "primary_agent": normalized_primary_agent,
-        "side_agent_review_agent": normalized_side_agent_review_agent,
+        "side_agent_handoff_agent": normalized_side_agent_handoff_agent,
         "expanded_prompt_command": expanded_prompt_command,
         "compact_prompt_command": compact_prompt_command,
         "brief_prompt_command": brief_prompt_command,
@@ -917,7 +927,7 @@ Copy this {style}task body into a Codex App heartbeat automation.
 - agent_id: `{payload.get("agent_id")}`
 - agent_role: `{payload.get("agent_role")}`
 - primary_agent: `{payload.get("primary_agent")}`
-- side_agent_review_agent: `{payload.get("side_agent_review_agent")}`
+- side_agent_handoff_agent: `{payload.get("side_agent_handoff_agent")}`
 - agent_scopes: `{payload.get("agent_scopes")}`
 - expanded_prompt_command: `{payload.get("expanded_prompt_command")}`
 - compact_prompt_command: `{payload.get("compact_prompt_command")}`

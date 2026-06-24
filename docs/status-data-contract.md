@@ -1102,8 +1102,8 @@ approve the move, mark the primary todo as blocked by the user, or hide open
 same-scope work. If a side agent is also looking at a `claimed_by` primary-agent
 todo, the packet should explain both boundaries separately: the workspace guard
 requires moving to an independent worktree, while the claim boundary requires
-choosing an in-scope unclaimed/side-agent todo or creating a primary review
-successor.
+choosing an in-scope unclaimed/side-agent todo or creating a successor handoff
+todo.
 When the payload includes `notify_user_on_open_todo=true`, the open
 `user_todo_summary` is the current blocker-push surface even if there is no
 operator gate. This is intended for `focus_wait`, `waiting`,

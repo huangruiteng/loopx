@@ -1068,11 +1068,10 @@ def _capability_candidate_item(
     return payload
 
 
-def _primary_agent_unblock_handoff_rank(
+def _unblock_handoff_rank(
     raw_item: dict[str, Any],
     *,
     agent_id: str | None,
-    primary_agent: str | None,
 ) -> int:
     claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
     blocks_agent = normalize_todo_blocks_agent(raw_item.get("blocks_agent"))
@@ -1080,8 +1079,6 @@ def _primary_agent_unblock_handoff_rank(
     return (
         0
         if agent_id
-        and primary_agent
-        and agent_id == primary_agent
         and claimed_by == agent_id
         and blocks_agent
         and blocks_agent != agent_id
@@ -1119,11 +1116,7 @@ def _agent_lane_candidate_sort_key(
         active_next_rank,
         claim_rank,
         _todo_priority_rank(raw_item),
-        _primary_agent_unblock_handoff_rank(
-            raw_item,
-            agent_id=agent_id,
-            primary_agent=primary_agent,
-        ),
+        _unblock_handoff_rank(raw_item, agent_id=agent_id),
         _primary_review_rank(raw_item, agent_id=agent_id),
         repair_rank,
         _todo_index_rank(raw_item),
@@ -1142,7 +1135,7 @@ def _sort_capability_runnable_candidates(
         return runnable, None
     primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
     policy = (
-        "active_next_then_claim_then_priority_then_primary_agent_unblock_handoff_then_repair"
+        "active_next_then_claim_then_priority_then_unblock_handoff_then_repair"
         if primary_agent and agent_id == primary_agent
         else "active_next_then_claim_then_priority_then_repair"
     )

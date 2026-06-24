@@ -115,8 +115,8 @@ def complete_task(todo_id: str, agent_id: str, evidence: str, next_agent_todo: s
         # Don't hard-code a next claimer. With --next-agent-todo and no
         # --next-claimed-by, LoopX assigns the new todo using its own completion
         # semantics — to the completing agent (here `agent_id`, which /loopx
-        # registered), to coordination.side_agent_review_agent, or to
-        # primary_agent for side-agent review. Hard-coding an unregistered id
+        # registered), to coordination.side_agent_handoff_agent, or to
+        # primary_agent for broad side-agent handoff. Hard-coding an unregistered id
         # like `cc-controller` would fail registration.
         args += ["--next-agent-todo", next_agent_todo]
     out = _gh(args)

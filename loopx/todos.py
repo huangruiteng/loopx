@@ -7,7 +7,7 @@ from typing import Any
 from .agent_registry import (
     primary_agent_id_from_registry,
     require_registered_agent_id,
-    side_agent_review_agent_id_from_registry,
+    side_agent_handoff_agent_id_from_registry,
 )
 from .file_lock import exclusive_file_lock
 from .history import load_registry
@@ -946,14 +946,14 @@ def complete_goal_todo(
             else None
         )
         primary_agent = primary_agent_id_from_registry(registry_path, goal_id)
-        configured_review_agent = side_agent_review_agent_id_from_registry(registry_path, goal_id)
-        review_agent = configured_review_agent or primary_agent
-        if configured_review_agent:
-            review_agent = require_registered_agent_id(
+        configured_handoff_agent = side_agent_handoff_agent_id_from_registry(registry_path, goal_id)
+        handoff_agent = configured_handoff_agent or primary_agent
+        if configured_handoff_agent:
+            handoff_agent = require_registered_agent_id(
                 registry_path=registry_path,
                 goal_id=goal_id,
-                agent_id=configured_review_agent,
-                field="side_agent_review_agent",
+                agent_id=configured_handoff_agent,
+                field="side_agent_handoff_agent",
             )
         effective_next_claimed_by = (
             require_registered_agent_id(
@@ -982,21 +982,25 @@ def complete_goal_todo(
             if not side_agent_self_merged and not next_agent_todo:
                 raise ValueError(
                     f"side-agent completion by {effective_claimed_by!r} requires "
-                    "--next-agent-todo for side-agent review, verification, and merge, "
+                    "--next-agent-todo for independent handoff, verification, and merge, "
                     "or --side-agent-self-merged with --evidence for a small validated self-merge"
+                )
+            if not side_agent_self_merged and handoff_agent == effective_claimed_by:
+                raise ValueError(
+                    "side-agent handoff todo cannot be claimed by the completing side agent; "
+                    "use --side-agent-self-merged with --evidence for same-agent delivery, "
+                    "or configure side_agent_handoff_agent to another registered agent"
                 )
             if (
                 not side_agent_self_merged
                 and effective_next_claimed_by
-                and effective_next_claimed_by != review_agent
+                and effective_next_claimed_by != handoff_agent
             ):
                 raise ValueError(
-                    f"side-agent completion review todo must be claimed_by side_agent_review_agent={review_agent!r}"
+                    f"side-agent completion handoff todo must be claimed_by handoff_agent={handoff_agent!r}"
                 )
             if next_agent_todo and not side_agent_self_merged:
-                effective_next_claimed_by = review_agent
-                if not next_action_kind:
-                    next_action_kind = "side_agent_review" if configured_review_agent else "primary_review"
+                effective_next_claimed_by = handoff_agent
         if effective_next_claimed_by and not next_agent_todo:
             raise ValueError("--next-claimed-by requires --next-agent-todo")
         update_result = apply_todo_update_to_lines(
