@@ -844,6 +844,142 @@ def test_product_mode_declared_done_requires_case_state_depth() -> None:
         assert trace.get("agent_declared_done") is not True, trace
 
 
+def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecycle() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-solver-activity-gate-") as tmp:
+        root = Path(tmp)
+        jobs_dir = root / "jobs"
+        job_name = "skillsbench_solver_activity_gate_fixture"
+        rollout_name = "case__loopx_product_mode"
+        trajectory_path = (
+            jobs_dir / job_name / rollout_name / "agent" / "acp_trajectory.jsonl"
+        )
+        trajectory_path.parent.mkdir(parents=True)
+        trajectory_path.write_text(
+            json.dumps(
+                {
+                    "type": "user_message",
+                    "text": "LoopX product-mode treatment round 1.",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
+            "loopx_state_reads": 0,
+            "loopx_state_writes": 0,
+            "loopx_case_state_reads": 0,
+            "loopx_case_state_writes": 0,
+            "heartbeat_count": 0,
+            "controller_action_decisions": 0,
+            "initial_prompt_count": 0,
+            "followup_prompt_count": 0,
+            "stop_decision_count": 0,
+            "reward_observation_count": 0,
+            "round_rewards": [],
+            "remote_command_file_bridge_driver_lifecycle_execution_style": (
+                "orchestrated_agentloop_loopx_cli"
+            ),
+            "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_success_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+            "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_present_no_requests"
+            ),
+            "remote_command_file_bridge_agent_request_count": 0,
+            "remote_command_file_bridge_agent_loopx_cli_call_count": 0,
+            "remote_command_file_bridge_agent_loopx_state_read_count": 0,
+            "remote_command_file_bridge_agent_loopx_state_write_count": 0,
+        }
+        plan = {
+            "jobs_dir": str(jobs_dir),
+            "job_name": job_name,
+            "rollout_name": rollout_name,
+        }
+        saved_modules = {
+            name: sys.modules.get(name)
+            for name in (
+                "benchflow",
+                "benchflow.sandbox",
+                "benchflow.sandbox.user",
+            )
+        }
+        fake_benchflow = types.ModuleType("benchflow")
+        fake_sandbox = types.ModuleType("benchflow.sandbox")
+        fake_user = types.ModuleType("benchflow.sandbox.user")
+
+        class FakeBaseUser:
+            pass
+
+        class FakeRoundResultBase:
+            pass
+
+        fake_user.BaseUser = FakeBaseUser
+        fake_user.RoundResult = FakeRoundResultBase
+        sys.modules["benchflow"] = fake_benchflow
+        sys.modules["benchflow.sandbox"] = fake_sandbox
+        sys.modules["benchflow.sandbox.user"] = fake_user
+        try:
+            user = _build_product_mode_user(
+                route="loopx-product-mode",
+                max_rounds=5,
+                trace=trace,
+                plan=plan,
+            )
+        finally:
+            for name, module in saved_modules.items():
+                if module is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = module
+
+        class FakeRoundResult:
+            n_tool_calls = 0
+            rewards = {}
+            trajectory = [
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Done. {DECLARED_DONE_MARKER}",
+                        }
+                    ],
+                }
+            ]
+
+        prompt = asyncio.run(
+            user.run(
+                1,
+                "Fix the fixture.",
+                round_result=FakeRoundResult(),
+            )
+        )
+        assert prompt is not None, trace
+        assert "Mandatory product-mode solver checkpoint" in prompt
+        assert "no tool calls and no case-local bridge requests" in prompt
+        assert "Do not answer with prose only" in prompt
+        assert (
+            trace["last_decision"]
+            == "send_product_mode_solver_activity_continuation"
+        )
+        assert trace["product_mode_solver_activity_required"] is True, trace
+        assert trace["product_mode_solver_activity_gap"] is True, trace
+        assert trace["product_mode_solver_activity_gap_round"] == 1, trace
+        assert trace["product_mode_solver_activity_gap_count"] == 1, trace
+        assert trace["product_mode_solver_activity_missing_reason"] == (
+            "missing_tool_calls_or_agent_bridge_requests_before_declared_done"
+        )
+        assert trace["followup_prompt_count"] == 1, trace
+        assert trace["stop_decision_count"] == 0, trace
+        assert trace.get("agent_declared_done") is not True, trace
+
+
 def test_product_mode_missing_lifecycle_prompts_exact_checkpoint() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-lifecycle-checkpoint-") as tmp:
         root = Path(tmp)
@@ -4283,6 +4419,74 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
         ), no_request_compact
 
 
+def test_skillsbench_product_mode_solver_activity_gap_is_compacted() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-solver-gap-compact-") as tmp:
+        root = Path(tmp)
+        result_path = write_official_skillsbench_result(root, reward=0.0)
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "product_mode": True,
+            "heartbeat_count": 2,
+            "controller_action_decisions": 2,
+            "initial_prompt_count": 1,
+            "followup_prompt_count": 1,
+            "stop_decision_count": 0,
+            "product_mode_solver_activity_required": True,
+            "product_mode_solver_activity_gap": True,
+            "product_mode_solver_activity_gap_count": 1,
+            "product_mode_solver_activity_gap_round": 1,
+            "product_mode_solver_activity_missing_reason": (
+                "missing_tool_calls_or_agent_bridge_requests_before_declared_done"
+            ),
+            "remote_command_file_bridge_driver_lifecycle_trace_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_execution_style": (
+                "orchestrated_agentloop_loopx_cli"
+            ),
+            "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_request_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_success_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+            "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_present_no_requests"
+            ),
+            "remote_command_file_bridge_agent_operation_trace_count": 1,
+            "remote_command_file_bridge_agent_request_count": 0,
+            "last_decision": "send_product_mode_solver_activity_continuation",
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        counters = compact["interaction_counters"]
+        assert counters["product_mode_solver_activity_required"] is True
+        assert counters["product_mode_solver_activity_gap"] is True
+        assert counters["product_mode_solver_activity_gap_count"] == 1
+        assert counters["product_mode_solver_activity_gap_round"] == 1
+        assert counters["product_mode_solver_activity_missing_reason"] == (
+            "missing_tool_calls_or_agent_bridge_requests_before_declared_done"
+        )
+        lifecycle_contract = compact["product_mode_lifecycle_contract"]
+        assert lifecycle_contract["satisfied"] is True, compact
+        assert lifecycle_contract["countable_treatment"] is True, compact
+        compact_again = compact_benchmark_run(compact)
+        assert compact_again is not None
+        compact_counters = compact_again["interaction_counters"]
+        assert compact_counters["product_mode_solver_activity_gap"] is True
+        assert compact_counters["product_mode_solver_activity_gap_count"] == 1
+
+
 def test_skillsbench_product_mode_no_tool_lifecycle_abort_is_compacted() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-no-tool-compact-") as tmp:
         root = Path(tmp)
@@ -6846,6 +7050,7 @@ if __name__ == "__main__":
     test_product_mode_declared_done_marker_detection()
     test_product_mode_case_state_seed_uses_active_goal_shape()
     test_product_mode_declared_done_requires_case_state_depth()
+    test_product_mode_declared_done_requires_solver_activity_after_driver_lifecycle()
     test_product_mode_missing_lifecycle_prompts_exact_checkpoint()
     test_product_mode_no_tool_call_stops_before_checkpoint_loop()
     test_skillsbench_skeleton_builder()
@@ -6882,6 +7087,7 @@ if __name__ == "__main__":
     test_skillsbench_controller_trace_counts_are_compacted()
     test_skillsbench_product_mode_declared_done_is_compacted()
     test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted()
+    test_skillsbench_product_mode_solver_activity_gap_is_compacted()
     test_skillsbench_product_mode_no_tool_lifecycle_abort_is_compacted()
     test_skillsbench_product_mode_pass_clears_generic_runner_error()
     test_skillsbench_product_mode_case_state_usage_is_compacted()

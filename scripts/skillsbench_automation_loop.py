@@ -4548,6 +4548,39 @@ def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
     )
 
 
+def _trace_max_int(trace: dict[str, Any], *fields: str) -> int:
+    values = [
+        trace.get(field)
+        for field in fields
+        if isinstance(trace.get(field), int) and not isinstance(trace.get(field), bool)
+    ]
+    return max(values, default=0)
+
+
+def _product_mode_solver_activity_observed(
+    trace: dict[str, Any],
+    round_result: Any | None,
+) -> bool:
+    tool_call_count = (
+        _round_result_tool_call_count(round_result)
+        if round_result is not None
+        else None
+    )
+    if isinstance(tool_call_count, int) and tool_call_count > 0:
+        return True
+    return (
+        _trace_max_int(
+            trace,
+            "remote_command_file_bridge_agent_request_count",
+            "remote_command_file_bridge_agent_loopx_cli_call_count",
+            "remote_command_file_bridge_agent_loopx_state_read_count",
+            "remote_command_file_bridge_agent_loopx_state_write_count",
+            "round_result_loopx_cli_call_count",
+        )
+        > 0
+    )
+
+
 def _record_product_mode_depth_gate_gap(
     trace: dict[str, Any],
     *,
@@ -4559,6 +4592,23 @@ def _record_product_mode_depth_gate_gap(
     if not isinstance(current, int) or isinstance(current, bool):
         current = 0
     trace["product_mode_depth_gate_gap_count"] = current + 1
+
+
+def _record_product_mode_solver_activity_gap(
+    trace: dict[str, Any],
+    *,
+    agent_round: int,
+) -> None:
+    trace["product_mode_solver_activity_required"] = True
+    trace["product_mode_solver_activity_gap"] = True
+    trace["product_mode_solver_activity_gap_round"] = agent_round
+    trace["product_mode_solver_activity_missing_reason"] = (
+        "missing_tool_calls_or_agent_bridge_requests_before_declared_done"
+    )
+    current = trace.get("product_mode_solver_activity_gap_count")
+    if not isinstance(current, int) or isinstance(current, bool):
+        current = 0
+    trace["product_mode_solver_activity_gap_count"] = current + 1
 
 
 def _record_product_mode_lifecycle_checkpoint_gap(
@@ -4958,6 +5008,22 @@ def _build_product_mode_user(
             "closeout."
         )
 
+    def solver_activity_prompt(round_number: int) -> str:
+        return (
+            f"Mandatory product-mode solver checkpoint before round {round_number} "
+            "continues. The previous round produced enough LoopX lifecycle "
+            "evidence to make the treatment countable, but it did not produce "
+            "public evidence of task-facing solver activity: no tool calls and "
+            "no case-local bridge requests were observed. This is not official "
+            "verifier feedback and says nothing about task success. Before "
+            "declaring done, use the available sandbox tool or command-file "
+            "bridge to inspect the task workspace, make or verify the required "
+            "changes, and update the LoopX case todo/state if local evidence "
+            "changes. Do not answer with prose only, and only end with "
+            f"{DECLARED_DONE_MARKER} after meaningful local task work or "
+            "validation has been recorded."
+        )
+
     class ProductModeUser(BaseUser):
         """Main-table autonomous product-mode controller."""
 
@@ -5051,6 +5117,26 @@ def _build_product_mode_user(
                                 f"{DECLARED_DONE_MARKER} after it records no "
                                 "open agent todos and no remaining goals."
                             )
+                        if not _product_mode_solver_activity_observed(
+                            trace,
+                            round_result,
+                        ):
+                            _record_product_mode_solver_activity_gap(
+                                trace,
+                                agent_round=round,
+                            )
+                            _inc_counter(trace, "controller_action_decisions")
+                            if round >= max_rounds:
+                                _inc_counter(trace, "stop_decision_count")
+                                trace["last_decision"] = (
+                                    "stop_after_budget_with_declared_done_solver_activity_gap"
+                                )
+                                return None
+                            _inc_counter(trace, "followup_prompt_count")
+                            trace["last_decision"] = (
+                                "send_product_mode_solver_activity_continuation"
+                            )
+                            return solver_activity_prompt(round + 1)
                     _inc_counter(trace, "controller_action_decisions")
                     _inc_counter(trace, "stop_decision_count")
                     _record_declared_done(trace, agent_round=round, reward=reward)
