@@ -17,5 +17,24 @@ if [[ -z "$python_bin" ]]; then
   python_bin="python3"
 fi
 
+export LOOPX_RELEASE_ROOT="$repo_root"
 export PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}"
-exec "$python_bin" -m loopx.cli "$@"
+exec "$python_bin" -c '
+import os
+import runpy
+import sys
+
+release_root = os.environ["LOOPX_RELEASE_ROOT"]
+cwd = os.getcwd()
+filtered_path = []
+for entry in sys.path:
+    if entry in ("", "."):
+        continue
+    absolute = os.path.abspath(entry)
+    if absolute in {cwd, release_root}:
+        continue
+    filtered_path.append(entry)
+sys.path[:] = [release_root, *filtered_path]
+sys.argv[0] = os.path.join(release_root, "scripts", "loopx")
+runpy.run_module("loopx.cli", run_name="__main__")
+' "$@"
