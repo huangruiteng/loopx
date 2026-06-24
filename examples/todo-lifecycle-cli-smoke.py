@@ -25,6 +25,8 @@ SIDE_TODO = "Refine todo ownership contract from a side worktree."
 SIDE_CONTINUATION_TODO = "Continue the small side-agent productization lane after self-merge."
 SIDE_REVIEW_TODO = "Refine todo ownership contract with primary review required."
 REVIEW_TODO = "Primary agent review, verify, and merge the side-agent ownership contract work."
+SIDE_HANDOFF_SOURCE_TODO = "Refine todo ownership contract with configured side-agent handoff."
+SIDE_HANDOFF_TODO = "Review, verify, and continue the side-agent handoff work."
 HANDOFF_SOURCE_TODO = "Prepare successor handoff routing from the primary agent."
 HANDOFF_SUCCESSOR_TODO = "Continue successor handoff routing from the side agent."
 UNCLAIMED_SOURCE_TODO = "Prepare an unclaimed successor routing check."
@@ -127,7 +129,163 @@ def parsed_items(state_file: Path) -> list[dict]:
     return fields["agent_todos"]["items"]
 
 
+def assert_configured_side_agent_handoff() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-side-agent-handoff-smoke-") as tmp:
+        root = Path(tmp)
+        registry_path, state_file = write_fixture(root)
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        coordination = registry["goals"][0]["coordination"]
+        coordination["registered_agents"].append("codex-side-reviewer")
+        coordination["side_agent_handoff_agent"] = "codex-side-reviewer"
+        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        side_handoff_added = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            SIDE_HANDOFF_SOURCE_TODO,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--task-class",
+            "advancement_task",
+            "--action-kind",
+            "contract_refine",
+        )
+        side_handoff_completed = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            side_handoff_added["todo_id"],
+            "--claimed-by",
+            "codex-side-bypass",
+            "--evidence",
+            "side-worktree-contract-diff",
+            "--next-agent-todo",
+            SIDE_HANDOFF_TODO,
+            "--next-claimed-by",
+            "codex-side-reviewer",
+        )
+        assert side_handoff_completed["changed"] is True, side_handoff_completed
+        side_handoff_successor_id = side_handoff_completed["next_todos"][0]["todo_id"]
+        assert side_handoff_completed["next_todos"][0]["claimed_by"] == "codex-side-reviewer", (
+            side_handoff_completed
+        )
+        assert side_handoff_completed["next_todos"][0]["blocks_agent"] == "codex-side-bypass", (
+            side_handoff_completed
+        )
+        assert side_handoff_completed["next_todos"][0]["unblocks_todo_id"] == side_handoff_added["todo_id"], (
+            side_handoff_completed
+        )
+        side_handoff_successor = next(
+            item for item in parsed_items(state_file) if item["todo_id"] == side_handoff_successor_id
+        )
+        assert not side_handoff_successor.get("action_kind"), side_handoff_successor
+        assert side_handoff_successor["claimed_by"] == "codex-side-reviewer", side_handoff_successor
+
+    with tempfile.TemporaryDirectory(prefix="loopx-side-agent-handoff-self-smoke-") as tmp:
+        root = Path(tmp)
+        registry_path, _state_file = write_fixture(root)
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry["goals"][0]["coordination"]["side_agent_handoff_agent"] = "codex-side-bypass"
+        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        side_handoff_added = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            SIDE_HANDOFF_SOURCE_TODO,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--task-class",
+            "advancement_task",
+            "--action-kind",
+            "contract_refine",
+        )
+        same_agent_handoff = run_cli_error(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            side_handoff_added["todo_id"],
+            "--claimed-by",
+            "codex-side-bypass",
+            "--evidence",
+            "side-worktree-contract-diff",
+            "--next-agent-todo",
+            SIDE_HANDOFF_TODO,
+        )
+        assert "side-agent handoff todo cannot be claimed by the completing side agent" in (
+            same_agent_handoff["error"]
+        ), same_agent_handoff
+
+    with tempfile.TemporaryDirectory(prefix="loopx-legacy-side-agent-review-smoke-") as tmp:
+        root = Path(tmp)
+        registry_path, state_file = write_fixture(root)
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        coordination = registry["goals"][0]["coordination"]
+        coordination["registered_agents"].append("codex-side-reviewer")
+        coordination["side_agent_review_agent"] = "codex-side-reviewer"
+        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        legacy_handoff_added = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            SIDE_HANDOFF_SOURCE_TODO,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--task-class",
+            "advancement_task",
+            "--action-kind",
+            "contract_refine",
+        )
+        legacy_handoff_completed = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            legacy_handoff_added["todo_id"],
+            "--claimed-by",
+            "codex-side-bypass",
+            "--evidence",
+            "side-worktree-contract-diff",
+            "--next-agent-todo",
+            SIDE_HANDOFF_TODO,
+            "--next-claimed-by",
+            "codex-side-reviewer",
+        )
+        assert legacy_handoff_completed["changed"] is True, legacy_handoff_completed
+        legacy_successor_id = legacy_handoff_completed["next_todos"][0]["todo_id"]
+        assert legacy_handoff_completed["next_todos"][0]["claimed_by"] == "codex-side-reviewer", (
+            legacy_handoff_completed
+        )
+        legacy_successor = next(item for item in parsed_items(state_file) if item["todo_id"] == legacy_successor_id)
+        assert legacy_successor["claimed_by"] == "codex-side-reviewer", legacy_successor
+
+
 def main() -> int:
+    assert_configured_side_agent_handoff()
+
     with tempfile.TemporaryDirectory(prefix="loopx-todo-lifecycle-smoke-") as tmp:
         root = Path(tmp)
         registry_path, state_file = write_fixture(root)
@@ -350,7 +508,7 @@ def main() -> int:
             "--next-claimed-by",
             "codex-side-bypass",
         )
-        assert "side-agent completion review todo must be claimed_by primary_agent" in (
+        assert "side-agent completion handoff todo must be claimed_by handoff_agent='codex-main-control'" in (
             side_review_claim_error["error"]
         ), side_review_claim_error
 
@@ -368,8 +526,6 @@ def main() -> int:
             "side-worktree-contract-diff",
             "--next-agent-todo",
             REVIEW_TODO,
-            "--next-action-kind",
-            "primary_review",
         )
         assert side_completed["changed"] is True, side_completed
         review_todo_id = side_completed["next_todos"][0]["todo_id"]
@@ -385,7 +541,7 @@ def main() -> int:
             side_review_item
         )
         assert review_item["done"] is False and review_item["claimed_by"] == "codex-main-control", review_item
-        assert review_item["action_kind"] == "primary_review", review_item
+        assert not review_item.get("action_kind"), review_item
         assert review_item["blocks_agent"] == "codex-side-bypass", review_item
         assert review_item["unblocks_todo_id"] == side_review_todo_id, review_item
 

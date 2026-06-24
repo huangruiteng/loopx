@@ -133,8 +133,13 @@ agent identity.
 - for small AGENTS-eligible validated changes, self-merge and complete the todo
   with `--side-agent-self-merged --evidence "<commit and validation summary>"`;
 - for runtime, benchmark, permission, production, destructive git, publication,
-  unclear, or broad changes, create a primary review todo with
-  `--next-agent-todo` and `--next-claimed-by <primary-agent>`.
+  unclear, or broad changes, create a successor handoff todo with
+  `--next-agent-todo`. By default it is claimed by `<primary-agent>`; if the
+  goal registry declares `coordination.side_agent_handoff_agent`, LoopX routes
+  the successor there instead. Existing
+  `coordination.side_agent_review_agent` values are honored as a legacy alias
+  until the goal registry migrates. Same-agent broad handoff is rejected; use
+  `--side-agent-self-merged --evidence` for same-agent delivery.
 Once a goal has `coordination.registered_agents`, prompt generation without
 `--agent-id` fails closed. That is the lightweight migration signal for stale
 Codex App automations: the next refresh attempt surfaces a concrete

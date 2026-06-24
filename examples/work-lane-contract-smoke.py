@@ -1587,7 +1587,7 @@ def assert_primary_agent_prioritizes_claimed_review_handoff() -> None:
     next_action = guard["agent_lane_next_action"]
     assert next_action["todo_id"] == "todo_primary_review", guard
     assert guard["capability_gate"]["candidate_order_policy"] == (
-        "active_next_then_claim_then_priority_then_primary_agent_unblock_handoff_then_repair"
+        "active_next_then_claim_then_priority_then_unblock_handoff_then_repair"
     ), guard
     assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_primary_review", guard
     assert next_action["selected_by"] == "current_agent_claimed_todo", next_action

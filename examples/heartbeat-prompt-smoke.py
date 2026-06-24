@@ -300,7 +300,7 @@ def main() -> int:
     thin_scoped_task = normalized(str(thin_scoped_payload["task_body"]))
     assert "role: side-agent" in thin_scoped_task, thin_scoped_task
     assert "independent git worktree/branch" in thin_scoped_task, thin_scoped_task
-    assert "primary review todo claimed_by `codex-main-control`" in thin_scoped_task, thin_scoped_task
+    assert "handoff todo claimed_by primary_agent `codex-main-control`" in thin_scoped_task, thin_scoped_task
     assert "--active-state" not in registry_default_payload["expanded_prompt_command"], registry_default_payload
     assert brief_payload["brief"] is True, brief_payload
     assert brief_payload["compact"] is False, brief_payload
@@ -1079,6 +1079,64 @@ def main() -> int:
         )
         assert "productization showcase docs lane" in normalized(cli_profile_scoped_payload["task_body"]), (
             cli_profile_scoped_payload
+        )
+
+        legacy_handoff_registry_path = project / ".loopx" / "legacy-handoff-registry.json"
+        legacy_handoff_registry_path.write_text(
+            json.dumps(
+                {
+                    "goals": [
+                        {
+                            "id": GOAL_ID,
+                            "domain": "smoke",
+                            "status": "active",
+                            "repo": str(project),
+                            "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
+                            "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
+                            "coordination": {
+                                "registered_agents": [
+                                    "codex-main-control",
+                                    "codex-side-bypass",
+                                    "codex-side-reviewer",
+                                ],
+                                "primary_agent": "codex-main-control",
+                                "side_agent_review_agent": "codex-side-reviewer",
+                            },
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        cli_legacy_handoff_json = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(legacy_handoff_registry_path),
+                "heartbeat-prompt",
+                "--goal-id",
+                GOAL_ID,
+                "--thin",
+                "--agent-id",
+                "codex-side-bypass",
+                "--agent-scope",
+                "control-plane coordination and todo claim ergonomics",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        cli_legacy_handoff_payload = json.loads(cli_legacy_handoff_json)
+        assert cli_legacy_handoff_payload["side_agent_handoff_agent"] == "codex-side-reviewer", (
+            cli_legacy_handoff_payload
+        )
+        assert "handoff todo claimed_by `codex-side-reviewer`" in cli_legacy_handoff_payload["task_body"], (
+            cli_legacy_handoff_payload
         )
 
         cli_unknown_scoped = subprocess.run(

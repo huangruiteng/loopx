@@ -77,7 +77,7 @@ repro, patch selection, validation, review, and safe publication.
 | Patch planning | handoff packet | Separate candidate surfaces from raw diffs; keep patch ownership and write scope visible. |
 | Implementation | claimed todo + worktree guard | Require an independent worktree for side agents, disjoint write scope, and local validation before review. |
 | Validation | validation surface map | Tie tests, lint, CI, fixture smoke, or manual repro to the todo before marking progress. |
-| Review handoff | primary review todo | Hand unclear or high-risk patch work to the primary agent instead of self-merging by default. |
+| Review handoff | successor handoff todo | Hand unclear or high-risk patch work to the configured handoff owner, primary agent by default, instead of self-merging. |
 | Publication | publish boundary | Distinguish local commit/PR from package release, production deploy, or external submission. |
 | Feedback | feedback writeback | Convert review comments, failing CI, or maintainer corrections into successor todos and evidence updates. |
 
@@ -137,7 +137,7 @@ P0 gaps:
 - `repro_validation_map_v0`: structured repro status, test target, blocked
   reason, and next evidence needed.
 - `patch_handoff_packet_v0`: candidate change scope, validation done, residual
-  risks, and primary review condition.
+  risks, and handoff-owner condition.
 
 P1 gaps:
 
