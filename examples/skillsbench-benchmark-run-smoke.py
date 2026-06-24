@@ -4239,12 +4239,17 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
             "state_write_count": 0,
             "checkpoint_required": True,
             "checkpoint_count": 1,
+            "closeout_required": False,
+            "closeout_satisfied": True,
             "agent_operation_trace_required": False,
             "agent_operation_trace_satisfied": False,
             "agent_operation_trace_missing": False,
             "orchestrated_driver_lifecycle_satisfied": False,
             "agent_bridge_state_read_count": 0,
             "agent_bridge_state_write_count": 0,
+            "agent_bridge_todo_closeout_count": 0,
+            "agent_bridge_refresh_state_count": 0,
+            "agent_bridge_quota_spend_slot_count": 0,
             "driver_lifecycle_state_read_count": 0,
             "driver_lifecycle_state_write_count": 0,
             "checkpoint_round": 1,
@@ -4449,6 +4454,155 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
             "skillsbench_remote_bridge_agent_operation_trace_missing"
             not in no_request_compact["failure_attribution_labels"]
         ), no_request_compact
+        agent_bridge_no_closeout_controller_trace = dict(controller_trace)
+        agent_bridge_no_closeout_controller_trace.update(
+            {
+                "followup_prompt_count": 0,
+                "stop_decision_count": 1,
+                "remote_command_file_bridge_agent_command_configured": True,
+                "remote_command_file_bridge_agent_command_instrumented": True,
+                "remote_command_file_bridge_agent_operation_trace_required": True,
+                "remote_command_file_bridge_agent_operation_trace_satisfied": True,
+                "remote_command_file_bridge_agent_operation_trace_status": (
+                    "agent_operation_trace_recorded"
+                ),
+                "remote_command_file_bridge_agent_operation_trace_count": 1,
+                "remote_command_file_bridge_agent_request_count": 4,
+                "remote_command_file_bridge_agent_loopx_cli_call_count": 3,
+                "remote_command_file_bridge_agent_loopx_state_read_count": 2,
+                "remote_command_file_bridge_agent_loopx_state_write_count": 1,
+                "remote_command_file_bridge_agent_task_facing_operation_count": 1,
+                "remote_command_file_bridge_agent_loopx_subcommand_counts": {
+                    "quota should-run": 2,
+                    "todo claim": 1,
+                },
+                "product_mode_no_tool_call_lifecycle_abort": True,
+                "product_mode_no_tool_call_lifecycle_abort_count": 1,
+                "product_mode_no_tool_call_lifecycle_abort_round": 1,
+            }
+        )
+        agent_bridge_no_closeout_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=agent_bridge_no_closeout_controller_trace,
+            )
+        )
+        assert agent_bridge_no_closeout_compact is not None
+        no_closeout_contract = agent_bridge_no_closeout_compact[
+            "product_mode_lifecycle_contract"
+        ]
+        assert no_closeout_contract["satisfied"] is False, (
+            agent_bridge_no_closeout_compact
+        )
+        assert no_closeout_contract["countable_treatment"] is False, (
+            agent_bridge_no_closeout_compact
+        )
+        assert no_closeout_contract["state_read_count"] == 2
+        assert no_closeout_contract["state_write_count"] == 1
+        assert no_closeout_contract["closeout_required"] is True
+        assert no_closeout_contract["closeout_satisfied"] is False
+        assert no_closeout_contract["agent_bridge_todo_closeout_count"] == 0
+        assert no_closeout_contract["agent_bridge_refresh_state_count"] == 0
+        assert no_closeout_contract["agent_bridge_quota_spend_slot_count"] == 0
+        assert no_closeout_contract["missing_reason"] == (
+            "missing_case_local_loopx_closeout"
+        )
+        assert (
+            "skillsbench_product_mode_lifecycle_missing"
+            in agent_bridge_no_closeout_compact["failure_attribution_labels"]
+        ), agent_bridge_no_closeout_compact
+        agent_bridge_controller_trace = dict(agent_bridge_no_closeout_controller_trace)
+        agent_bridge_controller_trace.update(
+            {
+                "remote_command_file_bridge_agent_loopx_state_write_count": 3,
+                "remote_command_file_bridge_agent_loopx_subcommand_counts": {
+                    "quota should-run": 2,
+                    "todo claim": 1,
+                    "todo complete": 1,
+                    "refresh-state": 1,
+                    "quota spend-slot": 1,
+                },
+            }
+        )
+        agent_bridge_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=agent_bridge_controller_trace,
+            )
+        )
+        assert agent_bridge_compact is not None
+        agent_bridge_contract = agent_bridge_compact[
+            "product_mode_lifecycle_contract"
+        ]
+        assert agent_bridge_contract["satisfied"] is True, agent_bridge_compact
+        assert agent_bridge_contract["countable_treatment"] is True, (
+            agent_bridge_compact
+        )
+        assert agent_bridge_contract["state_read_count"] == 2, agent_bridge_compact
+        assert agent_bridge_contract["state_write_count"] == 3, agent_bridge_compact
+        assert agent_bridge_contract["closeout_required"] is True
+        assert agent_bridge_contract["closeout_satisfied"] is True
+        assert agent_bridge_contract["agent_bridge_todo_closeout_count"] == 1
+        assert agent_bridge_contract["agent_bridge_refresh_state_count"] == 1
+        assert agent_bridge_contract["agent_bridge_quota_spend_slot_count"] == 1
+        assert agent_bridge_contract["agent_operation_trace_required"] is True
+        assert agent_bridge_contract["agent_operation_trace_satisfied"] is True
+        assert agent_bridge_contract.get("missing_reason", "") == "", (
+            agent_bridge_contract
+        )
+        agent_bridge_counters = agent_bridge_compact["interaction_counters"]
+        assert (
+            agent_bridge_counters[
+                "remote_command_file_bridge_agent_operation_trace_required"
+            ]
+            is True
+        )
+        assert (
+            agent_bridge_counters[
+                "remote_command_file_bridge_agent_operation_trace_satisfied"
+            ]
+            is True
+        )
+        assert (
+            agent_bridge_counters[
+                "remote_command_file_bridge_agent_operation_trace_status"
+            ]
+            == "agent_operation_trace_recorded"
+        )
+        assert (
+            agent_bridge_counters.get(
+                "product_mode_lifecycle_checkpoint_missing_reason", ""
+            )
+            == ""
+        )
+        assert (
+            agent_bridge_counters["product_mode_no_tool_call_lifecycle_abort"]
+            is False
+        )
+        assert (
+            agent_bridge_counters["product_mode_no_tool_call_lifecycle_abort_count"]
+            == 0
+        )
+        assert agent_bridge_counters[
+            "remote_command_file_bridge_agent_todo_closeout_count"
+        ] == 1
+        assert (
+            agent_bridge_counters[
+                "remote_command_file_bridge_agent_refresh_state_count"
+            ]
+            == 1
+        )
+        assert (
+            agent_bridge_counters[
+                "remote_command_file_bridge_agent_quota_spend_slot_count"
+            ]
+            == 1
+        )
+        assert "skillsbench_product_mode_lifecycle_missing" not in (
+            agent_bridge_compact["failure_attribution_labels"]
+        ), agent_bridge_compact
 
 
 def test_skillsbench_product_mode_solver_activity_gap_is_compacted() -> None:

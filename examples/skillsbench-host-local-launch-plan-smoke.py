@@ -734,6 +734,24 @@ output.write_text("fake solver saw bridge packet\\n", encoding="utf-8")
         )
         assert (
             controller_trace[
+                "remote_command_file_bridge_agent_todo_closeout_count"
+            ]
+            == 1
+        )
+        assert (
+            controller_trace[
+                "remote_command_file_bridge_agent_refresh_state_count"
+            ]
+            == 0
+        )
+        assert (
+            controller_trace[
+                "remote_command_file_bridge_agent_quota_spend_slot_count"
+            ]
+            == 0
+        )
+        assert (
+            controller_trace[
                 "remote_command_file_bridge_driver_lifecycle_trace_count"
             ]
             == 1
