@@ -4620,6 +4620,28 @@ def _product_mode_solver_activity_observed(
         )
         > 0
     )
+    bridge_activity_observed = (
+        _trace_max_int(
+            trace,
+            "remote_command_file_bridge_agent_request_count",
+            "remote_command_file_bridge_agent_operation_trace_count",
+        )
+        > 0
+        or trace.get("remote_command_file_bridge_agent_operation_trace_satisfied")
+        is True
+    )
+    agent_bridge_closeout_observed = (
+        _trace_max_int(trace, "remote_command_file_bridge_agent_todo_closeout_count")
+        > 0
+        and _trace_max_int(trace, "remote_command_file_bridge_agent_refresh_state_count")
+        > 0
+        and _trace_max_int(
+            trace, "remote_command_file_bridge_agent_quota_spend_slot_count"
+        )
+        > 0
+    )
+    if bridge_activity_observed:
+        return task_activity_observed and agent_bridge_closeout_observed
     return task_activity_observed and agent_state_write_observed
 
 
@@ -4645,7 +4667,7 @@ def _record_product_mode_solver_activity_gap(
     trace["product_mode_solver_activity_gap"] = True
     trace["product_mode_solver_activity_gap_round"] = agent_round
     trace["product_mode_solver_activity_missing_reason"] = (
-        "missing_task_facing_activity_or_agent_loopx_state_write_before_declared_done"
+        "missing_task_facing_activity_or_agent_closeout_before_declared_done"
     )
     current = trace.get("product_mode_solver_activity_gap_count")
     if not isinstance(current, int) or isinstance(current, bool):

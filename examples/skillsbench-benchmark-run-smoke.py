@@ -891,11 +891,15 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
             "remote_command_file_bridge_agent_operation_trace_status": (
                 "agent_operation_trace_recorded"
             ),
+            "remote_command_file_bridge_agent_operation_trace_count": 1,
             "remote_command_file_bridge_agent_request_count": 2,
-            "remote_command_file_bridge_agent_loopx_cli_call_count": 2,
+            "remote_command_file_bridge_agent_loopx_cli_call_count": 3,
             "remote_command_file_bridge_agent_loopx_state_read_count": 2,
-            "remote_command_file_bridge_agent_loopx_state_write_count": 0,
-            "remote_command_file_bridge_agent_task_facing_operation_count": 0,
+            "remote_command_file_bridge_agent_loopx_state_write_count": 1,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 1,
+            "remote_command_file_bridge_agent_todo_closeout_count": 0,
+            "remote_command_file_bridge_agent_refresh_state_count": 0,
+            "remote_command_file_bridge_agent_quota_spend_slot_count": 0,
         }
         plan = {
             "jobs_dir": str(jobs_dir),
@@ -974,7 +978,7 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
         assert trace["product_mode_solver_activity_gap_round"] == 1, trace
         assert trace["product_mode_solver_activity_gap_count"] == 1, trace
         assert trace["product_mode_solver_activity_missing_reason"] == (
-            "missing_task_facing_activity_or_agent_loopx_state_write_before_declared_done"
+            "missing_task_facing_activity_or_agent_closeout_before_declared_done"
         )
         assert trace["followup_prompt_count"] == 1, trace
         assert trace["stop_decision_count"] == 0, trace
@@ -4624,7 +4628,7 @@ def test_skillsbench_product_mode_solver_activity_gap_is_compacted() -> None:
             "product_mode_solver_activity_gap_count": 1,
             "product_mode_solver_activity_gap_round": 1,
             "product_mode_solver_activity_missing_reason": (
-                "missing_task_facing_activity_or_agent_loopx_state_write_before_declared_done"
+                "missing_task_facing_activity_or_agent_closeout_before_declared_done"
             ),
             "remote_command_file_bridge_driver_lifecycle_trace_count": 1,
             "remote_command_file_bridge_driver_lifecycle_execution_style": (
@@ -4669,7 +4673,7 @@ def test_skillsbench_product_mode_solver_activity_gap_is_compacted() -> None:
             == 0
         )
         assert counters["product_mode_solver_activity_missing_reason"] == (
-            "missing_task_facing_activity_or_agent_loopx_state_write_before_declared_done"
+            "missing_task_facing_activity_or_agent_closeout_before_declared_done"
         )
         lifecycle_contract = compact["product_mode_lifecycle_contract"]
         assert lifecycle_contract["satisfied"] is True, compact
@@ -4679,6 +4683,100 @@ def test_skillsbench_product_mode_solver_activity_gap_is_compacted() -> None:
         compact_counters = compact_again["interaction_counters"]
         assert compact_counters["product_mode_solver_activity_gap"] is True
         assert compact_counters["product_mode_solver_activity_gap_count"] == 1
+
+
+def test_skillsbench_product_mode_declared_done_without_closeout_overrides_verifier_error() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-declared-done-no-closeout-") as tmp:
+        root = Path(tmp)
+        run_dir = root / "official" / "2026-06-24__07-28-16" / "citation-check__abc123"
+        result_path = run_dir / "result.json"
+        write_json(
+            result_path,
+            {
+                "task_name": "citation-check",
+                "rollout_name": "citation-check__abc123",
+                "agent": "codex-acp",
+                "agent_name": "codex-acp",
+                "model": "gpt-5.5",
+                "n_tool_calls": 0,
+                "n_prompts": 1,
+                "error": None,
+                "verifier_error": "public verifier error marker",
+                "partial_trajectory": False,
+                "trajectory_source": "acp",
+            },
+        )
+        write_json(run_dir / "timing.json", {"agent_execution": 5.0, "total": 65.0})
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "product_mode": True,
+            "heartbeat_count": 1,
+            "controller_action_decisions": 1,
+            "initial_prompt_count": 1,
+            "followup_prompt_count": 0,
+            "stop_decision_count": 1,
+            "reward_observation_count": 0,
+            "round_rewards": [{"agent_round": 1, "tool_calls": 0}],
+            "agent_declared_done": True,
+            "agent_declared_no_remaining_goals": True,
+            "declared_done_round": 1,
+            "remote_command_file_bridge_driver_lifecycle_execution_style": (
+                "orchestrated_agentloop_loopx_cli"
+            ),
+            "remote_command_file_bridge_driver_lifecycle_trace_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_request_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_success_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+            "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_recorded"
+            ),
+            "remote_command_file_bridge_agent_operation_trace_count": 1,
+            "remote_command_file_bridge_agent_operation_trace_satisfied": True,
+            "remote_command_file_bridge_agent_request_count": 2,
+            "remote_command_file_bridge_agent_loopx_cli_call_count": 3,
+            "remote_command_file_bridge_agent_loopx_state_read_count": 1,
+            "remote_command_file_bridge_agent_loopx_state_write_count": 1,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 1,
+            "remote_command_file_bridge_agent_todo_closeout_count": 0,
+            "remote_command_file_bridge_agent_refresh_state_count": 0,
+            "remote_command_file_bridge_agent_quota_spend_slot_count": 0,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_product_mode_solver_activity_gap"
+        ), compact
+        assert compact["attempt_accounting"]["failure_class"] == "solver_failed", compact
+        counters = compact["interaction_counters"]
+        assert counters["product_mode_solver_activity_gap"] is True, compact
+        assert counters["product_mode_solver_activity_gap_count"] == 1, compact
+        assert counters["product_mode_solver_activity_gap_round"] == 1, compact
+        assert counters["product_mode_solver_activity_missing_reason"] == (
+            "missing_task_facing_activity_or_agent_closeout_before_declared_done"
+        )
+        lifecycle_contract = compact["product_mode_lifecycle_contract"]
+        assert lifecycle_contract["satisfied"] is True, compact
+        assert lifecycle_contract["countable_treatment"] is True, compact
+        labels = compact["failure_attribution_labels"]
+        assert "skillsbench_product_mode_solver_activity_gap" in labels, compact
+        assert "skillsbench_agent_behavior_gap" in labels, compact
+        assert "skillsbench_reward_artifact_missing" in labels, compact
+        assert "skillsbench_verifier_error_subtype_unavailable_public" in labels, compact
 
 
 def test_skillsbench_product_mode_no_tool_lifecycle_abort_is_compacted() -> None:
@@ -7283,6 +7381,7 @@ if __name__ == "__main__":
     test_skillsbench_product_mode_declared_done_is_compacted()
     test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted()
     test_skillsbench_product_mode_solver_activity_gap_is_compacted()
+    test_skillsbench_product_mode_declared_done_without_closeout_overrides_verifier_error()
     test_skillsbench_product_mode_no_tool_lifecycle_abort_is_compacted()
     test_skillsbench_product_mode_pass_clears_generic_runner_error()
     test_skillsbench_product_mode_case_state_usage_is_compacted()
