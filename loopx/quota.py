@@ -3827,6 +3827,19 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
         claude_limit: int | None,
         multiplier: int = 2,
     ) -> dict[str, Any]:
+        cadence_progression = [
+            min(codex_interval * (multiplier**step), codex_max)
+            for step in range(3)
+        ]
+        final_replan_check = {
+            "enabled": cli_limit is not None or claude_limit is not None,
+            "trigger": "before_unchanged_poll_after_limit",
+            "action": "rerun_quota_should_run_once",
+            "if_changed": "follow_new_scheduler_hint",
+            "if_run_now": "execute_new_quota_contract",
+            "if_unchanged": "apply_after_limit_without_spend",
+            "spend_policy": "no quota spend for final replan check or loop stop",
+        }
         return {
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
             "source": "quota.should-run",
@@ -3838,6 +3851,7 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
                 "recommended_interval_minutes": codex_interval,
                 "max_interval_minutes": codex_max,
                 "unchanged_poll_backoff_multiplier": multiplier,
+                "example_progression_minutes": cadence_progression,
                 "apply": "update_automation_cadence_if_possible",
                 "no_spend_for_cadence_change": True,
             },
@@ -3845,18 +3859,22 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
                 "recommended_interval_minutes": codex_interval,
                 "max_interval_minutes": codex_max,
                 "unchanged_poll_backoff_multiplier": multiplier,
+                "example_progression_minutes": cadence_progression,
                 "unchanged_poll_limit": cli_limit,
                 "after_limit": "stop_tick_loop" if cli_limit is not None else "continue",
+                "final_quota_replan_check": final_replan_check,
                 "no_spend_for_cadence_change": True,
             },
             "codex_cli_tui": {
                 "unchanged_poll_limit": cli_limit,
                 "after_limit": "exit_goal_loop" if cli_limit is not None else "continue",
+                "final_quota_replan_check": final_replan_check,
                 "no_spend_for_exit": True,
             },
             "claude_code_loop": {
                 "unchanged_poll_limit": claude_limit,
                 "after_limit": "stop_loop" if claude_limit is not None else "continue",
+                "final_quota_replan_check": final_replan_check,
                 "no_spend_for_stop": True,
             },
             "unchanged_identity_keys": [
@@ -3883,8 +3901,8 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
             ),
             codex_interval=60,
             codex_max=240,
-            cli_limit=2,
-            claude_limit=2,
+            cli_limit=3,
+            claude_limit=3,
         )
 
     if (
@@ -3920,8 +3938,8 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
             ),
             codex_interval=60,
             codex_max=240,
-            cli_limit=1,
-            claude_limit=1,
+            cli_limit=3,
+            claude_limit=3,
         )
 
     if _agent_scope_frontier_action(effective_action) is not None:
@@ -3935,8 +3953,8 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
             ),
             codex_interval=30,
             codex_max=120,
-            cli_limit=2,
-            claude_limit=2,
+            cli_limit=3,
+            claude_limit=3,
         )
 
     if (
@@ -3966,8 +3984,8 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
             ),
             codex_interval=30,
             codex_max=120,
-            cli_limit=2,
-            claude_limit=2,
+            cli_limit=3,
+            claude_limit=3,
         )
 
     return hint(
@@ -8166,6 +8184,7 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"action={scheduler_hint.get('action')} "
             f"cadence={scheduler_hint.get('cadence_class')} "
             f"codex_app_minutes={codex_app.get('recommended_interval_minutes')} "
+            f"codex_app_progression={codex_app.get('example_progression_minutes')} "
             f"cli_unchanged_limit={codex_cli_tui.get('unchanged_poll_limit')} "
             f"claude_unchanged_limit={claude_code_loop.get('unchanged_poll_limit')}"
         )

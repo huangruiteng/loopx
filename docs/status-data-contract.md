@@ -1198,8 +1198,13 @@ contract, not competing sources of truth.
 The same payload includes `scheduler_hint.schema_version=scheduler_hint_v0`.
 This is the scheduling contract for host runtimes, not a delivery permission:
 Codex App can back off its automation cadence for long waits, while Codex CLI
-TUI and Claude Code loops can exit/stop after repeated unchanged polls. Cadence
-changes and loop self-stop never spend quota.
+TUI and Claude Code loops can run one final quota/replan check after repeated
+unchanged polls, then exit/stop only if the guard is still unchanged. Cadence
+changes, final checks, and loop self-stop never spend quota. Host schedulers
+apply `recommended_interval_minutes` as the next target interval and multiply
+subsequent unchanged intervals by `unchanged_poll_backoff_multiplier` until
+`max_interval_minutes`; `example_progression_minutes` exposes the compact
+human-readable sequence.
 The payload also includes `execution_obligation`, which is the compatibility
 entry point for older workers deciding whether a quiet no-op is allowed.
 `heartbeat_recommendation.notify` is only a user-facing notification policy. It

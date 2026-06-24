@@ -446,7 +446,7 @@ When creating a heartbeat in Codex App, keep the visible instruction short and
 put the lifecycle in the automation task body. The default onboarding cadence
 starts at 3 minutes; after the first guard, follow
 `quota should-run.scheduler_hint` to back off long waits and stop external loops
-after repeated unchanged polls:
+after a final quota/replan check confirms repeated unchanged polls:
 
 ```text
 Create a heartbeat automation starting at 3 minutes for the current thread;

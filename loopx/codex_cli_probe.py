@@ -2888,8 +2888,10 @@ def render_codex_cli_local_scheduler_tick_markdown(payload: dict[str, Any]) -> s
 - action: `{scheduler_hint.get("action")}`
 - cadence_class: `{scheduler_hint.get("cadence_class")}`
 - local_interval_minutes: `{local_scheduler.get("recommended_interval_minutes")}`
+- local_progression_minutes: `{local_scheduler.get("example_progression_minutes")}`
 - local_unchanged_poll_limit: `{local_scheduler.get("unchanged_poll_limit")}`
 - local_after_limit: `{local_scheduler.get("after_limit")}`
+- final_quota_replan_check: `{local_scheduler.get("final_quota_replan_check")}`
 
 ## Boundary
 
