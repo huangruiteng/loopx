@@ -4498,6 +4498,36 @@ def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
         ]
         return max(values, default=0)
 
+    driver_reads = count(
+        "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count"
+    )
+    driver_writes = count(
+        "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count"
+    )
+    driver_checkpoints = count(
+        "remote_command_file_bridge_driver_lifecycle_checkpoint_count"
+    )
+    driver_successes = count(
+        "remote_command_file_bridge_driver_lifecycle_success_count"
+    )
+    driver_failures = count(
+        "remote_command_file_bridge_driver_lifecycle_failure_count"
+    )
+    driver_loopx_calls = count(
+        "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count"
+    )
+    if (
+        trace.get("remote_command_file_bridge_driver_lifecycle_execution_style")
+        == BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE
+        and driver_checkpoints > 0
+        and driver_successes > 0
+        and driver_failures == 0
+        and driver_loopx_calls > 0
+        and driver_reads > 0
+        and driver_writes > 0
+    ):
+        return True
+
     reads = count(
         "loopx_state_reads",
         "loopx_cli_state_read_count",
