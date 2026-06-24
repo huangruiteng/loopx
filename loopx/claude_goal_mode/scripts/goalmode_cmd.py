@@ -56,8 +56,14 @@ def slug(name: str) -> str:
 def loop_md_content(goal_id, agent_id) -> str:
     """The per-iteration protocol that native `/loop` runs (written to
     .claude/loop.md). loopx's should_run is the deterministic per-tick gate; the
-    agent uses the wired loopx MCP tools, never raw CLI guessing."""
+    agent uses the wired loopx MCP tools, never raw CLI guessing.
+
+    The leading `loopx:armed` marker persists WHICH goal /loopx armed for this
+    project, so goal_state.goal_context() resolves the right goal in multi-goal
+    registries instead of guessing from registry order."""
+    armed = json.dumps({"goal_id": goal_id, "agent_id": agent_id})
     return (
+        f"<!-- loopx:armed {armed} -->\n"
         f"loopx tick — advance goal `{goal_id}` (agent `{agent_id}`). Use the wired loopx MCP\n"
         f"tools; do NOT run `loopx --help` or guess ids.\n\n"
         f"1. Call `should_run()`. If should_run=false, say why in ONE line and STOP this\n"

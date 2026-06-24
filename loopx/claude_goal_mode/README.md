@@ -44,19 +44,32 @@ python3 loopx/claude_goal_mode/scripts/install.py --scope project --project /pat
 
 ### Optional hardening (`--harden`)
 
-Adds an opt-in, **project-scoped** `PreToolUse` `should_run` gate (plus a
-statusline). It deterministically **allows** in-scope edits/commands and
-**denies** out-of-scope or destructive ones — and denies everything when
-`should_run` is false — so `/loop` can run unattended without auto mode. Off by
-default.
+Adds an opt-in, **project-scoped** `PreToolUse` gate (plus a statusline). It is a
+deterministic policy layer, **not a sandbox**. Off by default. While goal-mode is
+armed, for each tool call it:
+
+- **allows** read-only tools (`Read` / `Glob` / `Grep` / …) unconditionally,
+  before consulting the gate;
+- otherwise consults `should_run` and **denies** the (non-read-only) tool when
+  `should_run` is `false`, or when the probe is unreachable (fail-closed);
+- when `should_run` is `true`: **allows** `Edit` / `Write` whose path is inside
+  `write_scope` and **denies** them outside it; gates `Bash` only by a
+  **denylist** of destructive commands (everything else is allowed); and **defers
+  unknown tools** to Claude Code's normal permission flow.
+
+Because `Bash` is gated by a denylist rather than confined to `write_scope`, this
+is **not strong isolation** — a determined shell command can still write outside
+the scope or reach the network. For untrusted or high-stakes work, run Claude Code
+in a container/VM instead. So `/loop` can run largely unattended without auto mode,
+within that boundary.
 
 ```bash
 python3 loopx/claude_goal_mode/scripts/install.py --scope project --project /path/to/project --harden
 ```
 
-It **never** deletes existing permission rules: a legacy LoopX credential-deny
-(`Read(~/.ssh/**)` / `Read(~/.aws/**)`) gets a printed manual-cleanup suggestion
-instead of being removed.
+The installer **never** deletes existing permission rules: a legacy LoopX
+credential-deny (`Read(~/.ssh/**)` / `Read(~/.aws/**)`) gets a printed
+manual-cleanup suggestion instead of being removed.
 
 ### One-shot connect (set up a goal + project-scoped install)
 
