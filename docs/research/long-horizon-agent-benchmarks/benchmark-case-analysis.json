@@ -1766,10 +1766,40 @@
         "treatment_route": "loopx-blind-loop-treatment",
         "treatment_run_id": "d553e635f00c"
       },
+      "canonical_product_mode_recheck": {
+        "agent_loopx_cli_call_count": 10,
+        "agent_loopx_state_read_count": 1,
+        "agent_loopx_state_write_count": 8,
+        "bridge_agent_operation_trace_count": 8,
+        "bridge_driver_lifecycle_checkpoint_count": 8,
+        "conclusion": "The canonical product-mode bridge exercised the LoopX lifecycle, but the run used final-only intermediate verification, so the controller had no private per-round reward observations and continued to the scheduled budget before final official scoring returned 0.0.",
+        "controller_followup_prompt_count": 7,
+        "controller_heartbeat_count": 8,
+        "controller_official_success_observed": false,
+        "controller_stop_decision_count": 0,
+        "driver_lifecycle_failure_count": 0,
+        "driver_lifecycle_success_count": 32,
+        "failure_class": "official_verifier_solution_failure",
+        "first_success_round": null,
+        "max_round_observed": 7,
+        "official_feedback_forwarded": false,
+        "official_score": 0,
+        "official_score_status": "completed",
+        "product_fix": "Make product-mode default to every-round private soft verify: sample public-safe reward after each round for controller stop decisions, but keep reward/pass/fail/verifier output blinded from the agent.",
+        "protocol": "canonical_loopx_product_mode_lifecycle_driver",
+        "reward_feedback_forwarded": false,
+        "run_group_id": "skillsbench-citation-check-c9facd4-canonicalbridge-20260624T1815Z",
+        "scheduled_prompt_count": 8,
+        "schema_version": "skillsbench_canonical_product_mode_recheck_v0",
+        "soft_verify_call_count": 0,
+        "soft_verify_policy": "final-only",
+        "soft_verify_skipped_count": 8,
+        "followup_status": "superseded_by_every_round_recheck"
+      },
       "capability_signal": "This is not uplift evidence because the ordinary blind-loop baseline already solved the task at official 1.0 in round 1. It is a baseline-solved success guard, a treatment non-regression check, and evidence that the earlier /app mount setup blocker is no longer current for the staged runner route.",
       "case_id": "citation-check",
       "classification": "baseline_solved_non_regression_asset",
-      "control_plane_signal": "The rerun converts a setup-blocked SkillsBench case into a completed comparable pair. The LoopX blind-loop treatment, using baseline-safe prompt framing, preserved baseline success while keeping official feedback blinded and reward feedback disabled.",
+      "control_plane_signal": "The blind-loop pair remains a solved non-regression guard. The canonical product-mode rerun now separately proves complete lifecycle plus every-round private soft-verify counters; its 0.0 score is attributed to solution/case outcome, not LoopX connectivity or missing reward sampling.",
       "decision": "paired_baseline_solved_treatment_preserved",
       "evidence_status": "compact_blind_loop_pair_complete",
       "historical_setup_blockers": [
@@ -1783,7 +1813,8 @@
         "Do not use this case as uplift evidence; baseline already passes.",
         "Use it as a success/non-regression guard when changing treatment prompt, continuation, or stop policy.",
         "Keep the historical /app mount setup blocker row as runner-readiness evidence, but do not let it override the newer primary blind-loop pair.",
-        "A treatment prompt or stop-policy change that makes this case fail should be treated as a regression because baseline solves it in round 1."
+        "A treatment prompt or stop-policy change that makes this case fail should be treated as a regression because baseline solves it in round 1.",
+        "Canonical product-mode now uses every-round private soft verify; require soft_verify_call_count > 0 in compact counters before treating a product-mode run as valid evidence."
       ],
       "public_boundary": {
         "artifact_reference_policy": "refer to compact ledger ids and run groups only",
@@ -1792,7 +1823,7 @@
         "trajectory_copied": false
       },
       "routing_guidance": {
-        "next_action": "keep as a baseline-solved non-regression guard; prioritize baseline-failing cases for uplift mining and use this case to check that baseline-safe treatment framing does not damage easy citation-checking wins",
+        "next_action": "keep as a baseline-solved non-regression guard and a canonical product-mode lifecycle/soft-verify guard; prioritize baseline-failing cases for uplift mining, and debug solution quality separately when this product-mode route scores 0.0 with lifecycle counters present",
         "repeat_policy": "repeat_only_after_treatment_prompt_or_stop_policy_change"
       },
       "scores": {
@@ -1823,6 +1854,42 @@
           "The primary blind-loop LoopX treatment with baseline-safe prompt framing also reached official verifier pass at reward 1.0 in the first completed agent round.",
           "The treatment used the outer LoopX blind-loop wrapper, but no official reward/pass/fail/verifier feedback was returned to the agent."
         ]
+      },
+      "canonical_product_mode_every_round_recheck": {
+        "schema_version": "skillsbench_canonical_product_mode_recheck_v0",
+        "protocol": "canonical_loopx_product_mode_lifecycle_driver",
+        "run_group_id": "skillsbench-citation-check-ef3006e-everyround-cleanup-20260624T2022Z",
+        "run_id": "ac6716eb1ae2",
+        "official_score_status": "completed",
+        "official_score": 0,
+        "failure_class": "official_verifier_solution_failure",
+        "failure_scope": "case_or_solution",
+        "max_rounds_budget": 8,
+        "final_round": 1,
+        "declared_done_round": 1,
+        "round_reward_count": 1,
+        "first_success_round": null,
+        "soft_verify_policy": "every-round",
+        "soft_verify_call_count": 1,
+        "soft_verify_skipped_count": 0,
+        "soft_verify_timeout_enabled": true,
+        "soft_verify_timeout_sec": 180,
+        "soft_verify_timeout_triggered": false,
+        "soft_verify_timeout_cleanup_triggered": false,
+        "final_verifier_timeout_override_count": 1,
+        "agent_loopx_cli_call_count": 18,
+        "agent_loopx_state_read_count": 2,
+        "agent_loopx_state_write_count": 16,
+        "agent_task_facing_operation_count": 8,
+        "bridge_agent_operation_trace_count": 1,
+        "bridge_driver_lifecycle_checkpoint_count": 1,
+        "driver_lifecycle_cli_call_count": 4,
+        "driver_lifecycle_state_read_count": 1,
+        "driver_lifecycle_state_write_count": 3,
+        "official_feedback_forwarded": false,
+        "reward_feedback_forwarded": false,
+        "conclusion": "The every-round canonical product-mode rerun produced public-safe soft-verify counters and full LoopX lifecycle evidence. It stopped after round 1 because the agent declared done and final official scoring returned 0.0; attribution is solution/case failure, not missing lifecycle, transport, or final-only reward sampling.",
+        "product_fix_status": "Every-round private soft verify is now the canonical product-mode default; the separate soft-timeout cleanup path is covered by runner smoke and did not need to trigger in this completed run."
       }
     },
     {
@@ -1867,18 +1934,19 @@
         "treatment_route": "loopx-blind-loop-treatment",
         "treatment_run_id": "306537fca3ac"
       },
-      "capability_signal": "This is not uplift evidence because the ordinary blind-loop baseline already solved the task at official 1.0 in round 1. It is a baseline-solved success guard and treatment non-regression check for a 3D calculation task family.",
+      "capability_signal": "This is not uplift evidence because the ordinary baseline already solved the task at official 1.0 in round 1. It is a baseline-solved success guard, a treatment non-regression check, and a canonical product-mode lifecycle-driver proof for a 3D calculation task family.",
       "case_id": "3d-scan-calc",
       "classification": "baseline_solved_non_regression_asset",
-      "control_plane_signal": "The rerun converts a legacy baseline-pass-only record into a completed primary blind-loop pair. The LoopX blind-loop treatment, using baseline-safe prompt framing, preserved baseline success while keeping official feedback blinded and reward feedback disabled.",
+      "control_plane_signal": "The rerun converts a legacy baseline-pass-only record into both a completed primary blind-loop pair and a canonical product-mode every-round pair. The LoopX product-mode treatment initialized case-local control state, produced checkpoint and closeout counters, and stopped after the first private reward-1.0 observation while keeping official feedback blinded.",
       "decision": "paired_baseline_solved_treatment_preserved",
-      "evidence_status": "compact_blind_loop_pair_complete",
+      "evidence_status": "compact_blind_loop_pair_and_product_mode_every_round_pair_complete",
       "historical_setup_blockers": [],
       "optimization_guidance": [
         "Do not use this case as uplift evidence; baseline already passes.",
         "Use it as a success/non-regression guard when changing treatment prompt, continuation, or stop policy.",
         "Keep the older codex_goal_mode_baseline pass as historical context, but use the current blind-loop pair for policy claims.",
-        "A treatment prompt or stop-policy change that makes this case fail should be treated as a regression because baseline solves it in round 1."
+        "A treatment prompt or stop-policy change that makes this case fail should be treated as a regression because baseline solves it in round 1.",
+        "Use the canonical product-mode every-round row as a good-case proof that lifecycle counters and early private verifier stop work when baseline also succeeds."
       ],
       "public_boundary": {
         "artifact_reference_policy": "refer to compact ledger ids and run groups only",
@@ -1888,7 +1956,7 @@
       },
       "routing_guidance": {
         "next_action": "keep as a baseline-solved non-regression guard; prioritize baseline-failing cases for uplift mining and use this case to check that baseline-safe treatment framing does not damage already-solvable 3D calculation tasks",
-        "repeat_policy": "repeat_only_after_treatment_prompt_or_stop_policy_change"
+        "repeat_policy": "repeat_only_after_treatment_prompt_stop_policy_lifecycle_driver_or_task_staging_change"
       },
       "scores": {
         "baseline_official_score": 1,
@@ -1904,7 +1972,8 @@
         "reason": "Both arms completed official SkillsBench scoring under the same no-upload, no-reward-feedback, no-/goal primary protocol. Baseline and baseline-safe treatment each reached official pass in round 1, so the treatment wrapper did not harm this baseline-solved case.",
         "stabilization_needed": [
           "rerun only after prompt/round/stop-policy changes or if a second seed is needed for a publishable claim",
-          "pair with baseline-failing positive/regression/neutral controls before generalizing treatment quality"
+          "pair with baseline-failing positive/regression/neutral controls before generalizing treatment quality",
+          "keep this case in the every-round smoke set because it proves reward-1.0 early stop and product-mode lifecycle counters on a baseline-solved task"
         ],
         "success_preservation_claim": "high_for_current_blind_loop_policy_single_seed"
       },
@@ -1918,6 +1987,45 @@
           "The primary blind-loop LoopX treatment with baseline-safe prompt framing also reached official verifier pass at reward 1.0 in the first completed agent round.",
           "The treatment used the outer LoopX blind-loop wrapper, but no official reward/pass/fail/verifier feedback was returned to the agent."
         ]
+      },
+      "canonical_product_mode_every_round_recheck": {
+        "schema_version": "skillsbench_product_mode_every_round_recheck_v0",
+        "baseline_run_group_id": "skillsbench-3d-scan-calc-d666545-everyround-baseline-20260624T2047Z",
+        "baseline_run_id": "fac3a39fdd9a",
+        "baseline_route": "raw-codex-autonomous-max5",
+        "baseline_official_score": 1.0,
+        "baseline_first_success_round": 1,
+        "baseline_final_round": 1,
+        "baseline_soft_verify_policy": "every-round",
+        "baseline_soft_verify_call_count": 1,
+        "baseline_soft_verify_skipped_count": 0,
+        "treatment_run_group_id": "skillsbench-3d-scan-calc-d666545-everyround-treatment-20260624T2053Z",
+        "treatment_run_id": "10d4a914cccc",
+        "treatment_route": "loopx-product-mode",
+        "treatment_official_score": 1.0,
+        "treatment_first_success_round": 1,
+        "treatment_final_round": 1,
+        "treatment_soft_verify_policy": "every-round",
+        "treatment_soft_verify_call_count": 1,
+        "treatment_soft_verify_skipped_count": 0,
+        "max_rounds_budget": 8,
+        "official_score_delta": 0.0,
+        "official_feedback_blinded": true,
+        "reward_feedback_forwarded": false,
+        "product_mode_pair_complete": true,
+        "main_table_claim_allowed": true,
+        "treatment_loopx_lifecycle_satisfied": true,
+        "treatment_lifecycle_checkpoint_count": 1,
+        "treatment_lifecycle_checkpoint_round": 1,
+        "treatment_state_read_count": 2,
+        "treatment_state_write_count": 16,
+        "treatment_refresh_state_count": 2,
+        "treatment_quota_spend_slot_count": 2,
+        "treatment_todo_closeout_count": 6,
+        "host_local_acp_preflight_status": "passed",
+        "soft_verifier_timeout_sec": 180,
+        "interpretation": "Canonical product-mode every-round rerun is a good driver proof and non-regression guard: both arms reached official 1.0 in round 1, the treatment produced full LoopX lifecycle closeout counters, and the controller stopped early on the private reward observation without forwarding reward, pass/fail, or verifier output to the agent.",
+        "why_not_uplift": "Baseline also solved in round 1, so the pair proves treatment preservation and lifecycle correctness rather than score uplift."
       }
     },
     {
@@ -3774,7 +3882,7 @@
     "trajectory_recorded": false,
     "update_rule": "add one case analysis record after compact result ingest and benchmark-run-ledger update"
   },
-  "updated_at": "2026-06-22T15:01:06+08:00",
+  "updated_at": "2026-06-24T12:31:00Z",
   "terminal_bench_current_protocol_coverage": {
     "schema_version": "terminal_bench_current_protocol_coverage_v0",
     "source_ledger": "benchmark-run-ledger.json",
