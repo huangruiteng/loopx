@@ -91,6 +91,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     product_mode_soft_verify_policy_for_route,
     reduce_result,
     _runner_prerequisite_failure_attribution,
+    _subcommand_family_count,
     summarize_acp_trajectory,
     stage_task_for_sandbox,
 )
@@ -125,6 +126,19 @@ def test_skillsbench_product_mode_soft_verify_default_is_every_round() -> None:
         )
         == "every-round"
     )
+
+
+def test_loopx_subcommand_family_counts_include_arguments() -> None:
+    counts = {
+        "todo complete": 2,
+        "todo update blocked": 1,
+        "refresh-state implementation": 3,
+        "quota spend-slot": 4,
+        "quota should-run": 5,
+    }
+    assert _subcommand_family_count(counts, "todo complete", "todo update") == 3
+    assert _subcommand_family_count(counts, "refresh-state") == 3
+    assert _subcommand_family_count(counts, "quota spend-slot") == 4
 
 
 def test_skillsbench_append_history_missing_registry_is_nonfatal() -> None:
@@ -3817,6 +3831,8 @@ def test_host_local_product_mode_auto_bridge_keeps_lifecycle_checkpoint_args() -
             "--remote-command-file-bridge-ready",
             "--task-id",
             "3d-scan-calc",
+            "--agent-idle-timeout",
+            "1800",
         ]
     )
     command = _host_local_acp_launch_command(args, build_plan(args))
@@ -3824,6 +3840,7 @@ def test_host_local_product_mode_auto_bridge_keeps_lifecycle_checkpoint_args() -
     assert "--loopx-case-goal-id" in command
     assert "--loopx-case-cli-path" in command
     assert "--remote-command-file-bridge-command" not in command
+    assert command[command.index("--timeout-sec") + 1] == "1800"
 
 
 def test_host_local_acp_connect_contract_matches_benchflow_runtime() -> None:

@@ -728,7 +728,7 @@ def _host_local_acp_launch_command(
             "--sandbox",
             args.local_codex_sandbox,
             "--timeout-sec",
-            str(args.local_codex_exec_timeout_sec),
+            str(_effective_local_codex_exec_timeout_sec(args)),
         ]
     )
     if args.host_local_acp_launch and args.route != "codex-app-server-goal-baseline":
@@ -832,6 +832,14 @@ def _host_local_acp_launch_command(
             ]
         )
     return command
+
+
+def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
+    configured = max(1, int(args.local_codex_exec_timeout_sec or 0))
+    idle_timeout = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+    if configured == DEFAULT_TIMEOUT_SEC and idle_timeout > 0:
+        return min(configured, idle_timeout)
+    return configured
 
 
 def _host_local_acp_target_env(agent_env: object) -> dict[str, str]:
@@ -4557,14 +4565,23 @@ def _merge_host_local_acp_relay_trace_summary(
         sorted(agent_bridge_loopx_subcommand_counts.items())
     )
     trace["remote_command_file_bridge_agent_todo_closeout_count"] = (
-        agent_bridge_loopx_subcommand_counts.get("todo complete", 0)
-        + agent_bridge_loopx_subcommand_counts.get("todo update", 0)
+        _subcommand_family_count(
+            agent_bridge_loopx_subcommand_counts,
+            "todo complete",
+            "todo update",
+        )
     )
     trace["remote_command_file_bridge_agent_refresh_state_count"] = (
-        agent_bridge_loopx_subcommand_counts.get("refresh-state", 0)
+        _subcommand_family_count(
+            agent_bridge_loopx_subcommand_counts,
+            "refresh-state",
+        )
     )
     trace["remote_command_file_bridge_agent_quota_spend_slot_count"] = (
-        agent_bridge_loopx_subcommand_counts.get("quota spend-slot", 0)
+        _subcommand_family_count(
+            agent_bridge_loopx_subcommand_counts,
+            "quota spend-slot",
+        )
     )
     trace["remote_command_file_bridge_driver_lifecycle_trace_count"] = (
         driver_lifecycle_trace_count
@@ -4753,6 +4770,22 @@ def _top_counts(counter: dict[str, int], *, limit: int = 12) -> dict[str, int]:
         )[:limit]
         if count > 0
     }
+
+
+def _subcommand_family_count(counter: dict[str, int], *families: str) -> int:
+    total = 0
+    for command, count in counter.items():
+        if not isinstance(command, str) or not command:
+            continue
+        if not isinstance(count, int) or isinstance(count, bool):
+            continue
+        normalized = " ".join(command.split())
+        if any(
+            normalized == family or normalized.startswith(f"{family} ")
+            for family in families
+        ):
+            total += max(0, count)
+    return total
 
 
 def _tool_title_kind(title: str) -> str:
