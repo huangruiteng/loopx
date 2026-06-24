@@ -1728,7 +1728,7 @@ def install_benchflow_verifier_prep_timeout_override(
         return "/verifier/test.sh" in command
 
     async def _run_with_override(self: Any, phase: str, original: Any) -> Any:
-        if not enabled and not final_timeout_enabled:
+        if not enabled and not final_timeout_enabled and not soft_timeout_enabled:
             return await original(self)
 
         env = getattr(self, "_env", None)

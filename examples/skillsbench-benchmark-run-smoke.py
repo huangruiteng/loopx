@@ -311,6 +311,50 @@ def test_skillsbench_intermediate_soft_verifier_timeout_override_records_public_
     assert "test.sh" not in json.dumps(prereqs)
 
 
+def test_skillsbench_intermediate_soft_verifier_timeout_is_independent() -> None:
+    class FakeRollout:
+        def __init__(self) -> None:
+            self._env = types.SimpleNamespace()
+
+        async def verify(self) -> None:
+            return await self._env.exec("echo final", timeout_sec=10)
+
+        async def soft_verify(self) -> None:
+            return await self._env.exec("/verifier/test.sh", timeout_sec=9999)
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def fake_exec(command: str, **kwargs: Any) -> Any:
+        calls.append((command, dict(kwargs)))
+        return types.SimpleNamespace(return_code=0)
+
+    rollout = FakeRollout()
+    rollout._env.exec = fake_exec
+    plan = {"runner_prerequisites": {}}
+    trace: dict[str, Any] = {}
+    original_verify, original_soft_verify = install_benchflow_verifier_prep_timeout_override(
+        FakeRollout,
+        timeout_sec=10,
+        final_verifier_timeout_sec=0,
+        soft_verifier_timeout_sec=5,
+        plan=plan,
+        trace=trace,
+    )
+    try:
+        asyncio.run(rollout.soft_verify())
+    finally:
+        FakeRollout.verify = original_verify
+        FakeRollout.soft_verify = original_soft_verify
+
+    assert calls == [("/verifier/test.sh", {"timeout_sec": 5})], calls
+    prereqs = plan["runner_prerequisites"]
+    assert prereqs["benchflow_intermediate_soft_verify_timeout_enabled"] is True
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_override_count"] == 1
+    )
+    assert prereqs["benchflow_verifier_prep_timeout_override_enabled"] is False
+
+
 def test_skillsbench_intermediate_soft_verifier_timeout_triggers_cleanup() -> None:
     class FakeRollout:
         def __init__(self) -> None:
@@ -7559,6 +7603,7 @@ if __name__ == "__main__":
     test_skillsbench_final_verifier_timeout_override_records_public_state()
     test_skillsbench_final_verifier_timeout_override_can_extend_timeout()
     test_skillsbench_intermediate_soft_verifier_timeout_override_records_public_state()
+    test_skillsbench_intermediate_soft_verifier_timeout_is_independent()
     test_skillsbench_intermediate_soft_verifier_timeout_triggers_cleanup()
     test_skillsbench_local_driver_a2a_contract_keeps_codex_local()
     test_skillsbench_local_driver_a2a_contract_ready_only_after_both_sides()
