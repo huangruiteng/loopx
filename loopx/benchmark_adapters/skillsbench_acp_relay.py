@@ -380,12 +380,18 @@ class SkillsBenchLocalAcpRelay:
                 with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
                     "w", encoding="utf-8"
                 ) as stderr_file:
+                    codex_env = os.environ.copy()
+                    if bridge_summary_path is not None:
+                        codex_env["LOOPX_REMOTE_AGENT_OPS_SUMMARY_PATH"] = str(
+                            bridge_summary_path
+                        )
                     proc = subprocess.Popen(
                         cmd,
                         stdin=subprocess.DEVNULL,
                         stdout=stdout_file,
                         stderr=stderr_file,
                         text=True,
+                        env=codex_env,
                     )
                     deadline = time.monotonic() + self._config.timeout_sec
                     next_heartbeat = (

@@ -35,6 +35,9 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     build_runner_failure_compact,
     ensure_benchflow_runtime,
 )
+from scripts.skillsbench_reverse_channel_bridge import (  # noqa: E402
+    _run_codex_payload,
+)
 
 SCRIPT = REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"
 RELAY_SCRIPT = REPO_ROOT / "scripts" / "skillsbench_local_acp_relay.py"
@@ -91,6 +94,79 @@ def main() -> int:
         "generated",
     ]
     with tempfile.TemporaryDirectory(prefix="gh-skillsbench-plan-") as tmp:
+        fake_bridge = Path(tmp) / "fake-json-bridge"
+        fake_bridge.write_text(
+            """#!/usr/bin/env python3
+import json
+import sys
+
+request = json.loads(sys.stdin.read() or "{}")
+print(json.dumps({"ok": True, "operation": request.get("operation"), "exit_code": 0}))
+""",
+            encoding="utf-8",
+        )
+        fake_bridge.chmod(0o755)
+        fake_codex = Path(tmp) / "fake-codex"
+        fake_codex.write_text(
+            """#!/usr/bin/env python3
+import json
+import re
+import subprocess
+import sys
+
+args = sys.argv[1:]
+out = ""
+for index, token in enumerate(args[:-1]):
+    if token == "--output-last-message":
+        out = args[index + 1]
+prompt = args[-1] if args else ""
+match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
+assert match, prompt
+subprocess.run(
+    match.group(1),
+    input=json.dumps({
+        "operation": "exec",
+        "cwd": "/app",
+        "command": "/app/.local/bin/loopx quota should-run --goal-id skillsbench-case --agent-id codex-benchmark-agent",
+    }),
+    text=True,
+    shell=True,
+    check=True,
+)
+if out:
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write("done")
+""",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o755)
+        reverse_payload = _run_codex_payload(
+            {
+                "args": [
+                    "exec",
+                    "--output-last-message",
+                    str(Path(tmp) / "remote-last-message.txt"),
+                    "--json",
+                    "Private bridge command:\nremote-wrapper-that-must-be-replaced",
+                ],
+                "timeout_sec": 20,
+            },
+            codex_bin=str(fake_codex),
+            default_timeout_sec=20,
+            prompt_bridge_command=str(fake_bridge),
+        )
+        assert reverse_payload["exit_code"] == 0, reverse_payload
+        operation_lines = [
+            json.loads(line)
+            for line in str(reverse_payload["agent_operations_jsonl"]).splitlines()
+            if line.strip()
+        ]
+        assert len(operation_lines) == 1, reverse_payload
+        operation_record = operation_lines[0]
+        assert operation_record["operation"] == "exec", operation_record
+        assert operation_record["loopx_cli_call"] is True, operation_record
+        assert operation_record["loopx_state_read"] is True, operation_record
+        assert operation_record["raw_request_recorded"] is False, operation_record
         root = Path(tmp) / "skillsbench"
         task = root / "tasks" / "demo-task" / "environment"
         task.mkdir(parents=True)
