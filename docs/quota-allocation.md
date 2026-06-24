@@ -399,6 +399,13 @@ bounded self-repair or replan path that is itself stuck for two more eligible
 turns. This keeps recurring controllers alive while still preventing quota
 spend on empty monitor checks.
 
+`automation_liveness` deliberately does not set the polling cadence. The guard
+also exposes `scheduler_hint`, which is the host-runtime scheduling contract:
+Codex App automations should progressively back off toward the recommended
+interval/max during long waits, while Codex CLI TUI and Claude Code loops should
+exit or stop after their unchanged-poll limit. Cadence changes and self-stop
+turns never spend quota; only validated delivery or allowed writeback does.
+
 ## Compute States
 
 Recommended compact states:
@@ -489,6 +496,13 @@ JSON or Markdown decision:
     "recommended_mode": "ask_operator_gate",
     "notify": "NOTIFY",
     "spend_policy": "do not append quota spend while asking the operator gate"
+  },
+  "scheduler_hint": {
+    "schema_version": "scheduler_hint_v0",
+    "action": "backoff_waiting_for_user",
+    "codex_app": {"recommended_interval_minutes": 60},
+    "codex_cli_tui": {"unchanged_poll_limit": 1, "after_limit": "exit_goal_loop"},
+    "claude_code_loop": {"unchanged_poll_limit": 1, "after_limit": "stop_loop"}
   },
   "operator_question": "是否同意 project-main-control 先做 read-only map dry-run？",
   "gate_prompt": "请用户/控制器确认当前 gate：..."
@@ -598,6 +612,13 @@ also names whether the user must be interrupted, whether Codex must attempt
 work, whether delivery is allowed, whether quiet no-op is allowed, and whether
 quota spend is allowed only after validation. Executors should read this object
 first.
+The response also includes `scheduler_hint.schema_version=scheduler_hint_v0`.
+That hint is not a delivery permission. It is the cross-runtime wait policy:
+`run_now` keeps the active cadence for required work; `backoff_waiting_for_user`
+slows Codex App and stops CLI/Claude loops after one unchanged poll;
+`backoff_until_reassigned` handles side-agent primary-review waits;
+`backoff_until_material_transition` handles monitor-only quiet polls; and
+`backoff_until_fresh_evidence` handles mapped or post-handoff no-op waits.
 The response also includes `execution_obligation`, which is the compatibility
 field that separates worker execution from user-facing notification.
 `heartbeat_recommendation.notify` answers "should this heartbeat interrupt the

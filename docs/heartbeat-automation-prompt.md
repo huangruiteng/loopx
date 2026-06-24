@@ -444,11 +444,13 @@ Do not ask for permissions when the current Codex session is already trusted.
 
 When creating a heartbeat in Codex App, keep the visible instruction short and
 put the lifecycle in the automation task body. The default onboarding cadence
-is every 3 minutes; choose a different interval only when the user explicitly
-asks:
+starts at 3 minutes; after the first guard, follow
+`quota should-run.scheduler_hint` to back off long waits and stop external loops
+after repeated unchanged polls:
 
 ```text
-Create a heartbeat automation every 3 minutes for the current thread.
+Create a heartbeat automation starting at 3 minutes for the current thread;
+then apply `quota should-run.scheduler_hint` for backoff.
 
 Task:
 Advance <GOAL_ID> using <ACTIVE_GOAL_STATE_PATH>. Before any delivery work,
@@ -572,6 +574,8 @@ For every automatic heartbeat turn, the agent-facing checklist is:
     classification-name inference.
 19. Report compactly.
 
-This prompt is intentionally a template rather than a scheduler. It should work
-with per-project heartbeats, a shared controller loop, or future Codex goal-mode
-automations because they all share the same LoopX quota guard.
+This prompt is intentionally a lifecycle template. Scheduling policy lives in
+`quota should-run.scheduler_hint`, so per-project heartbeats, a shared
+controller loop, Codex CLI TUI, Claude Code loop, or future Codex goal-mode
+automations can all share the same LoopX quota guard without hard-coding
+different wait loops.

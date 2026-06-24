@@ -145,6 +145,7 @@ EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION = "external_evidence_observation_ob
 INTERACTION_CONTRACT_SCHEMA_VERSION = "loopx_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
+SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
 CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
 SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "side_agent_workspace_guard_v0"
 AGENT_CLAIM_SCOPE_SCHEMA_VERSION = "agent_claim_scope_v0"
@@ -3149,6 +3150,11 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(payload.get("automation_liveness"), dict)
         else {}
     )
+    scheduler_hint = (
+        payload.get("scheduler_hint")
+        if isinstance(payload.get("scheduler_hint"), dict)
+        else {}
+    )
     requires_user_action = _user_channel_action_required(payload)
     must_attempt_work = bool(execution_obligation.get("must_attempt_work"))
     scoped_user_gate_fallback = isinstance(payload.get("scoped_user_gate_fallback"), dict)
@@ -3248,6 +3254,8 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
         summary_parts.append(f"lane={work_lane.get('lane')}")
     if automation_liveness.get("automation_action"):
         summary_parts.append(f"automation={automation_liveness.get('automation_action')}")
+    if scheduler_hint.get("action"):
+        summary_parts.append(f"scheduler={scheduler_hint.get('action')}")
     if automation_liveness.get("pause_allowed") is False:
         summary_parts.append("pause_allowed=false")
     summary_parts.append("llm=no_api")
@@ -3759,6 +3767,218 @@ def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
             "safe-bypass writeback"
         ),
     }
+
+
+def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
+    """Project how external schedulers should wake, back off, or stop polling.
+
+    `automation_liveness` answers whether the LoopX automation lane should stay
+    alive. This hint answers the separate host-runtime question: when a Codex
+    App automation, Codex CLI local scheduler, or Claude Code loop sees the same
+    quiet state repeatedly, how aggressively should it poll again?
+    """
+
+    heartbeat_recommendation = (
+        payload.get("heartbeat_recommendation")
+        if isinstance(payload.get("heartbeat_recommendation"), dict)
+        else {}
+    )
+    execution_obligation = (
+        payload.get("execution_obligation")
+        if isinstance(payload.get("execution_obligation"), dict)
+        else {}
+    )
+    automation_liveness = (
+        payload.get("automation_liveness")
+        if isinstance(payload.get("automation_liveness"), dict)
+        else {}
+    )
+    interaction_contract = (
+        payload.get("interaction_contract")
+        if isinstance(payload.get("interaction_contract"), dict)
+        else {}
+    )
+    user_channel = (
+        interaction_contract.get("user_channel")
+        if isinstance(interaction_contract.get("user_channel"), dict)
+        else {}
+    )
+    effective_action = str(payload.get("effective_action") or "")
+    recommended_mode = str(heartbeat_recommendation.get("recommended_mode") or "")
+    must_attempt_work = bool(execution_obligation.get("must_attempt_work"))
+    user_required = _user_channel_action_required(payload) or bool(
+        user_channel.get("action_required")
+    )
+    automation_action = str(automation_liveness.get("automation_action") or "")
+    spend_policy = (
+        automation_liveness.get("spend_policy")
+        or execution_obligation.get("spend_policy")
+        or heartbeat_recommendation.get("spend_policy")
+    )
+
+    def hint(
+        *,
+        action: str,
+        cadence_class: str,
+        reason: str,
+        codex_interval: int,
+        codex_max: int,
+        cli_limit: int | None,
+        claude_limit: int | None,
+        multiplier: int = 2,
+    ) -> dict[str, Any]:
+        return {
+            "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
+            "source": "quota.should-run",
+            "action": action,
+            "cadence_class": cadence_class,
+            "reason": reason,
+            "spend_policy": spend_policy,
+            "codex_app": {
+                "recommended_interval_minutes": codex_interval,
+                "max_interval_minutes": codex_max,
+                "unchanged_poll_backoff_multiplier": multiplier,
+                "apply": "update_automation_cadence_if_possible",
+                "no_spend_for_cadence_change": True,
+            },
+            "local_scheduler": {
+                "recommended_interval_minutes": codex_interval,
+                "max_interval_minutes": codex_max,
+                "unchanged_poll_backoff_multiplier": multiplier,
+                "unchanged_poll_limit": cli_limit,
+                "after_limit": "stop_tick_loop" if cli_limit is not None else "continue",
+                "no_spend_for_cadence_change": True,
+            },
+            "codex_cli_tui": {
+                "unchanged_poll_limit": cli_limit,
+                "after_limit": "exit_goal_loop" if cli_limit is not None else "continue",
+                "no_spend_for_exit": True,
+            },
+            "claude_code_loop": {
+                "unchanged_poll_limit": claude_limit,
+                "after_limit": "stop_loop" if claude_limit is not None else "continue",
+                "no_spend_for_stop": True,
+            },
+            "unchanged_identity_keys": [
+                "goal_id",
+                "agent_identity.agent_id",
+                "effective_action",
+                "heartbeat_recommendation.recommended_mode",
+                "interaction_contract.mode",
+                "recommended_action",
+            ],
+        }
+
+    if (
+        recommended_mode in {"mapped_noop_if_unchanged", "post_handoff_observe_if_unchanged"}
+        or heartbeat_recommendation.get("stop_if_unchanged")
+        or automation_action == "keep_active_noop_if_unchanged"
+    ):
+        return hint(
+            action="backoff_until_fresh_evidence",
+            cadence_class="unchanged_noop",
+            reason=(
+                "the current mapped or post-handoff source is unchanged; do not "
+                "keep a tight loop while waiting for fresh evidence or a concrete handoff"
+            ),
+            codex_interval=60,
+            codex_max=240,
+            cli_limit=2,
+            claude_limit=2,
+        )
+
+    if (
+        payload.get("should_run") is True
+        or must_attempt_work
+        or automation_action
+        in {
+            "execute_bounded_work",
+            "repair_automation_prompt_identity",
+        }
+    ):
+        return hint(
+            action="run_now",
+            cadence_class="active_work",
+            reason=(
+                "quota projects runnable work or a required repair; keep the active "
+                "scheduler cadence until the turn validates or blocks"
+            ),
+            codex_interval=3,
+            codex_max=10,
+            cli_limit=None,
+            claude_limit=None,
+        )
+
+    if user_required or recommended_mode in {"ask_operator_gate", "blocker_push_notify"}:
+        return hint(
+            action="backoff_waiting_for_user",
+            cadence_class="human_gate",
+            reason=(
+                "user/controller action is the next unlock; after surfacing the "
+                "concrete todo or gate, external loops should stop repeating the "
+                "same quiet poll"
+            ),
+            codex_interval=60,
+            codex_max=240,
+            cli_limit=1,
+            claude_limit=1,
+        )
+
+    if _agent_scope_frontier_action(effective_action) is not None:
+        return hint(
+            action="backoff_until_reassigned",
+            cadence_class="agent_scope_wait",
+            reason=(
+                "this registered agent has no in-scope advancement candidate; poll "
+                "less often until primary review, reassignment, or a current-agent "
+                "todo appears"
+            ),
+            codex_interval=30,
+            codex_max=120,
+            cli_limit=2,
+            claude_limit=2,
+        )
+
+    if (
+        effective_action == "monitor_quiet_skip"
+        or recommended_mode == "monitor_quiet_until_material_transition"
+    ):
+        return hint(
+            action="backoff_until_material_transition",
+            cadence_class="monitor_wait",
+            reason=(
+                "monitor-only quiet polls should remain alive but use a slower "
+                "cadence until material evidence, a blocker, or replan obligation appears"
+            ),
+            codex_interval=15,
+            codex_max=60,
+            cli_limit=3,
+            claude_limit=3,
+        )
+
+    if payload.get("should_run") is False:
+        return hint(
+            action="backoff_until_state_change",
+            cadence_class="quiet_wait",
+            reason=(
+                "quota blocks delivery and no immediate user/monitor-specific path "
+                "is projected; poll at a slower cadence until the status changes"
+            ),
+            codex_interval=30,
+            codex_max=120,
+            cli_limit=2,
+            claude_limit=2,
+        )
+
+    return hint(
+        action="keep_default_cadence",
+        cadence_class="default",
+        reason="no scheduler backoff condition is projected",
+        codex_interval=3,
+        codex_max=30,
+        cli_limit=None,
+        claude_limit=None,
+    )
 
 
 def _goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -6225,6 +6445,7 @@ def build_quota_should_run(
             payload["agent_command"] = item.get("agent_command")
         payload["automation_liveness"] = _automation_liveness(payload)
         payload["interaction_contract"] = _interaction_contract(payload)
+        payload["scheduler_hint"] = _scheduler_hint(payload)
         payload["protocol_action_packet"] = _protocol_action_packet(payload)
         return payload
 
@@ -7919,6 +8140,37 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- automation_liveness_reason: {automation_liveness.get('reason')}")
         if automation_liveness.get("pause_policy"):
             lines.append(f"- automation_pause_policy: {automation_liveness.get('pause_policy')}")
+    scheduler_hint = (
+        payload.get("scheduler_hint")
+        if isinstance(payload.get("scheduler_hint"), dict)
+        else {}
+    )
+    if scheduler_hint:
+        codex_app = (
+            scheduler_hint.get("codex_app")
+            if isinstance(scheduler_hint.get("codex_app"), dict)
+            else {}
+        )
+        codex_cli_tui = (
+            scheduler_hint.get("codex_cli_tui")
+            if isinstance(scheduler_hint.get("codex_cli_tui"), dict)
+            else {}
+        )
+        claude_code_loop = (
+            scheduler_hint.get("claude_code_loop")
+            if isinstance(scheduler_hint.get("claude_code_loop"), dict)
+            else {}
+        )
+        lines.append(
+            "- scheduler_hint: "
+            f"action={scheduler_hint.get('action')} "
+            f"cadence={scheduler_hint.get('cadence_class')} "
+            f"codex_app_minutes={codex_app.get('recommended_interval_minutes')} "
+            f"cli_unchanged_limit={codex_cli_tui.get('unchanged_poll_limit')} "
+            f"claude_unchanged_limit={claude_code_loop.get('unchanged_poll_limit')}"
+        )
+        if scheduler_hint.get("reason"):
+            lines.append(f"- scheduler_hint_reason: {scheduler_hint.get('reason')}")
     protocol_action_packet = (
         payload.get("protocol_action_packet")
         if isinstance(payload.get("protocol_action_packet"), dict)

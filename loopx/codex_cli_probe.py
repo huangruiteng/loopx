@@ -1300,6 +1300,14 @@ def _scheduler_label(goal_id: str, agent_id: str | None) -> str:
     return f"com.loopx.codex-cli.{safe}"
 
 
+def _positive_int(value: Any, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
 def build_codex_cli_local_scheduler_tick(
     *,
     project: Path,
@@ -1308,6 +1316,7 @@ def build_codex_cli_local_scheduler_tick(
     cli_bin: str,
     codex_bin: str,
     probe_payload: dict[str, Any],
+    quota_payload: dict[str, Any] | None = None,
     proof_payload: dict[str, Any] | None = None,
     idle_payload: dict[str, Any] | None = None,
     allow_headless_fallback: bool = False,
@@ -1367,6 +1376,21 @@ def build_codex_cli_local_scheduler_tick(
         "--observe-local-runtime --observed-surface visible_resume_prompt "
         "--turn-state idle --probe-human-input-idle --checked-before-prompt "
         "--visible-to-user --user-can-interrupt --manual-takeover-available"
+    )
+    scheduler_hint = (
+        quota_payload.get("scheduler_hint")
+        if isinstance(quota_payload, dict)
+        and isinstance(quota_payload.get("scheduler_hint"), dict)
+        else {}
+    )
+    local_scheduler_hint = (
+        scheduler_hint.get("local_scheduler")
+        if isinstance(scheduler_hint.get("local_scheduler"), dict)
+        else {}
+    )
+    recommended_interval_minutes = _positive_int(
+        local_scheduler_hint.get("recommended_interval_minutes"),
+        10,
     )
 
     candidate_command = None
@@ -1451,13 +1475,15 @@ def build_codex_cli_local_scheduler_tick(
         "candidate_command": candidate_command,
         "precise_blocker": precise_blocker,
         "blocker_writeback_command": blocker_writeback_command,
+        "scheduler_hint": scheduler_hint or None,
         "launchd": {
             "label": _scheduler_label(resolved_goal_id, agent_id),
             "one_shot_command": scheduler_tick_command,
             "keep_alive": False,
-            "recommended_interval_seconds": 600,
+            "recommended_interval_seconds": recommended_interval_minutes * 60,
             "notes": [
                 "Run this tick as a one-shot or low-frequency launchd job.",
+                "If quota scheduler_hint is present, apply its cadence/backoff and unchanged-poll stop policy.",
                 "The tick prints a candidate command or blocker command; it does not execute Codex.",
                 "Use external logging that excludes raw transcripts, session files, credentials, and private paths.",
             ],
@@ -1732,6 +1758,7 @@ def build_codex_cli_local_scheduler_executor(
     cli_bin: str,
     codex_bin: str,
     probe_payload: dict[str, Any],
+    quota_payload: dict[str, Any] | None = None,
     proof_payload: dict[str, Any] | None = None,
     idle_payload: dict[str, Any] | None = None,
     allow_headless_fallback: bool = False,
@@ -1749,6 +1776,7 @@ def build_codex_cli_local_scheduler_executor(
         cli_bin=cli_bin,
         codex_bin=codex_bin,
         probe_payload=probe_payload,
+        quota_payload=quota_payload,
         proof_payload=proof_payload,
         idle_payload=idle_payload,
         allow_headless_fallback=allow_headless_fallback,
@@ -2798,6 +2826,16 @@ def render_codex_cli_local_scheduler_tick_markdown(payload: dict[str, Any]) -> s
     boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
     commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
     launchd = payload.get("launchd") if isinstance(payload.get("launchd"), dict) else {}
+    scheduler_hint = (
+        payload.get("scheduler_hint")
+        if isinstance(payload.get("scheduler_hint"), dict)
+        else {}
+    )
+    local_scheduler = (
+        scheduler_hint.get("local_scheduler")
+        if isinstance(scheduler_hint.get("local_scheduler"), dict)
+        else {}
+    )
     blocker = payload.get("precise_blocker") if isinstance(payload.get("precise_blocker"), dict) else None
     runtime_idle = (
         payload.get("runtime_idle_detector")
@@ -2844,6 +2882,14 @@ def render_codex_cli_local_scheduler_tick_markdown(payload: dict[str, Any]) -> s
 - keep_alive: `{launchd.get("keep_alive")}`
 - recommended_interval_seconds: `{launchd.get("recommended_interval_seconds")}`
 - one_shot_command: `{launchd.get("one_shot_command")}`
+
+## Scheduler Hint
+
+- action: `{scheduler_hint.get("action")}`
+- cadence_class: `{scheduler_hint.get("cadence_class")}`
+- local_interval_minutes: `{local_scheduler.get("recommended_interval_minutes")}`
+- local_unchanged_poll_limit: `{local_scheduler.get("unchanged_poll_limit")}`
+- local_after_limit: `{local_scheduler.get("after_limit")}`
 
 ## Boundary
 

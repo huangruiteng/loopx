@@ -1195,6 +1195,11 @@ says which CLI transitions and spend policy apply. Executors should read
 `external_evidence_observation`, `goal_boundary`, and
 `protocol_action_packet` remain compatibility and drill-down fields under that
 contract, not competing sources of truth.
+The same payload includes `scheduler_hint.schema_version=scheduler_hint_v0`.
+This is the scheduling contract for host runtimes, not a delivery permission:
+Codex App can back off its automation cadence for long waits, while Codex CLI
+TUI and Claude Code loops can exit/stop after repeated unchanged polls. Cadence
+changes and loop self-stop never spend quota.
 The payload also includes `execution_obligation`, which is the compatibility
 entry point for older workers deciding whether a quiet no-op is allowed.
 `heartbeat_recommendation.notify` is only a user-facing notification policy. It

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -53,6 +54,10 @@ def _add_scheduler_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--fixture",
         help="Public-safe JSON fixture with command_outputs, used instead of invoking Codex CLI.",
+    )
+    parser.add_argument(
+        "--quota-fixture",
+        help="Optional public-safe quota should-run JSON fixture with scheduler_hint.",
     )
     parser.add_argument(
         "--proof-fixture",
@@ -122,6 +127,11 @@ def handle_codex_cli_local_scheduler_tick_command(
         else None
     )
     idle_payload = _load_codex_cli_runtime_idle_payload(args)
+    quota_payload = (
+        json.loads(Path(args.quota_fixture).expanduser().read_text(encoding="utf-8"))
+        if args.quota_fixture
+        else None
+    )
     payload = build_codex_cli_local_scheduler_tick(
         project=Path(args.project),
         goal_id=args.goal_id,
@@ -129,6 +139,7 @@ def handle_codex_cli_local_scheduler_tick_command(
         cli_bin=args.cli_bin,
         codex_bin=args.codex_bin,
         probe_payload=probe_payload,
+        quota_payload=quota_payload,
         proof_payload=proof_payload,
         idle_payload=idle_payload,
         allow_headless_fallback=bool(args.allow_headless_fallback),
@@ -152,6 +163,11 @@ def handle_codex_cli_local_scheduler_exec_command(
         else None
     )
     idle_payload = _load_codex_cli_runtime_idle_payload(args)
+    quota_payload = (
+        json.loads(Path(args.quota_fixture).expanduser().read_text(encoding="utf-8"))
+        if args.quota_fixture
+        else None
+    )
     payload = build_codex_cli_local_scheduler_executor(
         project=Path(args.project),
         goal_id=args.goal_id,
@@ -159,6 +175,7 @@ def handle_codex_cli_local_scheduler_exec_command(
         cli_bin=args.cli_bin,
         codex_bin=args.codex_bin,
         probe_payload=probe_payload,
+        quota_payload=quota_payload,
         proof_payload=proof_payload,
         idle_payload=idle_payload,
         allow_headless_fallback=bool(args.allow_headless_fallback),

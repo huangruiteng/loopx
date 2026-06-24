@@ -645,7 +645,12 @@ def main() -> int:
         assert first_guard["automation_liveness"]["keep_active"] is True, first_guard
         assert first_guard["automation_liveness"]["pause_allowed"] is False, first_guard
         assert "not a self-stop signal" in first_guard["automation_liveness"]["reason"], first_guard
+        assert first_guard["scheduler_hint"]["action"] == "backoff_until_material_transition", first_guard
+        assert first_guard["scheduler_hint"]["codex_app"]["recommended_interval_minutes"] == 15, first_guard
+        assert first_guard["scheduler_hint"]["local_scheduler"]["max_interval_minutes"] == 60, first_guard
+        assert first_guard["scheduler_hint"]["codex_cli_tui"]["unchanged_poll_limit"] == 3, first_guard
         assert "automation=keep_active_quiet" in first_guard["protocol_action_packet"]["summary"], first_guard
+        assert "scheduler=backoff_until_material_transition" in first_guard["protocol_action_packet"]["summary"], first_guard
         assert "pause_allowed=false" in first_guard["protocol_action_packet"]["summary"], first_guard
         interaction = first_guard["interaction_contract"]
         assert interaction["mode"] == "monitor_quiet_skip", interaction
@@ -699,6 +704,7 @@ def main() -> int:
         assert replan_guard["execution_obligation"]["must_attempt_work"] is True, replan_guard
         assert replan_guard["automation_liveness"]["automation_action"] == "execute_bounded_work", replan_guard
         assert replan_guard["automation_liveness"]["pause_allowed"] is False, replan_guard
+        assert replan_guard["scheduler_hint"]["action"] == "run_now", replan_guard
         assert "automation=execute_bounded_work" in replan_guard["protocol_action_packet"]["summary"], replan_guard
         interaction = replan_guard["interaction_contract"]
         assert interaction["mode"] == "autonomous_replan", interaction
