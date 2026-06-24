@@ -87,7 +87,7 @@ const legacyFallbackPacket = buildActionPacket({
   gateFallbackDecision: "保持 status inspection；补 project_asset 后再恢复 delivery。",
   boundary: "This is a legacy/raw fallback; do not infer owner, gate, or stop condition authority.",
   safePathLabel: "Legacy status inspection",
-  command: "loopx status --goal-id legacy-status-only",
+  command: "loopx diagnose --goal-id legacy-status-only --limit 20",
   projectNextAction: "Continue from raw status field.",
   projectStopCondition: "Stop before any delivery claim.",
   projectAssetSource: "legacy_raw_fallback",
@@ -111,7 +111,7 @@ const focusWaitPacket = buildActionPacket({
   gateFallbackDecision: "继续保持 focus wait；有新 owner evidence、clean baseline 或外部 eval 后再恢复 delivery。",
   boundary: "这不是 delivery approval；项目 Agent 只做 status/history inspection，不执行交付路径、写入、reward append 或生产动作。",
   safePathLabel: "Status/history inspection only",
-  command: "loopx --registry ./examples/registry.example.json --runtime-root ./tmp/runtime status --goal-id focus-wait-owner-blocker",
+  command: "loopx --registry ./examples/registry.example.json --runtime-root ./tmp/runtime diagnose --goal-id focus-wait-owner-blocker --limit 20",
 });
 
 assert(focusWaitPacket.includes("目标：focus-wait-owner-blocker"), "missing focus-wait goal id");
@@ -135,7 +135,7 @@ const platformMigrationNoEvidencePacket = buildActionPacket({
   boundary: "Use only sanitized status/history/material counts; do not read private evidence, internal links, raw paths, or production state.",
   durableRecordRule: null,
   safePathLabel: "No-evidence status/packet sanity",
-  command: "loopx status --goal-id platform-migration-material-registry --limit 20",
+  command: "loopx diagnose --goal-id platform-migration-material-registry --limit 20",
   quotaShortLine: "Eligible; 0/1440 slots",
   authorityShortLine: "entries 0/3; topics 3; materials 6; repos 2; owner review 1; stale 1; risk medium",
   projectOwner: "codex",

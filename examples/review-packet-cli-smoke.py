@@ -735,7 +735,7 @@ def assert_missing_project_asset_review_packet_fallback() -> None:
                     "waiting_on": "codex",
                     "severity": "action",
                     "recommended_action": "Continue only through raw status fallback.",
-                    "agent_command": "loopx status --goal-id legacy-status-only",
+                    "agent_command": "loopx diagnose --goal-id legacy-status-only --limit 20",
                     "source": "latest_run",
                 }
             ]

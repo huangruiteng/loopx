@@ -126,7 +126,7 @@ def build_sanitized_focus_wait_packet() -> str:
     goal_id = "focus-wait-owner-blocker"
     status_command = (
         "loopx --registry ./examples/registry.example.json "
-        "--runtime-root ./tmp/runtime status --goal-id focus-wait-owner-blocker"
+        "--runtime-root ./tmp/runtime diagnose --goal-id focus-wait-owner-blocker --limit 20"
     )
     return "\n".join(
         [

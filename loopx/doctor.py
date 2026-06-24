@@ -39,6 +39,9 @@ REQUIRED_INSTALLED_SKILL_PHRASES = {
     ),
     "loopx-self-repair": (
         "Build a compact evidence packet",
+        "loopx --format json diagnose --goal-id <goal-id>",
+        "loopx --format json status --limit 20",
+        "registry-declared active state file",
         "references/repair-patterns.md",
         "Repair at the lowest durable layer",
     ),

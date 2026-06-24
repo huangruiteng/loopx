@@ -178,11 +178,16 @@ def main() -> int:
         self_repair_text = " ".join(self_repair_skill.read_text(encoding="utf-8").split())
         for phrase in (
             "Build a compact evidence packet",
+            "loopx --format json diagnose --goal-id <goal-id>",
+            "loopx --format json status --limit 20",
+            "intentionally a registry/dashboard view rather than a goal-filtered command",
+            "registry-declared active state file",
             "references/repair-patterns.md",
             "Repair at the lowest durable layer",
             "Do not solve contradictory payloads by guessing",
         ):
             assert phrase in self_repair_text, phrase
+        assert "status --goal-id <goal-id>" not in self_repair_text, self_repair_text
         self_repair_patterns = (
             codex_home
             / "skills"
@@ -192,6 +197,7 @@ def main() -> int:
         )
         self_repair_patterns_text = self_repair_patterns.read_text(encoding="utf-8")
         assert "`boundary_projection_gap`" in self_repair_patterns_text, self_repair_patterns_text
+        assert "`skill_cli_contract_drift`" in self_repair_patterns_text, self_repair_patterns_text
         assert "`tiny_turn_under_delivery`" in self_repair_patterns_text, self_repair_patterns_text
         assert (
             codex_home / "skills" / "loopx-self-repair" / "agents" / "openai.yaml"
