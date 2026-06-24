@@ -516,8 +516,9 @@ If the result says `should_run=false`:
   or project exploration in this turn. Return a quiet heartbeat `DONT_NOTIFY`
   response with the skip reason.
   Follow `scheduler_hint`: update Codex App cadence toward its recommended
-  interval/max when possible; Codex CLI TUI and Claude Code loops exit/stop
-  after the unchanged-poll limit. No quota spend for cadence or self-stop.
+  interval/max when possible; Codex CLI TUI and Claude Code loops run the
+  final quota/replan check before exiting/stopping after the unchanged-poll
+  limit. No quota spend for cadence, final checks, or self-stop.
 
 If the result says `should_run=true`:
 
@@ -767,8 +768,8 @@ If `should_run=true`:
    `must_attempt_work=true` means one bounded segment even with
    `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false` and no
    `notify_user_on_open_todo=true` blocker-push notification.
-   Apply `scheduler_hint` for cadence/unchanged-poll self-stop. Then follow
-   `heartbeat_recommendation`:
+   Apply `scheduler_hint` for cadence and unchanged-poll final-check/self-stop.
+   Then follow `heartbeat_recommendation`:
    `run_first_read_only_map` means run exact real-map command, then
    validate/save/spend/refresh/`NOTIFY`; `mapped_noop_if_unchanged` plus
    `stop_if_unchanged=true` means quiet no-op if no new instruction/evidence/
@@ -845,7 +846,7 @@ state. Run `quota should-run`; follow `interaction_contract`. If
 action_required=true/open_count>0, list concrete payload todo(s)/questions;
 never only "owner gate"; missing -> "具体 user todo 未投影，需修复 LoopX 状态投影".
 If false/0: 无用户待办/无需通知 or quiet.
-Apply `scheduler_hint` for wait backoff and CLI/Claude unchanged self-stop; no spend.
+Apply `scheduler_hint` for wait backoff and CLI/Claude final-check/self-stop; no spend.
 Bounded batch/quiet no-op; spend after writeback.
 Plans/done -> LoopX todo/rationale; 2 no-progress -> self-repair.
 
