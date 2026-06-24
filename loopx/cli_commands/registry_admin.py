@@ -30,6 +30,7 @@ from ..state_migration import (
     parse_key_value_map,
     render_state_migration_markdown,
 )
+from ..upgrade import build_upgrade_plan
 
 
 PrintPayload = Callable[
@@ -103,7 +104,7 @@ def register_agent_via_source_registry(
             goal_id=goal_id,
             dry_run=False,
         )
-    return {
+    result = {
         "ok": True,
         "dry_run": not execute,
         "execute": execute,
@@ -118,6 +119,62 @@ def register_agent_via_source_registry(
         "written": configure_payload.get("written"),
         "configure_goal": configure_payload,
         "global_sync": sync_payload or {"enabled": bool(execute), "wrote": False},
+    }
+    result["host_loop_activation"] = loop_activation_for_goal(
+        registry_path=global_path,
+        runtime_root_arg=runtime_root_arg,
+        goal_id=goal_id,
+    )
+    return result
+
+
+def loop_activation_for_goal(
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    goal_id: str,
+) -> dict[str, object]:
+    try:
+        plan = build_upgrade_plan(
+            registry_path=registry_path,
+            runtime_root_override=runtime_root_arg,
+            goal_ids=[goal_id],
+        )
+        goals = plan.get("managed_heartbeats") if isinstance(plan.get("managed_heartbeats"), list) else []
+        if not goals:
+            return {
+                "schema_version": "loopx_host_loop_activation_v0",
+                "host_surface": "codex_app_heartbeat",
+                "status": "unavailable",
+                "activated": False,
+                "recommended_action": (
+                    "run loopx upgrade-plan for this goal; do not claim setup complete until "
+                    "host_loop_activation.activated=true or a concrete host-tool gate is reported"
+                ),
+            }
+        activation = goals[0].get("host_loop_activation")
+        if isinstance(activation, dict):
+            return activation
+    except Exception as exc:
+        return {
+            "schema_version": "loopx_host_loop_activation_v0",
+            "host_surface": "codex_app_heartbeat",
+            "status": "error",
+            "activated": False,
+            "error": str(exc),
+            "recommended_action": (
+                "repair the host-loop activation check; do not claim setup complete until "
+                "host_loop_activation.activated=true or a concrete host-tool gate is reported"
+            ),
+        }
+    return {
+        "schema_version": "loopx_host_loop_activation_v0",
+        "host_surface": "codex_app_heartbeat",
+        "status": "unknown",
+        "activated": False,
+        "recommended_action": (
+            "create or update the Codex App heartbeat automation from loopx heartbeat-prompt"
+        ),
     }
 
 
@@ -142,6 +199,14 @@ def render_register_agent_markdown(payload: dict[str, object]) -> str:
     sync_payload = payload.get("global_sync")
     if isinstance(sync_payload, dict):
         lines.append(f"- global_sync_wrote: `{sync_payload.get('wrote')}`")
+    activation = payload.get("host_loop_activation")
+    if isinstance(activation, dict):
+        lines.append(
+            f"- host_loop_activation: `{activation.get('host_surface')}` "
+            f"status=`{activation.get('status')}` activated=`{activation.get('activated')}`"
+        )
+        if activation.get("activated") is not True:
+            lines.append(f"- host_loop_action: {activation.get('recommended_action')}")
     return "\n".join(lines)
 
 
@@ -541,6 +606,12 @@ def handle_registry_admin_command(
                 clear_boundary_authority=bool(args.clear_boundary_authority),
                 execute=bool(args.execute),
             )
+            if payload.get("ok"):
+                payload["host_loop_activation"] = loop_activation_for_goal(
+                    registry_path=registry_path,
+                    runtime_root_arg=args.runtime_root,
+                    goal_id=args.goal_id,
+                )
         except Exception as exc:
             payload = {
                 "ok": False,
