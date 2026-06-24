@@ -817,6 +817,13 @@ def _replace_option_value(command: list[str], option: str, value: str) -> list[s
     return updated
 
 
+def _set_option_value(command: list[str], option: str, value: str) -> list[str]:
+    updated = _replace_option_value(command, option, value)
+    if option in updated:
+        return updated
+    return [*updated, option, value]
+
+
 def _host_local_acp_docker_bridge_command(
     env: Any,
     args: argparse.Namespace,
@@ -2939,9 +2946,18 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         and remote_command_file_bridge_materialized
         and remote_command_file_bridge_solver_command_configured
     )
+    remote_command_file_bridge_sandbox_auto_wiring_pending = bool(
+        args.host_local_acp_launch
+        and route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        and remote_command_file_bridge_materialized
+        and not remote_command_file_bridge_solver_command_configured
+    )
     remote_command_file_bridge_agent_operation_trace_required = bool(
         route == "loopx-product-mode"
-        and remote_command_file_bridge_solver_wiring_configured
+        and (
+            remote_command_file_bridge_solver_wiring_configured
+            or remote_command_file_bridge_sandbox_auto_wiring_pending
+        )
     )
     remote_command_file_bridge_agent_command_instrumented = bool(
         remote_command_file_bridge_solver_wiring_configured
@@ -2972,6 +2988,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     if remote_command_file_bridge_solver_wiring_configured:
         remote_command_file_bridge_consumption_status = (
             "solver_wiring_configured_pending_prompt"
+        )
+    elif remote_command_file_bridge_sandbox_auto_wiring_pending:
+        remote_command_file_bridge_consumption_status = (
+            "sandbox_bridge_auto_wiring_pending"
         )
     elif remote_command_file_bridge_materialized:
         remote_command_file_bridge_consumption_status = "probe_only_not_solver_wired"
@@ -5190,16 +5210,29 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             plan,
         )
         if sandbox_bridge_command:
-            local_acp_command = _replace_option_value(
+            local_acp_command = _set_option_value(
                 local_acp_command,
                 "--remote-command-file-bridge-command",
                 sandbox_bridge_command,
             )
-            local_acp_command = _replace_option_value(
+            local_acp_command = _set_option_value(
                 local_acp_command,
                 "--remote-command-file-bridge-agent-command",
                 sandbox_bridge_command,
             )
+            prerequisites["remote_command_file_bridge_command_configured"] = True
+            prerequisites["remote_command_file_bridge_agent_command_configured"] = True
+            prerequisites["remote_command_file_bridge_solver_wiring_configured"] = True
+            prerequisites["remote_command_file_bridge_consumption_status"] = (
+                "solver_wiring_configured_pending_prompt"
+            )
+            if args.route == "loopx-product-mode":
+                prerequisites[
+                    "remote_command_file_bridge_agent_operation_trace_required"
+                ] = True
+                prerequisites[
+                    "remote_command_file_bridge_agent_operation_trace_status"
+                ] = "external_agent_command_relay_wrapped_pending_trace"
         else:
             prerequisites.setdefault(
                 "host_local_acp_sandbox_bridge_mode",
@@ -6852,6 +6885,12 @@ def main(argv: list[str] | None = None) -> int:
     product_host_local_bridge_command_configured = bool(
         args.remote_command_file_bridge_solver_command
     )
+    product_host_local_bridge_sandbox_auto_wiring_pending = bool(
+        args.route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        and args.host_local_acp_launch
+        and product_host_local_bridge_materialized
+        and not product_host_local_bridge_command_configured
+    )
     product_host_local_bridge_fixture_solver = (
         skillsbench_remote_command_file_bridge_command_is_fixture_probe(
             args.remote_command_file_bridge_solver_command
@@ -6899,7 +6938,10 @@ def main(argv: list[str] | None = None) -> int:
         and args.host_local_acp_launch
         and not (
             product_host_local_bridge_materialized
-            and product_host_local_bridge_command_configured
+            and (
+                product_host_local_bridge_command_configured
+                or product_host_local_bridge_sandbox_auto_wiring_pending
+            )
         )
         and not args.local_driver_worker_handshake_preflight
         and not args.plan_only
@@ -6912,7 +6954,9 @@ def main(argv: list[str] | None = None) -> int:
                 "product-mode host-local ACP runs execute Codex on the host while "
                 "the scored workspace lives in the BenchFlow sandbox; a materialized "
                 "remote command/file bridge and its private solver command are both "
-                "required before this is a countable reverse-channel treatment"
+                "required before this is a countable reverse-channel treatment, unless "
+                "the BenchFlow sandbox docker bridge can be generated after environment "
+                "materialization"
             ),
             "next_action": (
                 "wire the remote command/file bridge into the solver worker or "

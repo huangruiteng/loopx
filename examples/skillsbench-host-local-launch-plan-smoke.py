@@ -31,6 +31,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     _public_runner_prerequisites,
     _replace_option_value,
     _run_host_local_acp_codex_exec_preflight,
+    _set_option_value,
     build_runner_failure_compact,
     ensure_benchflow_runtime,
 )
@@ -50,6 +51,7 @@ def main() -> int:
     assert "if original_rollout_connect_acp is not _MISSING:" in source
     assert "_filter_kwargs_for_signature(RolloutConfig, rollout_config_kwargs)" in source
     assert "env=target_env" in source
+    assert "local_acp_command = _set_option_value(" in source
     assert "del (\n            env," not in source
     target_env = _host_local_acp_target_env(
         {
@@ -75,6 +77,18 @@ def main() -> int:
         "new",
         "--keep",
         "x",
+    ]
+    appended = _set_option_value(
+        ["relay", "--keep", "x"],
+        "--remote-command-file-bridge-command",
+        "generated",
+    )
+    assert appended == [
+        "relay",
+        "--keep",
+        "x",
+        "--remote-command-file-bridge-command",
+        "generated",
     ]
     with tempfile.TemporaryDirectory(prefix="gh-skillsbench-plan-") as tmp:
         root = Path(tmp) / "skillsbench"
@@ -204,7 +218,7 @@ def main() -> int:
         )
         heartbeat_index = launch_command.index("--stream-heartbeat-interval-sec")
         assert launch_command[heartbeat_index + 1] == "15.0"
-        blocked = subprocess.run(
+        auto_wiring_plan_proc = subprocess.run(
             [
                 sys.executable,
                 str(SCRIPT),
@@ -216,6 +230,7 @@ def main() -> int:
                 "loopx-product-mode",
                 "--host-local-acp-launch",
                 "--remote-command-file-bridge-ready",
+                "--plan-only",
             ],
             cwd=REPO_ROOT,
             stdout=subprocess.PIPE,
@@ -224,17 +239,27 @@ def main() -> int:
             timeout=30,
             check=False,
         )
-        assert blocked.returncode == 2, blocked
-        failure = json.loads(blocked.stderr)
-        assert failure["error_type"] == (
-            "SkillsBenchReverseChannelBridgeNotSolverWired"
-        ), failure
-        assert failure["remote_command_file_bridge_materialized"] is True
-        assert failure["remote_command_file_bridge_consumed_by_solver"] is False
-        assert failure["raw_logs_recorded"] is False
-        assert failure["raw_task_text_read"] is False
-        assert failure["remote_command_file_bridge_probe_command_configured"] is False
-        assert failure["remote_command_file_bridge_command_configured"] is False
+        assert auto_wiring_plan_proc.returncode == 0, auto_wiring_plan_proc.stderr
+        auto_wiring_plan = json.loads(auto_wiring_plan_proc.stdout)["launch_plan"]
+        auto_wiring_prerequisites = auto_wiring_plan["runner_prerequisites"]
+        assert (
+            auto_wiring_prerequisites["remote_command_file_bridge_materialized"]
+            is True
+        )
+        assert (
+            auto_wiring_prerequisites["remote_command_file_bridge_command_configured"]
+            is False
+        )
+        assert (
+            auto_wiring_prerequisites[
+                "remote_command_file_bridge_agent_operation_trace_required"
+            ]
+            is True
+        )
+        assert (
+            auto_wiring_prerequisites["remote_command_file_bridge_consumption_status"]
+            == "sandbox_bridge_auto_wiring_pending"
+        )
         preflight = subprocess.run(
             [
                 sys.executable,
@@ -287,6 +312,7 @@ def main() -> int:
                 "--remote-command-file-bridge-probe",
                 "--remote-command-file-bridge-probe-command",
                 f"{sys.executable} {BRIDGE_SCRIPT} --serve-probe",
+                "--plan-only",
             ],
             cwd=REPO_ROOT,
             stdout=subprocess.PIPE,
@@ -295,11 +321,9 @@ def main() -> int:
             timeout=30,
             check=False,
         )
-        assert blocked_probe_only.returncode == 2, blocked_probe_only
-        probe_only_failure = json.loads(blocked_probe_only.stderr)
-        assert probe_only_failure["error_type"] == (
-            "SkillsBenchReverseChannelBridgeNotSolverWired"
-        ), probe_only_failure
+        assert blocked_probe_only.returncode == 0, blocked_probe_only.stderr
+        probe_only_plan = json.loads(blocked_probe_only.stdout)["launch_plan"]
+        probe_only_failure = probe_only_plan["runner_prerequisites"]
         assert (
             probe_only_failure["remote_command_file_bridge_probe_command_configured"]
             is True
@@ -307,6 +331,10 @@ def main() -> int:
         assert (
             probe_only_failure["remote_command_file_bridge_command_configured"]
             is False
+        )
+        assert (
+            probe_only_failure["remote_command_file_bridge_consumption_status"]
+            == "sandbox_bridge_auto_wiring_pending"
         )
         blocked_fixture_solver = subprocess.run(
             [
