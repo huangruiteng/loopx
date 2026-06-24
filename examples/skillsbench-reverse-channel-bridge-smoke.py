@@ -134,8 +134,138 @@ print('codex stderr ok', file=sys.stderr)
             assert "codex stderr ok" in proc.stderr
             assert remote_last.read_text(encoding="utf-8") == "LOOPX_REVERSE_READY\n"
             rewritten = prompt_dump.read_text(encoding="utf-8")
-            assert str(local_bridge) in rewritten
+            assert "loopx-local-prompt-bridge" in rewritten
+            assert str(local_bridge) not in rewritten
             assert "/remote/tmp/bridge" not in rewritten
+        finally:
+            server.wait(timeout=5)
+
+
+def test_codex_bridge_template_preserves_dynamic_private_command() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-reverse-bridge-template-") as tmp:
+        root = Path(tmp)
+        fake_codex = root / "fake-codex"
+        fake_bridge = root / "fake-json-bridge"
+        bridge_args = root / "bridge-args.json"
+        fake_bridge.write_text(
+            f"""#!/usr/bin/env python3
+import json, sys
+Path = __import__('pathlib').Path
+Path({str(bridge_args)!r}).write_text(json.dumps(sys.argv[1:]), encoding='utf-8')
+payload = json.loads(sys.stdin.read() or '{{}}')
+print(json.dumps({{
+    'ok': True,
+    'operation': payload.get('operation'),
+    'raw_task_text_recorded': False,
+    'credential_values_recorded': False,
+}}))
+""",
+            encoding="utf-8",
+        )
+        fake_bridge.chmod(0o700)
+        fake_codex.write_text(
+            """#!/usr/bin/env python3
+import json, os, subprocess, sys
+from pathlib import Path
+
+args = sys.argv[1:]
+prompt = next(
+    (item for item in args if 'Private bridge command:\\n' in item),
+    '\\n'.join(args),
+)
+bridge = prompt.split('Private bridge command:\\n', 1)[1].split('\\n', 1)[0]
+env = os.environ.copy()
+env['AI_ADDR'] = '127.0.0.1'
+env['AI_PORT'] = '2022'
+proc = subprocess.run(
+    [bridge],
+    input=json.dumps({'operation': 'exec', 'cwd': '/app', 'command': 'pwd'}),
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    env=env,
+    check=False,
+)
+sys.stdout.write(proc.stdout)
+sys.stderr.write(proc.stderr)
+out = Path(args[args.index('--output-last-message') + 1])
+out.write_text('LOOPX_REVERSE_TEMPLATE_READY\\n', encoding='utf-8')
+raise SystemExit(proc.returncode)
+""",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o700)
+        socket_path = root / "codex.sock"
+        server = subprocess.Popen(
+            [
+                sys.executable,
+                str(BRIDGE),
+                "serve-codex",
+                "--socket",
+                str(socket_path),
+                "--codex-bin",
+                str(fake_codex),
+                "--prompt-bridge-command",
+                f"{fake_bridge} {{private_bridge_command_sh}} {{loopx_allowed_env}}",
+                "--once",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            wait_for_socket(socket_path, server)
+            client = root / "codex-client"
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(BRIDGE),
+                    "write-client",
+                    "--kind",
+                    "codex",
+                    "--socket",
+                    str(socket_path),
+                    "--output",
+                    str(client),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            remote_last = root / "remote-last-message.txt"
+            dynamic_bridge = "/remote/tmp/dynamic bridge --compose-file /tmp/c.yml"
+            prompt = f"Private bridge command:\n{dynamic_bridge}\n\nTask"
+            proc = subprocess.run(
+                [
+                    str(client),
+                    "exec",
+                    "--ephemeral",
+                    "--skip-git-repo-check",
+                    "--sandbox",
+                    "read-only",
+                    "-C",
+                    "/remote/tmp/workspace",
+                    "--output-last-message",
+                    str(remote_last),
+                    "--json",
+                    prompt,
+                ],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            assert proc.returncode == 0, proc.stderr
+            response = json.loads(proc.stdout)
+            assert response["ok"] is True
+            argv = json.loads(bridge_args.read_text(encoding="utf-8"))
+            assert dynamic_bridge in argv
+            assert any(item.startswith("AI_ADDR=") for item in argv), argv
+            assert any(item.startswith("AI_PORT=") for item in argv), argv
+            assert remote_last.read_text(encoding="utf-8") == (
+                "LOOPX_REVERSE_TEMPLATE_READY\n"
+            )
         finally:
             server.wait(timeout=5)
 
@@ -335,6 +465,7 @@ def test_socket_probe_reports_missing_or_orphaned() -> None:
 
 def main() -> int:
     test_codex_client_writes_last_message_and_rewrites_bridge()
+    test_codex_bridge_template_preserves_dynamic_private_command()
     test_json_client_forwards_stdin_to_bridge_command()
     test_json_client_expands_allowed_env_template_for_nested_bridge()
     test_socket_probe_reports_missing_or_orphaned()

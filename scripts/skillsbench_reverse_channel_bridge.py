@@ -93,6 +93,14 @@ def _replace_remote_cwd(args: list[str], replacement: Path) -> str | None:
     return None
 
 
+def _extract_private_bridge_command(prompt: str) -> str | None:
+    match = re.search(r"Private bridge command:\n([^\n]+)", prompt)
+    if not match:
+        return None
+    text = match.group(1).strip()
+    return text or None
+
+
 def _rewrite_private_bridge_command(prompt: str, replacement: str | None) -> str:
     if not replacement:
         return prompt
@@ -104,6 +112,7 @@ def _write_instrumented_prompt_bridge(
     *,
     tmp_path: Path,
     bridge_command: str,
+    private_bridge_command: str | None,
 ) -> tuple[Path, Path]:
     """Wrap a local prompt bridge and emit public-safe agent operation records."""
 
@@ -113,6 +122,7 @@ def _write_instrumented_prompt_bridge(
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -120,7 +130,32 @@ import sys
 from pathlib import Path
 
 SUMMARY_PATH = Path({str(summary_path)!r})
-BRIDGE_COMMAND = {bridge_command!r}
+BRIDGE_COMMAND_TEMPLATE = {bridge_command!r}
+PRIVATE_BRIDGE_COMMAND = {private_bridge_command!r}
+
+def allowed_env_assignments() -> str:
+    keys = (
+        "AI_ADDR",
+        "AI_PORT",
+        "GOAL_HARNESS_REMOTE_BENCH_ROOT",
+        "LOOPX_REMOTE_AGENT_OPS_SUMMARY_PATH",
+    )
+    return " ".join(
+        f"{{key}}={{shlex.quote(os.environ.get(key, ''))}}"
+        for key in keys
+        if os.environ.get(key)
+    )
+
+def bridge_command() -> str:
+    command = BRIDGE_COMMAND_TEMPLATE
+    private_bridge = PRIVATE_BRIDGE_COMMAND or ""
+    command = command.replace("{{private_bridge_command}}", private_bridge)
+    command = command.replace(
+        "{{private_bridge_command_sh}}",
+        shlex.quote(private_bridge),
+    )
+    command = command.replace("{{loopx_allowed_env}}", allowed_env_assignments())
+    return command
 
 def loopx_subcommands(command: str) -> list[str]:
     try:
@@ -186,7 +221,7 @@ record["task_facing_operation"] = bool(
     or (operation == "exec" and not subcommands)
 )
 proc = subprocess.run(
-    BRIDGE_COMMAND,
+    bridge_command(),
     input=raw,
     text=True,
     stdout=subprocess.PIPE,
@@ -235,10 +270,12 @@ def _run_codex_payload(
         _replace_remote_cwd(args, local_cwd)
         agent_operations_summary_path: Path | None = None
         if prompt_bridge_command and args:
+            private_bridge_command = _extract_private_bridge_command(args[-1])
             instrumented_bridge, agent_operations_summary_path = (
                 _write_instrumented_prompt_bridge(
                     tmp_path=tmp_path,
                     bridge_command=prompt_bridge_command,
+                    private_bridge_command=private_bridge_command,
                 )
             )
             args[-1] = _rewrite_private_bridge_command(
