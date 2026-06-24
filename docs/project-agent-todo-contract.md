@@ -165,10 +165,10 @@ it is not evidence that the current agent has no todo, until an agent reopens,
 supersedes, or records a no-follow-up rationale for the deferred item.
 
 ```bash
-loopx configure-goal \
+loopx register-agent \
   --goal-id <goal-id> \
-  --registered-agent codex-main-control \
-  --registered-agent codex-side-bypass \
+  --agent-id codex-main-control \
+  --agent-id codex-side-bypass \
   --primary-agent codex-main-control \
   --execute
 ```
@@ -185,8 +185,11 @@ loopx todo claim \
 
 Old projects that do not yet have `coordination.registered_agents` are
 intentionally blocked when an agent tries to claim work. The CLI error includes
-the `configure-goal --registered-agent <agent-id> --execute` command so the
-agent or controller can register its identity before writing ownership metadata.
+the `register-agent --agent-id <agent-id> --execute` command so the agent or
+controller can register its identity before writing ownership metadata. Agent
+registration writes the source registry named by the global projection; if the
+shared global registry is not writable, it fails before changing that source so
+the control plane does not drift into a half-registered state.
 
 Use `--clear-claim` when the controller reassigns a todo or an agent releases
 work. `claimed_by` is visibility, not a runtime lease: it does not bypass quota,

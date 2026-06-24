@@ -20,6 +20,7 @@ from ..global_registry import render_global_sync_markdown, sync_project_registry
 from ..history import load_registry
 from ..paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
 from ..project_uninstall import render_project_uninstall_markdown, uninstall_project
+from ..registry_writability import probe_registry_write_path
 from ..registry import registry_goals
 from ..runtime import archive_runtime_goal, render_archive_runtime_markdown
 from ..state_migration import (
@@ -89,6 +90,42 @@ def register_agent_via_source_registry(
         if agent_id not in merged_agents:
             merged_agents.append(agent_id)
     effective_primary = primary_agent or primary_agent_id_from_registry(source_registry_path, goal_id)
+    global_writability: dict[str, object] | None = None
+    if execute:
+        global_writability = probe_registry_write_path(global_path, create_parent=True)
+        if not global_writability.get("ok"):
+            return {
+                "ok": False,
+                "dry_run": False,
+                "execute": True,
+                "goal_id": goal_id,
+                "global_registry": str(global_path),
+                "source_registry": str(source_registry_path),
+                "existing_agents": existing_agents,
+                "requested_agents": requested_agents,
+                "registered_agents": merged_agents,
+                "primary_agent": effective_primary,
+                "changed": merged_agents != existing_agents,
+                "written": False,
+                "host_loop_activation": loop_activation_for_goal(
+                    registry_path=global_path,
+                    runtime_root_arg=runtime_root_arg,
+                    goal_id=goal_id,
+                ),
+                "global_registry_writability": global_writability,
+                "global_sync": {
+                    "ok": False,
+                    "enabled": True,
+                    "wrote": False,
+                    "write_denied": True,
+                    "error_kind": "global_registry_write_denied",
+                    "global_registry": str(global_path),
+                    "global_registry_writability": global_writability,
+                    "recommended_action": global_writability.get("recommended_action"),
+                },
+                "error": str(global_writability.get("error") or "global registry is not writable"),
+                "recommended_action": global_writability.get("recommended_action"),
+            }
     configure_payload = configure_goal(
         registry_path=source_registry_path,
         goal_id=goal_id,
@@ -105,7 +142,7 @@ def register_agent_via_source_registry(
             dry_run=False,
         )
     result = {
-        "ok": True,
+        "ok": bool(sync_payload.get("ok", True)) if isinstance(sync_payload, dict) else True,
         "dry_run": not execute,
         "execute": execute,
         "goal_id": goal_id,
@@ -118,6 +155,18 @@ def register_agent_via_source_registry(
         "changed": configure_payload.get("changed"),
         "written": configure_payload.get("written"),
         "configure_goal": configure_payload,
+        "global_registry_writability": global_writability or {},
+        "partial_write": bool(
+            execute
+            and configure_payload.get("written")
+            and isinstance(sync_payload, dict)
+            and sync_payload.get("ok") is False
+        ),
+        "recommended_action": (
+            sync_payload.get("recommended_action")
+            if isinstance(sync_payload, dict) and sync_payload.get("ok") is False
+            else None
+        ),
         "global_sync": sync_payload or {"enabled": bool(execute), "wrote": False},
     }
     result["host_loop_activation"] = loop_activation_for_goal(
@@ -193,12 +242,15 @@ def render_register_agent_markdown(payload: dict[str, object]) -> str:
     ]
     if payload.get("error"):
         lines.append(f"- error: {payload.get('error')}")
-        return "\n".join(lines)
     lines.append(f"- existing_agents: `{', '.join(payload.get('existing_agents') or [])}`")
     lines.append(f"- registered_agents: `{', '.join(payload.get('registered_agents') or [])}`")
     sync_payload = payload.get("global_sync")
     if isinstance(sync_payload, dict):
         lines.append(f"- global_sync_wrote: `{sync_payload.get('wrote')}`")
+        if sync_payload.get("write_denied"):
+            lines.append(f"- global_sync_error_kind: `{sync_payload.get('error_kind')}`")
+    if payload.get("recommended_action"):
+        lines.append(f"- recommended_action: {payload.get('recommended_action')}")
     activation = payload.get("host_loop_activation")
     if isinstance(activation, dict):
         lines.append(
