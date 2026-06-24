@@ -36,6 +36,26 @@ Forbidden inputs for this packet:
 - Case catalog:
   `swe-marathon-full-suite-status-20260622.json`.
 
+## ECS Cloud-Host Alignment
+
+This packet is now aligned with the dedicated ECS benchmark-host route in
+`docs/benchmark-developer-workflow.md`. A future cloud run should use the same
+case metadata and no-upload boundary, but first prove the shared host substrate:
+
+1. run `scripts/benchmark_ecs_bootstrap.py` on the benchmark host;
+2. select the Harbor-family `swe-marathon` profile from
+   `scripts/benchmark_agent_runtime_layer.py --benchmark all`;
+3. use a source-locked SWE-Marathon checkout or materialized source with a
+   public-safe `.loopx-upstream` marker;
+4. mount the Harbor agent tools bundle rather than installing Codex or npm
+   packages inside the task container;
+5. reduce any launch failure with the generic Harbor reducer and
+   `--benchmark-id swe-marathon`.
+
+Do not start a new SWE-Marathon scored task from an automatic heartbeat while
+the shared route still lacks a compact no-upload cloud-host result or precise
+blocker from Terminal-Bench or SkillsBench.
+
 ## Candidate Metadata
 
 | Field | Value |

@@ -71,6 +71,11 @@ def test_packet_matches_catalog() -> None:
     assert str(case["build_timeout_sec"]) in packet
     assert "`vliw-kernel-optimization`" in packet
     assert "completion source of truth is no active case-local LoopX todo" in packet
+    assert "## ECS Cloud-Host Alignment" in packet
+    assert "scripts/benchmark_ecs_bootstrap.py" in packet
+    assert "scripts/benchmark_agent_runtime_layer.py --benchmark all" in packet
+    assert "`--benchmark-id swe-marathon`" in packet
+    assert "Do not start a new SWE-Marathon scored task" in packet
 
 
 def test_no_execution_boundary() -> None:

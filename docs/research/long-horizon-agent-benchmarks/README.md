@@ -132,6 +132,12 @@ work still belongs in the existing code, examples, and contract documents:
   official repo, public Codex leaderboard surface, 20-hour task framing,
   current runner/no-upload unknowns, and the required no-execution launch
   packet before any task container, model call, upload, or leaderboard path.
+- `frontier-swe-no-execution-launch-packet-v0.md`: no-execution ECS launch
+  packet for FrontierSWE. It keeps the route blocked before scored execution
+  until a benchmark-host source commit, task-inventory summary, runner/reducer
+  shape, and no-upload command boundary are materialized without reading task
+  bodies, raw logs, trajectories, verifier output, credentials, private paths,
+  uploads, or leaderboard paths.
 - `remote-gpu-benchmark-route-v0.md`: credential-isolated route packet for
   evaluating the user's `to` SSH path to a shared remote GPU development host.
   It keeps Codex auth/session material local by default, uses an isolated

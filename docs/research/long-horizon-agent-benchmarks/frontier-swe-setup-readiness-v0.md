@@ -73,7 +73,10 @@ Current blockers before a useful run:
 
 ## Proposed First Bounded Step
 
-Produce a no-execution launch packet before any real FrontierSWE run:
+The no-execution launch packet is now
+[`frontier-swe-no-execution-launch-packet-v0.md`](frontier-swe-no-execution-launch-packet-v0.md).
+Before any real FrontierSWE run, fill that packet's currently blocked source
+and task-inventory fields from the dedicated ECS benchmark host:
 
 1. Clone or inspect the public repo on the benchmark host.
 2. Pin the repo commit, runner entrypoints, task inventory, and environment
@@ -97,7 +100,8 @@ near the front of the strategic long-horizon queue:
    source-pinned readiness note and a low Codex baseline.
 3. Add FrontierSWE readiness immediately after or in parallel with the
    SWE-Marathon refresh, but do not start a real FrontierSWE task until the
-   no-execution launch packet exists.
+   no-execution launch packet's source lock, task inventory, reducer shape, and
+   no-upload command boundary are filled with public-safe ECS host evidence.
 
 ## Sources
 
