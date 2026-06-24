@@ -5,19 +5,19 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-23T09:30:32+08:00`
+- updated_at: `2026-06-24T12:21:20+08:00`
 
 ## Case Decisions
 
 | Benchmark | Case | Decision | Product Pair | Case Routing | Runs |
 | --- | --- | --- | --- | --- | --- |
 | `skillsbench-cloud-oracle-sanity@v0` | `hello-world` | `single_arm_recorded` | - | - | `1` |
-| `skillsbench@1.1` | `3d-scan-calc` | `paired_baseline_solved_treatment_preserved` | - | - | `5` |
+| `skillsbench@1.1` | `3d-scan-calc` | `product_mode_pair_incomplete` | `baseline_max_rounds_not_5,treatment_max_rounds_not_5,treatment_loopx_lifecycle_not_observed` | - | `5` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `paired_baseline_solved_treatment_preserved` | - | - | `4` |
 | `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_runner_or_setup_repair_required` | - | - | `1` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `product_mode_pair_incomplete` | `treatment_loopx_lifecycle_not_observed` | - | `10` |
 | `skillsbench@1.1` | `bike-rebalance` | `paired_baseline_solved_treatment_preserved` | - | - | `3` |
-| `skillsbench@1.1` | `citation-check` | `paired_baseline_solved_treatment_preserved` | - | - | `6` |
+| `skillsbench@1.1` | `citation-check` | `product_mode_pair_incomplete` | `baseline_max_rounds_not_5,treatment_max_rounds_not_5,treatment_loopx_lifecycle_not_observed` | - | `6` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `paired_no_score_uplift` | - | - | `4` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `paired_baseline_setup_preflight_selection_required` | - | - | `5` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `paired_baseline_runner_or_setup_repair_required` | - | - | `9` |
@@ -25,10 +25,10 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `hello-world` | `baseline_runner_or_setup_repair_required` | - | - | `2` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `paired_no_score_uplift` | - | - | `25` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `paired_no_score_uplift` | - | - | `4` |
-| `skillsbench@1.1` | `organize-messy-files` | `paired_treatment_runner_or_setup_repair_required` | - | - | `6` |
+| `skillsbench@1.1` | `organize-messy-files` | `product_mode_pair_incomplete` | `baseline_max_rounds_not_5,treatment_max_rounds_not_5` | - | `7` |
 | `skillsbench@1.1` | `paratransit-routing` | `product_mode_pair_incomplete` | `treatment_official_feedback_not_blinded,treatment_reward_feedback_forwarding_not_disabled,treatment_compact_metrics_m...` | - | `10` |
 | `skillsbench@1.1` | `pddl-airport-planning` | `paired_no_score_uplift` | - | - | `9` |
-| `skillsbench@1.1` | `powerlifting-coef-calc` | `paired_treatment_regressed` | - | - | `11` |
+| `skillsbench@1.1` | `powerlifting-coef-calc` | `product_mode_pair_incomplete` | `baseline_max_rounds_not_5,treatment_max_rounds_not_5,treatment_loopx_lifecycle_not_observed` | - | `11` |
 | `skillsbench@1.1` | `react-performance-debugging` | `paired_baseline_runner_or_setup_repair_required` | - | - | `5` |
 | `skillsbench@1.1` | `setup-fuzzing-py` | `baseline_runner_or_setup_repair_required` | - | - | `3` |
 | `skillsbench@1.1` | `software-dependency-audit` | `paired_no_score_uplift` | - | - | `6` |
@@ -168,6 +168,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `organize-messy-files` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `0.0` | `` | `1:missing` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-organize-messy-files-canonical-lifecycle-20260622T232725Z-base/organize-messy-files__raw_codex_autonomous_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `organize-messy-files` | `codex_loopx_treatment` | `` | `missing` | `` | `` | `skillsbench_result_json_missing_after_runner_exit` | `.local/private-benchmark-jobs/skillsbench-organize-messy-files-canonical-lifecycle-20260622T232725Z-test/organize-messy-files__loopx_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `organize-messy-files` | `codex_loopx_treatment` | `` | `missing` | `` | `` | `skillsbench_docker_daemon_unavailable` | `.local/private-benchmark-jobs/skillsbench-organize-messy-files-canonical-lifecycle-20260622T232725Z-test-retry-python3/organize-messy-files__loopx_product_mode/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `organize-messy-files` | `codex_loopx_treatment` | `case_attempt` | `1.0` | `` | `1:missing` | `none` | `.local/private-benchmark-jobs/skillsbench-organize-messy-files-pr641-reverse-c60c7e2-20260624T022251Z-treatment/organize-messy-files__loopx_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `paratransit-routing` | `baseline` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-paratransit-routing-blind-baseline-20260616T1304CST/paratransit-routing__codex_acp_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `paratransit-routing` | `codex_loopx_treatment` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-paratransit-routing-blind-treatment-20260616T140130CST/paratransit-routing__loopx_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `paratransit-routing` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_setup_failure` | `.local/private-benchmark-jobs/skillsbench-product-mode-paratransit-routing-raw-baseline-20260616T202736CST/skillsbench-product-mode-paratransit-routing-raw-baseline-20260616T202736CST/paratransit-routing__raw_codex_autonomous_max5/benchmark_run.compact.json` |

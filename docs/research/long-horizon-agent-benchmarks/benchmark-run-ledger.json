@@ -67,11 +67,27 @@
         "3d-scan-calc": {
           "case_id": "3d-scan-calc",
           "latest_decision": {
-            "baseline_failure_scope": "passed",
             "baseline_run_id": "d3f9ba45d2c2",
-            "decision": "paired_baseline_solved_treatment_preserved",
-            "official_score_delta": 0.0,
-            "treatment_failure_scope": "passed",
+            "decision": "product_mode_pair_incomplete",
+            "product_mode_main_table_pair": {
+              "baseline_route_valid": true,
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "3d-scan-calc",
+              "claim_blocker": "baseline_max_rounds_not_5,treatment_max_rounds_not_5,treatment_loopx_lifecycle_not_observed",
+              "comparison_id": "skillsbench_product_mode_main_table_v0",
+              "headline_metrics": [
+                "best_score",
+                "final_score",
+                "first_success_round",
+                "declared_done_score"
+              ],
+              "main_table_claim_allowed": false,
+              "official_feedback_blinded": true,
+              "product_mode_pair_complete": false,
+              "schema_version": "benchmark_product_mode_comparison_v0",
+              "treatment_loopx_lifecycle_observed": false,
+              "treatment_route_valid": true
+            },
             "treatment_run_id": "9cca13665c07"
           },
           "runs": [
@@ -1488,11 +1504,27 @@
         "citation-check": {
           "case_id": "citation-check",
           "latest_decision": {
-            "baseline_failure_scope": "passed",
             "baseline_run_id": "3959b3bce1cf",
-            "decision": "paired_baseline_solved_treatment_preserved",
-            "official_score_delta": 0.0,
-            "treatment_failure_scope": "passed",
+            "decision": "product_mode_pair_incomplete",
+            "product_mode_main_table_pair": {
+              "baseline_route_valid": true,
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "citation-check",
+              "claim_blocker": "baseline_max_rounds_not_5,treatment_max_rounds_not_5,treatment_loopx_lifecycle_not_observed",
+              "comparison_id": "skillsbench_product_mode_main_table_v0",
+              "headline_metrics": [
+                "best_score",
+                "final_score",
+                "first_success_round",
+                "declared_done_score"
+              ],
+              "main_table_claim_allowed": false,
+              "official_feedback_blinded": true,
+              "product_mode_pair_complete": false,
+              "schema_version": "benchmark_product_mode_comparison_v0",
+              "treatment_loopx_lifecycle_observed": false,
+              "treatment_route_valid": true
+            },
             "treatment_run_id": "701ce4d83a22"
           },
           "runs": [
@@ -4499,13 +4531,28 @@
         "organize-messy-files": {
           "case_id": "organize-messy-files",
           "latest_decision": {
-            "baseline_failure_scope": "case_or_solution",
             "baseline_run_id": "b00787b014b5",
-            "decision": "paired_treatment_runner_or_setup_repair_required",
-            "failure_class": "skillsbench_docker_daemon_unavailable",
-            "official_score_delta": null,
-            "treatment_failure_scope": "score_missing",
-            "treatment_run_id": "703d985a843b"
+            "decision": "product_mode_pair_incomplete",
+            "product_mode_main_table_pair": {
+              "baseline_route_valid": true,
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "organize-messy-files",
+              "claim_blocker": "baseline_max_rounds_not_5,treatment_max_rounds_not_5",
+              "comparison_id": "skillsbench_product_mode_main_table_v0",
+              "headline_metrics": [
+                "best_score",
+                "final_score",
+                "first_success_round",
+                "declared_done_score"
+              ],
+              "main_table_claim_allowed": false,
+              "official_feedback_blinded": true,
+              "product_mode_pair_complete": false,
+              "schema_version": "benchmark_product_mode_comparison_v0",
+              "treatment_loopx_lifecycle_observed": true,
+              "treatment_route_valid": true
+            },
+            "treatment_run_id": "1294809a7080"
           },
           "runs": [
             {
@@ -4791,6 +4838,92 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "recorded",
               "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-organize-messy-files-pr641-reverse-c60c7e2-20260624T022251Z-treatment/organize-messy-files__loopx_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "none",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "organize-messy-files",
+              "case_ids": [
+                "organize-messy-files"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "job_name": "skillsbench_1_1_organize_messy_files_loopx_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "loopx_inside_case": true,
+              "max_rounds_budget": 8,
+              "mode": "skillsbench_loopx_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "model_warning_labels": [
+                "skillsbench_runner_error_after_official_pass_ignored"
+              ],
+              "notes": "product-mode lifecycle success after PR #640/#641/#642; compact-only closeout, no raw logs/task text/trajectory/verifier output read",
+              "official_feedback_blinded": true,
+              "official_passed": true,
+              "official_score": 1.0,
+              "official_score_attempt_countable": true,
+              "official_score_policy": "final_workspace_official_result",
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 1,
+                "checkpoint_required": true,
+                "checkpoint_round": 1,
+                "countable_treatment": true,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": true,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 2,
+                "state_write_count": 16
+              },
+              "recorded_at": "2026-06-24T12:21:20+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 1,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-organize-messy-files-pr641-reverse-c60c7e2-20260624T022251Z",
+              "run_id": "1294809a7080",
+              "score_status": "passed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "host_cpus": 32.0
+                },
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": true
             }
           ]
         },
@@ -5928,11 +6061,27 @@
         "powerlifting-coef-calc": {
           "case_id": "powerlifting-coef-calc",
           "latest_decision": {
-            "baseline_failure_scope": "passed",
             "baseline_run_id": "4b981e33c040",
-            "decision": "paired_treatment_regressed",
-            "official_score_delta": -1.0,
-            "treatment_failure_scope": "case_or_solution",
+            "decision": "product_mode_pair_incomplete",
+            "product_mode_main_table_pair": {
+              "baseline_route_valid": true,
+              "benchmark_id": "skillsbench@1.1",
+              "case_id": "powerlifting-coef-calc",
+              "claim_blocker": "baseline_max_rounds_not_5,treatment_max_rounds_not_5,treatment_loopx_lifecycle_not_observed",
+              "comparison_id": "skillsbench_product_mode_main_table_v0",
+              "headline_metrics": [
+                "best_score",
+                "final_score",
+                "first_success_round",
+                "declared_done_score"
+              ],
+              "main_table_claim_allowed": false,
+              "official_feedback_blinded": true,
+              "product_mode_pair_complete": false,
+              "schema_version": "benchmark_product_mode_comparison_v0",
+              "treatment_loopx_lifecycle_observed": false,
+              "treatment_route_valid": true
+            },
             "treatment_run_id": "a8b78c82f2e9"
           },
           "runs": [
@@ -8120,7 +8269,7 @@
           ]
         }
       },
-      "run_count": 142
+      "run_count": 144
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -12172,5 +12321,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-23T09:30:32+08:00"
+  "updated_at": "2026-06-24T12:21:20+08:00"
 }
