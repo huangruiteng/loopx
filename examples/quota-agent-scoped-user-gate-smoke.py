@@ -126,6 +126,88 @@ def status_payload(*, blocks_agent: str | None = "codex-product-capability") -> 
     }
 
 
+def scoped_no_candidate_status_payload() -> dict:
+    primary_agent_todo = todo_item(
+        todo_id="todo_primary_benchmark",
+        text="[P0] Repair the primary-owned benchmark lifecycle driver.",
+        claimed_by="codex-main-control",
+    )
+    product_monitor = todo_item(
+        todo_id="todo_product_monitor",
+        text="[P2] Monitor product-capability rollout evidence.",
+        task_class="continuous_monitor",
+        claimed_by="codex-product-capability",
+    )
+    agent_todos = {
+        "schema_version": "todo_summary_v0",
+        "source_section": "Agent Todo",
+        "total_count": 2,
+        "open_count": 2,
+        "done_count": 0,
+        "first_open_items": [primary_agent_todo, product_monitor],
+        "first_executable_items": [primary_agent_todo],
+        "executable_backlog_items": [primary_agent_todo],
+        "items": [primary_agent_todo, product_monitor],
+    }
+    return {
+        "ok": True,
+        "goal_count": 1,
+        "run_count": 0,
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "status": "active",
+                    "waiting_on": "",
+                    "severity": "active",
+                    "source": "active_state",
+                    "recommended_action": (
+                        "Repair the primary-owned benchmark lifecycle driver."
+                    ),
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 1440,
+                        "spent_slots": 0,
+                        "state": "eligible",
+                        "reason": "eligible",
+                    },
+                    "user_todos": {
+                        "schema_version": "todo_summary_v0",
+                        "source_section": "User Todo",
+                        "total_count": 0,
+                        "open_count": 0,
+                        "done_count": 0,
+                        "first_open_items": [],
+                        "items": [],
+                    },
+                    "agent_todos": agent_todos,
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": "active",
+                    "adapter_kind": "fixture_adapter_v0",
+                    "adapter_status": "connected",
+                    "coordination": {
+                        "primary_agent": "codex-main-control",
+                        "registered_agents": [
+                            "codex-main-control",
+                            "codex-product-capability",
+                        ],
+                    },
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+
+
 def assert_other_agent_user_gate_does_not_block_current_agent() -> None:
     payload = build_quota_should_run(
         status_payload(),
@@ -181,10 +263,32 @@ def assert_unscoped_user_gate_remains_global() -> None:
     assert "agent_scoped_user_gate_override" not in payload, payload
 
 
+def assert_agent_without_advancement_candidate_waits_for_primary() -> None:
+    payload = build_quota_should_run(
+        scoped_no_candidate_status_payload(),
+        goal_id=GOAL_ID,
+        agent_id="codex-product-capability",
+    )
+    assert payload["decision"] == "primary_review_wait", payload
+    assert payload["should_run"] is False, payload
+    assert payload["normal_delivery_allowed"] is False, payload
+    assert payload.get("agent_lane_next_action") is None, payload
+    frontier = payload["agent_scope_frontier"]
+    assert frontier["action"] == "primary_review_wait", frontier
+    assert frontier["candidate_counts"]["current_agent_claimed_advancement_count"] == 0
+    assert frontier["candidate_counts"]["other_agent_claimed_advancement_count"] == 1
+    contract = payload["interaction_contract"]
+    assert contract["user_channel"]["action_required"] is False, contract
+    assert contract["agent_channel"]["must_attempt"] is False, contract
+    assert contract["agent_channel"]["delivery_allowed"] is False, contract
+    assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
+
+
 def main() -> int:
     assert_other_agent_user_gate_does_not_block_current_agent()
     assert_target_agent_still_blocks_on_its_user_gate()
     assert_unscoped_user_gate_remains_global()
+    assert_agent_without_advancement_candidate_waits_for_primary()
     print("quota-agent-scoped-user-gate-smoke ok")
     return 0
 
