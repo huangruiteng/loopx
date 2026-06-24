@@ -1402,6 +1402,58 @@ for the current machine contract, and
 [`benchmark-route-transition-retrospective-20260619.md`](research/long-horizon-agent-benchmarks/benchmark-route-transition-retrospective-20260619.md)
 for the split-control retention, branch-hygiene, and retirement runbook.
 
+### Cross-Family Compact Workflow Shape
+
+After one benchmark family has a live cloud-host smoke, do not copy its
+private shell history into the next family. Copy the workflow shape:
+
+1. Bootstrap the host with `scripts/benchmark_ecs_bootstrap.py`.
+2. Select the shared runtime profile with
+   `scripts/benchmark_agent_runtime_layer.py`.
+3. Run the family-specific public-safe readiness surface.
+4. Launch at most one no-upload case or task-free worker proof.
+5. Reduce the outcome into a compact ready/blocker packet before writing LoopX
+   state or ledger evidence.
+
+The family-specific surface should stay close to existing product code:
+
+- Terminal-Bench uses the no-upload launcher plus
+  `scripts/terminal_bench_compose_startup_reducer.py` for startup blockers and
+  the official-result reducer for countable closeout.
+- SkillsBench uses `scripts/skillsbench_agent_runtime_layer.py`,
+  `scripts/skillsbench_automation_loop.py --plan-only`,
+  `--local-driver-worker-handshake-preflight`,
+  `--host-local-acp-codex-exec-preflight`, `--host-local-acp-launch`,
+  `--require-preinstalled-benchflow-agent-runtime`, and
+  `--remote-command-file-bridge-probe` to prove BenchFlow worker, bridge,
+  runtime, and canonical `loopx-product-mode` lifecycle readiness before
+  spending scored attempts.
+- Agents' Last Exam uses the compact builders in
+  `loopx/benchmark_adapters/agents_last_exam.py`, especially
+  `build_agents_last_exam_local_source_readiness`,
+  `build_agents_last_exam_task_material_readiness`,
+  `build_agents_last_exam_host_codex_cua_no_task_smoke`, and
+  `build_agents_last_exam_validation_run_gate`, until those surfaces are
+  wrapped by a CLI entrypoint.
+
+The public packet shape is the contract, not the family internals. It should
+contain the benchmark family, route, `ready`, `first_blocker`, compact lifecycle
+counters when applicable, and boundary booleans proving that raw logs, task
+text, trajectories, verifier output, credentials, command argv, and private
+paths were not published. SkillsBench product-mode evidence is not countable
+unless compact counters such as
+`remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count`,
+`remote_command_file_bridge_driver_lifecycle_loopx_state_read_count`, and
+`remote_command_file_bridge_driver_lifecycle_loopx_state_write_count` are
+nonzero or the closeout names a precise pre-agent blocker.
+
+Prefer wrappers, reducers, and adapter-side compact builders over patching an
+upstream benchmark runner. If a runner patch is unavoidable, it must follow the
+Remote Checkout Patch Protocol above and prove that scorer, task truth, prompts,
+and official result parsing were not changed. Do not expand to more cases in a
+family until one compact no-upload cloud-host result or blocker exists and the
+selected reducer can be rerun without private material.
+
 ## Current Benchmark Families
 
 | Family | Product-path target | Current maturity |
