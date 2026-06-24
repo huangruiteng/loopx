@@ -110,6 +110,29 @@ RUNTIME_IDLE_FIXTURE = {
 }
 
 
+QUOTA_HINT_FIXTURE = {
+    "scheduler_hint": {
+        "schema_version": "scheduler_hint_v0",
+        "action": "backoff_until_reassigned",
+        "cadence_class": "agent_scope_wait",
+        "local_scheduler": {
+            "recommended_interval_minutes": 30,
+            "max_interval_minutes": 120,
+            "unchanged_poll_limit": 2,
+            "after_limit": "stop_tick_loop",
+        },
+        "codex_cli_tui": {
+            "unchanged_poll_limit": 2,
+            "after_limit": "exit_goal_loop",
+        },
+        "claude_code_loop": {
+            "unchanged_poll_limit": 2,
+            "after_limit": "stop_loop",
+        },
+    }
+}
+
+
 def assert_boundary(payload: dict[str, object]) -> None:
     assert payload["ok"] is True, payload
     assert payload["schema_version"] == "codex_cli_local_scheduler_tick_v0", payload
@@ -132,6 +155,7 @@ def build_tick(
     *,
     proof_payload: dict[str, object] | None = None,
     idle_payload: dict[str, object] | None = None,
+    quota_payload: dict[str, object] | None = None,
     allow_headless_fallback: bool = False,
 ) -> dict[str, object]:
     return build_codex_cli_local_scheduler_tick(
@@ -141,6 +165,7 @@ def build_tick(
         cli_bin="loopx",
         codex_bin="codex",
         probe_payload=classify_codex_cli_session_surface(command_outputs=command_outputs),
+        quota_payload=quota_payload,
         proof_payload=proof_payload,
         idle_payload=idle_payload,
         allow_headless_fallback=allow_headless_fallback,
@@ -196,6 +221,10 @@ def main() -> int:
     assert "codex resume public-session-id" in visible_candidate["candidate_command"], visible_candidate
     assert visible_candidate["runtime_idle_detector"]["approved"] is True, visible_candidate
 
+    hinted_tick = build_tick(FALLBACK_HELP_FIXTURE, quota_payload=QUOTA_HINT_FIXTURE)
+    assert hinted_tick["scheduler_hint"]["action"] == "backoff_until_reassigned", hinted_tick
+    assert hinted_tick["launchd"]["recommended_interval_seconds"] == 1800, hinted_tick
+
     with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-scheduler-tick-") as tmp:
         tmp_path = Path(tmp)
         help_fixture = tmp_path / "codex-remote-help.json"
@@ -204,6 +233,8 @@ def main() -> int:
         proof_fixture.write_text(json.dumps(VISIBLE_PROOF_FIXTURE))
         idle_fixture = tmp_path / "runtime-idle.json"
         idle_fixture.write_text(json.dumps(RUNTIME_IDLE_FIXTURE))
+        quota_fixture = tmp_path / "quota.json"
+        quota_fixture.write_text(json.dumps(QUOTA_HINT_FIXTURE))
         missing_registry = tmp_path / "missing-registry.json"
         runtime_root = tmp_path / "runtime"
 
@@ -224,10 +255,14 @@ def main() -> int:
                 AGENT_ID,
                 "--fixture",
                 str(help_fixture),
+                "--quota-fixture",
+                str(quota_fixture),
             )
         )
         assert_boundary(cli_json)
         assert cli_json["scheduler_action"] == "write_precise_blocker", cli_json
+        assert cli_json["scheduler_hint"]["action"] == "backoff_until_reassigned", cli_json
+        assert cli_json["launchd"]["recommended_interval_seconds"] == 1800, cli_json
 
         cli_proof_json = json.loads(
             run_cli(
@@ -283,9 +318,12 @@ def main() -> int:
             AGENT_ID,
             "--fixture",
             str(help_fixture),
+            "--quota-fixture",
+            str(quota_fixture),
         )
         assert "# Codex CLI Local Scheduler Tick" in cli_markdown, cli_markdown
         assert "scheduler_action: `write_precise_blocker`" in cli_markdown, cli_markdown
+        assert "local_unchanged_poll_limit: `2`" in cli_markdown, cli_markdown
         assert "runs_codex: `False`" in cli_markdown, cli_markdown
 
     print("codex-cli-local-scheduler-tick-smoke ok")

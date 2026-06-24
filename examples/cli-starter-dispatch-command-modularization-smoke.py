@@ -137,7 +137,7 @@ def assert_cli_surfaces() -> None:
         "new-project-prompt": ["--goal-doc", "--write-scope"],
         "codex-cli-bootstrap-message": ["--agent-id", "--message-only"],
         "codex-cli-visible-driver-run": ["--proof-fixture", "--allow-headless-fallback"],
-        "codex-cli-local-scheduler-exec": ["--guard-checked", "--candidate-command-prefix"],
+        "codex-cli-local-scheduler-exec": ["--guard-checked", "--candidate-command-prefix", "--quota-fixture"],
         "demo": ["--user-todo", "--agent-todo"],
     }
     for command, needles in help_expectations.items():

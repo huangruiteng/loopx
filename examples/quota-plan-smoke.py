@@ -1549,9 +1549,13 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert mapped_rec["notify"] == "DONT_NOTIFY", mapped_rec
     assert mapped_decision["execution_obligation"]["must_attempt_work"] is False, mapped_decision
     assert mapped_decision["execution_obligation"]["kind"] == "quiet_noop_if_unchanged", mapped_decision
+    assert mapped_decision["scheduler_hint"]["action"] == "backoff_until_fresh_evidence", mapped_decision
+    assert mapped_decision["scheduler_hint"]["codex_app"]["recommended_interval_minutes"] == 60, mapped_decision
+    assert mapped_decision["scheduler_hint"]["codex_cli_tui"]["unchanged_poll_limit"] == 2, mapped_decision
     assert "do not run another dry-run" in mapped_rec["spend_policy"], mapped_rec
     assert "heartbeat_recommendation: mode=mapped_noop_if_unchanged notify=DONT_NOTIFY" in mapped_markdown
     assert "heartbeat_stop_if_unchanged: `True`" in mapped_markdown, mapped_markdown
+    assert "scheduler_hint: action=backoff_until_fresh_evidence" in mapped_markdown, mapped_markdown
     assert (
         "execution_obligation: must_attempt_work=False kind=quiet_noop_if_unchanged notify_is_execution_gate=False"
         in mapped_markdown

@@ -361,9 +361,9 @@ def main() -> int:
         'never only "owner gate"',
         "If false/0: 无用户待办/无需通知 or quiet",
         "具体 user todo 未投影，需修复 LoopX 状态投影",
-        "Do bounded validated batch or quiet no-op; spend after writeback",
-        "Plans/done -> LoopX todo or rationale",
-        "After 2 no-progress, self-repair",
+        "Apply `scheduler_hint` for wait backoff and CLI/Claude unchanged self-stop; no spend",
+        "Bounded batch/quiet no-op; spend after writeback",
+        "Plans/done -> LoopX todo/rationale; 2 no-progress -> self-repair",
         "If P0 is blocked but CLI contract permits safe work",
         "monitor-only quiet skips stay active/no-spend",
         "No project-specific branches here",
@@ -646,10 +646,12 @@ def main() -> int:
     getting_started = GETTING_STARTED.read_text(encoding="utf-8")
     assert "docs/guides/getting-started.md" in readme, readme
     assert "loopx heartbeat-prompt --thin" in readme, readme
-    assert "heartbeat automation to run every 3 minutes" in readme, readme
+    assert "heartbeat automation to start at 3 minutes" in readme, readme
+    assert "quota should-run.scheduler_hint" in readme, readme
     assert "loopx quota spend-slot" in readme, readme
     assert "Generate a guarded Codex App heartbeat body" in getting_started, getting_started
-    assert "3-minute cadence" in getting_started, getting_started
+    assert "3-minute bootstrap cadence" in getting_started, getting_started
+    assert "scheduler_hint" in getting_started, getting_started
     assert "loopx heartbeat-prompt --thin" in getting_started, getting_started
     assert "loopx heartbeat-prompt --compact" in getting_started, getting_started
     assert "loopx-canary" in getting_started, getting_started
@@ -658,7 +660,8 @@ def main() -> int:
     assert "safe-bypass or self-repair hints" in getting_started, getting_started
     assert "../heartbeat-automation-prompt.md" in getting_started, getting_started
     assert "execution_obligation" in doc, doc
-    assert "Create a heartbeat automation every 3 minutes" in doc, doc
+    assert "Create a heartbeat automation starting at 3 minutes" in doc, doc
+    assert "quota should-run.scheduler_hint" in doc, doc
     assert "must_attempt_work=true" in doc, doc
     assert "not an execution gate" in normalized(doc), doc
     assert "loopx heartbeat-prompt" in doc, doc
@@ -710,6 +713,7 @@ def main() -> int:
     assert "must not consume the whole eligible turn" in project_skill, project_skill
     assert "heartbeat_recommendation" in project_skill, project_skill
     assert "execution_obligation" in project_skill, project_skill
+    assert "scheduler_hint" in project_skill, project_skill
     assert "must_attempt_work=true" in project_skill, project_skill
     assert "not an execution gate" in normalized(project_skill), project_skill
     assert "mapped_noop_if_unchanged" in project_skill, project_skill

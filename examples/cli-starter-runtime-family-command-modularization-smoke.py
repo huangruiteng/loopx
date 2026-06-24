@@ -30,8 +30,8 @@ SESSION_RUNTIME_COMMANDS = {
     "codex-cli-runtime-idle-detector": ["--idle-fixture", "--observe-local-runtime"],
 }
 SCHEDULER_COMMANDS = {
-    "codex-cli-local-scheduler-tick": ["--proof-fixture", "--idle-fixture", "--allow-headless-fallback"],
-    "codex-cli-local-scheduler-exec": ["--guard-checked", "--candidate-command-prefix", "--executor-timeout-seconds"],
+    "codex-cli-local-scheduler-tick": ["--proof-fixture", "--idle-fixture", "--quota-fixture", "--allow-headless-fallback"],
+    "codex-cli-local-scheduler-exec": ["--guard-checked", "--candidate-command-prefix", "--quota-fixture", "--executor-timeout-seconds"],
 }
 
 
