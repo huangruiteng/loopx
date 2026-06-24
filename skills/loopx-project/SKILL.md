@@ -330,9 +330,12 @@ Codex CLI plus LoopX end-to-end checks should stay explicit or
 low-frequency instead of becoming the default heartbeat path.
 
 The quota guard returns `execution_obligation` and
-`heartbeat_recommendation`. Read `execution_obligation` before deciding on a
-quiet no-op: `heartbeat_recommendation.notify` is only the user-notification
-policy, not an execution gate. If
+`heartbeat_recommendation`. It also returns `scheduler_hint`, which controls
+the next wakeup cadence and external-loop unchanged-poll self-stop; this is
+scheduling policy, not delivery permission, and cadence/self-stop changes do
+not spend quota. Read `execution_obligation` before deciding on a quiet no-op:
+`heartbeat_recommendation.notify` is only the user-notification policy, not an
+execution gate. If
 `execution_obligation.must_attempt_work=true`, attempt one bounded progress
 batch or segment even when `notify=DONT_NOTIFY`; a quiet no-op requires
 `execution_obligation.must_attempt_work=false` and no

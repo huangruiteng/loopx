@@ -82,8 +82,9 @@ already exists, reuse it and do not create or overwrite a goal; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
 and `.local/` are ignored. After the project is connected, set or refresh this
-thread's heartbeat automation to run every 3 minutes using the task body from
-`loopx heartbeat-prompt --thin`. Then stop and report the goal id, current user
+thread's heartbeat automation to start at 3 minutes using the task body from
+`loopx heartbeat-prompt --thin`, then follow `quota should-run.scheduler_hint`
+for backoff and loop self-stop. Then stop and report the goal id, current user
 gate, top agent todo, and next safe action.
 ```
 
@@ -92,6 +93,11 @@ The generated heartbeat body is the recurring Codex App work surface:
 ```bash
 loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
 ```
+
+The 3-minute interval is only the bootstrap cadence. On long waits,
+`quota should-run` returns `scheduler_hint`: Codex App automations should back
+off toward the recommended interval, while Codex CLI TUI and Claude Code loops
+should exit/stop after the unchanged-poll limit instead of polling forever.
 
 ### Codex CLI
 
