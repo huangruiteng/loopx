@@ -181,6 +181,10 @@ record["loopx_state_write"] = bool(subcommands and (
     subcommands[0] in {{"todo", "refresh-state"}}
     or subcommands[:2] == ["quota", "spend-slot"]
 ))
+record["task_facing_operation"] = bool(
+    operation in {{"read_file", "write_file", "cleanup"}}
+    or (operation == "exec" and not subcommands)
+)
 proc = subprocess.run(
     BRIDGE_COMMAND,
     input=raw,

@@ -1215,6 +1215,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_agent_loopx_cli_call_count",
         "remote_command_file_bridge_agent_loopx_state_read_count",
         "remote_command_file_bridge_agent_loopx_state_write_count",
+        "remote_command_file_bridge_agent_task_facing_operation_count",
         "remote_command_file_bridge_driver_lifecycle_trace_count",
         "remote_command_file_bridge_driver_lifecycle_checkpoint_count",
         "remote_command_file_bridge_driver_lifecycle_request_count",
@@ -3181,6 +3182,12 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "remote_command_file_bridge_solver_trace_count": 0,
             "remote_command_file_bridge_solver_probe_ready_count": 0,
             "remote_command_file_bridge_solver_operation_count": 0,
+            "remote_command_file_bridge_agent_operation_trace_count": 0,
+            "remote_command_file_bridge_agent_request_count": 0,
+            "remote_command_file_bridge_agent_loopx_cli_call_count": 0,
+            "remote_command_file_bridge_agent_loopx_state_read_count": 0,
+            "remote_command_file_bridge_agent_loopx_state_write_count": 0,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 0,
             "preinstalled_benchflow_agent_runtime_required": (
                 requires_preinstalled_runtime
             ),
@@ -3818,6 +3825,7 @@ def _merge_host_local_acp_relay_trace_summary(
     agent_bridge_loopx_cli_call_count = 0
     agent_bridge_loopx_state_read_count = 0
     agent_bridge_loopx_state_write_count = 0
+    agent_bridge_task_facing_operation_count = 0
     agent_bridge_operation_counts: dict[str, int] = {}
     agent_bridge_loopx_subcommand_counts: dict[str, int] = {}
     driver_lifecycle_trace_count = 0
@@ -3896,6 +3904,7 @@ def _merge_host_local_acp_relay_trace_summary(
                 "loopx_cli_call_count": "loopx_cli",
                 "loopx_state_read_count": "state_read",
                 "loopx_state_write_count": "state_write",
+                "task_facing_operation_count": "task_facing",
             }
             for field, target in count_fields.items():
                 value = agent_ops.get(field)
@@ -3910,6 +3919,8 @@ def _merge_host_local_acp_relay_trace_summary(
                     agent_bridge_loopx_state_read_count += value
                 elif target == "state_write":
                     agent_bridge_loopx_state_write_count += value
+                elif target == "task_facing":
+                    agent_bridge_task_facing_operation_count += value
             for source_key, target_counts in (
                 ("operation_counts", agent_bridge_operation_counts),
                 ("loopx_cli_subcommand_counts", agent_bridge_loopx_subcommand_counts),
@@ -4091,6 +4102,9 @@ def _merge_host_local_acp_relay_trace_summary(
     trace["remote_command_file_bridge_agent_loopx_state_write_count"] = (
         agent_bridge_loopx_state_write_count
     )
+    trace["remote_command_file_bridge_agent_task_facing_operation_count"] = (
+        agent_bridge_task_facing_operation_count
+    )
     trace["remote_command_file_bridge_agent_operation_counts"] = dict(
         sorted(agent_bridge_operation_counts.items())
     )
@@ -4198,6 +4212,9 @@ def _merge_host_local_acp_relay_trace_summary(
     )
     prerequisites["remote_command_file_bridge_agent_loopx_state_write_count"] = (
         agent_bridge_loopx_state_write_count
+    )
+    prerequisites["remote_command_file_bridge_agent_task_facing_operation_count"] = (
+        agent_bridge_task_facing_operation_count
     )
     prerequisites["remote_command_file_bridge_agent_operation_counts"] = dict(
         sorted(agent_bridge_operation_counts.items())
@@ -4566,19 +4583,24 @@ def _product_mode_solver_activity_observed(
         if round_result is not None
         else None
     )
-    if isinstance(tool_call_count, int) and tool_call_count > 0:
-        return True
-    return (
-        _trace_max_int(
+    task_activity_observed = (
+        (isinstance(tool_call_count, int) and tool_call_count > 0)
+        or _trace_max_int(
             trace,
-            "remote_command_file_bridge_agent_request_count",
-            "remote_command_file_bridge_agent_loopx_cli_call_count",
-            "remote_command_file_bridge_agent_loopx_state_read_count",
-            "remote_command_file_bridge_agent_loopx_state_write_count",
-            "round_result_loopx_cli_call_count",
+            "remote_command_file_bridge_agent_task_facing_operation_count",
         )
         > 0
     )
+    agent_state_write_observed = (
+        _trace_max_int(
+            trace,
+            "remote_command_file_bridge_agent_loopx_state_write_count",
+            "round_result_loopx_cli_state_write_count",
+            "loopx_case_state_writes",
+        )
+        > 0
+    )
+    return task_activity_observed and agent_state_write_observed
 
 
 def _record_product_mode_depth_gate_gap(
@@ -4603,7 +4625,7 @@ def _record_product_mode_solver_activity_gap(
     trace["product_mode_solver_activity_gap"] = True
     trace["product_mode_solver_activity_gap_round"] = agent_round
     trace["product_mode_solver_activity_missing_reason"] = (
-        "missing_tool_calls_or_agent_bridge_requests_before_declared_done"
+        "missing_task_facing_activity_or_agent_loopx_state_write_before_declared_done"
     )
     current = trace.get("product_mode_solver_activity_gap_count")
     if not isinstance(current, int) or isinstance(current, bool):
@@ -5013,15 +5035,19 @@ def _build_product_mode_user(
             f"Mandatory product-mode solver checkpoint before round {round_number} "
             "continues. The previous round produced enough LoopX lifecycle "
             "evidence to make the treatment countable, but it did not produce "
-            "public evidence of task-facing solver activity: no tool calls and "
-            "no case-local bridge requests were observed. This is not official "
-            "verifier feedback and says nothing about task success. Before "
-            "declaring done, use the available sandbox tool or command-file "
-            "bridge to inspect the task workspace, make or verify the required "
-            "changes, and update the LoopX case todo/state if local evidence "
-            "changes. Do not answer with prose only, and only end with "
+            "public evidence of both task-facing solver activity and an "
+            "agent-side LoopX state write. Read-only LoopX calls such as "
+            "`quota should-run` are not enough to declare completion. This is "
+            "not official verifier feedback and says nothing about task "
+            "success. Before declaring done, use the available sandbox tool or "
+            "command-file bridge to inspect the task workspace, make or verify "
+            "the required changes, then update the LoopX case todo/state "
+            "through `todo update`, `todo complete`, `refresh-state`, or "
+            "`quota spend-slot` as appropriate. Do not answer with prose only, "
+            "and only end with "
             f"{DECLARED_DONE_MARKER} after meaningful local task work or "
-            "validation has been recorded."
+            "validation and the corresponding LoopX state write have been "
+            "recorded."
         )
 
     class ProductModeUser(BaseUser):

@@ -166,6 +166,7 @@ if out:
         assert operation_record["operation"] == "exec", operation_record
         assert operation_record["loopx_cli_call"] is True, operation_record
         assert operation_record["loopx_state_read"] is True, operation_record
+        assert operation_record["task_facing_operation"] is False, operation_record
         assert operation_record["raw_request_recorded"] is False, operation_record
         root = Path(tmp) / "skillsbench"
         task = root / "tasks" / "demo-task" / "environment"

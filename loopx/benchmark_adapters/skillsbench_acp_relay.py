@@ -802,6 +802,10 @@ record["loopx_state_write"] = bool(subcommands and (
     subcommands[0] in {{"todo", "refresh-state"}}
     or subcommands[:2] == ["quota", "spend-slot"]
 ))
+record["task_facing_operation"] = bool(
+    operation in {{"read_file", "write_file", "cleanup"}}
+    or (operation == "exec" and not subcommands)
+)
 proc = subprocess.run(
     BRIDGE_COMMAND,
     input=raw,
@@ -838,6 +842,7 @@ raise SystemExit(proc.returncode)
         loopx_cli_call_count = 0
         state_read_count = 0
         state_write_count = 0
+        task_facing_operation_count = 0
         raw_material_recorded = False
         if bridge_summary_path.exists():
             for line in bridge_summary_path.read_text(
@@ -859,6 +864,8 @@ raise SystemExit(proc.returncode)
                     state_read_count += 1
                 if record.get("loopx_state_write") is True:
                     state_write_count += 1
+                if record.get("task_facing_operation") is True:
+                    task_facing_operation_count += 1
                 subcommands = record.get("loopx_subcommands")
                 if isinstance(subcommands, list) and subcommands:
                     key = " ".join(
@@ -901,6 +908,7 @@ raise SystemExit(proc.returncode)
                 ),
                 "loopx_state_read_count": state_read_count,
                 "loopx_state_write_count": state_write_count,
+                "task_facing_operation_count": task_facing_operation_count,
                 "raw_material_recorded": raw_material_recorded,
             },
             "boundary": {

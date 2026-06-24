@@ -889,12 +889,13 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
             "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
             "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
             "remote_command_file_bridge_agent_operation_trace_status": (
-                "agent_operation_trace_present_no_requests"
+                "agent_operation_trace_recorded"
             ),
-            "remote_command_file_bridge_agent_request_count": 0,
-            "remote_command_file_bridge_agent_loopx_cli_call_count": 0,
-            "remote_command_file_bridge_agent_loopx_state_read_count": 0,
+            "remote_command_file_bridge_agent_request_count": 2,
+            "remote_command_file_bridge_agent_loopx_cli_call_count": 2,
+            "remote_command_file_bridge_agent_loopx_state_read_count": 2,
             "remote_command_file_bridge_agent_loopx_state_write_count": 0,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 0,
         }
         plan = {
             "jobs_dir": str(jobs_dir),
@@ -962,7 +963,7 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
         )
         assert prompt is not None, trace
         assert "Mandatory product-mode solver checkpoint" in prompt
-        assert "no tool calls and no case-local bridge requests" in prompt
+        assert "Read-only LoopX calls" in prompt
         assert "Do not answer with prose only" in prompt
         assert (
             trace["last_decision"]
@@ -973,7 +974,7 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
         assert trace["product_mode_solver_activity_gap_round"] == 1, trace
         assert trace["product_mode_solver_activity_gap_count"] == 1, trace
         assert trace["product_mode_solver_activity_missing_reason"] == (
-            "missing_tool_calls_or_agent_bridge_requests_before_declared_done"
+            "missing_task_facing_activity_or_agent_loopx_state_write_before_declared_done"
         )
         assert trace["followup_prompt_count"] == 1, trace
         assert trace["stop_decision_count"] == 0, trace
@@ -4438,7 +4439,7 @@ def test_skillsbench_product_mode_solver_activity_gap_is_compacted() -> None:
             "product_mode_solver_activity_gap_count": 1,
             "product_mode_solver_activity_gap_round": 1,
             "product_mode_solver_activity_missing_reason": (
-                "missing_tool_calls_or_agent_bridge_requests_before_declared_done"
+                "missing_task_facing_activity_or_agent_loopx_state_write_before_declared_done"
             ),
             "remote_command_file_bridge_driver_lifecycle_trace_count": 1,
             "remote_command_file_bridge_driver_lifecycle_execution_style": (
@@ -4452,10 +4453,14 @@ def test_skillsbench_product_mode_solver_activity_gap_is_compacted() -> None:
             "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
             "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
             "remote_command_file_bridge_agent_operation_trace_status": (
-                "agent_operation_trace_present_no_requests"
+                "agent_operation_trace_recorded"
             ),
             "remote_command_file_bridge_agent_operation_trace_count": 1,
-            "remote_command_file_bridge_agent_request_count": 0,
+            "remote_command_file_bridge_agent_request_count": 2,
+            "remote_command_file_bridge_agent_loopx_cli_call_count": 2,
+            "remote_command_file_bridge_agent_loopx_state_read_count": 2,
+            "remote_command_file_bridge_agent_loopx_state_write_count": 0,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 0,
             "last_decision": "send_product_mode_solver_activity_continuation",
             "raw_task_text_recorded": False,
             "raw_verifier_output_recorded": False,
@@ -4474,8 +4479,12 @@ def test_skillsbench_product_mode_solver_activity_gap_is_compacted() -> None:
         assert counters["product_mode_solver_activity_gap"] is True
         assert counters["product_mode_solver_activity_gap_count"] == 1
         assert counters["product_mode_solver_activity_gap_round"] == 1
+        assert (
+            counters["remote_command_file_bridge_agent_task_facing_operation_count"]
+            == 0
+        )
         assert counters["product_mode_solver_activity_missing_reason"] == (
-            "missing_tool_calls_or_agent_bridge_requests_before_declared_done"
+            "missing_task_facing_activity_or_agent_loopx_state_write_before_declared_done"
         )
         lifecycle_contract = compact["product_mode_lifecycle_contract"]
         assert lifecycle_contract["satisfied"] is True, compact

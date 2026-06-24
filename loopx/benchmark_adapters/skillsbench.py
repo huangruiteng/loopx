@@ -2068,6 +2068,9 @@ def _skillsbench_controller_trace_counters(
         "remote_command_file_bridge_agent_loopx_state_write_count": count(
             "remote_command_file_bridge_agent_loopx_state_write_count"
         ),
+        "remote_command_file_bridge_agent_task_facing_operation_count": count(
+            "remote_command_file_bridge_agent_task_facing_operation_count"
+        ),
         "remote_command_file_bridge_driver_lifecycle_trace_count": count(
             "remote_command_file_bridge_driver_lifecycle_trace_count"
         ),
@@ -3562,6 +3565,11 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "remote_command_file_bridge_agent_loopx_state_write_count": (
                 controller_counters.get(
                     "remote_command_file_bridge_agent_loopx_state_write_count", 0
+                )
+            ),
+            "remote_command_file_bridge_agent_task_facing_operation_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_task_facing_operation_count", 0
                 )
             ),
             "remote_command_file_bridge_driver_lifecycle_trace_count": (
