@@ -121,6 +121,15 @@ def write_planned_registry(root: Path) -> Path:
     return registry_path
 
 
+def mark_planned_todos_done(root: Path) -> None:
+    goal_id = "planned-main-control"
+    state_path = root / "project" / ".codex" / "goals" / goal_id / "ACTIVE_GOAL_STATE.md"
+    state_text = state_path.read_text(encoding="utf-8")
+    state_text = state_text.replace(f"- [ ] {USER_TODO_TEXT}", f"- [x] {USER_TODO_TEXT}")
+    state_text = state_text.replace(f"- [ ] {AGENT_TODO_TEXT}", f"- [x] {AGENT_TODO_TEXT}")
+    state_path.write_text(state_text, encoding="utf-8")
+
+
 def write_connected_delivery_registry(root: Path) -> Path:
     project = root / "project"
     runtime = root / "runtime"
@@ -1435,7 +1444,14 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert f"asset_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
 
 
-def assert_quota_should_run(payload: dict, *, expected: bool, state: str, waiting_on: str) -> dict:
+def assert_quota_should_run(
+    payload: dict,
+    *,
+    expected: bool,
+    state: str,
+    waiting_on: str,
+    expect_operator_question: bool = True,
+) -> dict:
     quota_payload = build_quota_should_run(payload, goal_id="planned-main-control")
     quota_markdown = render_quota_should_run_markdown(quota_payload)
     assert quota_payload["should_run"] is expected, quota_payload
@@ -1451,11 +1467,14 @@ def assert_quota_should_run(payload: dict, *, expected: bool, state: str, waitin
             assert quota_payload["reason"] == "operator gate blocks gated delivery; safe non-gated steering may continue", quota_payload
             assert quota_payload["safe_bypass_allowed"] is True, quota_payload
             assert quota_payload["blocked_action_scope"] == "gated_delivery", quota_payload
-            assert quota_payload["operator_question"], quota_payload
+            if expect_operator_question:
+                assert quota_payload["operator_question"], quota_payload
+                assert "建议回复格式" in quota_markdown, quota_markdown
+            else:
+                assert "operator_question" not in quota_payload, quota_payload
             assert quota_payload["gate_prompt"], quota_payload
             assert quota_payload["notify_user_on_gate"] is True, quota_payload
             assert "Gate Prompt" in quota_markdown, quota_markdown
-            assert "建议回复格式" in quota_markdown, quota_markdown
             assert "safe_bypass_allowed: `True`" in quota_markdown, quota_markdown
         assert "agent_command" not in quota_payload, quota_payload
         assert "agent_command:" not in quota_markdown, quota_markdown
@@ -1467,40 +1486,38 @@ def assert_planned_preview_is_not_runnable(payload: dict, markdown: str) -> None
     assert len(items) == 1, items
     item = items[0]
     assert item["goal_id"] == "planned-main-control", item
-    assert item["waiting_on"] == "user_or_controller", item
-    assert item["recommended_action"] == NEW_PLANNED_ACTION, item
-    assert item["project_asset"]["owner"] == "user_or_controller", item
-    assert item["project_asset"]["gate"] == "operator_question", item
-    assert item["project_asset"]["next_action"] == NEW_PLANNED_ACTION, item
-    assert "stop until the user or controller decision is recorded" in item["project_asset"]["stop_condition"], item
+    assert item["waiting_on"] == "controller", item
+    assert item["recommended_action"] == USER_TODO_TEXT, item
+    assert item["project_asset"]["owner"] == "controller", item
+    assert item["project_asset"]["gate"] == "active_state_user_todo", item
+    assert item["project_asset"]["next_action"] == USER_TODO_TEXT, item
+    assert "stop until the controller or owner resolves this gate" in item["project_asset"]["stop_condition"], item
     assert item["project_asset"]["user_todos"]["open"] == 1, item
     assert item["project_asset"]["agent_todos"]["open"] == 1, item
     assert item["project_asset"]["quota"]["compute"] == 1.0, item
     assert item["project_asset"]["quota"]["state"] == "operator_gate", item
-    assert item["agent_command"] == APPROVED_COMMAND, item
+    assert "agent_command" not in item, item
     assert "operator_gate_dry_run" not in item, item
     assert OLD_PLANNED_ACTION not in json.dumps(payload, ensure_ascii=False), payload
     assert OLD_PLANNED_ACTION not in markdown, markdown
-    assert NEW_PLANNED_ACTION in markdown, markdown
-    assert "project_asset: owner=user_or_controller gate=operator_question" in markdown, markdown
-    assert f"asset_next_action: {NEW_PLANNED_ACTION}" in markdown, markdown
+    assert USER_TODO_TEXT in markdown, markdown
+    assert "project_asset: owner=controller gate=active_state_user_todo" in markdown, markdown
+    assert f"asset_next_action: {USER_TODO_TEXT}" in markdown, markdown
     assert "asset_todos: user_open=1 agent_open=1" in markdown, markdown
     assert f"asset_user_todo: {USER_TODO_TEXT}" in markdown, markdown
     assert f"asset_agent_todo: {AGENT_TODO_TEXT}" in markdown, markdown
     assert "asset_quota: compute=1.0 state=operator_gate" in markdown, markdown
 
-    gate_index = markdown.index("operator_gate_dry_run")
-    agent_index = markdown.index("agent_command")
-    assert gate_index < agent_index, markdown
-    assert "<public-safe reason>" in markdown, markdown
+    assert "operator_gate_dry_run" not in markdown, markdown
 
     quota_payload = assert_quota_should_run(
         payload,
         expected=False,
         state="operator_gate",
-        waiting_on="user_or_controller",
+        waiting_on="controller",
+        expect_operator_question=False,
     )
-    assert quota_payload["status"] == "planned-high-complexity", quota_payload
+    assert quota_payload["status"] == "active_state_user_todo", quota_payload
 
 
 def assert_project_local_status_excludes_runtime_orphans(registry_path: Path) -> None:
@@ -1530,27 +1547,27 @@ def assert_registry_attention_override(payload: dict, markdown: str) -> None:
     assert item["project_asset"]["gate"] == "operator_question", item
     assert item["project_asset"]["next_action"] == REGISTRY_OVERRIDE_ACTION, item
     assert item["project_asset"]["stop_condition"] == REGISTRY_OVERRIDE_HANDOFF, item
-    assert item["project_asset"]["user_todos"]["open"] == 1, item
-    assert item["project_asset"]["agent_todos"]["open"] == 1, item
+    assert item["project_asset"]["user_todos"]["open"] == 0, item
+    assert item["project_asset"]["agent_todos"]["open"] == 0, item
     assert item["project_asset"]["quota"]["state"] == "operator_gate", item
     assert item["project_asset"]["latest_validation"]["classification"] == "state_refreshed", item
     assert item["operator_question"] == REGISTRY_OVERRIDE_QUESTION, item
     assert item["next_handoff_condition"] == REGISTRY_OVERRIDE_HANDOFF, item
-    assert item["user_todos"]["open_count"] == 1, item
-    assert item["user_todos"]["done_count"] == 1, item
-    assert item["user_todos"]["items"][0]["text"] == USER_TODO_TEXT, item
-    assert item["agent_todos"]["open_count"] == 1, item
-    assert item["agent_todos"]["items"][0]["text"] == AGENT_TODO_TEXT, item
+    assert item["user_todos"]["open_count"] == 0, item
+    assert item["user_todos"]["done_count"] == 2, item
+    assert item["agent_todos"]["open_count"] == 0, item
+    assert item["agent_todos"]["done_count"] == 1, item
     assert "agent_command" not in item, item
     assert REGISTRY_OVERRIDE_STATUS in markdown, markdown
     assert REGISTRY_OVERRIDE_ACTION in markdown, markdown
     assert "project_asset: owner=user_or_controller gate=operator_question" in markdown, markdown
     assert f"asset_next_action: {REGISTRY_OVERRIDE_ACTION}" in markdown, markdown
-    assert f"asset_user_todo: {USER_TODO_TEXT}" in markdown, markdown
-    assert f"asset_agent_todo: {AGENT_TODO_TEXT}" in markdown, markdown
+    assert "asset_todos: user_open=0 agent_open=0" in markdown, markdown
+    assert f"asset_user_todo: {USER_TODO_TEXT}" not in markdown, markdown
+    assert f"asset_agent_todo: {AGENT_TODO_TEXT}" not in markdown, markdown
     assert "latest_validation: classification=state_refreshed" in markdown, markdown
-    assert f"next_user_todo: {USER_TODO_TEXT}" in markdown, markdown
-    assert f"next_agent_todo: {AGENT_TODO_TEXT}" in markdown, markdown
+    assert f"next_user_todo: {USER_TODO_TEXT}" not in markdown, markdown
+    assert f"next_agent_todo: {AGENT_TODO_TEXT}" not in markdown, markdown
     assert "state_refreshed" in json.dumps(payload["run_history"], ensure_ascii=False), payload
     assert_quota_should_run(
         payload,
@@ -1596,7 +1613,10 @@ def assert_connected_delivery_custom_run_stays_runnable(payload: dict, markdown:
     assert "post_handoff_run: classification=delivery_ranker_readiness_batch" in markdown, markdown
     assert "scale=multi_surface" in markdown, markdown
     assert "outcome=outcome_progress" in markdown, markdown
-    assert "post_handoff_recent_scales: multi_surface small_streak=0 outcome=outcome_progress outcome_gap_streak=0" in markdown, markdown
+    assert (
+        "post_handoff_recent_scales: multi_surface small_streak=0 "
+        "outcome=outcome_progress turn_kind=compact_evidence outcome_gap_streak=0"
+    ) in markdown, markdown
     assert "execution_profile: cadence=bounded_progress_segment minimum=implementation" in markdown, markdown
     assert "orchestration: mode=multi_subagent spawn_allowed=True max_children=2" in markdown, markdown
     assert f"asset_agent_todo: {DELIVERY_AGENT_TODO}" in markdown, markdown
@@ -1791,7 +1811,9 @@ def assert_connected_delivery_surface_loop(payload: dict, markdown: str) -> None
     assert "handoff_checks: pass=project_asset_backed,same_source_should_run,handoff_has_next_action,handoff_has_stop_condition,handoff_sanitized_surface fail=codex_ready" in markdown, markdown
     assert (
         "post_handoff_recent_scales: implementation,implementation,implementation "
-        "small_streak=0 outcome=surface_only,surface_only,surface_only outcome_gap_streak=3"
+        "small_streak=0 outcome=surface_only,surface_only,surface_only "
+        "turn_kind=contract_only_preparation,contract_only_preparation,contract_only_preparation "
+        "outcome_gap_streak=3"
     ) in markdown, markdown
 
     quota_payload = build_quota_should_run(payload, goal_id=DELIVERY_GOAL_ID)
@@ -2055,6 +2077,7 @@ def main() -> int:
         registry_path = write_planned_registry(root)
         assert_project_local_status_excludes_runtime_orphans(registry_path)
         payload, markdown = collect_fixture_status(root, registry_path)
+        mark_planned_todos_done(root)
         append_operator_gate_fixture(
             root,
             decision="approve",
@@ -2085,6 +2108,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-status-registry-override-smoke-") as tmp:
         root = Path(tmp)
         registry_path = write_planned_registry(root)
+        mark_planned_todos_done(root)
         append_state_refreshed_fixture(root, generated_at="2026-01-01T00:04:00+00:00")
         set_registry_attention_override(registry_path)
         override_payload, override_markdown = collect_fixture_status(root, registry_path)
