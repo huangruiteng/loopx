@@ -2119,6 +2119,16 @@ def _apply_agent_message_only_no_tool_calls_attribution(
     ):
         return False
 
+    bridge_request_count = counters.get(
+        "remote_command_file_bridge_agent_request_count"
+    )
+    if (
+        isinstance(bridge_request_count, int)
+        and not isinstance(bridge_request_count, bool)
+        and bridge_request_count > 0
+    ):
+        return False
+
     label = "skillsbench_acp_agent_message_only_no_tool_calls"
     current_attribution = str(compact.get("score_failure_attribution") or "")
     preserve_attributions = {
