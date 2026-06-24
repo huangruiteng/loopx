@@ -141,7 +141,8 @@ DEFAULT_GOAL_ID = "loopx-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
 DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
-DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "final-only"
+DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
+DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
 DEFAULT_MAX_ROUNDS = 8
 HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "AI_ADDR",
@@ -1098,6 +1099,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_user_loop_recovery_exception_type",
         "benchflow_user_loop_recovery_stage",
         "benchflow_intermediate_soft_verify_policy",
+        "benchflow_intermediate_soft_verify_timeout_stage",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_status",
         "benchflow_setup_stall_cleanup_status",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
@@ -1165,6 +1168,11 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_user_loop_recovery_preserved_final_verify",
         "benchflow_intermediate_soft_verify_final_only",
         "benchflow_intermediate_soft_verify_raw_output_recorded",
+        "benchflow_intermediate_soft_verify_timeout_enabled",
+        "benchflow_intermediate_soft_verify_timeout_triggered",
+        "benchflow_intermediate_soft_verify_timeout_raw_output_recorded",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_requested",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
         "benchflow_verifier_prep_timeout_override_enabled",
         "benchflow_verifier_prep_timeout_raw_command_recorded",
         "benchflow_final_verifier_timeout_enabled",
@@ -1196,6 +1204,13 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_user_loop_recovery_delta_tool_calls",
         "benchflow_intermediate_soft_verify_call_count",
         "benchflow_intermediate_soft_verify_skipped_count",
+        "benchflow_intermediate_soft_verify_timeout_sec",
+        "benchflow_intermediate_soft_verify_timeout_override_count",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_container_count",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_match_count",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_term_sent_count",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_kill_sent_count",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count",
         "benchflow_verifier_prep_timeout_sec",
         "benchflow_final_verifier_timeout_sec",
         "benchflow_final_verifier_timeout_override_count",
@@ -1421,40 +1436,285 @@ def cleanup_benchflow_setup_stall_children(
     return publish()
 
 
+def cleanup_benchflow_soft_verify_timeout_children(
+    plan: dict[str, Any],
+    *,
+    trace: dict[str, Any] | None = None,
+    grace_seconds: float = 3.0,
+) -> dict[str, Any]:
+    """Terminate verifier process trees left behind by an intermediate timeout."""
+
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    cleanup: dict[str, Any] = {
+        "schema_version": "skillsbench_soft_verify_timeout_process_cleanup_v0",
+        "requested": True,
+        "raw_logs_read": False,
+        "raw_command_recorded": False,
+        "status": "not_attempted",
+        "container_count": 0,
+        "match_count": 0,
+        "term_sent_count": 0,
+        "kill_sent_count": 0,
+        "alive_after_count": 0,
+    }
+
+    def publish() -> dict[str, Any]:
+        prerequisites[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_requested"
+        ] = True
+        prerequisites[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read"
+        ] = False
+        prerequisites[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_status"
+        ] = str(cleanup.get("status") or "unknown")
+        if isinstance(trace, dict):
+            trace[
+                "benchflow_intermediate_soft_verify_timeout_cleanup_requested"
+            ] = True
+            trace[
+                "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read"
+            ] = False
+            trace[
+                "benchflow_intermediate_soft_verify_timeout_cleanup_status"
+            ] = str(cleanup.get("status") or "unknown")
+        for source, target in (
+            (
+                "container_count",
+                "benchflow_intermediate_soft_verify_timeout_cleanup_container_count",
+            ),
+            (
+                "match_count",
+                "benchflow_intermediate_soft_verify_timeout_cleanup_match_count",
+            ),
+            (
+                "term_sent_count",
+                "benchflow_intermediate_soft_verify_timeout_cleanup_term_sent_count",
+            ),
+            (
+                "kill_sent_count",
+                "benchflow_intermediate_soft_verify_timeout_cleanup_kill_sent_count",
+            ),
+            (
+                "alive_after_count",
+                "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count",
+            ),
+        ):
+            value = cleanup.get(source)
+            if isinstance(value, int):
+                prerequisites[target] = value
+                if isinstance(trace, dict):
+                    trace[target] = value
+        return cleanup
+
+    if os.name != "posix":
+        cleanup["status"] = "unsupported_platform"
+        return publish()
+
+    job_name = str(plan.get("job_name") or "").strip().lower()
+    rollout_name = str(plan.get("rollout_name") or "").strip().lower()
+    if not job_name and not rollout_name:
+        cleanup["status"] = "missing_run_identifiers"
+        return publish()
+
+    try:
+        proc = subprocess.run(
+            ["docker", "ps", "--format", "{{.ID}}\t{{.Names}}"],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        cleanup["status"] = "docker_unavailable"
+        return publish()
+    if proc.returncode != 0:
+        cleanup["status"] = "docker_unavailable"
+        return publish()
+
+    containers: list[str] = []
+    for line in proc.stdout.splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        container_id, name = parts[0].strip(), parts[1].strip().lower()
+        if not container_id:
+            continue
+        if (job_name and job_name in name) or (rollout_name and rollout_name in name):
+            containers.append(container_id)
+    cleanup["container_count"] = len(containers)
+    if not containers:
+        cleanup["status"] = "no_matching_container"
+        return publish()
+
+    total_matches = 0
+    total_term_sent = 0
+    total_kill_sent = 0
+    total_alive_after = 0
+
+    for container_id in containers:
+        try:
+            ps_proc = subprocess.run(
+                ["docker", "exec", container_id, "ps", "-eo", "pid=,ppid=,comm=,args="],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            cleanup["status"] = "container_process_table_unavailable"
+            return publish()
+        if ps_proc.returncode != 0:
+            cleanup["status"] = "container_process_table_unavailable"
+            return publish()
+
+        entries: dict[int, tuple[int, str, str]] = {}
+        children: dict[int, set[int]] = {}
+        for line in ps_proc.stdout.splitlines():
+            parts = line.strip().split(maxsplit=3)
+            if len(parts) < 3:
+                continue
+            try:
+                pid = int(parts[0])
+                ppid = int(parts[1])
+            except ValueError:
+                continue
+            comm = parts[2]
+            args = parts[3] if len(parts) > 3 else ""
+            entries[pid] = (ppid, comm, args)
+            children.setdefault(ppid, set()).add(pid)
+
+        root_matches = {
+            pid
+            for pid, (_ppid, comm, args) in entries.items()
+            if comm == "test.sh" or "/verifier/test.sh" in args
+        }
+        to_terminate = set(root_matches)
+        stack = list(root_matches)
+        while stack:
+            parent = stack.pop()
+            for child in children.get(parent, set()):
+                if child not in to_terminate:
+                    to_terminate.add(child)
+                    stack.append(child)
+        if not to_terminate:
+            continue
+
+        total_matches += len(to_terminate)
+
+        def send_signal(sig: str, pids: set[int]) -> int:
+            if not pids:
+                return 0
+            signal_proc = subprocess.run(
+                ["docker", "exec", container_id, "kill", f"-{sig}", *map(str, sorted(pids))],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5,
+            )
+            return len(pids) if signal_proc.returncode == 0 else 0
+
+        def alive_pids(pids: set[int]) -> set[int]:
+            alive: set[int] = set()
+            for pid in pids:
+                probe = subprocess.run(
+                    ["docker", "exec", container_id, "kill", "-0", str(pid)],
+                    check=False,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=2,
+                )
+                if probe.returncode == 0:
+                    alive.add(pid)
+            return alive
+
+        total_term_sent += send_signal("TERM", to_terminate)
+        deadline = time.monotonic() + max(0.0, grace_seconds)
+        alive = alive_pids(to_terminate)
+        while alive and time.monotonic() < deadline:
+            time.sleep(0.1)
+            alive = alive_pids(alive)
+        if alive:
+            total_kill_sent += send_signal("KILL", alive)
+            time.sleep(0.1)
+            alive = alive_pids(alive)
+        total_alive_after += len(alive)
+
+    cleanup["match_count"] = total_matches
+    cleanup["term_sent_count"] = total_term_sent
+    cleanup["kill_sent_count"] = total_kill_sent
+    cleanup["alive_after_count"] = total_alive_after
+    if not total_matches:
+        cleanup["status"] = "no_matching_processes"
+    elif total_alive_after:
+        cleanup["status"] = "cleanup_incomplete"
+    elif total_kill_sent:
+        cleanup["status"] = "killed"
+    else:
+        cleanup["status"] = "terminated"
+    return publish()
+
+
 def install_benchflow_verifier_prep_timeout_override(
     rollout_cls: Any,
     *,
     timeout_sec: int,
     final_verifier_timeout_sec: int = 0,
+    soft_verifier_timeout_sec: int = DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
     plan: dict[str, Any],
     trace: dict[str, Any] | None,
 ) -> tuple[Any, Any]:
-    """Raise verifier prep timeouts and optionally bound final official verify."""
+    """Raise verifier prep timeouts and bound verifier calls when requested."""
 
     original_verify = rollout_cls.verify
     original_soft_verify = rollout_cls.soft_verify
     prerequisites = plan.setdefault("runner_prerequisites", {})
     enabled = timeout_sec > 10
     final_timeout_enabled = final_verifier_timeout_sec > 0
+    soft_timeout_enabled = soft_verifier_timeout_sec > 0
     prerequisites["benchflow_verifier_prep_timeout_override_enabled"] = enabled
     prerequisites["benchflow_verifier_prep_timeout_raw_command_recorded"] = False
     prerequisites["benchflow_final_verifier_timeout_enabled"] = final_timeout_enabled
     prerequisites["benchflow_final_verifier_timeout_raw_command_recorded"] = False
+    prerequisites["benchflow_intermediate_soft_verify_timeout_enabled"] = (
+        soft_timeout_enabled
+    )
+    prerequisites["benchflow_intermediate_soft_verify_timeout_raw_output_recorded"] = (
+        False
+    )
     if enabled:
         prerequisites["benchflow_verifier_prep_timeout_sec"] = timeout_sec
     if final_timeout_enabled:
         prerequisites["benchflow_final_verifier_timeout_sec"] = (
             final_verifier_timeout_sec
         )
+    if soft_timeout_enabled:
+        prerequisites["benchflow_intermediate_soft_verify_timeout_sec"] = (
+            soft_verifier_timeout_sec
+        )
     if isinstance(trace, dict):
         trace["benchflow_verifier_prep_timeout_override_enabled"] = enabled
         trace["benchflow_verifier_prep_timeout_raw_command_recorded"] = False
         trace["benchflow_final_verifier_timeout_enabled"] = final_timeout_enabled
         trace["benchflow_final_verifier_timeout_raw_command_recorded"] = False
+        trace["benchflow_intermediate_soft_verify_timeout_enabled"] = (
+            soft_timeout_enabled
+        )
+        trace["benchflow_intermediate_soft_verify_timeout_raw_output_recorded"] = (
+            False
+        )
         if enabled:
             trace["benchflow_verifier_prep_timeout_sec"] = timeout_sec
         if final_timeout_enabled:
             trace["benchflow_final_verifier_timeout_sec"] = final_verifier_timeout_sec
+        if soft_timeout_enabled:
+            trace["benchflow_intermediate_soft_verify_timeout_sec"] = (
+                soft_verifier_timeout_sec
+            )
 
     def _looks_like_final_verifier_exec(
         exec_args: tuple[Any, ...],
@@ -1478,9 +1738,11 @@ def install_benchflow_verifier_prep_timeout_override(
 
         override_count = 0
         final_timeout_override_count = 0
+        soft_timeout_override_count = 0
 
         async def exec_with_verifier_prep_timeout(*args: Any, **kwargs: Any) -> Any:
             nonlocal override_count, final_timeout_override_count
+            nonlocal soft_timeout_override_count
             if kwargs.get("timeout_sec") == 10:
                 kwargs = dict(kwargs)
                 kwargs["timeout_sec"] = timeout_sec
@@ -1495,6 +1757,16 @@ def install_benchflow_verifier_prep_timeout_override(
                     kwargs = dict(kwargs)
                     kwargs["timeout_sec"] = final_verifier_timeout_sec
                     final_timeout_override_count += 1
+            if (
+                phase == "soft_verify"
+                and soft_timeout_enabled
+                and _looks_like_final_verifier_exec(args, kwargs)
+            ):
+                current_timeout = kwargs.get("timeout_sec")
+                if current_timeout != soft_verifier_timeout_sec:
+                    kwargs = dict(kwargs)
+                    kwargs["timeout_sec"] = soft_verifier_timeout_sec
+                    soft_timeout_override_count += 1
             return await original_exec(*args, **kwargs)
 
         try:
@@ -1511,6 +1783,30 @@ def install_benchflow_verifier_prep_timeout_override(
                     trace["benchflow_final_verifier_timeout_raw_output_recorded"] = (
                         False
                     )
+            if soft_timeout_override_count and _runner_exception_indicates_timeout(exc):
+                prerequisites[
+                    "benchflow_intermediate_soft_verify_timeout_triggered"
+                ] = True
+                prerequisites[
+                    "benchflow_intermediate_soft_verify_timeout_stage"
+                ] = "soft_verify"
+                prerequisites[
+                    "benchflow_intermediate_soft_verify_timeout_raw_output_recorded"
+                ] = False
+                if isinstance(trace, dict):
+                    trace[
+                        "benchflow_intermediate_soft_verify_timeout_triggered"
+                    ] = True
+                    trace[
+                        "benchflow_intermediate_soft_verify_timeout_stage"
+                    ] = "soft_verify"
+                    trace[
+                        "benchflow_intermediate_soft_verify_timeout_raw_output_recorded"
+                    ] = False
+                cleanup_benchflow_soft_verify_timeout_children(
+                    plan,
+                    trace=trace,
+                )
             raise
         finally:
             env.exec = original_exec
@@ -1535,6 +1831,19 @@ def install_benchflow_verifier_prep_timeout_override(
                     trace[count_key] = (
                         int(trace.get(count_key) or 0)
                         + final_timeout_override_count
+                    )
+            if soft_timeout_override_count:
+                count_key = (
+                    "benchflow_intermediate_soft_verify_timeout_override_count"
+                )
+                prerequisites[count_key] = (
+                    int(prerequisites.get(count_key) or 0)
+                    + soft_timeout_override_count
+                )
+                if isinstance(trace, dict):
+                    trace[count_key] = (
+                        int(trace.get(count_key) or 0)
+                        + soft_timeout_override_count
                     )
 
     async def verify_with_prep_timeout_override(self: Any) -> Any:
@@ -1871,6 +2180,14 @@ def _runner_prerequisite_failure_attribution(
 
     if value.get("benchflow_final_verifier_timeout_triggered") is True:
         label = "skillsbench_final_verifier_timeout"
+        return label, label, [
+            label,
+            "skillsbench_verifier_timeout",
+            "skillsbench_runner_error",
+        ]
+
+    if value.get("benchflow_intermediate_soft_verify_timeout_triggered") is True:
+        label = "skillsbench_intermediate_soft_verify_timeout"
         return label, label, [
             label,
             "skillsbench_verifier_timeout",
@@ -3267,6 +3584,13 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "benchflow_intermediate_soft_verify_call_count": 0,
             "benchflow_intermediate_soft_verify_skipped_count": 0,
             "benchflow_intermediate_soft_verify_raw_output_recorded": False,
+            "benchflow_intermediate_soft_verify_timeout_enabled": (
+                int(args.soft_verifier_timeout_sec or 0) > 0
+            ),
+            "benchflow_intermediate_soft_verify_timeout_sec": int(
+                args.soft_verifier_timeout_sec or 0
+            ),
+            "benchflow_intermediate_soft_verify_timeout_raw_output_recorded": False,
             "benchflow_final_verifier_timeout_enabled": (
                 int(args.final_verifier_timeout_sec or 0) > 0
             ),
@@ -5841,6 +6165,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             Rollout,
             timeout_sec=args.verifier_prep_timeout_sec,
             final_verifier_timeout_sec=args.final_verifier_timeout_sec,
+            soft_verifier_timeout_sec=args.soft_verifier_timeout_sec,
             plan=plan,
             trace=controller_trace,
         )
@@ -6540,9 +6865,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_MAX_ROUNDS,
         help=(
             "Maximum scheduled agent rounds per arm before budget stop. "
-            f"Defaults to {DEFAULT_MAX_ROUNDS}; blind-loop routes still stop "
-            "early once official reward reaches 1.0, without forwarding that "
-            "reward to the agent."
+            f"Defaults to {DEFAULT_MAX_ROUNDS}; blind-loop and product-mode "
+            "routes still stop early once official reward reaches 1.0, without "
+            "forwarding that reward to the agent."
         ),
     )
     parser.add_argument(
@@ -6599,13 +6924,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--soft-verifier-timeout-sec",
+        type=int,
+        default=DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
+        help=(
+            "Timeout for every-round intermediate soft verifier commands. "
+            "This keeps product-mode private reward sampling from hanging on "
+            "task verifier network calls while still withholding reward, "
+            "pass/fail, and verifier output from the agent."
+        ),
+    )
+    parser.add_argument(
         "--product-mode-soft-verify-policy",
         choices=("final-only", "every-round"),
         default=DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY,
         help=(
             "Intermediate BenchFlow soft-verify policy for the main-table "
-            "product-mode routes. final-only preserves official final scoring "
-            "without per-round verifier reward/output observations."
+            "product-mode routes. every-round privately samples verifier reward "
+            "after each agent round so the controller can stop at reward 1.0 "
+            "without forwarding reward/pass/fail/verifier output to the agent. "
+            "final-only is an explicit ablation that waits for final official "
+            "scoring before observing reward."
         ),
     )
     parser.add_argument(

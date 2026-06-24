@@ -49,6 +49,8 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     CODEX_ACP_RUNTIME_DEPS_SETUP_CMD,
     CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD,
     DEFAULT_MAX_ROUNDS,
+    DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY,
+    DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
     DECLARED_DONE_MARKER,
     DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN,
     DOCKER_APT_RETRY_BEGIN,
@@ -70,6 +72,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     build_compose_setup_diagnostic,
     build_plan,
     cleanup_benchflow_setup_stall_children,
+    cleanup_benchflow_soft_verify_timeout_children,
     install_benchflow_user_loop_final_verify_recovery,
     install_benchflow_verifier_prep_timeout_override,
     append_history,
@@ -79,6 +82,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     inspect_skillsbench_worker_handshake,
     parse_args,
     product_mode_case_state_seed_text,
+    product_mode_soft_verify_policy_for_route,
     reduce_result,
     summarize_acp_trajectory,
     stage_task_for_sandbox,
@@ -99,6 +103,21 @@ def test_skillsbench_default_blind_loop_budget_is_eight() -> None:
     assert args.max_rounds == DEFAULT_MAX_ROUNDS == 8, args
     assert "blind-loop" in args.route, args
     assert args.route != "codex-goal-mode-baseline", args
+
+
+def test_skillsbench_product_mode_soft_verify_default_is_every_round() -> None:
+    args = parse_args(["--route", "loopx-product-mode"])
+    assert args.product_mode_soft_verify_policy == (
+        DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY
+    ) == "every-round"
+    assert args.soft_verifier_timeout_sec == DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC == 600
+    assert (
+        product_mode_soft_verify_policy_for_route(
+            "loopx-product-mode",
+            args.product_mode_soft_verify_policy,
+        )
+        == "every-round"
+    )
 
 
 def test_skillsbench_append_history_missing_registry_is_nonfatal() -> None:
@@ -231,6 +250,175 @@ def test_skillsbench_final_verifier_timeout_override_can_extend_timeout() -> Non
     assert prereqs["benchflow_final_verifier_timeout_override_count"] == 1, prereqs
     assert "benchflow_final_verifier_timeout_triggered" not in prereqs, prereqs
     assert prereqs["benchflow_final_verifier_timeout_raw_command_recorded"] is False
+    assert "test.sh" not in json.dumps(prereqs)
+
+
+def test_skillsbench_intermediate_soft_verifier_timeout_override_records_public_state() -> None:
+    class FakeRollout:
+        def __init__(self) -> None:
+            self._env = types.SimpleNamespace()
+
+        async def verify(self) -> None:
+            return await self._env.exec("echo final", timeout_sec=10)
+
+        async def soft_verify(self) -> None:
+            return await self._env.exec("/verifier/test.sh", timeout_sec=9999)
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def fake_exec(command: str, **kwargs: Any) -> Any:
+        calls.append((command, dict(kwargs)))
+        if "/verifier/test.sh" in command:
+            raise TimeoutError("soft verifier timed out")
+        return types.SimpleNamespace(return_code=0)
+
+    rollout = FakeRollout()
+    rollout._env.exec = fake_exec
+    plan = {"runner_prerequisites": {}}
+    trace: dict[str, Any] = {}
+    original_verify, original_soft_verify = install_benchflow_verifier_prep_timeout_override(
+        FakeRollout,
+        timeout_sec=120,
+        final_verifier_timeout_sec=0,
+        soft_verifier_timeout_sec=5,
+        plan=plan,
+        trace=trace,
+    )
+    try:
+        try:
+            asyncio.run(rollout.soft_verify())
+        except TimeoutError:
+            pass
+        else:  # pragma: no cover - defensive, this is a smoke script
+            raise AssertionError("expected soft verifier timeout")
+    finally:
+        FakeRollout.verify = original_verify
+        FakeRollout.soft_verify = original_soft_verify
+
+    assert calls == [("/verifier/test.sh", {"timeout_sec": 5})], calls
+    prereqs = plan["runner_prerequisites"]
+    assert prereqs["benchflow_intermediate_soft_verify_timeout_enabled"] is True
+    assert prereqs["benchflow_intermediate_soft_verify_timeout_sec"] == 5
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_override_count"] == 1
+    )
+    assert prereqs["benchflow_intermediate_soft_verify_timeout_triggered"] is True
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_raw_output_recorded"]
+        is False
+    )
+    assert trace["benchflow_intermediate_soft_verify_timeout_triggered"] is True
+    assert "test.sh" not in json.dumps(prereqs)
+
+
+def test_skillsbench_intermediate_soft_verifier_timeout_triggers_cleanup() -> None:
+    class FakeRollout:
+        def __init__(self) -> None:
+            self._env = types.SimpleNamespace()
+
+        async def verify(self) -> None:
+            return await self._env.exec("echo final", timeout_sec=10)
+
+        async def soft_verify(self) -> None:
+            return await self._env.exec("/verifier/test.sh", timeout_sec=9999)
+
+    async def fake_exec(command: str, **kwargs: Any) -> Any:
+        if "/verifier/test.sh" in command:
+            raise TimeoutError("soft verifier timed out")
+        return types.SimpleNamespace(return_code=0)
+
+    cleanup_calls: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
+
+    def fake_cleanup(
+        cleanup_plan: dict[str, Any],
+        *,
+        trace: dict[str, Any] | None = None,
+        grace_seconds: float = 3.0,
+    ) -> dict[str, Any]:
+        cleanup_calls.append((cleanup_plan, trace))
+        prereqs = cleanup_plan.setdefault("runner_prerequisites", {})
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_requested"
+        ] = True
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read"
+        ] = False
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_status"
+        ] = "terminated"
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_container_count"
+        ] = 1
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_match_count"
+        ] = 3
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count"
+        ] = 0
+        if isinstance(trace, dict):
+            trace[
+                "benchflow_intermediate_soft_verify_timeout_cleanup_status"
+            ] = "terminated"
+        return {"status": "terminated", "match_count": 3}
+
+    rollout = FakeRollout()
+    rollout._env.exec = fake_exec
+    plan = {"runner_prerequisites": {}}
+    trace: dict[str, Any] = {}
+    original_cleanup = skillsbench_loop.cleanup_benchflow_soft_verify_timeout_children
+    skillsbench_loop.cleanup_benchflow_soft_verify_timeout_children = fake_cleanup
+    original_verify, original_soft_verify = install_benchflow_verifier_prep_timeout_override(
+        FakeRollout,
+        timeout_sec=120,
+        final_verifier_timeout_sec=0,
+        soft_verifier_timeout_sec=5,
+        plan=plan,
+        trace=trace,
+    )
+    try:
+        try:
+            asyncio.run(rollout.soft_verify())
+        except TimeoutError:
+            pass
+        else:  # pragma: no cover - defensive, this is a smoke script
+            raise AssertionError("expected soft verifier timeout")
+    finally:
+        FakeRollout.verify = original_verify
+        FakeRollout.soft_verify = original_soft_verify
+        skillsbench_loop.cleanup_benchflow_soft_verify_timeout_children = (
+            original_cleanup
+        )
+
+    assert len(cleanup_calls) == 1, cleanup_calls
+    prereqs = plan["runner_prerequisites"]
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_cleanup_requested"]
+        is True
+    )
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read"]
+        is False
+    )
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_cleanup_status"]
+        == "terminated"
+    )
+    assert (
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_container_count"
+        ]
+        == 1
+    )
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_cleanup_match_count"]
+        == 3
+    )
+    assert (
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count"
+        ]
+        == 0
+    )
     assert "test.sh" not in json.dumps(prereqs)
 
 
@@ -7367,6 +7555,11 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
 
 if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_eight()
+    test_skillsbench_product_mode_soft_verify_default_is_every_round()
+    test_skillsbench_final_verifier_timeout_override_records_public_state()
+    test_skillsbench_final_verifier_timeout_override_can_extend_timeout()
+    test_skillsbench_intermediate_soft_verifier_timeout_override_records_public_state()
+    test_skillsbench_intermediate_soft_verifier_timeout_triggers_cleanup()
     test_skillsbench_local_driver_a2a_contract_keeps_codex_local()
     test_skillsbench_local_driver_a2a_contract_ready_only_after_both_sides()
     test_skillsbench_local_driver_a2a_contract_distinguishes_cli_from_handshake()
