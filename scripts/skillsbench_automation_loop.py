@@ -143,7 +143,7 @@ DEFAULT_TIMEOUT_SEC = 7200
 DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
 DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
 DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
-DEFAULT_MAX_ROUNDS = 8
+DEFAULT_MAX_ROUNDS = 16
 HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "AI_ADDR",
     "AI_PORT",
@@ -5209,8 +5209,8 @@ def _build_blind_loop_user(
     class BlindLoopUser(BaseUser):
         """Scheduler-side user that withholds official verifier feedback.
 
-        The default budget is five scheduled agent rounds, but the loop stops
-        early as soon as official scoring reaches the pass threshold. That
+        The configured budget controls scheduled agent rounds, but the loop
+        stops early as soon as official scoring reaches the pass threshold. That
         reward is recorded for offline analysis and never sent back to the
         agent.
         """

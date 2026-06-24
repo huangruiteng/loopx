@@ -98,9 +98,9 @@ def assert_prerequisites_include(actual: dict[str, Any], expected: dict[str, Any
         assert actual.get(key) == value, (key, actual)
 
 
-def test_skillsbench_default_blind_loop_budget_is_eight() -> None:
+def test_skillsbench_default_blind_loop_budget_is_sixteen() -> None:
     args = parse_args([])
-    assert args.max_rounds == DEFAULT_MAX_ROUNDS == 8, args
+    assert args.max_rounds == DEFAULT_MAX_ROUNDS == 16, args
     assert "blind-loop" in args.route, args
     assert args.route != "codex-goal-mode-baseline", args
 
@@ -7554,7 +7554,7 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
 
 
 if __name__ == "__main__":
-    test_skillsbench_default_blind_loop_budget_is_eight()
+    test_skillsbench_default_blind_loop_budget_is_sixteen()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
     test_skillsbench_final_verifier_timeout_override_records_public_state()
     test_skillsbench_final_verifier_timeout_override_can_extend_timeout()
