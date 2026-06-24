@@ -59,6 +59,10 @@ runtime contract, benchmark route, or launch draft.
   the opt-in public-safe procedure for turning `resume` / `remote-control`
   signals into evidence, with stop conditions that keep one-message TUI
   bootstrap primary until same-TUI visibility is proven.
+- [Codex App control-plane hook/cache](codex-app-control-plane-hook-cache.md):
+  experimental, default-off design boundary for a possible low-token Codex App
+  control-plane snapshot, including freshness, privacy, evidence, rollout, and
+  CLI fallback gates.
 - [Codex CLI proof-capture demo](codex-cli-proof-capture-demo.md): public-safe
   sample fixtures and acceptance decisions for rehearsing the visible proof
   path without running Codex or reading session material.
