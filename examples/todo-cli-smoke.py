@@ -15,10 +15,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.status import parse_active_state_todos  # noqa: E402
+from loopx.quota import build_quota_should_run  # noqa: E402
 
 
 GOAL_ID = "todo-cli-goal"
 USER_TODO = "Review the owner decision checklist before approving delivery."
+SCOPED_USER_GATE = "Choose the side-agent publishing channel before posting externally."
 AGENT_TODO = "Summarize the read-only evidence after the user checklist is done."
 UPDATED_AGENT_TODO = "Publish the compact evidence summary after validation passes."
 
@@ -139,6 +141,27 @@ def main() -> int:
         assert duplicate["already_exists"] is True, duplicate
         assert state_file.read_text(encoding="utf-8").count(USER_TODO) == 1
 
+        scoped_gate = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "user",
+            "--text",
+            SCOPED_USER_GATE,
+            "--task-class",
+            "user_gate",
+            "--action-kind",
+            "approve_publish_channel",
+            "--agent-id",
+            "codex-side-bypass",
+        )
+        assert scoped_gate["added"] is True, scoped_gate
+        assert scoped_gate["agent_id"] == "codex-side-bypass", scoped_gate
+        assert scoped_gate["blocks_agent"] == "codex-side-bypass", scoped_gate
+
         agent_payload = run_cli(registry_path, "todo", "add", "--goal-id", GOAL_ID, "--role", "agent", "--text", AGENT_TODO)
         assert agent_payload["added"] is True, agent_payload
         legacy_agent = run_cli(
@@ -210,6 +233,11 @@ def main() -> int:
         fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
         assert fields["user_todos"]["items"][0]["text"] == USER_TODO, fields
         assert fields["user_todos"]["items"][0]["todo_id"].startswith("todo_"), fields
+        scoped_user_item = next(
+            item for item in fields["user_todos"]["items"] if item["text"] == SCOPED_USER_GATE
+        )
+        assert scoped_user_item["task_class"] == "user_gate", fields
+        assert scoped_user_item["blocks_agent"] == "codex-side-bypass", fields
         assert fields["agent_todos"]["items"][0]["text"] == AGENT_TODO, fields
         assert fields["agent_todos"]["items"][0]["todo_id"].startswith("todo_"), fields
         assert fields["agent_todos"]["items"][0]["task_class"] == "advancement_task", fields
@@ -223,6 +251,56 @@ def main() -> int:
         ], fields
         assert fields["user_todos"]["source_section"] == "User Todo / Owner Review Reading Queue", fields
         assert fields["agent_todos"]["source_section"] == "Agent Todo", fields
+
+        status_payload = {
+            "ok": True,
+            "goal_count": 1,
+            "run_count": 0,
+            "attention_queue": {
+                "items": [
+                    {
+                        "goal_id": GOAL_ID,
+                        "status": "active_state_user_todo",
+                        "waiting_on": "controller",
+                        "severity": "action",
+                        "quota": {
+                            "compute": 1.0,
+                            "window_hours": 24,
+                            "slot_minutes": 1,
+                            "allowed_slots": 1440,
+                            "spent_slots": 0,
+                            "state": "operator_gate",
+                            "reason": "open user gate",
+                        },
+                        "user_todos": fields["user_todos"],
+                        "agent_todos": fields["agent_todos"],
+                    }
+                ]
+            },
+            "run_history": {
+                "goals": [
+                    {
+                        "id": GOAL_ID,
+                        "registry_member": True,
+                        "status": "active",
+                        "adapter_kind": "fixture_adapter_v0",
+                        "adapter_status": "connected",
+                        "coordination": {
+                            "registered_agents": ["codex-main-control", "codex-side-bypass"],
+                            "primary_agent": "codex-main-control",
+                        },
+                        "latest_runs": [],
+                    }
+                ]
+            },
+        }
+        main_quota = build_quota_should_run(
+            status_payload,
+            goal_id=GOAL_ID,
+            agent_id="codex-main-control",
+        )
+        assert main_quota["user_todo_summary"]["other_agent_scoped_open_count"] == 1, main_quota
+        assert main_quota["user_todo_summary"]["open_count"] == 1, main_quota
 
         missing_claim = run_cli_error(
             registry_path,

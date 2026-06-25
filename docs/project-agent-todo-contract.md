@@ -88,13 +88,20 @@ A `todo_id` is a structured work item inside that goal. LoopX does not
 currently model issues as a separate runtime object.
 
 Multiple agents may share the same project control plane. A todo can carry a
-soft owner with `claimed_by`, but the todo itself should not carry the agent's
-scope. Scope belongs in the automation prompt or sub-agent handoff; the agent
-uses that scope to decide which open todo it may claim. Each goal should have
-one `coordination.primary_agent`: the primary agent owns final review,
-verification, merge, publication, and reassignment decisions. All other
-registered agents are side agents. Side agents should do repository edits only
-in an independent git worktree/branch, never in the primary checkout. Small
+soft owner with `claimed_by`, but ordinary agent todos should not restate the
+agent's broad prompt scope. Scope belongs in the automation prompt or sub-agent
+handoff; the agent uses that scope to decide which open todo it may claim.
+User-gate todos are different: when a user decision only unlocks one registered
+agent or lane, record the blocked agent explicitly with `blocks_agent` so quota
+does not stop unrelated agents. For convenience, `todo add/update --role user
+--task-class user_gate --agent-id <agent>` defaults `blocks_agent` to that agent
+when `--blocks-agent` is omitted. Omit `--agent-id` and `--blocks-agent` only
+for a genuine goal-wide user gate.
+
+Each goal should have one `coordination.primary_agent`: the primary agent owns
+final review, verification, merge, publication, and reassignment decisions. All
+other registered agents are side agents. Side agents should do repository edits
+only in an independent git worktree/branch, never in the primary checkout. Small
 AGENTS-eligible validated changes may be self-merged when the side agent records
 public-safe evidence; higher-risk or unclear work should create a successor
 handoff todo claimed by the primary agent by default or by
