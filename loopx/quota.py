@@ -157,7 +157,7 @@ AGENT_SCOPE_FRONTIER_SCHEMA_VERSION = "agent_scope_frontier_v0"
 
 class AgentScopeFrontierAction(str, Enum):
     AGENT_SCOPE_EXHAUSTED = "agent_scope_exhausted"
-    PRIMARY_REVIEW_WAIT = "primary_review_wait"
+    AGENT_SCOPE_WAIT = "agent_scope_wait"
     REASSIGNMENT_REQUIRED = "reassignment_required"
     SUCCESSOR_REPLAN_REQUIRED = "successor_replan_required"
 
@@ -1068,19 +1068,16 @@ def _capability_candidate_item(
     return payload
 
 
-def _primary_agent_unblock_handoff_rank(
+def _unblock_handoff_rank(
     raw_item: dict[str, Any],
     *,
     agent_id: str | None,
-    primary_agent: str | None,
 ) -> int:
     claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
     blocks_agent = normalize_todo_blocks_agent(raw_item.get("blocks_agent"))
     return (
         0
         if agent_id
-        and primary_agent
-        and agent_id == primary_agent
         and claimed_by == agent_id
         and blocks_agent
         and blocks_agent != agent_id
@@ -1116,11 +1113,7 @@ def _agent_lane_candidate_sort_key(
     return (
         active_next_rank,
         claim_rank,
-        _primary_agent_unblock_handoff_rank(
-            raw_item,
-            agent_id=agent_id,
-            primary_agent=primary_agent,
-        ),
+        _unblock_handoff_rank(raw_item, agent_id=agent_id),
         _todo_priority_rank(raw_item),
         _primary_review_rank(raw_item, agent_id=agent_id),
         repair_rank,
@@ -1139,11 +1132,7 @@ def _sort_capability_runnable_candidates(
     if not agent_id:
         return runnable, None
     primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
-    policy = (
-        "active_next_then_claim_then_primary_agent_unblock_handoff_then_priority_then_repair"
-        if primary_agent and agent_id == primary_agent
-        else "active_next_then_claim_then_priority_then_repair"
-    )
+    policy = "active_next_then_claim_then_unblock_handoff_then_priority_then_repair"
     return (
         sorted(
             runnable,
@@ -2626,20 +2615,20 @@ def _agent_scope_no_candidate_frontier(
     primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
     if other_advancement_items:
         if blocking_review_claimants:
-            action = AgentScopeFrontierAction.PRIMARY_REVIEW_WAIT
+            action = AgentScopeFrontierAction.AGENT_SCOPE_WAIT
             owner = ", ".join(blocking_review_claimants)
             reason = (
                 f"current side-agent {agent_id} has no current/unclaimed advancement "
-                f"candidate; blocking review work is claimed by {owner}"
+                f"candidate; blocking handoff work is claimed by {owner}"
             )
             recommended_action = (
-                f"Keep {agent_id} active but quiet: wait for {owner} to review the "
+                f"Keep {agent_id} active but quiet: wait for {owner} to finish the "
                 "blocking handoff, reassign it, or create a concrete current-agent/"
                 "unclaimed advancement todo before delivery."
             )
         else:
             action = (
-                AgentScopeFrontierAction.PRIMARY_REVIEW_WAIT
+                AgentScopeFrontierAction.AGENT_SCOPE_WAIT
                 if primary_agent and primary_agent in other_claimants
                 else AgentScopeFrontierAction.REASSIGNMENT_REQUIRED
             )
@@ -2649,9 +2638,9 @@ def _agent_scope_no_candidate_frontier(
                 f"candidate; visible advancement work is claimed by {owner}"
             )
             recommended_action = (
-                f"Keep {agent_id} active but quiet: wait for {owner} to review, merge, "
-                "reassign, or create a concrete current-agent/unclaimed advancement todo "
-                "before delivery."
+                f"Keep {agent_id} active but quiet: wait for {owner} to finish, "
+                "reassign, or create a concrete current-agent/unclaimed advancement "
+                "todo before delivery."
             )
     else:
         action = AgentScopeFrontierAction.AGENT_SCOPE_EXHAUSTED
@@ -3835,7 +3824,7 @@ def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
                 "liveness-preserving no-op until work is reassigned or projected"
             ),
             "next_trigger": (
-                "primary review, reassignment, or a current-agent/unclaimed "
+                "handoff owner progress, reassignment, or a current-agent/unclaimed "
                 "advancement todo"
             ),
             "spend_policy": "no quota spend for agent-scoped no-candidate checks",
@@ -4085,8 +4074,8 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
             reason=(
                 "this registered agent has no in-scope advancement candidate; "
                 "agent-to-agent handoffs may change quickly, so stay closer to "
-                "the prior scheduler cadence while waiting for primary review, "
-                "reassignment, or a current-agent todo"
+                "the prior scheduler cadence while waiting for handoff owner "
+                "progress, reassignment, or a current-agent todo"
             ),
             codex_interval=10,
             codex_max=30,

@@ -212,7 +212,7 @@ Projection, authority, write scope, and lease integrity.
 | --- | --- | --- | --- | --- | --- |
 | P0 | IP-005 | State Projection Gap | Agent | no user ask unless a user todo is missing | repair todo/state projection before ordinary delivery |
 | P0 | IP-006 | Checkpointed Scope Mismatch | CLI/controller | ask or repair boundary projection | do not execute action whose write scope is not projected |
-| P0 | IP-026 | Agent-Scoped No-Candidate Gap | Status/quota | no interruption | project scope exhaustion or primary-review wait instead of forcing delivery |
+| P0 | IP-026 | Agent-Scoped No-Candidate Gap | Status/quota | no interruption | project scope exhaustion or agent-scope wait instead of forcing delivery |
 | P1 | IP-011 | Authority Material Intake | Agent plus registry | notify only on gate/conflict | register redacted source contract before relying on material |
 | P1 | IP-016 | Task Lease Claim | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
 | P1 | IP-019 | Side-Agent Scoped Continuation | Primary plus side agent | no interruption unless scope/review is ambiguous | side agent claims scoped todo, uses independent worktree, then self-merges small validated work or hands review to primary |
@@ -768,7 +768,7 @@ with a current successor, or record a public-safe no-follow-up rationale. Only
 after that writeback may normal delivery resume. If the resume condition is
 still user-held or ambiguous, IP-004 / IP-003 owns the user-facing ask. If no
 ready deferred item exists, IP-026 may classify the scoped frontier as
-`scope_exhausted`, `primary_review_wait`, or `reassignment_required`.
+`scope_exhausted`, `agent_scope_wait`, or `reassignment_required`.
 
 **Visual Model**
 
@@ -1216,9 +1216,14 @@ loopx todo complete \
 If the self-merged lane has an obvious same-scope continuation, the completion
 may atomically add a successor and claim it back to the same side agent. If the
 work is broad, risky, unclear, or outside the side scope, completion must create
-a primary review todo claimed by the primary agent instead. `claimed_by` remains
-a soft owner and not a permission grant: quota, user gates, public/private
-boundary checks, write scopes, and repository rules still apply.
+a successor handoff todo claimed by the configured
+`coordination.side_agent_handoff_agent` when set, otherwise by the primary
+agent. LoopX does not need a separate kernel-level "review" object here: the
+machine-readable contract is the successor todo plus `claimed_by`,
+`blocks_agent`, and `unblocks_todo_id`. Same-agent broad handoff is rejected;
+use `--side-agent-self-merged --evidence` for same-agent delivery. `claimed_by`
+remains a soft owner and not a permission grant: quota, user gates,
+public/private boundary checks, write scopes, and repository rules still apply.
 
 Because prompt text alone is not a reliable guard, `quota should-run --agent-id
 <side-agent-id>` should also project `workspace_guard` when the side agent is
@@ -1254,8 +1259,8 @@ flowchart TD
   I --> K{"same-scope continuation?"}
   K -->|"yes"| N["complete + add successor claimed_by same side agent"]
   K -->|"no"| X["complete with no successor or no-follow-up rationale"]
-  V -->|"no"| R["complete with primary review successor"]
-  R --> P["successor claimed_by primary_agent"]
+  V -->|"no"| R["complete with successor handoff todo"]
+  R --> P["successor claimed_by handoff owner, else primary_agent"]
 ```
 
 **Bad smell**
@@ -1523,9 +1528,10 @@ machine states:
 
 - `scope_exhausted`: no current-agent or unclaimed candidate matches the
   registered agent profile and boundary;
-- `primary_review_wait`: the remaining useful step is review, merge,
-  reassignment, or decision by the primary agent/controller, or by the
-  explicitly claimed reviewer that blocks the current agent's handoff;
+- `agent_scope_wait`: the remaining useful step is progress, merge,
+  reassignment, or decision by the agent/controller that owns the blocking
+  work; this may be the primary agent, another side agent, or an explicitly
+  claimed reviewer that blocks the current agent's handoff;
 - `reassignment_required`: useful work exists, but ownership must be changed
   before this agent may treat it as its lane.
 
@@ -1560,10 +1566,10 @@ flowchart TD
   F -->|"unclaimed in-scope candidate"| C["agent may claim before delivery"]
   F -->|"no open candidate"| R{"IP-027 ready deferred resume?"}
   R -->|"yes"| P["defer to IP-027"]
-  R -->|"no"| X["scope_exhausted / primary_review_wait"]
+  R -->|"no"| X["scope_exhausted / agent_scope_wait"]
   F -->|"only other-agent or out-of-scope work"| X
   X --> N["quiet no-op, no spend"]
-  X --> H["primary may review, merge, or reassign"]
+  X --> H["owning agent may advance, merge, or reassign"]
   H --> Q
 ```
 
@@ -1572,7 +1578,7 @@ flowchart TD
 A side-agent heartbeat receives `should_run=true`,
 `delivery_allowed=true`, and `quiet_noop_allowed=false` even though
 `agent_lane_next_action=None`, `current_agent_claimed_advancement_items=[]`,
-and the only recommendation is a primary-owned benchmark or runtime lane. The
+and the only recommendation is another agent's benchmark or runtime lane. The
 agent either churns through repeated empty heartbeats or risks working outside
 its registered scope. A related failure is treating a ready deferred successor
 as part of this no-candidate pattern instead of routing it through IP-027's
@@ -1584,7 +1590,7 @@ tasks.
 
 - future quota/status regression with two registered agents where all runnable
   work is claimed by the primary and the side-agent `--agent-id` call returns
-  `scope_exhausted` or `primary_review_wait`;
+  `scope_exhausted` or `agent_scope_wait`;
 - `examples/work-lane-contract-smoke.py` should cover that an empty
   current-agent frontier cannot produce `delivery_allowed=true`;
 - `docs/project-agent-todo-contract.md`

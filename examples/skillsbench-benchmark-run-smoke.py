@@ -49,6 +49,8 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     CODEX_ACP_RUNTIME_DEPS_SETUP_CMD,
     CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD,
     DEFAULT_MAX_ROUNDS,
+    DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY,
+    DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
     DECLARED_DONE_MARKER,
     DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN,
     DOCKER_APT_RETRY_BEGIN,
@@ -62,6 +64,12 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     _apply_agent_message_only_no_tool_calls_attribution,
     _blind_loop_persistent_continuation_clause,
     _build_product_mode_user,
+    _copy_loopx_source_subset,
+    _host_local_acp_launch_command,
+    _loopx_case_init_failure_blocker,
+    _loopx_case_source_path_for_container,
+    _loopx_source_mount_contract,
+    _loopx_source_mounts,
     _product_mode_depth_gate_satisfied,
     _merge_app_server_goal_worker_trace_summary,
     _merge_acp_trajectory_summary,
@@ -70,6 +78,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     build_compose_setup_diagnostic,
     build_plan,
     cleanup_benchflow_setup_stall_children,
+    cleanup_benchflow_soft_verify_timeout_children,
     install_benchflow_user_loop_final_verify_recovery,
     install_benchflow_verifier_prep_timeout_override,
     append_history,
@@ -79,7 +88,11 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     inspect_skillsbench_worker_handshake,
     parse_args,
     product_mode_case_state_seed_text,
+    product_mode_soft_verify_policy_for_route,
     reduce_result,
+    _runner_prerequisite_failure_attribution,
+    _subcommand_family_count,
+    _sync_relay_closeout_counts_into_compact,
     summarize_acp_trajectory,
     stage_task_for_sandbox,
 )
@@ -94,11 +107,67 @@ def assert_prerequisites_include(actual: dict[str, Any], expected: dict[str, Any
         assert actual.get(key) == value, (key, actual)
 
 
-def test_skillsbench_default_blind_loop_budget_is_eight() -> None:
+def test_skillsbench_default_blind_loop_budget_is_sixteen() -> None:
     args = parse_args([])
-    assert args.max_rounds == DEFAULT_MAX_ROUNDS == 8, args
+    assert args.max_rounds == DEFAULT_MAX_ROUNDS == 16, args
     assert "blind-loop" in args.route, args
     assert args.route != "codex-goal-mode-baseline", args
+
+
+def test_skillsbench_product_mode_soft_verify_default_is_every_round() -> None:
+    args = parse_args(["--route", "loopx-product-mode"])
+    assert args.product_mode_soft_verify_policy == (
+        DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY
+    ) == "every-round"
+    assert args.soft_verifier_timeout_sec == DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC == 600
+    assert (
+        product_mode_soft_verify_policy_for_route(
+            "loopx-product-mode",
+            args.product_mode_soft_verify_policy,
+        )
+        == "every-round"
+    )
+
+
+def test_loopx_subcommand_family_counts_include_arguments() -> None:
+    counts = {
+        "todo complete": 2,
+        "todo update blocked": 1,
+        "refresh-state implementation": 3,
+        "quota spend-slot": 4,
+        "quota should-run": 5,
+    }
+    assert _subcommand_family_count(counts, "todo complete", "todo update") == 3
+    assert _subcommand_family_count(counts, "refresh-state") == 3
+    assert _subcommand_family_count(counts, "quota spend-slot") == 4
+
+
+def test_relay_closeout_counts_sync_into_final_compact() -> None:
+    compact = {
+        "interaction_counters": {
+            "remote_command_file_bridge_agent_refresh_state_count": 0,
+        },
+        "product_mode_lifecycle_contract": {
+            "agent_bridge_todo_closeout_count": 2,
+            "agent_bridge_refresh_state_count": 0,
+            "agent_bridge_quota_spend_slot_count": 1,
+        },
+    }
+    _sync_relay_closeout_counts_into_compact(
+        compact,
+        {
+            "remote_command_file_bridge_agent_todo_closeout_count": 2,
+            "remote_command_file_bridge_agent_refresh_state_count": 1,
+            "remote_command_file_bridge_agent_quota_spend_slot_count": 1,
+        },
+    )
+    assert compact["interaction_counters"][
+        "remote_command_file_bridge_agent_refresh_state_count"
+    ] == 1
+    assert compact["product_mode_lifecycle_contract"][
+        "agent_bridge_refresh_state_count"
+    ] == 1
+    assert compact["product_mode_lifecycle_contract"]["closeout_satisfied"] is True
 
 
 def test_skillsbench_append_history_missing_registry_is_nonfatal() -> None:
@@ -231,6 +300,219 @@ def test_skillsbench_final_verifier_timeout_override_can_extend_timeout() -> Non
     assert prereqs["benchflow_final_verifier_timeout_override_count"] == 1, prereqs
     assert "benchflow_final_verifier_timeout_triggered" not in prereqs, prereqs
     assert prereqs["benchflow_final_verifier_timeout_raw_command_recorded"] is False
+    assert "test.sh" not in json.dumps(prereqs)
+
+
+def test_skillsbench_intermediate_soft_verifier_timeout_override_records_public_state() -> None:
+    class FakeRollout:
+        def __init__(self) -> None:
+            self._env = types.SimpleNamespace()
+
+        async def verify(self) -> None:
+            return await self._env.exec("echo final", timeout_sec=10)
+
+        async def soft_verify(self) -> None:
+            return await self._env.exec("/verifier/test.sh", timeout_sec=9999)
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def fake_exec(command: str, **kwargs: Any) -> Any:
+        calls.append((command, dict(kwargs)))
+        if "/verifier/test.sh" in command:
+            raise TimeoutError("soft verifier timed out")
+        return types.SimpleNamespace(return_code=0)
+
+    rollout = FakeRollout()
+    rollout._env.exec = fake_exec
+    plan = {"runner_prerequisites": {}}
+    trace: dict[str, Any] = {}
+    original_verify, original_soft_verify = install_benchflow_verifier_prep_timeout_override(
+        FakeRollout,
+        timeout_sec=120,
+        final_verifier_timeout_sec=0,
+        soft_verifier_timeout_sec=5,
+        plan=plan,
+        trace=trace,
+    )
+    try:
+        try:
+            asyncio.run(rollout.soft_verify())
+        except TimeoutError:
+            pass
+        else:  # pragma: no cover - defensive, this is a smoke script
+            raise AssertionError("expected soft verifier timeout")
+    finally:
+        FakeRollout.verify = original_verify
+        FakeRollout.soft_verify = original_soft_verify
+
+    assert calls == [("/verifier/test.sh", {"timeout_sec": 5})], calls
+    prereqs = plan["runner_prerequisites"]
+    assert prereqs["benchflow_intermediate_soft_verify_timeout_enabled"] is True
+    assert prereqs["benchflow_intermediate_soft_verify_timeout_sec"] == 5
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_override_count"] == 1
+    )
+    assert prereqs["benchflow_intermediate_soft_verify_timeout_triggered"] is True
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_raw_output_recorded"]
+        is False
+    )
+    assert trace["benchflow_intermediate_soft_verify_timeout_triggered"] is True
+    assert "test.sh" not in json.dumps(prereqs)
+
+
+def test_skillsbench_intermediate_soft_verifier_timeout_is_independent() -> None:
+    class FakeRollout:
+        def __init__(self) -> None:
+            self._env = types.SimpleNamespace()
+
+        async def verify(self) -> None:
+            return await self._env.exec("echo final", timeout_sec=10)
+
+        async def soft_verify(self) -> None:
+            return await self._env.exec("/verifier/test.sh", timeout_sec=9999)
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def fake_exec(command: str, **kwargs: Any) -> Any:
+        calls.append((command, dict(kwargs)))
+        return types.SimpleNamespace(return_code=0)
+
+    rollout = FakeRollout()
+    rollout._env.exec = fake_exec
+    plan = {"runner_prerequisites": {}}
+    trace: dict[str, Any] = {}
+    original_verify, original_soft_verify = install_benchflow_verifier_prep_timeout_override(
+        FakeRollout,
+        timeout_sec=10,
+        final_verifier_timeout_sec=0,
+        soft_verifier_timeout_sec=5,
+        plan=plan,
+        trace=trace,
+    )
+    try:
+        asyncio.run(rollout.soft_verify())
+    finally:
+        FakeRollout.verify = original_verify
+        FakeRollout.soft_verify = original_soft_verify
+
+    assert calls == [("/verifier/test.sh", {"timeout_sec": 5})], calls
+    prereqs = plan["runner_prerequisites"]
+    assert prereqs["benchflow_intermediate_soft_verify_timeout_enabled"] is True
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_override_count"] == 1
+    )
+    assert prereqs["benchflow_verifier_prep_timeout_override_enabled"] is False
+
+
+def test_skillsbench_intermediate_soft_verifier_timeout_triggers_cleanup() -> None:
+    class FakeRollout:
+        def __init__(self) -> None:
+            self._env = types.SimpleNamespace()
+
+        async def verify(self) -> None:
+            return await self._env.exec("echo final", timeout_sec=10)
+
+        async def soft_verify(self) -> None:
+            return await self._env.exec("/verifier/test.sh", timeout_sec=9999)
+
+    async def fake_exec(command: str, **kwargs: Any) -> Any:
+        if "/verifier/test.sh" in command:
+            raise TimeoutError("soft verifier timed out")
+        return types.SimpleNamespace(return_code=0)
+
+    cleanup_calls: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
+
+    def fake_cleanup(
+        cleanup_plan: dict[str, Any],
+        *,
+        trace: dict[str, Any] | None = None,
+        grace_seconds: float = 3.0,
+    ) -> dict[str, Any]:
+        cleanup_calls.append((cleanup_plan, trace))
+        prereqs = cleanup_plan.setdefault("runner_prerequisites", {})
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_requested"
+        ] = True
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read"
+        ] = False
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_status"
+        ] = "terminated"
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_container_count"
+        ] = 1
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_match_count"
+        ] = 3
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count"
+        ] = 0
+        if isinstance(trace, dict):
+            trace[
+                "benchflow_intermediate_soft_verify_timeout_cleanup_status"
+            ] = "terminated"
+        return {"status": "terminated", "match_count": 3}
+
+    rollout = FakeRollout()
+    rollout._env.exec = fake_exec
+    plan = {"runner_prerequisites": {}}
+    trace: dict[str, Any] = {}
+    original_cleanup = skillsbench_loop.cleanup_benchflow_soft_verify_timeout_children
+    skillsbench_loop.cleanup_benchflow_soft_verify_timeout_children = fake_cleanup
+    original_verify, original_soft_verify = install_benchflow_verifier_prep_timeout_override(
+        FakeRollout,
+        timeout_sec=120,
+        final_verifier_timeout_sec=0,
+        soft_verifier_timeout_sec=5,
+        plan=plan,
+        trace=trace,
+    )
+    try:
+        try:
+            asyncio.run(rollout.soft_verify())
+        except TimeoutError:
+            pass
+        else:  # pragma: no cover - defensive, this is a smoke script
+            raise AssertionError("expected soft verifier timeout")
+    finally:
+        FakeRollout.verify = original_verify
+        FakeRollout.soft_verify = original_soft_verify
+        skillsbench_loop.cleanup_benchflow_soft_verify_timeout_children = (
+            original_cleanup
+        )
+
+    assert len(cleanup_calls) == 1, cleanup_calls
+    prereqs = plan["runner_prerequisites"]
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_cleanup_requested"]
+        is True
+    )
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read"]
+        is False
+    )
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_cleanup_status"]
+        == "terminated"
+    )
+    assert (
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_container_count"
+        ]
+        == 1
+    )
+    assert (
+        prereqs["benchflow_intermediate_soft_verify_timeout_cleanup_match_count"]
+        == 3
+    )
+    assert (
+        prereqs[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count"
+        ]
+        == 0
+    )
     assert "test.sh" not in json.dumps(prereqs)
 
 
@@ -1011,7 +1293,13 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
         )
         assert prompt is not None, trace
         assert "Mandatory product-mode solver checkpoint" in prompt
+        assert "full agent closeout evidence" in prompt
+        assert "todo complete" in prompt
+        assert "benchmark_case_agent_closeout" in prompt
+        assert "quota spend-slot" in prompt
+        assert "--source adapter --execute" in prompt
         assert "Read-only LoopX calls" in prompt
+        assert "state edits without a spend event" in prompt
         assert "Do not answer with prose only" in prompt
         assert (
             trace["last_decision"]
@@ -3370,6 +3658,9 @@ def test_skillsbench_runner_prerequisites_are_compacted() -> None:
             "benchflow_final_verifier_timeout_triggered": True,
             "benchflow_final_verifier_timeout_raw_command_recorded": False,
             "benchflow_final_verifier_timeout_raw_output_recorded": False,
+            "remote_command_file_bridge_agent_todo_closeout_count": 4,
+            "remote_command_file_bridge_agent_refresh_state_count": 3,
+            "remote_command_file_bridge_agent_quota_spend_slot_count": 2,
             "benchflow_setup_stall_cleanup_requested": True,
             "benchflow_setup_stall_cleanup_raw_logs_read": False,
             "benchflow_setup_stall_cleanup_status": "terminated",
@@ -3421,6 +3712,9 @@ def test_skillsbench_runner_prerequisites_are_compacted() -> None:
                 "benchflow_final_verifier_timeout_triggered": True,
                 "benchflow_final_verifier_timeout_raw_command_recorded": False,
                 "benchflow_final_verifier_timeout_raw_output_recorded": False,
+                "remote_command_file_bridge_agent_todo_closeout_count": 4,
+                "remote_command_file_bridge_agent_refresh_state_count": 3,
+                "remote_command_file_bridge_agent_quota_spend_slot_count": 2,
                 "benchflow_setup_stall_cleanup_requested": True,
                 "benchflow_setup_stall_cleanup_raw_logs_read": False,
                 "benchflow_setup_stall_cleanup_status": "terminated",
@@ -3456,6 +3750,169 @@ def test_skillsbench_runner_plan_supports_product_mode_routes() -> None:
             assert plan["rollout_name"] == (
                 f"software-dependency-audit__{suffix}"
             ), plan
+
+
+def test_loopx_product_mode_full_run_requires_canonical_driver() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"),
+            "--task-id",
+            "software-dependency-audit",
+            "--route",
+            "loopx-product-mode",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 2, result
+    payload = json.loads(result.stderr)
+    assert payload["error_type"] == "SkillsBenchProductModeCanonicalDriverRequired", (
+        payload
+    )
+    assert payload["canonical_product_mode_lifecycle_driver_required"] is True, payload
+    assert "--host-local-acp-launch" in payload["next_action"], payload
+    assert payload["raw_trajectory_recorded"] is False, payload
+
+
+def test_loopx_case_init_failure_blocker_is_public_safe() -> None:
+    assert (
+        _loopx_case_init_failure_blocker(
+            "loopx_case_init_phase:ensure_cli\n"
+            "LoopX local source install requested but python is missing"
+        )
+        == "loopx_case_python_missing"
+    )
+    assert (
+        _loopx_case_init_failure_blocker(
+            "loopx_case_init_phase:ensure_cli\n"
+            "/usr/bin/env: 'bash': No such file or directory"
+        )
+        == "loopx_case_bash_missing"
+    )
+    assert (
+        _loopx_case_init_failure_blocker("ModuleNotFoundError: No module named loopx")
+        == "loopx_case_source_import_failed"
+    )
+
+
+def test_product_mode_case_state_seed_runs_after_host_local_sandbox_install() -> None:
+    source = (REPO_ROOT / "scripts" / "skillsbench_automation_loop.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'host_local_acp_install_stage"] = "seed_loopx_case_state"' in source
+    assert '"loopx_source_upload_fallback"' in source
+    assert "env.is_file(source_cli)" in source
+    assert "await upload_dir(staged_source" in source
+    assert "host_local_acp_after_sandbox_install" in source
+    assert "host_local_acp_rollout_planes_available" in source
+    assert "benchflow_rollout_module._snapshot_build_config" in source
+    assert "benchflow_rollout_module.deploy_skills" in source
+    assert (
+        'if args.route == "loopx-product-mode" and not args.host_local_acp_launch:'
+        in source
+    )
+
+
+def test_loopx_source_mount_contract_uses_real_cli_source_not_local_installer() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-source-contract-") as tmp:
+        source_dir = Path(tmp)
+        (source_dir / "loopx").mkdir()
+        (source_dir / "loopx" / "cli.py").write_text("# source fixture\n")
+        args = parse_args(
+            [
+                "--route",
+                "loopx-product-mode",
+                "--loopx-source-dir",
+                str(source_dir),
+            ]
+        )
+        contract = _loopx_source_mount_contract(args)
+        assert contract["requested"] is True
+        assert contract["ready"] is True
+        assert contract["status"] == "ready"
+
+
+def test_host_local_product_mode_uses_source_upload_not_docker_bind_mount() -> None:
+    args = parse_args(
+        [
+            "--route",
+            "loopx-product-mode",
+            "--host-local-acp-launch",
+            "--remote-command-file-bridge-ready",
+            "--loopx-source-dir",
+            str(REPO_ROOT),
+        ]
+    )
+    assert _loopx_source_mount_contract(args)["ready"] is True
+    assert _loopx_source_mounts(args) == []
+    assert _loopx_case_source_path_for_container(args) == "/app/.loopx-source"
+
+
+def test_host_local_product_mode_auto_bridge_keeps_lifecycle_checkpoint_args() -> None:
+    args = parse_args(
+        [
+            "--route",
+            "loopx-product-mode",
+            "--host-local-acp-launch",
+            "--remote-command-file-bridge-ready",
+            "--task-id",
+            "3d-scan-calc",
+            "--agent-idle-timeout",
+            "1800",
+        ]
+    )
+    command = _host_local_acp_launch_command(args, build_plan(args))
+    assert "--loopx-workflow-lifecycle-checkpoint" in command
+    assert "--loopx-case-goal-id" in command
+    assert "--loopx-case-cli-path" in command
+    assert "--remote-command-file-bridge-command" not in command
+    assert command[command.index("--timeout-sec") + 1] == "1800"
+
+
+def test_host_local_acp_connect_contract_matches_benchflow_runtime() -> None:
+    source = (REPO_ROOT / "scripts" / "skillsbench_automation_loop.py").read_text(
+        encoding="utf-8"
+    )
+    assert "benchflow.agents.protocol" not in source
+    assert "ACPSessionAdapter" not in source
+    assert ") -> tuple[Any, Any, str]:" in source
+    assert "return client, session, agent_name" in source
+    assert 'if "mcp_servers" in inspect.signature(client.session_new).parameters:' in source
+    assert "client.session_new(cwd=agent_cwd, mcp_servers=mcp_servers)" not in source
+
+
+def test_loopx_source_upload_subset_is_public_safe_and_minimal() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-source-subset-") as tmp:
+        source_dir = Path(tmp) / "checkout"
+        target_dir = Path(tmp) / "upload"
+        (source_dir / "loopx").mkdir(parents=True)
+        (source_dir / "loopx" / "cli.py").write_text("# source fixture\n")
+        (source_dir / "scripts").mkdir()
+        (source_dir / "scripts" / "install-local.sh").write_text("# old installer\n")
+        target_dir.mkdir()
+        file_count = _copy_loopx_source_subset(source_dir, target_dir)
+        assert file_count == 1
+        assert (target_dir / "loopx" / "cli.py").exists()
+        assert not (target_dir / "scripts" / "install-local.sh").exists()
+
+
+def test_remote_bridge_auto_wiring_pending_is_not_final_failure_attribution() -> None:
+    prereqs = {
+        "remote_command_file_bridge_agent_operation_trace_required": True,
+        "remote_command_file_bridge_agent_operation_trace_satisfied": False,
+        "remote_command_file_bridge_agent_operation_trace_status": (
+            "relay_generated_wrapper_pending_prompt"
+        ),
+        "remote_command_file_bridge_consumption_status": (
+            "sandbox_bridge_auto_wiring_pending"
+        ),
+        "remote_command_file_bridge_agent_operation_trace_count": 0,
+        "remote_command_file_bridge_agent_request_count": 0,
+    }
+    assert _runner_prerequisite_failure_attribution(prereqs) is None
 
 
 def test_skillsbench_task_staging_metadata_is_compacted() -> None:
@@ -4293,6 +4750,7 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
             "agent_operation_trace_satisfied": False,
             "agent_operation_trace_missing": False,
             "orchestrated_driver_lifecycle_satisfied": False,
+            "orchestrated_driver_counts_as_product_mode": False,
             "agent_bridge_state_read_count": 0,
             "agent_bridge_state_write_count": 0,
             "agent_bridge_todo_closeout_count": 0,
@@ -4342,6 +4800,9 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
         driver_contract = driver_compact["product_mode_lifecycle_contract"]
         assert driver_contract["satisfied"] is True, driver_compact
         assert driver_contract["countable_treatment"] is True, driver_compact
+        assert (
+            driver_contract["orchestrated_driver_counts_as_product_mode"] is True
+        ), driver_contract
         assert driver_contract["state_read_count"] == 1, driver_compact
         assert driver_contract["state_write_count"] == 3, driver_compact
         assert driver_contract["execution_style"] == (
@@ -4363,6 +4824,58 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
         assert "skillsbench_product_mode_lifecycle_missing" not in driver_compact[
             "failure_attribution_labels"
         ], driver_compact
+        prompt_timeout_controller_trace = dict(driver_controller_trace)
+        prompt_timeout_controller_trace.update(
+            {
+                "remote_command_file_bridge_agent_command_configured": True,
+                "remote_command_file_bridge_agent_command_instrumented": False,
+                "remote_command_file_bridge_agent_operation_trace_required": True,
+                "remote_command_file_bridge_agent_operation_trace_satisfied": False,
+                "remote_command_file_bridge_agent_operation_trace_status": (
+                    "agent_operation_trace_missing"
+                ),
+                "remote_command_file_bridge_agent_operation_trace_count": 0,
+                "remote_command_file_bridge_agent_request_count": 0,
+                "remote_command_file_bridge_agent_loopx_cli_call_count": 0,
+                "remote_command_file_bridge_agent_loopx_state_read_count": 0,
+                "remote_command_file_bridge_agent_loopx_state_write_count": 0,
+                "remote_command_file_bridge_agent_todo_closeout_count": 0,
+                "remote_command_file_bridge_agent_refresh_state_count": 0,
+                "remote_command_file_bridge_agent_quota_spend_slot_count": 0,
+            }
+        )
+        prompt_timeout_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=prompt_timeout_controller_trace,
+            )
+        )
+        assert prompt_timeout_compact is not None
+        prompt_timeout_contract = prompt_timeout_compact[
+            "product_mode_lifecycle_contract"
+        ]
+        assert (
+            prompt_timeout_contract["orchestrated_driver_lifecycle_satisfied"] is True
+        )
+        assert (
+            prompt_timeout_contract["orchestrated_driver_counts_as_product_mode"]
+            is False
+        ), prompt_timeout_contract
+        assert prompt_timeout_contract["agent_operation_trace_required"] is True
+        assert prompt_timeout_contract["agent_operation_trace_missing"] is True
+        assert prompt_timeout_contract["countable_treatment"] is False, (
+            prompt_timeout_compact
+        )
+        assert prompt_timeout_contract["closeout_satisfied"] is False
+        assert (
+            "skillsbench_product_mode_uncountable_treatment"
+            in prompt_timeout_compact["failure_attribution_labels"]
+        ), prompt_timeout_compact
+        assert (
+            "skillsbench_remote_bridge_agent_operation_trace_missing"
+            in prompt_timeout_compact["failure_attribution_labels"]
+        ), prompt_timeout_compact
         external_agent_controller_trace = dict(driver_controller_trace)
         external_agent_controller_trace.update(
             {
@@ -4454,6 +4967,12 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
         assert (
             orchestrated_no_request_contract[
                 "orchestrated_driver_lifecycle_satisfied"
+            ]
+            is True
+        ), orchestrated_no_request_contract
+        assert (
+            orchestrated_no_request_contract[
+                "orchestrated_driver_counts_as_product_mode"
             ]
             is True
         ), orchestrated_no_request_contract
@@ -5596,6 +6115,7 @@ def test_skillsbench_product_mode_pass_clears_generic_runner_error() -> None:
             "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
             "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
             "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
+            "remote_command_file_bridge_agent_command_instrumented": True,
             "remote_command_file_bridge_agent_operation_trace_required": True,
             "remote_command_file_bridge_agent_operation_trace_satisfied": False,
             "remote_command_file_bridge_agent_operation_trace_status": (
@@ -7366,7 +7886,13 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
 
 
 if __name__ == "__main__":
-    test_skillsbench_default_blind_loop_budget_is_eight()
+    test_skillsbench_default_blind_loop_budget_is_sixteen()
+    test_skillsbench_product_mode_soft_verify_default_is_every_round()
+    test_skillsbench_final_verifier_timeout_override_records_public_state()
+    test_skillsbench_final_verifier_timeout_override_can_extend_timeout()
+    test_skillsbench_intermediate_soft_verifier_timeout_override_records_public_state()
+    test_skillsbench_intermediate_soft_verifier_timeout_is_independent()
+    test_skillsbench_intermediate_soft_verifier_timeout_triggers_cleanup()
     test_skillsbench_local_driver_a2a_contract_keeps_codex_local()
     test_skillsbench_local_driver_a2a_contract_ready_only_after_both_sides()
     test_skillsbench_local_driver_a2a_contract_distinguishes_cli_from_handshake()
@@ -7417,6 +7943,15 @@ if __name__ == "__main__":
     test_skillsbench_volume_mount_failure_attribution()
     test_skillsbench_runner_plan_supports_baseline_route()
     test_skillsbench_runner_plan_supports_product_mode_routes()
+    test_loopx_product_mode_full_run_requires_canonical_driver()
+    test_loopx_case_init_failure_blocker_is_public_safe()
+    test_product_mode_case_state_seed_runs_after_host_local_sandbox_install()
+    test_loopx_source_mount_contract_uses_real_cli_source_not_local_installer()
+    test_host_local_product_mode_uses_source_upload_not_docker_bind_mount()
+    test_host_local_product_mode_auto_bridge_keeps_lifecycle_checkpoint_args()
+    test_host_local_acp_connect_contract_matches_benchflow_runtime()
+    test_loopx_source_upload_subset_is_public_safe_and_minimal()
+    test_remote_bridge_auto_wiring_pending_is_not_final_failure_attribution()
     test_skillsbench_codex_acp_model_control_warning()
     test_skillsbench_runner_prerequisites_are_compacted()
     test_skillsbench_task_staging_metadata_is_compacted()

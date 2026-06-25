@@ -263,18 +263,18 @@ def assert_unscoped_user_gate_remains_global() -> None:
     assert "agent_scoped_user_gate_override" not in payload, payload
 
 
-def assert_agent_without_advancement_candidate_waits_for_primary() -> None:
+def assert_agent_without_advancement_candidate_enters_scope_wait() -> None:
     payload = build_quota_should_run(
         scoped_no_candidate_status_payload(),
         goal_id=GOAL_ID,
         agent_id="codex-product-capability",
     )
-    assert payload["decision"] == "primary_review_wait", payload
+    assert payload["decision"] == "agent_scope_wait", payload
     assert payload["should_run"] is False, payload
     assert payload["normal_delivery_allowed"] is False, payload
     assert payload.get("agent_lane_next_action") is None, payload
     frontier = payload["agent_scope_frontier"]
-    assert frontier["action"] == "primary_review_wait", frontier
+    assert frontier["action"] == "agent_scope_wait", frontier
     assert frontier["candidate_counts"]["current_agent_claimed_advancement_count"] == 0
     assert frontier["candidate_counts"]["other_agent_claimed_advancement_count"] == 1
     contract = payload["interaction_contract"]
@@ -306,7 +306,7 @@ def main() -> int:
     assert_other_agent_user_gate_does_not_block_current_agent()
     assert_target_agent_still_blocks_on_its_user_gate()
     assert_unscoped_user_gate_remains_global()
-    assert_agent_without_advancement_candidate_waits_for_primary()
+    assert_agent_without_advancement_candidate_enters_scope_wait()
     print("quota-agent-scoped-user-gate-smoke ok")
     return 0
 

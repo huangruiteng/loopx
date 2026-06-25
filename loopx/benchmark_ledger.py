@@ -373,6 +373,7 @@ def _compact_product_mode_pair_review(review: dict[str, Any]) -> dict[str, Any]:
         "claim_blocker",
         "benchmark_id",
         "case_id",
+        "max_rounds_budget",
         "baseline_route_valid",
         "treatment_route_valid",
         "treatment_loopx_lifecycle_observed",
@@ -404,6 +405,7 @@ def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
         "countable_treatment",
         "checkpoint_required",
         "orchestrated_driver_lifecycle_satisfied",
+        "orchestrated_driver_counts_as_product_mode",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]

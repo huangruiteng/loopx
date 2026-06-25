@@ -251,6 +251,64 @@ def test_case_loopx_install_command_uses_real_loopx_lifecycle() -> None:
         assert all("raw_task_text" not in line or "false" in line for line in event_lines)
 
 
+def test_case_loopx_install_command_uses_source_wrapper_without_local_installer() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-case-source-wrapper-") as tmp:
+        root = Path(tmp)
+        state_path = root / ".codex" / "goals" / "source-wrapper-case" / "ACTIVE_GOAL_STATE.md"
+        cli_path = root / ".local" / "bin" / "loopx"
+        registry_path = root / ".loopx" / "registry.json"
+        runtime_root = root / ".loopx" / "runtime"
+        goal_doc_path = root / ".loopx" / "LOOPX_CASE_GOAL.md"
+        command = benchmark_case_loopx_install_command(
+            benchmark_id="skillsbench",
+            case_id="source-wrapper-case",
+            route="loopx-product-mode",
+            max_rounds=16,
+            goal_id="source-wrapper-case",
+            case_state_path=str(state_path),
+            content="",
+            case_cli_path=str(cli_path),
+            case_registry_path=str(registry_path),
+            case_runtime_root=str(runtime_root),
+            case_goal_doc_path=str(goal_doc_path),
+            case_project_root=str(root),
+            case_home=str(root),
+            case_loopx_source_path=str(REPO_ROOT),
+        )
+        assert "install-local.sh" not in command
+        assert "python is missing" in command
+        subprocess.run(
+            ["sh", "-lc", command],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert cli_path.read_text(encoding="utf-8").startswith("#!/bin/sh\n")
+        quota = subprocess.run(
+            [
+                str(cli_path),
+                "--registry",
+                str(registry_path),
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "quota",
+                "should-run",
+                "--goal-id",
+                "source-wrapper-case",
+                "--agent-id",
+                "codex-benchmark-agent",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        quota_payload = json.loads(quota.stdout)
+        assert quota_payload["should_run"] is True
+        assert quota_payload["agent_lane_next_action"]["todo_id"] == BENCHMARK_CASE_LOOPX_TODO_ID
+
+
 def test_case_lifecycle_contract_is_per_case_arm() -> None:
     contract = benchmark_case_lifecycle_contract(
         benchmark_id="swe-marathon",
@@ -320,6 +378,7 @@ if __name__ == "__main__":
     test_seed_write_command_uses_canonical_path()
     test_case_loopx_install_payload_uses_official_product_lifecycle()
     test_case_loopx_install_command_uses_real_loopx_lifecycle()
+    test_case_loopx_install_command_uses_source_wrapper_without_local_installer()
     test_case_lifecycle_contract_is_per_case_arm()
     test_ale_launch_packet_reuses_shared_contract()
     test_terminal_bench_access_packet_fixture_reuses_shared_contract()

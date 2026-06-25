@@ -7,7 +7,7 @@ It is intentionally separate from `benchmark-run-ledger.md`. The run ledger
 records compact attempts and scores; this file records why a result matters.
 
 - schema_version: `benchmark_case_analysis_v0`
-- updated_at: `2026-06-22T15:01:06+08:00`
+- updated_at: `2026-06-24T12:31:00Z`
 - machine_source: `benchmark-case-analysis.json`
 - ledger-only migration audit:
   `benchmark-case-analysis-ledger-only-migration-audit-20260618.md`
@@ -1502,6 +1502,58 @@ Follow-up guidance:
 - Prefer baseline-failing cases for the next uplift-mining run, while preserving
   this case as a success/non-regression guard.
 
+Canonical product-mode rerun note:
+
+- run group: `skillsbench-citation-check-c9facd4-canonicalbridge-20260624T1815Z`
+- route: `loopx-product-mode`
+- official score: `0.0`
+- failure attribution: `official_verifier_solution_failure`
+- lifecycle counters: 8 driver lifecycle checkpoints, 32 successful driver
+  lifecycle calls, 0 driver lifecycle failures, 10 agent LoopX CLI calls,
+  1 agent state read, and 8 agent state writes.
+- verifier policy: `final-only`; intermediate soft verify call count `0`,
+  skipped count `8`; official feedback and reward/pass/fail signals were not
+  forwarded to the agent.
+
+This rerun does not overturn the older blind-loop non-regression result. It
+answers a different product-mode question: the canonical bridge can exercise
+LoopX lifecycle, but `final-only` gives the controller no private per-round
+reward signal. Therefore the runner continues through the scheduled prompt
+budget even when another run history says this case can be solved. In the
+historical product-mode `1.0` row, the `1.0` was only observed at the final
+official scoring point, so earlier rounds could not have stopped on it.
+
+Every-round product-mode rerun note:
+
+- run group: `skillsbench-citation-check-ef3006e-everyround-cleanup-20260624T2022Z`
+- run id: `ac6716eb1ae2`
+- route: `loopx-product-mode`
+- official score: `0.0`
+- failure attribution: `official_verifier_solution_failure`
+- lifecycle counters: 1 driver lifecycle checkpoint, 4 driver lifecycle CLI
+  calls, 18 agent LoopX CLI calls, 2 agent state reads, 16 agent state writes,
+  and 8 task-facing bridge operations.
+- verifier policy: `every-round`; intermediate soft verify call count `1`,
+  skipped count `0`; soft verifier timeout was enabled at 180 seconds but did
+  not trigger in this completed run.
+
+This rerun proves the canonical product-mode driver can produce public-safe
+every-round verifier counters and full LoopX lifecycle counters. It stopped
+after round 1 because the agent declared done and final official scoring
+returned `0.0`. The attribution is therefore solution/case scoped, not
+transport, lifecycle, or reward-sampling scoped. The separate soft-timeout
+cleanup path is covered by runner smoke and remains a guard for cases whose
+intermediate verifier process tree does hang.
+
+Policy outcome:
+
+- Product-mode should default to every-round private soft verification.
+- The controller may stop as soon as reward reaches `1.0`.
+- Reward, pass/fail, verifier output, and task-private material must remain
+  blinded from the agent unless an experiment explicitly studies feedback.
+- `final-only` remains useful only as an explicit ablation for measuring the
+  cost of withholding all intermediate verifier observations.
+
 ## Case: SkillsBench 3d-scan-calc
 
 This was a legacy baseline-pass-only record, but the primary blind-loop rerun
@@ -1522,6 +1574,25 @@ Compact evidence:
 - historical context: older baseline run `9e5ca7417555` also passed, but was
   not a current primary blind-loop treatment pair.
 
+Canonical product-mode every-round recheck:
+
+- baseline run group:
+  `skillsbench-3d-scan-calc-d666545-everyround-baseline-20260624T2047Z`
+- baseline run id: `fac3a39fdd9a`
+- treatment run group:
+  `skillsbench-3d-scan-calc-d666545-everyround-treatment-20260624T2053Z`
+- treatment run id: `10d4a914cccc`
+- route pair: `raw-codex-autonomous-max5` -> `loopx-product-mode`
+- max-rounds budget: `8`
+- baseline score / first success round / final round: `1.0` / `1` / `1`
+- treatment score / first success round / final round: `1.0` / `1` / `1`
+- every-round private soft verifier calls: baseline `1`, treatment `1`
+- product-mode pair review: `main_table_ready`; `claim_blocker=none`
+- treatment lifecycle counters: checkpoint count `1`, checkpoint round `1`,
+  state reads `2`, state writes `16`, refresh-state calls `2`, quota spend-slot
+  calls `2`, todo closeout calls `6`
+- host-local ACP Codex exec preflight: `passed`
+
 Interpretation:
 
 The old record said the case was solvable by baseline, but it did not answer
@@ -1532,6 +1603,15 @@ agent round. Official feedback stayed blinded, reward feedback was not
 forwarded, and no raw task text, raw logs, verifier output, or trajectory were
 copied into this analysis.
 
+The canonical product-mode recheck answers a different question: can the
+current product-mode lifecycle driver run a real SkillsBench case, sample the
+private verifier every round, stop early when reward reaches `1.0`, and still
+leave public-safe LoopX lifecycle counters? For this case, yes. Both arms had
+an 8-round budget but stopped after round 1 because the private verifier
+observed reward `1.0`; the reward/pass/fail/verifier output was not forwarded
+to the agent. In treatment, the full case-local lifecycle was visible through
+state read/write, refresh, spend, and todo-closeout counters.
+
 Why it matters:
 
 - It is not uplift evidence, because baseline already solved the task.
@@ -1539,6 +1619,9 @@ Why it matters:
   family.
 - It checks that baseline-safe treatment prompt framing does not harm a case
   where ordinary Codex ACP can solve the task in the first round.
+- It is a good-case proof for the canonical product-mode every-round driver:
+  the driver stopped on private reward `1.0` and produced complete lifecycle
+  counters.
 - It keeps the current policy evidence aligned with the primary blind-loop
   protocol instead of relying on a legacy baseline-only pass.
 

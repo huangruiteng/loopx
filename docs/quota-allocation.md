@@ -351,7 +351,7 @@ open current-agent/unclaimed advancement todo exists, quota returns
 and `execution_obligation.contract = deferred_resume_projection`. The worker
 must reopen, supersede, or record a public-safe no-follow-up rationale before
 ordinary delivery work. Only when no ready current-agent/unclaimed deferred
-resume exists should agent-scoped quota fall through to `primary_review_wait`,
+resume exists should agent-scoped quota fall through to `agent_scope_wait`,
 `reassignment_required`, or `scope_exhausted`.
 
 External-evidence waits have an additional CLI-level observation contract. When
@@ -646,8 +646,8 @@ The response also includes `scheduler_hint.schema_version=scheduler_hint_v0`.
 That hint is not a delivery permission. It is the cross-runtime wait policy:
 `run_now` keeps the active cadence for required work; `backoff_waiting_for_user`
 slows Codex App and stops CLI/Claude loops after repeated unchanged polls;
-`backoff_until_reassigned` handles side-agent primary-review waits without
-dropping agent-to-agent handoff cadence too quickly;
+`backoff_until_reassigned` handles side-agent scope waits without dropping
+agent-to-agent handoff cadence too quickly;
 `backoff_until_material_transition` handles monitor-only quiet polls; and
 `backoff_until_fresh_evidence` handles mapped or post-handoff no-op waits.
 For Codex App and local schedulers, `recommended_interval_minutes` is the next

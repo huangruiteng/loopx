@@ -1144,15 +1144,15 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
         goal_id=GOAL_ID,
         agent_id="codex-side-bypass",
     )
-    assert guard["decision"] == "primary_review_wait", guard
+    assert guard["decision"] == "agent_scope_wait", guard
     assert guard["should_run"] is False, guard
     assert guard["normal_delivery_allowed"] is False, guard
     assert guard["actionable_by_codex"] is False, guard
-    assert guard["effective_action"] == "primary_review_wait", guard
+    assert guard["effective_action"] == "agent_scope_wait", guard
     assert "agent_lane_next_action" not in guard, guard
     frontier = guard["agent_scope_frontier"]
     assert frontier["schema_version"] == "agent_scope_frontier_v0", frontier
-    assert frontier["action"] == "primary_review_wait", frontier
+    assert frontier["action"] == "agent_scope_wait", frontier
     assert frontier["agent_id"] == "codex-side-bypass", frontier
     assert frontier["primary_agent"] == "codex-main-control", frontier
     assert frontier["candidate_counts"]["current_agent_claimed_advancement_count"] == 0, frontier
@@ -1164,9 +1164,9 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
     assert "SWE-Marathon" not in guard["recommended_action"], guard
     obligation = guard["execution_obligation"]
     assert obligation["must_attempt_work"] is False, obligation
-    assert obligation["kind"] == "primary_review_wait", obligation
+    assert obligation["kind"] == "agent_scope_wait", obligation
     contract = guard["interaction_contract"]
-    assert contract["mode"] == "primary_review_wait", contract
+    assert contract["mode"] == "agent_scope_wait", contract
     assert contract["agent_channel"]["must_attempt"] is False, contract
     assert contract["agent_channel"]["delivery_allowed"] is False, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
@@ -1175,11 +1175,11 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
     assert "no quota spend" in contract["cli_channel"]["next_cli_actions"][0], contract
     assert "codex-side-bypass has no current/unclaimed" in contract["user_channel"]["reason"], contract
     markdown = render_quota_should_run_markdown(guard)
-    assert "agent_scope_frontier: action=primary_review_wait" in markdown, markdown
+    assert "agent_scope_frontier: action=agent_scope_wait" in markdown, markdown
     assert "quiet_noop_allowed=True" in markdown, markdown
 
 
-def assert_side_agent_wait_mentions_blocking_review_owner() -> None:
+def assert_side_agent_scope_wait_mentions_blocking_owner() -> None:
     primary_action = "[P0] Run SkillsBench matrix and record compact results."
     review_action = (
         "[P1-review] codex-side-bypass review the agent permission replay packet."
@@ -1225,10 +1225,10 @@ def assert_side_agent_wait_mentions_blocking_review_owner() -> None:
         goal_id=GOAL_ID,
         agent_id="codex-value-explorer",
     )
-    assert guard["decision"] == "primary_review_wait", guard
+    assert guard["decision"] == "agent_scope_wait", guard
     assert guard["should_run"] is False, guard
     frontier = guard["agent_scope_frontier"]
-    assert frontier["action"] == "primary_review_wait", frontier
+    assert frontier["action"] == "agent_scope_wait", frontier
     assert frontier["blocking_review_claimants"] == ["codex-side-bypass"], frontier
     assert frontier["candidate_counts"]["other_agent_claimed_advancement_count"] == 2
     assert "codex-side-bypass" in guard["recommended_action"], guard
@@ -1587,7 +1587,7 @@ def assert_primary_agent_prioritizes_claimed_review_handoff() -> None:
     next_action = guard["agent_lane_next_action"]
     assert next_action["todo_id"] == "todo_primary_review", guard
     assert guard["capability_gate"]["candidate_order_policy"] == (
-        "active_next_then_claim_then_primary_agent_unblock_handoff_then_priority_then_repair"
+        "active_next_then_claim_then_unblock_handoff_then_priority_then_repair"
     ), guard
     assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_primary_review", guard
     assert next_action["selected_by"] == "current_agent_claimed_todo", next_action
@@ -1862,7 +1862,7 @@ def main() -> int:
     assert_launch_then_poll_todo_without_handle_routes_to_advancement()
     assert_side_agent_next_action_projects_without_stealing_goal_next_action()
     assert_side_agent_waits_when_only_other_agent_has_claimed_work()
-    assert_side_agent_wait_mentions_blocking_review_owner()
+    assert_side_agent_scope_wait_mentions_blocking_owner()
     assert_scoped_user_gate_does_not_steal_other_agent_fallback()
     assert_side_agent_replans_when_deferred_successor_is_ready()
     assert_side_agent_can_take_unclaimed_work()
