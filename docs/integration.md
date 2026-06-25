@@ -83,24 +83,43 @@ The helper only builds JSON-compatible card content and extracts a reply
 write API. A gateway can pass the returned payload to its own approved sender
 after the relevant LoopX gate permits the write.
 
+## Notification Projection
+
+LoopX notification semantics live in `loopx.notification_projection`, not in a
+specific chat adapter. Chat, dashboard, or CLI sinks should consume the same
+projection fields:
+
+- `stage`, `priority`, `done`, and `key_event` for delivery policy.
+- `summary` for human-facing first-screen text.
+- `markdown` for detailed cards or compact grouped text.
+- `fingerprint` for dedupe.
+- `actions` for user-gate buttons such as approve, reject, ask for more info,
+  pause, or cancel.
+
+`loopx.capabilities.lark.progress_reporter` remains as a compatibility import
+surface for Lark/Feishu callers, but the source of truth is the core projection
+module.
+
 ## Feishu Progress Bridge
 
 `scripts/feishu_loopx_progress_bridge.py` is a reference Feishu event bridge
 for long-running LoopX work. It keeps the inbound path thin, then adds an
 outbound progress reporter:
 
-1. Receive `im.message.receive_v1` through `feishu-cli event consume`.
+1. Receive Feishu events through `feishu-cli event consume`.
 2. Create a LoopX agent todo with `loopx todo add`.
-3. Persist `todo_id`, original `message_id`, request text, goal id, and agent id
-   in a local state file.
+3. Persist `todo_id`, original `message_id`, progress-card `message_id`,
+   request text, goal id, agent id, and last fingerprints in a local state file.
 4. Poll `loopx status --format json` and
    `loopx quota should-run --format json`.
-5. Render a Feishu interactive reply card only when the projected stage
-   fingerprint changes.
+5. Update the task's main progress card when possible, and send separate key
+   event replies for user action, blockers, bridge errors, and completion.
+6. Render Feishu buttons for concrete user gates and write button decisions
+   back through `loopx todo`.
 
 The projection logic lives in
-`loopx.capabilities.lark.progress_reporter`. It prioritizes user-visible
-signals in this order:
+`loopx.notification_projection`. It prioritizes user-visible signals in this
+order:
 
 - `requires_user_action` and `interaction_contract.user_channel`
 - `notify_user_on_gate`, `notify_user_on_open_todo`, and capability gates
@@ -130,6 +149,27 @@ LOOPX_FEISHU_PROGRESS_LOG=~/.config/loopx/feishu-progress-bridge.log
 
 If card delivery fails, the bridge falls back to a compact text reply. The
 state file is local runtime state and should not be committed.
+
+Long-running service helpers:
+
+```bash
+# Check runtime readiness, state schema, binaries, and configured event types.
+python3 /path/to/loopx/scripts/feishu_loopx_progress_bridge.py --doctor
+
+# Rewrite an existing v1 state file into the current compatible schema.
+python3 /path/to/loopx/scripts/feishu_loopx_progress_bridge.py --migrate-state
+
+# Print a launchd plist with KeepAlive, logs, state path, and environment.
+python3 /path/to/loopx/scripts/feishu_loopx_progress_bridge.py --print-launch-agent \
+  > ~/Library/LaunchAgents/dev.loopx.feishu-progress-bridge.plist
+
+# Inspect recent bridge logs.
+python3 /path/to/loopx/scripts/feishu_loopx_progress_bridge.py --log-tail 40
+```
+
+By default the bridge listens for `im.message.receive_v1` and
+`card.action.trigger`. Override `LOOPX_FEISHU_EVENT_TYPES` with a comma-separated
+list if the installed `feishu-cli` names card callbacks differently.
 
 ## One-Command Project Connect
 
