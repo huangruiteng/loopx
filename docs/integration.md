@@ -176,7 +176,10 @@ production actions still require an explicit follow-up gate or scoped todo.
 Progress cards include the request lane in their bridge context, so users can
 see which lane is being polled for status and quota. The initial acceptance
 card also includes a best-effort `/next` scheduler snapshot when the bridge can
-collect one quickly.
+collect one quickly. Cards for tracked tasks also include read-only scheduler
+buttons for the next batch and worker handoffs. These buttons reply in the
+original thread with the same summaries as `/next` and `/handoffs <todo_id>`;
+they do not mutate LoopX state.
 
 For local copy/paste handoff text without the Feishu bridge, use:
 
