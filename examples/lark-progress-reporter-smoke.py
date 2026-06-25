@@ -60,6 +60,9 @@ def main() -> int:
     assert user_gate.stage == "user_action", user_gate
     assert user_gate.template == "red", user_gate
     assert "Approve the exact external write" in user_gate.markdown, user_gate.markdown
+    assert user_gate.summary.startswith("任务需要你确认"), user_gate.summary
+    assert user_gate.key_event is True, user_gate
+    assert [action.action_id for action in user_gate.actions][:2] == ["approve_continue", "reject"], user_gate.actions
 
     running = build_progress_notification(
         todo_id="todo_abc",
@@ -84,6 +87,7 @@ def main() -> int:
     )
     assert running.stage == "running", running
     assert "bounded_delivery" in running.markdown, running.markdown
+    assert running.summary.startswith("任务正在执行"), running.summary
 
     progress = build_progress_notification(
         todo_id="todo_abc",
@@ -109,6 +113,7 @@ def main() -> int:
     )
     assert progress.stage == "progress", progress
     assert "Implemented the bridge poller" in progress.markdown, progress.markdown
+    assert "阶段性进展" in progress.summary, progress.summary
 
     done = build_progress_notification(
         todo_id="todo_abc",
@@ -119,6 +124,7 @@ def main() -> int:
     )
     assert done.stage == "done", done
     assert done.done is True, done
+    assert done.key_event is True, done
 
     error = build_bridge_error_notification(
         todo_id="todo_abc",
@@ -128,10 +134,18 @@ def main() -> int:
     )
     assert error.stage == "bridge_error:quota", error
     assert error.template == "red", error
+    assert error.key_event is True, error
 
-    card = build_lark_markdown_reply_card(progress.markdown, title=progress.title, template=progress.template)
+    card = build_lark_markdown_reply_card(
+        progress.markdown,
+        title=progress.title,
+        template=progress.template,
+        actions=tuple(action.to_dict() for action in user_gate.actions),
+    )
     assert card["header"]["template"] == "blue", card
     assert card["elements"][0]["text"]["tag"] == "lark_md", card
+    action_block = next(element for element in card["elements"] if element["tag"] == "action")
+    assert action_block["actions"][0]["value"]["action_id"] == "approve_continue", action_block
 
     print("lark progress reporter smoke ok")
     return 0

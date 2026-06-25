@@ -43,6 +43,21 @@ def main() -> int:
     escaped_newline_content = build_lark_markdown_reply_card("first\\nsecond")["elements"][0]["text"]["content"]
     assert "\\n" not in escaped_newline_content, escaped_newline_content
     assert "first\nsecond" in escaped_newline_content, escaped_newline_content
+    action_card = build_lark_markdown_reply_card(
+        "needs gate",
+        actions=[
+            {
+                "action_id": "approve_continue",
+                "label": "批准继续",
+                "style": "primary",
+                "value": {"todo_id": "todo_abc", "goal_id": "goal"},
+            }
+        ],
+    )
+    assert action_card["elements"][1]["tag"] == "action", action_card
+    button = action_card["elements"][1]["actions"][0]
+    assert button["type"] == "primary", button
+    assert button["value"]["action_id"] == "approve_continue", button
 
     assert compact_plain_text("  one\n\n two  ", max_chars=20) == "one two"
     assert len(compact_plain_text("x" * 100, max_chars=12)) <= 12
