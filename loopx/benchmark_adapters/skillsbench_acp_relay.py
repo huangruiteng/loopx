@@ -49,11 +49,14 @@ SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER = (
 )
 SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
     "LoopX bridge action preflight. First use the private bridge command from "
-    "the relay packet to run one JSON exec request with cwd=/app, command=pwd, "
-    "and timeout_sec=10. Do not plan, explain, inspect files, or reply before "
-    "that bridge request returns. Your first tool action should be a shell "
+    "the relay packet to run one JSON preflight request that does not require "
+    "scored sandbox target environment variables. Do not plan, explain, inspect "
+    "files, or reply before that bridge request returns. Your first tool action "
+    "should be a shell "
     "pipeline that sends the JSON request to the private bridge command shown "
-    "in the packet. After the bridge response returns, reply exactly "
+    "in the packet, for example: "
+    "`printf '%s\\n' '{\"operation\":\"preflight\"}' | <private bridge command>`. "
+    "After the bridge response returns, reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER} and end the turn."
 )
 
@@ -70,6 +73,14 @@ def _prompt_requires_bridge_first_action(prompt: str) -> bool:
         "first run the case-local quota/todo commands",
     )
     return any(marker in lowered for marker in required_markers)
+
+
+def _is_bridge_action_preflight_prompt(prompt: str) -> bool:
+    text = prompt or ""
+    return (
+        SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER in text
+        and "LoopX bridge action preflight" in text
+    )
 
 
 def _json_rpc_result(message_id: Any, result: dict[str, Any]) -> dict[str, Any]:
@@ -359,7 +370,10 @@ class SkillsBenchLocalAcpRelay:
             prompt_for_codex = prompt_text
             cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
             if self._config.remote_command_file_bridge_command:
-                bridge_probe = self._consume_remote_bridge_for_solver()
+                if _is_bridge_action_preflight_prompt(prompt_text):
+                    bridge_probe = self._reverse_channel_json_preflight_probe()
+                else:
+                    bridge_probe = self._consume_remote_bridge_for_solver()
                 self._publish_remote_bridge_consumption_trace(bridge_probe)
                 if bridge_probe.get("ready") is not True:
                     raise RuntimeError("remote command/file bridge probe failed")
@@ -646,6 +660,42 @@ class SkillsBenchLocalAcpRelay:
             self._config.remote_command_file_bridge_command,
             timeout_sec=self._config.remote_command_file_bridge_timeout_sec,
         )
+
+    def _reverse_channel_json_preflight_probe(self) -> dict[str, Any]:
+        return {
+            "schema_version": "skillsbench_remote_command_file_bridge_probe_v0",
+            "ready": True,
+            "first_blocker": "skillsbench_reverse_channel_json_preflight_ready",
+            "stage": "pre_sandbox_reverse_channel_json",
+            "elapsed_ms": 0,
+            "bridge_command_invoked": False,
+            "response_schema_version": (
+                "skillsbench_reverse_channel_json_preflight_response_v0"
+            ),
+            "required_operations": ["preflight"],
+            "operation_count": 1,
+            "operations": [
+                {
+                    "kind": "preflight",
+                    "label": "reverse_channel_json_bridge",
+                    "status": "ok",
+                }
+            ],
+            "missing_operations": [],
+            "failed_operations": [],
+            "boundary_violations": [],
+            "raw_command_recorded": False,
+            "raw_stdout_recorded": False,
+            "raw_stderr_recorded": False,
+            "raw_task_text_recorded": False,
+            "raw_logs_recorded": False,
+            "raw_trajectory_recorded": False,
+            "credential_values_recorded": False,
+            "host_paths_recorded": False,
+            "remote_paths_recorded": False,
+            "upload_performed": False,
+            "submit_performed": False,
+        }
 
     def _run_remote_bridge_exec(self, command: str) -> dict[str, Any]:
         bridge_command = self._config.remote_command_file_bridge_command or ""

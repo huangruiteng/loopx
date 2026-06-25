@@ -534,6 +534,81 @@ print(json.dumps({
             server.wait(timeout=5)
 
 
+def test_json_preflight_does_not_require_target_env_or_bridge_command() -> None:
+    with tempfile.TemporaryDirectory(prefix="lrjp-") as tmp:
+        root = Path(tmp)
+        fake_bridge = root / "fake-json-bridge"
+        marker = root / "bridge-invoked"
+        fake_bridge.write_text(
+            f"""#!/usr/bin/env python3
+from pathlib import Path
+Path({str(marker)!r}).write_text('unexpected', encoding='utf-8')
+raise SystemExit(42)
+""",
+            encoding="utf-8",
+        )
+        fake_bridge.chmod(0o700)
+        socket_path = root / "json-preflight.sock"
+        server = subprocess.Popen(
+            [
+                sys.executable,
+                str(BRIDGE),
+                "serve-json",
+                "--socket",
+                str(socket_path),
+                "--bridge-command",
+                str(fake_bridge),
+                "--once",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            wait_for_socket(socket_path, server)
+            client = root / "json-client"
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(BRIDGE),
+                    "write-client",
+                    "--kind",
+                    "json",
+                    "--socket",
+                    str(socket_path),
+                    "--output",
+                    str(client),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            env = os.environ.copy()
+            env.pop("AI_ADDR", None)
+            env.pop("AI_PORT", None)
+            env["LOOPX_REVERSE_CONNECT_TIMEOUT_SEC"] = "0.1"
+            env["LOOPX_REVERSE_RESPONSE_TIMEOUT_SEC"] = "5"
+            proc = subprocess.run(
+                [str(client)],
+                input=json.dumps({"operation": "preflight"}),
+                check=False,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            assert proc.returncode == 0, proc.stderr
+            response = json.loads(proc.stdout)
+            assert response["ok"] is True
+            assert response["operation"] == "preflight"
+            assert response["raw_task_text_recorded"] is False
+            assert response["credential_values_recorded"] is False
+            assert marker.exists() is False
+        finally:
+            server.wait(timeout=5)
+
+
 def test_socket_probe_reports_missing_or_orphaned() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-reverse-probe-smoke-") as tmp:
         missing = Path(tmp) / "missing.sock"
@@ -561,6 +636,7 @@ def main() -> int:
     test_codex_client_plain_prompt_does_not_require_bridge_action()
     test_json_client_forwards_stdin_to_bridge_command()
     test_json_client_expands_allowed_env_template_for_nested_bridge()
+    test_json_preflight_does_not_require_target_env_or_bridge_command()
     test_socket_probe_reports_missing_or_orphaned()
     print("skillsbench reverse-channel bridge smoke passed")
     return 0

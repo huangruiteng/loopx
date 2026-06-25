@@ -26,6 +26,9 @@ from typing import Any
 
 CLIENT_SCHEMA_VERSION = "skillsbench_reverse_channel_client_v0"
 SERVER_RESPONSE_SCHEMA_VERSION = "skillsbench_reverse_channel_response_v0"
+JSON_PREFLIGHT_RESPONSE_SCHEMA_VERSION = (
+    "skillsbench_reverse_channel_json_preflight_response_v0"
+)
 _CODEX_EXEC_OPTIONS_WITH_VALUE = {
     "-C",
     "--cd",
@@ -495,6 +498,37 @@ def _run_json_bridge_payload(
 ) -> dict[str, Any]:
     timeout = max(1.0, float(default_timeout_sec))
     stdin_text = str(payload.get("stdin") or "")
+    try:
+        request = json.loads(stdin_text or "{}")
+    except json.JSONDecodeError:
+        request = {}
+    if isinstance(request, dict) and request.get("operation") == "preflight":
+        return {
+            "schema_version": SERVER_RESPONSE_SCHEMA_VERSION,
+            "exit_code": 0,
+            "stdout": json.dumps(
+                {
+                    "schema_version": JSON_PREFLIGHT_RESPONSE_SCHEMA_VERSION,
+                    "ok": True,
+                    "operation": "preflight",
+                    "stage": "reverse_channel_json_server",
+                    "raw_stdout_recorded": False,
+                    "raw_stderr_recorded": False,
+                    "raw_task_text_recorded": False,
+                    "credential_values_recorded": False,
+                    "host_paths_recorded": False,
+                    "remote_paths_recorded": False,
+                    "upload_performed": False,
+                    "submit_performed": False,
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            "stderr": "",
+            "raw_stdout_recorded": False,
+            "raw_stderr_recorded": False,
+            "credential_values_recorded": False,
+        }
     payload_env = payload.get("env")
     env = _safe_env(payload_env)
     command = _bridge_command_with_payload_env(bridge_command, payload_env)
