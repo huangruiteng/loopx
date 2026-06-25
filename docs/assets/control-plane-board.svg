@@ -1,76 +1,77 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
-  <title id="title">LoopX control-plane board</title>
-  <desc id="desc">A public-safe synthetic board showing a user gate, shared goal state, claimed todo, safe fallback, run history, quota guard, and evidence writeback.</desc>
+  <title id="title">LoopX control-plane kernel and projections</title>
+  <desc id="desc">A public-safe synthetic diagram showing LoopX state, the quota interaction contract, runtime bridges, projection surfaces, user gates, and evidence writeback.</desc>
   <defs>
     <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
       <path d="M2 2 L10 6 L2 10 Z" fill="#475569" />
     </marker>
     <style>
-      .label { font: 600 18px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
+      .title { font: 700 28px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 16px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .label { font: 700 18px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
       .body { font: 500 15px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #374151; }
-      .small { font: 500 13px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #4b5563; }
-      .tiny { font: 500 12px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #64748b; }
-      .box { stroke-width: 2; rx: 14; }
-      .line { stroke: #475569; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .small { font: 500 13px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #64748b; }
+      .pill { font: 700 12px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
+      .box { stroke-width: 2; }
+      .line { stroke: #475569; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
       .softline { stroke: #94a3b8; stroke-width: 2; fill: none; marker-end: url(#arrow); stroke-dasharray: 7 7; }
     </style>
   </defs>
 
   <rect width="1200" height="620" fill="#fbfbf8" />
-  <text x="60" y="58" class="label" style="font-size:28px">Gate-aware human-in-the-loop control plane</text>
-  <text x="60" y="92" class="body">The required human decision is explicit; safe side work can still continue with evidence.</text>
+  <text x="60" y="58" class="title">LoopX control plane</text>
+  <text x="60" y="88" class="subtitle">State is truth; runtimes run bounded turns; projections keep people and agents aligned.</text>
+  <rect x="60" y="112" width="1080" height="1" fill="#e5e7eb" />
 
-  <rect x="60" y="130" width="255" height="128" fill="#fff7ed" stroke="#f59e0b" class="box" />
-  <text x="84" y="166" class="label">User gate</text>
-  <text x="84" y="195" class="body">Needs owner judgment</text>
-  <text x="84" y="221" class="small">Status: waiting on user</text>
+  <rect x="58" y="142" width="250" height="138" rx="14" fill="#fff7ed" stroke="#f59e0b" class="box" />
+  <text x="82" y="178" class="label">Human judgment</text>
+  <text x="82" y="208" class="body">user gates, rewards</text>
+  <text x="82" y="233" class="body">approval boundaries</text>
+  <text x="82" y="258" class="small">ask concrete todos only</text>
 
-  <rect x="60" y="342" width="255" height="128" fill="#f8fafc" stroke="#64748b" class="box" />
-  <text x="84" y="378" class="label">Primary agent</text>
-  <text x="84" y="407" class="body">Owns high-risk route</text>
-  <text x="84" y="433" class="small">Focus: benchmark lane</text>
+  <rect x="58" y="370" width="250" height="150" rx="14" fill="#f8fafc" stroke="#64748b" class="box" />
+  <text x="82" y="406" class="label">Agent runtimes</text>
+  <text x="82" y="436" class="body">Codex App heartbeat</text>
+  <text x="82" y="461" class="body">Codex CLI TUI</text>
+  <text x="82" y="486" class="body">Claude Code /loop</text>
+  <text x="82" y="511" class="small">worker bridge / manual shell</text>
 
-  <rect x="390" y="192" width="320" height="215" fill="#eff6ff" stroke="#2563eb" class="box" />
-  <text x="416" y="230" class="label">Shared goal state</text>
-  <text x="416" y="262" class="body">lifetime goal</text>
-  <text x="416" y="289" class="body">open user + agent todos</text>
-  <text x="416" y="316" class="body">scope and claim visibility</text>
-  <text x="416" y="343" class="body">latest validation / blocker</text>
-  <text x="416" y="370" class="body">public/private boundary</text>
+  <rect x="378" y="128" width="370" height="246" rx="16" fill="#eff6ff" stroke="#2563eb" class="box" />
+  <text x="406" y="167" class="label">LoopX state kernel</text>
+  <text x="406" y="201" class="body">objective + public/private boundary</text>
+  <text x="406" y="228" class="body">user todos + agent todos + claims</text>
+  <text x="406" y="255" class="body">gates + decision scopes</text>
+  <text x="406" y="282" class="body">run history + evidence</text>
+  <text x="406" y="309" class="body">quota spend + reward overlays</text>
+  <rect x="406" y="331" width="142" height="28" rx="14" fill="#dbeafe" stroke="#93c5fd" />
+  <text x="427" y="350" class="pill">source of truth</text>
 
-  <rect x="790" y="132" width="292" height="110" fill="#eef2ff" stroke="#6366f1" class="box" />
-  <text x="814" y="168" class="label">Quota guard</text>
-  <text x="814" y="197" class="body">should-run before work</text>
-  <text x="814" y="222" class="small">spend after validated writeback</text>
+  <rect x="404" y="416" width="318" height="132" rx="14" fill="#eef2ff" stroke="#6366f1" class="box" />
+  <text x="428" y="452" class="label">Interaction contract</text>
+  <text x="428" y="482" class="body">should_run: run | ask | wait</text>
+  <text x="428" y="507" class="body">repair | quiet no-op</text>
+  <text x="428" y="532" class="small">scheduler_hint + spend policy</text>
 
-  <rect x="790" y="266" width="292" height="110" fill="#ecfdf5" stroke="#10b981" class="box" />
-  <text x="814" y="302" class="label">Claimed todo</text>
-  <text x="814" y="331" class="body">claimed_by: side agent</text>
-  <text x="814" y="356" class="small">scope: productization docs</text>
+  <rect x="812" y="132" width="306" height="162" rx="14" fill="#ecfdf5" stroke="#10b981" class="box" />
+  <text x="836" y="168" class="label">Projection surfaces</text>
+  <text x="836" y="198" class="body">status / diagnose / review packet</text>
+  <text x="836" y="223" class="body">dashboard / frontstage</text>
+  <text x="836" y="248" class="body">Lark Kanban / domain adapters</text>
+  <text x="836" y="273" class="small">readable views, not hidden authority</text>
 
-  <rect x="790" y="424" width="292" height="110" fill="#fff1f2" stroke="#e11d48" class="box" />
-  <text x="814" y="460" class="label">Run history</text>
-  <text x="814" y="489" class="body">evidence writeback</text>
-  <text x="814" y="514" class="small">blocker, validation, outcome</text>
+  <rect x="812" y="382" width="306" height="138" rx="14" fill="#fff1f2" stroke="#e11d48" class="box" />
+  <text x="836" y="418" class="label">Evidence writeback</text>
+  <text x="836" y="448" class="body">validation, blocker, artifact</text>
+  <text x="836" y="473" class="body">benchmark or external result</text>
+  <text x="836" y="498" class="small">spend only after durable transition</text>
 
-  <rect x="392" y="464" width="320" height="116" fill="#f0fdf4" stroke="#22c55e" class="box" />
-  <text x="416" y="500" class="label">Safe side path</text>
-  <text x="416" y="529" class="body">continues only when independent</text>
-  <text x="416" y="556" class="body">of the blocked gate</text>
+  <path d="M308 212 C340 212 344 204 378 204" class="line" />
+  <path d="M308 444 C346 444 366 472 404 482" class="line" />
+  <path d="M563 374 L563 416" class="line" />
+  <path d="M722 482 C766 482 778 456 812 452" class="line" />
+  <path d="M748 214 C778 214 782 212 812 212" class="softline" />
+  <path d="M930 382 C910 348 786 336 748 310" class="softline" />
 
-  <path d="M315 194 C342 194 356 220 390 238" class="line" />
-  <path d="M315 406 C350 406 358 372 390 354" class="line" />
-  <path d="M710 252 C748 238 752 194 790 188" class="line" />
-  <path d="M710 318 C746 318 754 318 790 318" class="line" />
-  <path d="M710 378 C750 414 752 474 790 482" class="line" />
-  <path d="M552 407 L552 464" class="softline" />
-  <path d="M650 568 C718 568 742 514 790 500" class="line" />
-
-  <text x="345" y="176" class="tiny">gate stays visible</text>
-  <text x="724" y="258" class="tiny">bounded turn</text>
-
-  <rect x="60" y="522" width="260" height="46" fill="#ffffff" stroke="#cbd5e1" rx="12" />
-  <text x="82" y="551" class="small">No bypass: gated route still waits</text>
-
-  <rect x="60" y="114" width="1070" height="1" fill="#e5e7eb" />
+  <rect x="60" y="554" width="1080" height="42" rx="14" fill="#ffffff" stroke="#cbd5e1" />
+  <text x="84" y="581" class="small">Invariant: gated routes wait; independent work can continue; material transitions write compact evidence back.</text>
 </svg>
