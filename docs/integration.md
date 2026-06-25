@@ -157,11 +157,14 @@ loopx feishu-bridge logs --tail 40
 ```
 
 In chat, `/status` shows compact LoopX status, `/plan` shows the read-only safe
-parallel scheduler plan, including the scheduler `dispatch_plan` summary for
-parallel runnable todos, lane-capacity waits, user blocks, and copyable
-developer steps and worker handoffs. The bridge renders that JSON contract as a
-short chat summary instead of forwarding raw scheduler output. Ordinary text or
-`/ask <task>` creates a tracked agent todo with progress cards.
+parallel scheduler plan, and `/next` shows the next dispatchable scheduler
+batch. The plan summary includes parallel runnable todos, lane-capacity waits,
+user blocks, copyable developer steps, and worker handoffs. The next-batch
+summary focuses on the workers that can be started now, their lanes, and the
+guard commands a bridge or operator should run before handoff. The bridge
+renders those JSON contracts as short chat summaries instead of forwarding raw
+scheduler output. Ordinary text or `/ask <task>` creates a tracked agent todo
+with progress cards.
 
 For local copy/paste handoff text without the Feishu bridge, use:
 
