@@ -38,24 +38,22 @@ def build_lark_markdown_reply_card(
     template: str = "blue",
     footer: str = "LoopX automated reply",
     max_markdown_chars: int = DEFAULT_MAX_MARKDOWN_CHARS,
+    actions: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None = None,
 ) -> dict[str, Any]:
-    return {
-        "config": {"wide_screen_mode": True, "enable_forward": True},
-        "header": {
-            "template": template,
-            "title": {
-                "tag": "plain_text",
-                "content": compact_plain_text(title, max_chars=DEFAULT_TITLE_MAX_CHARS),
+    elements: list[dict[str, Any]] = [
+        {
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": compact_markdown(markdown, max_chars=max_markdown_chars),
             },
         },
-        "elements": [
-            {
-                "tag": "div",
-                "text": {
-                    "tag": "lark_md",
-                    "content": compact_markdown(markdown, max_chars=max_markdown_chars),
-                },
-            },
+    ]
+    action_buttons = _action_buttons(actions or ())
+    if action_buttons:
+        elements.append({"tag": "action", "actions": action_buttons})
+    elements.extend(
+        [
             {"tag": "hr"},
             {
                 "tag": "note",
@@ -66,8 +64,47 @@ def build_lark_markdown_reply_card(
                     }
                 ],
             },
-        ],
+        ]
+    )
+    return {
+        "config": {"wide_screen_mode": True, "enable_forward": True},
+        "header": {
+            "template": template,
+            "title": {
+                "tag": "plain_text",
+                "content": compact_plain_text(title, max_chars=DEFAULT_TITLE_MAX_CHARS),
+            },
+        },
+        "elements": elements,
     }
+
+
+def _action_buttons(actions: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> list[dict[str, Any]]:
+    buttons: list[dict[str, Any]] = []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        label = compact_plain_text(action.get("label") or action.get("action_id"), max_chars=24)
+        action_id = compact_plain_text(action.get("action_id"), max_chars=80)
+        if not label or not action_id:
+            continue
+        value = action.get("value") if isinstance(action.get("value"), dict) else {}
+        buttons.append(
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": label},
+                "type": _button_type(action.get("style")),
+                "value": {"action_id": action_id, **value},
+            }
+        )
+    return buttons
+
+
+def _button_type(style: object) -> str:
+    value = str(style or "").strip().lower()
+    if value in {"primary", "danger", "default"}:
+        return value
+    return "default"
 
 
 def _find_message_id(value: object, *, parent_message_id: str | None = None) -> str | None:
