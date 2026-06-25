@@ -193,6 +193,8 @@ def build_product_mode_main_table_comparison_contract(
             "reward_feedback_forwarded": False,
             "stop_on_reward_one": True,
             "stop_on_agent_declared_done_no_remaining_goals": True,
+            "declared_done_stop_requires_no_failed_every_round_reward": True,
+            "continue_after_declared_done_below_passing_reward": True,
             "stop_on_max_rounds_budget": True,
             "headline_metrics": [
                 "best_score",

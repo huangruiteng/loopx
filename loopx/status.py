@@ -678,6 +678,7 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_lifecycle_checkpoint_required",
         "product_mode_solver_activity_required",
         "product_mode_solver_activity_gap",
+        "product_mode_declared_done_below_passing_reward",
         "product_mode_no_tool_call_lifecycle_abort",
         "agent_declared_done",
         "agent_declared_no_remaining_goals",
@@ -699,6 +700,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_raw_output_recorded",
         "benchflow_intermediate_soft_verify_timeout_cleanup_requested",
         "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_requested",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_raw_logs_read",
         "private_trajectory_summary_present",
         "native_goal_worker_route",
         "native_goal_worker_connected",
@@ -713,6 +716,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_agent_operation_trace_satisfied",
         "remote_command_file_bridge_driver_lifecycle_trace_present",
         "remote_command_file_bridge_driver_lifecycle_raw_material_recorded",
+        "host_local_acp_codex_exec_failure_trace_present",
+        "host_local_acp_codex_exec_failure_raw_material_recorded",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -735,6 +740,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_lifecycle_checkpoint_round",
         "product_mode_solver_activity_gap_count",
         "product_mode_solver_activity_gap_round",
+        "product_mode_declared_done_below_passing_reward_count",
+        "product_mode_declared_done_below_passing_reward_round",
         "product_mode_no_tool_call_lifecycle_abort_count",
         "product_mode_no_tool_call_lifecycle_abort_round",
         "controller_verifier_feedback_observation_count",
@@ -752,6 +759,11 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_cleanup_term_sent_count",
         "benchflow_intermediate_soft_verify_timeout_cleanup_kill_sent_count",
         "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_container_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_match_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_term_sent_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_kill_sent_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_alive_after_count",
         "private_trajectory_event_count",
         "private_trajectory_round_count",
         "private_trajectory_tool_call_count",
@@ -809,9 +821,14 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count",
         "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count",
         "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count",
+        "host_local_acp_codex_exec_failure_trace_count",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
+    for field in ("product_mode_declared_done_below_passing_reward_score",):
+        raw = value.get(field)
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            compact[field] = float(raw)
     for field in (
         "case_result_writeback",
         "counter_trust_level",
@@ -822,14 +839,17 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "case_goal_state_schema_version",
         "product_mode_lifecycle_checkpoint_missing_reason",
         "product_mode_solver_activity_missing_reason",
+        "product_mode_declared_done_policy",
         "controller_budget_cutoff_reason",
         "benchflow_user_loop_recovery_stage",
         "benchflow_user_loop_recovery_exception_type",
         "benchflow_intermediate_soft_verify_policy",
         "benchflow_intermediate_soft_verify_timeout_stage",
         "benchflow_intermediate_soft_verify_timeout_cleanup_status",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_status",
         "remote_command_file_bridge_agent_operation_trace_status",
         "remote_command_file_bridge_driver_lifecycle_execution_style",
+        "host_local_acp_codex_exec_failure_category",
         "last_decision",
         "worker_submit_eligible_mismatch_reason",
         "worker_bridge_writeback_loss_reason",
@@ -1207,6 +1227,7 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_policy",
         "benchflow_intermediate_soft_verify_timeout_stage",
         "benchflow_intermediate_soft_verify_timeout_cleanup_status",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_status",
         "benchflow_setup_stall_cleanup_status",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
@@ -1262,6 +1283,8 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_raw_output_recorded",
         "benchflow_intermediate_soft_verify_timeout_cleanup_requested",
         "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_requested",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_raw_logs_read",
         "benchflow_verifier_prep_timeout_override_enabled",
         "benchflow_verifier_prep_timeout_raw_command_recorded",
         "benchflow_final_verifier_timeout_enabled",
@@ -1303,6 +1326,11 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_cleanup_term_sent_count",
         "benchflow_intermediate_soft_verify_timeout_cleanup_kill_sent_count",
         "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_container_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_match_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_term_sent_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_kill_sent_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_alive_after_count",
         "benchflow_verifier_prep_timeout_sec",
         "benchflow_final_verifier_timeout_sec",
         "benchflow_final_verifier_timeout_override_count",

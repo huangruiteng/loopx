@@ -91,6 +91,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-action-timeout-sec",
+        type=float,
+        default=0.0,
+        help=(
+            "Optional timeout for observing the first sandbox bridge operation "
+            "from a Codex turn. 0 disables the watchdog."
+        ),
+    )
+    parser.add_argument(
         "--worker-script",
         default=None,
         help="Optional path to skillsbench_host_codex_goal_worker.py.",
@@ -163,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
             response_timeout_sec=args.response_timeout_sec,
             worker_script=args.worker_script,
             stream_heartbeat_interval_sec=args.stream_heartbeat_interval_sec,
+            first_action_timeout_sec=args.first_action_timeout_sec,
             worker_public_trace_dir=args.worker_public_trace_dir,
             remote_command_file_bridge_command=(
                 args.remote_command_file_bridge_command

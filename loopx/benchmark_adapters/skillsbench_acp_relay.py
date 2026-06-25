@@ -130,6 +130,8 @@ def _codex_exec_failure_category(
         return "codex_reverse_channel_unavailable"
     if "hit your usage limit" in text or "usage limit" in text:
         return "codex_usage_limit"
+    if "codex_exec_first_action_timeout" in text:
+        return "codex_exec_first_action_timeout"
     if "unexpected argument" in text or "unrecognized option" in text:
         return "codex_cli_argument_incompatible"
     if "api.openai.com" in text or "chatgpt.com" in text:
@@ -157,6 +159,7 @@ class CodexExecConfig:
     response_timeout_sec: float = 30.0
     worker_script: str | None = None
     stream_heartbeat_interval_sec: float = 120.0
+    first_action_timeout_sec: float = 0.0
     reasoning_effort: str | None = "high"
     worker_public_trace_dir: str | None = None
     remote_command_file_bridge_command: str | None = None
@@ -394,12 +397,50 @@ class SkillsBenchLocalAcpRelay:
                         env=codex_env,
                     )
                     deadline = time.monotonic() + self._config.timeout_sec
+                    first_action_deadline = 0.0
+                    if (
+                        bridge_summary_path is not None
+                        and self._config.first_action_timeout_sec > 0
+                    ):
+                        first_action_deadline = (
+                            time.monotonic()
+                            + max(1.0, self._config.first_action_timeout_sec)
+                        )
+                    first_action_seen = not bool(first_action_deadline)
                     next_heartbeat = (
                         time.monotonic()
                         + max(1.0, self._config.stream_heartbeat_interval_sec)
                     )
                     while proc.poll() is None:
                         now = time.monotonic()
+                        if not first_action_seen and bridge_summary_path is not None:
+                            try:
+                                first_action_seen = (
+                                    bridge_summary_path.stat().st_size > 0
+                                )
+                            except OSError:
+                                first_action_seen = False
+                        if (
+                            not first_action_seen
+                            and first_action_deadline
+                            and now >= first_action_deadline
+                        ):
+                            proc.kill()
+                            proc.wait(timeout=5)
+                            self._publish_codex_exec_failure_trace(
+                                stage="first_action_timeout",
+                                returncode=124,
+                                stdout_text="",
+                                stderr_text="codex_exec_first_action_timeout\n",
+                                final_message_present=output_path.exists(),
+                                final_message_bytes=(
+                                    output_path.stat().st_size
+                                    if output_path.exists()
+                                    else 0
+                                ),
+                                failure_category="codex_exec_first_action_timeout",
+                            )
+                            raise TimeoutError("local codex first action timeout")
                         if now >= deadline:
                             proc.kill()
                             proc.wait(timeout=5)

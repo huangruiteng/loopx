@@ -18,6 +18,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -250,6 +251,7 @@ def _run_codex_payload(
     codex_bin: str,
     default_timeout_sec: float,
     prompt_bridge_command: str | None,
+    first_action_timeout_sec: float = 0.0,
 ) -> dict[str, Any]:
     args = [str(item) for item in payload.get("args") or []]
     if not args:
@@ -284,16 +286,52 @@ def _run_codex_payload(
             )
         cmd = [codex_bin, *args]
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout,
-                check=False,
                 env=env,
             )
+            deadline = time.monotonic() + timeout
+            first_action_deadline = 0.0
+            if agent_operations_summary_path and first_action_timeout_sec > 0:
+                first_action_deadline = (
+                    time.monotonic() + max(1.0, float(first_action_timeout_sec))
+                )
+            first_action_seen = not bool(first_action_deadline)
+            timeout_kind = ""
+            while proc.poll() is None:
+                now = time.monotonic()
+                if not first_action_seen and agent_operations_summary_path:
+                    try:
+                        first_action_seen = agent_operations_summary_path.stat().st_size > 0
+                    except OSError:
+                        first_action_seen = False
+                if not first_action_seen and first_action_deadline and now >= first_action_deadline:
+                    timeout_kind = "codex_exec_first_action_timeout"
+                    proc.kill()
+                    break
+                if now >= deadline:
+                    timeout_kind = "codex_exec_timeout"
+                    proc.kill()
+                    break
+                time.sleep(0.1)
+            stdout_text, stderr_text = proc.communicate()
+            if timeout_kind:
+                return {
+                    "schema_version": SERVER_RESPONSE_SCHEMA_VERSION,
+                    "exit_code": 124,
+                    "stdout": stdout_text or "",
+                    "stderr": f"{timeout_kind}\n",
+                    "last_message": "",
+                    "remote_last_message_path": remote_last_message_path,
+                    "agent_operations_jsonl": "",
+                    "agent_operations_raw_material_recorded": False,
+                    "raw_task_text_recorded": False,
+                    "credential_values_recorded": False,
+                }
             try:
                 last_message = last_message_path.read_text(encoding="utf-8")
             except OSError:
@@ -307,8 +345,8 @@ def _run_codex_payload(
             return {
                 "schema_version": SERVER_RESPONSE_SCHEMA_VERSION,
                 "exit_code": int(proc.returncode),
-                "stdout": proc.stdout or "",
-                "stderr": proc.stderr or "",
+                "stdout": stdout_text or "",
+                "stderr": stderr_text or "",
                 "last_message": last_message,
                 "remote_last_message_path": remote_last_message_path,
                 "agent_operations_jsonl": agent_operations_jsonl,
@@ -550,6 +588,7 @@ def main(argv: list[str] | None = None) -> int:
     codex_server.add_argument("--socket", required=True)
     codex_server.add_argument("--codex-bin", default="codex")
     codex_server.add_argument("--timeout-sec", type=float, default=7200.0)
+    codex_server.add_argument("--first-action-timeout-sec", type=float, default=0.0)
     codex_server.add_argument("--prompt-bridge-command")
     codex_server.add_argument("--once", action="store_true")
 
@@ -585,6 +624,7 @@ def main(argv: list[str] | None = None) -> int:
                 codex_bin=args.codex_bin,
                 default_timeout_sec=args.timeout_sec,
                 prompt_bridge_command=args.prompt_bridge_command,
+                first_action_timeout_sec=args.first_action_timeout_sec,
             ),
         )
     if args.command == "serve-json":

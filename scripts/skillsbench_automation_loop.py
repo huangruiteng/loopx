@@ -729,6 +729,13 @@ def _host_local_acp_launch_command(
             args.local_codex_sandbox,
             "--timeout-sec",
             str(_effective_local_codex_exec_timeout_sec(args)),
+            "--first-action-timeout-sec",
+            str(
+                max(
+                    0,
+                    int(getattr(args, "local_codex_first_action_timeout_sec", 0) or 0),
+                )
+            ),
         ]
     )
     if args.host_local_acp_launch and args.route != "codex-app-server-goal-baseline":
@@ -1183,6 +1190,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_policy",
         "benchflow_intermediate_soft_verify_timeout_stage",
         "benchflow_intermediate_soft_verify_timeout_cleanup_status",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_status",
         "benchflow_setup_stall_cleanup_status",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
@@ -1266,6 +1274,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_raw_output_recorded",
         "benchflow_intermediate_soft_verify_timeout_cleanup_requested",
         "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_requested",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_raw_logs_read",
         "benchflow_verifier_prep_timeout_override_enabled",
         "benchflow_verifier_prep_timeout_raw_command_recorded",
         "benchflow_final_verifier_timeout_enabled",
@@ -1304,6 +1314,11 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_cleanup_term_sent_count",
         "benchflow_intermediate_soft_verify_timeout_cleanup_kill_sent_count",
         "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_container_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_match_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_term_sent_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_kill_sent_count",
+        "benchflow_intermediate_soft_verify_orphan_cleanup_alive_after_count",
         "benchflow_verifier_prep_timeout_sec",
         "benchflow_final_verifier_timeout_sec",
         "benchflow_final_verifier_timeout_override_count",
@@ -1539,12 +1554,14 @@ def cleanup_benchflow_soft_verify_timeout_children(
     *,
     trace: dict[str, Any] | None = None,
     grace_seconds: float = 3.0,
+    metric_prefix: str = "benchflow_intermediate_soft_verify_timeout_cleanup",
+    schema_version: str = "skillsbench_soft_verify_timeout_process_cleanup_v0",
 ) -> dict[str, Any]:
     """Terminate verifier process trees left behind by an intermediate timeout."""
 
     prerequisites = plan.setdefault("runner_prerequisites", {})
     cleanup: dict[str, Any] = {
-        "schema_version": "skillsbench_soft_verify_timeout_process_cleanup_v0",
+        "schema_version": schema_version,
         "requested": True,
         "raw_logs_read": False,
         "raw_command_recorded": False,
@@ -1557,46 +1574,23 @@ def cleanup_benchflow_soft_verify_timeout_children(
     }
 
     def publish() -> dict[str, Any]:
-        prerequisites[
-            "benchflow_intermediate_soft_verify_timeout_cleanup_requested"
-        ] = True
-        prerequisites[
-            "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read"
-        ] = False
-        prerequisites[
-            "benchflow_intermediate_soft_verify_timeout_cleanup_status"
-        ] = str(cleanup.get("status") or "unknown")
+        prerequisites[f"{metric_prefix}_requested"] = True
+        prerequisites[f"{metric_prefix}_raw_logs_read"] = False
+        prerequisites[f"{metric_prefix}_status"] = str(
+            cleanup.get("status") or "unknown"
+        )
         if isinstance(trace, dict):
-            trace[
-                "benchflow_intermediate_soft_verify_timeout_cleanup_requested"
-            ] = True
-            trace[
-                "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read"
-            ] = False
-            trace[
-                "benchflow_intermediate_soft_verify_timeout_cleanup_status"
-            ] = str(cleanup.get("status") or "unknown")
+            trace[f"{metric_prefix}_requested"] = True
+            trace[f"{metric_prefix}_raw_logs_read"] = False
+            trace[f"{metric_prefix}_status"] = str(
+                cleanup.get("status") or "unknown"
+            )
         for source, target in (
-            (
-                "container_count",
-                "benchflow_intermediate_soft_verify_timeout_cleanup_container_count",
-            ),
-            (
-                "match_count",
-                "benchflow_intermediate_soft_verify_timeout_cleanup_match_count",
-            ),
-            (
-                "term_sent_count",
-                "benchflow_intermediate_soft_verify_timeout_cleanup_term_sent_count",
-            ),
-            (
-                "kill_sent_count",
-                "benchflow_intermediate_soft_verify_timeout_cleanup_kill_sent_count",
-            ),
-            (
-                "alive_after_count",
-                "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count",
-            ),
+            ("container_count", f"{metric_prefix}_container_count"),
+            ("match_count", f"{metric_prefix}_match_count"),
+            ("term_sent_count", f"{metric_prefix}_term_sent_count"),
+            ("kill_sent_count", f"{metric_prefix}_kill_sent_count"),
+            ("alive_after_count", f"{metric_prefix}_alive_after_count"),
         ):
             value = cleanup.get(source)
             if isinstance(value, int):
@@ -1867,11 +1861,40 @@ def install_benchflow_verifier_prep_timeout_override(
                     soft_timeout_override_count += 1
             return await original_exec(*args, **kwargs)
 
+        phase_timeout_sec = 0
+        if phase == "verify" and final_timeout_enabled:
+            phase_timeout_sec = final_verifier_timeout_sec
+        elif phase == "soft_verify" and soft_timeout_enabled:
+            phase_timeout_sec = soft_verifier_timeout_sec
+
         try:
             env.exec = exec_with_verifier_prep_timeout
-            return await original(self)
+            if phase_timeout_sec > 0:
+                result = await asyncio.wait_for(
+                    original(self),
+                    timeout=phase_timeout_sec,
+                )
+            else:
+                result = await original(self)
+            if phase == "soft_verify" and soft_timeout_enabled:
+                cleanup_benchflow_soft_verify_timeout_children(
+                    plan,
+                    trace=trace,
+                    metric_prefix=(
+                        "benchflow_intermediate_soft_verify_orphan_cleanup"
+                    ),
+                    schema_version=(
+                        "skillsbench_soft_verify_orphan_process_cleanup_v0"
+                    ),
+                )
+            return result
         except Exception as exc:
-            if final_timeout_override_count and _runner_exception_indicates_timeout(exc):
+            timeout_exc = _runner_exception_indicates_timeout(exc)
+            if (
+                phase == "verify"
+                and final_timeout_enabled
+                and timeout_exc
+            ):
                 prerequisites["benchflow_final_verifier_timeout_triggered"] = True
                 prerequisites["benchflow_final_verifier_timeout_raw_output_recorded"] = (
                     False
@@ -1881,7 +1904,11 @@ def install_benchflow_verifier_prep_timeout_override(
                     trace["benchflow_final_verifier_timeout_raw_output_recorded"] = (
                         False
                     )
-            if soft_timeout_override_count and _runner_exception_indicates_timeout(exc):
+            if (
+                phase == "soft_verify"
+                and soft_timeout_enabled
+                and timeout_exc
+            ):
                 prerequisites[
                     "benchflow_intermediate_soft_verify_timeout_triggered"
                 ] = True
@@ -2452,6 +2479,8 @@ def _agent_lifecycle_observed_for_setup_stall(plan: dict[str, Any]) -> bool:
 
 
 def _runner_exception_indicates_timeout(exc: BaseException) -> bool:
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+        return True
     text = f"{type(exc).__name__} {exc}".lower()
     return "timeout" in text or "timed out" in text
 
@@ -5011,6 +5040,24 @@ def _record_declared_done(
         trace["declared_done_score"] = reward
 
 
+def _record_product_mode_declared_done_below_passing_reward(
+    trace: dict[str, Any],
+    *,
+    agent_round: int,
+    reward: float,
+) -> None:
+    trace["product_mode_declared_done_below_passing_reward"] = True
+    trace["product_mode_declared_done_below_passing_reward_round"] = agent_round
+    trace["product_mode_declared_done_below_passing_reward_score"] = reward
+    trace["product_mode_declared_done_policy"] = (
+        "continue_until_official_success_or_budget"
+    )
+    current = trace.get("product_mode_declared_done_below_passing_reward_count")
+    if not isinstance(current, int) or isinstance(current, bool):
+        current = 0
+    trace["product_mode_declared_done_below_passing_reward_count"] = current + 1
+
+
 def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
     def count(*fields: str) -> int:
         values = [
@@ -5551,8 +5598,11 @@ def _build_product_mode_user(
             "LoopX product-mode lifecycle contract: official case-local "
             f"LoopX is initialized before the agent starts. Active state: "
             f"`{case_state_path}`. This is the only formal treatment "
-            "lifecycle; runner polling is only the outer transport. Before "
-            "planning, run the following commands inside the scored sandbox. "
+            "lifecycle; runner polling is only the outer transport. The "
+            "benchmark task remains the primary objective; LoopX commands track "
+            "control-plane state and do not themselves complete the task. As "
+            "the first control-plane action, run the following commands inside "
+            "the scored sandbox, then continue solving and validating the task. "
             "If a LoopX SkillsBench remote workspace bridge packet is present, "
             "invoke that private JSON bridge from your shell tool and send each "
             "command as an `operation=exec` request with `cwd=/app`; do not try "
@@ -5561,12 +5611,14 @@ def _build_product_mode_user(
             f"--agent-id {case_agent_id}` and claim the selected case todo "
             f"with `{case_cli_prefix} todo claim --goal-id {case_goal_id} "
             f"--todo-id {case_todo_id} --claimed-by {case_agent_id}`. "
-            "After meaningful local evidence or validation, update the todo "
-            "through LoopX CLI; when complete, use `todo complete`, then "
+            "After meaningful local task evidence or validation, update the "
+            "todo through LoopX CLI. Only after task-facing work indicates the "
+            "benchmark task is complete may you use `todo complete`, then "
             "`refresh-state`, then `quota spend-slot --source adapter "
-            "--execute` with this case goal and agent id. Do not rely on only "
-            "reading or editing the Markdown state file, and do not write a "
-            "separate marker as the source of truth. "
+            "--execute` with this case goal and agent id. Do not run closeout "
+            "as a setup step. Do not rely on only reading or editing the "
+            "Markdown state file, and do not write a separate marker as the "
+            "source of truth. "
         )
 
     def lifecycle_checkpoint_commands(round_number: int) -> str:
@@ -5662,6 +5714,43 @@ def _build_product_mode_user(
         def __init__(self) -> None:
             super().__init__()
             self._persistent_constraint_clause = ""
+
+        def _scheduled_continuation_prompt(
+            self,
+            *,
+            scheduled_round: int,
+            declared_done_continuation: bool = False,
+        ) -> str:
+            if treatment:
+                mode_clause = (
+                    "Continue from your LoopX case state at "
+                    f"`{case_state_path}` and todo/replan ledger; "
+                    "re-read and update them if local evidence changed."
+                )
+            else:
+                mode_clause = (
+                    "Continue from your own local plan/todo notes; do not use "
+                    "LoopX CLI/state/ledger."
+                )
+            done_clause = (
+                "A previous response included the done marker, but this "
+                "protocol uses success-or-budget stopping; keep using the "
+                "remaining fixed budget for local inspection, implementation, "
+                "and validation. "
+                if declared_done_continuation
+                else ""
+            )
+            return (
+                f"Scheduled product-mode continuation round {scheduled_round} of "
+                f"{max_rounds}. This is part of the fixed autonomous budget and "
+                "is not evidence that the official verifier passed or failed. "
+                "You are not being shown official reward, pass/fail status, "
+                "verifier error, or verifier output. "
+                f"{done_clause}"
+                f"{self._persistent_constraint_clause} {mode_clause} Keep scope "
+                "narrow, validate locally, and if there are no remaining goals, "
+                f"end with {DECLARED_DONE_MARKER}."
+            )
 
         async def run(
             self,
@@ -5769,6 +5858,39 @@ def _build_product_mode_user(
                                 "send_product_mode_solver_activity_continuation"
                             )
                             return solver_activity_prompt(round + 1)
+                    if (
+                        treatment
+                        and isinstance(reward, (int, float))
+                        and not isinstance(reward, bool)
+                        and reward < 1.0
+                    ):
+                        _record_declared_done(
+                            trace,
+                            agent_round=round,
+                            reward=reward,
+                        )
+                        _record_product_mode_declared_done_below_passing_reward(
+                            trace,
+                            agent_round=round,
+                            reward=float(reward),
+                        )
+                        _inc_counter(trace, "controller_action_decisions")
+                        if round >= max_rounds:
+                            _inc_counter(trace, "stop_decision_count")
+                            trace["last_decision"] = (
+                                "stop_after_product_mode_budget_with_"
+                                "declared_done_below_passing_reward"
+                            )
+                            return None
+                        _inc_counter(trace, "followup_prompt_count")
+                        trace["last_decision"] = (
+                            "send_product_mode_success_or_budget_"
+                            "continuation_after_declared_done"
+                        )
+                        return self._scheduled_continuation_prompt(
+                            scheduled_round=round + 1,
+                            declared_done_continuation=True,
+                        )
                     _inc_counter(trace, "controller_action_decisions")
                     _inc_counter(trace, "stop_decision_count")
                     _record_declared_done(trace, agent_round=round, reward=reward)
@@ -5817,18 +5939,6 @@ def _build_product_mode_user(
                 return (
                     prefix
                     + "You are running inside the official SkillsBench sandbox. "
-                    + control_clause
-                    + (
-                        "For this treatment, LoopX lifecycle evidence is a "
-                        "hard product-mode requirement: first run the "
-                        "case-local quota/todo commands above before "
-                        "substantive task work. When task work validates "
-                        "complete, run this exact case-local closeout sequence "
-                        "from `/app` before declaring done:\n\n"
-                        f"{closeout_commands(1)}"
-                        if treatment
-                        else ""
-                    )
                     + "No official reward, pass/fail status, verifier error, "
                     "verifier output, or verifier tail will be shown during this "
                     "run. If you believe the task is complete and there are no "
@@ -5836,6 +5946,21 @@ def _build_product_mode_user(
                     f"{DECLARED_DONE_MARKER}.\n\n"
                     "--- TASK INSTRUCTION ---\n"
                     f"{instruction}"
+                    + (
+                        "\n\n--- LOOPX PRODUCT-MODE CONTROL PLANE ---\n"
+                        f"{control_clause}"
+                        "For this treatment, LoopX lifecycle evidence is a "
+                        "hard product-mode requirement: first run the "
+                        "case-local quota/todo commands above, then solve and "
+                        "validate the benchmark task. Do not run case closeout "
+                        "or declare done until after meaningful task-facing work "
+                        "or local validation. If you later declare done without "
+                        "task-facing closeout evidence, the controller will ask "
+                        "for the exact closeout sequence without exposing "
+                        "official reward or verifier output."
+                        if treatment
+                        else "\n\n" + control_clause
+                    )
                 )
 
             _inc_counter(trace, "controller_action_decisions")
@@ -5852,27 +5977,7 @@ def _build_product_mode_user(
                     )
                     return lifecycle_checkpoint_prompt(round + 1)
             trace["last_decision"] = "send_product_mode_scheduled_continuation"
-            if treatment:
-                mode_clause = (
-                    "Continue from your LoopX case state at "
-                    f"`{case_state_path}` and todo/replan ledger; "
-                    "re-read and update them if local evidence changed."
-                )
-            else:
-                mode_clause = (
-                    "Continue from your own local plan/todo notes; do not use "
-                    "LoopX CLI/state/ledger."
-                )
-            return (
-                f"Scheduled product-mode continuation round {round + 1} of "
-                f"{max_rounds}. This is part of the fixed autonomous budget and "
-                "is not evidence that the official verifier passed or failed. "
-                "You are not being shown official reward, pass/fail status, "
-                "verifier error, or verifier output."
-                f"{self._persistent_constraint_clause} {mode_clause} Keep scope "
-                "narrow, validate locally, and if there are no remaining goals, "
-                f"end with {DECLARED_DONE_MARKER}."
-            )
+            return self._scheduled_continuation_prompt(scheduled_round=round + 1)
 
     return ProductModeUser()
 
@@ -7443,6 +7548,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=int,
         default=DEFAULT_TIMEOUT_SEC,
         help="Per-prompt timeout for local Codex exec in host-local ACP launch mode.",
+    )
+    parser.add_argument(
+        "--local-codex-first-action-timeout-sec",
+        type=int,
+        default=0,
+        help=(
+            "Optional watchdog for the first sandbox bridge operation from a "
+            "host-local Codex turn. 0 disables the watchdog."
+        ),
     )
     parser.add_argument(
         "--local-codex-ping-timeout-sec",

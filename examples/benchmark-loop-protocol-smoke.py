@@ -75,6 +75,18 @@ def main() -> int:
         "declared_done_score",
     ]
     assert product_contract["policy_gate"]["official_feedback_blinded"] is True
+    assert (
+        product_contract["policy_gate"][
+            "declared_done_stop_requires_no_failed_every_round_reward"
+        ]
+        is True
+    )
+    assert (
+        product_contract["policy_gate"][
+            "continue_after_declared_done_below_passing_reward"
+        ]
+        is True
+    )
 
     trace = build_benchmark_loop_controller_trace(
         route=LOOPX_BLIND_LOOP_TREATMENT_ROUTE,

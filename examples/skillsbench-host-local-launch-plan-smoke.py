@@ -962,6 +962,38 @@ raise SystemExit(1)
             reverse_failure["codex_exec_process"]["failure_category"]
             == "codex_reverse_channel_unavailable"
         ), reverse_failure
+        reverse_sleeping_codex = Path(tmp) / "reverse-sleeping-codex"
+        reverse_sleeping_codex.write_text(
+            """#!/usr/bin/env python3
+import time
+
+time.sleep(30)
+""",
+            encoding="utf-8",
+        )
+        reverse_sleeping_codex.chmod(0o755)
+        reverse_timeout = _run_codex_payload(
+            {
+                "args": [
+                    "exec",
+                    (
+                        "LoopX bridge test.\\n\\n"
+                        "Private bridge command:\\n"
+                        "/tmp/not-recorded"
+                    ),
+                ],
+                "timeout_sec": 30,
+            },
+            codex_bin=str(reverse_sleeping_codex),
+            default_timeout_sec=30,
+            prompt_bridge_command="true",
+            first_action_timeout_sec=1,
+        )
+        assert reverse_timeout["exit_code"] == 124, reverse_timeout
+        assert "codex_exec_first_action_timeout" in reverse_timeout["stderr"]
+        assert reverse_timeout["agent_operations_jsonl"] == ""
+        assert reverse_timeout["agent_operations_raw_material_recorded"] is False
+        assert reverse_timeout["raw_task_text_recorded"] is False
         preflight_plan = {
             "host_local_acp_relay_trace_dir": str(Path(tmp) / "preflight-traces"),
             "runner_prerequisites": {},
