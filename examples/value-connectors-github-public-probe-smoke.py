@@ -75,7 +75,31 @@ def main() -> int:
     connector_ids = {item["connector_id"] for item in install["checks"]}
     assert "github_public_channel" in connector_ids, connector_ids
     assert "botmail_identity" in connector_ids, connector_ids
+    assert "social_browser_x" in connector_ids, connector_ids
     assert_public_safe(install)
+
+    x_install = json.loads(
+        run_cli(
+            [
+                "--format",
+                "json",
+                "value-connectors",
+                "install-check",
+                "--connector",
+                "social_browser_x",
+            ]
+        ).stdout
+    )
+    assert x_install["ok"] is True, x_install
+    assert x_install["schema_version"] == VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION
+    assert x_install["truth_contract"]["external_reads_performed"] is False, x_install
+    assert x_install["truth_contract"]["external_writes_performed"] is False, x_install
+    x_check = x_install["checks"][0]
+    assert x_check["connector_id"] == "social_browser_x", x_check
+    assert x_check["external_write_capability"] is True, x_check
+    assert "exact account identity" in x_check["write_gate"], x_check
+    assert any("ego-browser" in item for item in x_check["install"]), x_check
+    assert_public_safe(x_install)
 
     probe = json.loads(
         run_cli(
@@ -106,9 +130,59 @@ def main() -> int:
     assert plan["schema_version"] == VALUE_CONNECTOR_PLAN_PACKET_SCHEMA_VERSION
     assert plan["external_writes_performed"] is False, plan
     assert plan["validation"]["ok"] is True, plan["validation"]
-    assert plan["projection"]["first_screen"]["gated_call_count"] == 2, plan
+    assert plan["projection"]["first_screen"]["gated_call_count"] == 4, plan
+    assert plan["projection"]["first_screen"]["safe_prepare_call_count"] == 4, plan
     assert "github_issue_intake" in plan["projection"]["safe_prepare_calls"], plan
+    assert "x_public_signal_scan" in plan["projection"]["safe_prepare_calls"], plan
+    assert "x_launch_post_gate" in plan["projection"]["gated_calls"], plan
+    calls = {item["call_id"]: item for item in plan["plan"]["connector_calls"]}
+    x_launch = calls["x_launch_post_gate"]
+    assert x_launch["connector_id"] == "social_browser_x", x_launch
+    assert x_launch["connector_kind"] == "browser_social_channel", x_launch
+    assert x_launch["external_write_requested"] is True, x_launch
+    assert x_launch["external_writes_allowed"] is False, x_launch
+    assert x_launch["requires_user_approval"] is True, x_launch
+    assert x_launch["approval_gate_id"] == "gate_x_exact_publish", x_launch
+    assert "spam" in x_launch["kill_condition"], x_launch
     assert_public_safe(plan)
+
+    x_gated = json.loads(
+        run_cli(
+            [
+                "--format",
+                "json",
+                "value-connectors",
+                "plan",
+                "--connector-id",
+                "social_browser_x",
+                "--connector-kind",
+                "browser_social_channel",
+                "--channel",
+                "X public post via ego-browser",
+                "--stage",
+                "external_write_request",
+                "--target-ref",
+                "one approved LoopX post",
+                "--target-url",
+                "https://x.com/loopxops",
+                "--external-write-requested",
+                "--money-metric",
+                "qualified workflow owner asks for LoopX setup help",
+                "--success-metric",
+                "one audit, demo, or setup request",
+                "--kill-condition",
+                "spam hiding, account-health degradation, or no workflow owner signal",
+            ]
+        ).stdout
+    )
+    assert x_gated["ok"] is True, x_gated
+    x_call = x_gated["plan"]["connector_calls"][0]
+    assert x_call["connector_id"] == "social_browser_x", x_call
+    assert x_call["external_write_requested"] is True, x_call
+    assert x_call["external_writes_allowed"] is False, x_call
+    assert x_call["requires_user_approval"] is True, x_call
+    assert x_gated["projection"]["first_screen"]["waiting_on"] == "user", x_gated
+    assert_public_safe(x_gated)
 
     gated = json.loads(
         run_cli(

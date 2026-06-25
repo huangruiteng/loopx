@@ -49,6 +49,7 @@ def register_value_connector_commands(
             "github_public_channel",
             "botmail_identity",
             "community_channel",
+            "social_browser_x",
         ],
         default="all",
         help="Connector profile to check.",
