@@ -166,6 +166,12 @@ renders those JSON contracts as short chat summaries instead of forwarding raw
 scheduler output. Ordinary text or `/ask <task>` creates a tracked agent todo
 with progress cards.
 
+Feishu-created tasks are claimed into stable request lanes such as
+`codex-devbox-req-<hash>` instead of the bridge's main agent id. This lets
+independent chat requests appear as separate scheduler lanes in `/next`.
+The first todo is a read-only triage step; writes, external runs, uploads, and
+production actions still require an explicit follow-up gate or scoped todo.
+
 For local copy/paste handoff text without the Feishu bridge, use:
 
 ```bash
