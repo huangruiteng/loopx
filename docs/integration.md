@@ -163,6 +163,13 @@ developer steps and worker handoffs. The bridge renders that JSON contract as a
 short chat summary instead of forwarding raw scheduler output. Ordinary text or
 `/ask <task>` creates a tracked agent todo with progress cards.
 
+For local copy/paste handoff text without the Feishu bridge, use:
+
+```bash
+loopx scheduler handoffs --goal-id <goal-id>
+loopx scheduler handoffs --goal-id <goal-id> --todo-id <todo-id>
+```
+
 Useful optional environment variables:
 
 ```text

@@ -57,6 +57,7 @@ Host integrations should expose read methods that map directly to CLI reads:
 | Status and attention queue | `loopx --format json status` | first-screen status, user todos, agent todos, gate state, freshness warnings, optional read-only projections such as `task_graph_projection_v0` |
 | Quota decision | `loopx --format json quota should-run --goal-id <goal-id> --agent-id <agent-id>` | `interaction_contract`, execution obligation, workspace guard, spend policy |
 | Scheduler plan | `loopx --format json scheduler plan --goal-id <goal-id> --agent-id <agent-id>` | bounded `runnable_batch`, `dispatch_plan`, waiting conflicts, blocked candidates, no worker launch |
+| Scheduler handoffs | `loopx scheduler handoffs --goal-id <goal-id> --todo-id <todo-id>` | filtered `scheduler_worker_handoff_v0` text packets for already-runnable scheduler candidates, no worker launch |
 | Review packet | `loopx --format json review-packet --goal-id <goal-id>` | human/controller decision packet and agent handoff context |
 | Run history | `loopx history` or status projections | compact run ids, classification, outcome, validation, blocker pointers |
 
