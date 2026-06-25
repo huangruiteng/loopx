@@ -631,6 +631,13 @@ if """ + repr(SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER) + """ not in prompt:
 bridge_command = prompt.split("Private bridge command:", 1)[1].strip().splitlines()[0]
 if not bridge_command:
     raise SystemExit(10)
+copyable_packet = prompt.split("Copyable first sandbox action:", 1)[1].split("Request examples:", 1)[0]
+if "<private bridge command>" in copyable_packet:
+    raise SystemExit(12)
+if "pwd && ls -la" not in copyable_packet:
+    raise SystemExit(13)
+if bridge_command not in copyable_packet:
+    raise SystemExit(14)
 for command in (
     "/app/.local/bin/loopx quota should-run --goal-id skillsbench-case --agent-id codex-benchmark-agent",
     "/app/.local/bin/loopx todo update --goal-id skillsbench-case --todo-id todo_seed --status open --note checkpoint",

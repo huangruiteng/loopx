@@ -900,6 +900,23 @@ class SkillsBenchLocalAcpRelay:
             or self._config.remote_command_file_bridge_command
             or ""
         )
+        first_exec_request = json.dumps(
+            {
+                "operation": "exec",
+                "cwd": "/app",
+                "command": "pwd && ls -la",
+                "timeout_sec": 10,
+            },
+            separators=(",", ":"),
+        )
+        first_exec_command = (
+            f"printf '%s\\n' {shlex.quote(first_exec_request)} | {bridge_command}"
+            if bridge_command
+            else (
+                "printf '%s\\n' "
+                f"{shlex.quote(first_exec_request)} | <private bridge command>"
+            )
+        )
         packet = f"""
 
 LoopX SkillsBench remote workspace bridge:
@@ -909,6 +926,8 @@ LoopX SkillsBench remote workspace bridge:
 - Invoke it from the Codex CLI shell by piping JSON to the private bridge
   command shown below. For example:
   `printf '%s\\n' '{{"operation":"exec","cwd":"/app","command":"pwd","timeout_sec":10}}' | <private bridge command>`
+- Copyable first sandbox action:
+  `{first_exec_command}`
 - Request examples:
   - {{"operation":"exec","cwd":"/app","command":"pwd","timeout_sec":10}}
   - {{"operation":"read_file","path":"/app/path/to/file","max_bytes":20000}}

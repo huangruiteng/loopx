@@ -223,7 +223,15 @@ def test_product_mode_initial_prompt_keeps_task_visible_after_lifecycle_gate() -
             route="loopx-product-mode",
             max_rounds=8,
             trace=trace,
-            plan={},
+            plan={
+                "runner_prerequisites": {
+                    "loopx_workflow_lifecycle_checkpoint": True,
+                    "loopx_product_mode_lifecycle_driver_kind": (
+                        "orchestrated_agentloop_loopx_cli"
+                    ),
+                }
+            },
+            case_payload={"canonical_product_mode_lifecycle_driver": True},
         )
     finally:
         for name, module in saved_modules.items():
@@ -238,11 +246,14 @@ def test_product_mode_initial_prompt_keeps_task_visible_after_lifecycle_gate() -
     assert "--- TASK INSTRUCTION ---" in prompt
     assert "Compute the requested coefficient." in prompt
     assert "task semantics stay aligned with the baseline" in prompt
-    assert "Before reading, planning, solving, or answering the task" in prompt
-    assert "task-facing work must wait" in prompt
+    assert "canonical workflow lifecycle driver has already" in prompt
+    assert "Do not repeat setup lifecycle" in prompt
+    assert "`pwd && ls -la`" in prompt
+    assert "first agent action a task-facing sandbox bridge exec" in prompt
     assert "Do not run case closeout" in prompt
-    assert "quota should-run --goal-id skillsbench-case" in prompt
-    assert "todo claim --goal-id skillsbench-case" in prompt
+    assert "quota should-run --goal-id skillsbench-case" not in prompt
+    assert "todo claim --goal-id skillsbench-case" not in prompt
+    assert "task-facing work must wait" not in prompt
     assert "todo complete --goal-id skillsbench-case" not in prompt
     assert "benchmark_case_agent_closeout" not in prompt
     assert "quota spend-slot --goal-id skillsbench-case" not in prompt
@@ -2067,6 +2078,117 @@ def test_product_mode_no_tool_call_stops_before_checkpoint_loop() -> None:
         assert trace["product_mode_no_tool_call_lifecycle_abort_round"] == 1
         assert trace["followup_prompt_count"] == 0
         assert trace["stop_decision_count"] == 1
+
+
+def test_product_mode_workflow_driver_task_bridge_activity_avoids_no_tool_abort() -> None:
+    trace = {
+        "schema_version": "skillsbench_loopx_controller_trace_v0",
+        "route": "loopx-product-mode",
+        "loopx_state_reads": 0,
+        "loopx_state_writes": 0,
+        "loopx_case_state_reads": 0,
+        "loopx_case_state_writes": 0,
+        "remote_command_file_bridge_driver_lifecycle_execution_style": (
+            "orchestrated_agentloop_loopx_cli"
+        ),
+        "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 1,
+        "remote_command_file_bridge_driver_lifecycle_success_count": 4,
+        "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+        "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
+        "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
+        "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
+        "remote_command_file_bridge_agent_operation_trace_status": (
+            "agent_operation_trace_recorded"
+        ),
+        "remote_command_file_bridge_agent_operation_trace_count": 1,
+        "remote_command_file_bridge_agent_request_count": 1,
+        "remote_command_file_bridge_agent_task_facing_operation_count": 1,
+        "heartbeat_count": 0,
+        "controller_action_decisions": 0,
+        "initial_prompt_count": 0,
+        "followup_prompt_count": 0,
+        "stop_decision_count": 0,
+        "reward_observation_count": 0,
+        "round_rewards": [],
+    }
+    plan = {
+        "runner_prerequisites": {
+            "loopx_workflow_lifecycle_checkpoint": True,
+            "loopx_product_mode_lifecycle_driver_kind": (
+                "orchestrated_agentloop_loopx_cli"
+            ),
+        }
+    }
+    saved_modules = {
+        name: sys.modules.get(name)
+        for name in (
+            "benchflow",
+            "benchflow.sandbox",
+            "benchflow.sandbox.user",
+        )
+    }
+    fake_benchflow = types.ModuleType("benchflow")
+    fake_sandbox = types.ModuleType("benchflow.sandbox")
+    fake_user = types.ModuleType("benchflow.sandbox.user")
+
+    class FakeBaseUser:
+        pass
+
+    class FakeRoundResultBase:
+        pass
+
+    fake_user.BaseUser = FakeBaseUser
+    fake_user.RoundResult = FakeRoundResultBase
+    sys.modules["benchflow"] = fake_benchflow
+    sys.modules["benchflow.sandbox"] = fake_sandbox
+    sys.modules["benchflow.sandbox.user"] = fake_user
+    try:
+        user = _build_product_mode_user(
+            route="loopx-product-mode",
+            max_rounds=8,
+            trace=trace,
+            plan=plan,
+            case_payload={"canonical_product_mode_lifecycle_driver": True},
+        )
+    finally:
+        for name, module in saved_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+    initial_prompt = asyncio.run(user.run(0, "Fix the fixture."))
+    assert initial_prompt is not None, trace
+    assert "canonical workflow lifecycle driver has already" in initial_prompt
+
+    class FakeRoundResult:
+        rewards = {}
+        trajectory = [
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Inspected the sandbox through the bridge.",
+                    }
+                ],
+            }
+        ]
+        n_tool_calls = 0
+
+    prompt = asyncio.run(
+        user.run(
+            1,
+            "Fix the fixture.",
+            round_result=FakeRoundResult(),
+        )
+    )
+    assert prompt is not None, trace
+    assert trace["last_decision"] == "send_product_mode_scheduled_continuation", trace
+    assert trace.get("product_mode_no_tool_call_lifecycle_abort") is not True, trace
+    assert trace.get("product_mode_no_lifecycle_request_abort") is not True, trace
+    assert trace["followup_prompt_count"] == 1, trace
+    assert trace["stop_decision_count"] == 0, trace
 
 
 def test_product_mode_agent_trace_no_requests_stops_before_verifier() -> None:
@@ -8685,6 +8807,7 @@ if __name__ == "__main__":
     test_product_mode_declared_done_below_passing_reward_continues()
     test_product_mode_missing_lifecycle_prompts_exact_checkpoint()
     test_product_mode_no_tool_call_stops_before_checkpoint_loop()
+    test_product_mode_workflow_driver_task_bridge_activity_avoids_no_tool_abort()
     test_skillsbench_skeleton_builder()
     test_skillsbench_official_result_builder()
     test_skillsbench_result_reward_artifact_recovery()

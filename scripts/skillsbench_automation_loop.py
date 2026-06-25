@@ -83,6 +83,7 @@ from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_LOOPX_RUNTIME_ROOT,
     BENCHMARK_CASE_LOOPX_SOURCE_MOUNT_TARGET,
     BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE,
+    BENCHMARK_CASE_LOOPX_PROMPT_DRIVEN_EXECUTION_STYLE,
     BENCHMARK_CASE_LOOPX_TODO_ID,
     benchmark_case_loopx_command_prefix,
     benchmark_case_loopx_install_payload,
@@ -3796,6 +3797,16 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "host_local_acp_launch_status": (
                 "pending" if args.host_local_acp_launch else "not_requested"
             ),
+            "loopx_workflow_lifecycle_checkpoint": bool(
+                args.route == "loopx-product-mode" and args.host_local_acp_launch
+            ),
+            "loopx_product_mode_lifecycle_driver_kind": (
+                BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE
+                if args.route == "loopx-product-mode" and args.host_local_acp_launch
+                else BENCHMARK_CASE_LOOPX_PROMPT_DRIVEN_EXECUTION_STYLE
+                if args.route == "loopx-product-mode"
+                else "not_applicable"
+            ),
             "host_local_acp_codex_exec_preflight_requested": bool(
                 args.host_local_acp_codex_exec_preflight
             ),
@@ -5840,8 +5851,50 @@ def _build_product_mode_user(
         case_registry_path=str(payload.get("case_registry_path") or "/app/.loopx/registry.json"),
         case_runtime_root=str(payload.get("case_runtime_root") or "/app/.loopx/runtime"),
     )
+    plan_prerequisites = (
+        (plan or {}).get("runner_prerequisites")
+        if isinstance(plan, dict)
+        else None
+    )
+    if not isinstance(plan_prerequisites, dict):
+        plan_prerequisites = {}
+    workflow_lifecycle_driver = bool(
+        treatment
+        and payload.get("canonical_product_mode_lifecycle_driver") is True
+        and (
+            plan_prerequisites.get("loopx_workflow_lifecycle_checkpoint") is True
+            or plan_prerequisites.get("loopx_product_mode_lifecycle_driver_kind")
+            == BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE
+        )
+    )
 
     def treatment_state_contract() -> str:
+        if workflow_lifecycle_driver:
+            return (
+                "LoopX product-mode lifecycle contract: official case-local "
+                f"LoopX is initialized before the agent starts. Active state: "
+                f"`{case_state_path}`. This is the only formal treatment "
+                "lifecycle; runner polling is only the outer transport. The "
+                "canonical workflow lifecycle driver has already executed the "
+                "case-local `quota should-run`, `todo claim`, `todo update`, "
+                "and `refresh-state` checkpoint through the sandbox bridge "
+                "before this prompt. Do not repeat that setup checkpoint as "
+                "your first action. The benchmark task remains the primary "
+                "objective; LoopX commands track control-plane state and do "
+                "not themselves complete the task. Before prose planning, "
+                "solving narrative, or final answer, your first agent action "
+                "must be a task-facing shell/tool call through the available "
+                "sandbox bridge, using an `operation=exec` request with "
+                "`cwd=/app`; a minimal valid first command is `pwd && ls -la`. "
+                "After meaningful local task evidence or validation, update "
+                "the todo through LoopX CLI. Only after task-facing work "
+                "indicates the benchmark task is complete may you use "
+                "`todo complete`, then `refresh-state`, then "
+                "`quota spend-slot --source adapter --execute` with this case "
+                "goal and agent id. Do not run closeout as a setup step. Do "
+                "not rely on only reading or editing the Markdown state file, "
+                "and do not write a separate marker as the source of truth. "
+            )
         return (
             "LoopX product-mode lifecycle contract: official case-local "
             f"LoopX is initialized before the agent starts. Active state: "
@@ -5961,6 +6014,25 @@ def _build_product_mode_user(
             "has been recorded."
         )
 
+    def product_mode_workflow_entry_activity_satisfied() -> bool:
+        return bool(
+            workflow_lifecycle_driver
+            and _product_mode_depth_gate_satisfied(trace)
+            and _trace_max_int(
+                trace,
+                "remote_command_file_bridge_agent_request_count",
+                "remote_command_file_bridge_agent_operation_trace_count",
+                "remote_command_file_bridge_agent_task_facing_operation_count",
+            )
+            > 0
+        )
+
+    def product_mode_entry_lifecycle_gate_satisfied() -> bool:
+        return bool(
+            _product_mode_agent_lifecycle_gate_satisfied(trace)
+            or product_mode_workflow_entry_activity_satisfied()
+        )
+
     class ProductModeUser(BaseUser):
         """Main-table autonomous product-mode controller."""
 
@@ -6046,9 +6118,18 @@ def _build_product_mode_user(
                         )
                         == "agent_operation_trace_present_no_requests"
                     )
+                    workflow_entry_activity_satisfied = (
+                        product_mode_workflow_entry_activity_satisfied()
+                    )
+                    lifecycle_entry_satisfied = (
+                        product_mode_entry_lifecycle_gate_satisfied()
+                    )
                     if (
-                        (no_tool_calls or no_lifecycle_requests)
-                        and not _product_mode_agent_lifecycle_gate_satisfied(trace)
+                        (
+                            (no_tool_calls and not workflow_entry_activity_satisfied)
+                            or no_lifecycle_requests
+                        )
+                        and not lifecycle_entry_satisfied
                     ):
                         _record_product_mode_lifecycle_checkpoint_gap(
                             trace,
@@ -6230,15 +6311,26 @@ def _build_product_mode_user(
                         "--- LOOPX PRODUCT-MODE CONTROL PLANE ---\n"
                         f"{control_clause}"
                         "For this treatment, LoopX lifecycle evidence is a "
-                        "hard product-mode requirement: first run the "
-                        "case-local quota/todo commands above through the solver "
-                        "bridge before any task inspection, planning, solving, or "
-                        "final answer. The benchmark task instruction is visible "
-                        "in this first round so the task semantics stay aligned "
-                        "with the baseline, but task-facing work must wait until "
-                        "after the solver-side LoopX read/write checkpoint. Do "
-                        "not run case closeout or declare done during this setup "
-                        "checkpoint.\n\n"
+                        "hard product-mode requirement: "
+                        + (
+                            "the canonical workflow lifecycle driver has already "
+                            "completed the case-local quota/todo/update/refresh "
+                            "checkpoint through the solver bridge before this "
+                            "prompt. Do not repeat setup lifecycle as your first "
+                            "action. Make the first agent action a task-facing "
+                            "sandbox bridge exec from `/app`, such as "
+                            "`pwd && ls -la`, before any prose planning, solving "
+                            "narrative, or final answer. "
+                            if workflow_lifecycle_driver
+                            else
+                            "first run the case-local quota/todo commands above "
+                            "through the solver bridge before any task inspection, "
+                            "planning, solving, or final answer. "
+                        )
+                        + "The benchmark task instruction is visible in this "
+                        "first round so the task semantics stay aligned with the "
+                        "baseline. Do not run case closeout or declare done "
+                        "during this setup checkpoint.\n\n"
                         "--- TASK INSTRUCTION ---\n"
                         f"{instruction}"
                     )
@@ -6281,7 +6373,7 @@ def _build_product_mode_user(
             _inc_counter(trace, "followup_prompt_count")
             if treatment:
                 _merge_acp_trajectory_summary(plan or {}, trace)
-                if not _product_mode_agent_lifecycle_gate_satisfied(trace):
+                if not product_mode_entry_lifecycle_gate_satisfied():
                     _record_product_mode_lifecycle_checkpoint_gap(
                         trace,
                         agent_round=round,
