@@ -248,6 +248,10 @@ def render_scheduler_handoffs_markdown(payload: dict[str, Any]) -> str:
                 lines.append(f"- quota_guard: `{item.get('quota_guard_command')}`")
             if item.get("status_command"):
                 lines.append(f"- status: `{item.get('status_command')}`")
+            if item.get("complete_command_template"):
+                lines.append(f"- complete: `{item.get('complete_command_template')}`")
+            if item.get("blocked_command_template"):
+                lines.append(f"- blocked: `{item.get('blocked_command_template')}`")
             text = str(item.get("handoff_text") or "").strip()
             if text:
                 lines.extend(["", "```text", text, "```"])
@@ -639,6 +643,9 @@ def _worker_handoffs(*, goal_id: str, runnable_batch: list[dict[str, Any]]) -> l
             "required_decision_scopes": item.get("required_decision_scopes") or [],
             "handoff_text": _worker_handoff_text(goal_id=goal_id, item=item, agent_lane=lane),
         }
+        if goal_id:
+            payload["complete_command_template"] = _todo_complete_template(goal_id=goal_id, todo_id=todo_id)
+            payload["blocked_command_template"] = _todo_blocked_template(goal_id=goal_id, todo_id=todo_id)
         if goal_id and lane:
             payload["quota_guard_command"] = _shell_join(
                 [
@@ -684,6 +691,44 @@ def _worker_handoff_text(*, goal_id: str, item: dict[str, Any], agent_lane: str)
     lines.append("Before work: run quota/status guard for this lane.")
     lines.append("After work: update or complete the todo with public-safe evidence.")
     return compact_markdown("\n".join(lines), max_chars=700, suffix="...")
+
+
+def _todo_complete_template(*, goal_id: str, todo_id: str) -> str:
+    return _shell_join(
+        [
+            "loopx",
+            "todo",
+            "complete",
+            "--goal-id",
+            goal_id,
+            "--role",
+            "agent",
+            "--todo-id",
+            todo_id,
+            "--evidence",
+            "<public-safe evidence>",
+        ]
+    )
+
+
+def _todo_blocked_template(*, goal_id: str, todo_id: str) -> str:
+    return _shell_join(
+        [
+            "loopx",
+            "todo",
+            "update",
+            "--goal-id",
+            goal_id,
+            "--role",
+            "agent",
+            "--todo-id",
+            todo_id,
+            "--status",
+            "blocked",
+            "--reason",
+            "<public-safe blocker>",
+        ]
+    )
 
 
 def _developer_steps(

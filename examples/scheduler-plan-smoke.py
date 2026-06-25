@@ -324,6 +324,14 @@ def assert_cli_scheduler_handoffs_render_copyable_worker_packets() -> None:
         handoffs = {item["todo_id"]: item for item in payload["worker_handoffs"]}
         assert "Todo: todo_cli_docs" in handoffs["todo_cli_docs"]["handoff_text"], handoffs
         assert "Write scopes: docs/**" in handoffs["todo_cli_docs"]["handoff_text"], handoffs
+        assert handoffs["todo_cli_docs"]["complete_command_template"] == (
+            "loopx todo complete --goal-id scheduler-plan-smoke --role agent "
+            "--todo-id todo_cli_docs --evidence '<public-safe evidence>'"
+        ), handoffs
+        assert handoffs["todo_cli_docs"]["blocked_command_template"] == (
+            "loopx todo update --goal-id scheduler-plan-smoke --role agent "
+            "--todo-id todo_cli_docs --status blocked --reason '<public-safe blocker>'"
+        ), handoffs
 
         markdown_result = subprocess.run(
             [
@@ -348,6 +356,8 @@ def assert_cli_scheduler_handoffs_render_copyable_worker_packets() -> None:
         )
         assert "# LoopX Scheduler Worker Handoffs" in markdown_result.stdout, markdown_result.stdout
         assert "Todo: todo_cli_docs" in markdown_result.stdout, markdown_result.stdout
+        assert "complete:" in markdown_result.stdout, markdown_result.stdout
+        assert "blocked:" in markdown_result.stdout, markdown_result.stdout
         assert "todo_cli_read" not in markdown_result.stdout, markdown_result.stdout
 
 
