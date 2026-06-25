@@ -92,6 +92,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     reduce_result,
     _runner_prerequisite_failure_attribution,
     _subcommand_family_count,
+    _sync_relay_closeout_counts_into_compact,
     summarize_acp_trajectory,
     stage_task_for_sandbox,
 )
@@ -139,6 +140,34 @@ def test_loopx_subcommand_family_counts_include_arguments() -> None:
     assert _subcommand_family_count(counts, "todo complete", "todo update") == 3
     assert _subcommand_family_count(counts, "refresh-state") == 3
     assert _subcommand_family_count(counts, "quota spend-slot") == 4
+
+
+def test_relay_closeout_counts_sync_into_final_compact() -> None:
+    compact = {
+        "interaction_counters": {
+            "remote_command_file_bridge_agent_refresh_state_count": 0,
+        },
+        "product_mode_lifecycle_contract": {
+            "agent_bridge_todo_closeout_count": 2,
+            "agent_bridge_refresh_state_count": 0,
+            "agent_bridge_quota_spend_slot_count": 1,
+        },
+    }
+    _sync_relay_closeout_counts_into_compact(
+        compact,
+        {
+            "remote_command_file_bridge_agent_todo_closeout_count": 2,
+            "remote_command_file_bridge_agent_refresh_state_count": 1,
+            "remote_command_file_bridge_agent_quota_spend_slot_count": 1,
+        },
+    )
+    assert compact["interaction_counters"][
+        "remote_command_file_bridge_agent_refresh_state_count"
+    ] == 1
+    assert compact["product_mode_lifecycle_contract"][
+        "agent_bridge_refresh_state_count"
+    ] == 1
+    assert compact["product_mode_lifecycle_contract"]["closeout_satisfied"] is True
 
 
 def test_skillsbench_append_history_missing_registry_is_nonfatal() -> None:

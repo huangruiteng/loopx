@@ -5122,6 +5122,57 @@ def _product_mode_solver_activity_observed(
     return task_activity_observed and agent_state_write_observed
 
 
+def _sync_relay_closeout_counts_into_compact(
+    compact: dict[str, Any],
+    runner_prerequisites: dict[str, Any],
+) -> None:
+    if not runner_prerequisites:
+        return
+    interaction_counters = compact.get("interaction_counters")
+    if not isinstance(interaction_counters, dict):
+        interaction_counters = {}
+        compact["interaction_counters"] = interaction_counters
+    product_contract = compact.get("product_mode_lifecycle_contract")
+    if not isinstance(product_contract, dict):
+        product_contract = {}
+        compact["product_mode_lifecycle_contract"] = product_contract
+    for runner_field, contract_field in (
+        (
+            "remote_command_file_bridge_agent_todo_closeout_count",
+            "agent_bridge_todo_closeout_count",
+        ),
+        (
+            "remote_command_file_bridge_agent_refresh_state_count",
+            "agent_bridge_refresh_state_count",
+        ),
+        (
+            "remote_command_file_bridge_agent_quota_spend_slot_count",
+            "agent_bridge_quota_spend_slot_count",
+        ),
+    ):
+        value = runner_prerequisites.get(runner_field)
+        if not isinstance(value, int) or isinstance(value, bool):
+            continue
+        value = max(0, value)
+        current_counter = interaction_counters.get(runner_field)
+        if not isinstance(current_counter, int) or isinstance(current_counter, bool):
+            current_counter = 0
+        interaction_counters[runner_field] = max(current_counter, value)
+        current_contract = product_contract.get(contract_field)
+        if not isinstance(current_contract, int) or isinstance(current_contract, bool):
+            current_contract = 0
+        product_contract[contract_field] = max(current_contract, value)
+    if all(
+        product_contract.get(field, 0) > 0
+        for field in (
+            "agent_bridge_todo_closeout_count",
+            "agent_bridge_refresh_state_count",
+            "agent_bridge_quota_spend_slot_count",
+        )
+    ):
+        product_contract["closeout_satisfied"] = True
+
+
 def _record_product_mode_depth_gate_gap(
     trace: dict[str, Any],
     *,
@@ -6730,6 +6781,7 @@ def reduce_result(
         raise RuntimeError("SkillsBench treatment reducer produced non-compact run")
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
+        _sync_relay_closeout_counts_into_compact(compact, runner_prerequisites)
     prereq_failure = _runner_prerequisite_failure_attribution(
         plan.get("runner_prerequisites")
     )
@@ -6972,6 +7024,7 @@ def build_runner_failure_compact(
     )
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
+        _sync_relay_closeout_counts_into_compact(compact, runner_prerequisites)
     task_staging = _effective_public_task_staging(plan)
     if task_staging:
         compact["task_staging"] = task_staging
