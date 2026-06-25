@@ -20,6 +20,7 @@ from .status import (
 from .todo_contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
+    TODO_TASK_CLASS_USER_GATE,
     TODO_TASK_PATTERN,
     build_todo_id,
     format_todo_metadata_line,
@@ -579,6 +580,7 @@ def add_goal_todo(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     project: Path | None = None,
@@ -608,14 +610,32 @@ def add_goal_todo(
             if claimed_by
             else None
         )
+        effective_agent_id = (
+            require_registered_agent_id(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                field="agent_id",
+            )
+            if agent_id
+            else None
+        )
+        inferred_blocks_agent = blocks_agent
+        if (
+            effective_agent_id
+            and not inferred_blocks_agent
+            and role == "user"
+            and task_class == TODO_TASK_CLASS_USER_GATE
+        ):
+            inferred_blocks_agent = effective_agent_id
         effective_blocks_agent = (
             require_registered_agent_id(
                 registry_path=registry_path,
                 goal_id=goal_id,
-                agent_id=blocks_agent,
+                agent_id=inferred_blocks_agent,
                 field="blocks_agent",
             )
-            if blocks_agent
+            if inferred_blocks_agent
             else None
         )
         normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id) if unblocks_todo_id else None
@@ -664,6 +684,7 @@ def add_goal_todo(
         "required_capabilities": add_result.get("required_capabilities"),
         "target_capabilities": add_result.get("target_capabilities"),
         "claimed_by": add_result.get("claimed_by"),
+        "agent_id": effective_agent_id,
         "blocks_agent": add_result.get("blocks_agent"),
         "unblocks_todo_id": add_result.get("unblocks_todo_id"),
         "resume_when": add_result.get("resume_when"),
@@ -823,6 +844,7 @@ def update_goal_todo(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     clear_claim: bool = False,
@@ -850,14 +872,32 @@ def update_goal_todo(
             if claimed_by
             else None
         )
+        effective_agent_id = (
+            require_registered_agent_id(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                field="agent_id",
+            )
+            if agent_id
+            else None
+        )
+        inferred_blocks_agent = blocks_agent
+        if (
+            effective_agent_id
+            and not inferred_blocks_agent
+            and role == "user"
+            and task_class == TODO_TASK_CLASS_USER_GATE
+        ):
+            inferred_blocks_agent = effective_agent_id
         effective_blocks_agent = (
             require_registered_agent_id(
                 registry_path=registry_path,
                 goal_id=goal_id,
-                agent_id=blocks_agent,
+                agent_id=inferred_blocks_agent,
                 field="blocks_agent",
             )
-            if blocks_agent
+            if inferred_blocks_agent
             else None
         )
         normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id) if unblocks_todo_id else None
@@ -899,6 +939,7 @@ def update_goal_todo(
         "dry_run": dry_run,
         "changed": changed,
         "goal_id": goal_id,
+        "agent_id": effective_agent_id,
         **update_result,
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,

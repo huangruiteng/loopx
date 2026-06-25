@@ -183,7 +183,12 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     )
     todo_parser.add_argument(
         "--agent-id",
-        help="For todo suggest, name the project agent that should perform the repository analysis.",
+        help=(
+            "For todo add/update on role=user task-class=user_gate, mark the "
+            "authoring registered agent; when --blocks-agent is omitted, the "
+            "gate blocks this agent. For todo suggest, name the project agent "
+            "that should perform the repository analysis."
+        ),
     )
     todo_parser.add_argument(
         "--from",
@@ -224,14 +229,22 @@ def handle_todo_command(
         else render_todo_markdown
     )
     try:
+        agent_id_allowed_for_gate_authoring = (
+            args.todo_command in {"add", "update"}
+            and args.role == "user"
+            and args.task_class == "user_gate"
+        )
         if args.todo_command not in {"suggest", "capture-followups"} and (
-            args.agent_id
+            (args.agent_id and not agent_id_allowed_for_gate_authoring)
             or args.suggestion_sources
             or args.suggestion_limit is not None
             or args.suggestion_trigger
         ):
             raise ValueError(
-                "todo --agent-id, --from, --limit, and --trigger are only supported by `todo suggest`"
+                "todo --agent-id is supported by `todo suggest` and by "
+                "`todo add/update --role user --task-class user_gate` for "
+                "agent-scoped user gates; --from, --limit, and --trigger are "
+                "only supported by `todo suggest`"
             )
         if args.todo_command == "add":
             if args.followups:
@@ -258,6 +271,7 @@ def handle_todo_command(
                 target_capabilities=args.target_capabilities,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
+                agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
                 resume_when=args.resume_when,
                 project=Path(args.project).expanduser() if args.project else None,
@@ -361,6 +375,7 @@ def handle_todo_command(
                 target_capabilities=args.target_capabilities,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
+                agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
                 resume_when=args.resume_when,
                 clear_claim=bool(args.clear_claim),
@@ -580,7 +595,7 @@ def handle_todo_command(
             registry_path=registry_path,
             runtime_root_arg=runtime_root_arg,
             event_kind=todo_event_kinds.get(args.todo_command, "todo_update"),
-            agent_id=args.claimed_by,
+            agent_id=args.agent_id or args.claimed_by,
             todo_id=args.todo_id or str(payload.get("todo_id") or "").strip() or None,
             status=str(payload.get("status") or args.todo_command or "").strip(),
             summary=(
