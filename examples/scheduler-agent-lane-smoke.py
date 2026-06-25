@@ -80,6 +80,15 @@ def assert_same_claimed_agent_is_serialized() -> None:
         "todo_dev_docs",
         "todo_side_ui",
     ], plan
+    dispatch = plan["dispatch_plan"]
+    assert dispatch["action"] == "run_parallel_batch", dispatch
+    assert dispatch["parallelizable"] is True, dispatch
+    assert dispatch["runnable_todo_ids"] == ["todo_dev_docs", "todo_side_ui"], dispatch
+    assert dispatch["waiting_reason_counts"] == {"agent_lane_capacity": 1}, dispatch
+    lanes = {item["agent_lane"]: item for item in dispatch["agent_lanes"]}
+    assert lanes["codex-devbox"]["runnable_todo_ids"] == ["todo_dev_docs"], lanes
+    assert lanes["codex-devbox"]["waiting_todo_ids"] == ["todo_dev_src"], lanes
+    assert lanes["codex-side-ui"]["runnable_todo_ids"] == ["todo_side_ui"], lanes
     waiting = {item["todo_id"]: item for item in plan["waiting_candidates"]}
     assert waiting["todo_dev_src"]["reason_codes"] == ["agent_lane_capacity"], waiting
     assert waiting["todo_dev_src"]["conflicts_with"] == ["todo_dev_docs"], waiting
@@ -103,6 +112,10 @@ def assert_agent_scoped_plan_includes_claim_and_guard_commands() -> None:
         "loopx --format json quota should-run "
         "--goal-id scheduler-agent-lane-smoke --agent-id codex-devbox"
     ), commands
+    steps = plan["dispatch_plan"]["developer_steps"]
+    assert steps[0]["kind"] == "quota_guard", steps
+    assert steps[1]["kind"] == "claim_runnable", steps
+    assert steps[1]["todo_id"] == "todo_unclaimed_docs", steps
     assert plan["runnable_batch"][0]["claim_command"] == (
         "loopx todo claim --goal-id scheduler-agent-lane-smoke "
         "--todo-id todo_unclaimed_docs --claimed-by codex-devbox"

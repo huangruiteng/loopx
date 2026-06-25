@@ -116,6 +116,14 @@ def build_scheduler_plan(
             runnable_batch.append({**candidate, "runnable": True})
 
     public_runnable_batch = [_public_candidate(item) for item in runnable_batch]
+    public_waiting_candidates = [_public_candidate(item) for item in waiting_candidates]
+    public_blocked_candidates = [_public_candidate(item) for item in blocked_candidates]
+    developer_commands = _developer_commands(
+        goal_id=safe_goal_id,
+        agent_id=safe_agent_id,
+        max_parallel=limit,
+        runnable_batch=public_runnable_batch,
+    )
     return {
         "ok": True,
         "status_health_ok": bool(status_payload.get("ok", True)),
@@ -129,13 +137,16 @@ def build_scheduler_plan(
         "waiting_count": len(waiting_candidates),
         "blocked_count": len(blocked_candidates),
         "runnable_batch": public_runnable_batch,
-        "waiting_candidates": [_public_candidate(item) for item in waiting_candidates],
-        "blocked_candidates": [_public_candidate(item) for item in blocked_candidates],
-        "developer_commands": _developer_commands(
+        "waiting_candidates": public_waiting_candidates,
+        "blocked_candidates": public_blocked_candidates,
+        "developer_commands": developer_commands,
+        "dispatch_plan": _dispatch_plan(
             goal_id=safe_goal_id,
             agent_id=safe_agent_id,
-            max_parallel=limit,
             runnable_batch=public_runnable_batch,
+            waiting_candidates=public_waiting_candidates,
+            blocked_candidates=public_blocked_candidates,
+            developer_commands=developer_commands,
         ),
         "policy": {
             "schema_version": "scheduler_parallel_policy_v0",
@@ -167,10 +178,45 @@ def render_scheduler_plan_markdown(payload: dict[str, Any]) -> str:
         f"- waiting_count: `{payload.get('waiting_count')}`",
         f"- blocked_count: `{payload.get('blocked_count')}`",
     ]
+    _append_dispatch_plan_lines(lines, payload.get("dispatch_plan"))
     _append_candidate_lines(lines, "Runnable batch", payload.get("runnable_batch"))
     _append_candidate_lines(lines, "Waiting candidates", payload.get("waiting_candidates"))
     _append_candidate_lines(lines, "Blocked candidates", payload.get("blocked_candidates"))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _append_dispatch_plan_lines(lines: list[str], dispatch_plan: Any) -> None:
+    if not isinstance(dispatch_plan, dict):
+        return
+    lines.extend(
+        [
+            "",
+            "## Dispatch plan",
+            f"- action: `{dispatch_plan.get('action') or ''}`",
+            f"- parallelizable: `{dispatch_plan.get('parallelizable')}`",
+            "- runnable_todo_ids: `"
+            + ",".join(str(item) for item in dispatch_plan.get("runnable_todo_ids") or [])
+            + "`",
+        ]
+    )
+    waiting_counts = dispatch_plan.get("waiting_reason_counts")
+    if isinstance(waiting_counts, dict) and waiting_counts:
+        lines.append(
+            "- waiting_reason_counts: `"
+            + ",".join(f"{key}={value}" for key, value in sorted(waiting_counts.items()))
+            + "`"
+        )
+    steps = dispatch_plan.get("developer_steps")
+    if isinstance(steps, list) and steps:
+        lines.append("- developer_steps:")
+        for step in steps[:8]:
+            if not isinstance(step, dict):
+                continue
+            label = str(step.get("kind") or "").strip()
+            todo_id = str(step.get("todo_id") or "").strip()
+            command = str(step.get("command") or "").strip()
+            suffix = f" todo_id={todo_id}" if todo_id else ""
+            lines.append(f"  - {label}{suffix}: `{command}`")
 
 
 def _append_candidate_lines(lines: list[str], heading: str, items: Any) -> None:
@@ -394,6 +440,136 @@ def _developer_commands(
     if claim_commands:
         commands["claim_runnable"] = claim_commands
     return commands
+
+
+def _dispatch_plan(
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    runnable_batch: list[dict[str, Any]],
+    waiting_candidates: list[dict[str, Any]],
+    blocked_candidates: list[dict[str, Any]],
+    developer_commands: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": "scheduler_dispatch_plan_v0",
+        "mode": "manual_safe_parallel_plan",
+        "goal_id": goal_id or None,
+        "agent_id": agent_id,
+        "action": _dispatch_action(
+            runnable_batch=runnable_batch,
+            waiting_candidates=waiting_candidates,
+            blocked_candidates=blocked_candidates,
+        ),
+        "parallelizable": len(runnable_batch) > 1,
+        "runnable_todo_ids": _candidate_refs(runnable_batch),
+        "waiting_todo_ids": _candidate_refs(waiting_candidates),
+        "blocked_todo_ids": _candidate_refs(blocked_candidates),
+        "waiting_reason_counts": _reason_counts(waiting_candidates),
+        "blocked_reason_counts": _reason_counts(blocked_candidates),
+        "agent_lanes": _agent_lane_summaries(
+            runnable_batch=runnable_batch,
+            waiting_candidates=waiting_candidates,
+            blocked_candidates=blocked_candidates,
+        ),
+        "developer_steps": _developer_steps(
+            developer_commands=developer_commands,
+            runnable_batch=runnable_batch,
+        ),
+    }
+
+
+def _dispatch_action(
+    *,
+    runnable_batch: list[dict[str, Any]],
+    waiting_candidates: list[dict[str, Any]],
+    blocked_candidates: list[dict[str, Any]],
+) -> str:
+    if len(runnable_batch) > 1:
+        return "run_parallel_batch"
+    if len(runnable_batch) == 1:
+        return "run_single_candidate"
+    blocked_counts = _reason_counts(blocked_candidates)
+    if blocked_counts.get("requires_user_decision") or blocked_counts.get("protected_write_requires_user_gate"):
+        return "wait_for_user"
+    if waiting_candidates:
+        return "wait_for_lane_or_limit"
+    if blocked_candidates:
+        return "blocked"
+    return "idle"
+
+
+def _reason_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        reasons = item.get("reason_codes")
+        if not isinstance(reasons, list):
+            continue
+        for reason in reasons:
+            key = str(reason or "").strip()
+            if key:
+                counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _agent_lane_summaries(
+    *,
+    runnable_batch: list[dict[str, Any]],
+    waiting_candidates: list[dict[str, Any]],
+    blocked_candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    lanes: dict[str, dict[str, Any]] = {}
+
+    def ensure_lane(item: dict[str, Any]) -> dict[str, Any]:
+        lane = str(item.get("agent_lane") or "unassigned").strip() or "unassigned"
+        return lanes.setdefault(
+            lane,
+            {
+                "agent_lane": lane,
+                "runnable_todo_ids": [],
+                "waiting_todo_ids": [],
+                "blocked_todo_ids": [],
+            },
+        )
+
+    for item in runnable_batch:
+        ensure_lane(item)["runnable_todo_ids"].extend(_candidate_refs([item]))
+    for item in waiting_candidates:
+        ensure_lane(item)["waiting_todo_ids"].extend(_candidate_refs([item]))
+    for item in blocked_candidates:
+        ensure_lane(item)["blocked_todo_ids"].extend(_candidate_refs([item]))
+    return list(lanes.values())
+
+
+def _developer_steps(
+    *,
+    developer_commands: dict[str, Any],
+    runnable_batch: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    steps: list[dict[str, Any]] = []
+    quota_guard = str(developer_commands.get("quota_guard") or "").strip()
+    if quota_guard:
+        steps.append({"kind": "quota_guard", "command": quota_guard, "required": True})
+    for item in runnable_batch:
+        claim_command = str(item.get("claim_command") or "").strip()
+        if not claim_command:
+            continue
+        step: dict[str, Any] = {
+            "kind": "claim_runnable",
+            "command": claim_command,
+            "required": True,
+        }
+        todo_id = str(item.get("todo_id") or item.get("candidate_key") or "").strip()
+        if todo_id:
+            step["todo_id"] = todo_id
+        steps.append(step)
+    status = str(developer_commands.get("status") or "").strip()
+    if status:
+        steps.append({"kind": "status", "command": status, "required": False})
+    scheduler_plan = str(developer_commands.get("scheduler_plan") or "").strip()
+    if scheduler_plan:
+        steps.append({"kind": "scheduler_plan", "command": scheduler_plan, "required": False})
+    return steps
 
 
 def _claim_command(*, goal_id: str, todo_id: str, agent_id: str) -> str:
