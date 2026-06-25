@@ -41,13 +41,16 @@ from .todo_contract import (
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
     next_action_requires_advancement_text,
+    normalize_decision_scope,
     normalize_required_capabilities,
+    normalize_required_decision_scopes,
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_id,
     normalize_todo_resume_when,
     normalize_required_write_scopes,
+    normalize_safety_class,
     normalize_todo_status,
     normalize_todo_task_class,
 )
@@ -1009,6 +1012,9 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "required_write_scopes",
         "required_capabilities",
         "target_capabilities",
+        "decision_scope",
+        "required_decision_scopes",
+        "safety_class",
         "claimed_by",
         "blocks_agent",
         "unblocks_todo_id",
@@ -1023,6 +1029,21 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         compact["required_write_scopes"] = required_write_scopes
     else:
         compact.pop("required_write_scopes", None)
+    decision_scope = normalize_decision_scope(compact.get("decision_scope"))
+    if decision_scope:
+        compact["decision_scope"] = decision_scope
+    else:
+        compact.pop("decision_scope", None)
+    required_decision_scopes = normalize_required_decision_scopes(compact.get("required_decision_scopes"))
+    if required_decision_scopes:
+        compact["required_decision_scopes"] = required_decision_scopes
+    else:
+        compact.pop("required_decision_scopes", None)
+    safety_class = normalize_safety_class(compact.get("safety_class"))
+    if safety_class:
+        compact["safety_class"] = safety_class
+    else:
+        compact.pop("safety_class", None)
     compact["task_class"] = _todo_task_class(compact)
     return compact
 

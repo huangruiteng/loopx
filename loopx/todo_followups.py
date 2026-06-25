@@ -62,6 +62,8 @@ def capture_followup_todos(
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
+    required_decision_scopes: list[dict[str, Any]] | None = None,
+    safety_class: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
     dry_run: bool = False,
@@ -132,6 +134,8 @@ def capture_followup_todos(
                 required_write_scopes=required_write_scopes,
                 required_capabilities=required_capabilities,
                 target_capabilities=target_capabilities,
+                required_decision_scopes=required_decision_scopes,
+                safety_class=safety_class,
                 evidence=evidence_text,
             )
             changed = changed or bool(add_result.get("added")) or bool(add_result.get("metadata_updated"))
