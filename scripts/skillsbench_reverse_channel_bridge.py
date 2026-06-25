@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import shlex
 import socket
 import subprocess
@@ -91,6 +92,35 @@ def _allowed_env_assignments(extra: object) -> str:
 
 def _bridge_command_with_payload_env(command: str, extra: object) -> str:
     return command.replace("{loopx_allowed_env}", _allowed_env_assignments(extra))
+
+
+def _stop_process_group(proc: subprocess.Popen[str], *, sig: int) -> None:
+    try:
+        os.killpg(proc.pid, sig)
+        return
+    except ProcessLookupError:
+        return
+    except OSError:
+        pass
+    try:
+        proc.send_signal(sig)
+    except ProcessLookupError:
+        return
+    except OSError:
+        if sig == signal.SIGKILL:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+
+
+def _communicate_after_stop(proc: subprocess.Popen[str]) -> tuple[str, str]:
+    try:
+        stdout_text, stderr_text = proc.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        _stop_process_group(proc, sig=signal.SIGKILL)
+        stdout_text, stderr_text = proc.communicate(timeout=5)
+    return stdout_text or "", stderr_text or ""
 
 
 def _replace_output_last_message(args: list[str], replacement: Path) -> str | None:
@@ -349,6 +379,7 @@ def _run_codex_payload(
                 stderr=subprocess.PIPE,
                 text=True,
                 env=env,
+                start_new_session=True,
             )
             if stdin_prompt is not None and proc.stdin is not None:
                 try:
@@ -359,7 +390,11 @@ def _run_codex_payload(
                     proc.stdin = None
             deadline = time.monotonic() + timeout
             first_action_deadline = 0.0
-            if agent_operations_summary_path and first_action_timeout_sec > 0:
+            if (
+                stdin_prompt is not None
+                and prompt_bridge_command
+                and first_action_timeout_sec > 0
+            ):
                 first_action_deadline = (
                     time.monotonic() + max(1.0, float(first_action_timeout_sec))
                 )
@@ -374,14 +409,17 @@ def _run_codex_payload(
                         first_action_seen = False
                 if not first_action_seen and first_action_deadline and now >= first_action_deadline:
                     timeout_kind = "codex_exec_first_action_timeout"
-                    proc.kill()
+                    _stop_process_group(proc, sig=signal.SIGTERM)
                     break
                 if now >= deadline:
                     timeout_kind = "codex_exec_timeout"
-                    proc.kill()
+                    _stop_process_group(proc, sig=signal.SIGTERM)
                     break
                 time.sleep(0.1)
-            stdout_text, stderr_text = proc.communicate()
+            if timeout_kind:
+                stdout_text, stderr_text = _communicate_after_stop(proc)
+            else:
+                stdout_text, stderr_text = proc.communicate()
             if timeout_kind:
                 return {
                     "schema_version": SERVER_RESPONSE_SCHEMA_VERSION,
