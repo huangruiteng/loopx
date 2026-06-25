@@ -36,15 +36,29 @@ loopx value-connectors github-public-probe \
   --format json
 ```
 
+Monitor whether a public maintainer replied after an approved LoopX comment:
+
+```bash
+loopx value-connectors github-reply-monitor \
+  --issue-url https://github.com/owner/repo/issues/1 \
+  --after-comment-url https://github.com/owner/repo/issues/1#issuecomment-123 \
+  --fetch-metadata \
+  --format json
+```
+
 The probe is intentionally metadata-only. It does not read issue bodies,
 comment bodies, timelines, raw provider payloads, auth material, or local paths,
 and it cannot post comments, send messages, create accounts, or publish.
+The reply monitor follows the same boundary: it only captures comment author,
+association, timestamp, and URL metadata, then emits either
+`prepare_public_triage_note` or `wait_no_bump`.
 
 ## Connector Profiles
 
 | Connector | Current state | User can run now | External write behavior |
 | --- | --- | --- | --- |
 | `github_public_channel` | implemented starter | yes | none |
+| `github_public_reply_monitor` | implemented starter | yes | none |
 | `botmail_identity` | host connector profile | install-check only | exact send gate required |
 | `community_channel` | host/browser connector profile | install-check and plan | exact account/message gate required |
 

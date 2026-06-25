@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.capabilities.value_connectors.github_public import (  # noqa: E402
     GITHUB_PUBLIC_CHANNEL_PROBE_PACKET_SCHEMA_VERSION,
+    GITHUB_PUBLIC_REPLY_MONITOR_PACKET_SCHEMA_VERSION,
     VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION,
 )
 from loopx.capabilities.value_connectors.planner import (  # noqa: E402
@@ -35,10 +38,11 @@ PRIVATE_PATTERNS = [
 
 FORBIDDEN_VALUES = [
     "raw provider payload",
-    "comment body text",
-    "issue body text",
-    "restricted-value",
-    "sensitive-value",
+        "comment body text",
+        "comment body that must stay gated",
+        "issue body text",
+        "restricted-value",
+        "sensitive-value",
 ]
 
 
@@ -55,11 +59,17 @@ def assert_public_safe(payload: dict[str, Any] | str) -> None:
     assert not leaked, leaked
 
 
-def run_cli(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    args: list[str],
+    *,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         check=check,
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -98,6 +108,112 @@ def main() -> int:
     assert probe["metadata"] is None, probe
     assert probe["connector_call"]["money_metric"], probe
     assert_public_safe(probe)
+
+    reply_provider = {
+        "comments": [
+            {
+                "author": "loopx-operator",
+                "author_association": "NONE",
+                "created_at": "2026-06-25T06:54:50Z",
+                "updated_at": "2026-06-25T06:54:50Z",
+                "url": "https://github.com/huangruiteng/loopx/issues/670#issuecomment-1",
+                "body": "comment body that must stay gated",
+                "raw": "raw provider payload",
+            },
+            {
+                "author": "maintainer-one",
+                "author_association": "MEMBER",
+                "created_at": "2026-06-25T07:10:00Z",
+                "updated_at": "2026-06-25T07:10:00Z",
+                "url": "https://github.com/huangruiteng/loopx/issues/670#issuecomment-2",
+                "body": "comment body text",
+            },
+        ]
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        reply_path = Path(tmpdir) / "reply-comments.json"
+        reply_path.write_text(json.dumps(reply_provider), encoding="utf-8")
+        reply_monitor = json.loads(
+            run_cli(
+                [
+                    "--format",
+                    "json",
+                    "value-connectors",
+                    "github-reply-monitor",
+                    "--issue-url",
+                    "https://github.com/huangruiteng/loopx/issues/670",
+                    "--after-comment-url",
+                    "https://github.com/huangruiteng/loopx/issues/670#issuecomment-1",
+                    "--metadata-json",
+                    str(reply_path),
+                ]
+            ).stdout
+        )
+    assert reply_monitor["ok"] is True, reply_monitor
+    assert reply_monitor["schema_version"] == GITHUB_PUBLIC_REPLY_MONITOR_PACKET_SCHEMA_VERSION
+    assert reply_monitor["external_reads_performed"] is False, reply_monitor
+    assert reply_monitor["external_writes_performed"] is False, reply_monitor
+    assert reply_monitor["comment_bodies_captured"] is False, reply_monitor
+    assert reply_monitor["raw_provider_payload_captured"] is False, reply_monitor
+    assert reply_monitor["maintainer_reply_count"] == 1, reply_monitor
+    assert reply_monitor["money_signal"] == "public_maintainer_interest", reply_monitor
+    assert reply_monitor["recommended_action"] == "prepare_public_triage_note", reply_monitor
+    assert reply_monitor["validation"]["gated_provider_field_count"] == 3, reply_monitor
+    assert_public_safe(reply_monitor)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fake_bin = Path(tmpdir)
+        gh = fake_bin / "gh"
+        gh.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env python3",
+                    "import json",
+                    "import sys",
+                    "argv = sys.argv[1:]",
+                    "assert argv[:2] == ['api', '-H'], argv",
+                    "assert 'repos/huangruiteng/loopx/issues/670/comments?per_page=100' in argv, argv",
+                    "assert '--jq' in argv, argv",
+                    "json.dump([",
+                    "  {",
+                    "    'author': 'loopx-operator',",
+                    "    'author_association': 'NONE',",
+                    "    'created_at': '2026-06-25T06:54:50Z',",
+                    "    'updated_at': '2026-06-25T06:54:50Z',",
+                    "    'url': 'https://github.com/huangruiteng/loopx/issues/670#issuecomment-1',",
+                    "  }",
+                    "], sys.stdout)",
+                    "sys.stdout.write('\\n')",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        gh.chmod(0o755)
+        live_env = {**os.environ, "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"}
+        live_reply_monitor = json.loads(
+            run_cli(
+                [
+                    "--format",
+                    "json",
+                    "value-connectors",
+                    "github-reply-monitor",
+                    "--issue-url",
+                    "https://github.com/huangruiteng/loopx/issues/670",
+                    "--after-comment-url",
+                    "https://github.com/huangruiteng/loopx/issues/670#issuecomment-1",
+                    "--fetch-metadata",
+                ],
+                env=live_env,
+            ).stdout
+        )
+    assert live_reply_monitor["ok"] is True, live_reply_monitor
+    assert live_reply_monitor["external_reads_performed"] is True, live_reply_monitor
+    assert live_reply_monitor["external_writes_performed"] is False, live_reply_monitor
+    assert live_reply_monitor["maintainer_reply_count"] == 0, live_reply_monitor
+    assert live_reply_monitor["recommended_action"] == "wait_no_bump", live_reply_monitor
+    assert live_reply_monitor["comment_bodies_captured"] is False, live_reply_monitor
+    assert live_reply_monitor["validation"]["anchor_found"] is True, live_reply_monitor
+    assert_public_safe(live_reply_monitor)
 
     plan = json.loads(
         run_cli(["--format", "json", "value-connectors", "plan"]).stdout
@@ -162,6 +278,24 @@ def main() -> int:
     assert rejected_payload["schema_version"] == "github_public_channel_probe_error_v0", rejected_payload
     assert "query or fragment" in rejected_payload["error"], rejected_payload
 
+    rejected_reply = run_cli(
+        [
+            "--format",
+            "json",
+            "value-connectors",
+            "github-reply-monitor",
+            "--issue-url",
+            "https://github.com/owner/repo/issues/1",
+            "--after-comment-url",
+            "https://github.com/owner/repo/issues/1#issuecomment-1?x=sensitive-value",
+        ],
+        check=False,
+    )
+    assert rejected_reply.returncode == 1, rejected_reply
+    rejected_reply_payload = json.loads(rejected_reply.stdout)
+    assert rejected_reply_payload["ok"] is False, rejected_reply_payload
+    assert rejected_reply_payload["schema_version"] == "github_public_reply_monitor_error_v0"
+
     rejected_markdown = run_cli(
         [
             "value-connectors",
@@ -186,6 +320,20 @@ def main() -> int:
     assert "LoopX GitHub Public Channel Probe" in markdown, markdown
     assert "external_writes_performed: `False`" in markdown, markdown
     assert_public_safe(markdown)
+
+    reply_markdown = run_cli(
+        [
+            "value-connectors",
+            "github-reply-monitor",
+            "--issue-url",
+            "https://github.com/huangruiteng/loopx/issues/670",
+            "--after-comment-url",
+            "https://github.com/huangruiteng/loopx/issues/670#issuecomment-1",
+        ]
+    ).stdout
+    assert "LoopX GitHub Public Reply Monitor" in reply_markdown, reply_markdown
+    assert "recommended_action: `wait_no_bump`" in reply_markdown, reply_markdown
+    assert_public_safe(reply_markdown)
 
     print("value-connectors-github-public-probe-smoke: ok")
     return 0

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 from collections.abc import Callable
+from pathlib import Path
 
 from .github_public import (
     build_github_public_channel_probe_packet,
+    build_github_public_reply_monitor_packet,
     build_value_connector_install_check_packet,
     render_github_public_channel_probe_markdown,
+    render_github_public_reply_monitor_markdown,
     render_value_connector_install_check_markdown,
 )
 from .planner import (
@@ -26,6 +31,16 @@ PrintPayload = Callable[
 ]
 FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
+
+
+def _load_json_object_or_array(path_text: str) -> dict[str, object] | list[object]:
+    if path_text == "-":
+        payload = json.loads(sys.stdin.read())
+    else:
+        payload = json.loads(Path(path_text).expanduser().read_text(encoding="utf-8"))
+    if not isinstance(payload, (dict, list)):
+        raise ValueError(f"{path_text} must contain a JSON object or array")
+    return payload
 
 
 def register_value_connector_commands(
@@ -140,6 +155,49 @@ def register_value_connector_commands(
         default=10.0,
         help="Network/tool timeout for --fetch-metadata.",
     )
+    reply_monitor_parser = sub.add_parser(
+        "github-reply-monitor",
+        help=(
+            "Detect new public maintainer replies after a LoopX issue comment "
+            "without capturing comment bodies."
+        ),
+    )
+    add_subcommand_format(reply_monitor_parser)
+    reply_monitor_parser.add_argument(
+        "--issue-url",
+        required=True,
+        help="Public GitHub issue or PR URL being monitored.",
+    )
+    reply_monitor_parser.add_argument(
+        "--after-comment-url",
+        required=True,
+        help=(
+            "Public GitHub issue comment URL that anchors the monitor window, "
+            "for example https://github.com/owner/repo/issues/1#issuecomment-123."
+        ),
+    )
+    reply_monitor_parser.add_argument(
+        "--metadata-json",
+        default=None,
+        help=(
+            "Path to mocked provider comment metadata JSON, or '-' for stdin. "
+            "Body/raw fields stay gated and are not copied."
+        ),
+    )
+    reply_monitor_parser.add_argument(
+        "--fetch-metadata",
+        action="store_true",
+        help=(
+            "Use gh api to fetch public issue-comment metadata only: author, "
+            "association, timestamps, and URL. Comment bodies are not output."
+        ),
+    )
+    reply_monitor_parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=10.0,
+        help="Network/tool timeout for --fetch-metadata.",
+    )
 
 
 def handle_value_connector_command(
@@ -173,8 +231,29 @@ def handle_value_connector_command(
                 render_github_public_channel_probe_markdown,
             )
             return 0 if payload.get("ok") else 1
+        if args.value_connectors_command == "github-reply-monitor":
+            if args.fetch_metadata and args.metadata_json:
+                raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
+            payload = build_github_public_reply_monitor_packet(
+                issue_url=args.issue_url,
+                after_comment_url=args.after_comment_url,
+                provider_payload=_load_json_object_or_array(args.metadata_json)
+                if args.metadata_json
+                else None,
+                fetch_metadata=args.fetch_metadata,
+                timeout_seconds=args.timeout_seconds,
+            )
+            print_payload(
+                payload,
+                output_format(args),
+                render_github_public_reply_monitor_markdown,
+            )
+            return 0 if payload.get("ok") else 1
         if args.value_connectors_command != "plan":
-            raise ValueError("value-connectors requires `install-check`, `plan`, or `github-public-probe`")
+            raise ValueError(
+                "value-connectors requires `install-check`, `plan`, "
+                "`github-public-probe`, or `github-reply-monitor`"
+            )
         if args.connector_id:
             missing = [
                 name
@@ -225,6 +304,17 @@ def handle_value_connector_command(
                 "external_writes_performed": False,
             }
             print_payload(payload, output_format(args), render_github_public_channel_probe_markdown)
+            return 1
+        if getattr(args, "value_connectors_command", None) == "github-reply-monitor":
+            payload = {
+                "ok": False,
+                "schema_version": "github_public_reply_monitor_error_v0",
+                "mode": "github-public-reply-monitor",
+                "error": str(exc),
+                "external_reads_performed": False,
+                "external_writes_performed": False,
+            }
+            print_payload(payload, output_format(args), render_github_public_reply_monitor_markdown)
             return 1
         payload = {"ok": False, "schema_version": "value_connector_plan_error_v0", "error": str(exc)}
         print_payload(payload, output_format(args), render_value_connector_plan_markdown)

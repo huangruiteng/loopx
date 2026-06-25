@@ -40,6 +40,17 @@ loopx value-connectors github-public-probe \
   --format json
 ```
 
+Detect public maintainer interest after an approved LoopX comment without
+reading comment bodies or bumping the thread:
+
+```bash
+loopx value-connectors github-reply-monitor \
+  --issue-url https://github.com/owner/repo/issues/1 \
+  --after-comment-url https://github.com/owner/repo/issues/1#issuecomment-123 \
+  --fetch-metadata \
+  --format json
+```
+
 Plan a gated external write or account setup before any connector performs it:
 
 ```bash
@@ -64,6 +75,7 @@ loopx value-connectors plan \
 | `connector_call_intent_v0` | One planned connector call with channel, stage, access mode, value axis, metric, success metric, and kill condition. |
 | `connector_approval_gate_v0` | Exact-call approval gate for account setup, external writes, sends, publishing, or private expansion. |
 | `github_public_channel_probe_packet_v0` | Starter connector output for public GitHub issue/PR/discussion metadata. |
+| `github_public_reply_monitor_packet_v0` | Starter connector output for public maintainer reply detection after a LoopX comment. |
 | `value_connector_install_check_packet_v0` | Local install/use checklist for connector starters. |
 
 ## Boundaries
@@ -92,6 +104,12 @@ timeline events, raw provider payloads, auth material, or local paths.
 For discussion URLs, `--fetch-metadata` uses GitHub CLI GraphQL when `gh` is
 installed and authenticated. Without `gh`, users can still run no-fetch mode or
 use `install-check` to see the missing dependency.
+
+`github_public_reply_monitor` accepts a public issue or PR URL and an anchor
+issue-comment URL. Its live mode uses GitHub CLI REST metadata and captures only
+comment author, author association, timestamps, and URL. It detects whether a
+public maintainer/member/collaborator replied after the LoopX comment and
+returns `prepare_public_triage_note`; otherwise it returns `wait_no_bump`.
 
 ## User Value
 
