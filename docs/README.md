@@ -31,6 +31,9 @@ incident report, or launch draft.
   channel flow.
 - [Heartbeat automation prompt](heartbeat-automation-prompt.md): current
   heartbeat prompt contract.
+- [Runtime connector catalog](runtime-connector-catalog.md): public v0 catalog
+  for Codex App, Codex CLI TUI, Claude Code loop, shell, HTTP, and worker
+  bridge connectors.
 - [Quota allocation](quota-allocation.md): should-run and spend semantics.
 - [Status data contract](status-data-contract.md): dashboard/status payload
   shape.
@@ -66,6 +69,7 @@ incident report, or launch draft.
 - [Session runtime to LoopX projection v0](reference/protocols/session-runtime-loopx-projection-v0.md)
 - [Interface budget contract](interface-budget-contract.md)
 - [Host integration surface v0](reference/protocols/host-integration-surface-v0.md)
+- [Runtime connector catalog](runtime-connector-catalog.md)
 - [Reward gate direct-write contract](reward-gate-direct-write-contract.md)
 - [Worker bridge install contract](worker-bridge-install-contract.md)
 - [Lark Kanban control-plane adapter](lark-kanban-control-plane-adapter.md)
