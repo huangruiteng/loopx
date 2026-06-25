@@ -5885,7 +5885,9 @@ def _build_product_mode_user(
                 "solving narrative, or final answer, your first agent action "
                 "must be a task-facing shell/tool call through the available "
                 "sandbox bridge, using an `operation=exec` request with "
-                "`cwd=/app`; a minimal valid first command is `pwd && ls -la`. "
+                "`cwd=/app`; if the bridge packet includes `FIRST ACTION "
+                "REQUIRED`, copy and run that exact command. A minimal valid "
+                "first command is `pwd && ls -la`. "
                 "After meaningful local task evidence or validation, update "
                 "the todo through LoopX CLI. Only after task-facing work "
                 "indicates the benchmark task is complete may you use "
@@ -6319,8 +6321,10 @@ def _build_product_mode_user(
                             "prompt. Do not repeat setup lifecycle as your first "
                             "action. Make the first agent action a task-facing "
                             "sandbox bridge exec from `/app`, such as "
-                            "`pwd && ls -la`, before any prose planning, solving "
-                            "narrative, or final answer. "
+                            "`pwd && ls -la`, by copying and running the bridge "
+                            "packet's `FIRST ACTION REQUIRED` command before "
+                            "any prose planning, solving narrative, or final "
+                            "answer. "
                             if workflow_lifecycle_driver
                             else
                             "first run the case-local quota/todo commands above "

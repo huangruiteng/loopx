@@ -63,6 +63,19 @@ def main() -> int:
     assert "env=target_env" in source
     assert "local_acp_command = _set_option_value(" in source
     assert "del (\n            env," not in source
+    packet = SkillsBenchLocalAcpRelay(
+        CodexExecConfig(remote_command_file_bridge_command="/tmp/private-bridge")
+    )._prompt_with_remote_bridge_packet(
+        "Task",
+        bridge_probe={"operation_count": 1},
+        bridge_command_for_agent="/tmp/private-bridge",
+    )
+    first_action_block = packet.split("FIRST ACTION REQUIRED:", 1)[1].split(
+        "Request examples:", 1
+    )[0]
+    assert "pwd && ls -la" in first_action_block
+    assert "/tmp/private-bridge" in first_action_block
+    assert "<private bridge command>" not in first_action_block
     target_env = _host_local_acp_target_env(
         {
             "AI_ADDR": "127.0.0.1",
@@ -631,13 +644,14 @@ if """ + repr(SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER) + """ not in prompt:
 bridge_command = prompt.split("Private bridge command:", 1)[1].strip().splitlines()[0]
 if not bridge_command:
     raise SystemExit(10)
-copyable_packet = prompt.split("Copyable first sandbox action:", 1)[1].split("Request examples:", 1)[0]
-if "<private bridge command>" in copyable_packet:
-    raise SystemExit(12)
-if "pwd && ls -la" not in copyable_packet:
-    raise SystemExit(13)
-if bridge_command not in copyable_packet:
-    raise SystemExit(14)
+if "FIRST ACTION REQUIRED:" in prompt:
+    copyable_packet = prompt.split("FIRST ACTION REQUIRED:", 1)[1].split("Request examples:", 1)[0]
+    if "<private bridge command>" in copyable_packet:
+        raise SystemExit(12)
+    if "pwd && ls -la" not in copyable_packet:
+        raise SystemExit(13)
+    if bridge_command not in copyable_packet:
+        raise SystemExit(14)
 for command in (
     "/app/.local/bin/loopx quota should-run --goal-id skillsbench-case --agent-id codex-benchmark-agent",
     "/app/.local/bin/loopx todo update --goal-id skillsbench-case --todo-id todo_seed --status open --note checkpoint",
