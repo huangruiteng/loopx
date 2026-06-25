@@ -25,7 +25,6 @@ def main() -> int:
         "**Done**\n- Validated card formatting",
         title="LoopX result",
         template="green",
-        footer="LoopX automated reply",
     )
 
     assert card["config"] == {"wide_screen_mode": True, "enable_forward": True}, card
@@ -35,11 +34,14 @@ def main() -> int:
         "tag": "div",
         "text": {"tag": "lark_md", "content": "**Done**\n- Validated card formatting"},
     }, card
-    assert card["elements"][1]["tag"] == "hr", card
-    assert card["elements"][2] == {
+    assert all(element["tag"] != "note" for element in card["elements"]), card
+    assert all(element["tag"] != "hr" for element in card["elements"]), card
+    footer_card = build_lark_markdown_reply_card("body", footer="LoopX automated reply")
+    assert footer_card["elements"][1]["tag"] == "hr", footer_card
+    assert footer_card["elements"][2] == {
         "tag": "note",
         "elements": [{"tag": "plain_text", "content": "LoopX automated reply"}],
-    }, card
+    }, footer_card
     escaped_newline_content = build_lark_markdown_reply_card("first\\nsecond")["elements"][0]["text"]["content"]
     assert "\\n" not in escaped_newline_content, escaped_newline_content
     assert "first\nsecond" in escaped_newline_content, escaped_newline_content

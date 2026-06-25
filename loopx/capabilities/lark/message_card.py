@@ -36,9 +36,34 @@ def build_lark_markdown_reply_card(
     *,
     title: str = "LoopX result",
     template: str = "blue",
-    footer: str = "LoopX automated reply",
+    footer: str | None = None,
     max_markdown_chars: int = DEFAULT_MAX_MARKDOWN_CHARS,
 ) -> dict[str, Any]:
+    elements: list[dict[str, Any]] = [
+        {
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": compact_markdown(markdown, max_chars=max_markdown_chars),
+            },
+        },
+    ]
+    footer_text = compact_plain_text(footer, max_chars=DEFAULT_FOOTER_MAX_CHARS)
+    if footer_text:
+        elements.extend(
+            [
+                {"tag": "hr"},
+                {
+                    "tag": "note",
+                    "elements": [
+                        {
+                            "tag": "plain_text",
+                            "content": footer_text,
+                        }
+                    ],
+                },
+            ]
+        )
     return {
         "config": {"wide_screen_mode": True, "enable_forward": True},
         "header": {
@@ -48,25 +73,7 @@ def build_lark_markdown_reply_card(
                 "content": compact_plain_text(title, max_chars=DEFAULT_TITLE_MAX_CHARS),
             },
         },
-        "elements": [
-            {
-                "tag": "div",
-                "text": {
-                    "tag": "lark_md",
-                    "content": compact_markdown(markdown, max_chars=max_markdown_chars),
-                },
-            },
-            {"tag": "hr"},
-            {
-                "tag": "note",
-                "elements": [
-                    {
-                        "tag": "plain_text",
-                        "content": compact_plain_text(footer, max_chars=DEFAULT_FOOTER_MAX_CHARS),
-                    }
-                ],
-            },
-        ],
+        "elements": elements,
     }
 
 
