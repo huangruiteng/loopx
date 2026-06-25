@@ -304,8 +304,8 @@ or the
   gated, without bypassing the gate.
 - **Safe parallel planning**: read-only scheduler plans identify independent
   read-only or disjoint local-write todos, summarize the current dispatch
-  action, and keep same-agent, gated, external, and protected work out of
-  unsafe automatic parallel batches.
+  action, expose worker handoff text for runnable lanes, and keep same-agent,
+  gated, external, and protected work out of unsafe automatic parallel batches.
 - **Todo ownership**: user and agent todos with `claimed_by` for multi-agent
   coordination.
 - **Quota and steering**: a guard that says whether an automatic turn should

@@ -72,7 +72,10 @@ to run in a bounded parallel batch, but it does not claim a todo, create a
 lease, spend quota, or authorize protected work by itself. Its
 `dispatch_plan` summary is a display and developer-step packet: it explains the
 current scheduler action, grouped agent lanes, reason counts, and copyable
-preflight or claim commands without starting workers.
+preflight or claim commands without starting workers. Its
+`worker_handoffs` entries are bounded text packets for manually or externally
+dispatching already-runnable todos; they do not create a task lease, bypass
+quota, or grant write authority beyond the listed todo metadata.
 
 ## Controlled Writes
 

@@ -159,9 +159,9 @@ loopx feishu-bridge logs --tail 40
 In chat, `/status` shows compact LoopX status, `/plan` shows the read-only safe
 parallel scheduler plan, including the scheduler `dispatch_plan` summary for
 parallel runnable todos, lane-capacity waits, user blocks, and copyable
-developer steps. The bridge renders that JSON contract as a short chat summary
-instead of forwarding raw scheduler output. Ordinary text or `/ask <task>`
-creates a tracked agent todo with progress cards.
+developer steps and worker handoffs. The bridge renders that JSON contract as a
+short chat summary instead of forwarding raw scheduler output. Ordinary text or
+`/ask <task>` creates a tracked agent todo with progress cards.
 
 Useful optional environment variables:
 
