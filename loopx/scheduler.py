@@ -165,6 +165,45 @@ def build_scheduler_plan(
     }
 
 
+def build_scheduler_handoffs(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str | None = None,
+    agent_id: str | None = None,
+    max_parallel: int = DEFAULT_MAX_PARALLEL,
+    todo_id: str | None = None,
+) -> dict[str, Any]:
+    plan = build_scheduler_plan(
+        status_payload,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        max_parallel=max_parallel,
+    )
+    dispatch = plan.get("dispatch_plan")
+    raw_handoffs = dispatch.get("worker_handoffs") if isinstance(dispatch, dict) else []
+    handoffs = [item for item in raw_handoffs or [] if isinstance(item, dict)]
+    safe_todo_id = normalize_todo_id(todo_id) if todo_id else None
+    if safe_todo_id:
+        handoffs = [
+            item
+            for item in handoffs
+            if str(item.get("todo_id") or item.get("candidate_key") or "").strip() == safe_todo_id
+        ]
+    return {
+        "ok": bool(plan.get("ok")),
+        "status_health_ok": bool(plan.get("status_health_ok")),
+        "schema_version": "scheduler_worker_handoffs_v0",
+        "mode": "handoffs",
+        "goal_id": plan.get("goal_id"),
+        "agent_id": plan.get("agent_id"),
+        "todo_id": safe_todo_id,
+        "source_plan_action": dispatch.get("action") if isinstance(dispatch, dict) else None,
+        "handoff_count": len(handoffs),
+        "worker_handoffs": handoffs,
+        "developer_commands": plan.get("developer_commands"),
+    }
+
+
 def render_scheduler_plan_markdown(payload: dict[str, Any]) -> str:
     lines = [
         "# LoopX Scheduler Plan",
@@ -182,6 +221,36 @@ def render_scheduler_plan_markdown(payload: dict[str, Any]) -> str:
     _append_candidate_lines(lines, "Runnable batch", payload.get("runnable_batch"))
     _append_candidate_lines(lines, "Waiting candidates", payload.get("waiting_candidates"))
     _append_candidate_lines(lines, "Blocked candidates", payload.get("blocked_candidates"))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_scheduler_handoffs_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# LoopX Scheduler Worker Handoffs",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- goal_id: `{payload.get('goal_id') or ''}`",
+        f"- agent_id: `{payload.get('agent_id') or ''}`",
+        f"- todo_id: `{payload.get('todo_id') or ''}`",
+        f"- handoff_count: `{payload.get('handoff_count')}`",
+    ]
+    handoffs = payload.get("worker_handoffs")
+    if isinstance(handoffs, list) and handoffs:
+        for item in handoffs[:10]:
+            if not isinstance(item, dict):
+                continue
+            todo_id = str(item.get("todo_id") or item.get("candidate_key") or "").strip()
+            lane = str(item.get("agent_lane") or "").strip()
+            lines.extend(["", f"## {todo_id}"])
+            if lane:
+                lines.append(f"- agent_lane: `{lane}`")
+            if item.get("quota_guard_command"):
+                lines.append(f"- quota_guard: `{item.get('quota_guard_command')}`")
+            if item.get("status_command"):
+                lines.append(f"- status: `{item.get('status_command')}`")
+            text = str(item.get("handoff_text") or "").strip()
+            if text:
+                lines.extend(["", "```text", text, "```"])
     return "\n".join(lines).rstrip() + "\n"
 
 

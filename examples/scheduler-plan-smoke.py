@@ -292,12 +292,72 @@ def assert_cli_scheduler_plan_uses_status_collection() -> None:
         ], payload
 
 
+def assert_cli_scheduler_handoffs_render_copyable_worker_packets() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-scheduler-handoffs-") as tmp:
+        registry_path, runtime = write_cli_fixture(Path(tmp))
+        json_result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(registry_path),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "scheduler",
+                "handoffs",
+                "--goal-id",
+                GOAL_ID,
+                "--max-parallel",
+                "2",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = json.loads(json_result.stdout)
+        assert payload["schema_version"] == "scheduler_worker_handoffs_v0", payload
+        assert payload["handoff_count"] == 2, payload
+        handoffs = {item["todo_id"]: item for item in payload["worker_handoffs"]}
+        assert "Todo: todo_cli_docs" in handoffs["todo_cli_docs"]["handoff_text"], handoffs
+        assert "Write scopes: docs/**" in handoffs["todo_cli_docs"]["handoff_text"], handoffs
+
+        markdown_result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(registry_path),
+                "--runtime-root",
+                str(runtime),
+                "scheduler",
+                "handoffs",
+                "--goal-id",
+                GOAL_ID,
+                "--todo-id",
+                "todo_cli_docs",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert "# LoopX Scheduler Worker Handoffs" in markdown_result.stdout, markdown_result.stdout
+        assert "Todo: todo_cli_docs" in markdown_result.stdout, markdown_result.stdout
+        assert "todo_cli_read" not in markdown_result.stdout, markdown_result.stdout
+
+
 def main() -> int:
     assert_disjoint_local_write_and_read_only_parallelize()
     assert_write_scope_conflict_waits_without_blocking_safe_read()
     assert_open_user_gate_blocks_matching_required_decision_scope()
     assert_high_risk_work_is_not_parallelized_by_default()
     assert_cli_scheduler_plan_uses_status_collection()
+    assert_cli_scheduler_handoffs_render_copyable_worker_packets()
     print("scheduler plan smoke ok")
     return 0
 
