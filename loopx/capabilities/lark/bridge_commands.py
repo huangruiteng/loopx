@@ -123,7 +123,7 @@ def _scheduler_command(
     goal_id: str,
     agent_id: str,
 ) -> list[str]:
-    return [
+    command = [
         loopx_bin,
         "--registry",
         registry,
@@ -133,6 +133,7 @@ def _scheduler_command(
         "json",
         "--goal-id",
         goal_id,
-        "--agent-id",
-        agent_id,
     ]
+    if agent_id:
+        command.extend(["--agent-id", agent_id])
+    return command

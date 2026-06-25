@@ -18,6 +18,10 @@ from loopx.capabilities.lark.bridge_commands import (  # noqa: E402
     loopx_scheduler_next_batch_text,
     loopx_scheduler_plan_text,
 )
+from loopx.capabilities.lark.bridge_requests import (  # noqa: E402
+    build_feishu_request_todo_args,
+    feishu_request_lane,
+)
 
 
 def assert_help_exposes_next_batch_command() -> None:
@@ -93,7 +97,7 @@ def assert_scheduler_next_batch_command_is_stable() -> None:
         loopx_bin="loopx",
         registry="registry.json",
         goal_id="goal",
-        agent_id="agent",
+        agent_id="",
         max_chars=1200,
     )
     assert "Next batch: parallel_batch" in text, text
@@ -110,18 +114,44 @@ def assert_scheduler_next_batch_command_is_stable() -> None:
                 "json",
                 "--goal-id",
                 "goal",
-                "--agent-id",
-                "agent",
             ],
             45,
         )
     ], calls
 
 
+def assert_feishu_request_todos_get_stable_parallel_lanes() -> None:
+    first_args, first_text, first_lane = build_feishu_request_todo_args(
+        request_text="write the docs",
+        message_id="om_first",
+        goal_id="goal",
+        agent_id="codex-devbox",
+    )
+    second_args, _, second_lane = build_feishu_request_todo_args(
+        request_text="write the docs",
+        message_id="om_second",
+        goal_id="goal",
+        agent_id="codex-devbox",
+    )
+    repeated_lane = feishu_request_lane(
+        agent_id="codex-devbox",
+        message_id="om_first",
+        request_text=first_text,
+    )
+    assert first_lane == repeated_lane, (first_lane, repeated_lane)
+    assert first_lane.startswith("codex-devbox-req-"), first_lane
+    assert second_lane.startswith("codex-devbox-req-"), second_lane
+    assert first_lane != second_lane, (first_lane, second_lane)
+    assert first_args[-2:] == ["--claimed-by", first_lane], first_args
+    assert "--safety-class" in first_args and "read_only" in first_args, first_args
+    assert "before writes or external actions" in first_args[first_args.index("--text") + 1], first_args
+
+
 def main() -> int:
     assert_help_exposes_next_batch_command()
     assert_scheduler_plan_command_is_stable()
     assert_scheduler_next_batch_command_is_stable()
+    assert_feishu_request_todos_get_stable_parallel_lanes()
     print("feishu bridge scheduler commands smoke ok")
     return 0
 

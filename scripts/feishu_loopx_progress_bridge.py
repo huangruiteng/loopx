@@ -33,6 +33,7 @@ from loopx.capabilities.lark.bridge_commands import (
     loopx_status_text,
 )
 from loopx.capabilities.lark.bridge_actions import todo_commands_for_action
+from loopx.capabilities.lark.bridge_requests import build_feishu_request_todo_args
 from loopx.capabilities.lark.progress_reporter import (
     ProgressNotification,
     build_acceptance_notification,
@@ -123,6 +124,7 @@ class StateStore:
         request_text: str,
         goal_id: str,
         agent_id: str,
+        request_lane: str = "",
         initial_fingerprint: str | None = None,
     ) -> None:
         now = utc_now()
@@ -136,6 +138,7 @@ class StateStore:
                 "request_text": request_text,
                 "goal_id": goal_id,
                 "agent_id": agent_id,
+                "request_lane": request_lane or previous.get("request_lane") or "",
                 "created_at": previous.get("created_at") or now,
                 "updated_at": now,
                 "closed": bool(previous.get("closed", False)),
@@ -491,37 +494,21 @@ def loopx_quota_payload(goal_id: str) -> dict[str, Any]:
     )
 
 
-def add_loopx_todo(text: str, message_id: str) -> tuple[str, str]:
-    clean = " ".join(compact_markdown(text, max_chars=700, suffix="...").split())
-    if not clean:
-        raise ValueError("Write a task after /ask.")
-    todo_text = f"Handle Feishu bot request and reply to message_id={message_id} when done. Request: {clean}"
+def add_loopx_todo(text: str, message_id: str) -> tuple[str, str, str]:
+    args, clean, request_lane = build_feishu_request_todo_args(
+        request_text=text,
+        message_id=message_id,
+        goal_id=LOOPX_GOAL_ID,
+        agent_id=LOOPX_AGENT_ID,
+    )
     out = run_text(
-        [
-            LOOPX_BIN,
-            "--registry",
-            LOOPX_REGISTRY,
-            "todo",
-            "add",
-            "--goal-id",
-            LOOPX_GOAL_ID,
-            "--role",
-            "agent",
-            "--text",
-            todo_text,
-            "--task-class",
-            "advancement_task",
-            "--action-kind",
-            "feishu_user_request",
-            "--claimed-by",
-            LOOPX_AGENT_ID,
-        ],
+        [LOOPX_BIN, "--registry", LOOPX_REGISTRY, *args],
         timeout=30,
     )
     match = TODO_ID_RE.search(out)
     if not match:
         raise RuntimeError(f"LoopX did not return a todo id: {compact_markdown(out, max_chars=400, suffix='...')}")
-    return match.group(0), clean
+    return match.group(0), clean, request_lane
 
 
 def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
@@ -551,7 +538,7 @@ def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
             loopx_bin=LOOPX_BIN,
             registry=LOOPX_REGISTRY,
             goal_id=LOOPX_GOAL_ID,
-            agent_id=LOOPX_AGENT_ID,
+            agent_id="",
             max_chars=BOT_MAX_TEXT_CHARS,
         )
     if clean in {"/check", "check"}:
@@ -563,7 +550,7 @@ def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
             max_chars=BOT_MAX_TEXT_CHARS,
         )
     request_text = clean[len("/ask ") :].strip() if clean.startswith("/ask ") else clean
-    todo_id, normalized_request = add_loopx_todo(request_text, message_id)
+    todo_id, normalized_request, request_lane = add_loopx_todo(request_text, message_id)
     notification = build_acceptance_notification(
         todo_id=todo_id,
         goal_id=LOOPX_GOAL_ID,
@@ -576,6 +563,7 @@ def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
         request_text=normalized_request,
         goal_id=LOOPX_GOAL_ID,
         agent_id=LOOPX_AGENT_ID,
+        request_lane=request_lane,
         initial_fingerprint=notification.fingerprint,
     )
     publish_notification(state=state, item=state.todo(todo_id), notification=notification)

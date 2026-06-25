@@ -60,6 +60,20 @@ def main() -> int:
                     "waiting_reason_counts": {"agent_lane_capacity": 1},
                 },
             }
+        if args[:5] == ["loopx", "--registry", ".loopx/registry.json", "scheduler", "next-batch"]:
+            assert "--format" in args and "json" in args, args
+            assert "--agent-id" not in args, args
+            return {
+                "schema_version": "scheduler_next_batch_v0",
+                "goal_id": "default",
+                "ready_to_dispatch": True,
+                "dispatch_mode": "parallel_batch",
+                "batch_size": 2,
+                "worker_slots": [
+                    {"todo_id": "todo_docs", "agent_lane": "codex-devbox-req-a"},
+                    {"todo_id": "todo_view", "agent_lane": "codex-devbox-req-b"},
+                ],
+            }
         raise AssertionError(f"unexpected json command: {args}")
 
     bridge.run_text = fake_run_text
@@ -96,9 +110,24 @@ def main() -> int:
     plan_response = bridge.handle_text("/plan", "om_plan", state)
     assert plan_response and "Scheduler plan: run_parallel_batch" in plan_response, plan_response
     assert "Runnable: todo_docs, todo_read" in plan_response, plan_response
+    next_response = bridge.handle_text("/next", "om_next", state)
+    assert next_response and "Next batch: parallel_batch" in next_response, next_response
+    assert "codex-devbox-req-a" in next_response, next_response
     bridge.handle_text("write the docs", "om_original", state)
+    add_commands = [
+        command
+        for command in commands
+        if command[:5] == ["loopx", "--registry", ".loopx/registry.json", "todo", "add"]
+    ]
+    assert add_commands, commands
+    add_command = add_commands[-1]
+    claimed_by = add_command[add_command.index("--claimed-by") + 1]
+    assert claimed_by.startswith("codex-devbox-req-"), add_command
+    assert claimed_by != "codex-devbox", add_command
+    assert add_command[add_command.index("--safety-class") + 1] == "read_only", add_command
     tracked = state.todo("todo_abc")
     assert tracked["message_id"] == "om_original", tracked
+    assert tracked["request_lane"] == claimed_by, tracked
     assert tracked["progress_message_id"] == "om_progress_reply", tracked
 
     sent = bridge.poll_progress_once(state)
