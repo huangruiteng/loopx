@@ -1568,6 +1568,38 @@ function FrontstageRoute({
     : filterTodosByQuery(projection.agent_todos, normalizedTodoQuery);
   const visibleTodoCount = filteredUserTodos.length + filteredAgentTodos.length;
   const totalTodoCount = projection.user_todos.length + projection.agent_todos.length;
+  const budgetGovernanceRows = [
+    {
+      label: "budget",
+      value: quotaUsed,
+      helper: `quota state: ${stringifyScalar(projection.quota.state)}`,
+      tone: statusTone(stringifyScalar(projection.quota.state)),
+    },
+    {
+      label: "cadence",
+      value: stringifyScalar(projection.quota.scheduler_rrule ?? projection.quota.cadence_class ?? "scheduler hint"),
+      helper: `reset token: ${stringifyScalar(projection.quota.scheduler_reset_token ?? "not projected")}`,
+      tone: "info",
+    },
+    {
+      label: "spend rule",
+      value: stringifyScalar(projection.quota.spend_policy),
+      helper: "Cadence changes, final checks, and monitor-only polls are no-spend.",
+      tone: "success",
+    },
+    {
+      label: "controls",
+      value: stringifyScalar(projection.quota.override_policy ?? "preview gated"),
+      helper: stringifyScalar(projection.quota.pause_policy ?? "writes require CLI or loopback opt-in"),
+      tone: "warning",
+    },
+    {
+      label: "evidence",
+      value: stringifyScalar(projection.quota.latest_evidence_ref ?? projection.source_refs.latest_run_generated_at ?? "run history"),
+      helper: "Audit through todo ids, run history, and quota spend events.",
+      tone: "neutral",
+    },
+  ] satisfies Array<{ label: string; value: string; helper: string; tone: BadgeTone }>;
 
   return (
     <main
@@ -1879,6 +1911,22 @@ function FrontstageRoute({
                   </div>
                 </Panel>
               </div>
+
+              <Panel icon={BarChart3} title="Budget & Governance">
+                <div className="grid gap-2 p-4 sm:grid-cols-2 xl:grid-cols-5" data-testid="frontstage-budget-governance">
+                  {budgetGovernanceRows.map((row) => (
+                    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 px-3 py-3" key={row.label}>
+                      <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">{row.label}</div>
+                      <div className="mt-2 break-words text-sm font-semibold leading-6 text-slate-950">
+                        {row.value}
+                      </div>
+                      <div className="mt-2">
+                        <Badge variant={row.tone}>{row.helper}</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <div

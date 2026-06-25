@@ -100,6 +100,8 @@ The route currently exposes these durable anchors:
   `frontstage-todo-result-count` for reviewable todo projection slices.
 - `frontstage-role-map`, `frontstage-active-claims`, `frontstage-open-gates`,
   `frontstage-artifacts`, and `frontstage-timeline` for the operator workspace.
+- `frontstage-budget-governance` for the ops budget, cadence, no-spend control,
+  and evidence-link contract.
 - `frontstage-showcase-motion-beam` and `frontstage-state-flow-beam` for
   human-gate and state-flow animation checks.
 - `frontstage-self-iteration-timeline`, `frontstage-self-iteration-lane`,

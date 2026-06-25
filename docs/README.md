@@ -35,6 +35,9 @@ incident report, or launch draft.
   for Codex App, Codex CLI TUI, Claude Code loop, shell, HTTP, and worker
   bridge connectors.
 - [Quota allocation](quota-allocation.md): should-run and spend semantics.
+- [Dashboard budget governance](dashboard-budget-governance-contract.md):
+  operator-facing budget, cadence, controls, and evidence mapping for the ops
+  frontstage.
 - [Status data contract](status-data-contract.md): dashboard/status payload
   shape.
 - [Public/private boundary](public-private-boundary.md): what may be committed,
@@ -74,6 +77,7 @@ incident report, or launch draft.
 - [Worker bridge install contract](worker-bridge-install-contract.md)
 - [Lark Kanban control-plane adapter](lark-kanban-control-plane-adapter.md)
 - [Dashboard reward write boundary](dashboard-reward-write-boundary.md)
+- [Dashboard budget governance](dashboard-budget-governance-contract.md)
 - [Complex project read-only adapter](complex-project-readonly-adapter.md)
 - [Protocol contracts](reference/protocols/README.md)
 
