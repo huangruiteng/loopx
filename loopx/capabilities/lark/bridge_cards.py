@@ -57,6 +57,11 @@ def bridge_context_actions(item: dict[str, Any] | None) -> tuple[dict[str, Any],
             "value": base_value,
         },
         {
+            "action_id": "show_progress_now",
+            "label": "刷新进度",
+            "value": base_value,
+        },
+        {
             "action_id": "show_handoffs",
             "label": "交接步骤",
             "value": base_value,

@@ -20,10 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.capabilities.lark.message_card import (
-    compact_markdown,
-    extract_reply_message_id,
-)
+from loopx.capabilities.lark.message_card import compact_markdown, extract_reply_message_id
 from loopx.capabilities.lark.bridge_cards import card_for_notification
 from loopx.capabilities.lark.bridge_commands import (
     bridge_help_text,
@@ -35,13 +32,8 @@ from loopx.capabilities.lark.bridge_commands import (
 )
 from loopx.capabilities.lark.bridge_actions import todo_commands_for_action
 from loopx.capabilities.lark.bridge_requests import build_feishu_request_todo_args
-from loopx.capabilities.lark.progress_reporter import (
-    ProgressNotification,
-    build_acceptance_notification,
-    build_bridge_error_notification,
-    build_progress_notification,
-    should_emit_notification,
-)
+from loopx.capabilities.lark.progress_reporter import ProgressNotification, build_acceptance_notification
+from loopx.capabilities.lark.progress_reporter import build_bridge_error_notification, build_progress_notification, should_emit_notification
 
 
 HOME = Path.home()
@@ -599,9 +591,17 @@ def handle_card_action(raw: dict[str, Any], state: StateStore) -> bool:
         actor_id=actor_id,
         decision_scope=decision_scope,
     )
-    if action_id in {"show_next_batch", "show_handoffs"}:
-        kind = "handoffs" if action_id == "show_handoffs" else "next-batch"
-        readonly_response = scheduler_snapshot(kind, todo_id=todo_id, max_chars=BOT_MAX_TEXT_CHARS, timeout=45)
+    if action_id in {"show_next_batch", "show_handoffs", "show_progress_now"}:
+        if action_id == "show_progress_now":
+            agent_id = tracked_item_agent_id(item)
+            notification = build_progress_notification(
+                todo_id=todo_id, goal_id=goal_id, status_payload=loopx_status_payload(agent_id),
+                quota_payload=loopx_quota_payload(goal_id, agent_id), request_text=item.get("request_text"),
+            )
+            readonly_response = compact_markdown(f"{notification.summary}\n\n{notification.markdown}", max_chars=BOT_MAX_TEXT_CHARS, suffix="...")
+        else:
+            kind = "handoffs" if action_id == "show_handoffs" else "next-batch"
+            readonly_response = scheduler_snapshot(kind, todo_id=todo_id, max_chars=BOT_MAX_TEXT_CHARS, timeout=45)
         if original_message_id:
             reply_text(original_message_id, readonly_response)
         return True

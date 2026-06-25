@@ -163,7 +163,29 @@ def main() -> int:
     action_blocks = [element for element in cards[-1]["elements"] if element.get("tag") == "action"]
     assert action_blocks, cards[-1]
     action_ids = [button["value"]["action_id"] for button in action_blocks[0]["actions"]]
-    assert "show_next_batch" in action_ids and "show_handoffs" in action_ids, action_ids
+    assert {"show_next_batch", "show_progress_now", "show_handoffs"}.issubset(action_ids), action_ids
+
+    progress_status_count = len([command for command in commands if command[:4] == ["loopx", "--registry", ".loopx/registry.json", "status"]])
+    bridge.handle_card_action(
+        {
+            "event": {
+                "operator": {"open_id": "ou_operator"},
+                "action": {
+                    "value": {
+                        "source": "loopx_feishu_progress_bridge",
+                        "action_id": "show_progress_now",
+                        "todo_id": "todo_abc",
+                        "goal_id": "default",
+                    }
+                },
+            }
+        },
+        state,
+    )
+    refreshed_status_count = len([command for command in commands if command[:4] == ["loopx", "--registry", ".loopx/registry.json", "status"]])
+    assert refreshed_status_count > progress_status_count, commands
+    progress_replies = [command for command in commands if command[:3] == ["feishu-cli", "msg", "reply"] and "--text" in command]
+    assert any("User action needed" in " ".join(command) for command in progress_replies), progress_replies
 
     bridge.handle_card_action(
         {
