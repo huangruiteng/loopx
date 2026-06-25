@@ -304,7 +304,7 @@ or the
   gated, without bypassing the gate.
 - **Safe parallel planning**: read-only scheduler plans identify independent
   read-only or disjoint local-write todos, summarize the current dispatch
-  action, expose worker handoff text for runnable lanes, and keep same-agent,
+  action, expose the next dispatchable worker batch, and keep same-agent,
   gated, external, and protected work out of unsafe automatic parallel batches.
 - **Todo ownership**: user and agent todos with `claimed_by` for multi-agent
   coordination.
@@ -330,7 +330,7 @@ agent, operator, and domain-specific surfaces.
 | --- | --- | --- |
 | Goal state and status | Tracks active state, todos, claims, gates, evidence, run history, and first-screen attention. | `loopx status`, `loopx diagnose`, `loopx review-packet` |
 | Quota and interaction contract | Decides whether a turn should deliver, ask the user, wait for evidence, self-repair, or stay quiet. | `loopx quota should-run`, [quota allocation](docs/quota-allocation.md) |
-| Scheduler plan | Previews a bounded safe-parallel batch and copyable worker handoffs from current todo/status projection without starting workers or writing state. | `loopx scheduler plan --goal-id <goal-id>`, `loopx scheduler handoffs --goal-id <goal-id>` |
+| Scheduler plan | Previews a bounded safe-parallel batch, renders the next dispatchable batch, and exposes copyable worker handoffs from current todo/status projection without starting workers or writing state. | `loopx scheduler plan --goal-id <goal-id>`, `loopx scheduler next-batch --goal-id <goal-id>`, `loopx scheduler handoffs --goal-id <goal-id>` |
 | Agent runtime bridges | Keeps Codex App heartbeats, Codex CLI TUI loops, Claude Code `/loop`, and generic worker bridges aligned with the same guard. | `loopx heartbeat-prompt`, `loopx codex-cli-bootstrap-message`, `loopx worker-bridge` |
 | Operator surfaces | Renders compact project status for humans without making the browser the source of truth. | `loopx serve-status`, [dashboard](apps/dashboard/README.md), [frontstage](https://huangruiteng.github.io/loopx/frontstage/) |
 | External projections | Projects LoopX todos and gates into collaboration surfaces while LoopX remains the state authority. | `loopx lark-kanban`, [Lark Kanban adapter](docs/lark-kanban-control-plane-adapter.md) |
