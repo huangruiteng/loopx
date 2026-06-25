@@ -136,7 +136,11 @@ def test_reverse_channel_first_action_timeout_stops_codex_process() -> None:
     response = _run_codex_payload(
         {
             "args": ["-c", "import time; time.sleep(30)"],
-            "stdin": "synthetic prompt",
+            "stdin": (
+                "LoopX bridge action preflight. Your first tool action should "
+                "be a shell pipeline that sends JSON to the private bridge.\n\n"
+                "Private bridge command:\nfixture-bridge"
+            ),
             "timeout_sec": 20,
         },
         codex_bin=sys.executable,
@@ -147,6 +151,29 @@ def test_reverse_channel_first_action_timeout_stops_codex_process() -> None:
     assert time.monotonic() - start < 8
     assert response["exit_code"] == 124
     assert response["stderr"] == "codex_exec_first_action_timeout\n"
+    assert response["raw_task_text_recorded"] is False
+    assert response["credential_values_recorded"] is False
+
+
+def test_reverse_channel_raw_prompt_does_not_require_bridge_first_action() -> None:
+    start = time.monotonic()
+    response = _run_codex_payload(
+        {
+            "args": ["-c", "import time; time.sleep(2)"],
+            "stdin": (
+                "Raw Codex autonomous baseline prompt with a bridge packet.\n\n"
+                "Private bridge command:\nfixture-bridge"
+            ),
+            "timeout_sec": 10,
+        },
+        codex_bin=sys.executable,
+        default_timeout_sec=10,
+        prompt_bridge_command="unused {private_bridge_command_sh}",
+        first_action_timeout_sec=1,
+    )
+    assert time.monotonic() - start >= 1.5
+    assert response["exit_code"] == 0, response
+    assert response["stderr"] != "codex_exec_first_action_timeout\n"
     assert response["raw_task_text_recorded"] is False
     assert response["credential_values_recorded"] is False
 
@@ -8625,6 +8652,7 @@ if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_sixteen()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
     test_reverse_channel_first_action_timeout_stops_codex_process()
+    test_reverse_channel_raw_prompt_does_not_require_bridge_first_action()
     test_product_mode_initial_prompt_defers_task_until_agent_lifecycle()
     test_skillsbench_final_verifier_timeout_override_records_public_state()
     test_skillsbench_final_verifier_timeout_override_can_extend_timeout()

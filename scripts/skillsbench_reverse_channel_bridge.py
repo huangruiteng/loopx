@@ -156,6 +156,20 @@ def _rewrite_private_bridge_command(prompt: str, replacement: str | None) -> str
     return re.sub(pattern, r"\1" + replacement, prompt, count=1)
 
 
+def _prompt_requires_bridge_first_action(prompt: str) -> bool:
+    text = prompt or ""
+    if "Private bridge command:" not in text:
+        return False
+    lowered = text.lower()
+    required_markers = (
+        "loopx_skillsbench_local_acp_relay_bridge_ready",
+        "your first tool action should be a shell",
+        "your first agent action must be a shell/tool call",
+        "first run the case-local quota/todo commands",
+    )
+    return any(marker in lowered for marker in required_markers)
+
+
 def _split_codex_exec_prompt_for_stdin(args: list[str]) -> tuple[list[str], str | None]:
     """Move the positional codex exec prompt out of argv and into stdin.
 
@@ -394,6 +408,7 @@ def _run_codex_payload(
                 stdin_prompt is not None
                 and prompt_bridge_command
                 and first_action_timeout_sec > 0
+                and _prompt_requires_bridge_first_action(stdin_prompt)
             ):
                 first_action_deadline = (
                     time.monotonic() + max(1.0, float(first_action_timeout_sec))

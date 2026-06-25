@@ -58,6 +58,20 @@ SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
 )
 
 
+def _prompt_requires_bridge_first_action(prompt: str) -> bool:
+    text = prompt or ""
+    if "Private bridge command:" not in text:
+        return False
+    lowered = text.lower()
+    required_markers = (
+        SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER.lower(),
+        "your first tool action should be a shell",
+        "your first agent action must be a shell/tool call",
+        "first run the case-local quota/todo commands",
+    )
+    return any(marker in lowered for marker in required_markers)
+
+
 def _json_rpc_result(message_id: Any, result: dict[str, Any]) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": message_id, "result": result}
 
@@ -424,6 +438,7 @@ class SkillsBenchLocalAcpRelay:
                     if (
                         bridge_summary_path is not None
                         and self._config.first_action_timeout_sec > 0
+                        and _prompt_requires_bridge_first_action(prompt_for_codex)
                     ):
                         first_action_deadline = (
                             time.monotonic()
