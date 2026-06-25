@@ -148,6 +148,14 @@ includes(frontstageSource, "showcaseCaseHref", "central showcase case page link 
 includes(frontstageSource, "estimated_developer_days", "efficiency baseline range");
 includes(frontstageSource, "single_engineer_calendar_compression", "efficiency compression range");
 includes(frontstageSource, "maturity-adjusted", "maturity adjusted copy");
+includes(frontstageSource, 'data-testid="frontstage-trajectory-analysis"', "trajectory analysis panel");
+includes(frontstageSource, 'data-testid="frontstage-trajectory-stage-curve"', "trajectory stage progress curve");
+includes(frontstageSource, 'data-testid="frontstage-trajectory-current-scene"', "trajectory current-stage scene");
+includes(frontstageSource, 'data-testid="frontstage-trajectory-verdict-card"', "trajectory verdict card");
+includes(frontstageSource, 'data-testid="frontstage-trajectory-evidence-drawer"', "trajectory evidence drawer");
+includes(frontstageSource, "buildTrajectoryAnalysis", "projection-backed trajectory analysis helper");
+includes(frontstageSource, "not a raw trajectory replay", "trajectory avoids raw replay copy");
+includes(frontstageSource, "raw trajectory logs out of the browser surface", "trajectory public boundary copy");
 includes(frontstageSource, 'data-testid="frontstage-state-flow-hero"', "showcase state-flow hero");
 includes(frontstageSource, "State flow control plane", "state-flow hero label");
 includes(frontstageSource, "Work keeps moving. Judgment stays in charge.", "state-flow hero punchline");
@@ -210,6 +218,17 @@ excludes(motionSource, "payload", "motion board live payload dependency");
 includes(stylesSource, ".frontstage-showcase-motion-rail", "motion board rail CSS");
 includes(stylesSource, ".frontstage-showcase-motion-beam", "motion board beam CSS");
 includes(stylesSource, "@keyframes frontstage-case-traffic", "motion board case traffic keyframes");
+
+const trajectorySource = sourceBetween(frontstageSource, "function TrajectoryAnalysisPanel", "const showcaseMotionTones", "trajectory analysis panel");
+includes(trajectorySource, "buildTrajectoryAnalysis(selfIterationRollout)", "trajectory uses rollout fixture projection");
+includes(trajectorySource, "frontstage-trajectory-stage", "trajectory stage render loop");
+includes(trajectorySource, "Stage progress curve", "trajectory curve label");
+includes(trajectorySource, "Evidence drawer", "trajectory evidence drawer label");
+includes(trajectorySource, "read-only projection", "trajectory read-only projection label");
+includes(trajectorySource, "inferenceReason", "trajectory surfaces bridge inference reason");
+includes(trajectorySource, "local prose, private docs, and raw trajectory logs", "trajectory private-source exclusion copy");
+excludes(trajectorySource, "fetchFrontstageStatusPayload", "trajectory live status dependency");
+excludes(trajectorySource, "statusUrl", "trajectory status URL dependency");
 
 const kineticStripSource = sourceBetween(frontstageSource, "function ShowcaseKineticCaseStrip", "function FrontstageRoute", "showcase kinetic strip");
 includes(kineticStripSource, "frontstageShowcases", "kinetic strip catalog source");

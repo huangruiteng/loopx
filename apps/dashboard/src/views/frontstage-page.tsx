@@ -291,6 +291,118 @@ function formatRange(range: NumberRange | undefined, suffix = "") {
   return `${formatNumber(range.low)}-${formatNumber(range.high)}${suffix}`;
 }
 
+type TrajectoryStage = {
+  animationEventId: string;
+  confidence: string;
+  evidenceRefs: string[];
+  inferenceReason?: string;
+  isCurrent: boolean;
+  isSynthetic: boolean;
+  kind: string;
+  laneLabel: string;
+  laneRole: string;
+  progress: number;
+  sourceEventIds: string[];
+  stageLabel: string;
+  title: string;
+  transitionLabel: string;
+};
+
+type TrajectoryEvidenceItem = {
+  eventTitle: string;
+  kind: "evidence_ref" | "source_event";
+  ref: string;
+};
+
+function rolloutStageLabel(event: RolloutAnimationEvent) {
+  if (event.kind === "deliverable") {
+    return "Protocol";
+  }
+  if (event.kind === "human_gate") {
+    return "Gate";
+  }
+  if (event.kind === "validation") {
+    return "Validation";
+  }
+  if (event.kind === "synthetic_bridge") {
+    return "UI bridge";
+  }
+  if (event.title.toLowerCase().includes("sufficiency")) {
+    return "Sufficiency";
+  }
+  if (event.kind === "handoff") {
+    return "Handoff";
+  }
+  return "State";
+}
+
+function trajectoryConfidenceTone(confidence: string): BadgeTone {
+  if (confidence === "observed") {
+    return "success";
+  }
+  if (confidence === "synthetic_bridge") {
+    return "warning";
+  }
+  if (confidence.startsWith("inferred")) {
+    return "info";
+  }
+  return "neutral";
+}
+
+function buildTrajectoryAnalysis(fixture: LongHorizonRolloutFixture) {
+  const laneById = new Map(fixture.lanes.map((lane) => [lane.lane_id, lane]));
+  const lastIndex = Math.max(1, fixture.animation_events.length - 1);
+  const stages: TrajectoryStage[] = fixture.animation_events.map((event, index) => {
+    const lane = laneById.get(event.lane_id);
+    const transitionLabel = event.state_transition
+      ? `${event.state_transition.from_state ?? "n/a"} -> ${event.state_transition.to_state ?? "n/a"}`
+      : "state retained";
+    return {
+      animationEventId: event.animation_event_id,
+      confidence: event.confidence,
+      evidenceRefs: event.evidence_refs ?? [],
+      inferenceReason: event.inference_reason,
+      isCurrent: index === fixture.animation_events.length - 1,
+      isSynthetic: event.confidence === "synthetic_bridge" || event.display_hint === "dashed_edge",
+      kind: event.kind,
+      laneLabel: lane?.display_name ?? event.lane_id,
+      laneRole: lane?.role ?? "agent",
+      progress: Math.round((index / lastIndex) * 100),
+      sourceEventIds: event.source_event_ids,
+      stageLabel: rolloutStageLabel(event),
+      title: event.title,
+      transitionLabel,
+    };
+  });
+  const currentStage = stages[stages.length - 1];
+  const observedCount = stages.filter((stage) => stage.confidence === "observed").length;
+  const syntheticCount = stages.filter((stage) => stage.isSynthetic).length;
+  const evidenceItems = stages.flatMap((stage) => {
+    const evidenceRefs = stage.evidenceRefs.map((ref) => ({
+      eventTitle: stage.title,
+      kind: "evidence_ref" as const,
+      ref,
+    }));
+    const sourceEventIds = stage.sourceEventIds.map((ref) => ({
+      eventTitle: stage.title,
+      kind: "source_event" as const,
+      ref,
+    }));
+    return [...evidenceRefs, ...sourceEventIds];
+  });
+
+  return {
+    currentStage,
+    evidenceItems,
+    observedCount,
+    stages,
+    syntheticCount,
+    verdict: syntheticCount
+      ? "Projected handoff is visible; the next frontend patch should replace the bridge with commit-backed evidence."
+      : "All rendered stages are observed and ready for the next projection-backed iteration.",
+  };
+}
+
 function TodoRow({ todo }: { todo: GoalChannelTodo }) {
   return (
     <div className="grid gap-3 border-b border-slate-200 px-3 py-3 last:border-b-0 md:grid-cols-[96px_minmax(0,1fr)_156px]">
@@ -437,6 +549,154 @@ function EfficiencyEvidencePanel() {
             </div>
           </div>
         ) : null}
+      </div>
+    </Panel>
+  );
+}
+
+function TrajectoryAnalysisPanel() {
+  const analysis = useMemo(() => buildTrajectoryAnalysis(selfIterationRollout), []);
+  const currentStage = analysis.currentStage;
+
+  return (
+    <Panel icon={Activity} title="Trajectory Analysis">
+      <div
+        className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,420px)]"
+        data-testid="frontstage-trajectory-analysis"
+      >
+        <div
+          className="min-w-0 rounded-md border border-slate-900 bg-slate-950 p-4 text-white"
+          data-testid="frontstage-trajectory-stage-curve"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-normal text-cyan-200">
+                Stage progress curve
+              </div>
+              <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-white">
+                A projection fixture turns state transitions into a visible trajectory, not a raw trajectory replay.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="info">read-only projection</Badge>
+              <Badge variant="success">{analysis.observedCount} observed</Badge>
+              <Badge variant={analysis.syntheticCount ? "warning" : "success"}>
+                {analysis.syntheticCount} bridge
+              </Badge>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            {analysis.stages.map((stage, index) => (
+              <div
+                className="grid gap-2 sm:grid-cols-[104px_minmax(0,1fr)]"
+                data-testid="frontstage-trajectory-stage"
+                key={stage.animationEventId}
+              >
+                <div className="flex min-h-10 items-center justify-between gap-2 text-xs font-semibold text-slate-300">
+                  <span>{stage.stageLabel}</span>
+                  <span className="font-mono text-slate-500">{String(index + 1).padStart(2, "0")}</span>
+                </div>
+                <div
+                  className={cn(
+                    "relative min-h-10 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2",
+                    stage.isCurrent ? "ring-1 ring-cyan-300/70" : "",
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "absolute bottom-0 left-0 top-0 rounded-md",
+                      stage.isSynthetic ? "bg-amber-400/15" : "bg-cyan-300/15",
+                    )}
+                    style={{ width: `${Math.max(12, stage.progress)}%` }}
+                  />
+                  <div className="relative z-10 flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-sm font-semibold text-white">{stage.title}</span>
+                    <span className="flex flex-wrap gap-1.5">
+                      <Badge variant={rolloutKindTone(stage.kind)}>{stage.kind}</Badge>
+                      <Badge variant={trajectoryConfidenceTone(stage.confidence)}>{stage.confidence}</Badge>
+                    </span>
+                  </div>
+                  <div className="relative z-10 mt-1 text-xs font-medium leading-5 text-slate-300">
+                    {stage.transitionLabel}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-3">
+          <div
+            className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3"
+            data-testid="frontstage-trajectory-current-scene"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="info">{currentStage?.laneRole ?? "agent"}</Badge>
+              <Badge variant={currentStage?.isSynthetic ? "warning" : "success"}>
+                {currentStage?.isSynthetic ? "needs evidence" : "observed"}
+              </Badge>
+            </div>
+            <h3 className="mt-3 text-base font-semibold leading-7 text-slate-950">
+              {currentStage?.stageLabel ?? "Current stage"}
+            </h3>
+            <p className="mt-1 text-sm font-medium leading-6 text-slate-700">
+              {currentStage?.title ?? "No stage projected"}
+            </p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              {currentStage?.laneLabel ?? "No lane"} / {currentStage?.transitionLabel ?? "state retained"}
+            </p>
+            {currentStage?.inferenceReason ? (
+              <p className="mt-2 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium leading-5 text-slate-600">
+                {currentStage.inferenceReason}
+              </p>
+            ) : null}
+          </div>
+
+          <div
+            className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3"
+            data-testid="frontstage-trajectory-verdict-card"
+          >
+            <div className="text-[11px] font-semibold uppercase tracking-normal text-amber-800">
+              Verdict
+            </div>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-950">{analysis.verdict}</p>
+            <p className="mt-2 text-xs font-medium leading-5 text-amber-950">
+              The panel is derived from public rollout projections and keeps local prose, private docs, and raw trajectory logs out of the browser surface.
+            </p>
+          </div>
+        </div>
+
+        <div
+          className="rounded-md border border-slate-200 bg-white px-3 py-3 xl:col-span-2"
+          data-testid="frontstage-trajectory-evidence-drawer"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+                Evidence drawer
+              </div>
+              <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
+                Source events and public evidence references explain every plotted stage.
+              </p>
+            </div>
+            <Badge variant="neutral">{analysis.evidenceItems.length} refs</Badge>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {analysis.evidenceItems.map((item) => (
+              <div
+                className="min-w-0 rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
+                key={`${item.kind}-${item.ref}-${item.eventTitle}`}
+              >
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge variant={item.kind === "evidence_ref" ? "success" : "info"}>{item.kind}</Badge>
+                  <span className="truncate text-xs font-semibold text-slate-950">{item.eventTitle}</span>
+                </div>
+                <div className="mt-1 break-words font-mono text-[11px] leading-5 text-slate-600">{item.ref}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </Panel>
   );
@@ -1574,6 +1834,8 @@ function FrontstageRoute({
           </div>
 
           {!isDeveloperMode ? <EfficiencyEvidencePanel /> : null}
+
+          {isShowcaseMode ? <TrajectoryAnalysisPanel /> : null}
 
           {isShowcaseMode ? <SelfIterationTimelinePanel /> : null}
 
