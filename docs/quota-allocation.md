@@ -354,6 +354,10 @@ ordinary delivery work. Only when no ready current-agent/unclaimed deferred
 resume exists should agent-scoped quota fall through to `agent_scope_wait`,
 `reassignment_required`, or `scope_exhausted`.
 
+For completed handoff gates, record that rationale structurally as
+`no_followup=true`; status projects the gate as `cleared_no_followup` instead
+of waking the blocked agent with `successor_replan_required`.
+
 External-evidence waits have an additional CLI-level observation contract. When
 the selected goal is `state=waiting`, `waiting_on=external_evidence`, and its
 current lane is a continuous monitor, or when the active state says a

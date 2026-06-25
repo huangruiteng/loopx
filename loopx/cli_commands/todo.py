@@ -147,6 +147,14 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="For todo update, remove the soft claimed_by owner from the todo.",
     )
+    todo_parser.add_argument(
+        "--no-follow-up",
+        action="store_true",
+        help=(
+            "For todo update/complete, record a structured no-follow-up rationale "
+            "when a completed todo intentionally has no successor."
+        ),
+    )
     todo_parser.add_argument("--next-agent-todo", help="For complete/supersede, atomically add or update the next agent todo.")
     todo_parser.add_argument("--next-user-todo", help="For complete/supersede, atomically add or update the next user todo.")
     todo_parser.add_argument(
@@ -183,7 +191,12 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     )
     todo_parser.add_argument(
         "--agent-id",
-        help="For todo suggest, name the project agent that should perform the repository analysis.",
+        help=(
+            "For todo add/update on role=user task-class=user_gate, mark the "
+            "authoring registered agent; when --blocks-agent is omitted, the "
+            "gate blocks this agent. For todo suggest, name the project agent "
+            "that should perform the repository analysis."
+        ),
     )
     todo_parser.add_argument(
         "--from",
@@ -224,14 +237,22 @@ def handle_todo_command(
         else render_todo_markdown
     )
     try:
+        agent_id_allowed_for_gate_authoring = (
+            args.todo_command in {"add", "update"}
+            and args.role == "user"
+            and args.task_class == "user_gate"
+        )
         if args.todo_command not in {"suggest", "capture-followups"} and (
-            args.agent_id
+            (args.agent_id and not agent_id_allowed_for_gate_authoring)
             or args.suggestion_sources
             or args.suggestion_limit is not None
             or args.suggestion_trigger
         ):
             raise ValueError(
-                "todo --agent-id, --from, --limit, and --trigger are only supported by `todo suggest`"
+                "todo --agent-id is supported by `todo suggest` and by "
+                "`todo add/update --role user --task-class user_gate` for "
+                "agent-scoped user gates; --from, --limit, and --trigger are "
+                "only supported by `todo suggest`"
             )
         if args.todo_command == "add":
             if args.followups:
@@ -246,6 +267,8 @@ def handle_todo_command(
                 raise ValueError("todo add does not support --next-claimed-by")
             if args.side_agent_self_merged:
                 raise ValueError("todo add does not support --side-agent-self-merged")
+            if args.no_follow_up:
+                raise ValueError("todo add does not support --no-follow-up")
             payload = add_goal_todo(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -258,6 +281,7 @@ def handle_todo_command(
                 target_capabilities=args.target_capabilities,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
+                agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
                 resume_when=args.resume_when,
                 project=Path(args.project).expanduser() if args.project else None,
@@ -287,6 +311,7 @@ def handle_todo_command(
                     ("--blocks-agent", args.blocks_agent),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--resume-when", args.resume_when),
+                    ("--no-follow-up", args.no_follow_up),
                     ("--next-agent-todo", args.next_agent_todo),
                     ("--next-user-todo", args.next_user_todo),
                     ("--next-claimed-by", args.next_claimed_by),
@@ -335,9 +360,12 @@ def handle_todo_command(
                 args.blocks_agent,
                 args.unblocks_todo_id,
                 args.resume_when,
+                args.no_follow_up,
                 args.clear_claim,
             ]):
-                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, --blocks-agent, --unblocks-todo-id, --resume-when, or --clear-claim")
+                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, --blocks-agent, --unblocks-todo-id, --resume-when, --no-follow-up, or --clear-claim")
+            if args.no_follow_up and not (args.note or args.reason or args.evidence):
+                raise ValueError("--no-follow-up requires --note, --reason, or --evidence")
             if args.followups:
                 raise ValueError("todo update does not support --follow-up; use `todo capture-followups`")
             if args.next_claimed_by:
@@ -361,8 +389,10 @@ def handle_todo_command(
                 target_capabilities=args.target_capabilities,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
+                agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
                 resume_when=args.resume_when,
+                no_followup=True if args.no_follow_up else None,
                 clear_claim=bool(args.clear_claim),
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
@@ -375,6 +405,10 @@ def handle_todo_command(
                 raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
             if args.blocks_agent or args.unblocks_todo_id or args.resume_when:
                 raise ValueError("todo complete does not support --blocks-agent, --unblocks-todo-id, or --resume-when; use todo update before completion or side-agent handoff successor metadata")
+            if args.no_follow_up and (args.next_agent_todo or args.next_user_todo):
+                raise ValueError("--no-follow-up cannot be combined with successor todos")
+            if args.no_follow_up and not (args.note or args.evidence):
+                raise ValueError("--no-follow-up requires --note or --evidence")
             if args.followups:
                 raise ValueError("todo complete does not support --follow-up; use `todo capture-followups`")
             payload = complete_goal_todo(
@@ -384,6 +418,7 @@ def handle_todo_command(
                 role=args.role,
                 evidence=args.evidence,
                 note=args.note,
+                no_followup=bool(args.no_follow_up),
                 claimed_by=args.claimed_by,
                 clear_claim=bool(args.clear_claim),
                 next_agent_todo=args.next_agent_todo,
@@ -409,6 +444,8 @@ def handle_todo_command(
                 raise ValueError("todo supersede does not support --clear-claim")
             if args.side_agent_self_merged:
                 raise ValueError("todo supersede does not support --side-agent-self-merged")
+            if args.no_follow_up:
+                raise ValueError("todo supersede does not support --no-follow-up")
             if args.followups:
                 raise ValueError("todo supersede does not support --follow-up; use `todo capture-followups`")
             if args.blocks_agent or args.unblocks_todo_id or args.resume_when:
@@ -435,6 +472,8 @@ def handle_todo_command(
                 raise ValueError("todo archive-completed does not support --next-claimed-by")
             if args.side_agent_self_merged:
                 raise ValueError("todo archive-completed does not support --side-agent-self-merged")
+            if args.no_follow_up:
+                raise ValueError("todo archive-completed does not support --no-follow-up")
             if args.followups:
                 raise ValueError("todo archive-completed does not support --follow-up; use `todo capture-followups`")
             payload = archive_completed_todos(
@@ -466,6 +505,7 @@ def handle_todo_command(
                     ("--blocks-agent", args.blocks_agent),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--resume-when", args.resume_when),
+                    ("--no-follow-up", args.no_follow_up),
                     ("--clear-claim", args.clear_claim),
                     ("--next-agent-todo", args.next_agent_todo),
                     ("--next-user-todo", args.next_user_todo),
@@ -509,6 +549,7 @@ def handle_todo_command(
                     ("--blocks-agent", args.blocks_agent),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--resume-when", args.resume_when),
+                    ("--no-follow-up", args.no_follow_up),
                     ("--clear-claim", args.clear_claim),
                     ("--next-agent-todo", args.next_agent_todo),
                     ("--next-user-todo", args.next_user_todo),
@@ -580,7 +621,7 @@ def handle_todo_command(
             registry_path=registry_path,
             runtime_root_arg=runtime_root_arg,
             event_kind=todo_event_kinds.get(args.todo_command, "todo_update"),
-            agent_id=args.claimed_by,
+            agent_id=args.agent_id or args.claimed_by,
             todo_id=args.todo_id or str(payload.get("todo_id") or "").strip() or None,
             status=str(payload.get("status") or args.todo_command or "").strip(),
             summary=(

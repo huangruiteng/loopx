@@ -12,6 +12,7 @@ from .todo_contract import (
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_id,
+    normalize_todo_no_followup,
     normalize_todo_resume_when,
     normalize_todo_status,
     normalize_todo_task_class,
@@ -26,6 +27,7 @@ class HandoffGateState(str, Enum):
     BLOCKING = "blocking"
     CLEARED_WITHOUT_SUCCESSOR = "cleared_without_successor"
     CLEARED_WITH_SUCCESSOR = "cleared_with_successor"
+    CLEARED_NO_FOLLOWUP = "cleared_no_followup"
     SUPERSEDED = "superseded"
     DEFERRED = "deferred"
 
@@ -97,6 +99,8 @@ def _handoff_gate_state(
         return HandoffGateState.DEFERRED
     if not _todo_done(gate):
         return HandoffGateState.BLOCKING
+    if normalize_todo_no_followup(gate.get("no_followup")) is True:
+        return HandoffGateState.CLEARED_NO_FOLLOWUP
     if successor_ids:
         return HandoffGateState.CLEARED_WITH_SUCCESSOR
     return HandoffGateState.CLEARED_WITHOUT_SUCCESSOR
@@ -126,6 +130,7 @@ def _compact_handoff_gate(
         "claimed_by",
         "unblocks_todo_id",
         "resume_when",
+        "no_followup",
         "superseded_by",
     ):
         value = gate.get(key)

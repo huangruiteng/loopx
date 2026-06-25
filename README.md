@@ -28,13 +28,45 @@ can be handed back to the agent.
 LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地方明确等人，
 不该空等的安全侧路继续推进，下一轮 agent 总能读到目标、边界、证据和交接。
 
-[Quick Start](#quick-start) · [Who Should Try It](#who-should-try-it) · [See It In Action](#see-it-in-action) ·
+[What Is It](#what-is-it) · [Who Should Try It](#who-should-try-it) · [Quick Start](#quick-start) · [See It In Action](#see-it-in-action) ·
+[Capability Surface](#capability-surface) ·
 [Getting Started](docs/guides/getting-started.md) · [Showcases](docs/showcases/README.md) ·
 [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
 [Community](#community--feedback) · [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
 [Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
 
 > Keep the loop moving. Keep the judgment human.
+
+## What Is It?
+
+LoopX does not replace Codex, Claude Code, Cursor, or another agent
+runtime. It sits above them as a loop-engineering control plane: the runtime
+executes bounded agent loops, while LoopX preserves the dynamic goal state those
+loops need to keep working without losing the plot.
+
+Short answer: LoopX is not another executor. Codex goal, Codex App
+automation, CLI scripts, cron jobs, or a human-visible TUI can trigger the next
+executor loop; LoopX keeps the goal, gate, evidence, quota, and handoff contract
+stable across those turns.
+
+| Layer | Role |
+| --- | --- |
+| Codex / Claude Code / Cursor | Execute a bounded agent loop: read, write, run commands, and respond. |
+| Goal mode / automation / CLI scripts / TUI | Trigger or schedule the next executor loop. |
+| LoopX | Preserve the dynamic loop state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
+
+The product promise is not "more todo lists." It is a practical foundation for
+loop engineering: keep human judgment at high-value decision points, keep safe
+fallback work moving when one lane is gated, and stop compute spend when a turn
+cannot produce a verified transition.
+
+Put differently: LoopX lets a user's agent team keep working across tools,
+turns, and off-hours without turning the project into a pile of hidden scripts
+and stale prompts. The technical contract underneath that promise is explicit:
+agent identity, todo ownership, scope, capability gates, quota, evidence
+writeback, and public/private boundaries stay visible to the next turn.
+
+![LoopX control-plane board](docs/assets/control-plane-board.svg)
 
 ## Who Should Try It
 
@@ -207,37 +239,6 @@ points:
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
 full presenter material, see the experimental notes below.
 
-## What Is It?
-
-LoopX does not replace Codex, Claude Code, Cursor, or another agent
-runtime. It sits above them as a loop-engineering control plane: the runtime
-executes bounded agent loops, while LoopX preserves the dynamic goal state those
-loops need to keep working without losing the plot.
-
-Short answer: LoopX is not another executor. Codex goal, Codex App
-automation, CLI scripts, cron jobs, or a human-visible TUI can trigger the next
-executor loop; LoopX keeps the goal, gate, evidence, quota, and handoff contract
-stable across those turns.
-
-| Layer | Role |
-| --- | --- |
-| Codex / Claude Code / Cursor | Execute a bounded agent loop: read, write, run commands, and respond. |
-| Goal mode / automation / CLI scripts / TUI | Trigger or schedule the next executor loop. |
-| LoopX | Preserve the dynamic loop state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
-
-The product promise is not "more todo lists." It is a practical foundation for
-loop engineering: keep human judgment at high-value decision points, keep safe
-fallback work moving when one lane is gated, and stop compute spend when a turn
-cannot produce a verified transition.
-
-Put differently: LoopX lets a user's agent team keep working across tools,
-turns, and off-hours without turning the project into a pile of hidden scripts
-and stale prompts. The technical contract underneath that promise is explicit:
-agent identity, todo ownership, scope, capability gates, quota, evidence
-writeback, and public/private boundaries stay visible to the next turn.
-
-![LoopX control-plane board](docs/assets/control-plane-board.svg)
-
 ## User Mental Model
 
 LoopX has more kernel concepts than a user should have to think about every
@@ -315,6 +316,26 @@ or the
   private state, credentials, logs, traces, and benchmark material out of
   public artifacts.
 
+## Capability Surface
+
+LoopX has grown beyond a single heartbeat helper. The useful mental model is a
+small control-plane kernel plus adapters that project the same state into
+agent, operator, and domain-specific surfaces.
+
+| Surface | What it does | Start with |
+| --- | --- | --- |
+| Goal state and status | Tracks active state, todos, claims, gates, evidence, run history, and first-screen attention. | `loopx status`, `loopx diagnose`, `loopx review-packet` |
+| Quota and interaction contract | Decides whether a turn should deliver, ask the user, wait for evidence, self-repair, or stay quiet. | `loopx quota should-run`, [quota allocation](docs/quota-allocation.md) |
+| Agent runtime bridges | Keeps Codex App heartbeats, Codex CLI TUI loops, Claude Code `/loop`, and generic worker bridges aligned with the same guard. | `loopx heartbeat-prompt`, `loopx codex-cli-bootstrap-message`, `loopx worker-bridge` |
+| Operator surfaces | Renders compact project status for humans without making the browser the source of truth. | `loopx serve-status`, [dashboard](apps/dashboard/README.md), [frontstage](https://huangruiteng.github.io/loopx/frontstage/) |
+| External projections | Projects LoopX todos and gates into collaboration surfaces while LoopX remains the state authority. | `loopx lark-kanban`, [Lark Kanban adapter](docs/lark-kanban-control-plane-adapter.md) |
+| Domain adapters | Packages repeatable work lanes such as issue fixing, content operations, value connector planning, ML experiment advice, and benchmark evidence. | `loopx issue-fix`, `loopx content-ops`, `loopx value-connectors`, `loopx ml-experiment`, `loopx benchmark` |
+| Governance patterns | Captures recurring good/bad interaction shapes so new capabilities do not become one-off prompt branches. | [pattern catalog](docs/interaction-pattern-catalog.md), [state model](docs/state-interaction-model.md) |
+
+Every surface should answer the same core questions: what is current, who owns
+the next action, which decision is gated, what evidence changed, and whether
+the next agent turn is allowed to spend compute.
+
 ## Community & Feedback
 
 LoopX is still early. The most useful feedback comes from real
@@ -369,6 +390,10 @@ loopx todo add --goal-id your-project-goal --role agent --text "Run the next bou
 loopx review-packet --goal-id your-project-goal
 loopx refresh-state --goal-id your-project-goal
 ```
+
+Domain-specific helpers such as `issue-fix`, `content-ops`,
+`value-connectors`, `ml-experiment`, and `lark-kanban` are dry-run or advisory
+by default unless an explicit execute flag or external permission is present.
 
 Automatic turns should check quota before work and spend exactly once after
 validated writeback:
@@ -460,10 +485,21 @@ contract.
 - [Documentation index](docs/README.md): stable docs grouped by audience.
 - [Architecture](docs/architecture.md): lifetime-goal invariant and core
   control-plane shape.
+- [State interaction model](docs/state-interaction-model.md): actor boundaries,
+  state stores, interaction contract, and writeback model.
+- [Interaction pattern catalog](docs/interaction-pattern-catalog.md): reusable
+  routing, gate, evidence, projection, and planning patterns.
 - [Codex CLI packaged install](docs/product/codex-cli-packaged-install.md):
   no-clone install/update/start path for Codex CLI users.
-- [Integration guide](docs/integration.md): how to connect a project to Goal
-  LoopX state.
+- [Worker bridge install contract](docs/worker-bridge-install-contract.md):
+  runner-agnostic bridge and edge-worker handoff model.
+- [Lark Kanban adapter](docs/lark-kanban-control-plane-adapter.md):
+  Feishu/Lark Base projection for todos, claims, gates, and evidence.
+- [Integration guide](docs/integration.md): how to connect a project to LoopX
+  state.
+- [Heartbeat automation prompt](docs/heartbeat-automation-prompt.md) and
+  [long-task cadence policy](docs/long-task-cadence-policy.md): recurring
+  automation, scheduler backoff, and final-check/self-stop behavior.
 - [Showcase catalog](docs/showcases/README.md): public-safe cases and future
   frontend data.
 - [Benchmark developer workflow](docs/benchmark-developer-workflow.md):
@@ -501,14 +537,14 @@ LoopX is early. It is not a full agent platform and not an autonomous
 production controller.
 
 The current milestone is a useful local substrate for goal state, run history,
-operator gates, human reward, structured todos, quota-aware heartbeats,
-read-only project maps, benchmark control-plane evidence, and a small
-multi-project dashboard.
+operator gates, human reward, structured todos, scoped claims, quota-aware
+heartbeats, read-only project maps, benchmark control-plane evidence, runtime
+bridges, collaboration projections, and a small multi-project dashboard.
 
 The next milestones are a clearer maintainer workflow for issue/PR loops,
-stronger project adapters, safer controller/sub-agent coordination, better
-benchmark-runner ergonomics, and a more polished management surface that maps
-kernel state into the five user questions above.
+stronger project and domain adapters, safer controller/sub-agent coordination,
+better benchmark-runner ergonomics, and a more polished management surface that
+maps kernel state into the five user questions above.
 
 ## Experimental
 
@@ -521,11 +557,6 @@ After a project is connected, LoopX can be used as a read-first management
 surface before it is trusted with more control. The local dashboard helps you
 inspect all connected projects, search todos, review user gates, compare agent
 lanes, and follow evidence without reading raw logs.
-
-```bash
-loopx serve-status --global-registry --port 8766 --limit 80
-cd ~/loopx/apps/dashboard && npm install && npm run dev
-```
 
 This surface is intentionally conservative: CLI state remains the source of
 truth, browser writes require explicit local opt-in, and review signals are

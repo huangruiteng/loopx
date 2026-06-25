@@ -20,6 +20,7 @@ from .status import (
 from .todo_contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
+    TODO_TASK_CLASS_USER_GATE,
     TODO_TASK_PATTERN,
     build_todo_id,
     format_todo_metadata_line,
@@ -29,6 +30,7 @@ from .todo_contract import (
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_id,
+    normalize_todo_no_followup,
     normalize_todo_resume_when,
     normalize_todo_status,
     parse_todo_metadata_line,
@@ -55,6 +57,7 @@ TODO_METADATA_FIELDS = (
     "blocks_agent",
     "unblocks_todo_id",
     "resume_when",
+    "no_followup",
     "note",
     "evidence",
     "reason",
@@ -322,6 +325,11 @@ def block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             if capabilities:
                 metadata[key] = capabilities
             continue
+        if key == "no_followup":
+            no_followup = normalize_todo_no_followup(value)
+            if no_followup is not None:
+                metadata[key] = no_followup
+            continue
         if str(value or "").strip():
             metadata[key] = str(value).strip()
     return metadata
@@ -350,6 +358,12 @@ def metadata_line_for_block(block: dict[str, Any], updates: dict[str, Any]) -> s
             capabilities = normalize_target_capabilities(value)
             if capabilities:
                 metadata[key] = capabilities
+            else:
+                metadata.pop(key, None)
+        elif key == "no_followup":
+            no_followup = normalize_todo_no_followup(value)
+            if no_followup is not None:
+                metadata[key] = no_followup
             else:
                 metadata.pop(key, None)
         elif str(value).strip():
@@ -579,6 +593,7 @@ def add_goal_todo(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     project: Path | None = None,
@@ -608,14 +623,32 @@ def add_goal_todo(
             if claimed_by
             else None
         )
+        effective_agent_id = (
+            require_registered_agent_id(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                field="agent_id",
+            )
+            if agent_id
+            else None
+        )
+        inferred_blocks_agent = blocks_agent
+        if (
+            effective_agent_id
+            and not inferred_blocks_agent
+            and role == "user"
+            and task_class == TODO_TASK_CLASS_USER_GATE
+        ):
+            inferred_blocks_agent = effective_agent_id
         effective_blocks_agent = (
             require_registered_agent_id(
                 registry_path=registry_path,
                 goal_id=goal_id,
-                agent_id=blocks_agent,
+                agent_id=inferred_blocks_agent,
                 field="blocks_agent",
             )
-            if blocks_agent
+            if inferred_blocks_agent
             else None
         )
         normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id) if unblocks_todo_id else None
@@ -664,6 +697,7 @@ def add_goal_todo(
         "required_capabilities": add_result.get("required_capabilities"),
         "target_capabilities": add_result.get("target_capabilities"),
         "claimed_by": add_result.get("claimed_by"),
+        "agent_id": effective_agent_id,
         "blocks_agent": add_result.get("blocks_agent"),
         "unblocks_todo_id": add_result.get("unblocks_todo_id"),
         "resume_when": add_result.get("resume_when"),
@@ -709,6 +743,7 @@ def apply_todo_update_to_lines(
     blocks_agent: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
+    no_followup: bool | None = None,
     clear_claim: bool = False,
     claim_only: bool = False,
     updated_at: str,
@@ -773,6 +808,8 @@ def apply_todo_update_to_lines(
         updates["unblocks_todo_id"] = unblocks_todo_id
     if resume_when:
         updates["resume_when"] = resume_when
+    if no_followup is not None:
+        updates["no_followup"] = no_followup
     metadata_line = metadata_line_for_block(block, updates)
     semantic_metadata_changed = todo_metadata_would_change(lines, block, metadata_line)
     if status_changed or text_changed or semantic_metadata_changed:
@@ -802,6 +839,7 @@ def apply_todo_update_to_lines(
         "blocks_agent": normalize_todo_blocks_agent(effective_metadata.get("blocks_agent")),
         "unblocks_todo_id": normalize_todo_id(effective_metadata.get("unblocks_todo_id")),
         "resume_when": normalize_todo_resume_when(effective_metadata.get("resume_when")),
+        "no_followup": normalize_todo_no_followup(effective_metadata.get("no_followup")),
     }
 
 
@@ -823,8 +861,10 @@ def update_goal_todo(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
+    no_followup: bool | None = None,
     clear_claim: bool = False,
     claim_only: bool = False,
     project: Path | None = None,
@@ -850,14 +890,32 @@ def update_goal_todo(
             if claimed_by
             else None
         )
+        effective_agent_id = (
+            require_registered_agent_id(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                field="agent_id",
+            )
+            if agent_id
+            else None
+        )
+        inferred_blocks_agent = blocks_agent
+        if (
+            effective_agent_id
+            and not inferred_blocks_agent
+            and role == "user"
+            and task_class == TODO_TASK_CLASS_USER_GATE
+        ):
+            inferred_blocks_agent = effective_agent_id
         effective_blocks_agent = (
             require_registered_agent_id(
                 registry_path=registry_path,
                 goal_id=goal_id,
-                agent_id=blocks_agent,
+                agent_id=inferred_blocks_agent,
                 field="blocks_agent",
             )
-            if blocks_agent
+            if inferred_blocks_agent
             else None
         )
         normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id) if unblocks_todo_id else None
@@ -884,6 +942,7 @@ def update_goal_todo(
             blocks_agent=effective_blocks_agent,
             unblocks_todo_id=normalized_unblocks_todo_id,
             resume_when=normalized_resume_when,
+            no_followup=no_followup,
             clear_claim=clear_claim,
             claim_only=claim_only,
             updated_at=updated_at,
@@ -899,6 +958,7 @@ def update_goal_todo(
         "dry_run": dry_run,
         "changed": changed,
         "goal_id": goal_id,
+        "agent_id": effective_agent_id,
         **update_result,
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
@@ -914,6 +974,7 @@ def complete_goal_todo(
     role: str | None = None,
     evidence: str | None = None,
     note: str | None = None,
+    no_followup: bool = False,
     claimed_by: str | None = None,
     clear_claim: bool = False,
     next_agent_todo: str | None = None,
@@ -1012,6 +1073,7 @@ def complete_goal_todo(
             evidence=evidence,
             claimed_by=effective_claimed_by,
             clear_claim=clear_claim,
+            no_followup=True if no_followup else None,
             updated_at=updated_at,
         )
         if next_agent_todo and not effective_next_claimed_by:

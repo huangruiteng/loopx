@@ -31,6 +31,7 @@ def todo_item(
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     superseded_by: str | None = None,
+    no_followup: bool = False,
 ) -> dict:
     item = {
         "todo_id": todo_id,
@@ -51,6 +52,8 @@ def todo_item(
         item["resume_when"] = resume_when
     if superseded_by:
         item["superseded_by"] = superseded_by
+    if no_followup:
+        item["no_followup"] = True
     return item
 
 
@@ -151,6 +154,18 @@ def handoff_review(*, status: str = "open", superseded_by: str | None = None) ->
         blocks_agent=BLOCKED_AGENT,
         unblocks_todo_id="todo_value_explorer_slice",
         superseded_by=superseded_by,
+    )
+
+
+def no_followup_handoff_review() -> dict:
+    return todo_item(
+        todo_id="todo_review_gate",
+        text="[P0-review] Review value explorer handoff and decide next work.",
+        claimed_by=PRIMARY_AGENT,
+        status="done",
+        blocks_agent=BLOCKED_AGENT,
+        unblocks_todo_id="todo_value_explorer_slice",
+        no_followup=True,
     )
 
 
@@ -311,6 +326,24 @@ def assert_superseded_completed_blocker_does_not_wake_agent() -> None:
     assert summary["current_agent_cleared_without_successor_handoff_count"] == 0, payload
 
 
+def assert_no_followup_completed_blocker_does_not_wake_agent() -> None:
+    payload = build_quota_should_run(
+        status_payload(
+            [primary_owned_todo(), no_followup_handoff_review()],
+            recommended_action="No follow-up is required after the review gate.",
+        ),
+        goal_id=GOAL_ID,
+        agent_id=BLOCKED_AGENT,
+    )
+    assert payload["decision"] == "agent_scope_wait", payload
+    assert payload["should_run"] is False, payload
+    summary = payload["agent_todo_summary"]
+    gate = summary["current_agent_handoff_gates"][0]
+    assert gate["gate_state"] == "cleared_no_followup", payload
+    assert gate["no_followup"] is True, payload
+    assert summary["current_agent_cleared_without_successor_handoff_count"] == 0, payload
+
+
 def main() -> int:
     assert_open_blocker_waits_on_owner()
     assert_cleared_blocker_requires_successor_replan()
@@ -318,6 +351,7 @@ def main() -> int:
     assert_existing_successor_runs_normally()
     assert_completed_successor_keeps_old_gate_cleared()
     assert_superseded_completed_blocker_does_not_wake_agent()
+    assert_no_followup_completed_blocker_does_not_wake_agent()
     print("quota-cleared-blocker-successor-gate-smoke ok")
     return 0
 

@@ -88,13 +88,20 @@ A `todo_id` is a structured work item inside that goal. LoopX does not
 currently model issues as a separate runtime object.
 
 Multiple agents may share the same project control plane. A todo can carry a
-soft owner with `claimed_by`, but the todo itself should not carry the agent's
-scope. Scope belongs in the automation prompt or sub-agent handoff; the agent
-uses that scope to decide which open todo it may claim. Each goal should have
-one `coordination.primary_agent`: the primary agent owns final review,
-verification, merge, publication, and reassignment decisions. All other
-registered agents are side agents. Side agents should do repository edits only
-in an independent git worktree/branch, never in the primary checkout. Small
+soft owner with `claimed_by`, but ordinary agent todos should not restate the
+agent's broad prompt scope. Scope belongs in the automation prompt or sub-agent
+handoff; the agent uses that scope to decide which open todo it may claim.
+User-gate todos are different: when a user decision only unlocks one registered
+agent or lane, record the blocked agent explicitly with `blocks_agent` so quota
+does not stop unrelated agents. For convenience, `todo add/update --role user
+--task-class user_gate --agent-id <agent>` defaults `blocks_agent` to that agent
+when `--blocks-agent` is omitted. Omit `--agent-id` and `--blocks-agent` only
+for a genuine goal-wide user gate.
+
+Each goal should have one `coordination.primary_agent`: the primary agent owns
+final review, verification, merge, publication, and reassignment decisions. All
+other registered agents are side agents. Side agents should do repository edits
+only in an independent git worktree/branch, never in the primary checkout. Small
 AGENTS-eligible validated changes may be self-merged when the side agent records
 public-safe evidence; higher-risk or unclear work should create a successor
 handoff todo claimed by the primary agent by default or by
@@ -233,9 +240,9 @@ the agent should do one of two things:
 
 - create the next public-safe agent or user todo with `--next-agent-todo`,
   `--next-user-todo`, or a follow-up `todo add`;
-- record a compact no-follow-up rationale in the completion note, explaining why
-  the feature is truly finished and does not need rollout, audit, docs, or
-  product-path proof.
+- record a compact no-follow-up rationale with `--no-follow-up` plus `--note`
+  / `--reason` / `--evidence`, explaining why the feature is truly finished
+  and does not need rollout, audit, docs, or product-path proof.
 
 This keeps the active checklist honest without making LoopX a heavyweight
 project-management state machine.
@@ -398,7 +405,9 @@ carry `schema_version=todo_summary_v0`; individual items carry
 `title`, `archive_state`, `source_section`, `index`, `text`, `task_class`, and
 optional `action_kind`, `claimed_by`, `required_capabilities`, and
 `target_capabilities`. Primary review handoffs may also carry
-`blocks_agent` and `unblocks_todo_id` to show which agent/todo they release.
+`blocks_agent`, `unblocks_todo_id`, and `no_followup=true` to show which
+agent/todo they release and whether a completed handoff intentionally has no
+successor.
 Deferred successors may carry `resume_when`, `resume_condition`, and
 `resume_ready`; `resume_ready=true` means the deferred item should be considered
 for a successor replan before any agent-scoped no-candidate wait, not that

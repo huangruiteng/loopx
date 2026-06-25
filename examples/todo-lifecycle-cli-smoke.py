@@ -277,8 +277,61 @@ def assert_configured_side_agent_handoff() -> None:
         assert "handoff_agent='codex-main-control'" in ignored_review_handoff["error"], ignored_review_handoff
 
 
+def assert_no_followup_cli_metadata() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-todo-no-followup-smoke-") as tmp:
+        root = Path(tmp)
+        registry_path, state_file = write_fixture(root)
+        added = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            "Review completed work that intentionally needs no successor.",
+            "--claimed-by",
+            "codex-main-control",
+            "--task-class",
+            "advancement_task",
+            "--action-kind",
+            "review",
+        )
+        missing_rationale = run_cli_error(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            added["todo_id"],
+            "--no-follow-up",
+        )
+        assert "--no-follow-up requires" in missing_rationale["error"], missing_rationale
+        updated = run_cli(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            added["todo_id"],
+            "--status",
+            "done",
+            "--no-follow-up",
+            "--note",
+            "No rollout or follow-up is needed after validation.",
+        )
+        assert updated["changed"] is True, updated
+        item = next(item for item in parsed_items(state_file) if item["todo_id"] == added["todo_id"])
+        assert item["status"] == "done", item
+        assert item["no_followup"] is True, item
+
+
 def main() -> int:
     assert_configured_side_agent_handoff()
+    assert_no_followup_cli_metadata()
 
     with tempfile.TemporaryDirectory(prefix="loopx-todo-lifecycle-smoke-") as tmp:
         root = Path(tmp)

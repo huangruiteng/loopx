@@ -217,6 +217,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "write_boundary": "public metadata read only; no comments, PRs, account changes, or writes",
             },
             {
+                "command": "loopx value-connectors github-reply-monitor --issue-url <github-issue-or-pr-url> --after-comment-url <github-issue-comment-url> --fetch-metadata --format json",
+                "purpose": "Detect public maintainer replies after a LoopX comment without capturing comment bodies.",
+                "write_boundary": "public comment metadata read only; no comment bodies, thread bump, or external write",
+            },
+            {
                 "command": "loopx value-connectors plan --connector-id <id> ... --format json",
                 "purpose": "Plan gated account setup, external replies, sends, or future connector calls.",
                 "write_boundary": "plan-only; external writes and account setup require exact approval",
@@ -244,6 +249,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/reference/protocols/value-connector-plan-v0.md",
             },
             {
+                "schema_version": "github_public_reply_monitor_packet_v0",
+                "module": "loopx.capabilities.value_connectors.github_public",
+                "doc": "docs/reference/protocols/value-connector-plan-v0.md",
+            },
+            {
                 "schema_version": "value_connector_install_check_packet_v0",
                 "module": "loopx.capabilities.value_connectors.github_public",
                 "doc": "docs/reference/protocols/value-connector-plan-v0.md",
@@ -258,12 +268,13 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
         ],
         "boundaries": [
             "The GitHub starter copies allowlisted public metadata only, not bodies, comments, timelines, raw provider payloads, auth material, or local paths.",
+            "The reply monitor reads or accepts comment metadata only: author, association, timestamps, and URL; it never bumps a thread.",
             "Account signup, email sends, community posts, public replies, private reads, paid services, and production actions remain gated exact-call actions.",
             "Every connector call must include a money, cost, demand, or capability metric plus a kill condition.",
         ],
         "next_real_step": (
-            "Add one more executable starter, such as a reply monitor or host-email "
-            "send-gate adapter, while keeping exact external writes outside LoopX core."
+            "Use reply-monitor signals to graduate only explicit maintainer interest "
+            "into public triage notes or paid-path discovery; otherwise stop without bumps."
         ),
     },
 )

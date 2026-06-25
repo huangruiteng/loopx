@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Callable
 
-from ..lark_kanban import (
+from ..capabilities.lark.kanban import (
     DEFAULT_AGENT_ID,
     DEFAULT_CLI_BIN,
     DEFAULT_STATUS_QUEUE_VIEW,

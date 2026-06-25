@@ -171,6 +171,17 @@ def normalize_todo_resume_when(value: Any) -> str | None:
     return None
 
 
+def normalize_todo_no_followup(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    candidate = compact_todo_text(value).lower()
+    if candidate in {"1", "true", "yes", "y", "no_followup", "no-followup"}:
+        return True
+    if candidate in {"0", "false", "no", "n"}:
+        return False
+    return None
+
+
 def normalize_todo_id(value: Any) -> str | None:
     candidate = str(value or "").strip().lower()
     if candidate and TODO_ID_PATTERN.match(candidate):
@@ -346,6 +357,10 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             resume_when = normalize_todo_resume_when(value)
             if resume_when:
                 metadata["resume_when"] = resume_when
+        elif key == "no_followup":
+            no_followup = normalize_todo_no_followup(value)
+            if no_followup is not None:
+                metadata["no_followup"] = no_followup
         elif key in {"note", "evidence", "reason", "completed_at", "updated_at"}:
             if value:
                 metadata[key] = value
@@ -369,6 +384,7 @@ def format_todo_metadata_line(
     blocks_agent: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
+    no_followup: bool | None = None,
     note: str | None = None,
     evidence: str | None = None,
     reason: str | None = None,
@@ -441,6 +457,8 @@ def format_todo_metadata_line(
         raise ValueError("resume_when must be public-safe, e.g. todo_done:todo_ab12cd34ef56 or pr_merged:#532")
     if normalized_resume_when:
         fields.append(f"resume_when={encode_metadata_value(normalized_resume_when)}")
+    if no_followup is not None:
+        fields.append(f"no_followup={encode_metadata_value('true' if no_followup else 'false')}")
     for key, value in (
         ("note", note),
         ("evidence", evidence),
