@@ -141,6 +141,8 @@ def main() -> int:
     assert tracked["request_lane"] == claimed_by, tracked
     assert tracked["progress_message_id"] == "om_progress_reply", tracked
     assert cards and f"Progress lane: `{claimed_by}`" in cards[-1]["elements"][0]["text"]["content"], cards[-1]
+    assert "Initial scheduler snapshot" in cards[-1]["elements"][0]["text"]["content"], cards[-1]
+    assert "Next batch: parallel_batch" in cards[-1]["elements"][0]["text"]["content"], cards[-1]
 
     sent = bridge.poll_progress_once(state)
     assert sent == 1, sent

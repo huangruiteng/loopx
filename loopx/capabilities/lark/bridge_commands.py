@@ -99,6 +99,7 @@ def loopx_scheduler_next_batch_text(
     goal_id: str,
     agent_id: str,
     max_chars: int,
+    timeout: float = 45,
 ) -> str:
     return render_scheduler_next_batch_chat_text(
         run_json(
@@ -109,7 +110,7 @@ def loopx_scheduler_next_batch_text(
                 goal_id=goal_id,
                 agent_id=agent_id,
             ),
-            timeout=45,
+            timeout=timeout,
         ),
         max_chars=max_chars,
     )

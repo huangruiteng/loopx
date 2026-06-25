@@ -125,6 +125,7 @@ class StateStore:
         goal_id: str,
         agent_id: str,
         request_lane: str = "",
+        scheduler_summary: str = "",
         initial_fingerprint: str | None = None,
     ) -> None:
         now = utc_now()
@@ -139,6 +140,7 @@ class StateStore:
                 "goal_id": goal_id,
                 "agent_id": agent_id,
                 "request_lane": request_lane or previous.get("request_lane") or "",
+                "scheduler_summary": scheduler_summary or previous.get("scheduler_summary") or "",
                 "created_at": previous.get("created_at") or now,
                 "updated_at": now,
                 "closed": bool(previous.get("closed", False)),
@@ -502,6 +504,18 @@ def add_loopx_todo(text: str, message_id: str) -> tuple[str, str, str]:
     return match.group(0), clean, request_lane
 
 
+def scheduler_next_batch_snapshot(*, max_chars: int = 700, timeout: float = 8) -> str:
+    return loopx_scheduler_next_batch_text(
+        run_json=run_json,
+        loopx_bin=LOOPX_BIN,
+        registry=LOOPX_REGISTRY,
+        goal_id=LOOPX_GOAL_ID,
+        agent_id="",
+        max_chars=max_chars,
+        timeout=timeout,
+    )
+
+
 def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
     clean = str(text or "").strip()
     if not clean or clean in {"/help", "help"}:
@@ -524,14 +538,7 @@ def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
             max_chars=BOT_MAX_TEXT_CHARS,
         )
     if clean in {"/next", "next"}:
-        return loopx_scheduler_next_batch_text(
-            run_json=run_json,
-            loopx_bin=LOOPX_BIN,
-            registry=LOOPX_REGISTRY,
-            goal_id=LOOPX_GOAL_ID,
-            agent_id="",
-            max_chars=BOT_MAX_TEXT_CHARS,
-        )
+        return scheduler_next_batch_snapshot(max_chars=BOT_MAX_TEXT_CHARS, timeout=45)
     if clean in {"/check", "check"}:
         return loopx_check_text(
             run_text=run_text,
@@ -542,6 +549,11 @@ def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
         )
     request_text = clean[len("/ask ") :].strip() if clean.startswith("/ask ") else clean
     todo_id, normalized_request, request_lane = add_loopx_todo(request_text, message_id)
+    scheduler_summary = ""
+    try:
+        scheduler_summary = scheduler_next_batch_snapshot()
+    except Exception as exc:
+        log("scheduler.snapshot.error", todo_id=todo_id, request_lane=request_lane, error=str(exc))
     notification = build_acceptance_notification(
         todo_id=todo_id,
         goal_id=LOOPX_GOAL_ID,
@@ -555,6 +567,7 @@ def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
         goal_id=LOOPX_GOAL_ID,
         agent_id=LOOPX_AGENT_ID,
         request_lane=request_lane,
+        scheduler_summary=scheduler_summary,
         initial_fingerprint=notification.fingerprint,
     )
     publish_notification(state=state, item=state.todo(todo_id), notification=notification)
