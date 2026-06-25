@@ -972,7 +972,108 @@ def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
     execution_style = public_safe_compact_text(value.get("execution_style"), limit=120)
     if execution_style:
         compact["execution_style"] = execution_style
+    _normalize_product_mode_lifecycle_contract(compact)
     return compact
+
+
+def _normalize_product_mode_lifecycle_contract(contract: dict[str, Any]) -> None:
+    """Repair old compact records whose bridge closeout evidence was copied late."""
+
+    def positive_int(field: str) -> int:
+        value = contract.get(field)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+        return 0
+
+    agent_trace_required = contract.get("agent_operation_trace_required") is True
+    agent_trace_satisfied = contract.get("agent_operation_trace_satisfied") is True
+    agent_trace_missing = contract.get("agent_operation_trace_missing") is True
+    agent_trace_ok = bool(
+        not agent_trace_missing
+        and (agent_trace_satisfied or not agent_trace_required)
+    )
+    agent_bridge_closeout_satisfied = bool(
+        positive_int("agent_bridge_todo_closeout_count") > 0
+        and positive_int("agent_bridge_refresh_state_count") > 0
+        and positive_int("agent_bridge_quota_spend_slot_count") > 0
+    )
+    lifecycle_io_satisfied = bool(
+        positive_int("state_read_count") > 0
+        and positive_int("state_write_count") > 0
+    )
+    lifecycle_closeout_satisfied = bool(
+        contract.get("closeout_satisfied") is True
+        or agent_bridge_closeout_satisfied
+    )
+    if (
+        contract.get("required") is True
+        and agent_trace_ok
+        and lifecycle_io_satisfied
+        and lifecycle_closeout_satisfied
+    ):
+        contract["satisfied"] = True
+        contract["countable_treatment"] = True
+        contract["closeout_satisfied"] = True
+        if contract.get("missing_reason") in {
+            "missing_case_local_loopx_closeout",
+            "remote_command_file_bridge_agent_operation_trace_missing",
+        }:
+            contract.pop("missing_reason", None)
+
+
+def _repair_product_mode_lifecycle_missing_attribution(
+    compact: dict[str, Any],
+) -> None:
+    contract = compact.get("product_mode_lifecycle_contract")
+    if not isinstance(contract, dict):
+        return
+    if not (
+        contract.get("required") is True
+        and contract.get("satisfied") is True
+        and contract.get("countable_treatment") is True
+    ):
+        return
+    if compact.get("score_failure_attribution") != (
+        "skillsbench_product_mode_lifecycle_missing"
+    ):
+        return
+
+    labels = public_safe_compact_list(
+        compact.get("failure_attribution_labels"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    stale_labels = {
+        "skillsbench_product_mode_lifecycle_missing",
+        "skillsbench_product_mode_uncountable_treatment",
+        "skillsbench_case_local_loopx_state_not_observed",
+        "skillsbench_remote_bridge_agent_no_requests",
+        "skillsbench_remote_bridge_agent_operation_trace_missing",
+    }
+    labels = [label for label in labels if label not in stale_labels]
+
+    official_score = compact.get("official_score")
+    counters = compact.get("interaction_counters")
+    solver_activity_gap = bool(
+        isinstance(counters, dict)
+        and counters.get("product_mode_solver_activity_gap") is True
+    )
+    if isinstance(official_score, (int, float)) and not isinstance(
+        official_score,
+        bool,
+    ) and official_score == 0:
+        replacement = "official_verifier_solution_failure"
+    elif solver_activity_gap:
+        replacement = "skillsbench_product_mode_solver_activity_gap"
+    else:
+        replacement = "none"
+
+    compact["score_failure_attribution"] = replacement
+    if replacement != "none" and replacement not in labels:
+        labels.insert(0, replacement)
+    if labels:
+        compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
+    else:
+        compact.pop("failure_attribution_labels", None)
 
 
 def _compact_benchmark_round_reward_trace(value: Any) -> dict[str, Any]:
@@ -2863,6 +2964,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if product_mode_lifecycle_contract:
         compact["product_mode_lifecycle_contract"] = product_mode_lifecycle_contract
+        _repair_product_mode_lifecycle_missing_attribution(compact)
 
     preflight_guard = _compact_benchmark_preflight_guard(source.get("preflight_guard"))
     if preflight_guard:

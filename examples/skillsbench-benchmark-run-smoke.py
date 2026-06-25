@@ -129,7 +129,7 @@ def test_skillsbench_product_mode_soft_verify_default_is_every_round() -> None:
     )
 
 
-def test_product_mode_initial_prompt_prioritizes_task_before_lifecycle_closeout() -> None:
+def test_product_mode_initial_prompt_defers_task_until_agent_lifecycle() -> None:
     trace = {
         "schema_version": "skillsbench_loopx_controller_trace_v0",
         "route": "loopx-product-mode",
@@ -159,6 +159,11 @@ def test_product_mode_initial_prompt_prioritizes_task_before_lifecycle_closeout(
     class FakeRoundResultBase:
         pass
 
+    class FakeRoundResult:
+        rewards: dict[str, float] = {}
+        n_tool_calls = 0
+        trajectory: list[object] = []
+
     fake_user.BaseUser = FakeBaseUser
     fake_user.RoundResult = FakeRoundResultBase
     sys.modules["benchflow"] = fake_benchflow
@@ -180,11 +185,11 @@ def test_product_mode_initial_prompt_prioritizes_task_before_lifecycle_closeout(
 
     prompt = asyncio.run(user.run(0, "Compute the requested coefficient."))
     assert prompt is not None
-    task_index = prompt.index("--- TASK INSTRUCTION ---")
-    control_index = prompt.index("--- LOOPX PRODUCT-MODE CONTROL PLANE ---")
-    assert task_index < control_index, prompt
-    assert "Compute the requested coefficient." in prompt
-    assert "benchmark task remains the primary objective" in prompt
+    assert "--- LOOPX PRODUCT-MODE CONTROL PLANE ---" in prompt
+    assert "--- TASK INSTRUCTION ---" not in prompt
+    assert "Compute the requested coefficient." not in prompt
+    assert "task instruction is intentionally withheld" in prompt
+    assert "Before reading, planning, solving, or answering the task" in prompt
     assert "Do not run case closeout" in prompt
     assert "quota should-run --goal-id skillsbench-case" in prompt
     assert "todo claim --goal-id skillsbench-case" in prompt
@@ -193,6 +198,33 @@ def test_product_mode_initial_prompt_prioritizes_task_before_lifecycle_closeout(
     assert "quota spend-slot --goal-id skillsbench-case" not in prompt
     assert trace["last_decision"] == "send_initial_product_mode_prompt", trace
     assert trace["initial_prompt_count"] == 1, trace
+    assert trace["product_mode_task_instruction_deferred_until_agent_lifecycle"] is True
+
+    trace.update(
+        {
+            "remote_command_file_bridge_agent_operation_trace_required": True,
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_recorded"
+            ),
+            "remote_command_file_bridge_agent_request_count": 2,
+            "remote_command_file_bridge_agent_loopx_cli_call_count": 2,
+            "remote_command_file_bridge_agent_loopx_state_read_count": 1,
+            "remote_command_file_bridge_agent_loopx_state_write_count": 1,
+        }
+    )
+    task_prompt = asyncio.run(
+        user.run(1, "Compute the requested coefficient.", FakeRoundResult())
+    )
+    assert task_prompt is not None
+    assert "--- TASK INSTRUCTION ---" in task_prompt
+    assert "Compute the requested coefficient." in task_prompt
+    assert "The task packet is now available" in task_prompt
+    assert "official reward" in task_prompt
+    assert trace["last_decision"] == (
+        "send_product_mode_task_instruction_after_agent_lifecycle"
+    ), trace
+    assert trace["product_mode_task_instruction_sent_after_agent_lifecycle"] is True
+    assert trace["followup_prompt_count"] == 1, trace
 
 
 def test_loopx_subcommand_family_counts_include_arguments() -> None:
@@ -1539,6 +1571,7 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
                 trace=trace,
                 plan=plan,
             )
+            user._task_instruction_sent = True
         finally:
             for name, module in saved_modules.items():
                 if module is None:
@@ -1683,6 +1716,7 @@ def test_product_mode_declared_done_below_passing_reward_continues() -> None:
                 trace=trace,
                 plan=plan,
             )
+            user._task_instruction_sent = True
         finally:
             for name, module in saved_modules.items():
                 if module is None:
@@ -4295,10 +4329,10 @@ def test_host_local_acp_connect_contract_matches_benchflow_runtime() -> None:
     source = (REPO_ROOT / "scripts" / "skillsbench_automation_loop.py").read_text(
         encoding="utf-8"
     )
-    assert "benchflow.agents.protocol" not in source
-    assert "ACPSessionAdapter" not in source
-    assert ") -> tuple[Any, Any, str]:" in source
-    assert "return client, session, agent_name" in source
+    assert "from benchflow.agents.protocol import ACPSessionAdapter" in source
+    assert ") -> tuple[Any, Any, Any, str]:" in source
+    assert "session_adapter = ACPSessionAdapter(client)" in source
+    assert "return client, session, session_adapter, agent_name" in source
     assert 'if "mcp_servers" in inspect.signature(client.session_new).parameters:' in source
     assert "client.session_new(cwd=agent_cwd, mcp_servers=mcp_servers)" not in source
 
@@ -5589,6 +5623,76 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
         assert "skillsbench_product_mode_lifecycle_missing" not in (
             agent_bridge_compact["failure_attribution_labels"]
         ), agent_bridge_compact
+
+
+def test_skillsbench_product_mode_recompact_normalizes_agent_bridge_closeout() -> None:
+    compact = compact_benchmark_run(
+        {
+            "schema_version": "benchmark_run_v0",
+            "source_runner": "official_skillsbench_benchflow_result",
+            "benchmark_id": "skillsbench",
+            "case_id": "sample-task",
+            "case_ids": ["sample-task"],
+            "mode": "single",
+            "route": "loopx-product-mode",
+            "official_score": 0.0,
+            "score_failure_attribution": "skillsbench_product_mode_lifecycle_missing",
+            "failure_attribution_labels": [
+                "official_verifier_solution_failure",
+                "skillsbench_product_mode_lifecycle_missing",
+                "skillsbench_product_mode_uncountable_treatment",
+                "skillsbench_case_local_loopx_state_not_observed",
+            ],
+            "interaction_counters": {
+                "schema_version": "skillsbench_interaction_counters_v0",
+                "product_mode": True,
+                "product_mode_solver_activity_gap": True,
+                "remote_command_file_bridge_agent_operation_trace_required": True,
+                "remote_command_file_bridge_agent_operation_trace_satisfied": True,
+                "remote_command_file_bridge_agent_request_count": 11,
+                "remote_command_file_bridge_agent_loopx_state_read_count": 3,
+                "remote_command_file_bridge_agent_loopx_state_write_count": 4,
+                "remote_command_file_bridge_agent_todo_closeout_count": 1,
+                "remote_command_file_bridge_agent_refresh_state_count": 1,
+                "remote_command_file_bridge_agent_quota_spend_slot_count": 1,
+                "remote_command_file_bridge_agent_task_facing_operation_count": 4,
+            },
+            "product_mode_lifecycle_contract": {
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "required": True,
+                "satisfied": False,
+                "countable_treatment": False,
+                "state_read_count": 3,
+                "state_write_count": 4,
+                "checkpoint_required": True,
+                "checkpoint_count": 4,
+                "closeout_required": True,
+                "closeout_satisfied": True,
+                "agent_operation_trace_required": True,
+                "agent_operation_trace_satisfied": True,
+                "agent_operation_trace_missing": False,
+                "agent_bridge_state_read_count": 3,
+                "agent_bridge_state_write_count": 4,
+                "agent_bridge_todo_closeout_count": 1,
+                "agent_bridge_refresh_state_count": 1,
+                "agent_bridge_quota_spend_slot_count": 1,
+                "missing_reason": "missing_case_local_loopx_closeout",
+            },
+        }
+    )
+    assert compact is not None
+    contract = compact["product_mode_lifecycle_contract"]
+    assert contract["satisfied"] is True, compact
+    assert contract["countable_treatment"] is True, compact
+    assert contract["closeout_satisfied"] is True, compact
+    assert contract.get("missing_reason", "") == "", compact
+    assert compact["score_failure_attribution"] == (
+        "official_verifier_solution_failure"
+    ), compact
+    labels = compact["failure_attribution_labels"]
+    assert "official_verifier_solution_failure" in labels, compact
+    assert "skillsbench_product_mode_lifecycle_missing" not in labels, compact
+    assert "skillsbench_product_mode_uncountable_treatment" not in labels, compact
 
 
 def test_skillsbench_product_mode_solver_activity_gap_is_compacted() -> None:
@@ -8498,7 +8602,7 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
 if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_sixteen()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
-    test_product_mode_initial_prompt_prioritizes_task_before_lifecycle_closeout()
+    test_product_mode_initial_prompt_defers_task_until_agent_lifecycle()
     test_skillsbench_final_verifier_timeout_override_records_public_state()
     test_skillsbench_final_verifier_timeout_override_can_extend_timeout()
     test_skillsbench_intermediate_soft_verifier_timeout_override_records_public_state()
@@ -8574,6 +8678,7 @@ if __name__ == "__main__":
     test_skillsbench_controller_trace_counts_are_compacted()
     test_skillsbench_product_mode_declared_done_is_compacted()
     test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted()
+    test_skillsbench_product_mode_recompact_normalizes_agent_bridge_closeout()
     test_skillsbench_product_mode_solver_activity_gap_is_compacted()
     test_skillsbench_product_mode_first_action_timeout_is_uncountable()
     test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted()

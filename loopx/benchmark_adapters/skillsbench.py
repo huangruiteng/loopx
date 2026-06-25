@@ -1877,6 +1877,11 @@ def _skillsbench_controller_trace_counters(
             return value
         return 0
 
+    def max_direct_or_subcommands(key: str, commands: tuple[str, ...]) -> int:
+        direct = count(key)
+        derived = sum(subcommand_count(command) for command in commands)
+        return max(direct, derived)
+
     def round_reward_records() -> list[dict[str, Any]]:
         raw_records = controller_trace.get("round_rewards")
         if not isinstance(raw_records, list):
@@ -2088,14 +2093,17 @@ def _skillsbench_controller_trace_counters(
         "remote_command_file_bridge_agent_loopx_state_write_count": count(
             "remote_command_file_bridge_agent_loopx_state_write_count"
         ),
-        "remote_command_file_bridge_agent_todo_closeout_count": (
-            subcommand_count("todo complete") + subcommand_count("todo update")
+        "remote_command_file_bridge_agent_todo_closeout_count": max_direct_or_subcommands(
+            "remote_command_file_bridge_agent_todo_closeout_count",
+            ("todo complete", "todo update"),
         ),
-        "remote_command_file_bridge_agent_refresh_state_count": subcommand_count(
-            "refresh-state"
+        "remote_command_file_bridge_agent_refresh_state_count": max_direct_or_subcommands(
+            "remote_command_file_bridge_agent_refresh_state_count",
+            ("refresh-state",),
         ),
-        "remote_command_file_bridge_agent_quota_spend_slot_count": subcommand_count(
-            "quota spend-slot"
+        "remote_command_file_bridge_agent_quota_spend_slot_count": max_direct_or_subcommands(
+            "remote_command_file_bridge_agent_quota_spend_slot_count",
+            ("quota spend-slot",),
         ),
         "remote_command_file_bridge_agent_task_facing_operation_count": count(
             "remote_command_file_bridge_agent_task_facing_operation_count"

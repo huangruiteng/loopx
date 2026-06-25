@@ -126,7 +126,9 @@ out = ""
 for index, token in enumerate(args[:-1]):
     if token == "--output-last-message":
         out = args[index + 1]
-prompt = args[-1] if args else ""
+prompt = sys.stdin.read()
+if any("Private bridge command:" in item for item in args):
+    raise SystemExit(42)
 match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
 assert match, prompt
 subprocess.run(
@@ -614,13 +616,14 @@ else:
         fake_codex.write_text(
             """#!/usr/bin/env python3
 import json
-import select
 import subprocess
 import sys
 from pathlib import Path
 
 args = sys.argv[1:]
-prompt = args[-1]
+prompt = sys.stdin.read()
+if any("Private bridge command:" in item for item in args):
+    raise SystemExit(42)
 if "Private bridge command:" not in prompt:
     raise SystemExit(7)
 if """ + repr(SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER) + """ not in prompt:
@@ -628,11 +631,6 @@ if """ + repr(SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER) + """ not in prompt:
 bridge_command = prompt.split("Private bridge command:", 1)[1].strip().splitlines()[0]
 if not bridge_command:
     raise SystemExit(10)
-ready, _, _ = select.select([sys.stdin], [], [], 0.2)
-if not ready:
-    raise SystemExit(8)
-if sys.stdin.read():
-    raise SystemExit(9)
 for command in (
     "/app/.local/bin/loopx quota should-run --goal-id skillsbench-case --agent-id codex-benchmark-agent",
     "/app/.local/bin/loopx todo update --goal-id skillsbench-case --todo-id todo_seed --status open --note checkpoint",
@@ -1034,8 +1032,8 @@ time.sleep(30)
                 "args": [
                     "exec",
                     (
-                        "LoopX bridge test.\\n\\n"
-                        "Private bridge command:\\n"
+                        "LoopX bridge test.\n\n"
+                        "Private bridge command:\n"
                         "/tmp/not-recorded"
                     ),
                 ],
@@ -1096,7 +1094,10 @@ import subprocess
 import sys
 import time
 
-prompt = sys.argv[-1] if sys.argv else ""
+args = sys.argv[1:]
+prompt = sys.stdin.read()
+if any("Private bridge command:" in item for item in args):
+    raise SystemExit(42)
 match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
 assert match, prompt
 subprocess.run(
@@ -1176,7 +1177,9 @@ from pathlib import Path
 
 args = sys.argv[1:]
 output = Path(args[args.index("--output-last-message") + 1])
-prompt = args[-1] if args else ""
+prompt = sys.stdin.read()
+if any("Private bridge command:" in item for item in args):
+    raise SystemExit(42)
 match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
 assert match, prompt
 subprocess.run(

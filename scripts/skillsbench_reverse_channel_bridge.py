@@ -25,6 +25,23 @@ from typing import Any
 
 CLIENT_SCHEMA_VERSION = "skillsbench_reverse_channel_client_v0"
 SERVER_RESPONSE_SCHEMA_VERSION = "skillsbench_reverse_channel_response_v0"
+_CODEX_EXEC_OPTIONS_WITH_VALUE = {
+    "-C",
+    "--cd",
+    "--color",
+    "--config",
+    "-c",
+    "--image",
+    "-i",
+    "--model",
+    "-m",
+    "--oss",
+    "--output-last-message",
+    "--profile",
+    "-p",
+    "--sandbox",
+    "-s",
+}
 SOCKET_PROBE_SCHEMA_VERSION = "skillsbench_reverse_channel_socket_probe_v0"
 ALLOWED_PAYLOAD_ENV_KEYS = (
     "AI_ADDR",
@@ -107,6 +124,39 @@ def _rewrite_private_bridge_command(prompt: str, replacement: str | None) -> str
         return prompt
     pattern = r"(Private bridge command:\n)([^\n]+)"
     return re.sub(pattern, r"\1" + replacement, prompt, count=1)
+
+
+def _split_codex_exec_prompt_for_stdin(args: list[str]) -> tuple[list[str], str | None]:
+    """Move the positional codex exec prompt out of argv and into stdin.
+
+    Host-local benchmark prompts can contain raw task text. Passing them as a
+    process argument exposes them to process-list observers on shared hosts, so
+    the reverse bridge feeds the prompt through stdin and closes stdin
+    immediately instead.
+    """
+
+    if not args or args[0] != "exec":
+        return args, None
+    positional_indices: list[int] = []
+    index = 1
+    while index < len(args):
+        item = args[index]
+        if item == "--":
+            positional_indices.extend(range(index + 1, len(args)))
+            break
+        if item in _CODEX_EXEC_OPTIONS_WITH_VALUE:
+            index += 2
+            continue
+        if item.startswith("-"):
+            index += 1
+            continue
+        positional_indices.append(index)
+        index += 1
+    if not positional_indices:
+        return args, None
+    prompt_index = positional_indices[-1]
+    prompt = args[prompt_index]
+    return args[:prompt_index] + args[prompt_index + 1 :], prompt
 
 
 def _write_instrumented_prompt_bridge(
@@ -270,30 +320,43 @@ def _run_codex_payload(
         local_cwd.mkdir(parents=True, exist_ok=True)
         remote_last_message_path = _replace_output_last_message(args, last_message_path)
         _replace_remote_cwd(args, local_cwd)
+        args, stdin_prompt = _split_codex_exec_prompt_for_stdin(args)
+        if stdin_prompt is None:
+            payload_stdin = payload.get("stdin")
+            if isinstance(payload_stdin, str) and payload_stdin:
+                stdin_prompt = payload_stdin
         agent_operations_summary_path: Path | None = None
-        if prompt_bridge_command and args:
-            private_bridge_command = _extract_private_bridge_command(args[-1])
-            instrumented_bridge, agent_operations_summary_path = (
-                _write_instrumented_prompt_bridge(
-                    tmp_path=tmp_path,
-                    bridge_command=prompt_bridge_command,
-                    private_bridge_command=private_bridge_command,
+        if prompt_bridge_command and stdin_prompt is not None:
+            private_bridge_command = _extract_private_bridge_command(stdin_prompt)
+            if private_bridge_command:
+                instrumented_bridge, agent_operations_summary_path = (
+                    _write_instrumented_prompt_bridge(
+                        tmp_path=tmp_path,
+                        bridge_command=prompt_bridge_command,
+                        private_bridge_command=private_bridge_command,
+                    )
                 )
-            )
-            args[-1] = _rewrite_private_bridge_command(
-                args[-1],
-                str(instrumented_bridge),
-            )
+                stdin_prompt = _rewrite_private_bridge_command(
+                    stdin_prompt,
+                    str(instrumented_bridge),
+                )
         cmd = [codex_bin, *args]
         try:
             proc = subprocess.Popen(
                 cmd,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.PIPE if stdin_prompt is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 env=env,
             )
+            if stdin_prompt is not None and proc.stdin is not None:
+                try:
+                    proc.stdin.write(stdin_prompt)
+                    proc.stdin.close()
+                    proc.stdin = None
+                except BrokenPipeError:
+                    proc.stdin = None
             deadline = time.monotonic() + timeout
             first_action_deadline = 0.0
             if agent_operations_summary_path and first_action_timeout_sec > 0:
@@ -473,6 +536,7 @@ SOCK = {socket_path!r}
 payload = {{
     'schema_version': {CLIENT_SCHEMA_VERSION!r},
     'args': sys.argv[1:],
+    'stdin': sys.stdin.read(),
     'env': {{k: os.environ.get(k, '') for k in ('AI_ADDR','AI_PORT','GOAL_HARNESS_REMOTE_BENCH_ROOT','LOOPX_REMOTE_AGENT_OPS_SUMMARY_PATH')}},
     'timeout_sec': float(os.environ.get('LOOPX_REVERSE_CODEX_TIMEOUT_SEC', '7200')),
 }}

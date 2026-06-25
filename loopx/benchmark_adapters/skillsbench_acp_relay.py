@@ -392,7 +392,7 @@ class SkillsBenchLocalAcpRelay:
             model = self._config.model or session.get("model")
             if model:
                 cmd.extend(["--model", str(model)])
-            cmd.append(prompt_for_codex)
+            codex_stdin_prompt = prompt_for_codex
             stdout_text = ""
             stderr_text = ""
             try:
@@ -406,13 +406,19 @@ class SkillsBenchLocalAcpRelay:
                         )
                     proc = subprocess.Popen(
                         cmd,
-                        stdin=subprocess.DEVNULL,
+                        stdin=subprocess.PIPE,
                         stdout=stdout_file,
                         stderr=stderr_file,
                         text=True,
                         env=codex_env,
                         start_new_session=True,
                     )
+                    if proc.stdin is not None:
+                        try:
+                            proc.stdin.write(codex_stdin_prompt)
+                            proc.stdin.close()
+                        except BrokenPipeError:
+                            pass
                     deadline = time.monotonic() + self._config.timeout_sec
                     first_action_deadline = 0.0
                     if (

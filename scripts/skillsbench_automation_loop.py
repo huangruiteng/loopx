@@ -5309,6 +5309,50 @@ def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
     )
 
 
+def _product_mode_agent_lifecycle_gate_satisfied(trace: dict[str, Any]) -> bool:
+    """Return true only after the solver agent, not only the driver, touched LoopX."""
+
+    remote_agent_trace_required = (
+        trace.get("remote_command_file_bridge_agent_operation_trace_required") is True
+    )
+    if remote_agent_trace_required:
+        return (
+            _trace_max_int(trace, "remote_command_file_bridge_agent_request_count") > 0
+            and _trace_max_int(
+                trace,
+                "remote_command_file_bridge_agent_loopx_cli_call_count",
+            )
+            > 0
+            and _trace_max_int(
+                trace,
+                "remote_command_file_bridge_agent_loopx_state_read_count",
+            )
+            > 0
+            and _trace_max_int(
+                trace,
+                "remote_command_file_bridge_agent_loopx_state_write_count",
+            )
+            > 0
+        )
+
+    return (
+        _trace_max_int(
+            trace,
+            "remote_command_file_bridge_agent_loopx_state_read_count",
+            "round_result_loopx_cli_state_read_count",
+            "loopx_case_state_reads",
+        )
+        > 0
+        and _trace_max_int(
+            trace,
+            "remote_command_file_bridge_agent_loopx_state_write_count",
+            "round_result_loopx_cli_state_write_count",
+            "loopx_case_state_writes",
+        )
+        > 0
+    )
+
+
 def _trace_max_int(trace: dict[str, Any], *fields: str) -> int:
     values = [
         trace.get(field)
@@ -5793,7 +5837,12 @@ def _build_product_mode_user(
             "benchmark task remains the primary objective; LoopX commands track "
             "control-plane state and do not themselves complete the task. As "
             "the first control-plane action, run the following commands inside "
-            "the scored sandbox, then continue solving and validating the task. "
+            "the scored sandbox, then wait for the scheduler to send the task "
+            "packet. "
+            "Before reading, planning, solving, or answering the task, your first "
+            "agent action must be a shell/tool call that sends the case-local "
+            "LoopX CLI commands through the available sandbox bridge; a prose-only "
+            "response or final answer before that bridge request is invalid. "
             "If a LoopX SkillsBench remote workspace bridge packet is present, "
             "invoke that private JSON bridge from your shell tool and send each "
             "command as an `operation=exec` request with `cwd=/app`; do not try "
@@ -5905,12 +5954,14 @@ def _build_product_mode_user(
         def __init__(self) -> None:
             super().__init__()
             self._persistent_constraint_clause = ""
+            self._task_instruction_sent = False
 
         def _scheduled_continuation_prompt(
             self,
             *,
             scheduled_round: int,
             declared_done_continuation: bool = False,
+            task_instruction: str | None = None,
         ) -> str:
             if treatment:
                 mode_clause = (
@@ -5931,6 +5982,18 @@ def _build_product_mode_user(
                 if declared_done_continuation
                 else ""
             )
+            task_clause = ""
+            if task_instruction is not None:
+                task_clause = (
+                    "\n\n--- TASK INSTRUCTION ---\n"
+                    f"{task_instruction}\n\n"
+                    "The task packet is now available because the solver-side "
+                    "LoopX lifecycle checkpoint was observed. The benchmark "
+                    "task is the primary objective from this round onward. "
+                    "Keep the lifecycle ledger current while solving, but do "
+                    "not run closeout or declare done until after meaningful "
+                    "task-facing work or local validation."
+                )
             return (
                 f"Scheduled product-mode continuation round {scheduled_round} of "
                 f"{max_rounds}. This is part of the fixed autonomous budget and "
@@ -5941,6 +6004,7 @@ def _build_product_mode_user(
                 f"{self._persistent_constraint_clause} {mode_clause} Keep scope "
                 "narrow, validate locally, and if there are no remaining goals, "
                 f"end with {DECLARED_DONE_MARKER}."
+                f"{task_clause}"
             )
 
         async def run(
@@ -5971,7 +6035,7 @@ def _build_product_mode_user(
                     )
                     if (
                         (no_tool_calls or no_lifecycle_requests)
-                        and not _product_mode_depth_gate_satisfied(trace)
+                        and not _product_mode_agent_lifecycle_gate_satisfied(trace)
                     ):
                         _record_product_mode_lifecycle_checkpoint_gap(
                             trace,
@@ -5997,6 +6061,26 @@ def _build_product_mode_user(
                         raise SkillsBenchProductModeNoLifecycleRequests(
                             "loopx-product-mode agent produced no case-local "
                             "LoopX lifecycle request before official verifier"
+                        )
+                    if (
+                        _product_mode_agent_lifecycle_gate_satisfied(trace)
+                        and not self._task_instruction_sent
+                    ):
+                        self._task_instruction_sent = True
+                        trace[
+                            "product_mode_task_instruction_deferred_until_agent_lifecycle"
+                        ] = True
+                        trace[
+                            "product_mode_task_instruction_sent_after_agent_lifecycle"
+                        ] = True
+                        _inc_counter(trace, "controller_action_decisions")
+                        _inc_counter(trace, "followup_prompt_count")
+                        trace["last_decision"] = (
+                            "send_product_mode_task_instruction_after_agent_lifecycle"
+                        )
+                        return self._scheduled_continuation_prompt(
+                            scheduled_round=round + 1,
+                            task_instruction=instruction,
                         )
                 if _round_result_declared_done(round_result):
                     if treatment:
@@ -6111,6 +6195,10 @@ def _build_product_mode_user(
                     trace["persistent_constraint_protected_paths"] = protected_paths
                 if treatment:
                     prefix = "LoopX product-mode treatment round 1. "
+                    self._task_instruction_sent = False
+                    trace[
+                        "product_mode_task_instruction_deferred_until_agent_lifecycle"
+                    ] = True
                     trace["case_goal_state_packet_present"] = True
                     control_clause = (
                         "Use LoopX as your product control plane: create "
@@ -6118,6 +6206,26 @@ def _build_product_mode_user(
                         "evidence changes, and use LoopX CLI/status/ledger "
                         "surfaces when available. "
                         + treatment_state_contract()
+                    )
+                    return (
+                        prefix
+                        + "You are running inside the official SkillsBench sandbox. "
+                        + "No official reward, pass/fail status, verifier error, "
+                        "verifier output, or verifier tail will be shown during this "
+                        "run.\n\n"
+                        "--- LOOPX PRODUCT-MODE CONTROL PLANE ---\n"
+                        f"{control_clause}"
+                        "For this treatment, LoopX lifecycle evidence is a "
+                        "hard product-mode requirement: first run the "
+                        "case-local quota/todo commands above through the solver "
+                        "bridge. The benchmark task instruction is intentionally "
+                        "withheld until that solver-side lifecycle checkpoint is "
+                        "observed, so do not inspect, infer, plan, solve, or answer "
+                        "the task yet. Do not run case closeout or declare done "
+                        "during this setup checkpoint. The controller will send the "
+                        "task packet after solver-side LoopX read/write evidence is "
+                        "recorded, without exposing official reward or verifier "
+                        "output."
                     )
                 else:
                     prefix = "Raw Codex autonomous max5 baseline round 1. "
@@ -6158,7 +6266,7 @@ def _build_product_mode_user(
             _inc_counter(trace, "followup_prompt_count")
             if treatment:
                 _merge_acp_trajectory_summary(plan or {}, trace)
-                if not _product_mode_depth_gate_satisfied(trace):
+                if not _product_mode_agent_lifecycle_gate_satisfied(trace):
                     _record_product_mode_lifecycle_checkpoint_gap(
                         trace,
                         agent_round=round,
@@ -6167,6 +6275,21 @@ def _build_product_mode_user(
                         "send_product_mode_lifecycle_checkpoint_continuation"
                     )
                     return lifecycle_checkpoint_prompt(round + 1)
+                if not self._task_instruction_sent:
+                    self._task_instruction_sent = True
+                    trace[
+                        "product_mode_task_instruction_deferred_until_agent_lifecycle"
+                    ] = True
+                    trace[
+                        "product_mode_task_instruction_sent_after_agent_lifecycle"
+                    ] = True
+                    trace["last_decision"] = (
+                        "send_product_mode_task_instruction_after_agent_lifecycle"
+                    )
+                    return self._scheduled_continuation_prompt(
+                        scheduled_round=round + 1,
+                        task_instruction=instruction,
+                    )
             trace["last_decision"] = "send_product_mode_scheduled_continuation"
             return self._scheduled_continuation_prompt(scheduled_round=round + 1)
 
