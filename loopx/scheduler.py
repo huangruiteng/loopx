@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import shlex
 from typing import Any
 
 from .notification_projection import compact_markdown
@@ -69,6 +70,21 @@ def build_scheduler_plan(
             if block:
                 blocked_candidates.append({**candidate, **block})
                 continue
+            lane_conflicts = [
+                selected
+                for selected in runnable_batch
+                if _agent_lane_conflict(candidate, selected)
+            ]
+            if lane_conflicts:
+                waiting_candidates.append(
+                    {
+                        **candidate,
+                        "runnable": False,
+                        "reason_codes": ["agent_lane_capacity"],
+                        "conflicts_with": _candidate_refs(lane_conflicts),
+                    }
+                )
+                continue
             if len(runnable_batch) >= limit:
                 waiting_candidates.append(
                     {
@@ -93,16 +109,13 @@ def build_scheduler_plan(
                         **candidate,
                         "runnable": False,
                         "reason_codes": ["write_scope_conflict"],
-                        "conflicts_with": [
-                            str(item.get("todo_id") or item.get("candidate_key") or "")
-                            for item in conflicts
-                            if item.get("todo_id") or item.get("candidate_key")
-                        ],
+                        "conflicts_with": _candidate_refs(conflicts),
                     }
                 )
                 continue
             runnable_batch.append({**candidate, "runnable": True})
 
+    public_runnable_batch = [_public_candidate(item) for item in runnable_batch]
     return {
         "ok": True,
         "status_health_ok": bool(status_payload.get("ok", True)),
@@ -115,14 +128,21 @@ def build_scheduler_plan(
         "runnable_batch_count": len(runnable_batch),
         "waiting_count": len(waiting_candidates),
         "blocked_count": len(blocked_candidates),
-        "runnable_batch": [_public_candidate(item) for item in runnable_batch],
+        "runnable_batch": public_runnable_batch,
         "waiting_candidates": [_public_candidate(item) for item in waiting_candidates],
         "blocked_candidates": [_public_candidate(item) for item in blocked_candidates],
+        "developer_commands": _developer_commands(
+            goal_id=safe_goal_id,
+            agent_id=safe_agent_id,
+            max_parallel=limit,
+            runnable_batch=public_runnable_batch,
+        ),
         "policy": {
             "schema_version": "scheduler_parallel_policy_v0",
             "state_writes": "serialized_by_active_state_file_lock",
             "read_only": "parallelizable",
             "local_write": "parallelizable_only_with_disjoint_required_write_scopes",
+            "agent_lane_capacity": "one_runnable_candidate_per_claimed_or_target_agent_lane",
             "external_run": "blocked_without_explicit_lane",
             "protected_write": "blocked_without_user_or_controller_gate",
             "claim_policy": (
@@ -166,6 +186,8 @@ def _append_candidate_lines(lines: list[str], heading: str, items: Any) -> None:
         ]
         if item.get("claimed_by"):
             parts.append(f"claimed_by={item.get('claimed_by')}")
+        if item.get("agent_lane"):
+            parts.append(f"lane={item.get('agent_lane')}")
         if item.get("required_write_scopes"):
             parts.append(f"write={','.join(item.get('required_write_scopes') or [])}")
         if item.get("reason_codes"):
@@ -174,6 +196,9 @@ def _append_candidate_lines(lines: list[str], heading: str, items: Any) -> None:
         text = str(item.get("text") or "").strip()
         if text:
             lines.append(f"  - {text}")
+        claim_command = str(item.get("claim_command") or "").strip()
+        if claim_command:
+            lines.append(f"  - claim: `{claim_command}`")
 
 
 def _attention_items(status_payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -233,6 +258,15 @@ def _agent_candidates(item: dict[str, Any], *, agent_id: str | None) -> list[dic
             candidate["other_agent_claimed"] = True
         if agent_id and not candidate.get("claimed_by"):
             candidate["claim_required_before_work"] = True
+            if candidate.get("todo_id"):
+                candidate["claim_command"] = _claim_command(
+                    goal_id=goal_id,
+                    todo_id=str(candidate.get("todo_id") or ""),
+                    agent_id=agent_id,
+                )
+        agent_lane = _agent_lane(candidate, agent_id=agent_id)
+        if agent_lane:
+            candidate["agent_lane"] = agent_lane
         candidates.append(candidate)
     return candidates
 
@@ -283,8 +317,10 @@ def _public_candidate(item: dict[str, Any]) -> dict[str, Any]:
         "required_write_scopes",
         "required_decision_scopes",
         "parallel_group_key",
+        "agent_lane",
         "claimed_by",
         "claim_required_before_work",
+        "claim_command",
         "runnable",
         "reason_codes",
         "conflicts_with",
@@ -297,6 +333,87 @@ def _public_candidate(item: dict[str, Any]) -> dict[str, Any]:
         "resume_when",
     )
     return {key: item.get(key) for key in keys if item.get(key) is not None}
+
+
+def _agent_lane(candidate: dict[str, Any], *, agent_id: str | None) -> str:
+    claimed_by = normalize_todo_claimed_by(candidate.get("claimed_by"))
+    if claimed_by:
+        return claimed_by
+    if agent_id and candidate.get("claim_required_before_work"):
+        return agent_id
+    return ""
+
+
+def _agent_lane_conflict(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    left_lane = str(left.get("agent_lane") or "").strip()
+    if not left_lane:
+        return False
+    return left_lane == str(right.get("agent_lane") or "").strip()
+
+
+def _candidate_refs(items: list[dict[str, Any]]) -> list[str]:
+    return [
+        str(item.get("todo_id") or item.get("candidate_key") or "")
+        for item in items
+        if item.get("todo_id") or item.get("candidate_key")
+    ]
+
+
+def _developer_commands(
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    max_parallel: int,
+    runnable_batch: list[dict[str, Any]],
+) -> dict[str, Any]:
+    scheduler_plan = ["loopx", "--format", "json", "scheduler", "plan"]
+    if goal_id:
+        scheduler_plan.extend(["--goal-id", goal_id])
+    if agent_id:
+        scheduler_plan.extend(["--agent-id", agent_id])
+    scheduler_plan.extend(["--max-parallel", str(max_parallel)])
+
+    status = ["loopx", "--format", "json", "status"]
+    if agent_id:
+        status.extend(["--agent-id", agent_id])
+
+    commands: dict[str, Any] = {
+        "scheduler_plan": _shell_join(scheduler_plan),
+        "status": _shell_join(status),
+    }
+    if goal_id:
+        quota_guard = ["loopx", "--format", "json", "quota", "should-run", "--goal-id", goal_id]
+        if agent_id:
+            quota_guard.extend(["--agent-id", agent_id])
+        commands["quota_guard"] = _shell_join(quota_guard)
+    claim_commands = [
+        str(item.get("claim_command") or "").strip()
+        for item in runnable_batch
+        if str(item.get("claim_command") or "").strip()
+    ]
+    if claim_commands:
+        commands["claim_runnable"] = claim_commands
+    return commands
+
+
+def _claim_command(*, goal_id: str, todo_id: str, agent_id: str) -> str:
+    return _shell_join(
+        [
+            "loopx",
+            "todo",
+            "claim",
+            "--goal-id",
+            goal_id,
+            "--todo-id",
+            todo_id,
+            "--claimed-by",
+            agent_id,
+        ]
+    )
+
+
+def _shell_join(parts: list[str]) -> str:
+    return " ".join(shlex.quote(str(part)) for part in parts if str(part))
 
 
 def _standalone_block(
