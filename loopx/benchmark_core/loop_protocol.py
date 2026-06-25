@@ -282,6 +282,34 @@ def _run_max_rounds_budget(run: dict[str, Any]) -> int | None:
     return None
 
 
+def _resolve_product_mode_pair_max_rounds(
+    baseline_run: dict[str, Any],
+    treatment_run: dict[str, Any],
+    requested_max_rounds: int | None,
+) -> int:
+    if (
+        isinstance(requested_max_rounds, int)
+        and not isinstance(requested_max_rounds, bool)
+        and requested_max_rounds > 0
+    ):
+        return requested_max_rounds
+    observed = [
+        budget
+        for budget in (
+            _run_max_rounds_budget(baseline_run),
+            _run_max_rounds_budget(treatment_run),
+        )
+        if isinstance(budget, int) and not isinstance(budget, bool) and budget > 0
+    ]
+    if (
+        len(observed) == 2
+        and observed[0] == observed[1]
+        and observed[0] >= BLIND_LOOP_DEFAULT_MAX_ROUNDS
+    ):
+        return observed[0]
+    return BLIND_LOOP_DEFAULT_MAX_ROUNDS
+
+
 def _run_feedback_blinded(run: dict[str, Any]) -> bool:
     if run.get("official_feedback_blinded") is True:
         return True
@@ -360,13 +388,18 @@ def classify_product_mode_main_table_pair(
     baseline_run: dict[str, Any],
     treatment_run: dict[str, Any],
     benchmark_id: str = "skillsbench@1.1",
-    max_rounds: int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
+    max_rounds: int | None = None,
 ) -> dict[str, Any]:
     """Classify whether two compact runs satisfy the main-table pair contract."""
 
+    resolved_max_rounds = _resolve_product_mode_pair_max_rounds(
+        baseline_run,
+        treatment_run,
+        max_rounds,
+    )
     contract = build_product_mode_main_table_comparison_contract(
         benchmark_id=benchmark_id,
-        max_rounds=max_rounds,
+        max_rounds=resolved_max_rounds,
     )
     blockers: list[str] = []
     baseline_case = _run_case_id(baseline_run)
@@ -393,16 +426,29 @@ def classify_product_mode_main_table_pair(
         "skillsbench_loopx_product_mode",
     ):
         blockers.append("treatment_not_loopx_product_mode")
+    observed_budgets: dict[str, int] = {}
     for label, run in (("baseline", baseline_run), ("treatment", treatment_run)):
         observed_budget = _run_max_rounds_budget(run)
-        if observed_budget is not None and observed_budget != max_rounds:
-            blockers.append(f"{label}_max_rounds_not_{max_rounds}")
+        if observed_budget is not None:
+            observed_budgets[label] = observed_budget
+            if observed_budget < BLIND_LOOP_DEFAULT_MAX_ROUNDS:
+                blockers.append(
+                    f"{label}_max_rounds_below_{BLIND_LOOP_DEFAULT_MAX_ROUNDS}"
+                )
+            elif observed_budget != resolved_max_rounds:
+                blockers.append(f"{label}_max_rounds_not_{resolved_max_rounds}")
         if not _run_feedback_blinded(run):
             blockers.append(f"{label}_official_feedback_not_blinded")
         if _run_reward_feedback_forwarded(run) is not False:
             blockers.append(f"{label}_reward_feedback_forwarding_not_disabled")
         if not _run_has_headline_metrics(run):
             blockers.append(f"{label}_compact_metrics_missing")
+    if (
+        "baseline" in observed_budgets
+        and "treatment" in observed_budgets
+        and observed_budgets["baseline"] != observed_budgets["treatment"]
+    ):
+        blockers.append("max_rounds_budget_mismatch")
     if treatment_run.get("loopx_inside_case") is not True:
         blockers.append("treatment_loopx_inside_case_not_confirmed")
     if not _loopx_product_lifecycle_observed(treatment_run):
@@ -417,6 +463,7 @@ def classify_product_mode_main_table_pair(
         "claim_blocker": "none" if allowed else ",".join(blockers),
         "benchmark_id": baseline_benchmark,
         "case_id": baseline_case or treatment_case,
+        "max_rounds_budget": resolved_max_rounds,
         "baseline_route_valid": "baseline_not_raw_codex_autonomous_max5"
         not in blockers,
         "treatment_route_valid": "treatment_not_loopx_product_mode" not in blockers,

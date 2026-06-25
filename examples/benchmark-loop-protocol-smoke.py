@@ -169,6 +169,32 @@ def main() -> int:
     assert product_pair["case_id"] == "citation-check", product_pair
     assert product_pair["treatment_loopx_lifecycle_observed"] is True, product_pair
 
+    baseline_run_8 = dict(baseline_run)
+    baseline_run_8["benchmark_loop_contract"] = build_benchmark_loop_contract(
+        route=RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
+        max_rounds=8,
+    )
+    treatment_run_8 = dict(treatment_run)
+    treatment_run_8["benchmark_loop_contract"] = build_benchmark_loop_contract(
+        route=LOOPX_PRODUCT_MODE_ROUTE,
+        max_rounds=8,
+    )
+    product_pair_8 = classify_product_mode_main_table_pair(
+        baseline_run=baseline_run_8,
+        treatment_run=treatment_run_8,
+    )
+    assert product_pair_8["main_table_claim_allowed"] is True, product_pair_8
+    assert product_pair_8["contract"]["max_rounds_budget"] == 8, product_pair_8
+
+    mismatched_budget_pair = classify_product_mode_main_table_pair(
+        baseline_run=baseline_run,
+        treatment_run=treatment_run_8,
+    )
+    assert mismatched_budget_pair["main_table_claim_allowed"] is False, (
+        mismatched_budget_pair
+    )
+    assert "max_rounds_budget_mismatch" in mismatched_budget_pair["claim_blocker"]
+
     shallow_treatment = dict(treatment_run)
     shallow_treatment["loopx_prompt_driven_lifecycle_observed"] = False
     shallow_treatment["worker_loopx_cli_call_total"] = 0

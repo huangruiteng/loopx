@@ -919,6 +919,43 @@ def test_skillsbench_product_mode_pair_review_is_ledgered() -> None:
         assert "| Benchmark | Case | Decision | Product Pair |" in rendered, rendered
         assert "`main_table_ready`" in rendered, rendered
 
+    eight_round_baseline = json.loads(json.dumps(baseline))
+    eight_round_baseline["case_id"] = "product-mode-eight-round-fixture"
+    eight_round_baseline["round_reward_trace"]["max_rounds_budget"] = 8
+    eight_round_treatment = json.loads(json.dumps(treatment))
+    eight_round_treatment["case_id"] = "product-mode-eight-round-fixture"
+    eight_round_treatment["round_reward_trace"]["max_rounds_budget"] = 8
+
+    with tempfile.TemporaryDirectory(
+        prefix="benchmark-run-ledger-product-pair-eight-"
+    ) as tmp:
+        root = Path(tmp)
+        ledger_path = root / "ledger.json"
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=eight_round_baseline,
+            run_group_id="product-pair-eight-ledger-smoke",
+            cwd=root,
+        )
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=eight_round_treatment,
+            run_group_id="product-pair-eight-ledger-smoke",
+            cwd=root,
+        )
+        ledger = load_benchmark_run_ledger(ledger_path)
+        case = ledger["benchmarks"]["skillsbench@1.1"]["cases"][
+            "product-mode-eight-round-fixture"
+        ]
+        decision = case["latest_decision"]
+        pair = decision["product_mode_main_table_pair"]
+        assert decision["decision"] == "paired_treatment_improved", decision
+        assert pair["main_table_claim_allowed"] is True, pair
+        assert pair["product_mode_pair_complete"] is True, pair
+        assert pair["max_rounds_budget"] == 8, pair
+        rendered = render_benchmark_run_ledger_markdown(ledger)
+        assert "`main_table_ready`" in rendered, rendered
+
 
 def test_skillsbench_product_mode_pair_blocks_shallow_lifecycle() -> None:
     baseline = {

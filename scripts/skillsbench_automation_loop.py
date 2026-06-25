@@ -141,8 +141,9 @@ DEFAULT_GOAL_ID = "loopx-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
 DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
-DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "final-only"
-DEFAULT_MAX_ROUNDS = 8
+DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
+DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
+DEFAULT_MAX_ROUNDS = 16
 HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "AI_ADDR",
     "AI_PORT",
@@ -727,7 +728,7 @@ def _host_local_acp_launch_command(
             "--sandbox",
             args.local_codex_sandbox,
             "--timeout-sec",
-            str(args.local_codex_exec_timeout_sec),
+            str(_effective_local_codex_exec_timeout_sec(args)),
         ]
     )
     if args.host_local_acp_launch and args.route != "codex-app-server-goal-baseline":
@@ -761,7 +762,7 @@ def _host_local_acp_launch_command(
                     "--remote-command-file-bridge-agent-command",
                     args.remote_command_file_bridge_agent_command,
                 ]
-            )
+        )
         if args.route == "loopx-product-mode":
             payload = benchmark_case_loopx_install_payload(
                 benchmark_id="skillsbench",
@@ -794,7 +795,51 @@ def _host_local_acp_launch_command(
                     ),
                 ]
             )
+    if (
+        args.route == "loopx-product-mode"
+        and args.host_local_acp_launch
+        and "--loopx-workflow-lifecycle-checkpoint" not in command
+    ):
+        payload = benchmark_case_loopx_install_payload(
+            benchmark_id="skillsbench",
+            case_id=args.task_id,
+            arm_id="loopx_product_mode",
+            route=args.route,
+            max_rounds=args.max_rounds,
+            case_loopx_source_path=_loopx_case_source_path_for_container(args),
+        )
+        command.extend(
+            [
+                "--loopx-workflow-lifecycle-checkpoint",
+                "--loopx-case-goal-id",
+                str(payload.get("benchmark_case_goal_id") or ""),
+                "--loopx-case-agent-id",
+                str(payload.get("case_agent_id") or BENCHMARK_CASE_LOOPX_AGENT_ID),
+                "--loopx-case-todo-id",
+                str(payload.get("case_todo_id") or BENCHMARK_CASE_LOOPX_TODO_ID),
+                "--loopx-case-cli-path",
+                str(payload.get("case_cli_path") or BENCHMARK_CASE_LOOPX_CLI_PATH),
+                "--loopx-case-registry-path",
+                str(
+                    payload.get("case_registry_path")
+                    or BENCHMARK_CASE_LOOPX_REGISTRY_PATH
+                ),
+                "--loopx-case-runtime-root",
+                str(
+                    payload.get("case_runtime_root")
+                    or BENCHMARK_CASE_LOOPX_RUNTIME_ROOT
+                ),
+            ]
+        )
     return command
+
+
+def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
+    configured = max(1, int(args.local_codex_exec_timeout_sec or 0))
+    idle_timeout = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+    if configured == DEFAULT_TIMEOUT_SEC and idle_timeout > 0:
+        return min(configured, idle_timeout)
+    return configured
 
 
 def _host_local_acp_target_env(agent_env: object) -> dict[str, str]:
@@ -1036,7 +1081,6 @@ def _loopx_source_mount_contract(args: argparse.Namespace) -> dict[str, Any]:
     ready = bool(
         requested
         and source_dir is not None
-        and (source_dir / "scripts" / "install-local.sh").exists()
         and (source_dir / "loopx" / "cli.py").exists()
     )
     status = "not_requested"
@@ -1058,6 +1102,8 @@ def _loopx_source_mounts(args: argparse.Namespace) -> list[dict[str, Any]]:
     contract = _loopx_source_mount_contract(args)
     if not contract.get("requested"):
         return []
+    if getattr(args, "host_local_acp_launch", False):
+        return []
     source_dir = Path(str(args.loopx_source_dir)).expanduser()
     return [
         {
@@ -1074,6 +1120,40 @@ def _loopx_case_source_path_for_container(args: argparse.Namespace) -> str | Non
     if contract.get("ready"):
         return BENCHMARK_CASE_LOOPX_SOURCE_MOUNT_TARGET
     return None
+
+
+def _loopx_source_upload_paths(source_dir: Path) -> list[Path]:
+    """Return the minimal real LoopX source subset needed by ``python -m loopx.cli``."""
+
+    candidates = [
+        source_dir / "loopx",
+        source_dir / "pyproject.toml",
+        source_dir / "README.md",
+    ]
+    return [path for path in candidates if path.exists()]
+
+
+def _copy_loopx_source_subset(source_dir: Path, target_dir: Path) -> int:
+    file_count = 0
+    for source_path in _loopx_source_upload_paths(source_dir):
+        destination = target_dir / source_path.name
+        if source_path.is_dir():
+            shutil.copytree(
+                source_path,
+                destination,
+                ignore=shutil.ignore_patterns(
+                    "__pycache__",
+                    "*.pyc",
+                    ".mypy_cache",
+                    ".pytest_cache",
+                    ".ruff_cache",
+                ),
+            )
+            file_count += sum(1 for path in destination.rglob("*") if path.is_file())
+        else:
+            shutil.copy2(source_path, destination)
+            file_count += 1
+    return file_count
 
 
 def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
@@ -1094,14 +1174,22 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_agent_runtime_layer_mount_target",
         "loopx_source_mount_status",
         "loopx_source_mount_target",
+        "loopx_source_upload_fallback_status",
+        "loopx_source_upload_fallback_exception_type",
+        "loopx_source_upload_target",
         "codex_app_server_goal_worker_plan_schema",
         "benchflow_user_loop_recovery_exception_type",
         "benchflow_user_loop_recovery_stage",
         "benchflow_intermediate_soft_verify_policy",
+        "benchflow_intermediate_soft_verify_timeout_stage",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_status",
         "benchflow_setup_stall_cleanup_status",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
         "host_local_acp_sandbox_bridge_mode",
+        "host_local_acp_pwd_probe_status",
+        "host_local_acp_pwd_probe_exception_type",
+        "host_local_acp_pwd_probe_stdout_type",
         "host_local_acp_codex_exec_preflight_status",
         "host_local_acp_codex_exec_preflight_stage",
         "host_local_acp_codex_exec_preflight_first_blocker",
@@ -1121,10 +1209,13 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_sandbox_bridge_configured",
         "host_local_acp_sandbox_bridge_path_recorded",
         "host_local_acp_target_env_forwarded",
+        "host_local_acp_pwd_probe_cwd_present",
+        "host_local_acp_rollout_planes_available",
         "host_local_acp_codex_exec_preflight_requested",
         "host_local_acp_codex_exec_preflight_ready",
         "container_codex_acp_install_skipped",
         "benchflow_agent_install_skipped_by_runtime_layer",
+        "benchflow_rollout_planes_module_available",
         "remote_command_file_bridge_materialized",
         "remote_command_file_bridge_command_configured",
         "remote_command_file_bridge_agent_command_configured",
@@ -1153,6 +1244,11 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "loopx_source_mount_injected",
         "loopx_source_mount_read_only",
         "loopx_source_mount_source_recorded",
+        "loopx_source_visible_before_upload",
+        "loopx_source_visible_after_upload",
+        "loopx_source_upload_fallback_supported",
+        "loopx_source_upload_fallback_attempted",
+        "loopx_source_upload_raw_material_recorded",
         "benchflow_agent_timeout_overridden",
         "codex_app_server_goal_worker_adapter_present",
         "codex_app_server_goal_worker_turn_start_required",
@@ -1165,6 +1261,11 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_user_loop_recovery_preserved_final_verify",
         "benchflow_intermediate_soft_verify_final_only",
         "benchflow_intermediate_soft_verify_raw_output_recorded",
+        "benchflow_intermediate_soft_verify_timeout_enabled",
+        "benchflow_intermediate_soft_verify_timeout_triggered",
+        "benchflow_intermediate_soft_verify_timeout_raw_output_recorded",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_requested",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
         "benchflow_verifier_prep_timeout_override_enabled",
         "benchflow_verifier_prep_timeout_raw_command_recorded",
         "benchflow_final_verifier_timeout_enabled",
@@ -1196,6 +1297,13 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_user_loop_recovery_delta_tool_calls",
         "benchflow_intermediate_soft_verify_call_count",
         "benchflow_intermediate_soft_verify_skipped_count",
+        "benchflow_intermediate_soft_verify_timeout_sec",
+        "benchflow_intermediate_soft_verify_timeout_override_count",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_container_count",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_match_count",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_term_sent_count",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_kill_sent_count",
+        "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count",
         "benchflow_verifier_prep_timeout_sec",
         "benchflow_final_verifier_timeout_sec",
         "benchflow_final_verifier_timeout_override_count",
@@ -1216,6 +1324,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_agent_loopx_state_read_count",
         "remote_command_file_bridge_agent_loopx_state_write_count",
         "remote_command_file_bridge_agent_task_facing_operation_count",
+        "remote_command_file_bridge_agent_todo_closeout_count",
+        "remote_command_file_bridge_agent_refresh_state_count",
+        "remote_command_file_bridge_agent_quota_spend_slot_count",
         "remote_command_file_bridge_driver_lifecycle_trace_count",
         "remote_command_file_bridge_driver_lifecycle_checkpoint_count",
         "remote_command_file_bridge_driver_lifecycle_request_count",
@@ -1226,6 +1337,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count",
         "host_local_acp_sandbox_bridge_compose_file_count",
         "host_local_acp_target_env_key_count",
+        "host_local_acp_pwd_probe_rc",
+        "loopx_source_upload_fallback_file_count",
         "host_local_acp_codex_exec_preflight_attempt_count",
         "host_local_acp_codex_exec_failure_trace_count",
     ):
@@ -1421,40 +1534,285 @@ def cleanup_benchflow_setup_stall_children(
     return publish()
 
 
+def cleanup_benchflow_soft_verify_timeout_children(
+    plan: dict[str, Any],
+    *,
+    trace: dict[str, Any] | None = None,
+    grace_seconds: float = 3.0,
+) -> dict[str, Any]:
+    """Terminate verifier process trees left behind by an intermediate timeout."""
+
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    cleanup: dict[str, Any] = {
+        "schema_version": "skillsbench_soft_verify_timeout_process_cleanup_v0",
+        "requested": True,
+        "raw_logs_read": False,
+        "raw_command_recorded": False,
+        "status": "not_attempted",
+        "container_count": 0,
+        "match_count": 0,
+        "term_sent_count": 0,
+        "kill_sent_count": 0,
+        "alive_after_count": 0,
+    }
+
+    def publish() -> dict[str, Any]:
+        prerequisites[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_requested"
+        ] = True
+        prerequisites[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read"
+        ] = False
+        prerequisites[
+            "benchflow_intermediate_soft_verify_timeout_cleanup_status"
+        ] = str(cleanup.get("status") or "unknown")
+        if isinstance(trace, dict):
+            trace[
+                "benchflow_intermediate_soft_verify_timeout_cleanup_requested"
+            ] = True
+            trace[
+                "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read"
+            ] = False
+            trace[
+                "benchflow_intermediate_soft_verify_timeout_cleanup_status"
+            ] = str(cleanup.get("status") or "unknown")
+        for source, target in (
+            (
+                "container_count",
+                "benchflow_intermediate_soft_verify_timeout_cleanup_container_count",
+            ),
+            (
+                "match_count",
+                "benchflow_intermediate_soft_verify_timeout_cleanup_match_count",
+            ),
+            (
+                "term_sent_count",
+                "benchflow_intermediate_soft_verify_timeout_cleanup_term_sent_count",
+            ),
+            (
+                "kill_sent_count",
+                "benchflow_intermediate_soft_verify_timeout_cleanup_kill_sent_count",
+            ),
+            (
+                "alive_after_count",
+                "benchflow_intermediate_soft_verify_timeout_cleanup_alive_after_count",
+            ),
+        ):
+            value = cleanup.get(source)
+            if isinstance(value, int):
+                prerequisites[target] = value
+                if isinstance(trace, dict):
+                    trace[target] = value
+        return cleanup
+
+    if os.name != "posix":
+        cleanup["status"] = "unsupported_platform"
+        return publish()
+
+    job_name = str(plan.get("job_name") or "").strip().lower()
+    rollout_name = str(plan.get("rollout_name") or "").strip().lower()
+    if not job_name and not rollout_name:
+        cleanup["status"] = "missing_run_identifiers"
+        return publish()
+
+    try:
+        proc = subprocess.run(
+            ["docker", "ps", "--format", "{{.ID}}\t{{.Names}}"],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        cleanup["status"] = "docker_unavailable"
+        return publish()
+    if proc.returncode != 0:
+        cleanup["status"] = "docker_unavailable"
+        return publish()
+
+    containers: list[str] = []
+    for line in proc.stdout.splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        container_id, name = parts[0].strip(), parts[1].strip().lower()
+        if not container_id:
+            continue
+        if (job_name and job_name in name) or (rollout_name and rollout_name in name):
+            containers.append(container_id)
+    cleanup["container_count"] = len(containers)
+    if not containers:
+        cleanup["status"] = "no_matching_container"
+        return publish()
+
+    total_matches = 0
+    total_term_sent = 0
+    total_kill_sent = 0
+    total_alive_after = 0
+
+    for container_id in containers:
+        try:
+            ps_proc = subprocess.run(
+                ["docker", "exec", container_id, "ps", "-eo", "pid=,ppid=,comm=,args="],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            cleanup["status"] = "container_process_table_unavailable"
+            return publish()
+        if ps_proc.returncode != 0:
+            cleanup["status"] = "container_process_table_unavailable"
+            return publish()
+
+        entries: dict[int, tuple[int, str, str]] = {}
+        children: dict[int, set[int]] = {}
+        for line in ps_proc.stdout.splitlines():
+            parts = line.strip().split(maxsplit=3)
+            if len(parts) < 3:
+                continue
+            try:
+                pid = int(parts[0])
+                ppid = int(parts[1])
+            except ValueError:
+                continue
+            comm = parts[2]
+            args = parts[3] if len(parts) > 3 else ""
+            entries[pid] = (ppid, comm, args)
+            children.setdefault(ppid, set()).add(pid)
+
+        root_matches = {
+            pid
+            for pid, (_ppid, comm, args) in entries.items()
+            if comm == "test.sh" or "/verifier/test.sh" in args
+        }
+        to_terminate = set(root_matches)
+        stack = list(root_matches)
+        while stack:
+            parent = stack.pop()
+            for child in children.get(parent, set()):
+                if child not in to_terminate:
+                    to_terminate.add(child)
+                    stack.append(child)
+        if not to_terminate:
+            continue
+
+        total_matches += len(to_terminate)
+
+        def send_signal(sig: str, pids: set[int]) -> int:
+            if not pids:
+                return 0
+            signal_proc = subprocess.run(
+                ["docker", "exec", container_id, "kill", f"-{sig}", *map(str, sorted(pids))],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5,
+            )
+            return len(pids) if signal_proc.returncode == 0 else 0
+
+        def alive_pids(pids: set[int]) -> set[int]:
+            alive: set[int] = set()
+            for pid in pids:
+                probe = subprocess.run(
+                    ["docker", "exec", container_id, "kill", "-0", str(pid)],
+                    check=False,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=2,
+                )
+                if probe.returncode == 0:
+                    alive.add(pid)
+            return alive
+
+        total_term_sent += send_signal("TERM", to_terminate)
+        deadline = time.monotonic() + max(0.0, grace_seconds)
+        alive = alive_pids(to_terminate)
+        while alive and time.monotonic() < deadline:
+            time.sleep(0.1)
+            alive = alive_pids(alive)
+        if alive:
+            total_kill_sent += send_signal("KILL", alive)
+            time.sleep(0.1)
+            alive = alive_pids(alive)
+        total_alive_after += len(alive)
+
+    cleanup["match_count"] = total_matches
+    cleanup["term_sent_count"] = total_term_sent
+    cleanup["kill_sent_count"] = total_kill_sent
+    cleanup["alive_after_count"] = total_alive_after
+    if not total_matches:
+        cleanup["status"] = "no_matching_processes"
+    elif total_alive_after:
+        cleanup["status"] = "cleanup_incomplete"
+    elif total_kill_sent:
+        cleanup["status"] = "killed"
+    else:
+        cleanup["status"] = "terminated"
+    return publish()
+
+
 def install_benchflow_verifier_prep_timeout_override(
     rollout_cls: Any,
     *,
     timeout_sec: int,
     final_verifier_timeout_sec: int = 0,
+    soft_verifier_timeout_sec: int = DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
     plan: dict[str, Any],
     trace: dict[str, Any] | None,
 ) -> tuple[Any, Any]:
-    """Raise verifier prep timeouts and optionally bound final official verify."""
+    """Raise verifier prep timeouts and bound verifier calls when requested."""
 
     original_verify = rollout_cls.verify
     original_soft_verify = rollout_cls.soft_verify
     prerequisites = plan.setdefault("runner_prerequisites", {})
     enabled = timeout_sec > 10
     final_timeout_enabled = final_verifier_timeout_sec > 0
+    soft_timeout_enabled = soft_verifier_timeout_sec > 0
     prerequisites["benchflow_verifier_prep_timeout_override_enabled"] = enabled
     prerequisites["benchflow_verifier_prep_timeout_raw_command_recorded"] = False
     prerequisites["benchflow_final_verifier_timeout_enabled"] = final_timeout_enabled
     prerequisites["benchflow_final_verifier_timeout_raw_command_recorded"] = False
+    prerequisites["benchflow_intermediate_soft_verify_timeout_enabled"] = (
+        soft_timeout_enabled
+    )
+    prerequisites["benchflow_intermediate_soft_verify_timeout_raw_output_recorded"] = (
+        False
+    )
     if enabled:
         prerequisites["benchflow_verifier_prep_timeout_sec"] = timeout_sec
     if final_timeout_enabled:
         prerequisites["benchflow_final_verifier_timeout_sec"] = (
             final_verifier_timeout_sec
         )
+    if soft_timeout_enabled:
+        prerequisites["benchflow_intermediate_soft_verify_timeout_sec"] = (
+            soft_verifier_timeout_sec
+        )
     if isinstance(trace, dict):
         trace["benchflow_verifier_prep_timeout_override_enabled"] = enabled
         trace["benchflow_verifier_prep_timeout_raw_command_recorded"] = False
         trace["benchflow_final_verifier_timeout_enabled"] = final_timeout_enabled
         trace["benchflow_final_verifier_timeout_raw_command_recorded"] = False
+        trace["benchflow_intermediate_soft_verify_timeout_enabled"] = (
+            soft_timeout_enabled
+        )
+        trace["benchflow_intermediate_soft_verify_timeout_raw_output_recorded"] = (
+            False
+        )
         if enabled:
             trace["benchflow_verifier_prep_timeout_sec"] = timeout_sec
         if final_timeout_enabled:
             trace["benchflow_final_verifier_timeout_sec"] = final_verifier_timeout_sec
+        if soft_timeout_enabled:
+            trace["benchflow_intermediate_soft_verify_timeout_sec"] = (
+                soft_verifier_timeout_sec
+            )
 
     def _looks_like_final_verifier_exec(
         exec_args: tuple[Any, ...],
@@ -1468,7 +1826,7 @@ def install_benchflow_verifier_prep_timeout_override(
         return "/verifier/test.sh" in command
 
     async def _run_with_override(self: Any, phase: str, original: Any) -> Any:
-        if not enabled and not final_timeout_enabled:
+        if not enabled and not final_timeout_enabled and not soft_timeout_enabled:
             return await original(self)
 
         env = getattr(self, "_env", None)
@@ -1478,9 +1836,11 @@ def install_benchflow_verifier_prep_timeout_override(
 
         override_count = 0
         final_timeout_override_count = 0
+        soft_timeout_override_count = 0
 
         async def exec_with_verifier_prep_timeout(*args: Any, **kwargs: Any) -> Any:
             nonlocal override_count, final_timeout_override_count
+            nonlocal soft_timeout_override_count
             if kwargs.get("timeout_sec") == 10:
                 kwargs = dict(kwargs)
                 kwargs["timeout_sec"] = timeout_sec
@@ -1495,6 +1855,16 @@ def install_benchflow_verifier_prep_timeout_override(
                     kwargs = dict(kwargs)
                     kwargs["timeout_sec"] = final_verifier_timeout_sec
                     final_timeout_override_count += 1
+            if (
+                phase == "soft_verify"
+                and soft_timeout_enabled
+                and _looks_like_final_verifier_exec(args, kwargs)
+            ):
+                current_timeout = kwargs.get("timeout_sec")
+                if current_timeout != soft_verifier_timeout_sec:
+                    kwargs = dict(kwargs)
+                    kwargs["timeout_sec"] = soft_verifier_timeout_sec
+                    soft_timeout_override_count += 1
             return await original_exec(*args, **kwargs)
 
         try:
@@ -1511,6 +1881,30 @@ def install_benchflow_verifier_prep_timeout_override(
                     trace["benchflow_final_verifier_timeout_raw_output_recorded"] = (
                         False
                     )
+            if soft_timeout_override_count and _runner_exception_indicates_timeout(exc):
+                prerequisites[
+                    "benchflow_intermediate_soft_verify_timeout_triggered"
+                ] = True
+                prerequisites[
+                    "benchflow_intermediate_soft_verify_timeout_stage"
+                ] = "soft_verify"
+                prerequisites[
+                    "benchflow_intermediate_soft_verify_timeout_raw_output_recorded"
+                ] = False
+                if isinstance(trace, dict):
+                    trace[
+                        "benchflow_intermediate_soft_verify_timeout_triggered"
+                    ] = True
+                    trace[
+                        "benchflow_intermediate_soft_verify_timeout_stage"
+                    ] = "soft_verify"
+                    trace[
+                        "benchflow_intermediate_soft_verify_timeout_raw_output_recorded"
+                    ] = False
+                cleanup_benchflow_soft_verify_timeout_children(
+                    plan,
+                    trace=trace,
+                )
             raise
         finally:
             env.exec = original_exec
@@ -1535,6 +1929,19 @@ def install_benchflow_verifier_prep_timeout_override(
                     trace[count_key] = (
                         int(trace.get(count_key) or 0)
                         + final_timeout_override_count
+                    )
+            if soft_timeout_override_count:
+                count_key = (
+                    "benchflow_intermediate_soft_verify_timeout_override_count"
+                )
+                prerequisites[count_key] = (
+                    int(prerequisites.get(count_key) or 0)
+                    + soft_timeout_override_count
+                )
+                if isinstance(trace, dict):
+                    trace[count_key] = (
+                        int(trace.get(count_key) or 0)
+                        + soft_timeout_override_count
                     )
 
     async def verify_with_prep_timeout_override(self: Any) -> Any:
@@ -1849,6 +2256,15 @@ def _runner_prerequisite_failure_attribution(
         and count("remote_command_file_bridge_driver_lifecycle_loopx_state_write_count")
         > 0
     )
+    orchestrated_driver_counts_as_product_mode = bool(
+        orchestrated_driver_lifecycle_satisfied
+        and (
+            value.get("remote_command_file_bridge_agent_operation_trace_required")
+            is not True
+            or value.get("remote_command_file_bridge_agent_command_instrumented")
+            is True
+        )
+    )
 
     if (
         value.get("benchflow_setup_stall_timeout_triggered") is True
@@ -1871,6 +2287,14 @@ def _runner_prerequisite_failure_attribution(
 
     if value.get("benchflow_final_verifier_timeout_triggered") is True:
         label = "skillsbench_final_verifier_timeout"
+        return label, label, [
+            label,
+            "skillsbench_verifier_timeout",
+            "skillsbench_runner_error",
+        ]
+
+    if value.get("benchflow_intermediate_soft_verify_timeout_triggered") is True:
+        label = "skillsbench_intermediate_soft_verify_timeout"
         return label, label, [
             label,
             "skillsbench_verifier_timeout",
@@ -1911,13 +2335,19 @@ def _runner_prerequisite_failure_attribution(
 
     if (
         value.get("remote_command_file_bridge_agent_operation_trace_required") is True
-        and not orchestrated_driver_lifecycle_satisfied
+        and not orchestrated_driver_counts_as_product_mode
         and value.get("remote_command_file_bridge_agent_operation_trace_satisfied")
         is False
     ):
         status = str(
             value.get("remote_command_file_bridge_agent_operation_trace_status") or ""
         )
+        if (
+            status == "relay_generated_wrapper_pending_prompt"
+            and value.get("remote_command_file_bridge_consumption_status")
+            == "sandbox_bridge_auto_wiring_pending"
+        ):
+            return None
         trace_count = value.get("remote_command_file_bridge_agent_operation_trace_count")
         request_count = value.get("remote_command_file_bridge_agent_request_count")
         if (
@@ -3267,6 +3697,13 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "benchflow_intermediate_soft_verify_call_count": 0,
             "benchflow_intermediate_soft_verify_skipped_count": 0,
             "benchflow_intermediate_soft_verify_raw_output_recorded": False,
+            "benchflow_intermediate_soft_verify_timeout_enabled": (
+                int(args.soft_verifier_timeout_sec or 0) > 0
+            ),
+            "benchflow_intermediate_soft_verify_timeout_sec": int(
+                args.soft_verifier_timeout_sec or 0
+            ),
+            "benchflow_intermediate_soft_verify_timeout_raw_output_recorded": False,
             "benchflow_final_verifier_timeout_enabled": (
                 int(args.final_verifier_timeout_sec or 0) > 0
             ),
@@ -3490,6 +3927,25 @@ def _last_loopx_case_init_phase(text: str | None) -> str:
         return ""
     phases = re.findall(r"loopx_case_init_phase:([a-z0-9_:-]+)", text)
     return phases[-1] if phases else ""
+
+
+def _loopx_case_init_failure_blocker(text: str | None) -> str:
+    if not text:
+        return ""
+    lowered = text.lower()
+    if "loopx/cli.py is missing" in lowered:
+        return "loopx_case_source_cli_missing"
+    if "python is missing" in lowered or "requires python inside" in lowered:
+        return "loopx_case_python_missing"
+    if "install-local.sh is missing" in lowered:
+        return "loopx_case_install_local_missing"
+    if "no module named loopx" in lowered:
+        return "loopx_case_source_import_failed"
+    if "permission denied" in lowered:
+        return "loopx_case_init_permission_denied"
+    if "/usr/bin/env" in lowered and "bash" in lowered:
+        return "loopx_case_bash_missing"
+    return "loopx_case_init_failed"
 
 
 def _inc_counter(payload: dict[str, Any], key: str, amount: int = 1) -> None:
@@ -4118,14 +4574,23 @@ def _merge_host_local_acp_relay_trace_summary(
         sorted(agent_bridge_loopx_subcommand_counts.items())
     )
     trace["remote_command_file_bridge_agent_todo_closeout_count"] = (
-        agent_bridge_loopx_subcommand_counts.get("todo complete", 0)
-        + agent_bridge_loopx_subcommand_counts.get("todo update", 0)
+        _subcommand_family_count(
+            agent_bridge_loopx_subcommand_counts,
+            "todo complete",
+            "todo update",
+        )
     )
     trace["remote_command_file_bridge_agent_refresh_state_count"] = (
-        agent_bridge_loopx_subcommand_counts.get("refresh-state", 0)
+        _subcommand_family_count(
+            agent_bridge_loopx_subcommand_counts,
+            "refresh-state",
+        )
     )
     trace["remote_command_file_bridge_agent_quota_spend_slot_count"] = (
-        agent_bridge_loopx_subcommand_counts.get("quota spend-slot", 0)
+        _subcommand_family_count(
+            agent_bridge_loopx_subcommand_counts,
+            "quota spend-slot",
+        )
     )
     trace["remote_command_file_bridge_driver_lifecycle_trace_count"] = (
         driver_lifecycle_trace_count
@@ -4238,6 +4703,15 @@ def _merge_host_local_acp_relay_trace_summary(
     prerequisites["remote_command_file_bridge_agent_loopx_subcommand_counts"] = dict(
         sorted(agent_bridge_loopx_subcommand_counts.items())
     )
+    prerequisites["remote_command_file_bridge_agent_todo_closeout_count"] = trace[
+        "remote_command_file_bridge_agent_todo_closeout_count"
+    ]
+    prerequisites["remote_command_file_bridge_agent_refresh_state_count"] = trace[
+        "remote_command_file_bridge_agent_refresh_state_count"
+    ]
+    prerequisites["remote_command_file_bridge_agent_quota_spend_slot_count"] = trace[
+        "remote_command_file_bridge_agent_quota_spend_slot_count"
+    ]
     prerequisites["remote_command_file_bridge_driver_lifecycle_trace_count"] = (
         driver_lifecycle_trace_count
     )
@@ -4305,6 +4779,22 @@ def _top_counts(counter: dict[str, int], *, limit: int = 12) -> dict[str, int]:
         )[:limit]
         if count > 0
     }
+
+
+def _subcommand_family_count(counter: dict[str, int], *families: str) -> int:
+    total = 0
+    for command, count in counter.items():
+        if not isinstance(command, str) or not command:
+            continue
+        if not isinstance(count, int) or isinstance(count, bool):
+            continue
+        normalized = " ".join(command.split())
+        if any(
+            normalized == family or normalized.startswith(f"{family} ")
+            for family in families
+        ):
+            total += max(0, count)
+    return total
 
 
 def _tool_title_kind(title: str) -> str:
@@ -4641,6 +5131,57 @@ def _product_mode_solver_activity_observed(
     return task_activity_observed and agent_state_write_observed
 
 
+def _sync_relay_closeout_counts_into_compact(
+    compact: dict[str, Any],
+    runner_prerequisites: dict[str, Any],
+) -> None:
+    if not runner_prerequisites:
+        return
+    interaction_counters = compact.get("interaction_counters")
+    if not isinstance(interaction_counters, dict):
+        interaction_counters = {}
+        compact["interaction_counters"] = interaction_counters
+    product_contract = compact.get("product_mode_lifecycle_contract")
+    if not isinstance(product_contract, dict):
+        product_contract = {}
+        compact["product_mode_lifecycle_contract"] = product_contract
+    for runner_field, contract_field in (
+        (
+            "remote_command_file_bridge_agent_todo_closeout_count",
+            "agent_bridge_todo_closeout_count",
+        ),
+        (
+            "remote_command_file_bridge_agent_refresh_state_count",
+            "agent_bridge_refresh_state_count",
+        ),
+        (
+            "remote_command_file_bridge_agent_quota_spend_slot_count",
+            "agent_bridge_quota_spend_slot_count",
+        ),
+    ):
+        value = runner_prerequisites.get(runner_field)
+        if not isinstance(value, int) or isinstance(value, bool):
+            continue
+        value = max(0, value)
+        current_counter = interaction_counters.get(runner_field)
+        if not isinstance(current_counter, int) or isinstance(current_counter, bool):
+            current_counter = 0
+        interaction_counters[runner_field] = max(current_counter, value)
+        current_contract = product_contract.get(contract_field)
+        if not isinstance(current_contract, int) or isinstance(current_contract, bool):
+            current_contract = 0
+        product_contract[contract_field] = max(current_contract, value)
+    if all(
+        product_contract.get(field, 0) > 0
+        for field in (
+            "agent_bridge_todo_closeout_count",
+            "agent_bridge_refresh_state_count",
+            "agent_bridge_quota_spend_slot_count",
+        )
+    ):
+        product_contract["closeout_satisfied"] = True
+
+
 def _record_product_mode_depth_gate_gap(
     trace: dict[str, Any],
     *,
@@ -4885,8 +5426,8 @@ def _build_blind_loop_user(
     class BlindLoopUser(BaseUser):
         """Scheduler-side user that withholds official verifier feedback.
 
-        The default budget is five scheduled agent rounds, but the loop stops
-        early as soon as official scoring reaches the pass threshold. That
+        The configured budget controls scheduled agent rounds, but the loop
+        stops early as soon as official scoring reaches the pass threshold. That
         reward is recorded for offline analysis and never sent back to the
         agent.
         """
@@ -5022,9 +5563,10 @@ def _build_product_mode_user(
             f"--todo-id {case_todo_id} --claimed-by {case_agent_id}`. "
             "After meaningful local evidence or validation, update the todo "
             "through LoopX CLI; when complete, use `todo complete`, then "
-            "`refresh-state`, then `quota spend-slot --execute`. Do not rely "
-            "on only reading or editing the Markdown state file, and do not "
-            "write a separate marker as the source of truth. "
+            "`refresh-state`, then `quota spend-slot --source adapter "
+            "--execute` with this case goal and agent id. Do not rely on only "
+            "reading or editing the Markdown state file, and do not write a "
+            "separate marker as the source of truth. "
         )
 
     def lifecycle_checkpoint_commands(round_number: int) -> str:
@@ -5052,6 +5594,31 @@ def _build_product_mode_user(
             "```\n"
         )
 
+    def closeout_commands(round_number: int) -> str:
+        safe_round = max(1, round_number)
+        complete_note = shlex.quote(
+            f"round {safe_round} product-mode task validated and ready for verifier"
+        )
+        complete_evidence = shlex.quote(
+            "public-safe closeout: task-facing work validated and case todo complete"
+        )
+        classification = shlex.quote("benchmark_case_agent_closeout")
+        return (
+            "```bash\n"
+            f"{case_cli_prefix} todo complete --goal-id {case_goal_id} "
+            f"--todo-id {case_todo_id} --note {complete_note} "
+            f"--evidence {complete_evidence}\n"
+            f"{case_cli_prefix} refresh-state --goal-id {case_goal_id} "
+            f"--classification {classification} "
+            "--delivery-batch-scale implementation "
+            "--delivery-outcome primary_goal_outcome "
+            f"--agent-id {case_agent_id} --agent-lane benchmark_case "
+            "--no-global-sync\n"
+            f"{case_cli_prefix} quota spend-slot --goal-id {case_goal_id} "
+            f"--agent-id {case_agent_id} --source adapter --execute\n"
+            "```\n"
+        )
+
     def lifecycle_checkpoint_prompt(round_number: int) -> str:
         return (
             f"Mandatory LoopX lifecycle checkpoint before round {round_number} "
@@ -5073,19 +5640,20 @@ def _build_product_mode_user(
             f"Mandatory product-mode solver checkpoint before round {round_number} "
             "continues. The previous round produced enough LoopX lifecycle "
             "evidence to make the treatment countable, but it did not produce "
-            "public evidence of both task-facing solver activity and an "
-            "agent-side LoopX state write. Read-only LoopX calls such as "
-            "`quota should-run` are not enough to declare completion. This is "
-            "not official verifier feedback and says nothing about task "
-            "success. Before declaring done, use the available sandbox tool or "
-            "command-file bridge to inspect the task workspace, make or verify "
-            "the required changes, then update the LoopX case todo/state "
-            "through `todo update`, `todo complete`, `refresh-state`, or "
-            "`quota spend-slot` as appropriate. Do not answer with prose only, "
-            "and only end with "
+            "the full agent closeout evidence: task-facing validation plus "
+            "`todo complete`, `refresh-state`, and `quota spend-slot "
+            "--source adapter --execute`. Read-only LoopX calls such as "
+            "`quota should-run`, or state edits without a spend event, are not "
+            "enough to declare completion. This is not official verifier "
+            "feedback and says nothing about task success. Before declaring "
+            "done, use the available sandbox tool or command-file bridge to "
+            "inspect the task workspace, make or verify the required changes, "
+            "then run this exact case-local closeout sequence from `/app`:\n\n"
+            f"{closeout_commands(round_number)}"
+            "Do not answer with prose only, and only end with "
             f"{DECLARED_DONE_MARKER} after meaningful local task work or "
-            "validation and the corresponding LoopX state write have been "
-            "recorded."
+            "validation and the corresponding LoopX closeout/spend evidence "
+            "has been recorded."
         )
 
     class ProductModeUser(BaseUser):
@@ -5254,7 +5822,10 @@ def _build_product_mode_user(
                         "For this treatment, LoopX lifecycle evidence is a "
                         "hard product-mode requirement: first run the "
                         "case-local quota/todo commands above before "
-                        "substantive task work. "
+                        "substantive task work. When task work validates "
+                        "complete, run this exact case-local closeout sequence "
+                        "from `/app` before declaring done:\n\n"
+                        f"{closeout_commands(1)}"
                         if treatment
                         else ""
                     )
@@ -5307,16 +5878,21 @@ def _build_product_mode_user(
 
 
 async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> Path:
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    prerequisites["benchflow_run_stage"] = "entered"
     skillsbench_root = Path(args.skillsbench_root).expanduser().resolve()
+    prerequisites["benchflow_run_stage"] = "task_path_check"
     task_path = skillsbench_root / "tasks" / args.task_id
     if not task_path.exists():
         raise FileNotFoundError(f"SkillsBench task not found: {task_path}")
+    prerequisites["benchflow_run_stage"] = "loopx_source_preflight"
     loopx_source_contract = _loopx_source_mount_contract(args)
     if loopx_source_contract.get("requested") and not loopx_source_contract.get("ready"):
         raise FileNotFoundError(
             "LoopX source mount requested but local source files are missing; "
             "use --no-loopx-source-mount to test the public GitHub installer instead"
         )
+    prerequisites["benchflow_run_stage"] = "task_staging"
     effective_task_path, staging_metadata = stage_task_for_sandbox(
         task_path=task_path,
         jobs_dir=Path(plan["jobs_dir"]),
@@ -5330,6 +5906,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
 
+    prerequisites["benchflow_run_stage"] = "benchflow_import"
     import benchflow.acp.runtime as benchflow_acp_runtime
     import benchflow.rollout as benchflow_rollout_module
     import benchflow.sandbox.setup as benchflow_sandbox_setup_module
@@ -5343,9 +5920,10 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         benchflow_rollout_planes_module = None
     from benchflow.rollout import Rollout, RolloutConfig
     from benchflow.runtime import run as benchflow_run
-    plan.setdefault("runner_prerequisites", {})[
-        "benchflow_rollout_planes_module_available"
-    ] = benchflow_rollout_planes_module is not None
+    prerequisites["benchflow_rollout_planes_module_available"] = (
+        benchflow_rollout_planes_module is not None
+    )
+    prerequisites["benchflow_run_stage"] = "runtime_prepare"
 
     host_local_acp_command = _host_local_acp_launch_command(args, plan)
     runtime_mounts = (
@@ -5369,7 +5947,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         reasoning_effort: str | None = None,
         mcp_servers: list[Any] | None = None,
         **_ignored: Any,
-    ) -> tuple[Any, Any, Any, str]:
+    ) -> tuple[Any, Any, str]:
         del (
             agent_launch,
             sandbox_user,
@@ -5377,7 +5955,6 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             environment,
             reasoning_effort,
         )
-        from benchflow.agents.protocol import ACPSessionAdapter
         from benchflow.acp.client import ACPClient
         from benchflow.acp.transport import StdioTransport
 
@@ -5435,8 +6012,11 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         try:
             await asyncio.wait_for(client.connect(), timeout=60)
             init_result = await asyncio.wait_for(client.initialize(), timeout=60)
+            session_new_kwargs: dict[str, Any] = {"cwd": agent_cwd}
+            if "mcp_servers" in inspect.signature(client.session_new).parameters:
+                session_new_kwargs["mcp_servers"] = mcp_servers
             session = await asyncio.wait_for(
-                client.session_new(cwd=agent_cwd, mcp_servers=mcp_servers),
+                client.session_new(**session_new_kwargs),
                 timeout=60,
             )
             agent_name = (
@@ -5456,7 +6036,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                 controller_trace["last_decision"] = (
                     "host_app_server_goal_worker_connected"
                 )
-            return client, session, ACPSessionAdapter(client), agent_name
+            return client, session, agent_name
         except Exception:
             prerequisites["host_local_acp_launch_status"] = "failed"
             with contextlib.suppress(Exception):
@@ -5562,6 +6142,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             failed_phase = _last_loopx_case_init_phase(detail)
             if failed_phase:
                 trace["case_goal_state_init_failed_phase"] = failed_phase
+            blocker = _loopx_case_init_failure_blocker(detail)
+            if blocker:
+                trace["case_goal_state_init_first_blocker"] = blocker
             trace["case_goal_state_init_status"] = "failed"
             raise RuntimeError(
                 "LoopX official case lifecycle init failed: " + detail[:1000]
@@ -5569,6 +6152,75 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         trace["case_goal_state_initialized_before_agent"] = True
         trace["case_goal_state_init_status"] = "passed"
         trace["loopx_case_cli_installed_before_agent"] = True
+
+    async def ensure_loopx_source_available(env: Any) -> None:
+        if args.route != LOOPX_PRODUCT_MODE_ROUTE:
+            return
+        prerequisites = plan.setdefault("runner_prerequisites", {})
+        source_contract = _loopx_source_mount_contract(args)
+        if not source_contract.get("requested"):
+            prerequisites["loopx_source_upload_fallback_status"] = "not_requested"
+            return
+        prerequisites["loopx_source_upload_target"] = (
+            BENCHMARK_CASE_LOOPX_SOURCE_MOUNT_TARGET
+        )
+        prerequisites["loopx_source_upload_raw_material_recorded"] = False
+        source_cli = (
+            f"{BENCHMARK_CASE_LOOPX_SOURCE_MOUNT_TARGET.rstrip('/')}/loopx/cli.py"
+        )
+        try:
+            visible_before = bool(await env.is_file(source_cli))
+        except Exception as exc:
+            visible_before = False
+            prerequisites["loopx_source_upload_fallback_exception_type"] = type(
+                exc
+            ).__name__
+        prerequisites["loopx_source_visible_before_upload"] = visible_before
+        if visible_before:
+            prerequisites["loopx_source_visible_after_upload"] = True
+            prerequisites["loopx_source_upload_fallback_supported"] = True
+            prerequisites["loopx_source_upload_fallback_attempted"] = False
+            prerequisites["loopx_source_upload_fallback_status"] = "not_needed"
+            return
+        upload_dir = getattr(env, "upload_dir", None)
+        prerequisites["loopx_source_upload_fallback_supported"] = callable(upload_dir)
+        if not callable(upload_dir):
+            prerequisites["loopx_source_visible_after_upload"] = False
+            prerequisites["loopx_source_upload_fallback_attempted"] = False
+            prerequisites["loopx_source_upload_fallback_status"] = "unsupported"
+            raise RuntimeError("LoopX source is not visible and sandbox upload is unsupported")
+        source_dir = Path(str(args.loopx_source_dir)).expanduser()
+        prerequisites["loopx_source_upload_fallback_attempted"] = True
+        try:
+            with tempfile.TemporaryDirectory(prefix="loopx-source-upload-") as tmp:
+                staged_source = Path(tmp) / "source"
+                staged_source.mkdir()
+                file_count = _copy_loopx_source_subset(source_dir, staged_source)
+                prerequisites["loopx_source_upload_fallback_file_count"] = file_count
+                if file_count <= 0:
+                    prerequisites["loopx_source_visible_after_upload"] = False
+                    prerequisites["loopx_source_upload_fallback_status"] = (
+                        "empty_source_subset"
+                    )
+                    raise RuntimeError("LoopX source upload subset is empty")
+                await env.exec(
+                    f"mkdir -p {shlex.quote(BENCHMARK_CASE_LOOPX_SOURCE_MOUNT_TARGET)}",
+                    timeout_sec=10,
+                )
+                await upload_dir(staged_source, BENCHMARK_CASE_LOOPX_SOURCE_MOUNT_TARGET)
+        except Exception as exc:
+            prerequisites["loopx_source_upload_fallback_exception_type"] = type(
+                exc
+            ).__name__
+            prerequisites["loopx_source_upload_fallback_status"] = "failed"
+            raise
+        visible_after = bool(await env.is_file(source_cli))
+        prerequisites["loopx_source_visible_after_upload"] = visible_after
+        prerequisites["loopx_source_upload_fallback_status"] = (
+            "uploaded" if visible_after else "uploaded_but_not_visible"
+        )
+        if not visible_after:
+            raise RuntimeError("LoopX uploaded source is still not visible in sandbox")
 
     original_install_agent = Rollout.install_agent
     original_runtime_connect_acp = benchflow_acp_runtime.connect_acp
@@ -5688,40 +6340,107 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         prerequisites["codex_acp_runtime_launch_preflight_raw_logs_read"] = False
         try:
             prerequisites["host_local_acp_install_stage"] = "pwd_probe"
-            cwd_result = await self._env.exec("pwd", timeout_sec=10)
-            self._agent_cwd = (cwd_result.stdout or "").strip() or "/app"
+            try:
+                cwd_result = await self._env.exec("pwd", timeout_sec=10)
+                prerequisites["host_local_acp_pwd_probe_rc"] = int(
+                    getattr(cwd_result, "return_code", 0)
+                )
+                prerequisites["host_local_acp_pwd_probe_status"] = (
+                    "passed"
+                    if int(getattr(cwd_result, "return_code", 0)) == 0
+                    else "failed"
+                )
+            except Exception as exc:
+                prerequisites["host_local_acp_pwd_probe_status"] = "exception"
+                prerequisites["host_local_acp_pwd_probe_exception_type"] = type(
+                    exc
+                ).__name__
+                raise
+            if prerequisites["host_local_acp_pwd_probe_status"] != "passed":
+                raise RuntimeError("host-local ACP sandbox pwd probe failed")
+            cwd_stdout = getattr(cwd_result, "stdout", "") or ""
+            if isinstance(cwd_stdout, bytes):
+                cwd_stdout = cwd_stdout.decode("utf-8", errors="replace")
+                prerequisites["host_local_acp_pwd_probe_stdout_type"] = "bytes"
+            else:
+                prerequisites["host_local_acp_pwd_probe_stdout_type"] = type(
+                    cwd_stdout
+                ).__name__
+            self._agent_cwd = str(cwd_stdout).strip() or "/app"
+            prerequisites["host_local_acp_pwd_probe_cwd_present"] = bool(
+                self._agent_cwd
+            )
             self._agent_cfg = None
             planes = getattr(self, "_planes", None)
-            if planes is None:
-                raise RuntimeError("BenchFlow rollout planes unavailable")
+            prerequisites["host_local_acp_rollout_planes_available"] = (
+                planes is not None
+            )
             if cfg.sandbox_user:
                 prerequisites["host_local_acp_install_stage"] = "sandbox_user_setup"
-                self._agent_cwd = await planes.setup_sandbox_user(
-                    self._env,
-                    cfg.sandbox_user,
-                    workspace=self._agent_cwd,
-                    timeout_sec=cfg.sandbox_setup_timeout,
-                )
+                if planes is not None:
+                    self._agent_cwd = await planes.setup_sandbox_user(
+                        self._env,
+                        cfg.sandbox_user,
+                        workspace=self._agent_cwd,
+                        timeout_sec=cfg.sandbox_setup_timeout,
+                    )
+                else:
+                    self._agent_cwd = await benchflow_rollout_module.setup_sandbox_user(
+                        self._env,
+                        cfg.sandbox_user,
+                        workspace=self._agent_cwd,
+                        timeout_sec=cfg.sandbox_setup_timeout,
+                    )
             prerequisites["host_local_acp_install_stage"] = "snapshot_build_config"
-            await planes.snapshot_build_config(self._env, workspace=self._agent_cwd)
+            if planes is not None:
+                await planes.snapshot_build_config(self._env, workspace=self._agent_cwd)
+            else:
+                await benchflow_rollout_module._snapshot_build_config(
+                    self._env, workspace=self._agent_cwd
+                )
             prerequisites["host_local_acp_install_stage"] = "seed_verifier_workspace"
-            await planes.seed_verifier_workspace(
-                self._env, workspace=self._agent_cwd, sandbox_user=cfg.sandbox_user
-            )
+            if planes is not None:
+                await planes.seed_verifier_workspace(
+                    self._env, workspace=self._agent_cwd, sandbox_user=cfg.sandbox_user
+                )
+            else:
+                await benchflow_rollout_module._seed_verifier_workspace(
+                    self._env, workspace=self._agent_cwd, sandbox_user=cfg.sandbox_user
+                )
             prerequisites["host_local_acp_install_stage"] = "deploy_skills"
-            await planes.deploy_skills(
-                self._env,
-                getattr(self, "_effective_task_path", cfg.task_path),
-                getattr(self, "_effective_skills_dir", cfg.skills_dir),
-                None,
-                cfg.sandbox_user,
-                self._agent_cwd,
-                skills_sandbox_dir=getattr(
-                    self,
-                    "_effective_skills_sandbox_dir",
-                    getattr(cfg, "skills_sandbox_dir", "/app/skills"),
-                ),
+            effective_task_path = getattr(self, "_effective_task_path", cfg.task_path)
+            effective_skills_dir = getattr(self, "_effective_skills_dir", cfg.skills_dir)
+            effective_skills_sandbox_dir = getattr(
+                self,
+                "_effective_skills_sandbox_dir",
+                getattr(cfg, "skills_sandbox_dir", "/app/skills"),
             )
+            if planes is not None:
+                await planes.deploy_skills(
+                    self._env,
+                    effective_task_path,
+                    effective_skills_dir,
+                    None,
+                    cfg.sandbox_user,
+                    self._agent_cwd,
+                    skills_sandbox_dir=effective_skills_sandbox_dir,
+                )
+            else:
+                await benchflow_rollout_module.deploy_skills(
+                    self._env,
+                    effective_task_path,
+                    effective_skills_dir,
+                    None,
+                    cfg.sandbox_user,
+                    self._agent_cwd,
+                    getattr(self, "_task", None),
+                    include_task_skills=cfg.include_task_skills,
+                )
+            if args.route == "loopx-product-mode":
+                prerequisites["host_local_acp_install_stage"] = (
+                    "loopx_source_upload_fallback"
+                )
+                await ensure_loopx_source_available(self._env)
             if cfg.export_generated_skills_to:
                 prerequisites["host_local_acp_install_stage"] = (
                     "ensure_generated_skills_dir"
@@ -5735,7 +6454,19 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                     self._env, cfg.generated_skills_root, cfg.sandbox_user
                 )
             prerequisites["host_local_acp_install_stage"] = "lockdown_paths"
-            await planes.lockdown_paths(self._env, self._effective_locked)
+            if planes is not None:
+                await planes.lockdown_paths(self._env, self._effective_locked)
+            else:
+                await benchflow_rollout_module.lockdown_paths(
+                    self._env, self._effective_locked
+                )
+            if args.route == "loopx-product-mode":
+                prerequisites["host_local_acp_install_stage"] = "seed_loopx_case_state"
+                if isinstance(controller_trace, dict):
+                    controller_trace["case_goal_state_init_invocation_stage"] = (
+                        "host_local_acp_after_sandbox_install"
+                    )
+                await seed_product_mode_case_state(self._env)
         except Exception:
             prerequisites["host_local_acp_install_failed_stage"] = str(
                 prerequisites.get("host_local_acp_install_stage") or "unknown"
@@ -5841,6 +6572,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             Rollout,
             timeout_sec=args.verifier_prep_timeout_sec,
             final_verifier_timeout_sec=args.final_verifier_timeout_sec,
+            soft_verifier_timeout_sec=args.soft_verifier_timeout_sec,
             plan=plan,
             trace=controller_trace,
         )
@@ -5852,7 +6584,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         or args.require_preinstalled_benchflow_agent_runtime
         else [ensure_codex_acp_runtime_deps]
     )
-    if args.route == "loopx-product-mode":
+    if args.route == "loopx-product-mode" and not args.host_local_acp_launch:
         pre_agent_hooks.append(seed_product_mode_case_state)
 
     agent_env: dict[str, str] = {}
@@ -6058,6 +6790,7 @@ def reduce_result(
         raise RuntimeError("SkillsBench treatment reducer produced non-compact run")
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
+        _sync_relay_closeout_counts_into_compact(compact, runner_prerequisites)
     prereq_failure = _runner_prerequisite_failure_attribution(
         plan.get("runner_prerequisites")
     )
@@ -6300,6 +7033,7 @@ def build_runner_failure_compact(
     )
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
+        _sync_relay_closeout_counts_into_compact(compact, runner_prerequisites)
     task_staging = _effective_public_task_staging(plan)
     if task_staging:
         compact["task_staging"] = task_staging
@@ -6540,9 +7274,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_MAX_ROUNDS,
         help=(
             "Maximum scheduled agent rounds per arm before budget stop. "
-            f"Defaults to {DEFAULT_MAX_ROUNDS}; blind-loop routes still stop "
-            "early once official reward reaches 1.0, without forwarding that "
-            "reward to the agent."
+            f"Defaults to {DEFAULT_MAX_ROUNDS}; blind-loop and product-mode "
+            "routes still stop early once official reward reaches 1.0, without "
+            "forwarding that reward to the agent."
         ),
     )
     parser.add_argument(
@@ -6599,13 +7333,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--soft-verifier-timeout-sec",
+        type=int,
+        default=DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
+        help=(
+            "Timeout for every-round intermediate soft verifier commands. "
+            "This keeps product-mode private reward sampling from hanging on "
+            "task verifier network calls while still withholding reward, "
+            "pass/fail, and verifier output from the agent."
+        ),
+    )
+    parser.add_argument(
         "--product-mode-soft-verify-policy",
         choices=("final-only", "every-round"),
         default=DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY,
         help=(
             "Intermediate BenchFlow soft-verify policy for the main-table "
-            "product-mode routes. final-only preserves official final scoring "
-            "without per-round verifier reward/output observations."
+            "product-mode routes. every-round privately samples verifier reward "
+            "after each agent round so the controller can stop at reward 1.0 "
+            "without forwarding reward/pass/fail/verifier output to the agent. "
+            "final-only is an explicit ablation that waits for final official "
+            "scoring before observing reward."
         ),
     )
     parser.add_argument(
@@ -6625,8 +7373,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=str(REPO_ROOT),
         help=(
             "Local LoopX checkout mounted read-only into docker product-mode "
-            "runs and installed with scripts/install-local.sh. Public compact "
-            "artifacts record only the mount target, not this host path."
+            "runs, or uploaded as a source fallback for older BenchFlow "
+            "host-local sandboxes, and executed with the real loopx.cli module. "
+            "Public compact artifacts record only the target/status, not this "
+            "host path."
         ),
     )
     parser.add_argument(
@@ -7071,6 +7821,38 @@ def main(argv: list[str] | None = None) -> int:
         and product_host_local_bridge_materialized
         and not product_host_local_bridge_command_configured
     )
+    if (
+        args.route == "loopx-product-mode"
+        and not args.host_local_acp_launch
+        and not args.local_driver_worker_handshake_preflight
+        and not args.plan_only
+        and not args.reduce_only
+    ):
+        payload = {
+            "ok": False,
+            "error_type": "SkillsBenchProductModeCanonicalDriverRequired",
+            "route": args.route,
+            "reason": (
+                "loopx-product-mode is the formal LoopX treatment route and "
+                "must use the canonical host-local ACP lifecycle driver. A "
+                "container-local codex-acp fallback can solve the task but "
+                "cannot produce the required case-local quota/todo/update/"
+                "refresh/spend lifecycle evidence."
+            ),
+            "next_action": (
+                "rerun with --host-local-acp-launch and a materialized "
+                "command/file bridge, or use --plan-only/--reduce-only for "
+                "non-executing inspection"
+            ),
+            "canonical_product_mode_lifecycle_driver_required": True,
+            "host_local_acp_launch": False,
+            "raw_logs_recorded": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_recorded": False,
+            "credential_values_recorded": False,
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+        return 2
     product_host_local_bridge_fixture_solver = (
         skillsbench_remote_command_file_bridge_command_is_fixture_probe(
             args.remote_command_file_bridge_solver_command
