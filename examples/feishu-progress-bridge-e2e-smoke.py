@@ -79,6 +79,23 @@ def main() -> int:
                     {"todo_id": "todo_view", "agent_lane": "codex-devbox-req-b"},
                 ],
             }
+        if args[:5] == ["loopx", "--registry", ".loopx/registry.json", "scheduler", "handoffs"]:
+            assert "--format" in args and "json" in args, args
+            assert "--todo-id" in args and args[args.index("--todo-id") + 1] == "todo_abc", args
+            return {
+                "schema_version": "scheduler_worker_handoffs_v0",
+                "goal_id": "default",
+                "todo_id": "todo_abc",
+                "handoff_count": 1,
+                "worker_handoffs": [
+                    {
+                        "todo_id": "todo_abc",
+                        "agent_lane": "codex-devbox-req-a",
+                        "start_steps": [{"kind": "quota_guard", "command": "loopx quota should-run ..."}],
+                        "closeout_steps": [{"kind": "complete_todo", "command_template": "loopx todo complete ..."}],
+                    }
+                ],
+            }
         if args[:4] == ["loopx", "--registry", ".loopx/registry.json", "status"]:
             agent_id = args[args.index("--agent-id") + 1]
             assert agent_id.startswith("codex-devbox-req-"), args
@@ -143,6 +160,35 @@ def main() -> int:
     assert cards and f"Progress lane: `{claimed_by}`" in cards[-1]["elements"][0]["text"]["content"], cards[-1]
     assert "Initial scheduler snapshot" in cards[-1]["elements"][0]["text"]["content"], cards[-1]
     assert "Next batch: parallel_batch" in cards[-1]["elements"][0]["text"]["content"], cards[-1]
+    action_blocks = [element for element in cards[-1]["elements"] if element.get("tag") == "action"]
+    assert action_blocks, cards[-1]
+    action_ids = [button["value"]["action_id"] for button in action_blocks[0]["actions"]]
+    assert "show_next_batch" in action_ids and "show_handoffs" in action_ids, action_ids
+
+    bridge.handle_card_action(
+        {
+            "event": {
+                "operator": {"open_id": "ou_operator"},
+                "action": {
+                    "value": {
+                        "source": "loopx_feishu_progress_bridge",
+                        "action_id": "show_handoffs",
+                        "todo_id": "todo_abc",
+                        "goal_id": "default",
+                    }
+                },
+            }
+        },
+        state,
+    )
+    handoff_commands = [
+        command
+        for command in commands
+        if command[:5] == ["loopx", "--registry", ".loopx/registry.json", "scheduler", "handoffs"]
+    ]
+    assert handoff_commands and "--todo-id" in handoff_commands[-1], commands
+    handoff_replies = [command for command in commands if command[:3] == ["feishu-cli", "msg", "reply"] and "--text" in command]
+    assert any("Worker handoffs: 1" in " ".join(command) for command in handoff_replies), handoff_replies
 
     sent = bridge.poll_progress_once(state)
     assert sent == 1, sent

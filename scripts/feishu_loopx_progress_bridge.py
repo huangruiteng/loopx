@@ -599,6 +599,12 @@ def handle_card_action(raw: dict[str, Any], state: StateStore) -> bool:
         actor_id=actor_id,
         decision_scope=decision_scope,
     )
+    if action_id in {"show_next_batch", "show_handoffs"}:
+        kind = "handoffs" if action_id == "show_handoffs" else "next-batch"
+        readonly_response = scheduler_snapshot(kind, todo_id=todo_id, max_chars=BOT_MAX_TEXT_CHARS, timeout=45)
+        if original_message_id:
+            reply_text(original_message_id, readonly_response)
+        return True
     commands, response = todo_commands_for_action(
         action_id=action_id,
         goal_id=goal_id,
@@ -622,7 +628,6 @@ def handle_card_action(raw: dict[str, Any], state: StateStore) -> bool:
     if original_message_id:
         reply_text(original_message_id, response)
     return True
-
 
 def handle_event(raw: dict[str, Any], state: StateStore) -> None:
     try:
@@ -900,9 +905,7 @@ def self_test() -> int:
     state = StateStore(Path(tempfile.mkdtemp()) / "state.json")
     event = {"event": {"message": {"message_id": "om_test", "content": json.dumps({"text": "/help"})}}}
     assert extract_text(event) == "/help"
-    assert "/plan" in bridge_help_text()
-    assert "/next" in bridge_help_text()
-    assert "/handoffs" in bridge_help_text()
+    assert all(command in bridge_help_text() for command in ("/plan", "/next", "/handoffs"))
     state.track_todo(
         todo_id="todo_test",
         message_id="om_test",
@@ -945,10 +948,7 @@ def self_test() -> int:
     assert "批准继续" in response
     assert loopx_scheduler_next_batch_text(
         run_json=lambda args, timeout: {"dispatch_mode": "idle"},
-        loopx_bin="loopx",
-        registry="registry",
-        goal_id="goal",
-        agent_id="agent",
+        loopx_bin="loopx", registry="registry", goal_id="goal", agent_id="agent",
         max_chars=80,
     )
     doctor = bridge_doctor(state)

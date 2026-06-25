@@ -18,7 +18,7 @@ def card_for_notification(notification: ProgressNotification, *, item: dict[str,
         title=notification.title,
         template=notification.template,
         footer=f"LoopX {notification.stage} | {notification.fingerprint}",
-        actions=tuple(action.to_dict() for action in notification.actions),
+        actions=tuple(action.to_dict() for action in notification.actions) + bridge_context_actions(item),
     )
 
 
@@ -40,3 +40,25 @@ def bridge_context_markdown(item: dict[str, Any] | None) -> str:
     if scheduler_summary:
         lines.extend(["", "**Initial scheduler snapshot**", compact_markdown(scheduler_summary, max_chars=700)])
     return "\n".join(lines)
+
+
+def bridge_context_actions(item: dict[str, Any] | None) -> tuple[dict[str, Any], ...]:
+    if not isinstance(item, dict) or not str(item.get("request_lane") or "").strip():
+        return ()
+    base_value = {
+        "source": "loopx_feishu_progress_bridge",
+        "todo_id": str(item.get("todo_id") or ""),
+        "goal_id": str(item.get("goal_id") or ""),
+    }
+    return (
+        {
+            "action_id": "show_next_batch",
+            "label": "下一批",
+            "value": base_value,
+        },
+        {
+            "action_id": "show_handoffs",
+            "label": "交接步骤",
+            "value": base_value,
+        },
+    )
