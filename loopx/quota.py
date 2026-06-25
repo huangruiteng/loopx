@@ -2223,6 +2223,8 @@ def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any
 def _scoped_user_gate_fallback(
     user_todo_summary: dict[str, Any] | None,
     agent_todo_summary: dict[str, Any] | None,
+    *,
+    allow_unrelated_gate: bool = False,
 ) -> dict[str, Any] | None:
     gates = _open_user_gate_todo_items(user_todo_summary)
     if not gates or not isinstance(agent_todo_summary, dict):
@@ -2248,9 +2250,6 @@ def _scoped_user_gate_fallback(
             for item in executable_items
             if normalize_todo_claimed_by(item.get("claimed_by")) in {"", agent_id}
         ]
-    if len(executable_items) < 2:
-        return None
-
     blocked_items: list[dict[str, Any]] = []
     selected: dict[str, Any] | None = None
     blocking_gate: dict[str, Any] | None = None
@@ -2267,21 +2266,30 @@ def _scoped_user_gate_fallback(
         if selected is None:
             selected = item
 
-    if not blocking_gate or selected is None:
+    if selected is None:
+        return None
+    if not blocking_gate and not allow_unrelated_gate:
         return None
 
     selected_text = str(selected.get("text") or "").strip()
-    gate_text = str(blocking_gate.get("text") or "").strip()
+    gate_to_surface = blocking_gate or gates[0]
+    gate_text = str(gate_to_surface.get("text") or "").strip()
+    reason = (
+        "an open user_gate blocks a scoped agent todo, but a non-dependent "
+        "executable fallback remains available"
+        if blocking_gate
+        else (
+            "an open user_gate blocks a different action scope, but the selected "
+            "executable agent todo is non-dependent and safe to advance"
+        )
+    )
     return {
         "schema_version": "scoped_user_gate_fallback_v0",
         "kind": "scoped_user_gate_fallback",
         "notify_user": True,
         "requires_user_action": True,
-        "reason": (
-            "an open user_gate blocks a scoped agent todo, but a non-dependent "
-            "executable fallback remains available"
-        ),
-        "blocked_user_gate": _compact_todo_summary_item(blocking_gate, text=gate_text),
+        "reason": reason,
+        "blocked_user_gate": _compact_todo_summary_item(gate_to_surface, text=gate_text),
         "blocked_agent_items": blocked_items[:3],
         "selected_executable": _compact_todo_summary_item(selected, text=selected_text),
         "recommended_action": (
@@ -6698,6 +6706,7 @@ def build_quota_should_run(
         scoped_user_gate_fallback = _scoped_user_gate_fallback(
             user_todo_summary,
             agent_todo_summary,
+            allow_unrelated_gate=bool(payload.get("safe_bypass_allowed")),
         )
         if scoped_user_gate_fallback:
             payload["scoped_user_gate_fallback"] = scoped_user_gate_fallback
