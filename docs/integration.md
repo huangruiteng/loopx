@@ -170,6 +170,9 @@ loopx scheduler handoffs --goal-id <goal-id>
 loopx scheduler handoffs --goal-id <goal-id> --todo-id <todo-id>
 ```
 
+Each handoff includes quota/status preflight commands plus public-safe
+`todo complete` and blocked-update templates for worker closeout.
+
 Useful optional environment variables:
 
 ```text

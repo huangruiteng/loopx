@@ -76,7 +76,9 @@ current scheduler action, grouped agent lanes, reason counts, and copyable
 preflight or claim commands without starting workers. Its
 `worker_handoffs` entries are bounded text packets for manually or externally
 dispatching already-runnable todos; they do not create a task lease, bypass
-quota, or grant write authority beyond the listed todo metadata.
+quota, or grant write authority beyond the listed todo metadata. Closeout
+command templates in a handoff are copy/paste aids; the worker still supplies
+public-safe evidence or blocker text before running them.
 
 ## Controlled Writes
 
