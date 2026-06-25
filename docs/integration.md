@@ -184,7 +184,14 @@ loopx scheduler handoffs --goal-id <goal-id> --todo-id <todo-id>
 ```
 
 Each handoff includes quota/status preflight commands plus public-safe
-`todo complete` and blocked-update templates for worker closeout.
+`todo complete` and blocked-update templates for worker closeout. The JSON
+contract also carries machine-readable `start_steps` and `closeout_steps` so a
+bridge, operator, or worker wrapper can run the same lifecycle consistently:
+claim first when needed, check quota/status, isolate write-scoped work, validate
+the result, and then complete or block the todo with evidence. Unassigned
+read-only worker slots still include a goal-level quota guard, so parallel
+batches do not silently skip the scheduler preflight just because no dedicated
+agent lane has claimed the todo yet.
 
 Useful optional environment variables:
 
