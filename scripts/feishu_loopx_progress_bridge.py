@@ -456,6 +456,7 @@ def help_text() -> str:
             "Commands:",
             "/help - show this message",
             "/status - show compact LoopX status",
+            "/plan - show safe parallel scheduler plan",
             "/check - run LoopX boundary check",
             "/ask <task> - create a LoopX todo and receive progress cards",
         ]
@@ -483,6 +484,27 @@ def loopx_status_text() -> str:
 def loopx_check_text() -> str:
     return compact_markdown(
         run_text([LOOPX_BIN, "--registry", LOOPX_REGISTRY, "check", "--scan-root", str(CONTROL_ROOT)], timeout=30),
+        max_chars=BOT_MAX_TEXT_CHARS,
+        suffix="...",
+    )
+
+
+def loopx_scheduler_plan_text() -> str:
+    return compact_markdown(
+        run_text(
+            [
+                LOOPX_BIN,
+                "--registry",
+                LOOPX_REGISTRY,
+                "scheduler",
+                "plan",
+                "--goal-id",
+                LOOPX_GOAL_ID,
+                "--agent-id",
+                LOOPX_AGENT_ID,
+            ],
+            timeout=45,
+        ),
         max_chars=BOT_MAX_TEXT_CHARS,
         suffix="...",
     )
@@ -562,6 +584,8 @@ def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
         return help_text()
     if clean in {"/status", "status"}:
         return loopx_status_text()
+    if clean in {"/plan", "plan"}:
+        return loopx_scheduler_plan_text()
     if clean in {"/check", "check"}:
         return loopx_check_text()
     request_text = clean[len("/ask ") :].strip() if clean.startswith("/ask ") else clean
@@ -1005,6 +1029,7 @@ def self_test() -> int:
     state = StateStore(Path(tempfile.mkdtemp()) / "state.json")
     event = {"event": {"message": {"message_id": "om_test", "content": json.dumps({"text": "/help"})}}}
     assert extract_text(event) == "/help"
+    assert "/plan" in help_text()
     state.track_todo(
         todo_id="todo_test",
         message_id="om_test",

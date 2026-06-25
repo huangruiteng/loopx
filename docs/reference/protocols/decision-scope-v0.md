@@ -135,6 +135,11 @@ Current implementation status:
 - `loopx todo add/update` can author `safety_class`.
 - `status --format json`, `quota should-run --format json`, Feishu progress
   buttons, and operator-feed projection preserve these fields.
+- `scheduler plan --format json` consumes `safety_class`,
+  `required_write_scopes`, and `required_decision_scopes` to build a bounded
+  read-only safe-parallel batch. It keeps state writes serialized, blocks
+  unresolved user decision scopes, blocks external/protected work by default,
+  and reports write-scope conflicts as waiting candidates.
 - Hot-path quota relation still treats the fields as projection metadata; full
   gate dominance evaluation is intentionally left for a later runtime slice.
 

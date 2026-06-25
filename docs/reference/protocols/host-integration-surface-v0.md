@@ -56,6 +56,7 @@ Host integrations should expose read methods that map directly to CLI reads:
 | Registry and goal boundary | `loopx registry` and `quota should-run` | goal id, adapter status, write scope, registered agents, stop condition |
 | Status and attention queue | `loopx --format json status` | first-screen status, user todos, agent todos, gate state, freshness warnings, optional read-only projections such as `task_graph_projection_v0` |
 | Quota decision | `loopx --format json quota should-run --goal-id <goal-id> --agent-id <agent-id>` | `interaction_contract`, execution obligation, workspace guard, spend policy |
+| Scheduler plan | `loopx --format json scheduler plan --goal-id <goal-id> --agent-id <agent-id>` | bounded `runnable_batch`, waiting conflicts, blocked candidates, no worker launch |
 | Review packet | `loopx --format json review-packet --goal-id <goal-id>` | human/controller decision packet and agent handoff context |
 | Run history | `loopx history` or status projections | compact run ids, classification, outcome, validation, blocker pointers |
 
@@ -66,6 +67,9 @@ Optional projections such as `task_graph_projection_v0` and
 `long_task_cadence_policy_v0` are read-only inputs to a host integration. They
 do not add graph write authority, change quota gates, or create a new source of
 truth.
+`scheduler_plan_v0` is also read-only: it may tell a host which todos look safe
+to run in a bounded parallel batch, but it does not claim a todo, create a
+lease, spend quota, or authorize protected work by itself.
 
 ## Controlled Writes
 
@@ -135,6 +139,7 @@ Minimum fallback set:
 loopx doctor
 loopx --format json status --agent-id <agent-id>
 loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <goal-id> --agent-id <agent-id>
+loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" scheduler plan --goal-id <goal-id> --agent-id <agent-id>
 loopx todo claim --goal-id <goal-id> --todo-id <todo_id> --claimed-by <agent-id>
 loopx todo complete --goal-id <goal-id> --todo-id <todo_id> --claimed-by <agent-id> --evidence "<public-safe evidence>"
 loopx refresh-state --goal-id <goal-id> --agent-id <agent-id>
