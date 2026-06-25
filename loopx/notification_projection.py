@@ -68,6 +68,34 @@ class ProgressNotification:
         payload["actions"] = [action.to_dict() for action in self.actions]
         return payload
 
+    def to_operator_feed_item(self) -> dict[str, Any]:
+        action_payloads = [action.to_dict() for action in self.actions]
+        decision_scope = next(
+            (
+                action.get("value", {}).get("decision_scope")
+                for action in action_payloads
+                if isinstance(action.get("value"), dict)
+                and isinstance(action.get("value", {}).get("decision_scope"), dict)
+            ),
+            {},
+        )
+        return {
+            "schema_version": "loopx_operator_feed_item_v0",
+            "id": f"{self.todo_id}:{self.fingerprint}",
+            "todo_id": self.todo_id,
+            "goal_id": self.goal_id,
+            "stage": self.stage,
+            "priority": self.priority,
+            "done": self.done,
+            "key_event": self.key_event,
+            "title": self.title,
+            "summary": self.summary,
+            "markdown": self.markdown,
+            "fingerprint": self.fingerprint,
+            "actions": action_payloads,
+            "decision_scope": decision_scope,
+        }
+
 
 NotificationProjection = ProgressNotification
 
@@ -231,6 +259,9 @@ def _user_action_notification(
     todo_lines = _todo_lines(user_todos)
     if todo_lines:
         lines.extend(["", "**Open user items**", *todo_lines])
+    decision_scope = _first_user_decision_scope(user_todos)
+    if decision_scope:
+        lines.extend(["", "**Decision scope**", _decision_scope_label(decision_scope)])
     operator_question = _text(quota_payload.get("operator_question"), MAX_ACTION_CHARS)
     gate_prompt = _text(quota_payload.get("gate_prompt"), MAX_ACTION_CHARS)
     if operator_question or gate_prompt:
@@ -585,11 +616,13 @@ def _gate_actions(
     quota_payload: dict[str, Any],
 ) -> tuple[NotificationAction, ...]:
     user_todo_id = _first_user_todo_id(quota_payload.get("user_todo_summary"))
+    decision_scope = _first_user_decision_scope(quota_payload.get("user_todo_summary"))
     base_value = {
         "source": "loopx_feishu_progress_bridge",
         "todo_id": str(todo_id or ""),
         "goal_id": str(goal_id or ""),
         "user_todo_id": user_todo_id,
+        "decision_scope": decision_scope,
     }
     return (
         NotificationAction(
@@ -789,8 +822,21 @@ def _todo_lines(summary: Any, *, limit: int = 3) -> list[str]:
 
 
 def _first_user_todo_id(summary: Any) -> str:
+    item = _first_user_todo(summary)
+    if isinstance(item, dict) and item.get("todo_id"):
+        return str(item.get("todo_id") or "")
+    return ""
+
+
+def _first_user_decision_scope(summary: Any) -> dict[str, Any]:
+    item = _first_user_todo(summary)
+    scope = item.get("decision_scope") if isinstance(item, dict) else None
+    return dict(scope) if isinstance(scope, dict) else {}
+
+
+def _first_user_todo(summary: Any) -> dict[str, Any]:
     if not isinstance(summary, dict):
-        return ""
+        return {}
     for key in (
         "gate_open_items",
         "current_agent_claimed_open_items",
@@ -802,9 +848,21 @@ def _first_user_todo_id(summary: Any) -> str:
         if not isinstance(raw_items, list):
             continue
         for item in raw_items:
-            if isinstance(item, dict) and item.get("todo_id"):
-                return str(item.get("todo_id") or "")
-    return ""
+            if isinstance(item, dict):
+                return item
+    return {}
+
+
+def _decision_scope_label(scope: dict[str, Any]) -> str:
+    parts = _kv_parts(
+        {
+            "kind": scope.get("kind"),
+            "granularity": scope.get("granularity"),
+            "scope": scope.get("scope_key"),
+            "reason": scope.get("reason_summary"),
+        }
+    )
+    return " ".join(parts) if parts else ""
 
 
 def _kv_parts(values: dict[str, Any]) -> list[str]:

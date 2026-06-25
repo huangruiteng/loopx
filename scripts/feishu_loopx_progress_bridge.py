@@ -97,6 +97,8 @@ class StateStore:
             item.setdefault("progress_message_id", item.get("reply_message_id") or "")
             item.setdefault("last_key_fingerprint", "")
             item.setdefault("last_key_stage", "")
+            if not isinstance(item.get("action_audit"), list):
+                item["action_audit"] = []
         return data
 
     def save(self) -> None:
@@ -134,6 +136,7 @@ class StateStore:
                 "last_stage": previous.get("last_stage"),
                 "last_key_fingerprint": previous.get("last_key_fingerprint") or "",
                 "last_key_stage": previous.get("last_key_stage") or "",
+                "action_audit": previous.get("action_audit") if isinstance(previous.get("action_audit"), list) else [],
             }
             self.save()
 
@@ -176,6 +179,36 @@ class StateStore:
             if notification.done:
                 item["closed"] = True
                 item["closed_at"] = utc_now()
+            self.save()
+
+    def append_action_audit(
+        self,
+        *,
+        todo_id: str,
+        action_id: str,
+        actor_id: str,
+        user_todo_id: str,
+        decision_scope: dict[str, Any],
+    ) -> None:
+        with self.lock:
+            item = self.data.setdefault("todos", {}).get(todo_id)
+            if not isinstance(item, dict):
+                return
+            audit = item.setdefault("action_audit", [])
+            if not isinstance(audit, list):
+                audit = []
+                item["action_audit"] = audit
+            audit.append(
+                {
+                    "at": utc_now(),
+                    "action_id": action_id,
+                    "actor_id": actor_id,
+                    "user_todo_id": user_todo_id,
+                    "decision_scope": decision_scope,
+                }
+            )
+            del audit[:-20]
+            item["updated_at"] = utc_now()
             self.save()
 
 
@@ -390,6 +423,31 @@ def extract_action_value(raw: Any) -> dict[str, Any]:
     return {}
 
 
+def extract_actor_id(raw: Any) -> str:
+    keys = ("open_id", "user_id", "union_id", "operator_id")
+    if isinstance(raw, dict):
+        for key in keys:
+            value = raw.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()[:120]
+        for container_key in ("operator", "user", "sender", "context"):
+            value = raw.get(container_key)
+            found = extract_actor_id(value)
+            if found:
+                return found
+        for child in raw.values():
+            if isinstance(child, (dict, list)):
+                found = extract_actor_id(child)
+                if found:
+                    return found
+    if isinstance(raw, list):
+        for item in raw:
+            found = extract_actor_id(item)
+            if found:
+                return found
+    return ""
+
+
 def help_text() -> str:
     return "\n".join(
         [
@@ -536,7 +594,19 @@ def todo_commands_for_action(
     goal_id: str,
     todo_id: str,
     user_todo_id: str,
+    actor_id: str = "",
+    decision_scope: dict[str, Any] | None = None,
 ) -> tuple[list[list[str]], str]:
+    actor_note = f"Feishu actor={actor_id or 'unknown'}"
+    scope = decision_scope if isinstance(decision_scope, dict) else {}
+    scope_note = ""
+    if scope:
+        scope_note = (
+            f" scope={scope.get('kind') or 'unknown'}/"
+            f"{scope.get('granularity') or 'unknown'}/"
+            f"{scope.get('scope_key') or 'unknown'}"
+        )
+    audit_note = f"{actor_note}{scope_note}."
     if action_id == "approve_continue" and user_todo_id:
         return [
             [
@@ -548,7 +618,7 @@ def todo_commands_for_action(
                 "--todo-id",
                 user_todo_id,
                 "--evidence",
-                "Feishu button approved continuing the LoopX task.",
+                f"Feishu button approved continuing the LoopX task. {audit_note}",
             ]
         ], "已记录：批准继续。LoopX 下一轮会重新读取 gate 状态。"
     if action_id == "reject" and user_todo_id:
@@ -564,7 +634,7 @@ def todo_commands_for_action(
                 "--status",
                 "blocked",
                 "--reason",
-                "Feishu button rejected this gate.",
+                f"Feishu button rejected this gate. {audit_note}",
             ]
         ], "已记录：拒绝该 gate。"
     if action_id == "need_more_info" and user_todo_id:
@@ -578,7 +648,7 @@ def todo_commands_for_action(
                 "--todo-id",
                 user_todo_id,
                 "--note",
-                "Feishu button requested more information before deciding.",
+                f"Feishu button requested more information before deciding. {audit_note}",
             ]
         ], "已记录：需要更多信息。"
     if action_id == "pause_task" and todo_id:
@@ -594,7 +664,7 @@ def todo_commands_for_action(
                 "--status",
                 "deferred",
                 "--reason",
-                "Feishu button paused this task.",
+                f"Feishu button paused this task. {audit_note}",
             ]
         ], "已记录：暂停任务。"
     if action_id == "cancel_task" and todo_id:
@@ -610,7 +680,7 @@ def todo_commands_for_action(
                 "--status",
                 "deferred",
                 "--reason",
-                "Feishu button cancelled this task.",
+                f"Feishu button cancelled this task. {audit_note}",
             ]
         ], "已记录：取消任务，已把对应 agent todo 置为 deferred。"
     return [], f"未能识别或缺少 todo id，未写回 LoopX：{action_id or 'unknown'}"
@@ -624,17 +694,37 @@ def handle_card_action(raw: dict[str, Any], state: StateStore) -> bool:
     goal_id = str(value.get("goal_id") or LOOPX_GOAL_ID)
     todo_id = str(value.get("todo_id") or "")
     user_todo_id = str(value.get("user_todo_id") or "")
+    decision_scope = value.get("decision_scope") if isinstance(value.get("decision_scope"), dict) else {}
+    actor_id = extract_actor_id(raw)
     item = state.todo(todo_id)
     original_message_id = str(item.get("message_id") or extract_message(raw).get("message_id") or "")
-    log("card.action.received", action_id=action_id, goal_id=goal_id, todo_id=todo_id, user_todo_id=user_todo_id)
+    log(
+        "card.action.received",
+        action_id=action_id,
+        goal_id=goal_id,
+        todo_id=todo_id,
+        user_todo_id=user_todo_id,
+        actor_id=actor_id,
+        decision_scope=decision_scope,
+    )
     commands, response = todo_commands_for_action(
         action_id=action_id,
         goal_id=goal_id,
         todo_id=todo_id,
         user_todo_id=user_todo_id,
+        actor_id=actor_id,
+        decision_scope=decision_scope,
     )
     for command in commands:
         run_todo_lifecycle_command(command)
+    if commands:
+        state.append_action_audit(
+            todo_id=todo_id,
+            action_id=action_id,
+            actor_id=actor_id,
+            user_todo_id=user_todo_id,
+            decision_scope=decision_scope,
+        )
     if not commands:
         log("card.action.skip", reason=response)
     if original_message_id:

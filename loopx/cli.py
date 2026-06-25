@@ -26,6 +26,7 @@ from .cli_commands import (
     handle_diagnose_command,
     handle_doctor_command,
     handle_dreaming_command,
+    handle_feishu_bridge_command,
     handle_history_command,
     handle_lark_kanban_command,
     handle_ml_experiment_command,
@@ -43,6 +44,7 @@ from .cli_commands import (
     register_capability_commands,
     register_doctor_command,
     register_dreaming_commands,
+    register_feishu_bridge_commands,
     register_history_command,
     register_lark_kanban_commands,
     register_ml_experiment_commands,
@@ -122,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     register_doctor_command(sub)
 
     register_worker_bridge_commands(sub, add_subcommand_format)
+    register_feishu_bridge_commands(sub)
 
     register_support_control_commands(sub, add_subcommand_format)
 
@@ -173,6 +176,7 @@ def main(argv: list[str] | None = None) -> int:
             "codex-cli-visible-session-proof",
             "demo",
             "doctor",
+            "feishu-bridge",
             "new-project-prompt",
             "heartbeat-prompt",
             "sync-global",
@@ -213,6 +217,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     if worker_bridge_result is not None:
         return worker_bridge_result
+
+    feishu_bridge_result = handle_feishu_bridge_command(args)
+    if feishu_bridge_result is not None:
+        return feishu_bridge_result
 
     support_control_result = handle_support_control_command(
         args,
