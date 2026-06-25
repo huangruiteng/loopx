@@ -61,6 +61,27 @@ loopx --registry <private-registry> check --scan-root <project-root>
 loopx doctor
 ```
 
+## Lark Or Feishu Reply Cards
+
+Chat gateways that turn LoopX work into Lark or Feishu replies should keep
+message rendering separate from message sending. `loopx.lark_message_card`
+provides a public-safe card payload builder for Markdown replies:
+
+```python
+from loopx.lark_message_card import build_lark_markdown_reply_card
+
+card = build_lark_markdown_reply_card(
+    "**Done**\n- Validated the bounded change",
+    title="LoopX result",
+    template="green",
+)
+```
+
+The helper only builds JSON-compatible card content and extracts a reply
+`message_id` from CLI output. It does not call Lark, Feishu, or any external
+write API. A gateway can pass the returned payload to its own approved sender
+after the relevant LoopX gate permits the write.
+
 ## One-Command Project Connect
 
 For a new project, start with:
