@@ -5947,7 +5947,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         reasoning_effort: str | None = None,
         mcp_servers: list[Any] | None = None,
         **_ignored: Any,
-    ) -> tuple[Any, Any, str]:
+    ) -> tuple[Any, Any, Any, str]:
         del (
             agent_launch,
             sandbox_user,
@@ -5957,6 +5957,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         )
         from benchflow.acp.client import ACPClient
         from benchflow.acp.transport import StdioTransport
+        from benchflow.agents.protocol import ACPSessionAdapter
 
         prerequisites = plan.setdefault("runner_prerequisites", {})
         prerequisites["host_local_acp_launch_status"] = "connecting"
@@ -6024,6 +6025,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             )
             if model:
                 await asyncio.wait_for(client.set_model(model), timeout=60)
+            session_adapter = ACPSessionAdapter(client)
             prerequisites["host_local_acp_launch_status"] = "connected"
             if isinstance(controller_trace, dict):
                 controller_trace["native_goal_worker_route"] = (
@@ -6036,7 +6038,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                 controller_trace["last_decision"] = (
                     "host_app_server_goal_worker_connected"
                 )
-            return client, session, agent_name
+            return client, session, session_adapter, agent_name
         except Exception:
             prerequisites["host_local_acp_launch_status"] = "failed"
             with contextlib.suppress(Exception):
