@@ -163,6 +163,26 @@ def value_successor() -> dict:
     )
 
 
+def completed_value_successor() -> dict:
+    return todo_item(
+        todo_id="todo_value_successor",
+        text="[P0] Completed value exploration successor for the reviewed scope.",
+        claimed_by=BLOCKED_AGENT,
+        status="done",
+        unblocks_todo_id="todo_review_gate",
+    )
+
+
+def followup_review_gate() -> dict:
+    return todo_item(
+        todo_id="todo_followup_review_gate",
+        text="[P0-review] Review the follow-up value connector PR.",
+        claimed_by=PRIMARY_AGENT,
+        blocks_agent=BLOCKED_AGENT,
+        unblocks_todo_id="todo_value_successor",
+    )
+
+
 def assert_open_blocker_waits_on_owner() -> None:
     payload = build_quota_should_run(
         status_payload(
@@ -239,6 +259,38 @@ def assert_existing_successor_runs_normally() -> None:
     assert "agent_scope_frontier" not in payload, payload
 
 
+def assert_completed_successor_keeps_old_gate_cleared() -> None:
+    payload = build_quota_should_run(
+        status_payload(
+            [
+                handoff_review(status="done"),
+                completed_value_successor(),
+                followup_review_gate(),
+            ],
+            recommended_action="Wait for the follow-up value connector review.",
+        ),
+        goal_id=GOAL_ID,
+        agent_id=BLOCKED_AGENT,
+    )
+    assert payload["decision"] == "agent_scope_wait", payload
+    frontier = payload["agent_scope_frontier"]
+    assert frontier["action"] == "agent_scope_wait", frontier
+    assert (
+        frontier["blocking_handoff_gates"][0]["todo_id"] == "todo_followup_review_gate"
+    ), frontier
+    summary = payload["agent_todo_summary"]
+    by_id = {
+        item["todo_id"]: item
+        for item in summary["current_agent_handoff_gates"]
+        if item.get("todo_id")
+    }
+    assert by_id["todo_review_gate"]["gate_state"] == "cleared_with_successor", summary
+    assert by_id["todo_review_gate"]["successor_todo_ids"] == [
+        "todo_value_successor"
+    ], summary
+    assert summary["current_agent_cleared_without_successor_handoff_count"] == 0, payload
+
+
 def assert_superseded_completed_blocker_does_not_wake_agent() -> None:
     payload = build_quota_should_run(
         status_payload(
@@ -264,6 +316,7 @@ def main() -> int:
     assert_cleared_blocker_requires_successor_replan()
     assert_status_summary_projects_handoff_gate_state()
     assert_existing_successor_runs_normally()
+    assert_completed_successor_keeps_old_gate_cleared()
     assert_superseded_completed_blocker_does_not_wake_agent()
     print("quota-cleared-blocker-successor-gate-smoke ok")
     return 0

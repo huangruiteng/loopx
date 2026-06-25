@@ -41,12 +41,6 @@ def _todo_done(item: dict[str, Any]) -> bool:
     return item.get("done") is True or todo_done_for_status(_todo_status(item))
 
 
-def _todo_actionable_open(item: dict[str, Any]) -> bool:
-    if _todo_done(item):
-        return False
-    return _todo_status(item) == TODO_STATUS_OPEN
-
-
 def _todo_text(item: dict[str, Any]) -> str:
     return str(item.get("text") or "").strip()
 
@@ -65,8 +59,6 @@ def _successor_todo_ids(
         return successor_ids
 
     for item in items:
-        if not _todo_actionable_open(item):
-            continue
         if normalize_todo_task_class(
             item.get("task_class"),
             text=_todo_text(item),
