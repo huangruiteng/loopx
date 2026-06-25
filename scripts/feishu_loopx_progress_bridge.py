@@ -459,7 +459,11 @@ def extract_actor_id(raw: Any) -> str:
     return ""
 
 
-def loopx_status_payload() -> dict[str, Any]:
+def tracked_item_agent_id(item: dict[str, Any]) -> str:
+    return str(item.get("request_lane") or item.get("agent_id") or LOOPX_AGENT_ID).strip() or LOOPX_AGENT_ID
+
+
+def loopx_status_payload(agent_id: str = LOOPX_AGENT_ID) -> dict[str, Any]:
     return run_json(
         [
             LOOPX_BIN,
@@ -469,13 +473,13 @@ def loopx_status_payload() -> dict[str, Any]:
             "--format",
             "json",
             "--agent-id",
-            LOOPX_AGENT_ID,
+            agent_id,
         ],
         timeout=45,
     )
 
 
-def loopx_quota_payload(goal_id: str) -> dict[str, Any]:
+def loopx_quota_payload(goal_id: str, agent_id: str = LOOPX_AGENT_ID) -> dict[str, Any]:
     return run_json(
         [
             LOOPX_BIN,
@@ -488,7 +492,7 @@ def loopx_quota_payload(goal_id: str) -> dict[str, Any]:
             "--goal-id",
             goal_id,
             "--agent-id",
-            LOOPX_AGENT_ID,
+            agent_id,
         ],
         timeout=45,
     )
@@ -657,29 +661,32 @@ def poll_progress_once(state: StateStore) -> int:
     if not active:
         return 0
     sent = 0
-    try:
-        status_payload = loopx_status_payload()
-    except Exception as exc:
-        log("progress.status.error", error=str(exc), active=len(active))
-        for item in active:
+    status_cache: dict[str, dict[str, Any]] = {}
+    for item in active:
+        todo_id = str(item.get("todo_id") or "")
+        message_id = str(item.get("message_id") or "")
+        goal_id = str(item.get("goal_id") or LOOPX_GOAL_ID)
+        agent_id = tracked_item_agent_id(item)
+        if not todo_id or not message_id:
+            continue
+        try:
+            if agent_id not in status_cache:
+                status_cache[agent_id] = loopx_status_payload(agent_id)
+            status_payload = status_cache[agent_id]
+        except Exception as exc:
+            log("progress.status.error", todo_id=todo_id, goal_id=goal_id, agent_id=agent_id, error=str(exc))
             notification = build_bridge_error_notification(
-                todo_id=str(item.get("todo_id") or ""),
-                goal_id=str(item.get("goal_id") or LOOPX_GOAL_ID),
+                todo_id=todo_id,
+                goal_id=goal_id,
                 source="status",
                 error=exc,
             )
             if should_emit_notification(notification, previous_fingerprint=item.get("last_fingerprint")):
                 publish_notification(state=state, item=item, notification=notification)
                 sent += 1
-        return sent
-    for item in active:
-        todo_id = str(item.get("todo_id") or "")
-        message_id = str(item.get("message_id") or "")
-        goal_id = str(item.get("goal_id") or LOOPX_GOAL_ID)
-        if not todo_id or not message_id:
             continue
         try:
-            quota_payload = loopx_quota_payload(goal_id)
+            quota_payload = loopx_quota_payload(goal_id, agent_id)
             notification = build_progress_notification(
                 todo_id=todo_id,
                 goal_id=goal_id,
@@ -688,7 +695,7 @@ def poll_progress_once(state: StateStore) -> int:
                 request_text=item.get("request_text"),
             )
         except Exception as exc:
-            log("progress.quota.error", todo_id=todo_id, goal_id=goal_id, error=str(exc))
+            log("progress.quota.error", todo_id=todo_id, goal_id=goal_id, agent_id=agent_id, error=str(exc))
             notification = build_bridge_error_notification(
                 todo_id=todo_id,
                 goal_id=goal_id,

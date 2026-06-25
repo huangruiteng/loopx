@@ -74,38 +74,44 @@ def main() -> int:
                     {"todo_id": "todo_view", "agent_lane": "codex-devbox-req-b"},
                 ],
             }
+        if args[:4] == ["loopx", "--registry", ".loopx/registry.json", "status"]:
+            agent_id = args[args.index("--agent-id") + 1]
+            assert agent_id.startswith("codex-devbox-req-"), args
+            return {"ok": True, "agent_id": agent_id, "attention_queue": {"items": []}}
+        if args[:5] == ["loopx", "--registry", ".loopx/registry.json", "quota", "should-run"]:
+            agent_id = args[args.index("--agent-id") + 1]
+            assert agent_id.startswith("codex-devbox-req-"), args
+            return {
+                "goal_id": args[args.index("--goal-id") + 1],
+                "agent_id": agent_id,
+                "requires_user_action": True,
+                "recommended_action": "approve protected write",
+                "interaction_contract": {
+                    "user_channel": {
+                        "action_required": True,
+                        "reason": "external write requires owner approval",
+                    }
+                },
+                "user_todo_summary": {
+                    "first_open_items": [
+                        {
+                            "todo_id": "todo_user_gate",
+                            "text": "Approve external write.",
+                            "task_class": "user_gate",
+                            "decision_scope": {
+                                "kind": "write_scope",
+                                "granularity": "project",
+                                "scope_key": "docs/**",
+                                "reason_summary": "owner approves generated docs write",
+                            },
+                        }
+                    ]
+                },
+            }
         raise AssertionError(f"unexpected json command: {args}")
 
     bridge.run_text = fake_run_text
     bridge.run_json = fake_run_json
-    bridge.loopx_status_payload = lambda: {}
-    bridge.loopx_quota_payload = lambda goal_id: {
-        "goal_id": goal_id,
-        "requires_user_action": True,
-        "recommended_action": "approve protected write",
-        "interaction_contract": {
-            "user_channel": {
-                "action_required": True,
-                "reason": "external write requires owner approval",
-            }
-        },
-        "user_todo_summary": {
-            "first_open_items": [
-                {
-                    "todo_id": "todo_user_gate",
-                    "text": "Approve external write.",
-                    "task_class": "user_gate",
-                    "decision_scope": {
-                        "kind": "write_scope",
-                        "granularity": "project",
-                        "scope_key": "docs/**",
-                        "reason_summary": "owner approves generated docs write",
-                    },
-                }
-            ]
-        },
-    }
-
     state = bridge.StateStore(Path(tempfile.mkdtemp()) / "state.json")
     plan_response = bridge.handle_text("/plan", "om_plan", state)
     assert plan_response and "Scheduler plan: run_parallel_batch" in plan_response, plan_response
@@ -132,6 +138,20 @@ def main() -> int:
 
     sent = bridge.poll_progress_once(state)
     assert sent == 1, sent
+    status_commands = [
+        command
+        for command in commands
+        if command[:4] == ["loopx", "--registry", ".loopx/registry.json", "status"]
+    ]
+    quota_commands = [
+        command
+        for command in commands
+        if command[:5] == ["loopx", "--registry", ".loopx/registry.json", "quota", "should-run"]
+    ]
+    assert status_commands, commands
+    assert quota_commands, commands
+    assert all("--agent-id" in command and claimed_by in command for command in status_commands), status_commands
+    assert all("--agent-id" in command and claimed_by in command for command in quota_commands), quota_commands
     assert any(command[:3] == ["feishu-cli", "msg", "update"] for command in commands), commands
     assert any(command[:3] == ["feishu-cli", "msg", "reply"] for command in commands), commands
 
