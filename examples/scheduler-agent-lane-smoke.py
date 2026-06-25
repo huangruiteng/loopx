@@ -98,6 +98,19 @@ def assert_same_claimed_agent_is_serialized() -> None:
         "loopx --format json quota should-run "
         "--goal-id scheduler-agent-lane-smoke --agent-id codex-devbox"
     ), docs_handoff
+    assert [step["kind"] for step in docs_handoff["start_steps"]] == [
+        "quota_guard",
+        "status_check",
+        "workspace_isolation",
+    ], docs_handoff
+    assert docs_handoff["start_steps"][2]["summary"] == (
+        "use an isolated worktree or branch and stay within required_write_scopes"
+    ), docs_handoff
+    assert [step["kind"] for step in docs_handoff["closeout_steps"]] == [
+        "focused_validation",
+        "complete_todo",
+        "report_blocker",
+    ], docs_handoff
     assert "Todo: todo_dev_docs" in docs_handoff["handoff_text"], docs_handoff
     assert "Write scopes: docs/**" in docs_handoff["handoff_text"], docs_handoff
     waiting = {item["todo_id"]: item for item in plan["waiting_candidates"]}
@@ -133,9 +146,34 @@ def assert_agent_scoped_plan_includes_claim_and_guard_commands() -> None:
     ), plan
 
 
+def assert_unassigned_handoff_keeps_goal_level_guards() -> None:
+    plan = build_scheduler_plan(
+        payload(
+            [
+                todo("todo_read_docs", "Read docs."),
+            ]
+        ),
+        goal_id=GOAL_ID,
+        max_parallel=1,
+    )
+    handoff = plan["dispatch_plan"]["worker_handoffs"][0]
+    assert handoff["todo_id"] == "todo_read_docs", handoff
+    assert "agent_lane" not in handoff, handoff
+    assert handoff["quota_guard_command"] == (
+        "loopx --format json quota should-run --goal-id scheduler-agent-lane-smoke"
+    ), handoff
+    assert handoff["status_command"] == "loopx --format json status", handoff
+    assert [step["kind"] for step in handoff["start_steps"]] == [
+        "quota_guard",
+        "status_check",
+        "read_only_scope",
+    ], handoff
+
+
 def main() -> int:
     assert_same_claimed_agent_is_serialized()
     assert_agent_scoped_plan_includes_claim_and_guard_commands()
+    assert_unassigned_handoff_keeps_goal_level_guards()
     print("scheduler agent lane smoke ok")
     return 0
 

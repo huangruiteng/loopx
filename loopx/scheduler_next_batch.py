@@ -82,6 +82,8 @@ def render_scheduler_next_batch_markdown(payload: dict[str, Any]) -> str:
                 value = _string_command(item.get(key))
                 if value:
                     lines.append(f"- {key}: `{value}`")
+            _append_step_lines(lines, "start_steps", item.get("start_steps"))
+            _append_step_lines(lines, "closeout_steps", item.get("closeout_steps"))
             handoff_text = str(item.get("handoff_text") or "").strip()
             if handoff_text:
                 lines.extend(["", "```text", handoff_text, "```"])
@@ -106,6 +108,8 @@ def _worker_slot(index: int, handoff: dict[str, Any]) -> dict[str, Any]:
         "status_command",
         "complete_command_template",
         "blocked_command_template",
+        "start_steps",
+        "closeout_steps",
         "handoff_text",
     )
     slot = {"slot_index": index}
@@ -159,6 +163,20 @@ def _append_reason_counts(lines: list[str], label: str, value: Any) -> None:
         return
     text = ",".join(f"{key}={count}" for key, count in sorted(value.items()))
     lines.append(f"- {label}_reason_counts: `{text}`")
+
+
+def _append_step_lines(lines: list[str], label: str, value: Any) -> None:
+    if not isinstance(value, list) or not value:
+        return
+    lines.append(f"- {label}:")
+    for step in value[:6]:
+        if not isinstance(step, dict):
+            continue
+        kind = str(step.get("kind") or "").strip()
+        command = _string_command(step.get("command") or step.get("command_template"))
+        summary = str(step.get("summary") or step.get("reason") or "").strip()
+        suffix = f": `{command}`" if command else f": {summary}" if summary else ""
+        lines.append(f"  - {kind}{suffix}")
 
 
 def _string_command(value: Any) -> str:

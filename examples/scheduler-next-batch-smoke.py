@@ -90,11 +90,23 @@ def assert_next_batch_summarizes_parallel_dispatch() -> None:
     assert slots["todo_docs"]["agent_lane"] == "agent-a", slots
     assert slots["todo_view"]["agent_lane"] == "agent-b", slots
     assert slots["todo_docs"]["quota_guard_command"].endswith("--agent-id agent-a"), slots
+    assert [step["kind"] for step in slots["todo_docs"]["start_steps"]] == [
+        "quota_guard",
+        "status_check",
+        "workspace_isolation",
+    ], slots
+    assert [step["kind"] for step in slots["todo_view"]["start_steps"]] == [
+        "quota_guard",
+        "status_check",
+        "read_only_scope",
+    ], slots
+    assert slots["todo_docs"]["closeout_steps"][0]["kind"] == "focused_validation", slots
     assert "complete_command_template" in slots["todo_docs"], slots
     assert "blocked_command_template" in slots["todo_docs"], slots
     markdown = render_scheduler_next_batch_markdown(payload)
     assert "# LoopX Scheduler Next Batch" in markdown, markdown
     assert "dispatch_mode: `parallel_batch`" in markdown, markdown
+    assert "workspace_isolation" in markdown, markdown
     chat_text = render_scheduler_next_batch_chat_text(payload)
     assert "Next batch: parallel_batch" in chat_text, chat_text
     assert "Workers: todo_docs->agent-a, todo_view->agent-b" in chat_text, chat_text
