@@ -1032,7 +1032,8 @@ time.sleep(30)
                 "args": [
                     "exec",
                     (
-                        "LoopX bridge test.\n\n"
+                        "LoopX bridge test. Your first tool action should be "
+                        "a shell pipeline that sends JSON to the private bridge.\n\n"
                         "Private bridge command:\n"
                         "/tmp/not-recorded"
                     ),
@@ -1185,10 +1186,7 @@ assert match, prompt
 subprocess.run(
     match.group(1),
     input=json.dumps({{
-        "operation": "exec",
-        "cwd": "/app",
-        "command": "pwd",
-        "timeout_sec": 10,
+        "operation": "preflight",
     }}),
     text=True,
     shell=True,
@@ -1249,6 +1247,12 @@ output.write_text({SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER!r}, encod
         assert (
             bridge_preflight_prereqs[
                 "host_local_acp_codex_exec_preflight_bridge_task_facing_operation_count"
+            ]
+            == 0
+        ), bridge_preflight_prereqs
+        assert (
+            bridge_preflight_prereqs[
+                "host_local_acp_codex_exec_preflight_bridge_preflight_operation_count"
             ]
             == 1
         ), bridge_preflight_prereqs

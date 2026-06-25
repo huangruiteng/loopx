@@ -1037,6 +1037,7 @@ def _summarize_host_local_acp_preflight_bridge_trace(
         "trace_present": False,
         "trace_count": 0,
         "request_count": 0,
+        "preflight_operation_count": 0,
         "task_facing_operation_count": 0,
         "raw_material_recorded": False,
     }
@@ -1081,6 +1082,13 @@ def _summarize_host_local_acp_preflight_bridge_trace(
             value = operations.get(source_key)
             if isinstance(value, int) and not isinstance(value, bool):
                 summary[target_key] = int(summary[target_key]) + max(0, value)
+        operation_counts = operations.get("operation_counts")
+        if isinstance(operation_counts, dict):
+            value = operation_counts.get("preflight")
+            if isinstance(value, int) and not isinstance(value, bool):
+                summary["preflight_operation_count"] = int(
+                    summary["preflight_operation_count"]
+                ) + max(0, value)
     return summary
 
 
@@ -1154,10 +1162,14 @@ def _run_host_local_acp_codex_exec_preflight(
             "host_local_acp_codex_exec_preflight_bridge_task_facing_operation_count"
         ] = bridge_summary["task_facing_operation_count"]
         prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_preflight_operation_count"
+        ] = bridge_summary["preflight_operation_count"]
+        prerequisites[
             "host_local_acp_codex_exec_preflight_bridge_raw_material_recorded"
         ] = bridge_summary["raw_material_recorded"]
         bridge_action_observed = bool(
-            bridge_summary["task_facing_operation_count"] > 0
+            bridge_summary["preflight_operation_count"] > 0
+            or bridge_summary["task_facing_operation_count"] > 0
         )
         prerequisites["host_local_acp_codex_exec_preflight_bridge_action_observed"] = (
             bridge_action_observed
@@ -1545,6 +1557,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_attempt_count",
         "host_local_acp_codex_exec_preflight_bridge_trace_count",
         "host_local_acp_codex_exec_preflight_bridge_request_count",
+        "host_local_acp_codex_exec_preflight_bridge_preflight_operation_count",
         "host_local_acp_codex_exec_preflight_bridge_task_facing_operation_count",
         "host_local_acp_codex_exec_failure_trace_count",
     ):
