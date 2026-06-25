@@ -6195,10 +6195,11 @@ def _build_product_mode_user(
                     trace["persistent_constraint_protected_paths"] = protected_paths
                 if treatment:
                     prefix = "LoopX product-mode treatment round 1. "
-                    self._task_instruction_sent = False
+                    self._task_instruction_sent = True
                     trace[
                         "product_mode_task_instruction_deferred_until_agent_lifecycle"
-                    ] = True
+                    ] = False
+                    trace["product_mode_task_instruction_sent_initially"] = True
                     trace["case_goal_state_packet_present"] = True
                     control_clause = (
                         "Use LoopX as your product control plane: create "
@@ -6218,14 +6219,15 @@ def _build_product_mode_user(
                         "For this treatment, LoopX lifecycle evidence is a "
                         "hard product-mode requirement: first run the "
                         "case-local quota/todo commands above through the solver "
-                        "bridge. The benchmark task instruction is intentionally "
-                        "withheld until that solver-side lifecycle checkpoint is "
-                        "observed, so do not inspect, infer, plan, solve, or answer "
-                        "the task yet. Do not run case closeout or declare done "
-                        "during this setup checkpoint. The controller will send the "
-                        "task packet after solver-side LoopX read/write evidence is "
-                        "recorded, without exposing official reward or verifier "
-                        "output."
+                        "bridge before any task inspection, planning, solving, or "
+                        "final answer. The benchmark task instruction is visible "
+                        "in this first round so the task semantics stay aligned "
+                        "with the baseline, but task-facing work must wait until "
+                        "after the solver-side LoopX read/write checkpoint. Do "
+                        "not run case closeout or declare done during this setup "
+                        "checkpoint.\n\n"
+                        "--- TASK INSTRUCTION ---\n"
+                        f"{instruction}"
                     )
                 else:
                     prefix = "Raw Codex autonomous max5 baseline round 1. "

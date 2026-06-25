@@ -178,7 +178,7 @@ def test_reverse_channel_raw_prompt_does_not_require_bridge_first_action() -> No
     assert response["credential_values_recorded"] is False
 
 
-def test_product_mode_initial_prompt_defers_task_until_agent_lifecycle() -> None:
+def test_product_mode_initial_prompt_keeps_task_visible_after_lifecycle_gate() -> None:
     trace = {
         "schema_version": "skillsbench_loopx_controller_trace_v0",
         "route": "loopx-product-mode",
@@ -235,10 +235,11 @@ def test_product_mode_initial_prompt_defers_task_until_agent_lifecycle() -> None
     prompt = asyncio.run(user.run(0, "Compute the requested coefficient."))
     assert prompt is not None
     assert "--- LOOPX PRODUCT-MODE CONTROL PLANE ---" in prompt
-    assert "--- TASK INSTRUCTION ---" not in prompt
-    assert "Compute the requested coefficient." not in prompt
-    assert "task instruction is intentionally withheld" in prompt
+    assert "--- TASK INSTRUCTION ---" in prompt
+    assert "Compute the requested coefficient." in prompt
+    assert "task semantics stay aligned with the baseline" in prompt
     assert "Before reading, planning, solving, or answering the task" in prompt
+    assert "task-facing work must wait" in prompt
     assert "Do not run case closeout" in prompt
     assert "quota should-run --goal-id skillsbench-case" in prompt
     assert "todo claim --goal-id skillsbench-case" in prompt
@@ -247,7 +248,8 @@ def test_product_mode_initial_prompt_defers_task_until_agent_lifecycle() -> None
     assert "quota spend-slot --goal-id skillsbench-case" not in prompt
     assert trace["last_decision"] == "send_initial_product_mode_prompt", trace
     assert trace["initial_prompt_count"] == 1, trace
-    assert trace["product_mode_task_instruction_deferred_until_agent_lifecycle"] is True
+    assert trace["product_mode_task_instruction_deferred_until_agent_lifecycle"] is False
+    assert trace["product_mode_task_instruction_sent_initially"] is True
 
     trace.update(
         {
@@ -265,14 +267,12 @@ def test_product_mode_initial_prompt_defers_task_until_agent_lifecycle() -> None
         user.run(1, "Compute the requested coefficient.", FakeRoundResult())
     )
     assert task_prompt is not None
-    assert "--- TASK INSTRUCTION ---" in task_prompt
-    assert "Compute the requested coefficient." in task_prompt
-    assert "The task packet is now available" in task_prompt
+    assert "--- TASK INSTRUCTION ---" not in task_prompt
+    assert "The task packet is now available" not in task_prompt
+    assert "Continue from your LoopX case state" in task_prompt
     assert "official reward" in task_prompt
-    assert trace["last_decision"] == (
-        "send_product_mode_task_instruction_after_agent_lifecycle"
-    ), trace
-    assert trace["product_mode_task_instruction_sent_after_agent_lifecycle"] is True
+    assert trace["last_decision"] == "send_product_mode_scheduled_continuation", trace
+    assert trace.get("product_mode_task_instruction_sent_after_agent_lifecycle") is not True
     assert trace["followup_prompt_count"] == 1, trace
 
 
@@ -8653,7 +8653,7 @@ if __name__ == "__main__":
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
     test_reverse_channel_first_action_timeout_stops_codex_process()
     test_reverse_channel_raw_prompt_does_not_require_bridge_first_action()
-    test_product_mode_initial_prompt_defers_task_until_agent_lifecycle()
+    test_product_mode_initial_prompt_keeps_task_visible_after_lifecycle_gate()
     test_skillsbench_final_verifier_timeout_override_records_public_state()
     test_skillsbench_final_verifier_timeout_override_can_extend_timeout()
     test_skillsbench_intermediate_soft_verifier_timeout_override_records_public_state()
