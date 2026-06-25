@@ -10,6 +10,10 @@ from .scheduler_handoffs import (
     build_worker_handoffs,
     render_scheduler_handoffs_markdown,
 )
+from .scheduler_next_batch import (
+    build_scheduler_next_batch_payload,
+    render_scheduler_next_batch_markdown,
+)
 from .todo_contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_STATUS_OPEN,
@@ -185,6 +189,22 @@ def build_scheduler_handoffs(
         max_parallel=max_parallel,
     )
     return build_scheduler_handoffs_payload(plan, todo_id=todo_id)
+
+
+def build_scheduler_next_batch(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str | None = None,
+    agent_id: str | None = None,
+    max_parallel: int = DEFAULT_MAX_PARALLEL,
+) -> dict[str, Any]:
+    plan = build_scheduler_plan(
+        status_payload,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        max_parallel=max_parallel,
+    )
+    return build_scheduler_next_batch_payload(plan)
 
 
 def render_scheduler_plan_markdown(payload: dict[str, Any]) -> str:

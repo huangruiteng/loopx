@@ -61,6 +61,47 @@ def render_scheduler_plan_chat_text(payload: dict[str, Any], *, max_chars: int =
     return compact_markdown("\n".join(lines), max_chars=max_chars, suffix="...")
 
 
+def render_scheduler_next_batch_chat_text(payload: dict[str, Any], *, max_chars: int = 1800) -> str:
+    if not isinstance(payload, dict):
+        return "Next batch: unavailable"
+    dispatch_mode = str(payload.get("dispatch_mode") or payload.get("dispatch_action") or "idle").strip()
+    lines = [f"Next batch: {dispatch_mode}"]
+    goal_id = str(payload.get("goal_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip()
+    if goal_id or agent_id:
+        scope_parts = [
+            part
+            for part in (
+                f"goal={goal_id}" if goal_id else "",
+                f"agent={agent_id}" if agent_id else "",
+            )
+            if part
+        ]
+        lines.append("Scope: " + " ".join(scope_parts))
+    lines.append(f"Dispatchable: {bool(payload.get('ready_to_dispatch'))}")
+    if payload.get("batch_size") is not None:
+        lines.append(f"Batch size: {payload.get('batch_size')}")
+    worker_text = _worker_slot_summary(payload.get("worker_slots"))
+    if worker_text:
+        lines.append(f"Workers: {worker_text}")
+    waiting_counts = _reason_count_text(payload.get("waiting_reason_counts"))
+    blocked_counts = _reason_count_text(payload.get("blocked_reason_counts"))
+    if waiting_counts:
+        lines.append(f"Waiting: {waiting_counts}")
+    if blocked_counts:
+        lines.append(f"Blocked: {blocked_counts}")
+    claim_commands = _command_lines("claim", payload.get("claim_commands"), limit=3)
+    if claim_commands:
+        lines.append("Claims:")
+        lines.extend(claim_commands)
+    quota_guard = str(payload.get("quota_guard_command") or "").strip()
+    if quota_guard:
+        lines.append(f"Quota guard: {quota_guard}")
+    if not worker_text and not waiting_counts and not blocked_counts:
+        lines.append("No dispatchable, waiting, or blocked scheduler candidates were reported.")
+    return compact_markdown("\n".join(lines), max_chars=max_chars, suffix="...")
+
+
 def _scheduler_ids(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -144,3 +185,29 @@ def _worker_handoff_summary(value: Any) -> str:
         lane = str(handoff.get("agent_lane") or "").strip()
         parts.append(f"{todo_id}->{lane}" if lane else todo_id)
     return ", ".join(parts)
+
+
+def _worker_slot_summary(value: Any) -> str:
+    if not isinstance(value, list):
+        return ""
+    parts: list[str] = []
+    for slot in value[:6]:
+        if not isinstance(slot, dict):
+            continue
+        todo_id = str(slot.get("todo_id") or slot.get("candidate_key") or "").strip()
+        if not todo_id:
+            continue
+        lane = str(slot.get("agent_lane") or "").strip()
+        parts.append(f"{todo_id}->{lane}" if lane else todo_id)
+    return ", ".join(parts)
+
+
+def _command_lines(label: str, value: Any, *, limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    lines: list[str] = []
+    for item in value[:limit]:
+        command = str(item or "").strip()
+        if command:
+            lines.append(f"- {label}: {command}")
+    return lines

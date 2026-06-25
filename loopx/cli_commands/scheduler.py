@@ -7,8 +7,10 @@ from pathlib import Path
 from ..scheduler import (
     DEFAULT_MAX_PARALLEL,
     build_scheduler_handoffs,
+    build_scheduler_next_batch,
     build_scheduler_plan,
     render_scheduler_handoffs_markdown,
+    render_scheduler_next_batch_markdown,
     render_scheduler_plan_markdown,
 )
 from ..status import collect_status
@@ -59,6 +61,31 @@ def register_scheduler_commands(
         help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
     )
     plan_parser.add_argument("--limit", type=int, default=5)
+    next_batch_parser = scheduler_sub.add_parser(
+        "next-batch",
+        help="Render the next dispatchable safe-parallel worker batch.",
+    )
+    add_subcommand_format(next_batch_parser)
+    next_batch_parser.add_argument("--goal-id", help="Only plan candidates for one goal.")
+    next_batch_parser.add_argument("--agent-id", help="Limit the batch to one registered agent lane.")
+    next_batch_parser.add_argument(
+        "--max-parallel",
+        type=int,
+        default=DEFAULT_MAX_PARALLEL,
+        help=f"Maximum candidates in the runnable batch. Defaults to {DEFAULT_MAX_PARALLEL}.",
+    )
+    next_batch_parser.add_argument(
+        "--scan-root",
+        default=default_public_scan_root(),
+        help="Public files to scan for obvious private material. Defaults to the LoopX install root.",
+    )
+    next_batch_parser.add_argument(
+        "--scan-path",
+        action="append",
+        default=[],
+        help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
+    )
+    next_batch_parser.add_argument("--limit", type=int, default=5)
     handoffs_parser = scheduler_sub.add_parser(
         "handoffs",
         help="Render copyable read-only worker handoffs from the current scheduler plan.",
@@ -104,7 +131,7 @@ def handle_scheduler_command(
         return None
     selected_format = output_format(args)
     try:
-        if args.scheduler_command not in {"plan", "handoffs"}:
+        if args.scheduler_command not in {"plan", "handoffs", "next-batch"}:
             raise ValueError(f"unsupported scheduler command: {args.scheduler_command}")
         status_payload = collect_status(
             registry_path=registry_path,
@@ -120,6 +147,14 @@ def handle_scheduler_command(
                 max_parallel=max(1, int(args.max_parallel)),
             )
             renderer = render_scheduler_plan_markdown
+        elif args.scheduler_command == "next-batch":
+            payload = build_scheduler_next_batch(
+                status_payload,
+                goal_id=args.goal_id,
+                agent_id=args.agent_id,
+                max_parallel=max(1, int(args.max_parallel)),
+            )
+            renderer = render_scheduler_next_batch_markdown
         else:
             payload = build_scheduler_handoffs(
                 status_payload,
@@ -135,6 +170,8 @@ def handle_scheduler_command(
             "schema_version": (
                 "scheduler_worker_handoffs_v0"
                 if getattr(args, "scheduler_command", None) == "handoffs"
+                else "scheduler_next_batch_v0"
+                if getattr(args, "scheduler_command", None) == "next-batch"
                 else "scheduler_plan_v0"
             ),
             "mode": getattr(args, "scheduler_command", None) or "plan",
@@ -145,6 +182,8 @@ def handle_scheduler_command(
         renderer = (
             render_scheduler_handoffs_markdown
             if getattr(args, "scheduler_command", None) == "handoffs"
+            else render_scheduler_next_batch_markdown
+            if getattr(args, "scheduler_command", None) == "next-batch"
             else render_scheduler_plan_markdown
         )
     print_payload(payload, selected_format, renderer)
