@@ -125,6 +125,19 @@ runtime.
 5. **Lint fallback:** keep regex and optional LLM proposals as projection-gap
    repair helpers, not runtime authority.
 
+Current implementation status:
+
+- `loopx todo add/update` can author `decision_scope` on user gates with
+  `--decision-scope-kind`, `--decision-scope-granularity`,
+  `--decision-scope-key`, and `--decision-scope-reason`.
+- `loopx todo add/update` can author `required_decision_scopes` on agent todos
+  with repeated `--required-decision-scope kind:granularity:scope_key`.
+- `loopx todo add/update` can author `safety_class`.
+- `status --format json`, `quota should-run --format json`, Feishu progress
+  buttons, and operator-feed projection preserve these fields.
+- Hot-path quota relation still treats the fields as projection metadata; full
+  gate dominance evaluation is intentionally left for a later runtime slice.
+
 ## Failure Semantics
 
 - Missing structured fields on legacy state: fall back to compatibility lint

@@ -95,10 +95,16 @@ projection fields:
 - `fingerprint` for dedupe.
 - `actions` for user-gate buttons such as approve, reject, ask for more info,
   pause, or cancel.
+- `decision_scope` on operator-feed items and action values when a gate names a
+  concrete authority.
 
 `loopx.capabilities.lark.progress_reporter` remains as a compatibility import
 surface for Lark/Feishu callers, but the source of truth is the core projection
 module.
+
+Use `ProgressNotification.to_operator_feed_item()` when a non-chat surface
+needs the same compact event as JSON. This avoids each adapter inventing its
+own status vocabulary.
 
 ## Feishu Progress Bridge
 
@@ -116,6 +122,8 @@ outbound progress reporter:
    event replies for user action, blockers, bridge errors, and completion.
 6. Render Feishu buttons for concrete user gates and write button decisions
    back through `loopx todo`.
+7. Record compact action audit entries in local bridge state: action id,
+   public-safe actor id, user todo id, and decision scope.
 
 The projection logic lives in
 `loopx.notification_projection`. It prioritizes user-visible signals in this
@@ -136,6 +144,16 @@ LOOPX_REGISTRY=.loopx/registry.json \
 LOOPX_GOAL_ID=project-goal \
 LOOPX_AGENT_ID=codex-devbox \
 python3 /path/to/loopx/scripts/feishu_loopx_progress_bridge.py
+```
+
+The same service controls are also exposed through the LoopX CLI:
+
+```bash
+loopx feishu-bridge doctor --format json
+loopx feishu-bridge run
+loopx feishu-bridge progress-once
+loopx feishu-bridge print-launch-agent
+loopx feishu-bridge logs --tail 40
 ```
 
 Useful optional environment variables:
@@ -170,6 +188,35 @@ python3 /path/to/loopx/scripts/feishu_loopx_progress_bridge.py --log-tail 40
 By default the bridge listens for `im.message.receive_v1` and
 `card.action.trigger`. Override `LOOPX_FEISHU_EVENT_TYPES` with a comma-separated
 list if the installed `feishu-cli` names card callbacks differently.
+
+### Scoped User Gates
+
+User gates should name the authority being requested instead of asking for a
+global "continue" approval. `loopx todo add/update` supports structured
+decision metadata:
+
+```bash
+loopx todo add \
+  --goal-id project-goal \
+  --role user \
+  --task-class user_gate \
+  --text "Approve writing generated docs." \
+  --decision-scope-kind write_scope \
+  --decision-scope-granularity project \
+  --decision-scope-key 'docs/**' \
+  --decision-scope-reason "owner approves generated docs write"
+
+loopx todo add \
+  --goal-id project-goal \
+  --role agent \
+  --text "Write docs after the owner gate clears." \
+  --required-decision-scope 'write_scope:project:docs/**' \
+  --safety-class local_write
+```
+
+These fields are preserved in todo metadata, status JSON, quota summaries, and
+Feishu gate buttons. They are intentionally small: they prevent broad or
+ambiguous approvals without adding a new policy engine.
 
 ## One-Command Project Connect
 
