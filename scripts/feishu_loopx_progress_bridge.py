@@ -21,10 +21,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.capabilities.lark.message_card import (
-    build_lark_markdown_reply_card,
     compact_markdown,
     extract_reply_message_id,
 )
+from loopx.capabilities.lark.bridge_cards import card_for_notification
 from loopx.capabilities.lark.bridge_commands import (
     bridge_help_text,
     loopx_check_text,
@@ -311,22 +311,9 @@ def update_card(message_id: str, card: dict[str, Any]) -> str:
     return out
 
 
-def card_for_notification(notification: ProgressNotification) -> dict[str, Any]:
-    body = notification.markdown
-    if notification.summary:
-        body = f"**摘要**\n{notification.summary}\n\n{notification.markdown}"
-    return build_lark_markdown_reply_card(
-        body,
-        title=notification.title,
-        template=notification.template,
-        footer=f"LoopX {notification.stage} | {notification.fingerprint}",
-        actions=tuple(action.to_dict() for action in notification.actions),
-    )
-
-
-def reply_notification(message_id: str, notification: ProgressNotification) -> str:
+def reply_notification(message_id: str, notification: ProgressNotification, *, item: dict[str, Any] | None = None) -> str:
     try:
-        out = reply_card(message_id, card_for_notification(notification))
+        out = reply_card(message_id, card_for_notification(notification, item=item))
         return extract_reply_message_id(out, parent_message_id=message_id) or ""
     except Exception as exc:
         log("reply.card.error", message_id=message_id, error=str(exc))
@@ -345,7 +332,7 @@ def publish_notification(
     progress_message_id = str(item.get("progress_message_id") or "")
     stored_progress_message_id = progress_message_id
     key_event_sent = False
-    card = card_for_notification(notification)
+    card = card_for_notification(notification, item=item)
     if progress_message_id:
         try:
             update_card(progress_message_id, card)
@@ -356,10 +343,10 @@ def publish_notification(
                 todo_id=notification.todo_id,
                 error=str(exc),
             )
-            replacement_id = reply_notification(original_message_id, notification)
+            replacement_id = reply_notification(original_message_id, notification, item=item)
             stored_progress_message_id = replacement_id or progress_message_id
     else:
-        replacement_id = reply_notification(original_message_id, notification)
+        replacement_id = reply_notification(original_message_id, notification, item=item)
         stored_progress_message_id = replacement_id or ""
 
     should_send_key_event = (
@@ -373,7 +360,7 @@ def publish_notification(
         and progress_message_id
         and item.get("last_key_fingerprint") != notification.fingerprint
     ):
-        reply_notification(original_message_id, notification)
+        reply_notification(original_message_id, notification, item=item)
         key_event_sent = True
     elif should_send_key_event and not progress_message_id:
         key_event_sent = True
@@ -908,6 +895,7 @@ def self_test() -> int:
         request_text="do bounded work",
         goal_id="goal",
         agent_id="agent",
+        request_lane="agent-req-test",
     )
     assert state.active_todos()[0]["todo_id"] == "todo_test"
     notification = build_acceptance_notification(
@@ -916,9 +904,9 @@ def self_test() -> int:
         request_text="do bounded work",
         agent_id="agent",
     )
-    card = card_for_notification(notification)
+    card = card_for_notification(notification, item=state.todo("todo_test"))
     assert card["header"]["template"] == "green"
-    assert card["elements"][0]["text"]["content"]
+    assert "Progress lane: `agent-req-test`" in card["elements"][0]["text"]["content"]
     action_event = {
         "event": {
             "action": {

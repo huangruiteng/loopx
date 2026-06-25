@@ -30,6 +30,7 @@ def load_bridge_module():
 def main() -> int:
     bridge = load_bridge_module()
     commands: list[list[str]] = []
+    cards: list[dict[str, Any]] = []
 
     def fake_run_text(args: list[str], *, cwd: Path = bridge.CONTROL_ROOT, timeout: float = 30) -> str:
         commands.append(list(args))
@@ -38,8 +39,12 @@ def main() -> int:
         if args[:3] == ["feishu-cli", "msg", "reply"]:
             if "--text" in args:
                 return json.dumps({"message_id": "om_text_ack"})
+            content_path = Path(args[args.index("--content-file") + 1])
+            cards.append(json.loads(content_path.read_text(encoding="utf-8")))
             return json.dumps({"message_id": "om_progress_reply"})
         if args[:3] == ["feishu-cli", "msg", "update"]:
+            content_path = Path(args[args.index("--content-file") + 1])
+            cards.append(json.loads(content_path.read_text(encoding="utf-8")))
             return json.dumps({"message_id": args[3]})
         if args[:4] == ["loopx", "--registry", ".loopx/registry.json", "todo"]:
             return json.dumps({"ok": True})
@@ -135,6 +140,7 @@ def main() -> int:
     assert tracked["message_id"] == "om_original", tracked
     assert tracked["request_lane"] == claimed_by, tracked
     assert tracked["progress_message_id"] == "om_progress_reply", tracked
+    assert cards and f"Progress lane: `{claimed_by}`" in cards[-1]["elements"][0]["text"]["content"], cards[-1]
 
     sent = bridge.poll_progress_once(state)
     assert sent == 1, sent
