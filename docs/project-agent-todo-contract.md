@@ -240,9 +240,9 @@ the agent should do one of two things:
 
 - create the next public-safe agent or user todo with `--next-agent-todo`,
   `--next-user-todo`, or a follow-up `todo add`;
-- record a compact no-follow-up rationale in the completion note, explaining why
-  the feature is truly finished and does not need rollout, audit, docs, or
-  product-path proof.
+- record a compact no-follow-up rationale with `--no-follow-up` plus `--note`
+  / `--reason` / `--evidence`, explaining why the feature is truly finished
+  and does not need rollout, audit, docs, or product-path proof.
 
 This keeps the active checklist honest without making LoopX a heavyweight
 project-management state machine.
@@ -405,7 +405,9 @@ carry `schema_version=todo_summary_v0`; individual items carry
 `title`, `archive_state`, `source_section`, `index`, `text`, `task_class`, and
 optional `action_kind`, `claimed_by`, `required_capabilities`, and
 `target_capabilities`. Primary review handoffs may also carry
-`blocks_agent` and `unblocks_todo_id` to show which agent/todo they release.
+`blocks_agent`, `unblocks_todo_id`, and `no_followup=true` to show which
+agent/todo they release and whether a completed handoff intentionally has no
+successor.
 Deferred successors may carry `resume_when`, `resume_condition`, and
 `resume_ready`; `resume_ready=true` means the deferred item should be considered
 for a successor replan before any agent-scoped no-candidate wait, not that

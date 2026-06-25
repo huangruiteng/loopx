@@ -30,6 +30,7 @@ from .todo_contract import (
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_id,
+    normalize_todo_no_followup,
     normalize_todo_resume_when,
     normalize_todo_status,
     parse_todo_metadata_line,
@@ -56,6 +57,7 @@ TODO_METADATA_FIELDS = (
     "blocks_agent",
     "unblocks_todo_id",
     "resume_when",
+    "no_followup",
     "note",
     "evidence",
     "reason",
@@ -323,6 +325,11 @@ def block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             if capabilities:
                 metadata[key] = capabilities
             continue
+        if key == "no_followup":
+            no_followup = normalize_todo_no_followup(value)
+            if no_followup is not None:
+                metadata[key] = no_followup
+            continue
         if str(value or "").strip():
             metadata[key] = str(value).strip()
     return metadata
@@ -351,6 +358,12 @@ def metadata_line_for_block(block: dict[str, Any], updates: dict[str, Any]) -> s
             capabilities = normalize_target_capabilities(value)
             if capabilities:
                 metadata[key] = capabilities
+            else:
+                metadata.pop(key, None)
+        elif key == "no_followup":
+            no_followup = normalize_todo_no_followup(value)
+            if no_followup is not None:
+                metadata[key] = no_followup
             else:
                 metadata.pop(key, None)
         elif str(value).strip():
@@ -730,6 +743,7 @@ def apply_todo_update_to_lines(
     blocks_agent: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
+    no_followup: bool | None = None,
     clear_claim: bool = False,
     claim_only: bool = False,
     updated_at: str,
@@ -794,6 +808,8 @@ def apply_todo_update_to_lines(
         updates["unblocks_todo_id"] = unblocks_todo_id
     if resume_when:
         updates["resume_when"] = resume_when
+    if no_followup is not None:
+        updates["no_followup"] = no_followup
     metadata_line = metadata_line_for_block(block, updates)
     semantic_metadata_changed = todo_metadata_would_change(lines, block, metadata_line)
     if status_changed or text_changed or semantic_metadata_changed:
@@ -823,6 +839,7 @@ def apply_todo_update_to_lines(
         "blocks_agent": normalize_todo_blocks_agent(effective_metadata.get("blocks_agent")),
         "unblocks_todo_id": normalize_todo_id(effective_metadata.get("unblocks_todo_id")),
         "resume_when": normalize_todo_resume_when(effective_metadata.get("resume_when")),
+        "no_followup": normalize_todo_no_followup(effective_metadata.get("no_followup")),
     }
 
 
@@ -847,6 +864,7 @@ def update_goal_todo(
     agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
+    no_followup: bool | None = None,
     clear_claim: bool = False,
     claim_only: bool = False,
     project: Path | None = None,
@@ -924,6 +942,7 @@ def update_goal_todo(
             blocks_agent=effective_blocks_agent,
             unblocks_todo_id=normalized_unblocks_todo_id,
             resume_when=normalized_resume_when,
+            no_followup=no_followup,
             clear_claim=clear_claim,
             claim_only=claim_only,
             updated_at=updated_at,
@@ -955,6 +974,7 @@ def complete_goal_todo(
     role: str | None = None,
     evidence: str | None = None,
     note: str | None = None,
+    no_followup: bool = False,
     claimed_by: str | None = None,
     clear_claim: bool = False,
     next_agent_todo: str | None = None,
@@ -1053,6 +1073,7 @@ def complete_goal_todo(
             evidence=evidence,
             claimed_by=effective_claimed_by,
             clear_claim=clear_claim,
+            no_followup=True if no_followup else None,
             updated_at=updated_at,
         )
         if next_agent_todo and not effective_next_claimed_by:

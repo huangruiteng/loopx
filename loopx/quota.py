@@ -1015,6 +1015,7 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "resume_when",
         "resume_condition",
         "resume_ready",
+        "no_followup",
     ):
         if item.get(key) is not None:
             compact[key] = item.get(key)

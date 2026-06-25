@@ -68,6 +68,7 @@ from .todo_contract import (
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_id,
+    normalize_todo_no_followup,
     normalize_todo_resume_when,
     normalize_todo_status,
     normalize_todo_task_class,
@@ -4416,6 +4417,9 @@ def structured_todo_item(
     resume_when = normalize_todo_resume_when(item.get("resume_when"))
     if resume_when:
         normalized["resume_when"] = resume_when
+    no_followup = normalize_todo_no_followup(item.get("no_followup"))
+    if no_followup is not None:
+        normalized["no_followup"] = no_followup
     if priority:
         normalized["priority"] = priority
         normalized["title"] = normalize_todo_text(title)
@@ -4448,6 +4452,7 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "resume_when",
         "resume_condition",
         "resume_ready",
+        "no_followup",
         "note",
         "evidence",
         "reason",
