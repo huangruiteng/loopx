@@ -28,7 +28,7 @@ can be handed back to the agent.
 LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地方明确等人，
 不该空等的安全侧路继续推进，下一轮 agent 总能读到目标、边界、证据和交接。
 
-[Quick Start](#quick-start) · [Who Should Try It](#who-should-try-it) · [See It In Action](#see-it-in-action) ·
+[What Is It](#what-is-it) · [Who Should Try It](#who-should-try-it) · [Quick Start](#quick-start) · [See It In Action](#see-it-in-action) ·
 [Capability Surface](#capability-surface) ·
 [Getting Started](docs/guides/getting-started.md) · [Showcases](docs/showcases/README.md) ·
 [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
@@ -36,6 +36,37 @@ LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地
 [Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
 
 > Keep the loop moving. Keep the judgment human.
+
+## What Is It?
+
+LoopX does not replace Codex, Claude Code, Cursor, or another agent
+runtime. It sits above them as a loop-engineering control plane: the runtime
+executes bounded agent loops, while LoopX preserves the dynamic goal state those
+loops need to keep working without losing the plot.
+
+Short answer: LoopX is not another executor. Codex goal, Codex App
+automation, CLI scripts, cron jobs, or a human-visible TUI can trigger the next
+executor loop; LoopX keeps the goal, gate, evidence, quota, and handoff contract
+stable across those turns.
+
+| Layer | Role |
+| --- | --- |
+| Codex / Claude Code / Cursor | Execute a bounded agent loop: read, write, run commands, and respond. |
+| Goal mode / automation / CLI scripts / TUI | Trigger or schedule the next executor loop. |
+| LoopX | Preserve the dynamic loop state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
+
+The product promise is not "more todo lists." It is a practical foundation for
+loop engineering: keep human judgment at high-value decision points, keep safe
+fallback work moving when one lane is gated, and stop compute spend when a turn
+cannot produce a verified transition.
+
+Put differently: LoopX lets a user's agent team keep working across tools,
+turns, and off-hours without turning the project into a pile of hidden scripts
+and stale prompts. The technical contract underneath that promise is explicit:
+agent identity, todo ownership, scope, capability gates, quota, evidence
+writeback, and public/private boundaries stay visible to the next turn.
+
+![LoopX control-plane board](docs/assets/control-plane-board.svg)
 
 ## Who Should Try It
 
@@ -207,37 +238,6 @@ points:
 
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
 full presenter material, see the experimental notes below.
-
-## What Is It?
-
-LoopX does not replace Codex, Claude Code, Cursor, or another agent
-runtime. It sits above them as a loop-engineering control plane: the runtime
-executes bounded agent loops, while LoopX preserves the dynamic goal state those
-loops need to keep working without losing the plot.
-
-Short answer: LoopX is not another executor. Codex goal, Codex App
-automation, CLI scripts, cron jobs, or a human-visible TUI can trigger the next
-executor loop; LoopX keeps the goal, gate, evidence, quota, and handoff contract
-stable across those turns.
-
-| Layer | Role |
-| --- | --- |
-| Codex / Claude Code / Cursor | Execute a bounded agent loop: read, write, run commands, and respond. |
-| Goal mode / automation / CLI scripts / TUI | Trigger or schedule the next executor loop. |
-| LoopX | Preserve the dynamic loop state: gates, todos, run history, quota, evidence, boundaries, and handoff state. |
-
-The product promise is not "more todo lists." It is a practical foundation for
-loop engineering: keep human judgment at high-value decision points, keep safe
-fallback work moving when one lane is gated, and stop compute spend when a turn
-cannot produce a verified transition.
-
-Put differently: LoopX lets a user's agent team keep working across tools,
-turns, and off-hours without turning the project into a pile of hidden scripts
-and stale prompts. The technical contract underneath that promise is explicit:
-agent identity, todo ownership, scope, capability gates, quota, evidence
-writeback, and public/private boundaries stay visible to the next turn.
-
-![LoopX control-plane board](docs/assets/control-plane-board.svg)
 
 ## User Mental Model
 
