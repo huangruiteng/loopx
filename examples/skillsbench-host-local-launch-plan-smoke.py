@@ -357,7 +357,7 @@ if out:
         first_action_index = bridge_preflight_command.index(
             "--first-action-timeout-sec"
         )
-        assert bridge_preflight_command[first_action_index + 1] == "30"
+        assert bridge_preflight_command[first_action_index + 1] == "90"
         auto_wiring_plan_proc = subprocess.run(
             [
                 sys.executable,

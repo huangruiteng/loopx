@@ -50,7 +50,10 @@ SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER = (
 SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
     "LoopX bridge action preflight. First use the private bridge command from "
     "the relay packet to run one JSON exec request with cwd=/app, command=pwd, "
-    "and timeout_sec=10. After the bridge response returns, reply exactly "
+    "and timeout_sec=10. Do not plan, explain, inspect files, or reply before "
+    "that bridge request returns. Your first tool action should be a shell "
+    "pipeline that sends the JSON request to the private bridge command shown "
+    "in the packet. After the bridge response returns, reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER} and end the turn."
 )
 
@@ -832,6 +835,9 @@ LoopX SkillsBench remote workspace bridge:
 - This local Codex process is outside the scored SkillsBench sandbox.
 - Use the command below as a private JSON bridge for sandbox exec, file write, file read, and cleanup operations.
 - Send one JSON request on stdin and read one private JSON response on stdout.
+- Invoke it from the Codex CLI shell by piping JSON to the private bridge
+  command shown below. For example:
+  `printf '%s\\n' '{{"operation":"exec","cwd":"/app","command":"pwd","timeout_sec":10}}' | <private bridge command>`
 - Request examples:
   - {{"operation":"exec","cwd":"/app","command":"pwd","timeout_sec":10}}
   - {{"operation":"read_file","path":"/app/path/to/file","max_bytes":20000}}
@@ -1620,6 +1626,7 @@ def run_skillsbench_local_acp_relay_probe(
     timeout_sec: float = 10.0,
     prompt_text: str | None = None,
     required_response_marker: str | None = None,
+    model_id: str | None = "probe-model",
 ) -> dict[str, Any]:
     argv = (
         _command_to_argv(command)
@@ -1629,6 +1636,7 @@ def run_skillsbench_local_acp_relay_probe(
     started = time.monotonic()
     proc: subprocess.Popen[bytes] | None = None
     stage = "spawn"
+    request_count = 0
     try:
         proc = subprocess.Popen(
             argv,
@@ -1642,6 +1650,7 @@ def run_skillsbench_local_acp_relay_probe(
             {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
             timeout_at=started + timeout_sec,
         )
+        request_count += 1
         stage = "session_new"
         session = _probe_request(
             proc,
@@ -1653,25 +1662,30 @@ def run_skillsbench_local_acp_relay_probe(
             },
             timeout_at=started + timeout_sec,
         )
+        request_count += 1
         session_id = str(session.get("result", {}).get("sessionId") or "")
-        stage = "set_model"
-        _probe_request(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 3,
-                "method": "session/set_model",
-                "params": {"sessionId": session_id, "modelId": "probe-model"},
-            },
-            timeout_at=started + timeout_sec,
-        )
+        next_id = 3
+        if model_id:
+            stage = "set_model"
+            _probe_request(
+                proc,
+                {
+                    "jsonrpc": "2.0",
+                    "id": next_id,
+                    "method": "session/set_model",
+                    "params": {"sessionId": session_id, "modelId": str(model_id)},
+                },
+                timeout_at=started + timeout_sec,
+            )
+            request_count += 1
+            next_id += 1
         stage = "prompt"
         agent_message_chunks: list[str] = []
         prompt = _probe_request(
             proc,
             {
                 "jsonrpc": "2.0",
-                "id": 4,
+                "id": next_id,
                 "method": "session/prompt",
                 "params": {
                     "sessionId": session_id,
@@ -1689,6 +1703,7 @@ def run_skillsbench_local_acp_relay_probe(
             timeout_at=started + timeout_sec,
             agent_message_chunks=agent_message_chunks,
         )
+        request_count += 1
         prompt_usage = (
             prompt.get("result", {}).get("usage")
             if isinstance(prompt.get("result"), dict)
@@ -1723,7 +1738,7 @@ def run_skillsbench_local_acp_relay_probe(
             ready=ready,
             first_blocker=first_blocker,
             stage="complete",
-            request_count=4,
+            request_count=request_count,
             prompt_usage_total_tokens=usage_total if usage_ready else 0,
             response_marker_required=bool(required_response_marker),
             response_marker_observed=response_marker_observed,
@@ -1736,6 +1751,9 @@ def run_skillsbench_local_acp_relay_probe(
             stage=stage,
             request_count=0,
             prompt_usage_total_tokens=0,
+            response_marker_required=bool(required_response_marker),
+            response_marker_observed=False,
+            agent_message_present=False,
         )
     finally:
         if proc is not None:

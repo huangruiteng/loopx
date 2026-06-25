@@ -1027,7 +1027,7 @@ def _host_local_acp_codex_exec_preflight_first_action_timeout(
     )
     if configured and configured < 30:
         return max(1, min(preflight_timeout, configured))
-    return max(1, min(preflight_timeout, 30))
+    return max(1, min(preflight_timeout, 90))
 
 
 def _summarize_host_local_acp_preflight_bridge_trace(
@@ -1125,6 +1125,7 @@ def _run_host_local_acp_codex_exec_preflight(
                 if bridge_action_required
                 else SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER
             ),
+            model_id=str(getattr(args, "model", "") or "") or None,
         )
         ready = probe.get("ready") is True
         prerequisites["host_local_acp_codex_exec_preflight_ready"] = ready
