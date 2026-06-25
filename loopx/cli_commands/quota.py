@@ -35,6 +35,12 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         help="Show agent-facing compute quota status or next-turn plan.",
     )
     quota_parser.add_argument(
+        "--format",
+        dest="subcommand_format",
+        choices=["markdown", "json"],
+        help="Output format for this subcommand. Equivalent to global --format before the command.",
+    )
+    quota_parser.add_argument(
         "quota_command",
         nargs="?",
         choices=[
@@ -253,5 +259,5 @@ def handle_quota_command(
         if args.quota_command in {"spend-slot", "void-slot"}
         else render_quota_markdown
     )
-    print_payload(payload, args.format, renderer)
+    print_payload(payload, getattr(args, "subcommand_format", None) or args.format, renderer)
     return 0 if payload.get("ok") else 1

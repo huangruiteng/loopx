@@ -93,8 +93,8 @@ outbound progress reporter:
 2. Create a LoopX agent todo with `loopx todo add`.
 3. Persist `todo_id`, original `message_id`, request text, goal id, and agent id
    in a local state file.
-4. Poll `loopx --format json status` and
-   `loopx --format json quota should-run`.
+4. Poll `loopx status --format json` and
+   `loopx quota should-run --format json`.
 5. Render a Feishu interactive reply card only when the projected stage
    fingerprint changes.
 
