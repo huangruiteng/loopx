@@ -931,7 +931,11 @@ def _host_local_acp_codex_exec_preflight_command(
     args: argparse.Namespace,
     plan: dict[str, Any],
 ) -> list[str]:
-    command = list(default_skillsbench_local_acp_relay_command())
+    local_acp_relay_command = getattr(args, "local_acp_relay_command", None)
+    if local_acp_relay_command:
+        command = shlex.split(str(local_acp_relay_command))
+    else:
+        command = list(default_skillsbench_local_acp_relay_command())
     if "--dry-run-response" in command:
         index = command.index("--dry-run-response")
         del command[index : index + 2]

@@ -25,6 +25,7 @@ from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
 )
 from scripts.skillsbench_automation_loop import (  # noqa: E402
     _apply_agent_message_only_no_tool_calls_attribution,
+    _host_local_acp_codex_exec_preflight_command,
     _host_local_acp_docker_bridge_command,
     _host_local_acp_launch_command,
     _host_local_acp_target_env,
@@ -302,6 +303,32 @@ if out:
         )
         heartbeat_index = launch_command.index("--stream-heartbeat-interval-sec")
         assert launch_command[heartbeat_index + 1] == "15.0"
+        explicit_preflight_command = _host_local_acp_codex_exec_preflight_command(
+            SimpleNamespace(
+                dataset="skillsbench-v1.1",
+                host_local_acp_codex_exec_preflight_timeout_sec=20,
+                local_acp_relay_command=(
+                    f"{sys.executable} /tmp/loopx-remote-codex-client.py"
+                ),
+                local_codex_bin="/unused/when-explicit-client-is-configured",
+                local_codex_sandbox="workspace-write",
+                model="gpt-5.5",
+                route="loopx-product-mode",
+                task_id="demo-task",
+            ),
+            {"host_local_acp_relay_trace_dir": str(Path(tmp) / "trace")},
+        )
+        assert explicit_preflight_command[:2] == [
+            sys.executable,
+            "/tmp/loopx-remote-codex-client.py",
+        ], explicit_preflight_command
+        assert explicit_preflight_command.count("--codex-bin") == 1
+        assert (
+            explicit_preflight_command[
+                explicit_preflight_command.index("--codex-bin") + 1
+            ]
+            == "/unused/when-explicit-client-is-configured"
+        )
         auto_wiring_plan_proc = subprocess.run(
             [
                 sys.executable,
