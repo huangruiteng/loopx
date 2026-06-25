@@ -45,7 +45,25 @@ def main() -> int:
             return json.dumps({"ok": True})
         raise AssertionError(f"unexpected command: {args}")
 
+    def fake_run_json(args: list[str], *, cwd: Path = bridge.CONTROL_ROOT, timeout: float = 45) -> dict[str, Any]:
+        commands.append(list(args))
+        if args[:5] == ["loopx", "--registry", ".loopx/registry.json", "scheduler", "plan"]:
+            assert "--format" in args and "json" in args, args
+            return {
+                "schema_version": "scheduler_plan_v0",
+                "goal_id": "default",
+                "agent_id": "codex-devbox",
+                "dispatch_plan": {
+                    "action": "run_parallel_batch",
+                    "parallelizable": True,
+                    "runnable_todo_ids": ["todo_docs", "todo_read"],
+                    "waiting_reason_counts": {"agent_lane_capacity": 1},
+                },
+            }
+        raise AssertionError(f"unexpected json command: {args}")
+
     bridge.run_text = fake_run_text
+    bridge.run_json = fake_run_json
     bridge.loopx_status_payload = lambda: {}
     bridge.loopx_quota_payload = lambda goal_id: {
         "goal_id": goal_id,
@@ -75,6 +93,9 @@ def main() -> int:
     }
 
     state = bridge.StateStore(Path(tempfile.mkdtemp()) / "state.json")
+    plan_response = bridge.handle_text("/plan", "om_plan", state)
+    assert plan_response and "Scheduler plan: run_parallel_batch" in plan_response, plan_response
+    assert "Runnable: todo_docs, todo_read" in plan_response, plan_response
     bridge.handle_text("write the docs", "om_original", state)
     tracked = state.todo("todo_abc")
     assert tracked["message_id"] == "om_original", tracked

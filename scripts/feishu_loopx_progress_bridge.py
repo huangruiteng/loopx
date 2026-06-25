@@ -32,6 +32,7 @@ from loopx.capabilities.lark.progress_reporter import (
     build_progress_notification,
     should_emit_notification,
 )
+from loopx.capabilities.lark.scheduler_plan_reporter import render_scheduler_plan_chat_text
 
 
 HOME = Path.home()
@@ -490,14 +491,16 @@ def loopx_check_text() -> str:
 
 
 def loopx_scheduler_plan_text() -> str:
-    return compact_markdown(
-        run_text(
+    return render_scheduler_plan_chat_text(
+        run_json(
             [
                 LOOPX_BIN,
                 "--registry",
                 LOOPX_REGISTRY,
                 "scheduler",
                 "plan",
+                "--format",
+                "json",
                 "--goal-id",
                 LOOPX_GOAL_ID,
                 "--agent-id",
@@ -506,7 +509,6 @@ def loopx_scheduler_plan_text() -> str:
             timeout=45,
         ),
         max_chars=BOT_MAX_TEXT_CHARS,
-        suffix="...",
     )
 
 
@@ -1069,6 +1071,7 @@ def self_test() -> int:
     )
     assert commands[0][:6] == ["complete", "--goal-id", "goal", "--role", "user", "--todo-id"]
     assert "批准继续" in response
+    assert render_scheduler_plan_chat_text({"dispatch_plan": {"action": "idle"}}, max_chars=80)
     doctor = bridge_doctor(state)
     assert doctor["state_schema"] == STATE_SCHEMA_VERSION
     assert b"KeepAlive" in launch_agent_plist()
