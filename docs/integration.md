@@ -172,7 +172,9 @@ independent chat requests appear as separate scheduler lanes in `/next`.
 The first todo is a read-only triage step; writes, external runs, uploads, and
 production actions still require an explicit follow-up gate or scoped todo.
 Progress cards include the request lane in their bridge context, so users can
-see which lane is being polled for status and quota.
+see which lane is being polled for status and quota. The initial acceptance
+card also includes a best-effort `/next` scheduler snapshot when the bridge can
+collect one quickly.
 
 For local copy/paste handoff text without the Feishu bridge, use:
 
