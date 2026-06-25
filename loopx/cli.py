@@ -34,6 +34,7 @@ from .cli_commands import (
     handle_quota_command,
     handle_registry_admin_command,
     handle_review_packet_command,
+    handle_scheduler_command,
     handle_status_command,
     handle_starter_command,
     handle_support_control_command,
@@ -51,6 +52,7 @@ from .cli_commands import (
     register_project_lifecycle_commands,
     register_quota_command,
     register_registry_admin_commands,
+    register_scheduler_commands,
     register_starter_commands,
     register_status_commands,
     register_support_control_commands,
@@ -148,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     register_lark_kanban_commands(sub, add_subcommand_format)
 
     register_status_commands(sub, add_subcommand_format)
+    register_scheduler_commands(sub, add_subcommand_format)
     register_dreaming_commands(sub, add_subcommand_format)
     register_todo_command(sub)
     register_quota_command(sub)
@@ -333,6 +336,16 @@ def main(argv: list[str] | None = None) -> int:
             output_format=output_format,
             print_payload=print_payload,
         )
+
+    scheduler_result = handle_scheduler_command(
+        args,
+        registry_path=registry_path,
+        runtime_root_arg=args.runtime_root,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if scheduler_result is not None:
+        return scheduler_result
 
     if args.command == "dreaming":
         return handle_dreaming_command(
