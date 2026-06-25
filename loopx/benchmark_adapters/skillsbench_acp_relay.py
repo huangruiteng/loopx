@@ -44,6 +44,15 @@ SKILLSBENCH_LOCAL_ACP_RELAY_HEALTH_PROMPT = (
     "LoopX relay health check. Reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER} and end the turn."
 )
+SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER = (
+    "LOOPX_SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_READY"
+)
+SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
+    "LoopX bridge action preflight. First use the private bridge command from "
+    "the relay packet to run one JSON exec request with cwd=/app, command=pwd, "
+    "and timeout_sec=10. After the bridge response returns, reply exactly "
+    f"{SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER} and end the turn."
+)
 
 
 def _json_rpc_result(message_id: Any, result: dict[str, Any]) -> dict[str, Any]:
@@ -1609,6 +1618,8 @@ def run_skillsbench_local_acp_relay_probe(
     command: str | list[str] | tuple[str, ...] | None = None,
     *,
     timeout_sec: float = 10.0,
+    prompt_text: str | None = None,
+    required_response_marker: str | None = None,
 ) -> dict[str, Any]:
     argv = (
         _command_to_argv(command)
@@ -1655,6 +1666,7 @@ def run_skillsbench_local_acp_relay_probe(
             timeout_at=started + timeout_sec,
         )
         stage = "prompt"
+        agent_message_chunks: list[str] = []
         prompt = _probe_request(
             proc,
             {
@@ -1666,12 +1678,16 @@ def run_skillsbench_local_acp_relay_probe(
                     "prompt": [
                         {
                             "type": "text",
-                            "text": SKILLSBENCH_LOCAL_ACP_RELAY_HEALTH_PROMPT,
+                            "text": (
+                                prompt_text
+                                or SKILLSBENCH_LOCAL_ACP_RELAY_HEALTH_PROMPT
+                            ),
                         }
                     ],
                 },
             },
             timeout_at=started + timeout_sec,
+            agent_message_chunks=agent_message_chunks,
         )
         prompt_usage = (
             prompt.get("result", {}).get("usage")
@@ -1684,23 +1700,34 @@ def run_skillsbench_local_acp_relay_probe(
         usage_ready = isinstance(usage_total, int) and not isinstance(
             usage_total, bool
         ) and usage_total > 0
+        agent_message_present = bool("".join(agent_message_chunks).strip())
+        response_marker_observed = True
+        if required_response_marker:
+            response_marker_observed = (
+                required_response_marker in "".join(agent_message_chunks)
+            )
         ready = (
             initialize.get("result", {}).get("agentInfo", {}).get("name")
             == "loopx-skillsbench-local-acp-relay"
             and bool(session_id)
             and prompt.get("result", {}).get("stopReason") == "end_turn"
             and usage_ready
+            and response_marker_observed
         )
+        first_blocker = "skillsbench_local_acp_relay_ready"
+        if not ready:
+            first_blocker = "skillsbench_local_acp_relay_probe_failed"
+            if required_response_marker and not response_marker_observed:
+                first_blocker = "skillsbench_local_acp_relay_response_marker_missing"
         return _relay_probe_payload(
             ready=ready,
-            first_blocker=(
-                "skillsbench_local_acp_relay_ready"
-                if ready
-                else "skillsbench_local_acp_relay_probe_failed"
-            ),
+            first_blocker=first_blocker,
             stage="complete",
             request_count=4,
             prompt_usage_total_tokens=usage_total if usage_ready else 0,
+            response_marker_required=bool(required_response_marker),
+            response_marker_observed=response_marker_observed,
+            agent_message_present=agent_message_present,
         )
     except (OSError, RuntimeError, TimeoutError, json.JSONDecodeError):
         return _relay_probe_payload(
@@ -1834,6 +1861,7 @@ def _probe_request(
     message: dict[str, Any],
     *,
     timeout_at: float,
+    agent_message_chunks: list[str] | None = None,
 ) -> dict[str, Any]:
     if proc.stdin is None or proc.stdout is None:
         raise RuntimeError("probe process pipes missing")
@@ -1859,6 +1887,22 @@ def _probe_request(
                 if not raw_line.strip():
                     continue
                 decoded = json.loads(raw_line.decode())
+                if (
+                    agent_message_chunks is not None
+                    and isinstance(decoded, dict)
+                    and decoded.get("jsonrpc") == "2.0"
+                    and decoded.get("method") == "session/update"
+                ):
+                    params = decoded.get("params")
+                    update = (
+                        params.get("update") if isinstance(params, dict) else None
+                    )
+                    content = (
+                        update.get("content") if isinstance(update, dict) else None
+                    )
+                    text = content.get("text") if isinstance(content, dict) else None
+                    if isinstance(text, str):
+                        agent_message_chunks.append(text)
                 if (
                     isinstance(decoded, dict)
                     and decoded.get("jsonrpc") == "2.0"
@@ -1897,6 +1941,9 @@ def _relay_probe_payload(
     stage: str,
     request_count: int,
     prompt_usage_total_tokens: int = 0,
+    response_marker_required: bool = False,
+    response_marker_observed: bool = True,
+    agent_message_present: bool = False,
 ) -> dict[str, Any]:
     return {
         "schema_version": SKILLSBENCH_LOCAL_ACP_RELAY_PROBE_SCHEMA_VERSION,
@@ -1905,6 +1952,9 @@ def _relay_probe_payload(
         "stage": stage,
         "request_count": request_count,
         "prompt_usage_total_tokens": max(0, int(prompt_usage_total_tokens or 0)),
+        "response_marker_required": bool(response_marker_required),
+        "response_marker_observed": bool(response_marker_observed),
+        "agent_message_present": bool(agent_message_present),
         "worker_protocol": "acp_stdio",
         "codex_cli_invoked": False,
         "raw_output_recorded": False,

@@ -20,6 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     CodexExecConfig,
     SkillsBenchLocalAcpRelay,
+    SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER,
     SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER,
     run_skillsbench_local_acp_relay_probe,
 )
@@ -329,6 +330,34 @@ if out:
             ]
             == "/unused/when-explicit-client-is-configured"
         )
+        bridge_preflight_command = _host_local_acp_codex_exec_preflight_command(
+            SimpleNamespace(
+                dataset="skillsbench-v1.1",
+                host_local_acp_codex_exec_preflight_timeout_sec=120,
+                host_local_acp_launch=True,
+                local_acp_relay_command=(
+                    f"{sys.executable} /tmp/loopx-remote-codex-client.py"
+                ),
+                local_codex_bin="/unused/when-explicit-client-is-configured",
+                local_codex_first_action_timeout_sec=1800,
+                local_codex_sandbox="workspace-write",
+                model=None,
+                remote_command_file_bridge_agent_command="/tmp/local-agent-bridge",
+                remote_command_file_bridge_probe=False,
+                remote_command_file_bridge_probe_timeout_sec=5.0,
+                remote_command_file_bridge_ready=True,
+                remote_command_file_bridge_solver_command="/tmp/remote-solver-bridge",
+                route="loopx-product-mode",
+                task_id="demo-task",
+            ),
+            {"host_local_acp_relay_trace_dir": str(Path(tmp) / "trace")},
+        )
+        assert "--remote-command-file-bridge-command" in bridge_preflight_command
+        assert "--remote-command-file-bridge-agent-command" in bridge_preflight_command
+        first_action_index = bridge_preflight_command.index(
+            "--first-action-timeout-sec"
+        )
+        assert bridge_preflight_command[first_action_index + 1] == "30"
         auto_wiring_plan_proc = subprocess.run(
             [
                 sys.executable,
@@ -1136,16 +1165,117 @@ time.sleep(30)
         assert idle_failures[0]["codex_exec_process"]["failure_category"] == (
             "codex_exec_bridge_idle_timeout"
         )
+        bridge_preflight_codex = Path(tmp) / "bridge-preflight-codex"
+        bridge_preflight_codex.write_text(
+            f"""#!/usr/bin/env python3
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+output = Path(args[args.index("--output-last-message") + 1])
+prompt = args[-1] if args else ""
+match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
+assert match, prompt
+subprocess.run(
+    match.group(1),
+    input=json.dumps({{
+        "operation": "exec",
+        "cwd": "/app",
+        "command": "pwd",
+        "timeout_sec": 10,
+    }}),
+    text=True,
+    shell=True,
+    check=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+)
+output.write_text({SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER!r}, encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
+        bridge_preflight_codex.chmod(0o755)
+        bridge_preflight_plan = {
+            "host_local_acp_relay_trace_dir": str(
+                Path(tmp) / "bridge-preflight-traces"
+            ),
+            "runner_prerequisites": {},
+        }
+        bridge_preflight_args = SimpleNamespace(
+            dataset="skillsbench-v1.1",
+            host_local_acp_codex_exec_preflight_attempts=1,
+            host_local_acp_codex_exec_preflight_timeout_sec=20,
+            host_local_acp_launch=True,
+            local_acp_relay_command=None,
+            local_codex_bin=str(bridge_preflight_codex),
+            local_codex_first_action_timeout_sec=1800,
+            local_codex_sandbox="workspace-write",
+            model=None,
+            remote_command_file_bridge_agent_command=str(idle_bridge),
+            remote_command_file_bridge_probe=False,
+            remote_command_file_bridge_probe_timeout_sec=5.0,
+            remote_command_file_bridge_ready=True,
+            remote_command_file_bridge_solver_command=str(idle_bridge),
+            route="loopx-product-mode",
+            task_id="demo-task",
+        )
+        _run_host_local_acp_codex_exec_preflight(
+            bridge_preflight_args,
+            bridge_preflight_plan,
+        )
+        bridge_preflight_prereqs = bridge_preflight_plan["runner_prerequisites"]
+        assert (
+            bridge_preflight_prereqs["host_local_acp_codex_exec_preflight_status"]
+            == "passed"
+        ), bridge_preflight_prereqs
+        assert (
+            bridge_preflight_prereqs[
+                "host_local_acp_codex_exec_preflight_bridge_action_required"
+            ]
+            is True
+        ), bridge_preflight_prereqs
+        assert (
+            bridge_preflight_prereqs[
+                "host_local_acp_codex_exec_preflight_bridge_action_observed"
+            ]
+            is True
+        ), bridge_preflight_prereqs
+        assert (
+            bridge_preflight_prereqs[
+                "host_local_acp_codex_exec_preflight_bridge_task_facing_operation_count"
+            ]
+            == 1
+        ), bridge_preflight_prereqs
+        assert (
+            bridge_preflight_prereqs[
+                "host_local_acp_codex_exec_preflight_response_marker_observed"
+            ]
+            is True
+        ), bridge_preflight_prereqs
+        assert (
+            "remote_command_file_bridge_agent_task_facing_operation_count"
+            not in bridge_preflight_prereqs
+        ), bridge_preflight_prereqs
         preflight_plan = {
             "host_local_acp_relay_trace_dir": str(Path(tmp) / "preflight-traces"),
             "runner_prerequisites": {},
         }
         preflight_args = SimpleNamespace(
             dataset="skillsbench-v1.1",
+            host_local_acp_codex_exec_preflight_attempts=1,
             host_local_acp_codex_exec_preflight_timeout_sec=20,
+            host_local_acp_launch=False,
+            local_acp_relay_command=None,
             local_codex_bin=str(reverse_failing_codex),
+            local_codex_first_action_timeout_sec=0,
             local_codex_sandbox="workspace-write",
             model="gpt-5.5",
+            remote_command_file_bridge_probe=False,
+            remote_command_file_bridge_ready=False,
+            remote_command_file_bridge_solver_command=None,
             route="loopx-product-mode",
             task_id="demo-task",
         )

@@ -96,6 +96,9 @@ from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
     build_skillsbench_worker_handshake_preflight,
 )
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
+    SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER,
+    SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT,
+    SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER,
     default_skillsbench_local_acp_relay_command,
     run_skillsbench_host_local_acp_transport_probe,
     run_skillsbench_local_acp_relay_probe,
@@ -965,7 +968,120 @@ def _host_local_acp_codex_exec_preflight_command(
                 str(Path(relay_trace_dir) / "codex-exec-preflight"),
             ]
         )
+    if _host_local_acp_codex_exec_preflight_requires_bridge_action(args):
+        command.extend(
+            [
+                "--remote-command-file-bridge-command",
+                str(getattr(args, "remote_command_file_bridge_solver_command") or ""),
+                "--remote-command-file-bridge-timeout-sec",
+                str(
+                    max(
+                        1.0,
+                        float(
+                            getattr(
+                                args,
+                                "remote_command_file_bridge_probe_timeout_sec",
+                                10.0,
+                            )
+                            or 10.0
+                        ),
+                    )
+                ),
+                "--first-action-timeout-sec",
+                str(_host_local_acp_codex_exec_preflight_first_action_timeout(args)),
+            ]
+        )
+        agent_command = str(
+            getattr(args, "remote_command_file_bridge_agent_command", None) or ""
+        )
+        if agent_command:
+            command.extend(["--remote-command-file-bridge-agent-command", agent_command])
     return command
+
+
+def _host_local_acp_codex_exec_preflight_requires_bridge_action(
+    args: argparse.Namespace,
+) -> bool:
+    return bool(
+        getattr(args, "host_local_acp_launch", False)
+        and str(getattr(args, "route", "") or "")
+        in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        and str(getattr(args, "remote_command_file_bridge_solver_command", "") or "")
+        and (
+            bool(getattr(args, "remote_command_file_bridge_ready", False))
+            or bool(getattr(args, "remote_command_file_bridge_probe", False))
+        )
+    )
+
+
+def _host_local_acp_codex_exec_preflight_first_action_timeout(
+    args: argparse.Namespace,
+) -> int:
+    preflight_timeout = max(
+        1,
+        int(float(getattr(args, "host_local_acp_codex_exec_preflight_timeout_sec", 30))),
+    )
+    configured = max(
+        0,
+        int(float(getattr(args, "local_codex_first_action_timeout_sec", 0) or 0)),
+    )
+    if configured and configured < 30:
+        return max(1, min(preflight_timeout, configured))
+    return max(1, min(preflight_timeout, 30))
+
+
+def _summarize_host_local_acp_preflight_bridge_trace(
+    trace_dir: Path | None,
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "trace_present": False,
+        "trace_count": 0,
+        "request_count": 0,
+        "task_facing_operation_count": 0,
+        "raw_material_recorded": False,
+    }
+    if trace_dir is None or not trace_dir.exists():
+        return summary
+    for trace_file in sorted(trace_dir.glob("*.compact.json")):
+        try:
+            trace = json.loads(trace_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(trace, dict):
+            continue
+        boundary = trace.get("boundary") if isinstance(trace.get("boundary"), dict) else {}
+        summary["raw_material_recorded"] = bool(
+            summary["raw_material_recorded"]
+            or any(
+                boundary.get(field) is True
+                for field in (
+                    "raw_command_recorded",
+                    "raw_stdout_recorded",
+                    "raw_stderr_recorded",
+                    "raw_task_text_recorded",
+                    "raw_logs_recorded",
+                    "raw_trajectory_recorded",
+                    "credential_values_recorded",
+                    "host_paths_recorded",
+                    "remote_paths_recorded",
+                )
+            )
+        )
+        if trace.get("trace_kind") != "remote_command_file_bridge_agent_operations":
+            continue
+        operations = trace.get("remote_command_file_bridge_agent_operations")
+        if not isinstance(operations, dict):
+            continue
+        summary["trace_present"] = True
+        summary["trace_count"] = int(summary["trace_count"]) + 1
+        for source_key, target_key in (
+            ("request_count", "request_count"),
+            ("task_facing_operation_count", "task_facing_operation_count"),
+        ):
+            value = operations.get(source_key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                summary[target_key] = int(summary[target_key]) + max(0, value)
+    return summary
 
 
 def _run_host_local_acp_codex_exec_preflight(
@@ -975,6 +1091,12 @@ def _run_host_local_acp_codex_exec_preflight(
     prerequisites = plan.setdefault("runner_prerequisites", {})
     prerequisites["host_local_acp_codex_exec_preflight_requested"] = True
     prerequisites["host_local_acp_codex_exec_preflight_status"] = "running"
+    bridge_action_required = _host_local_acp_codex_exec_preflight_requires_bridge_action(
+        args
+    )
+    prerequisites["host_local_acp_codex_exec_preflight_bridge_action_required"] = (
+        bridge_action_required
+    )
     attempts = max(
         1,
         int(getattr(args, "host_local_acp_codex_exec_preflight_attempts", 1) or 1),
@@ -993,6 +1115,16 @@ def _run_host_local_acp_codex_exec_preflight(
         probe = run_skillsbench_local_acp_relay_probe(
             command,
             timeout_sec=float(args.host_local_acp_codex_exec_preflight_timeout_sec),
+            prompt_text=(
+                SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT
+                if bridge_action_required
+                else None
+            ),
+            required_response_marker=(
+                SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER
+                if bridge_action_required
+                else SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER
+            ),
         )
         ready = probe.get("ready") is True
         prerequisites["host_local_acp_codex_exec_preflight_ready"] = ready
@@ -1002,7 +1134,34 @@ def _run_host_local_acp_codex_exec_preflight(
         prerequisites["host_local_acp_codex_exec_preflight_first_blocker"] = str(
             probe.get("first_blocker") or ""
         )[:180]
-        if ready:
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_response_marker_observed"
+        ] = probe.get("response_marker_observed") is True
+        bridge_summary = _summarize_host_local_acp_preflight_bridge_trace(
+            preflight_trace_dir
+        )
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_trace_present"
+        ] = bridge_summary["trace_present"]
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_trace_count"
+        ] = bridge_summary["trace_count"]
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_request_count"
+        ] = bridge_summary["request_count"]
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_task_facing_operation_count"
+        ] = bridge_summary["task_facing_operation_count"]
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_raw_material_recorded"
+        ] = bridge_summary["raw_material_recorded"]
+        bridge_action_observed = bool(
+            bridge_summary["task_facing_operation_count"] > 0
+        )
+        prerequisites["host_local_acp_codex_exec_preflight_bridge_action_observed"] = (
+            bridge_action_observed
+        )
+        if ready and (not bridge_action_required or bridge_action_observed):
             prerequisites["host_local_acp_codex_exec_preflight_status"] = "passed"
             for key in (
                 "host_local_acp_codex_exec_failure_category",
@@ -1013,6 +1172,13 @@ def _run_host_local_acp_codex_exec_preflight(
                 prerequisites.pop(key, None)
             return
         prerequisites["host_local_acp_codex_exec_preflight_status"] = "failed"
+        if ready and bridge_action_required and not bridge_action_observed:
+            prerequisites["host_local_acp_codex_exec_preflight_first_blocker"] = (
+                "skillsbench_host_local_acp_codex_exec_preflight_bridge_action_missing"
+            )
+            prerequisites["host_local_acp_codex_exec_failure_category"] = (
+                "codex_exec_no_bridge_action"
+            )
         if preflight_trace_dir:
             trace: dict[str, Any] = {
                 "schema_version": "skillsbench_loopx_controller_trace_v0"
@@ -1237,6 +1403,11 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_rollout_planes_available",
         "host_local_acp_codex_exec_preflight_requested",
         "host_local_acp_codex_exec_preflight_ready",
+        "host_local_acp_codex_exec_preflight_response_marker_observed",
+        "host_local_acp_codex_exec_preflight_bridge_action_required",
+        "host_local_acp_codex_exec_preflight_bridge_action_observed",
+        "host_local_acp_codex_exec_preflight_bridge_trace_present",
+        "host_local_acp_codex_exec_preflight_bridge_raw_material_recorded",
         "container_codex_acp_install_skipped",
         "benchflow_agent_install_skipped_by_runtime_layer",
         "benchflow_rollout_planes_module_available",
@@ -1371,6 +1542,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_pwd_probe_rc",
         "loopx_source_upload_fallback_file_count",
         "host_local_acp_codex_exec_preflight_attempt_count",
+        "host_local_acp_codex_exec_preflight_bridge_trace_count",
+        "host_local_acp_codex_exec_preflight_bridge_request_count",
+        "host_local_acp_codex_exec_preflight_bridge_task_facing_operation_count",
         "host_local_acp_codex_exec_failure_trace_count",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
