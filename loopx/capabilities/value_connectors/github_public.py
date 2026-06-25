@@ -326,13 +326,17 @@ def render_github_public_channel_probe_markdown(payload: dict[str, Any]) -> str:
         "# LoopX GitHub Public Channel Probe",
         "",
         f"- ok: `{payload.get('ok')}`",
-        f"- ref: `{ref.get('owner')}/{ref.get('repo')} {ref.get('ref_type')} #{ref.get('number')}`",
         f"- external_reads_performed: `{payload.get('external_reads_performed')}`",
         f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
         f"- raw_body_captured: `{payload.get('raw_body_captured')}`",
         f"- comment_bodies_captured: `{payload.get('comment_bodies_captured')}`",
         "",
     ]
+    if ref:
+        lines.insert(
+            3,
+            f"- ref: `{ref.get('owner')}/{ref.get('repo')} {ref.get('ref_type')} #{ref.get('number')}`",
+        )
     if metadata:
         lines.extend(
             [
@@ -347,6 +351,8 @@ def render_github_public_channel_probe_markdown(payload: dict[str, Any]) -> str:
         )
     if payload.get("read_error"):
         lines.extend(["## Read Error", "", str(payload.get("read_error")), ""])
+    if payload.get("error"):
+        lines.extend(["## Error", "", str(payload.get("error")), ""])
     errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
     if errors:
         lines.extend(["## Validation Errors", ""])

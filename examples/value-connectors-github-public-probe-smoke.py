@@ -159,7 +159,21 @@ def main() -> int:
     assert rejected.returncode == 1, rejected
     rejected_payload = json.loads(rejected.stdout)
     assert rejected_payload["ok"] is False, rejected_payload
+    assert rejected_payload["schema_version"] == "github_public_channel_probe_error_v0", rejected_payload
     assert "query or fragment" in rejected_payload["error"], rejected_payload
+
+    rejected_markdown = run_cli(
+        [
+            "value-connectors",
+            "github-public-probe",
+            "--url",
+            "https://github.com/owner/repo/issues/1?x=sensitive-value",
+        ],
+        check=False,
+    )
+    assert rejected_markdown.returncode == 1, rejected_markdown
+    assert "LoopX GitHub Public Channel Probe" in rejected_markdown.stdout, rejected_markdown.stdout
+    assert "LoopX Value Connector Plan" not in rejected_markdown.stdout, rejected_markdown.stdout
 
     markdown = run_cli(
         [

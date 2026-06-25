@@ -215,6 +215,17 @@ def handle_value_connector_command(
             )
         payload = build_value_connector_plan_packet(plan)
     except Exception as exc:
+        if getattr(args, "value_connectors_command", None) == "github-public-probe":
+            payload = {
+                "ok": False,
+                "schema_version": "github_public_channel_probe_error_v0",
+                "mode": "github-public-channel-probe",
+                "error": str(exc),
+                "external_reads_performed": False,
+                "external_writes_performed": False,
+            }
+            print_payload(payload, output_format(args), render_github_public_channel_probe_markdown)
+            return 1
         payload = {"ok": False, "schema_version": "value_connector_plan_error_v0", "error": str(exc)}
         print_payload(payload, output_format(args), render_value_connector_plan_markdown)
         return 1

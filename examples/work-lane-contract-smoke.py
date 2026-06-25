@@ -1587,7 +1587,7 @@ def assert_primary_agent_prioritizes_claimed_review_handoff() -> None:
     next_action = guard["agent_lane_next_action"]
     assert next_action["todo_id"] == "todo_primary_review", guard
     assert guard["capability_gate"]["candidate_order_policy"] == (
-        "active_next_then_claim_then_priority_then_primary_agent_unblock_handoff_then_repair"
+        "active_next_then_claim_then_primary_agent_unblock_handoff_then_priority_then_repair"
     ), guard
     assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_primary_review", guard
     assert next_action["selected_by"] == "current_agent_claimed_todo", next_action
@@ -1600,7 +1600,59 @@ def assert_primary_agent_prioritizes_claimed_review_handoff() -> None:
     assert "agent_lane_next_action: todo_id=todo_primary_review" in markdown, markdown
 
 
-def assert_primary_agent_handoff_does_not_cross_priority_boundary() -> None:
+def assert_primary_agent_prioritizes_handoff_without_unblocks_todo_id() -> None:
+    primary_action = "[P0] Run the current benchmark frontier."
+    review_action = "[P0] Review PR #675 to unblock the value-explorer agent."
+    guard = build_quota_should_run(
+        status_payload(
+            status="primary_review_handoff_without_link_frontier",
+            next_action=primary_action,
+            coordination={
+                "primary_agent": "codex-main-control",
+                "registered_agents": ["codex-main-control", "codex-value-explorer"],
+            },
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": primary_action,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "advancement_task",
+                    "claimed_by": "codex-main-control",
+                    "todo_id": "todo_primary_frontier",
+                    "required_capabilities": ["shell"],
+                },
+                {
+                    "index": 2,
+                    "text": review_action,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0-review",
+                    "task_class": "advancement_task",
+                    "action_kind": "side_agent_review",
+                    "claimed_by": "codex-main-control",
+                    "todo_id": "todo_value_connector_review",
+                    "required_capabilities": ["shell"],
+                    "blocks_agent": "codex-value-explorer",
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+    )
+    next_action = guard["agent_lane_next_action"]
+    assert next_action["todo_id"] == "todo_value_connector_review", guard
+    assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == (
+        "todo_value_connector_review"
+    ), guard
+    assert next_action["unblock_handoff"] == {
+        "blocks_agent": "codex-value-explorer",
+    }, next_action
+    assert guard["recommended_action"] == review_action, guard
+
+
+def assert_primary_agent_handoff_crosses_ordinary_priority_boundary() -> None:
     primary_action = "[P0] Run the current benchmark frontier."
     review_action = "[P1] Review PR #464 for the side-agent Frontstage handoff."
     guard = build_quota_should_run(
@@ -1643,10 +1695,10 @@ def assert_primary_agent_handoff_does_not_cross_priority_boundary() -> None:
         agent_id="codex-main-control",
     )
     next_action = guard["agent_lane_next_action"]
-    assert next_action["todo_id"] == "todo_primary_frontier", guard
-    assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_primary_frontier", guard
-    assert guard["capability_gate"]["runnable_candidates"][1]["todo_id"] == "todo_lower_priority_review", guard
-    assert guard["recommended_action"] == primary_action, guard
+    assert next_action["todo_id"] == "todo_lower_priority_review", guard
+    assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_lower_priority_review", guard
+    assert guard["capability_gate"]["runnable_candidates"][1]["todo_id"] == "todo_primary_frontier", guard
+    assert guard["recommended_action"] == review_action, guard
 
 
 def assert_agent_lane_next_action_prefers_explicit_next_action_todo_id() -> None:
@@ -1816,7 +1868,8 @@ def main() -> int:
     assert_side_agent_can_take_unclaimed_work()
     assert_agent_lane_next_action_prefers_capability_repair_candidate()
     assert_primary_agent_prioritizes_claimed_review_handoff()
-    assert_primary_agent_handoff_does_not_cross_priority_boundary()
+    assert_primary_agent_prioritizes_handoff_without_unblocks_todo_id()
+    assert_primary_agent_handoff_crosses_ordinary_priority_boundary()
     assert_agent_lane_next_action_prefers_explicit_next_action_todo_id()
     assert_active_next_action_todo_survives_compact_candidate_limits()
     print("work-lane-contract-smoke ok")
