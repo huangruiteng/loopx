@@ -25,6 +25,14 @@ from loopx.capabilities.lark.message_card import (
     compact_markdown,
     extract_reply_message_id,
 )
+from loopx.capabilities.lark.bridge_commands import (
+    bridge_help_text,
+    loopx_check_text,
+    loopx_scheduler_next_batch_text,
+    loopx_scheduler_plan_text,
+    loopx_status_text,
+)
+from loopx.capabilities.lark.bridge_actions import todo_commands_for_action
 from loopx.capabilities.lark.progress_reporter import (
     ProgressNotification,
     build_acceptance_notification,
@@ -32,7 +40,6 @@ from loopx.capabilities.lark.progress_reporter import (
     build_progress_notification,
     should_emit_notification,
 )
-from loopx.capabilities.lark.scheduler_plan_reporter import render_scheduler_plan_chat_text
 
 
 HOME = Path.home()
@@ -449,69 +456,6 @@ def extract_actor_id(raw: Any) -> str:
     return ""
 
 
-def help_text() -> str:
-    return "\n".join(
-        [
-            "LoopX Feishu bridge.",
-            "",
-            "Commands:",
-            "/help - show this message",
-            "/status - show compact LoopX status",
-            "/plan - show safe parallel scheduler plan",
-            "/check - run LoopX boundary check",
-            "/ask <task> - create a LoopX todo and receive progress cards",
-        ]
-    )
-
-
-def loopx_status_text() -> str:
-    out = run_text([LOOPX_BIN, "--registry", LOOPX_REGISTRY, "status", "--agent-id", LOOPX_AGENT_ID], timeout=30)
-    interesting: list[str] = []
-    for line in out.splitlines():
-        if (
-            line.startswith("- ok:")
-            or "Attention Queue" in line
-            or "waiting_on=" in line
-            or "next_agent_todo" in line
-            or "next_user_todo" in line
-            or "quota:" in line
-            or "action:" in line
-            or "status=" in line
-        ):
-            interesting.append(line)
-    return compact_markdown("\n".join(interesting) or out, max_chars=BOT_MAX_TEXT_CHARS, suffix="...")
-
-
-def loopx_check_text() -> str:
-    return compact_markdown(
-        run_text([LOOPX_BIN, "--registry", LOOPX_REGISTRY, "check", "--scan-root", str(CONTROL_ROOT)], timeout=30),
-        max_chars=BOT_MAX_TEXT_CHARS,
-        suffix="...",
-    )
-
-
-def loopx_scheduler_plan_text() -> str:
-    return render_scheduler_plan_chat_text(
-        run_json(
-            [
-                LOOPX_BIN,
-                "--registry",
-                LOOPX_REGISTRY,
-                "scheduler",
-                "plan",
-                "--format",
-                "json",
-                "--goal-id",
-                LOOPX_GOAL_ID,
-                "--agent-id",
-                LOOPX_AGENT_ID,
-            ],
-            timeout=45,
-        ),
-        max_chars=BOT_MAX_TEXT_CHARS,
-    )
-
-
 def loopx_status_payload() -> dict[str, Any]:
     return run_json(
         [
@@ -583,13 +527,41 @@ def add_loopx_todo(text: str, message_id: str) -> tuple[str, str]:
 def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
     clean = str(text or "").strip()
     if not clean or clean in {"/help", "help"}:
-        return help_text()
+        return bridge_help_text()
     if clean in {"/status", "status"}:
-        return loopx_status_text()
+        return loopx_status_text(
+            run_text=run_text,
+            loopx_bin=LOOPX_BIN,
+            registry=LOOPX_REGISTRY,
+            agent_id=LOOPX_AGENT_ID,
+            max_chars=BOT_MAX_TEXT_CHARS,
+        )
     if clean in {"/plan", "plan"}:
-        return loopx_scheduler_plan_text()
+        return loopx_scheduler_plan_text(
+            run_json=run_json,
+            loopx_bin=LOOPX_BIN,
+            registry=LOOPX_REGISTRY,
+            goal_id=LOOPX_GOAL_ID,
+            agent_id=LOOPX_AGENT_ID,
+            max_chars=BOT_MAX_TEXT_CHARS,
+        )
+    if clean in {"/next", "next"}:
+        return loopx_scheduler_next_batch_text(
+            run_json=run_json,
+            loopx_bin=LOOPX_BIN,
+            registry=LOOPX_REGISTRY,
+            goal_id=LOOPX_GOAL_ID,
+            agent_id=LOOPX_AGENT_ID,
+            max_chars=BOT_MAX_TEXT_CHARS,
+        )
     if clean in {"/check", "check"}:
-        return loopx_check_text()
+        return loopx_check_text(
+            run_text=run_text,
+            loopx_bin=LOOPX_BIN,
+            registry=LOOPX_REGISTRY,
+            control_root=CONTROL_ROOT,
+            max_chars=BOT_MAX_TEXT_CHARS,
+        )
     request_text = clean[len("/ask ") :].strip() if clean.startswith("/ask ") else clean
     todo_id, normalized_request = add_loopx_todo(request_text, message_id)
     notification = build_acceptance_notification(
@@ -612,104 +584,6 @@ def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
 
 def run_todo_lifecycle_command(args: list[str]) -> str:
     return run_text([LOOPX_BIN, "--registry", LOOPX_REGISTRY, "todo", *args], timeout=30)
-
-
-def todo_commands_for_action(
-    *,
-    action_id: str,
-    goal_id: str,
-    todo_id: str,
-    user_todo_id: str,
-    actor_id: str = "",
-    decision_scope: dict[str, Any] | None = None,
-) -> tuple[list[list[str]], str]:
-    actor_note = f"Feishu actor={actor_id or 'unknown'}"
-    scope = decision_scope if isinstance(decision_scope, dict) else {}
-    scope_note = ""
-    if scope:
-        scope_note = (
-            f" scope={scope.get('kind') or 'unknown'}/"
-            f"{scope.get('granularity') or 'unknown'}/"
-            f"{scope.get('scope_key') or 'unknown'}"
-        )
-    audit_note = f"{actor_note}{scope_note}."
-    if action_id == "approve_continue" and user_todo_id:
-        return [
-            [
-                "complete",
-                "--goal-id",
-                goal_id,
-                "--role",
-                "user",
-                "--todo-id",
-                user_todo_id,
-                "--evidence",
-                f"Feishu button approved continuing the LoopX task. {audit_note}",
-            ]
-        ], "已记录：批准继续。LoopX 下一轮会重新读取 gate 状态。"
-    if action_id == "reject" and user_todo_id:
-        return [
-            [
-                "update",
-                "--goal-id",
-                goal_id,
-                "--role",
-                "user",
-                "--todo-id",
-                user_todo_id,
-                "--status",
-                "blocked",
-                "--reason",
-                f"Feishu button rejected this gate. {audit_note}",
-            ]
-        ], "已记录：拒绝该 gate。"
-    if action_id == "need_more_info" and user_todo_id:
-        return [
-            [
-                "update",
-                "--goal-id",
-                goal_id,
-                "--role",
-                "user",
-                "--todo-id",
-                user_todo_id,
-                "--note",
-                f"Feishu button requested more information before deciding. {audit_note}",
-            ]
-        ], "已记录：需要更多信息。"
-    if action_id == "pause_task" and todo_id:
-        return [
-            [
-                "update",
-                "--goal-id",
-                goal_id,
-                "--role",
-                "agent",
-                "--todo-id",
-                todo_id,
-                "--status",
-                "deferred",
-                "--reason",
-                f"Feishu button paused this task. {audit_note}",
-            ]
-        ], "已记录：暂停任务。"
-    if action_id == "cancel_task" and todo_id:
-        return [
-            [
-                "update",
-                "--goal-id",
-                goal_id,
-                "--role",
-                "agent",
-                "--todo-id",
-                todo_id,
-                "--status",
-                "deferred",
-                "--reason",
-                f"Feishu button cancelled this task. {audit_note}",
-            ]
-        ], "已记录：取消任务，已把对应 agent todo 置为 deferred。"
-    return [], f"未能识别或缺少 todo id，未写回 LoopX：{action_id or 'unknown'}"
 
 
 def handle_card_action(raw: dict[str, Any], state: StateStore) -> bool:
@@ -1031,7 +905,8 @@ def self_test() -> int:
     state = StateStore(Path(tempfile.mkdtemp()) / "state.json")
     event = {"event": {"message": {"message_id": "om_test", "content": json.dumps({"text": "/help"})}}}
     assert extract_text(event) == "/help"
-    assert "/plan" in help_text()
+    assert "/plan" in bridge_help_text()
+    assert "/next" in bridge_help_text()
     state.track_todo(
         todo_id="todo_test",
         message_id="om_test",
@@ -1071,7 +946,14 @@ def self_test() -> int:
     )
     assert commands[0][:6] == ["complete", "--goal-id", "goal", "--role", "user", "--todo-id"]
     assert "批准继续" in response
-    assert render_scheduler_plan_chat_text({"dispatch_plan": {"action": "idle"}}, max_chars=80)
+    assert loopx_scheduler_next_batch_text(
+        run_json=lambda args, timeout: {"dispatch_mode": "idle"},
+        loopx_bin="loopx",
+        registry="registry",
+        goal_id="goal",
+        agent_id="agent",
+        max_chars=80,
+    )
     doctor = bridge_doctor(state)
     assert doctor["state_schema"] == STATE_SCHEMA_VERSION
     assert b"KeepAlive" in launch_agent_plist()
