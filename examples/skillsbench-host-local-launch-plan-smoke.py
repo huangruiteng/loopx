@@ -52,6 +52,10 @@ def main() -> int:
     assert "def _filter_kwargs_for_signature(" in source
     assert "getattr(\n        benchflow_rollout_module, \"connect_acp\", _MISSING" in source
     assert "if original_rollout_connect_acp is not _MISSING:" in source
+    assert "from benchflow.agents.protocol import ACPSessionAdapter" in source
+    assert ") -> tuple[Any, Any, Any, str]:" in source
+    assert "session_adapter = ACPSessionAdapter(client)" in source
+    assert "return client, session, session_adapter, agent_name" in source
     assert "_filter_kwargs_for_signature(RolloutConfig, rollout_config_kwargs)" in source
     assert "env=target_env" in source
     assert "local_acp_command = _set_option_value(" in source
@@ -282,6 +286,7 @@ if out:
                 local_codex_bin="codex",
                 local_codex_exec_timeout_sec=7200,
                 local_codex_sandbox="workspace-write",
+                max_rounds=24,
                 model=None,
                 remote_command_file_bridge_probe=False,
                 remote_command_file_bridge_probe_timeout_sec=5.0,
@@ -289,6 +294,7 @@ if out:
                 remote_command_file_bridge_agent_command=None,
                 remote_command_file_bridge_solver_command=None,
                 route="loopx-product-mode",
+                sandbox="docker",
                 task_id="demo-task",
             ),
             {"host_local_acp_relay_trace_dir": str(Path(tmp) / "trace")},
