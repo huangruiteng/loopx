@@ -920,6 +920,7 @@ def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
         "agent_operation_trace_satisfied",
         "agent_operation_trace_missing",
         "orchestrated_driver_lifecycle_satisfied",
+        "orchestrated_driver_counts_as_product_mode",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]

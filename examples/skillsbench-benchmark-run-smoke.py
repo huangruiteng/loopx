@@ -4750,6 +4750,7 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
             "agent_operation_trace_satisfied": False,
             "agent_operation_trace_missing": False,
             "orchestrated_driver_lifecycle_satisfied": False,
+            "orchestrated_driver_counts_as_product_mode": False,
             "agent_bridge_state_read_count": 0,
             "agent_bridge_state_write_count": 0,
             "agent_bridge_todo_closeout_count": 0,
@@ -4799,6 +4800,9 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
         driver_contract = driver_compact["product_mode_lifecycle_contract"]
         assert driver_contract["satisfied"] is True, driver_compact
         assert driver_contract["countable_treatment"] is True, driver_compact
+        assert (
+            driver_contract["orchestrated_driver_counts_as_product_mode"] is True
+        ), driver_contract
         assert driver_contract["state_read_count"] == 1, driver_compact
         assert driver_contract["state_write_count"] == 3, driver_compact
         assert driver_contract["execution_style"] == (
@@ -4820,6 +4824,58 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
         assert "skillsbench_product_mode_lifecycle_missing" not in driver_compact[
             "failure_attribution_labels"
         ], driver_compact
+        prompt_timeout_controller_trace = dict(driver_controller_trace)
+        prompt_timeout_controller_trace.update(
+            {
+                "remote_command_file_bridge_agent_command_configured": True,
+                "remote_command_file_bridge_agent_command_instrumented": False,
+                "remote_command_file_bridge_agent_operation_trace_required": True,
+                "remote_command_file_bridge_agent_operation_trace_satisfied": False,
+                "remote_command_file_bridge_agent_operation_trace_status": (
+                    "agent_operation_trace_missing"
+                ),
+                "remote_command_file_bridge_agent_operation_trace_count": 0,
+                "remote_command_file_bridge_agent_request_count": 0,
+                "remote_command_file_bridge_agent_loopx_cli_call_count": 0,
+                "remote_command_file_bridge_agent_loopx_state_read_count": 0,
+                "remote_command_file_bridge_agent_loopx_state_write_count": 0,
+                "remote_command_file_bridge_agent_todo_closeout_count": 0,
+                "remote_command_file_bridge_agent_refresh_state_count": 0,
+                "remote_command_file_bridge_agent_quota_spend_slot_count": 0,
+            }
+        )
+        prompt_timeout_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=prompt_timeout_controller_trace,
+            )
+        )
+        assert prompt_timeout_compact is not None
+        prompt_timeout_contract = prompt_timeout_compact[
+            "product_mode_lifecycle_contract"
+        ]
+        assert (
+            prompt_timeout_contract["orchestrated_driver_lifecycle_satisfied"] is True
+        )
+        assert (
+            prompt_timeout_contract["orchestrated_driver_counts_as_product_mode"]
+            is False
+        ), prompt_timeout_contract
+        assert prompt_timeout_contract["agent_operation_trace_required"] is True
+        assert prompt_timeout_contract["agent_operation_trace_missing"] is True
+        assert prompt_timeout_contract["countable_treatment"] is False, (
+            prompt_timeout_compact
+        )
+        assert prompt_timeout_contract["closeout_satisfied"] is False
+        assert (
+            "skillsbench_product_mode_uncountable_treatment"
+            in prompt_timeout_compact["failure_attribution_labels"]
+        ), prompt_timeout_compact
+        assert (
+            "skillsbench_remote_bridge_agent_operation_trace_missing"
+            in prompt_timeout_compact["failure_attribution_labels"]
+        ), prompt_timeout_compact
         external_agent_controller_trace = dict(driver_controller_trace)
         external_agent_controller_trace.update(
             {
@@ -4911,6 +4967,12 @@ def test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted() -> None:
         assert (
             orchestrated_no_request_contract[
                 "orchestrated_driver_lifecycle_satisfied"
+            ]
+            is True
+        ), orchestrated_no_request_contract
+        assert (
+            orchestrated_no_request_contract[
+                "orchestrated_driver_counts_as_product_mode"
             ]
             is True
         ), orchestrated_no_request_contract
@@ -6053,6 +6115,7 @@ def test_skillsbench_product_mode_pass_clears_generic_runner_error() -> None:
             "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
             "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
             "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
+            "remote_command_file_bridge_agent_command_instrumented": True,
             "remote_command_file_bridge_agent_operation_trace_required": True,
             "remote_command_file_bridge_agent_operation_trace_satisfied": False,
             "remote_command_file_bridge_agent_operation_trace_status": (

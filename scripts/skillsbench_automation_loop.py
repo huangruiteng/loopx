@@ -2256,6 +2256,15 @@ def _runner_prerequisite_failure_attribution(
         and count("remote_command_file_bridge_driver_lifecycle_loopx_state_write_count")
         > 0
     )
+    orchestrated_driver_counts_as_product_mode = bool(
+        orchestrated_driver_lifecycle_satisfied
+        and (
+            value.get("remote_command_file_bridge_agent_operation_trace_required")
+            is not True
+            or value.get("remote_command_file_bridge_agent_command_instrumented")
+            is True
+        )
+    )
 
     if (
         value.get("benchflow_setup_stall_timeout_triggered") is True
@@ -2326,7 +2335,7 @@ def _runner_prerequisite_failure_attribution(
 
     if (
         value.get("remote_command_file_bridge_agent_operation_trace_required") is True
-        and not orchestrated_driver_lifecycle_satisfied
+        and not orchestrated_driver_counts_as_product_mode
         and value.get("remote_command_file_bridge_agent_operation_trace_satisfied")
         is False
     ):

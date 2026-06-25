@@ -2772,9 +2772,19 @@ def build_skillsbench_benchflow_result_benchmark_run(
         )
         is True
     )
+    orchestrated_driver_counts_as_product_mode = bool(
+        orchestrated_driver_lifecycle_satisfied
+        and (
+            not remote_agent_operation_trace_required_raw
+            or controller_counters.get(
+                "remote_command_file_bridge_agent_command_instrumented"
+            )
+            is True
+        )
+    )
     remote_agent_operation_trace_required = bool(
         remote_agent_operation_trace_required_raw
-        and not orchestrated_driver_lifecycle_satisfied
+        and not orchestrated_driver_counts_as_product_mode
     )
     remote_agent_operation_trace_satisfied = (
         controller_counters.get(
@@ -2867,7 +2877,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
     )
     product_mode_lifecycle_closeout_satisfied = bool(
         not product_mode_lifecycle_closeout_required
-        or orchestrated_driver_lifecycle_satisfied
+        or orchestrated_driver_counts_as_product_mode
         or agent_bridge_closeout_satisfied
     )
     product_mode_lifecycle_satisfied = bool(
@@ -2903,6 +2913,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "agent_operation_trace_missing": remote_agent_operation_trace_missing,
         "orchestrated_driver_lifecycle_satisfied": (
             orchestrated_driver_lifecycle_satisfied
+        ),
+        "orchestrated_driver_counts_as_product_mode": (
+            orchestrated_driver_counts_as_product_mode
         ),
         "agent_bridge_state_read_count": agent_bridge_lifecycle_read_count,
         "agent_bridge_state_write_count": agent_bridge_lifecycle_write_count,
