@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 from urllib.parse import parse_qs, urlparse
 
-from .todo_contract import (
+from ...todo_contract import (
     TODO_STATUS_BLOCKED,
     TODO_STATUS_DEFERRED,
     TODO_STATUS_DONE,
@@ -2575,7 +2575,7 @@ def sync_loopx_todos_to_lark_kanban(
     execute: bool = False,
     runner: CommandRunner = default_subprocess_runner,
 ) -> dict[str, Any]:
-    from .todos import resolve_todo_state_path, section_bounds, todo_blocks, todo_priority_prefix
+    from ...todos import resolve_todo_state_path, section_bounds, todo_blocks, todo_priority_prefix
 
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,

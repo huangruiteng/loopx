@@ -64,11 +64,12 @@ loopx doctor
 ## Lark Or Feishu Reply Cards
 
 Chat gateways that turn LoopX work into Lark or Feishu replies should keep
-message rendering separate from message sending. `loopx.lark_message_card`
-provides a public-safe card payload builder for Markdown replies:
+message rendering separate from message sending.
+`loopx.capabilities.lark.message_card` provides a public-safe card payload
+builder for Markdown replies:
 
 ```python
-from loopx.lark_message_card import build_lark_markdown_reply_card
+from loopx.capabilities.lark.message_card import build_lark_markdown_reply_card
 
 card = build_lark_markdown_reply_card(
     "**Done**\n- Validated the bounded change",
