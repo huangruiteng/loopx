@@ -89,6 +89,17 @@ def assert_same_claimed_agent_is_serialized() -> None:
     assert lanes["codex-devbox"]["runnable_todo_ids"] == ["todo_dev_docs"], lanes
     assert lanes["codex-devbox"]["waiting_todo_ids"] == ["todo_dev_src"], lanes
     assert lanes["codex-side-ui"]["runnable_todo_ids"] == ["todo_side_ui"], lanes
+    handoffs = {item["todo_id"]: item for item in dispatch["worker_handoffs"]}
+    assert set(handoffs) == {"todo_dev_docs", "todo_side_ui"}, handoffs
+    docs_handoff = handoffs["todo_dev_docs"]
+    assert docs_handoff["schema_version"] == "scheduler_worker_handoff_v0", docs_handoff
+    assert docs_handoff["agent_lane"] == "codex-devbox", docs_handoff
+    assert docs_handoff["quota_guard_command"] == (
+        "loopx --format json quota should-run "
+        "--goal-id scheduler-agent-lane-smoke --agent-id codex-devbox"
+    ), docs_handoff
+    assert "Todo: todo_dev_docs" in docs_handoff["handoff_text"], docs_handoff
+    assert "Write scopes: docs/**" in docs_handoff["handoff_text"], docs_handoff
     waiting = {item["todo_id"]: item for item in plan["waiting_candidates"]}
     assert waiting["todo_dev_src"]["reason_codes"] == ["agent_lane_capacity"], waiting
     assert waiting["todo_dev_src"]["conflicts_with"] == ["todo_dev_docs"], waiting

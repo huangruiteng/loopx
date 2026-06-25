@@ -49,6 +49,9 @@ def render_scheduler_plan_chat_text(payload: dict[str, Any], *, max_chars: int =
     if lane_lines:
         lines.append("Lanes:")
         lines.extend(lane_lines)
+    handoff_text = _worker_handoff_summary(dispatch.get("worker_handoffs"))
+    if handoff_text:
+        lines.append(f"Worker handoffs: {handoff_text}")
     step_lines = _scheduler_step_lines(dispatch.get("developer_steps"))
     if step_lines:
         lines.append("Next steps:")
@@ -126,3 +129,18 @@ def _scheduler_step_lines(value: Any) -> list[str]:
         label = f"{kind} {todo_id}".strip()
         lines.append(f"- {label}: {command}")
     return lines
+
+
+def _worker_handoff_summary(value: Any) -> str:
+    if not isinstance(value, list):
+        return ""
+    parts: list[str] = []
+    for handoff in value[:6]:
+        if not isinstance(handoff, dict):
+            continue
+        todo_id = str(handoff.get("todo_id") or handoff.get("candidate_key") or "").strip()
+        if not todo_id:
+            continue
+        lane = str(handoff.get("agent_lane") or "").strip()
+        parts.append(f"{todo_id}->{lane}" if lane else todo_id)
+    return ", ".join(parts)

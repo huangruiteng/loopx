@@ -217,6 +217,16 @@ def _append_dispatch_plan_lines(lines: list[str], dispatch_plan: Any) -> None:
             command = str(step.get("command") or "").strip()
             suffix = f" todo_id={todo_id}" if todo_id else ""
             lines.append(f"  - {label}{suffix}: `{command}`")
+    handoffs = dispatch_plan.get("worker_handoffs")
+    if isinstance(handoffs, list) and handoffs:
+        lines.append("- worker_handoffs:")
+        for handoff in handoffs[:8]:
+            if not isinstance(handoff, dict):
+                continue
+            todo_id = str(handoff.get("todo_id") or handoff.get("candidate_key") or "").strip()
+            lane = str(handoff.get("agent_lane") or "").strip()
+            suffix = f" lane={lane}" if lane else ""
+            lines.append(f"  - {todo_id}{suffix}")
 
 
 def _append_candidate_lines(lines: list[str], heading: str, items: Any) -> None:
@@ -472,6 +482,7 @@ def _dispatch_plan(
             waiting_candidates=waiting_candidates,
             blocked_candidates=blocked_candidates,
         ),
+        "worker_handoffs": _worker_handoffs(goal_id=goal_id, runnable_batch=runnable_batch),
         "developer_steps": _developer_steps(
             developer_commands=developer_commands,
             runnable_batch=runnable_batch,
@@ -539,6 +550,71 @@ def _agent_lane_summaries(
     for item in blocked_candidates:
         ensure_lane(item)["blocked_todo_ids"].extend(_candidate_refs([item]))
     return list(lanes.values())
+
+
+def _worker_handoffs(*, goal_id: str, runnable_batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    handoffs: list[dict[str, Any]] = []
+    for item in runnable_batch:
+        todo_id = str(item.get("todo_id") or item.get("candidate_key") or "").strip()
+        if not todo_id:
+            continue
+        lane = str(item.get("agent_lane") or item.get("claimed_by") or "").strip()
+        payload: dict[str, Any] = {
+            "schema_version": "scheduler_worker_handoff_v0",
+            "goal_id": goal_id or None,
+            "todo_id": todo_id,
+            "candidate_key": item.get("candidate_key"),
+            "agent_lane": lane or None,
+            "safety_class": item.get("safety_class"),
+            "required_write_scopes": item.get("required_write_scopes") or [],
+            "required_decision_scopes": item.get("required_decision_scopes") or [],
+            "handoff_text": _worker_handoff_text(goal_id=goal_id, item=item, agent_lane=lane),
+        }
+        if goal_id and lane:
+            payload["quota_guard_command"] = _shell_join(
+                [
+                    "loopx",
+                    "--format",
+                    "json",
+                    "quota",
+                    "should-run",
+                    "--goal-id",
+                    goal_id,
+                    "--agent-id",
+                    lane,
+                ]
+            )
+            payload["status_command"] = _shell_join(["loopx", "--format", "json", "status", "--agent-id", lane])
+        if item.get("claim_command"):
+            payload["claim_command"] = item.get("claim_command")
+        handoffs.append({key: value for key, value in payload.items() if value is not None})
+    return handoffs
+
+
+def _worker_handoff_text(*, goal_id: str, item: dict[str, Any], agent_lane: str) -> str:
+    todo_id = str(item.get("todo_id") or item.get("candidate_key") or "").strip()
+    lines = [
+        "LoopX worker handoff",
+        f"Goal: {goal_id or '<unknown>'}",
+        f"Todo: {todo_id}",
+    ]
+    if agent_lane:
+        lines.append(f"Agent lane: {agent_lane}")
+    text = str(item.get("text") or "").strip()
+    if text:
+        lines.append(f"Task: {text}")
+    safety_class = str(item.get("safety_class") or "").strip()
+    if safety_class:
+        lines.append(f"Safety: {safety_class}")
+    write_scopes = item.get("required_write_scopes")
+    if isinstance(write_scopes, list) and write_scopes:
+        lines.append("Write scopes: " + ", ".join(str(scope) for scope in write_scopes))
+    decision_scopes = item.get("required_decision_scopes")
+    if isinstance(decision_scopes, list) and decision_scopes:
+        lines.append(f"Decision scopes: {len(decision_scopes)} required")
+    lines.append("Before work: run quota/status guard for this lane.")
+    lines.append("After work: update or complete the todo with public-safe evidence.")
+    return compact_markdown("\n".join(lines), max_chars=700, suffix="...")
 
 
 def _developer_steps(

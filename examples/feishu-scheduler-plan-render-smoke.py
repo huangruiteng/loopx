@@ -33,6 +33,13 @@ def assert_dispatch_plan_renders_operable_summary() -> None:
                         "waiting_todo_ids": ["todo_later"],
                     }
                 ],
+                "worker_handoffs": [
+                    {
+                        "todo_id": "todo_docs",
+                        "agent_lane": "agent",
+                        "handoff_text": "LoopX worker handoff\nTodo: todo_docs",
+                    }
+                ],
                 "developer_steps": [
                     {
                         "kind": "quota_guard",
@@ -53,6 +60,7 @@ def assert_dispatch_plan_renders_operable_summary() -> None:
     assert "Runnable: todo_docs, todo_ui" in plan_text, plan_text
     assert "Waiting: agent_lane_capacity=1" in plan_text, plan_text
     assert "- agent: run=todo_docs; wait=todo_later" in plan_text, plan_text
+    assert "Worker handoffs: todo_docs->agent" in plan_text, plan_text
     assert "claim_runnable todo_docs" in plan_text, plan_text
 
 
