@@ -263,6 +263,89 @@ def assert_unscoped_user_gate_remains_global() -> None:
     assert "agent_scoped_user_gate_override" not in payload, payload
 
 
+def unrelated_gate_status_payload() -> dict:
+    publication_gate = todo_item(
+        todo_id="todo_publication_gate",
+        text="Grant GitHub publication path for the LoopX card reply branch.",
+        role="user",
+        task_class="user_gate",
+        action_kind="github_publication_permission",
+    )
+    publication_gate["unblocks_todo_id"] = "todo_publish_card_reply"
+    feishu_request = todo_item(
+        todo_id="todo_feishu_ping",
+        text="Handle Feishu bot request and reply to message_id=om_ping when done. Request: 你还在吗",
+        claimed_by="codex-main-control",
+        action_kind="feishu_user_request",
+    )
+    return {
+        "ok": True,
+        "goal_count": 1,
+        "run_count": 0,
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "status": "active_state_user_todo",
+                    "waiting_on": "controller",
+                    "severity": "action",
+                    "source": "active_state",
+                    "recommended_action": "Grant GitHub publication path.",
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 1440,
+                        "spent_slots": 0,
+                        "state": "operator_gate",
+                        "blocked_action_scope": "gated_delivery",
+                        "safe_bypass_allowed": True,
+                        "safe_bypass_policy": (
+                            "Only the gated path is blocked; independent public-safe "
+                            "agent work may continue."
+                        ),
+                        "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
+                    },
+                    "user_todos": todo_summary(publication_gate, source_section="User Todo"),
+                    "agent_todos": todo_summary(feishu_request, source_section="Agent Todo"),
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": "active",
+                    "adapter_kind": "fixture_adapter_v0",
+                    "adapter_status": "connected",
+                    "coordination": {
+                        "primary_agent": "codex-main-control",
+                        "registered_agents": ["codex-main-control"],
+                    },
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+
+
+def assert_unrelated_user_gate_allows_feishu_fallback() -> None:
+    payload = build_quota_should_run(
+        unrelated_gate_status_payload(),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+    )
+    assert payload["should_run"] is True, payload
+    assert payload["decision"] == "safe_bypass_user_gate_fallback", payload
+    assert payload["actionable_by_codex"] is True, payload
+    assert payload["interaction_contract"]["agent_channel"]["delivery_allowed"] is True, payload
+    assert payload["interaction_contract"]["agent_channel"]["must_attempt"] is True, payload
+    assert payload["execution_obligation"]["kind"] == "scoped_user_gate_fallback", payload
+    assert payload["agent_lane_next_action"]["todo_id"] == "todo_feishu_ping", payload
+    assert "om_ping" in payload["recommended_action"], payload
+
+
 def assert_agent_without_advancement_candidate_enters_scope_wait() -> None:
     payload = build_quota_should_run(
         scoped_no_candidate_status_payload(),
@@ -312,6 +395,7 @@ def main() -> int:
     assert_other_agent_user_gate_does_not_block_current_agent()
     assert_target_agent_still_blocks_on_its_user_gate()
     assert_unscoped_user_gate_remains_global()
+    assert_unrelated_user_gate_allows_feishu_fallback()
     assert_agent_without_advancement_candidate_enters_scope_wait()
     print("quota-agent-scoped-user-gate-smoke ok")
     return 0
