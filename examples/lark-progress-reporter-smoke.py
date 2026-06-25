@@ -52,6 +52,11 @@ def main() -> int:
                     {
                         "todo_id": "todo_gate",
                         "text": "Approve the exact external write.",
+                        "decision_scope": {
+                            "kind": "write_scope",
+                            "granularity": "project",
+                            "scope_key": "docs/**",
+                        },
                     }
                 ]
             },
@@ -63,6 +68,9 @@ def main() -> int:
     assert user_gate.summary.startswith("任务需要你确认"), user_gate.summary
     assert user_gate.key_event is True, user_gate
     assert [action.action_id for action in user_gate.actions][:2] == ["approve_continue", "reject"], user_gate.actions
+    feed_item = user_gate.to_operator_feed_item()
+    assert feed_item["schema_version"] == "loopx_operator_feed_item_v0", feed_item
+    assert feed_item["decision_scope"]["scope_key"] == "docs/**", feed_item
 
     running = build_progress_notification(
         todo_id="todo_abc",
