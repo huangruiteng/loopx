@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import io
 import subprocess
 import sys
 import tempfile
@@ -994,6 +995,120 @@ time.sleep(30)
         assert reverse_timeout["agent_operations_jsonl"] == ""
         assert reverse_timeout["agent_operations_raw_material_recorded"] is False
         assert reverse_timeout["raw_task_text_recorded"] is False
+        idle_bridge = Path(tmp) / "post-action-idle-bridge"
+        idle_bridge.write_text(
+            """#!/usr/bin/env python3
+import json
+import sys
+
+payload = json.loads(sys.stdin.read() or "{}")
+if "operations" in payload:
+    print(json.dumps({
+        "schema_version": "skillsbench_remote_command_file_bridge_probe_response_v0",
+        "ready": True,
+        "stage": "complete",
+        "operations": [
+            {"kind": "exec", "status": "ok", "exit_code_zero": True},
+            {"kind": "write_file", "status": "ok"},
+            {"kind": "read_file", "status": "ok", "content_match": True},
+            {"kind": "cleanup", "status": "ok"},
+        ],
+        "raw_command_recorded": False,
+        "raw_stdout_recorded": False,
+        "raw_stderr_recorded": False,
+        "raw_task_text_recorded": False,
+        "raw_logs_recorded": False,
+        "raw_trajectory_recorded": False,
+        "credential_values_recorded": False,
+        "host_paths_recorded": False,
+        "remote_paths_recorded": False,
+        "upload_performed": False,
+        "submit_performed": False,
+    }))
+else:
+    print("{}")
+""",
+            encoding="utf-8",
+        )
+        idle_bridge.chmod(0o755)
+        idle_codex = Path(tmp) / "post-action-idle-codex"
+        idle_codex.write_text(
+            """#!/usr/bin/env python3
+import json
+import re
+import subprocess
+import sys
+import time
+
+prompt = sys.argv[-1] if sys.argv else ""
+match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
+assert match, prompt
+subprocess.run(
+    match.group(1),
+    input=json.dumps({
+        "operation": "exec",
+        "cwd": "/app",
+        "command": "python - <<'PY'\\nprint('task-facing')\\nPY",
+        "timeout_sec": 10,
+    }),
+    text=True,
+    shell=True,
+    check=True,
+)
+time.sleep(30)
+""",
+            encoding="utf-8",
+        )
+        idle_codex.chmod(0o755)
+        idle_trace_dir = Path(tmp) / "post-action-idle-traces"
+        idle_relay = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(
+                codex_bin=str(idle_codex),
+                sandbox="workspace-write",
+                route="loopx-product-mode",
+                dataset="skillsbench-v1.1",
+                task_id="demo-task",
+                timeout_sec=30,
+                first_action_timeout_sec=1,
+                bridge_idle_timeout_sec=1,
+                worker_public_trace_dir=str(idle_trace_dir),
+                remote_command_file_bridge_command=str(idle_bridge),
+                remote_command_file_bridge_agent_command=str(idle_bridge),
+            )
+        )
+        try:
+            idle_relay._run_codex(
+                "LoopX demo prompt.",
+                session={"cwd": str(Path(tmp))},
+                session_id="idle-demo",
+                stdout=io.StringIO(),
+            )
+        except TimeoutError as exc:
+            assert "bridge idle timeout" in str(exc), exc
+        else:
+            raise AssertionError("expected bridge idle timeout")
+        idle_traces = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in idle_trace_dir.glob("*.compact.json")
+        ]
+        idle_agent_ops = [
+            trace
+            for trace in idle_traces
+            if trace.get("trace_kind") == "remote_command_file_bridge_agent_operations"
+        ]
+        assert len(idle_agent_ops) == 1, idle_traces
+        idle_counts = idle_agent_ops[0]["remote_command_file_bridge_agent_operations"]
+        assert idle_counts["request_count"] == 1, idle_counts
+        assert idle_counts["task_facing_operation_count"] == 1, idle_counts
+        idle_failures = [
+            trace
+            for trace in idle_traces
+            if trace.get("trace_kind") == "codex_exec_process_failure"
+        ]
+        assert len(idle_failures) == 1, idle_traces
+        assert idle_failures[0]["codex_exec_process"]["failure_category"] == (
+            "codex_exec_bridge_idle_timeout"
+        )
         preflight_plan = {
             "host_local_acp_relay_trace_dir": str(Path(tmp) / "preflight-traces"),
             "runner_prerequisites": {},

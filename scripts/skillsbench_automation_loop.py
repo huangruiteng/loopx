@@ -736,6 +736,8 @@ def _host_local_acp_launch_command(
                     int(getattr(args, "local_codex_first_action_timeout_sec", 0) or 0),
                 )
             ),
+            "--bridge-idle-timeout-sec",
+            str(_effective_local_codex_bridge_idle_timeout_sec(args)),
         ]
     )
     if args.host_local_acp_launch and args.route != "codex-app-server-goal-baseline":
@@ -847,6 +849,16 @@ def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
     if configured == DEFAULT_TIMEOUT_SEC and idle_timeout > 0:
         return min(configured, idle_timeout)
     return configured
+
+
+def _effective_local_codex_bridge_idle_timeout_sec(args: argparse.Namespace) -> int:
+    configured = max(
+        0,
+        int(getattr(args, "local_codex_bridge_idle_timeout_sec", 0) or 0),
+    )
+    if configured > 0:
+        return configured
+    return max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
 
 
 def _host_local_acp_target_env(agent_env: object) -> dict[str, str]:
@@ -7556,6 +7568,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Optional watchdog for the first sandbox bridge operation from a "
             "host-local Codex turn. 0 disables the watchdog."
+        ),
+    )
+    parser.add_argument(
+        "--local-codex-bridge-idle-timeout-sec",
+        type=int,
+        default=0,
+        help=(
+            "Optional watchdog after the most recent sandbox bridge operation "
+            "from a host-local Codex turn. 0 disables the watchdog."
         ),
     )
     parser.add_argument(

@@ -6,6 +6,7 @@ import os
 import re
 import selectors
 import shlex
+import signal
 import subprocess
 import sys
 import tempfile
@@ -132,6 +133,8 @@ def _codex_exec_failure_category(
         return "codex_usage_limit"
     if "codex_exec_first_action_timeout" in text:
         return "codex_exec_first_action_timeout"
+    if "codex_exec_bridge_idle_timeout" in text:
+        return "codex_exec_bridge_idle_timeout"
     if "unexpected argument" in text or "unrecognized option" in text:
         return "codex_cli_argument_incompatible"
     if "api.openai.com" in text or "chatgpt.com" in text:
@@ -160,6 +163,7 @@ class CodexExecConfig:
     worker_script: str | None = None
     stream_heartbeat_interval_sec: float = 120.0
     first_action_timeout_sec: float = 0.0
+    bridge_idle_timeout_sec: float = 0.0
     reasoning_effort: str | None = "high"
     worker_public_trace_dir: str | None = None
     remote_command_file_bridge_command: str | None = None
@@ -395,6 +399,7 @@ class SkillsBenchLocalAcpRelay:
                         stderr=stderr_file,
                         text=True,
                         env=codex_env,
+                        start_new_session=True,
                     )
                     deadline = time.monotonic() + self._config.timeout_sec
                     first_action_deadline = 0.0
@@ -407,26 +412,40 @@ class SkillsBenchLocalAcpRelay:
                             + max(1.0, self._config.first_action_timeout_sec)
                         )
                     first_action_seen = not bool(first_action_deadline)
+                    bridge_idle_timeout_sec = max(
+                        0.0,
+                        float(self._config.bridge_idle_timeout_sec or 0.0),
+                    )
+                    last_bridge_summary_size = 0
+                    last_bridge_activity_at = time.monotonic()
                     next_heartbeat = (
                         time.monotonic()
                         + max(1.0, self._config.stream_heartbeat_interval_sec)
                     )
                     while proc.poll() is None:
                         now = time.monotonic()
-                        if not first_action_seen and bridge_summary_path is not None:
+                        if bridge_summary_path is not None:
                             try:
-                                first_action_seen = (
-                                    bridge_summary_path.stat().st_size > 0
+                                current_bridge_summary_size = (
+                                    bridge_summary_path.stat().st_size
                                 )
                             except OSError:
-                                first_action_seen = False
+                                current_bridge_summary_size = 0
+                            if current_bridge_summary_size > last_bridge_summary_size:
+                                last_bridge_summary_size = current_bridge_summary_size
+                                last_bridge_activity_at = now
+                                first_action_seen = True
+                            elif (
+                                not first_action_seen
+                                and current_bridge_summary_size > 0
+                            ):
+                                first_action_seen = True
                         if (
                             not first_action_seen
                             and first_action_deadline
                             and now >= first_action_deadline
                         ):
-                            proc.kill()
-                            proc.wait(timeout=5)
+                            self._terminate_codex_process(proc)
                             self._publish_codex_exec_failure_trace(
                                 stage="first_action_timeout",
                                 returncode=124,
@@ -441,9 +460,32 @@ class SkillsBenchLocalAcpRelay:
                                 failure_category="codex_exec_first_action_timeout",
                             )
                             raise TimeoutError("local codex first action timeout")
+                        if (
+                            first_action_seen
+                            and bridge_summary_path is not None
+                            and bridge_idle_timeout_sec > 0
+                            and now - last_bridge_activity_at >= bridge_idle_timeout_sec
+                        ):
+                            self._terminate_codex_process(proc)
+                            self._publish_remote_bridge_agent_operations_trace(
+                                bridge_summary_path=bridge_summary_path,
+                            )
+                            self._publish_codex_exec_failure_trace(
+                                stage="bridge_idle_timeout",
+                                returncode=124,
+                                stdout_text="",
+                                stderr_text="codex_exec_bridge_idle_timeout\n",
+                                final_message_present=output_path.exists(),
+                                final_message_bytes=(
+                                    output_path.stat().st_size
+                                    if output_path.exists()
+                                    else 0
+                                ),
+                                failure_category="codex_exec_bridge_idle_timeout",
+                            )
+                            raise TimeoutError("local codex bridge idle timeout")
                         if now >= deadline:
-                            proc.kill()
-                            proc.wait(timeout=5)
+                            self._terminate_codex_process(proc)
                             raise subprocess.TimeoutExpired(
                                 cmd,
                                 self._config.timeout_sec,
@@ -473,6 +515,10 @@ class SkillsBenchLocalAcpRelay:
                     if stderr_path.exists()
                     else ""
                 )
+                if bridge_summary_path is not None:
+                    self._publish_remote_bridge_agent_operations_trace(
+                        bridge_summary_path=bridge_summary_path,
+                    )
                 self._publish_codex_exec_failure_trace(
                     stage="timeout",
                     returncode=124,
@@ -529,6 +575,38 @@ class SkillsBenchLocalAcpRelay:
                     bridge_summary_path=bridge_summary_path,
                 )
             return response or "local codex returned an empty final message"
+
+    def _terminate_codex_process(
+        self,
+        proc: subprocess.Popen[str],
+        *,
+        grace_sec: float = 5.0,
+    ) -> None:
+        if proc.poll() is not None:
+            return
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except (AttributeError, ProcessLookupError, PermissionError, OSError):
+            try:
+                proc.terminate()
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        try:
+            proc.wait(timeout=grace_sec)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (AttributeError, ProcessLookupError, PermissionError, OSError):
+            try:
+                proc.kill()
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        try:
+            proc.wait(timeout=grace_sec)
+        except subprocess.TimeoutExpired:
+            pass
 
     def _consume_remote_bridge_for_solver(self) -> dict[str, Any]:
         return run_skillsbench_remote_command_file_bridge_probe(
