@@ -6,6 +6,7 @@ from typing import Any
 
 from .message_card import compact_markdown
 from .scheduler_plan_reporter import (
+    render_scheduler_handoffs_chat_text,
     render_scheduler_next_batch_chat_text,
     render_scheduler_plan_chat_text,
 )
@@ -21,6 +22,7 @@ def bridge_help_text() -> str:
             "/status - show compact LoopX status",
             "/plan - show safe parallel scheduler plan",
             "/next - show next dispatchable scheduler batch",
+            "/handoffs [todo_id] - show copyable worker handoff lifecycle steps",
             "/check - run LoopX boundary check",
             "/ask <task> - create a LoopX todo and receive progress cards",
         ]
@@ -116,6 +118,33 @@ def loopx_scheduler_next_batch_text(
     )
 
 
+def loopx_scheduler_handoffs_text(
+    *,
+    run_json: Callable[..., dict[str, Any]],
+    loopx_bin: str,
+    registry: str,
+    goal_id: str,
+    agent_id: str,
+    todo_id: str = "",
+    max_chars: int,
+    timeout: float = 45,
+) -> str:
+    return render_scheduler_handoffs_chat_text(
+        run_json(
+            _scheduler_command(
+                loopx_bin=loopx_bin,
+                registry=registry,
+                scheduler_command="handoffs",
+                goal_id=goal_id,
+                agent_id=agent_id,
+                todo_id=todo_id,
+            ),
+            timeout=timeout,
+        ),
+        max_chars=max_chars,
+    )
+
+
 def _scheduler_command(
     *,
     loopx_bin: str,
@@ -123,6 +152,7 @@ def _scheduler_command(
     scheduler_command: str,
     goal_id: str,
     agent_id: str,
+    todo_id: str = "",
 ) -> list[str]:
     command = [
         loopx_bin,
@@ -137,4 +167,6 @@ def _scheduler_command(
     ]
     if agent_id:
         command.extend(["--agent-id", agent_id])
+    if todo_id:
+        command.extend(["--todo-id", todo_id])
     return command

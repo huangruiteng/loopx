@@ -28,6 +28,7 @@ from loopx.capabilities.lark.bridge_cards import card_for_notification
 from loopx.capabilities.lark.bridge_commands import (
     bridge_help_text,
     loopx_check_text,
+    loopx_scheduler_handoffs_text,
     loopx_scheduler_next_batch_text,
     loopx_scheduler_plan_text,
     loopx_status_text,
@@ -504,16 +505,12 @@ def add_loopx_todo(text: str, message_id: str) -> tuple[str, str, str]:
     return match.group(0), clean, request_lane
 
 
-def scheduler_next_batch_snapshot(*, max_chars: int = 700, timeout: float = 8) -> str:
-    return loopx_scheduler_next_batch_text(
-        run_json=run_json,
-        loopx_bin=LOOPX_BIN,
-        registry=LOOPX_REGISTRY,
-        goal_id=LOOPX_GOAL_ID,
-        agent_id="",
-        max_chars=max_chars,
-        timeout=timeout,
-    )
+def scheduler_snapshot(kind: str, *, todo_id: str = "", max_chars: int = 700, timeout: float = 8) -> str:
+    common = dict(run_json=run_json, loopx_bin=LOOPX_BIN, registry=LOOPX_REGISTRY, goal_id=LOOPX_GOAL_ID)
+    common.update(agent_id="", max_chars=max_chars)
+    if kind == "handoffs":
+        return loopx_scheduler_handoffs_text(**common, todo_id=todo_id, timeout=timeout)
+    return loopx_scheduler_next_batch_text(**common, timeout=timeout)
 
 
 def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
@@ -538,7 +535,10 @@ def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
             max_chars=BOT_MAX_TEXT_CHARS,
         )
     if clean in {"/next", "next"}:
-        return scheduler_next_batch_snapshot(max_chars=BOT_MAX_TEXT_CHARS, timeout=45)
+        return scheduler_snapshot("next-batch", max_chars=BOT_MAX_TEXT_CHARS, timeout=45)
+    command, _, remainder = clean.partition(" ")
+    if command in {"/handoffs", "handoffs"}:
+        return scheduler_snapshot("handoffs", todo_id=remainder.strip(), max_chars=BOT_MAX_TEXT_CHARS, timeout=45)
     if clean in {"/check", "check"}:
         return loopx_check_text(
             run_text=run_text,
@@ -551,7 +551,7 @@ def handle_text(text: str, message_id: str, state: StateStore) -> str | None:
     todo_id, normalized_request, request_lane = add_loopx_todo(request_text, message_id)
     scheduler_summary = ""
     try:
-        scheduler_summary = scheduler_next_batch_snapshot()
+        scheduler_summary = scheduler_snapshot("next-batch")
     except Exception as exc:
         log("scheduler.snapshot.error", todo_id=todo_id, request_lane=request_lane, error=str(exc))
     notification = build_acceptance_notification(
@@ -902,6 +902,7 @@ def self_test() -> int:
     assert extract_text(event) == "/help"
     assert "/plan" in bridge_help_text()
     assert "/next" in bridge_help_text()
+    assert "/handoffs" in bridge_help_text()
     state.track_todo(
         todo_id="todo_test",
         message_id="om_test",

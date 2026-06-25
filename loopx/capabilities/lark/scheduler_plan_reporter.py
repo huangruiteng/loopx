@@ -102,6 +102,65 @@ def render_scheduler_next_batch_chat_text(payload: dict[str, Any], *, max_chars:
     return compact_markdown("\n".join(lines), max_chars=max_chars, suffix="...")
 
 
+def render_scheduler_handoffs_chat_text(payload: dict[str, Any], *, max_chars: int = 1800) -> str:
+    if not isinstance(payload, dict):
+        return "Worker handoffs: unavailable"
+    handoffs = payload.get("worker_handoffs")
+    if not isinstance(handoffs, list):
+        handoffs = []
+    count = payload.get("handoff_count")
+    if count is None:
+        count = len(handoffs)
+    lines = [f"Worker handoffs: {count}"]
+    goal_id = str(payload.get("goal_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip()
+    todo_id = str(payload.get("todo_id") or "").strip()
+    scope_parts = [
+        part
+        for part in (
+            f"goal={goal_id}" if goal_id else "",
+            f"agent={agent_id}" if agent_id else "",
+            f"todo={todo_id}" if todo_id else "",
+        )
+        if part
+    ]
+    if scope_parts:
+        lines.append("Scope: " + " ".join(scope_parts))
+    action = str(payload.get("source_plan_action") or "").strip()
+    if action:
+        lines.append(f"Source action: {action}")
+    if not handoffs:
+        lines.append("No dispatchable worker handoffs were reported.")
+        return compact_markdown("\n".join(lines), max_chars=max_chars, suffix="...")
+    for handoff in handoffs[:4]:
+        if not isinstance(handoff, dict):
+            continue
+        heading = _handoff_heading(handoff)
+        if heading:
+            lines.append(heading)
+        safety = str(handoff.get("safety_class") or "").strip()
+        write_scopes = _scheduler_ids(handoff.get("required_write_scopes"))
+        if safety or write_scopes:
+            details = [
+                part
+                for part in (
+                    f"safety={safety}" if safety else "",
+                    "write=" + ",".join(write_scopes) if write_scopes else "",
+                )
+                if part
+            ]
+            lines.append("  " + " ".join(details))
+        start_lines = _handoff_step_lines(handoff.get("start_steps"), limit=4)
+        if start_lines:
+            lines.append("  Start:")
+            lines.extend("  " + line for line in start_lines)
+        closeout_lines = _handoff_step_lines(handoff.get("closeout_steps"), limit=3)
+        if closeout_lines:
+            lines.append("  Closeout:")
+            lines.extend("  " + line for line in closeout_lines)
+    return compact_markdown("\n".join(lines), max_chars=max_chars, suffix="...")
+
+
 def _scheduler_ids(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -200,6 +259,35 @@ def _worker_slot_summary(value: Any) -> str:
         lane = str(slot.get("agent_lane") or "").strip()
         parts.append(f"{todo_id}->{lane}" if lane else todo_id)
     return ", ".join(parts)
+
+
+def _handoff_heading(value: dict[str, Any]) -> str:
+    todo_id = str(value.get("todo_id") or value.get("candidate_key") or "").strip()
+    if not todo_id:
+        return ""
+    lane = str(value.get("agent_lane") or "").strip()
+    return f"- {todo_id}->{lane}" if lane else f"- {todo_id}"
+
+
+def _handoff_step_lines(value: Any, *, limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    lines: list[str] = []
+    for step in value[:limit]:
+        if not isinstance(step, dict):
+            continue
+        kind = str(step.get("kind") or "").strip()
+        command = str(step.get("command") or step.get("command_template") or "").strip()
+        summary = str(step.get("summary") or step.get("reason") or "").strip()
+        if not kind:
+            continue
+        if command:
+            lines.append(f"- {kind}: {command}")
+        elif summary:
+            lines.append(f"- {kind}: {summary}")
+        else:
+            lines.append(f"- {kind}")
+    return lines
 
 
 def _command_lines(label: str, value: Any, *, limit: int) -> list[str]:

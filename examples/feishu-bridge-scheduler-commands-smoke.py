@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.capabilities.lark.bridge_commands import (  # noqa: E402
     bridge_help_text,
+    loopx_scheduler_handoffs_text,
     loopx_scheduler_next_batch_text,
     loopx_scheduler_plan_text,
 )
@@ -28,6 +29,7 @@ def assert_help_exposes_next_batch_command() -> None:
     text = bridge_help_text()
     assert "/plan - show safe parallel scheduler plan" in text, text
     assert "/next - show next dispatchable scheduler batch" in text, text
+    assert "/handoffs [todo_id] - show copyable worker handoff lifecycle steps" in text, text
 
 
 def assert_scheduler_plan_command_is_stable() -> None:
@@ -120,6 +122,73 @@ def assert_scheduler_next_batch_command_is_stable() -> None:
     ], calls
 
 
+def assert_scheduler_handoffs_command_is_stable() -> None:
+    calls: list[tuple[list[str], float]] = []
+
+    def fake_run_json(args: list[str], *, timeout: float) -> dict[str, Any]:
+        calls.append((args, timeout))
+        return {
+            "schema_version": "scheduler_worker_handoffs_v0",
+            "goal_id": "goal",
+            "todo_id": "todo_docs",
+            "handoff_count": 1,
+            "worker_handoffs": [
+                {
+                    "todo_id": "todo_docs",
+                    "agent_lane": "agent-a",
+                    "safety_class": "local_write",
+                    "required_write_scopes": ["docs/**"],
+                    "start_steps": [
+                        {
+                            "kind": "quota_guard",
+                            "command": "loopx --format json quota should-run --goal-id goal --agent-id agent-a",
+                        },
+                        {"kind": "workspace_isolation", "summary": "use an isolated worktree"},
+                    ],
+                    "closeout_steps": [
+                        {"kind": "focused_validation", "summary": "run focused checks"},
+                        {
+                            "kind": "complete_todo",
+                            "command_template": "loopx todo complete --goal-id goal --todo-id todo_docs",
+                        },
+                    ],
+                }
+            ],
+        }
+
+    text = loopx_scheduler_handoffs_text(
+        run_json=fake_run_json,
+        loopx_bin="loopx",
+        registry="registry.json",
+        goal_id="goal",
+        agent_id="",
+        todo_id="todo_docs",
+        max_chars=1800,
+    )
+    assert "Worker handoffs: 1" in text, text
+    assert "- todo_docs->agent-a" in text, text
+    assert "quota_guard" in text, text
+    assert "complete_todo" in text, text
+    assert calls == [
+        (
+            [
+                "loopx",
+                "--registry",
+                "registry.json",
+                "scheduler",
+                "handoffs",
+                "--format",
+                "json",
+                "--goal-id",
+                "goal",
+                "--todo-id",
+                "todo_docs",
+            ],
+            45,
+        )
+    ], calls
+
+
 def assert_feishu_request_todos_get_stable_parallel_lanes() -> None:
     first_args, first_text, first_lane = build_feishu_request_todo_args(
         request_text="write the docs",
@@ -151,6 +220,7 @@ def main() -> int:
     assert_help_exposes_next_batch_command()
     assert_scheduler_plan_command_is_stable()
     assert_scheduler_next_batch_command_is_stable()
+    assert_scheduler_handoffs_command_is_stable()
     assert_feishu_request_todos_get_stable_parallel_lanes()
     print("feishu bridge scheduler commands smoke ok")
     return 0
