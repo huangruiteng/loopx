@@ -21,8 +21,7 @@ incident report, or launch draft.
   shortest public route from no-clone install to one-message TUI bootstrap and
   proof-capture fixtures.
 - [Architecture](architecture.md): core concepts and control-plane shape.
-- [Integration guide](integration.md): how to connect a project to LoopX,
-  including public-safe Lark or Feishu reply card payloads.
+- [Integration guide](integration.md): how to connect a project to LoopX.
 - [Showcases](showcases/README.md): public-safe cases, reproducible demos, and
   frontend-ready case metadata.
 - [Benchmark developer workflow](benchmark-developer-workflow.md): how to run,
