@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -88,6 +89,14 @@ def _sorted_dict(value: dict[str, Any]) -> dict[str, Any]:
 def event_fingerprint(event: dict[str, Any]) -> str:
     comparable = {key: value for key, value in event.items() if key != "append_sequence"}
     return json.dumps(comparable, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def event_stream_checksum(events: Iterable[dict[str, Any]]) -> str:
+    body = "\n".join(
+        json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        for event in events
+    )
+    return "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 def _require_dict(value: Any, *, field_name: str) -> dict[str, Any]:
@@ -384,6 +393,7 @@ def build_state_projection(
         "goal_id": inferred_goal_id,
         "generated_at": generated_at or now_utc_iso(),
         "source_event_count": len(ordered),
+        "source_checksum": event_stream_checksum(ordered),
         "last_event_id": last_event.get("event_id"),
         "last_append_sequence": last_event.get("append_sequence"),
         "projection_version": STATE_PROJECTION_VERSION,
