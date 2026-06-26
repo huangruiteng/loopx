@@ -25,7 +25,10 @@ from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     run_skillsbench_local_acp_relay_probe,
 )
 from scripts.skillsbench_automation_loop import (  # noqa: E402
+    HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
     _apply_agent_message_only_no_tool_calls_attribution,
+    _effective_benchflow_agent_timeout_sec,
+    _effective_local_codex_exec_timeout_sec,
     _host_local_acp_codex_exec_preflight_command,
     _host_local_acp_docker_bridge_command,
     _host_local_acp_launch_command,
@@ -89,6 +92,21 @@ def main() -> int:
         "AI_PORT": "2022",
         "GOAL_HARNESS_REMOTE_BENCH_ROOT": "/tmp/bench",
     }
+    timeout_args = SimpleNamespace(
+        agent_idle_timeout=7200,
+        host_local_acp_launch=True,
+        local_codex_exec_timeout_sec=21600,
+    )
+    assert _effective_local_codex_exec_timeout_sec(timeout_args) == 21600
+    assert _effective_benchflow_agent_timeout_sec(timeout_args) == (
+        21600 + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC
+    )
+    non_host_local_timeout_args = SimpleNamespace(
+        agent_idle_timeout=7200,
+        host_local_acp_launch=False,
+        local_codex_exec_timeout_sec=21600,
+    )
+    assert _effective_benchflow_agent_timeout_sec(non_host_local_timeout_args) == 7200
     replaced = _replace_option_value(
         ["relay", "--remote-command-file-bridge-command", "old", "--keep", "x"],
         "--remote-command-file-bridge-command",

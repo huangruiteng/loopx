@@ -855,6 +855,21 @@ def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
     return configured
 
 
+HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC = 60
+
+
+def _effective_benchflow_agent_timeout_sec(args: argparse.Namespace) -> int:
+    requested = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+    if bool(getattr(args, "host_local_acp_launch", False)):
+        local_exec_timeout = _effective_local_codex_exec_timeout_sec(args)
+        if local_exec_timeout > 0:
+            requested = max(
+                requested,
+                local_exec_timeout + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
+            )
+    return requested
+
+
 def _effective_local_codex_bridge_idle_timeout_sec(args: argparse.Namespace) -> int:
     configured = getattr(args, "local_codex_bridge_idle_timeout_sec", None)
     if configured is not None:
@@ -1498,8 +1513,11 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
             compact[field] = value[field]
     for field in (
         "codex_acp_runtime_launch_preflight_rc",
+        "benchflow_agent_timeout_requested_sec",
         "benchflow_agent_timeout_original_sec",
         "benchflow_agent_timeout_effective_sec",
+        "benchflow_agent_timeout_host_local_acp_exec_timeout_sec",
+        "benchflow_agent_timeout_host_local_acp_margin_sec",
         "benchflow_user_loop_recovery_round",
         "benchflow_user_loop_recovery_delta_events",
         "benchflow_user_loop_recovery_delta_tool_calls",
@@ -7030,7 +7048,15 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         prerequisites["benchflow_agent_install_started"] = True
         prerequisites["benchflow_run_stage"] = "agent_install_started"
         original_timeout = getattr(self, "_timeout", None)
-        requested_timeout = max(0, int(args.agent_idle_timeout or 0))
+        requested_timeout = _effective_benchflow_agent_timeout_sec(args)
+        prerequisites["benchflow_agent_timeout_requested_sec"] = requested_timeout
+        if args.host_local_acp_launch:
+            prerequisites["benchflow_agent_timeout_host_local_acp_exec_timeout_sec"] = (
+                _effective_local_codex_exec_timeout_sec(args)
+            )
+            prerequisites["benchflow_agent_timeout_host_local_acp_margin_sec"] = (
+                HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC
+            )
         if (
             isinstance(original_timeout, int)
             and not isinstance(original_timeout, bool)
