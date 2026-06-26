@@ -358,6 +358,7 @@ def _run_codex_payload(
     default_timeout_sec: float,
     prompt_bridge_command: str | None,
     first_action_timeout_sec: float = 0.0,
+    bridge_idle_timeout_sec: float = 0.0,
 ) -> dict[str, Any]:
     args = [str(item) for item in payload.get("args") or []]
     if not args:
@@ -426,16 +427,36 @@ def _run_codex_payload(
                     time.monotonic() + max(1.0, float(first_action_timeout_sec))
                 )
             first_action_seen = not bool(first_action_deadline)
+            bridge_idle_timeout_sec = max(0.0, float(bridge_idle_timeout_sec or 0.0))
+            last_agent_operations_size = 0
+            last_bridge_activity_at = time.monotonic()
             timeout_kind = ""
             while proc.poll() is None:
                 now = time.monotonic()
                 if not first_action_seen and agent_operations_summary_path:
                     try:
-                        first_action_seen = agent_operations_summary_path.stat().st_size > 0
+                        current_agent_operations_size = (
+                            agent_operations_summary_path.stat().st_size
+                        )
                     except OSError:
-                        first_action_seen = False
+                        current_agent_operations_size = 0
+                    if current_agent_operations_size > last_agent_operations_size:
+                        last_agent_operations_size = current_agent_operations_size
+                        last_bridge_activity_at = now
+                        first_action_seen = True
+                    elif current_agent_operations_size > 0:
+                        first_action_seen = True
                 if not first_action_seen and first_action_deadline and now >= first_action_deadline:
                     timeout_kind = "codex_exec_first_action_timeout"
+                    _stop_process_group(proc, sig=signal.SIGTERM)
+                    break
+                if (
+                    first_action_seen
+                    and agent_operations_summary_path is not None
+                    and bridge_idle_timeout_sec > 0
+                    and now - last_bridge_activity_at >= bridge_idle_timeout_sec
+                ):
+                    timeout_kind = "codex_exec_bridge_idle_timeout"
                     _stop_process_group(proc, sig=signal.SIGTERM)
                     break
                 if now >= deadline:
@@ -749,6 +770,7 @@ def main(argv: list[str] | None = None) -> int:
     codex_server.add_argument("--codex-bin", default="codex")
     codex_server.add_argument("--timeout-sec", type=float, default=7200.0)
     codex_server.add_argument("--first-action-timeout-sec", type=float, default=0.0)
+    codex_server.add_argument("--bridge-idle-timeout-sec", type=float, default=0.0)
     codex_server.add_argument("--prompt-bridge-command")
     codex_server.add_argument("--once", action="store_true")
 
@@ -785,6 +807,7 @@ def main(argv: list[str] | None = None) -> int:
                 default_timeout_sec=args.timeout_sec,
                 prompt_bridge_command=args.prompt_bridge_command,
                 first_action_timeout_sec=args.first_action_timeout_sec,
+                bridge_idle_timeout_sec=args.bridge_idle_timeout_sec,
             ),
         )
     if args.command == "serve-json":

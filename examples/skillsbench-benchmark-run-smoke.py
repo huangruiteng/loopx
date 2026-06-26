@@ -178,6 +178,70 @@ def test_reverse_channel_raw_prompt_does_not_require_bridge_first_action() -> No
     assert response["credential_values_recorded"] is False
 
 
+def test_reverse_channel_bridge_idle_timeout_stops_codex_process() -> None:
+    with tempfile.TemporaryDirectory(prefix="reverse-bridge-idle-") as tmp:
+        fake_codex = Path(tmp) / "fake-codex"
+        fake_codex.write_text(
+            """#!/usr/bin/env python3
+import json
+import re
+import subprocess
+import sys
+import time
+
+prompt = sys.stdin.read()
+match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
+assert match, prompt
+subprocess.run(
+    match.group(1),
+    input=json.dumps({
+        "operation": "exec",
+        "cwd": "/app",
+        "command": "python - <<'PY'\\nprint('task-facing')\\nPY",
+        "timeout_sec": 10,
+    }),
+    text=True,
+    shell=True,
+    check=True,
+)
+time.sleep(30)
+""",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o755)
+        start = time.monotonic()
+        response = _run_codex_payload(
+            {
+                "args": ["exec"],
+                "stdin": (
+                    "LoopX bridge action preflight. Your first tool action should "
+                    "be a shell pipeline that sends JSON to the private bridge.\n\n"
+                    "Private bridge command:\ncat >/dev/null"
+                ),
+                "timeout_sec": 20,
+            },
+            codex_bin=str(fake_codex),
+            default_timeout_sec=20,
+            prompt_bridge_command="sh -lc {private_bridge_command_sh}",
+            first_action_timeout_sec=1,
+            bridge_idle_timeout_sec=1,
+        )
+    assert time.monotonic() - start < 8
+    assert response["exit_code"] == 124
+    assert response["stderr"] == "codex_exec_bridge_idle_timeout\n"
+    assert response["raw_task_text_recorded"] is False
+    assert response["credential_values_recorded"] is False
+    records = [
+        json.loads(line)
+        for line in response["agent_operations_jsonl"].splitlines()
+        if line.strip()
+    ]
+    assert len(records) == 1, records
+    assert records[0]["operation_observed"] is True
+    assert records[0]["task_facing_operation"] is True
+    assert records[0]["raw_request_recorded"] is False
+
+
 def test_product_mode_initial_prompt_keeps_task_visible_after_lifecycle_gate() -> None:
     trace = {
         "schema_version": "skillsbench_loopx_controller_trace_v0",
@@ -8775,6 +8839,7 @@ if __name__ == "__main__":
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
     test_reverse_channel_first_action_timeout_stops_codex_process()
     test_reverse_channel_raw_prompt_does_not_require_bridge_first_action()
+    test_reverse_channel_bridge_idle_timeout_stops_codex_process()
     test_product_mode_initial_prompt_keeps_task_visible_after_lifecycle_gate()
     test_skillsbench_final_verifier_timeout_override_records_public_state()
     test_skillsbench_final_verifier_timeout_override_can_extend_timeout()
