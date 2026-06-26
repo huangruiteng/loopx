@@ -1036,6 +1036,60 @@ raise SystemExit(42)
             ]
             == 1
         )
+        exit125_codex = Path(tmp) / "exit125-codex"
+        exit125_codex.write_text(
+            """#!/usr/bin/env python3
+import sys
+
+print("generic host wrapper failure", file=sys.stderr)
+raise SystemExit(125)
+""",
+            encoding="utf-8",
+        )
+        exit125_codex.chmod(0o755)
+        exit125_trace_dir = Path(tmp) / "relay-exit125-traces"
+        exit125_probe = run_skillsbench_local_acp_relay_probe(
+            [
+                sys.executable,
+                str(RELAY_SCRIPT),
+                "--codex-bin",
+                str(exit125_codex),
+                "--route",
+                "loopx-product-mode",
+                "--dataset",
+                "skillsbench-v1.1",
+                "--task-id",
+                "demo-task",
+                "--worker-public-trace-dir",
+                str(exit125_trace_dir),
+            ],
+            timeout_sec=20,
+        )
+        assert exit125_probe["ready"] is False, exit125_probe
+        exit125_failure = json.loads(
+            next(exit125_trace_dir.glob("*.compact.json")).read_text(
+                encoding="utf-8"
+            )
+        )
+        exit125_process = exit125_failure["codex_exec_process"]
+        assert exit125_process["failure_category"] == "codex_exec_exit_125"
+        assert exit125_process["returncode"] == 125
+        assert exit125_process["raw_stderr_recorded"] is False
+        exit125_controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0"
+        }
+        exit125_reducer_plan = {
+            "host_local_acp_relay_trace_dir": str(exit125_trace_dir),
+            "runner_prerequisites": {},
+        }
+        _merge_host_local_acp_relay_trace_summary(
+            exit125_reducer_plan,
+            exit125_controller_trace,
+        )
+        assert (
+            exit125_controller_trace["host_local_acp_codex_exec_failure_category"]
+            == "codex_exec_exit_125"
+        )
         reverse_failing_codex = Path(tmp) / "reverse-failing-codex"
         reverse_failing_codex.write_text(
             """#!/usr/bin/env python3
