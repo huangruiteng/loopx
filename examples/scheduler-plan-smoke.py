@@ -170,6 +170,73 @@ def assert_write_scope_conflict_waits_without_blocking_safe_read() -> None:
     assert waiting["todo_api_doc"]["conflicts_with"] == ["todo_docs"], waiting
 
 
+def assert_recursive_glob_write_scope_conflicts_with_matching_file() -> None:
+    plan = build_scheduler_plan(
+        status_payload(
+            [
+                agent_todo(
+                    "todo_markdown_glob",
+                    "Update markdown docs.",
+                    safety_class="local_write",
+                    required_write_scopes=["docs/**/*.md"],
+                ),
+                agent_todo(
+                    "todo_api_doc",
+                    "Update API docs.",
+                    safety_class="local_write",
+                    required_write_scopes=["docs/api.md"],
+                ),
+                agent_todo(
+                    "todo_src",
+                    "Update source.",
+                    safety_class="local_write",
+                    required_write_scopes=["loopx/scheduler.py"],
+                ),
+            ]
+        ),
+        goal_id=GOAL_ID,
+        max_parallel=3,
+    )
+    assert [item["todo_id"] for item in plan["runnable_batch"]] == [
+        "todo_markdown_glob",
+        "todo_src",
+    ], plan
+    waiting = {item["todo_id"]: item for item in plan["waiting_candidates"]}
+    assert waiting["todo_api_doc"]["reason_codes"] == ["write_scope_conflict"], waiting
+    assert waiting["todo_api_doc"]["conflicts_with"] == ["todo_markdown_glob"], waiting
+
+    basename_plan = build_scheduler_plan(
+        status_payload(
+            [
+                agent_todo(
+                    "todo_api_glob",
+                    "Update API docs by glob.",
+                    safety_class="local_write",
+                    required_write_scopes=["docs/api*.md"],
+                ),
+                agent_todo(
+                    "todo_api_doc",
+                    "Update exact API doc.",
+                    safety_class="local_write",
+                    required_write_scopes=["docs/api.md"],
+                ),
+            ]
+        ),
+        goal_id=GOAL_ID,
+        max_parallel=2,
+    )
+    assert [item["todo_id"] for item in basename_plan["runnable_batch"]] == [
+        "todo_api_glob",
+    ], basename_plan
+    basename_waiting = {item["todo_id"]: item for item in basename_plan["waiting_candidates"]}
+    assert basename_waiting["todo_api_doc"]["reason_codes"] == [
+        "write_scope_conflict",
+    ], basename_waiting
+    assert basename_waiting["todo_api_doc"]["conflicts_with"] == [
+        "todo_api_glob",
+    ], basename_waiting
+
+
 def assert_open_user_gate_blocks_matching_required_decision_scope() -> None:
     plan = build_scheduler_plan(
         status_payload(
@@ -364,6 +431,7 @@ def assert_cli_scheduler_handoffs_render_copyable_worker_packets() -> None:
 def main() -> int:
     assert_disjoint_local_write_and_read_only_parallelize()
     assert_write_scope_conflict_waits_without_blocking_safe_read()
+    assert_recursive_glob_write_scope_conflicts_with_matching_file()
     assert_open_user_gate_blocks_matching_required_decision_scope()
     assert_high_risk_work_is_not_parallelized_by_default()
     assert_cli_scheduler_plan_uses_status_collection()

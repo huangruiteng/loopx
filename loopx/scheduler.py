@@ -810,14 +810,25 @@ def _single_write_scope_conflict(left: str, right: str) -> bool:
 
 
 def _scope_prefix(scope: str) -> str:
+    clean = scope.strip().rstrip("/")
     for suffix in ("/**", "/*"):
-        if scope.endswith(suffix):
-            return scope[: -len(suffix)].rstrip("/")
+        if clean.endswith(suffix):
+            return clean[: -len(suffix)].rstrip("/")
+    star_index = clean.find("*")
+    if star_index >= 0:
+        prefix = clean[:star_index]
+        if prefix.endswith("/"):
+            return prefix.rstrip("/")
+        if "/" in prefix:
+            return prefix.rsplit("/", 1)[0].rstrip("/") or "*"
+        return "*"
     return ""
 
 
 def _scope_contains(prefix: str, scope: str) -> bool:
     if not prefix:
         return False
+    if prefix == "*":
+        return True
     clean = scope.rstrip("/")
     return clean == prefix or clean.startswith(prefix.rstrip("/") + "/")
