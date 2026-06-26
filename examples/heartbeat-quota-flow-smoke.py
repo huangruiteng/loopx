@@ -659,10 +659,15 @@ def main() -> int:
         assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
         assert reset["codex_app_initial_interval_minutes"] == 15, reset
         assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
-        assert reset["identity_keys"] == first_guard["scheduler_hint"]["unchanged_identity_keys"], reset
-        assert "reset_token_changed" in reset["reset_conditions"], reset
-        assert "material_transition" in reset["reset_conditions"], reset
-        assert "active_work_projected" in reset["reset_conditions"], reset
+        assert reset["identity_key_count"] == len(first_guard["scheduler_hint"]["unchanged_identity_keys"]), reset
+        assert len(reset["identity_signature"]) == 12, reset
+        assert len(reset["profile_signature"]) == 12, reset
+        assert "identity_snapshot" not in reset, reset
+        assert "profile_snapshot" not in reset, reset
+        assert "identity_keys" not in reset, reset
+        assert "token_changed" in reset["reset_condition_summary"], reset
+        assert "material_transition" in reset["reset_condition_summary"], reset
+        assert "active_work_projected" in reset["reset_condition_summary"], reset
         assert reset["clear_unchanged_poll_state"] is True, reset
         first_reset_token = reset["reset_token"]
         assert "automation=keep_active_quiet" in first_guard["protocol_action_packet"]["summary"], first_guard
@@ -783,7 +788,7 @@ def main() -> int:
         replan_reset = replan_guard["scheduler_hint"]["reset_policy"]
         assert replan_reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=3", replan_reset
         assert replan_reset["reset_token"] != first_reset_token, replan_reset
-        assert "active_work_projected" in replan_reset["reset_conditions"], replan_reset
+        assert "active_work_projected" in replan_reset["reset_condition_summary"], replan_reset
         assert "automation=execute_bounded_work" in replan_guard["protocol_action_packet"]["summary"], replan_guard
         interaction = replan_guard["interaction_contract"]
         assert interaction["mode"] == "autonomous_replan", interaction

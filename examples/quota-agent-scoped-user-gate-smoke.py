@@ -516,12 +516,16 @@ def assert_agent_without_advancement_candidate_enters_scope_wait() -> None:
     assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
     assert reset["codex_app_initial_interval_minutes"] == 10, reset
     assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=10", reset
-    assert reset["profile_snapshot"]["codex_app_max_interval_minutes"] == 60, reset
-    assert reset["identity_keys"] == scheduler["unchanged_identity_keys"], reset
-    assert reset["identity_snapshot"]["agent_identity.agent_id"] == payload["agent_identity"]["agent_id"], reset
-    assert "reset_token_changed" in reset["reset_conditions"], reset
-    assert "new_or_reassigned_todo" in reset["reset_conditions"], reset
-    assert "active_work_projected" in reset["reset_conditions"], reset
+    assert scheduler["codex_app"]["max_interval_minutes"] == 60, scheduler
+    assert reset["identity_key_count"] == len(scheduler["unchanged_identity_keys"]), reset
+    assert len(reset["identity_signature"]) == 12, reset
+    assert len(reset["profile_signature"]) == 12, reset
+    assert "identity_snapshot" not in reset, reset
+    assert "profile_snapshot" not in reset, reset
+    assert "identity_keys" not in reset, reset
+    assert "token_changed" in reset["reset_condition_summary"], reset
+    assert "new_or_reassigned_todo" in reset["reset_condition_summary"], reset
+    assert "active_work_projected" in reset["reset_condition_summary"], reset
     assert reset["no_spend_for_reset"] is True, reset
     assert "scheduler=backoff_until_reassigned" in payload["protocol_action_packet"]["summary"], payload
 
