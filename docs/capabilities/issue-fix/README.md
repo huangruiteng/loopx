@@ -18,6 +18,7 @@ external comments, PRs, merges, or publishes.
 
 ## Protocols
 
+- [`issue_fix_workflow_contract_v0`](protocols/issue-fix-workflow-contract-v0.md)
 - [`issue_fix_acceptance_loop_v0`](protocols/issue-fix-acceptance-loop-v0.md)
 - `github_issue_metadata_preview_v0`
 - `content_ops_issue_fix_metadata_preview_packet_v0`
@@ -42,6 +43,7 @@ metadata boundary.
 ## Validation
 
 ```bash
+python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/content-ops-issue-fix-metadata-preview-smoke.py
 python3 examples/content-ops-issue-fix-intake-smoke.py
 python3 examples/issue-fix-acceptance-loop-smoke.py
