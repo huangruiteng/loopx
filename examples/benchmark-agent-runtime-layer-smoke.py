@@ -90,6 +90,40 @@ def main() -> None:
         assert host_goal["required_host_commands"] == ["codex", "tmux", "docker"]
         assert "--agent-import-path" in host_goal["recommended_tb_args"]
         assert "goal_surface=app_server" in host_goal["recommended_tb_args"]
+        baseline_tb_args = host_goal["recommended_goal_baseline_tb_args"]
+        baseline_tb_text = " ".join(baseline_tb_args)
+        assert "--dataset-path" in baseline_tb_args
+        assert "--task-id" in baseline_tb_args
+        assert "--output-path" in baseline_tb_args
+        assert "--run-id" in baseline_tb_args
+        assert "$RUN_ID" in baseline_tb_args
+        assert "--no-upload-results" in baseline_tb_args
+        assert "--no-rebuild" in baseline_tb_args
+        assert "goal_surface=app_server" in baseline_tb_args
+        assert "HostCodexGoalAgent" in baseline_tb_text
+        treatment_tb_args = host_goal["recommended_loopx_prompt_polling_tb_args"]
+        assert "loopx_mode=codex_loopx" in treatment_tb_args
+        assert "loopx_access_packet_mode=compact" in treatment_tb_args
+        assert "loopx_case_id=<case-id>" in treatment_tb_args
+        assert "loopx_arm_id=loopx_prompt_polling_test" in treatment_tb_args
+        assert "loopx_max_rounds=5" in treatment_tb_args
+        proof_gate = host_goal["official_hello_world_proof_gate"]
+        assert proof_gate["case_id"] == "hello-world"
+        assert "terminal_bench_safe_run_id.py" in proof_gate["safe_run_id_command"]
+        assert "hello-world-host-codex-goal" in proof_gate["safe_run_id_command"]
+        assert proof_gate["no_upload_required"] is True
+        assert proof_gate["runner_or_scorer_behavior_changed"] is False
+        assert "hello-world" in proof_gate["tb_args"]
+        assert "--no-upload-results" in proof_gate["tb_args"]
+        assert "--no-rebuild" in proof_gate["tb_args"]
+        assert "task_image_exists_or_bootstrap_done" in (
+            proof_gate["required_prelaunch_gates"]
+        )
+        assert "terminal_bench_official_result_reducer.py" in (
+            proof_gate["compact_result_reducer"]
+        )
+        assert "--results-json" in proof_gate["compact_result_reducer"]
+        assert "--run-metadata-json" in proof_gate["compact_result_reducer"]
         assert host_goal["goal_surface"] == "app_server"
         assert host_goal["fallback_goal_surface"] == "tui"
         assert "thread/goal/set" in host_goal["preflight_gate"]
