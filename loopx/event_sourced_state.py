@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,7 +11,10 @@ from typing import Any, Iterable
 from .file_lock import exclusive_file_lock
 from .todo_contract import (
     TODO_STATUS_DONE,
+    TODO_STATUS_BLOCKED,
+    TODO_STATUS_DEFERRED,
     TODO_STATUS_OPEN,
+    TODO_TASK_PATTERN,
     build_todo_id,
     format_todo_metadata_line,
     normalize_explicit_todo_task_class,
@@ -17,8 +22,10 @@ from .todo_contract import (
     normalize_todo_claimed_by,
     normalize_todo_id,
     normalize_todo_status,
+    parse_todo_metadata_line,
     todo_done_for_status,
     todo_marker_for_status,
+    todo_status_from_marker,
 )
 
 
@@ -41,6 +48,16 @@ REFRESH_RECORDED = "refresh_recorded"
 RUN_RECORDED = "run_recorded"
 QUOTA_SPENT = "quota_spent"
 EVIDENCE_ATTACHED = "evidence_attached"
+
+MARKDOWN_BACKFILL_PRODUCER = "loopx.backfill"
+MARKDOWN_HEADING_PATTERN = re.compile(r"^##\s+(.+?)\s*$")
+TODO_PRIORITY_PREFIX_PATTERN = re.compile(r"^\[(P[0-4])\]\s+(.+)$", re.IGNORECASE)
+PUBLIC_BACKFILL_REDACTION = "[redacted-private-state]"
+PUBLIC_BACKFILL_UNSAFE_PATTERNS = (
+    re.compile(r"(?i)(?:^|[\s`'\"])(?:/Users/|/private/|/var/folders/)"),
+    re.compile(r"(?i)\b(?:secret|password|credential|token)\b"),
+    re.compile(r"https?://"),
+)
 
 SUPPORTED_EVENT_TYPES = {
     TODO_ADDED,
@@ -79,6 +96,250 @@ def now_utc_iso() -> str:
 
 def compact_text(value: Any) -> str:
     return " ".join(str(value or "").strip().split())
+
+
+def _redact_public_backfill_text(value: Any, *, privacy: str) -> str:
+    text = compact_text(value)
+    if privacy != PUBLIC_PRIVACY:
+        return text
+    if any(pattern.search(text) for pattern in PUBLIC_BACKFILL_UNSAFE_PATTERNS):
+        return PUBLIC_BACKFILL_REDACTION
+    return text
+
+
+def _redact_public_backfill_source_ref(value: Any, *, privacy: str) -> str:
+    text = compact_text(value) or "ACTIVE_GOAL_STATE.md"
+    if privacy != PUBLIC_PRIVACY:
+        return text
+    if any(pattern.search(text) for pattern in PUBLIC_BACKFILL_UNSAFE_PATTERNS):
+        return "ACTIVE_GOAL_STATE.md"
+    return text
+
+
+def _role_for_markdown_heading(heading: str) -> str | None:
+    normalized = compact_text(heading).lower()
+    if normalized.startswith("user todo") or "owner review" in normalized:
+        return "user"
+    if normalized.startswith("agent todo"):
+        return "agent"
+    return None
+
+
+def _todo_priority_and_title(text: Any, *, privacy: str) -> tuple[str, str]:
+    compact = compact_text(text)
+    match = TODO_PRIORITY_PREFIX_PATTERN.match(compact)
+    if match:
+        return match.group(1).upper(), _redact_public_backfill_text(match.group(2), privacy=privacy)
+    return "P2", _redact_public_backfill_text(compact, privacy=privacy)
+
+
+def _backfill_event_id(*, goal_id: str, todo_id: str, suffix: str) -> str:
+    digest = hashlib.sha1(f"{goal_id}|{todo_id}|{suffix}".encode("utf-8")).hexdigest()[:16]
+    return f"backfill-{suffix}-{digest}"
+
+
+def _backfill_source_refs(
+    *,
+    source_ref: str,
+    source_section: str,
+    source_line: int | None,
+    privacy: str,
+) -> dict[str, Any]:
+    refs: dict[str, Any] = {
+        "source_ref": _redact_public_backfill_source_ref(source_ref, privacy=privacy),
+        "source_section": compact_text(source_section),
+    }
+    if source_line is not None:
+        refs["source_line"] = source_line
+    return refs
+
+
+def _markdown_todo_records(state_text: str) -> list[dict[str, Any]]:
+    role: str | None = None
+    source_section: str | None = None
+    current: dict[str, Any] | None = None
+    records: list[dict[str, Any]] = []
+    role_indexes = {"user": 0, "agent": 0}
+
+    for line_number, line in enumerate(state_text.splitlines(), start=1):
+        heading_match = MARKDOWN_HEADING_PATTERN.match(line)
+        if heading_match:
+            source_section = compact_text(heading_match.group(1))
+            role = _role_for_markdown_heading(source_section)
+            current = None
+            continue
+        if role is None or source_section is None:
+            continue
+        todo_match = TODO_TASK_PATTERN.match(line)
+        if todo_match:
+            marker, text = todo_match.groups()
+            role_indexes[role] += 1
+            current = {
+                "role": role,
+                "source_section": source_section,
+                "source_line": line_number,
+                "planner_order": role_indexes[role],
+                "status": todo_status_from_marker(marker),
+                "text": compact_text(text),
+            }
+            records.append(current)
+            continue
+        if current is None or not line.startswith((" ", "\t")):
+            continue
+        metadata = parse_todo_metadata_line(line)
+        if metadata:
+            current.update(metadata)
+            continue
+        continuation = compact_text(line)
+        if continuation:
+            current["text"] = compact_text(f"{current.get('text', '')} {continuation}")
+    for record in records:
+        role = str(record.get("role") or "agent")
+        source_section = str(record.get("source_section") or "")
+        title_text = compact_text(record.get("text"))
+        if not normalize_todo_id(record.get("todo_id")):
+            record["todo_id"] = build_todo_id(
+                role=role,
+                source_section=source_section,
+                index=record.get("planner_order"),
+                text=title_text,
+            )
+        record["status"] = normalize_todo_status(record.get("status")) or TODO_STATUS_OPEN
+    return records
+
+
+def backfill_todo_events_from_markdown(
+    state_text: str,
+    *,
+    goal_id: str,
+    source_ref: str = "ACTIVE_GOAL_STATE.md",
+    recorded_at: str | None = None,
+    producer: str = MARKDOWN_BACKFILL_PRODUCER,
+    privacy: str = LOCAL_PRIVATE_PRIVACY,
+) -> list[dict[str, Any]]:
+    """Convert Markdown workbench todos into idempotent append-only events.
+
+    The helper does not mutate the Markdown source. When writing a public-safe
+    stream, compact todo titles/evidence/reasons that look like private state
+    are redacted; local-private streams preserve the workbench text.
+    """
+    normalized_goal_id = compact_text(goal_id)
+    if not normalized_goal_id:
+        raise StateEventError("goal_id is required")
+    if privacy not in PRIVACY_VALUES:
+        raise StateEventError(f"privacy must be one of: {', '.join(sorted(PRIVACY_VALUES))}")
+
+    events: list[dict[str, Any]] = []
+    for record in _markdown_todo_records(state_text):
+        role = str(record.get("role") or "agent")
+        todo_id = normalize_todo_id(record.get("todo_id")) or build_todo_id(
+            role=role,
+            source_section=record.get("source_section"),
+            index=record.get("planner_order"),
+            text=record.get("text"),
+        )
+        priority, title = _todo_priority_and_title(record.get("text"), privacy=privacy)
+        refs = {
+            "todo_id": todo_id,
+            **_backfill_source_refs(
+                source_ref=source_ref,
+                source_section=str(record.get("source_section") or ""),
+                source_line=record.get("source_line"),
+                privacy=privacy,
+            ),
+        }
+        payload: dict[str, Any] = {
+            "role": role,
+            "priority": priority,
+            "title": title,
+            "planner_order": record.get("planner_order"),
+        }
+        task_class = normalize_explicit_todo_task_class(record.get("task_class"))
+        action_kind = normalize_todo_action_kind(record.get("action_kind"))
+        if task_class:
+            payload["task_class"] = task_class
+        if action_kind:
+            payload["action_kind"] = action_kind
+        events.append(
+            make_state_event(
+                event_id=_backfill_event_id(goal_id=normalized_goal_id, todo_id=todo_id, suffix="add"),
+                goal_id=normalized_goal_id,
+                event_type=TODO_ADDED,
+                refs=refs,
+                payload=payload,
+                recorded_at=recorded_at,
+                producer=producer,
+                privacy=privacy,
+            )
+        )
+
+        claimed_by = normalize_todo_claimed_by(record.get("claimed_by"))
+        if claimed_by:
+            events.append(
+                make_state_event(
+                    event_id=_backfill_event_id(goal_id=normalized_goal_id, todo_id=todo_id, suffix="claim"),
+                    goal_id=normalized_goal_id,
+                    event_type=TODO_CLAIMED,
+                    refs=refs,
+                    payload={"claimed_by": claimed_by},
+                    recorded_at=recorded_at,
+                    producer=producer,
+                    privacy=privacy,
+                )
+            )
+
+        status = normalize_todo_status(record.get("status")) or TODO_STATUS_OPEN
+        if status == TODO_STATUS_DONE:
+            completion_payload: dict[str, Any] = {}
+            for key in ("evidence", "reason"):
+                if record.get(key):
+                    completion_payload[key] = _redact_public_backfill_text(record[key], privacy=privacy)
+            events.append(
+                make_state_event(
+                    event_id=_backfill_event_id(goal_id=normalized_goal_id, todo_id=todo_id, suffix="complete"),
+                    goal_id=normalized_goal_id,
+                    event_type=TODO_COMPLETED,
+                    refs=refs,
+                    payload=completion_payload,
+                    recorded_at=recorded_at,
+                    producer=producer,
+                    privacy=privacy,
+                )
+            )
+        elif status == TODO_STATUS_DEFERRED:
+            deferred_payload = {}
+            for key in ("reason", "resume_when"):
+                if record.get(key):
+                    deferred_payload[key] = _redact_public_backfill_text(record[key], privacy=privacy)
+            events.append(
+                make_state_event(
+                    event_id=_backfill_event_id(goal_id=normalized_goal_id, todo_id=todo_id, suffix="defer"),
+                    goal_id=normalized_goal_id,
+                    event_type=TODO_DEFERRED,
+                    refs=refs,
+                    payload=deferred_payload,
+                    recorded_at=recorded_at,
+                    producer=producer,
+                    privacy=privacy,
+                )
+            )
+        elif status == TODO_STATUS_BLOCKED:
+            blocked_payload = {}
+            if record.get("reason"):
+                blocked_payload["reason"] = _redact_public_backfill_text(record["reason"], privacy=privacy)
+            events.append(
+                make_state_event(
+                    event_id=_backfill_event_id(goal_id=normalized_goal_id, todo_id=todo_id, suffix="block"),
+                    goal_id=normalized_goal_id,
+                    event_type=TODO_BLOCKED,
+                    refs=refs,
+                    payload=blocked_payload,
+                    recorded_at=recorded_at,
+                    producer=producer,
+                    privacy=privacy,
+                )
+            )
+    return events
 
 
 def _sorted_dict(value: dict[str, Any]) -> dict[str, Any]:
