@@ -2354,6 +2354,16 @@ def _skillsbench_controller_trace_counters(
         counters["product_mode_declared_done_below_passing_reward_score"] = float(
             below_passing_score
         )
+    below_passing_score_status = _skillsbench_public_safe_label(
+        controller_trace.get(
+            "product_mode_declared_done_below_passing_reward_score_status"
+        )
+        or ""
+    )
+    if below_passing_score_status:
+        counters["product_mode_declared_done_below_passing_reward_score_status"] = (
+            below_passing_score_status
+        )
     declared_done_policy = _skillsbench_public_safe_label(
         controller_trace.get("product_mode_declared_done_policy") or ""
     )
@@ -3067,9 +3077,32 @@ def build_skillsbench_benchflow_result_benchmark_run(
     product_mode_solver_activity_gap_observed = bool(
         controller_counters.get("product_mode_solver_activity_gap") is True
     )
-    if (
+    product_mode_solver_activity_gap_corroborated = bool(
         product_mode_solver_activity_gap_observed
-        and reward_value is None
+        and (
+            controller_counters.get("product_mode_solver_activity_missing_reason")
+            == "missing_task_facing_activity_or_agent_closeout_before_declared_done"
+            or _controller_public_count("product_mode_solver_activity_gap_count") > 0
+            or (
+                "remote_command_file_bridge_agent_task_facing_operation_count"
+                in controller_counters
+                and _controller_public_count(
+                    "remote_command_file_bridge_agent_task_facing_operation_count"
+                )
+                == 0
+            )
+            or (
+                "remote_command_file_bridge_agent_todo_closeout_count"
+                in controller_counters
+                and _controller_public_count(
+                    "remote_command_file_bridge_agent_todo_closeout_count"
+                )
+                == 0
+            )
+        )
+    )
+    if (
+        product_mode_solver_activity_gap_corroborated
         and not official_passed
     ):
         label = "skillsbench_product_mode_solver_activity_gap"
@@ -3079,13 +3112,25 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "none",
             "skillsbench_runner_error",
             "verifier_infrastructure_failure",
+            "official_verifier_solution_failure",
+            "official_score_zero_case_failure",
         }:
             score_failure_attribution = label
             runner_score_failure_attribution = label
+            failure_labels = [
+                item
+                for item in failure_labels
+                if item
+                not in {
+                    "official_verifier_solution_failure",
+                    "official_score_zero_case_failure",
+                    "verifier_infrastructure_failure",
+                }
+            ]
         for item in (
             label,
             "skillsbench_agent_behavior_gap",
-            "skillsbench_reward_artifact_missing",
+            "skillsbench_reward_artifact_missing" if reward_value is None else "",
             "skillsbench_verifier_error_subtype_unavailable_public"
             if verifier_error_text
             else "",
@@ -3704,7 +3749,10 @@ def build_skillsbench_benchflow_result_benchmark_run(
                 "product_mode_declared_done_below_passing_reward_round", 0
             ),
             "product_mode_declared_done_below_passing_reward_score": controller_counters.get(
-                "product_mode_declared_done_below_passing_reward_score", 0.0
+                "product_mode_declared_done_below_passing_reward_score"
+            ),
+            "product_mode_declared_done_below_passing_reward_score_status": controller_counters.get(
+                "product_mode_declared_done_below_passing_reward_score_status", ""
             ),
             "product_mode_declared_done_policy": controller_counters.get(
                 "product_mode_declared_done_policy", ""

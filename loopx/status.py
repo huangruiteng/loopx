@@ -839,6 +839,7 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "case_goal_state_schema_version",
         "product_mode_lifecycle_checkpoint_missing_reason",
         "product_mode_solver_activity_missing_reason",
+        "product_mode_declared_done_below_passing_reward_score_status",
         "product_mode_declared_done_policy",
         "controller_budget_cutoff_reason",
         "benchflow_user_loop_recovery_stage",
@@ -1053,17 +1054,51 @@ def _repair_product_mode_lifecycle_missing_attribution(
 
     official_score = compact.get("official_score")
     counters = compact.get("interaction_counters")
+    if not isinstance(counters, dict):
+        counters = {}
+
+    def positive_counter(field: str) -> int:
+        value = counters.get(field)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+        return 0
+
+    def zero_counter_observed(field: str) -> bool:
+        if field not in counters:
+            return False
+        value = counters.get(field)
+        return isinstance(value, int) and not isinstance(value, bool) and value == 0
+
     solver_activity_gap = bool(
-        isinstance(counters, dict)
-        and counters.get("product_mode_solver_activity_gap") is True
+        counters.get("product_mode_solver_activity_gap") is True
+        and (
+            counters.get("product_mode_solver_activity_missing_reason")
+            == "missing_task_facing_activity_or_agent_closeout_before_declared_done"
+            or positive_counter("product_mode_solver_activity_gap_count") > 0
+            or zero_counter_observed(
+                "remote_command_file_bridge_agent_task_facing_operation_count"
+            )
+            or zero_counter_observed(
+                "remote_command_file_bridge_agent_todo_closeout_count"
+            )
+        )
     )
-    if isinstance(official_score, (int, float)) and not isinstance(
+    if solver_activity_gap:
+        replacement = "skillsbench_product_mode_solver_activity_gap"
+        labels = [
+            label
+            for label in labels
+            if label
+            not in {
+                "official_verifier_solution_failure",
+                "official_score_zero_case_failure",
+            }
+        ]
+    elif isinstance(official_score, (int, float)) and not isinstance(
         official_score,
         bool,
     ) and official_score == 0:
         replacement = "official_verifier_solution_failure"
-    elif solver_activity_gap:
-        replacement = "skillsbench_product_mode_solver_activity_gap"
     else:
         replacement = "none"
 

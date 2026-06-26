@@ -6074,6 +6074,52 @@ def test_skillsbench_product_mode_recompact_normalizes_agent_bridge_closeout() -
     assert "skillsbench_product_mode_uncountable_treatment" not in labels, compact
 
 
+def test_skillsbench_product_mode_recompact_prefers_corroborated_solver_gap() -> None:
+    compact = compact_benchmark_run(
+        {
+            "schema_version": "benchmark_run_v0",
+            "source_runner": "official_skillsbench_benchflow_result",
+            "benchmark_id": "skillsbench",
+            "case_id": "sample-task",
+            "case_ids": ["sample-task"],
+            "mode": "single",
+            "route": "loopx-product-mode",
+            "official_score": 0.0,
+            "score_failure_attribution": "skillsbench_product_mode_lifecycle_missing",
+            "failure_attribution_labels": [
+                "official_verifier_solution_failure",
+                "skillsbench_product_mode_lifecycle_missing",
+            ],
+            "interaction_counters": {
+                "schema_version": "skillsbench_interaction_counters_v0",
+                "product_mode": True,
+                "product_mode_solver_activity_gap": True,
+                "product_mode_solver_activity_gap_count": 1,
+                "product_mode_solver_activity_gap_round": 1,
+                "product_mode_solver_activity_missing_reason": (
+                    "missing_task_facing_activity_or_agent_closeout_before_declared_done"
+                ),
+                "remote_command_file_bridge_agent_task_facing_operation_count": 0,
+                "remote_command_file_bridge_agent_todo_closeout_count": 0,
+            },
+            "product_mode_lifecycle_contract": {
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "required": True,
+                "satisfied": True,
+                "countable_treatment": True,
+            },
+        }
+    )
+    assert compact is not None
+    assert compact["score_failure_attribution"] == (
+        "skillsbench_product_mode_solver_activity_gap"
+    ), compact
+    labels = compact["failure_attribution_labels"]
+    assert "skillsbench_product_mode_solver_activity_gap" in labels, compact
+    assert "skillsbench_product_mode_lifecycle_missing" not in labels, compact
+    assert "official_verifier_solution_failure" not in labels, compact
+
+
 def test_skillsbench_product_mode_solver_activity_gap_is_compacted() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-solver-gap-compact-") as tmp:
         root = Path(tmp)
@@ -6302,6 +6348,9 @@ def test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacte
             "product_mode_declared_done_below_passing_reward_count": 1,
             "product_mode_declared_done_below_passing_reward_round": 2,
             "product_mode_declared_done_below_passing_reward_score": 0.0,
+            "product_mode_declared_done_below_passing_reward_score_status": (
+                "observed_below_passing"
+            ),
             "product_mode_declared_done_policy": (
                 "continue_until_official_success_or_budget"
             ),
@@ -6331,6 +6380,12 @@ def test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacte
         assert (
             counters["product_mode_declared_done_below_passing_reward_score"] == 0.0
         )
+        assert (
+            counters[
+                "product_mode_declared_done_below_passing_reward_score_status"
+            ]
+            == "observed_below_passing"
+        )
         assert counters["product_mode_declared_done_policy"] == (
             "continue_until_official_success_or_budget"
         )
@@ -6339,6 +6394,65 @@ def test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacte
             "skillsbench_product_mode_declared_done_below_passing_reward" in labels
         )
         assert "skillsbench_agent_premature_done_signal" in labels
+
+
+def test_skillsbench_declared_done_missing_reward_status_is_compacted() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-declared-done-missing-reward-") as tmp:
+        root = Path(tmp)
+        result_path = write_official_skillsbench_result(root, reward=0.0)
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "product_mode": True,
+            "heartbeat_count": 2,
+            "controller_action_decisions": 2,
+            "initial_prompt_count": 1,
+            "followup_prompt_count": 1,
+            "reward_observation_count": 0,
+            "round_rewards": [{"agent_round": 1, "tool_calls": 0}],
+            "agent_declared_done": True,
+            "agent_declared_no_remaining_goals": True,
+            "declared_done_round": 1,
+            "product_mode_declared_done_below_passing_reward": True,
+            "product_mode_declared_done_below_passing_reward_count": 1,
+            "product_mode_declared_done_below_passing_reward_round": 1,
+            "product_mode_declared_done_below_passing_reward_score_status": (
+                "missing"
+            ),
+            "product_mode_declared_done_policy": (
+                "continue_until_official_success_or_budget"
+            ),
+            "last_decision": (
+                "send_product_mode_success_or_budget_continuation_after_declared_done"
+            ),
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        counters = compact["interaction_counters"]
+        assert counters["product_mode_declared_done_below_passing_reward"] is True
+        assert (
+            "product_mode_declared_done_below_passing_reward_score"
+            not in counters
+        )
+        assert (
+            counters[
+                "product_mode_declared_done_below_passing_reward_score_status"
+            ]
+            == "missing"
+        )
+        assert counters["product_mode_declared_done_policy"] == (
+            "continue_until_official_success_or_budget"
+        )
 
 
 def test_skillsbench_product_mode_declared_done_without_closeout_overrides_verifier_error() -> None:
@@ -6433,6 +6547,59 @@ def test_skillsbench_product_mode_declared_done_without_closeout_overrides_verif
         assert "skillsbench_agent_behavior_gap" in labels, compact
         assert "skillsbench_reward_artifact_missing" in labels, compact
         assert "skillsbench_verifier_error_subtype_unavailable_public" in labels, compact
+
+
+def test_skillsbench_product_mode_solver_activity_gap_overrides_zero_score() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-solver-gap-zero-score-") as tmp:
+        root = Path(tmp)
+        result_path = write_official_skillsbench_result(root, reward=0.0)
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "product_mode": True,
+            "reward_observation_count": 1,
+            "round_rewards": [
+                {"agent_round": 1, "reward_present": True, "reward": 0.0}
+            ],
+            "agent_declared_done": True,
+            "agent_declared_no_remaining_goals": True,
+            "declared_done_round": 1,
+            "product_mode_solver_activity_gap": True,
+            "product_mode_solver_activity_gap_count": 1,
+            "product_mode_solver_activity_gap_round": 1,
+            "product_mode_solver_activity_missing_reason": (
+                "missing_task_facing_activity_or_agent_closeout_before_declared_done"
+            ),
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_recorded"
+            ),
+            "remote_command_file_bridge_agent_operation_trace_count": 1,
+            "remote_command_file_bridge_agent_operation_trace_satisfied": True,
+            "remote_command_file_bridge_agent_request_count": 2,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 0,
+            "remote_command_file_bridge_agent_todo_closeout_count": 0,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-product-mode",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        assert compact["official_score"] == 0.0, compact
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_product_mode_solver_activity_gap"
+        ), compact
+        labels = compact["failure_attribution_labels"]
+        assert "skillsbench_product_mode_solver_activity_gap" in labels, compact
+        assert "skillsbench_agent_behavior_gap" in labels, compact
+        assert "official_verifier_solution_failure" not in labels, compact
+        assert "skillsbench_reward_artifact_missing" not in labels, compact
 
 
 def test_skillsbench_product_mode_no_tool_lifecycle_abort_is_compacted() -> None:
@@ -9063,9 +9230,12 @@ if __name__ == "__main__":
     test_skillsbench_product_mode_declared_done_is_compacted()
     test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted()
     test_skillsbench_product_mode_recompact_normalizes_agent_bridge_closeout()
+    test_skillsbench_product_mode_recompact_prefers_corroborated_solver_gap()
     test_skillsbench_product_mode_solver_activity_gap_is_compacted()
+    test_skillsbench_product_mode_solver_activity_gap_overrides_zero_score()
     test_skillsbench_product_mode_first_action_timeout_is_uncountable()
     test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted()
+    test_skillsbench_declared_done_missing_reward_status_is_compacted()
     test_skillsbench_product_mode_declared_done_without_closeout_overrides_verifier_error()
     test_skillsbench_product_mode_no_tool_lifecycle_abort_is_compacted()
     test_skillsbench_product_mode_pass_clears_generic_runner_error()
