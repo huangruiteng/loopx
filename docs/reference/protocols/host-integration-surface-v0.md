@@ -13,6 +13,11 @@ invariants. It does not prove that any adapter is installed, and it does not
 grant write authority beyond the existing CLI-equivalent LoopX
 lifecycle.
 
+Codex App slash command parsing is covered by
+[`codex_app_host_command_registry_v0`](codex-app-host-command-registry-v0.md):
+the host recognizes `/loopx`, `/loopx <goal text>`, and `/loopx-global-*`
+before ordinary chat, then hands off to the same CLI-backed lifecycle.
+
 ## Roles
 
 | Surface | Job | Must Not Do |

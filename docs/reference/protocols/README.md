@@ -8,6 +8,7 @@ Current contracts:
 - [Action packet decision v0](protocol-action-packet-decision-v0.md)
 - [Decision Scope v0](decision-scope-v0.md)
 - [Host integration surface v0](host-integration-surface-v0.md)
+- [codex_app_host_command_registry_v0](codex-app-host-command-registry-v0.md)
 - [Session runtime to LoopX projection v0](session-runtime-loopx-projection-v0.md)
 - [Session runtime controlled writeback v0](session-runtime-controlled-writeback-v0.md)
 - [Codex CLI wrapper action packet v0](protocol-action-packet-codex-cli-wrapper-v0.md)
