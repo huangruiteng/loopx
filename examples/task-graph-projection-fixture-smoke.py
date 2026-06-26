@@ -5,10 +5,18 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.cli_commands.status import review_packet_handoff_only_payload  # noqa: E402
+from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.status import build_task_graph_projection  # noqa: E402
+
 FIXTURE_PATH = REPO_ROOT / "examples/fixtures/task-graph-projection-status.public.json"
 CONTRACT_PATH = REPO_ROOT / "docs/reference/protocols/task-graph-projection-v0.md"
 STATUS_CONTRACT_PATH = REPO_ROOT / "docs/status-data-contract.md"
@@ -84,6 +92,123 @@ def assert_refs(refs: object, label: str) -> None:
             assert not value.startswith("/"), (label, key, value)
 
 
+def assert_projection_shape(
+    projection: dict[str, object],
+    *,
+    goal_id: str,
+    label: str,
+    min_nodes: int = 4,
+    min_edges: int = 3,
+) -> None:
+    assert projection["schema_version"] == "task_graph_projection_v0", (label, projection)
+    assert projection["mode"] == "read_only", (label, projection)
+    assert projection["goal_id"] == goal_id, (label, projection)
+    assert set(projection["derived_from"]["source_of_truth"]) == SOURCE_OF_TRUTH, (label, projection)
+    truth = projection["truth_contract"]
+    assert truth["event_ledger_is_source_of_truth"] is True, (label, truth)
+    assert truth["projection_is_writable"] is False, (label, truth)
+    assert truth["write_api"] is False, (label, truth)
+
+    nodes = projection["nodes"]
+    edges = projection["edges"]
+    assert isinstance(nodes, list) and len(nodes) >= min_nodes, (label, nodes)
+    assert isinstance(edges, list) and len(edges) >= min_edges, (label, edges)
+    node_ids = [node["node_id"] for node in nodes]
+    assert len(node_ids) == len(set(node_ids)), (label, node_ids)
+    node_id_set = set(node_ids)
+
+    for node in nodes:
+        assert node["kind"] in ALLOWED_NODE_KINDS, (label, node)
+        assert node["state"] in ALLOWED_NODE_STATES, (label, node)
+        assert isinstance(node["title"], str) and node["title"], (label, node)
+        assert_refs(node.get("refs"), f"{label} node {node['node_id']}")
+
+    for edge in edges:
+        assert edge["relation"] in ALLOWED_EDGE_RELATIONS, (label, edge)
+        assert edge["from_node_id"] in node_id_set, (label, edge)
+        assert edge["to_node_id"] in node_id_set, (label, edge)
+        assert edge["from_node_id"] != edge["to_node_id"], (label, edge)
+        assert isinstance(edge["reason"], str) and edge["reason"], (label, edge)
+        if "refs" in edge:
+            assert_refs(edge["refs"], f"{label} edge {edge['edge_id']}")
+
+
+def assert_runtime_projection_builder() -> None:
+    goal_id = "runtime-task-graph"
+    item = {
+        "goal_id": goal_id,
+        "status": "operator_gate",
+        "waiting_on": "controller",
+        "recommended_action": "Implement the task graph projection runtime seam.",
+        "user_todos": {
+            "items": [
+                {
+                    "todo_id": "todo_review_gate",
+                    "text": "[P1] Review runtime projection before merge.",
+                    "status": "open",
+                    "task_class": "user_gate",
+                }
+            ]
+        },
+        "agent_todos": {
+            "items": [
+                {
+                    "todo_id": "todo_runtime_projection",
+                    "text": "[P1] Implement task graph projection.",
+                    "title": "Implement task graph projection.",
+                    "status": "open",
+                    "claimed_by": "codex-main-control",
+                }
+            ]
+        },
+        "autonomous_replan_obligation": {
+            "schema_version": "autonomous_replan_obligation_v0",
+            "recommended_action": "Recover selected work if it stalls.",
+        },
+    }
+    goal = {"id": goal_id}
+    latest_runs = [
+        {
+            "generated_at": "2026-06-21T13:00:00Z",
+            "classification": "task_graph_projection_runtime_smoke",
+        }
+    ]
+    projection = build_task_graph_projection(item, goal=goal, goal_latest_runs=latest_runs)
+    assert isinstance(projection, dict), projection
+    assert_projection_shape(projection, goal_id=goal_id, label="runtime projection", min_nodes=5, min_edges=4)
+    kinds = {node["kind"] for node in projection["nodes"]}
+    assert {"deliverable", "gate", "lease", "validation", "repair"} <= kinds, projection
+    relations = {edge["relation"] for edge in projection["edges"]}
+    assert {"blocks", "depends_on", "validates", "repairs"} <= relations, projection
+    forbidden_keys = {"write_command", "agent_command", "raw_log", "raw_transcript"}
+    projection_keys = set(json.dumps(projection, sort_keys=True).split('"'))
+    assert not (projection_keys & forbidden_keys), projection_keys & forbidden_keys
+
+    status_payload = {
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "attention_queue": {
+            "items": [
+                {
+                    **item,
+                    "task_graph_projection": projection,
+                    "project_asset": {
+                        "next_action": "Implement the task graph projection runtime seam.",
+                        "stop_condition": "stop before write authority or raw evidence export",
+                    },
+                }
+            ]
+        },
+        "run_history": {"goals": [goal]},
+    }
+    packet = build_review_packet(status_payload, goal_id=goal_id)
+    assert packet["ok"] is True, packet
+    assert packet["task_graph_projection"] == projection, packet
+    handoff_only = review_packet_handoff_only_payload(packet)
+    assert "task_graph_projection" not in handoff_only, handoff_only
+    assert_public_safe(json.dumps(packet, sort_keys=True), "runtime review packet")
+
+
 def main() -> int:
     fixture_text = read(FIXTURE_PATH)
     contract = read(CONTRACT_PATH)
@@ -120,41 +245,12 @@ def main() -> int:
     item = payload["attention_queue"]["items"][0]
     projection = item["task_graph_projection"]
 
-    assert projection["schema_version"] == "task_graph_projection_v0", projection
-    assert projection["mode"] == "read_only", projection
-    assert projection["goal_id"] == item["goal_id"], projection
-    assert set(projection["derived_from"]["source_of_truth"]) == SOURCE_OF_TRUTH, projection
-    truth = projection["truth_contract"]
-    assert truth["event_ledger_is_source_of_truth"] is True, truth
-    assert truth["projection_is_writable"] is False, truth
-    assert truth["write_api"] is False, truth
-
-    nodes = projection["nodes"]
-    edges = projection["edges"]
-    assert isinstance(nodes, list) and len(nodes) >= 4, nodes
-    assert isinstance(edges, list) and len(edges) >= 3, edges
-    node_ids = [node["node_id"] for node in nodes]
-    assert len(node_ids) == len(set(node_ids)), node_ids
-    node_id_set = set(node_ids)
-
-    for node in nodes:
-        assert node["kind"] in ALLOWED_NODE_KINDS, node
-        assert node["state"] in ALLOWED_NODE_STATES, node
-        assert isinstance(node["title"], str) and node["title"], node
-        assert_refs(node.get("refs"), f"node {node['node_id']}")
-
-    for edge in edges:
-        assert edge["relation"] in ALLOWED_EDGE_RELATIONS, edge
-        assert edge["from_node_id"] in node_id_set, edge
-        assert edge["to_node_id"] in node_id_set, edge
-        assert edge["from_node_id"] != edge["to_node_id"], edge
-        assert isinstance(edge["reason"], str) and edge["reason"], edge
-        if "refs" in edge:
-            assert_refs(edge["refs"], f"edge {edge['edge_id']}")
+    assert_projection_shape(projection, goal_id=item["goal_id"], label="fixture projection")
 
     forbidden_keys = {"write_command", "agent_command", "raw_log", "raw_transcript"}
     fixture_keys = set(json.dumps(payload, sort_keys=True).split('"'))
     assert not (fixture_keys & forbidden_keys), fixture_keys & forbidden_keys
+    assert_runtime_projection_builder()
 
     print("task-graph-projection-fixture-smoke ok")
     return 0
