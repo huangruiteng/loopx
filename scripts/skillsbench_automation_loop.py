@@ -149,6 +149,7 @@ DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
 DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
 DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
 DEFAULT_MAX_ROUNDS = 16
+RUNNER_PREREQUISITES_PUBLIC_FILENAME = "runner_prerequisites.public.json"
 HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "AI_ADDR",
     "AI_PORT",
@@ -1442,6 +1443,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_failure_category",
         "runner_interruption_kind",
         "runner_interruption_status",
+        "reduce_only_prerequisites_source",
     ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
@@ -1541,6 +1543,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "runner_interrupted_before_official_result",
         "runner_interruption_compact_closeout_expected",
         "runner_interruption_raw_material_recorded",
+        "reduce_only_prerequisites_artifact_read",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -1647,6 +1650,62 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         compact["remote_command_file_bridge_driver_lifecycle_execution_style"] = (
             style[:120]
         )
+    return compact
+
+
+def _runner_prerequisites_public_path(plan: dict[str, Any]) -> Path | None:
+    jobs_dir = str(plan.get("jobs_dir") or "")
+    job_name = str(plan.get("job_name") or "")
+    if not jobs_dir or not job_name:
+        return None
+    return (
+        Path(jobs_dir).expanduser()
+        / job_name
+        / RUNNER_PREREQUISITES_PUBLIC_FILENAME
+    )
+
+
+def _write_public_runner_prerequisites(plan: dict[str, Any]) -> Path | None:
+    compact = _public_runner_prerequisites(plan.get("runner_prerequisites"))
+    if not compact:
+        return None
+    path = _runner_prerequisites_public_path(plan)
+    if path is None:
+        return None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(compact, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _read_public_runner_prerequisites(plan: dict[str, Any]) -> dict[str, Any]:
+    path = _runner_prerequisites_public_path(plan)
+    if path is None or not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    if isinstance(payload.get("runner_prerequisites"), dict):
+        payload = payload["runner_prerequisites"]
+    compact = _public_runner_prerequisites(payload)
+    if compact:
+        compact["reduce_only_prerequisites_source"] = "persisted_public_job_artifact"
+        compact["reduce_only_prerequisites_artifact_read"] = True
+    return compact
+
+
+def _hydrate_reduce_only_public_runner_prerequisites(
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    compact = _read_public_runner_prerequisites(plan)
+    if not compact:
+        return {}
+    plan["runner_prerequisites"] = compact
     return compact
 
 
@@ -8395,6 +8454,7 @@ def reduce_official_result_after_runner_exception(
         return None
 
     compact = reduce_result(args, result_path, plan)
+    _write_public_runner_prerequisites(plan)
     compact["runner_return_status"] = (
         "official_result_recovered_after_runner_exception"
     )
@@ -8455,6 +8515,7 @@ def build_runner_failure_compact(
         exc,
         cleanup_if_missing=True,
     )
+    _write_public_runner_prerequisites(plan)
 
     exception_type, attribution, labels = skillsbench_runner_error_attribution(
         str(exc)
@@ -9217,6 +9278,7 @@ async def async_main(
 
     ensure_benchflow_runtime(args)
     if args.reduce_only:
+        _hydrate_reduce_only_public_runner_prerequisites(plan)
         result_path = discover_benchflow_result_path(plan)
         if not result_path.exists():
             raise FileNotFoundError(
@@ -9230,6 +9292,7 @@ async def async_main(
             run_benchflow_case_with_private_output(args, plan),
             timeout=args.outer_timeout_sec,
         )
+        _write_public_runner_prerequisites(plan)
     compact = reduce_result(args, result_path, plan)
     compact_path = Path(plan["compact_benchmark_run_json"])
     compact_path.parent.mkdir(parents=True, exist_ok=True)

@@ -61,6 +61,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
     PRODUCT_MODE_CASE_STATE_PATH,
     PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
+    RUNNER_PREREQUISITES_PUBLIC_FILENAME,
     SkillsBenchProductModeNoLifecycleRequests,
     _tail,
     _apply_agent_message_only_no_tool_calls_attribution,
@@ -8320,6 +8321,13 @@ def test_skillsbench_main_failure_closeout_preserves_mutated_prerequisites() -> 
         assert payload["compact_closeout_recorded"] is True, payload
         compact_path = Path(payload["compact_benchmark_run_json"])
         compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        prereq_path = (
+            jobs_dir
+            / "skillsbench-prereq-closeout-fixture"
+            / RUNNER_PREREQUISITES_PUBLIC_FILENAME
+        )
+        assert prereq_path.exists(), payload
+        persisted_prereqs = json.loads(prereq_path.read_text(encoding="utf-8"))
         assert_prerequisites_include(
             compact["runner_prerequisites"],
             {
@@ -8330,6 +8338,16 @@ def test_skillsbench_main_failure_closeout_preserves_mutated_prerequisites() -> 
                 "codex_acp_runtime_launch_preflight_stage": (
                     "after_agent_install_before_acp_connect"
                 ),
+                "codex_acp_runtime_launch_preflight_status": "passed",
+                "codex_acp_runtime_launch_preflight_rc": 0,
+                "codex_acp_runtime_launch_preflight_raw_logs_read": False,
+            },
+        )
+        assert_prerequisites_include(
+            persisted_prereqs,
+            {
+                "schema_version": "skillsbench_runner_prerequisites_v0",
+                "codex_acp_runtime_launch_preflight": True,
                 "codex_acp_runtime_launch_preflight_status": "passed",
                 "codex_acp_runtime_launch_preflight_rc": 0,
                 "codex_acp_runtime_launch_preflight_raw_logs_read": False,
@@ -9504,6 +9522,98 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
         assert run["round_rewards"][1]["passed"] is True, run
 
 
+def test_skillsbench_reduce_only_preserves_persisted_public_prerequisites() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-prereq-reduce-main-") as tmp:
+        jobs_dir = Path(tmp) / "jobs"
+        job_name = "skillsbench-prereq-reduce-fixture"
+        rollout_name = "sample-task__loopx_product_mode"
+        run_dir = jobs_dir / job_name / rollout_name
+        write_json(
+            run_dir / "result.json",
+            {
+                "task_name": "sample-task",
+                "rollout_name": rollout_name,
+                "rewards": {"reward": 0.0},
+                "agent": "codex-acp",
+                "agent_name": "codex-acp",
+                "model": "gpt-5.5",
+                "n_tool_calls": 0,
+                "n_prompts": 1,
+                "error": None,
+                "verifier_error": None,
+                "partial_trajectory": False,
+                "trajectory_source": "acp",
+            },
+        )
+        write_json(run_dir / "timing.json", {"total": 4.0})
+        write_json(
+            jobs_dir / job_name / RUNNER_PREREQUISITES_PUBLIC_FILENAME,
+            {
+                "schema_version": "skillsbench_runner_prerequisites_v0",
+                "agent_execution_mode": "host_local_acp",
+                "host_local_acp_launch": True,
+                "host_local_acp_launch_status": "sandbox_installed",
+                "codex_acp_runtime_container_bootstrap": False,
+                "codex_acp_runtime_dependency_preflight": False,
+                "codex_acp_runtime_launch_preflight": True,
+                "codex_acp_runtime_launch_preflight_status": "skipped",
+                "remote_command_file_bridge_consumed_by_solver": True,
+                "remote_command_file_bridge_agent_request_count": 2,
+                "remote_command_file_bridge_agent_loopx_cli_call_count": 6,
+                "remote_command_file_bridge_agent_task_facing_operation_count": 1,
+                "filtered_extra_marker": "FILTERED_PREREQ_MARKER_MUST_NOT_ESCAPE",
+            },
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            rc = skillsbench_automation_loop_main(
+                [
+                    "--task-id",
+                    "sample-task",
+                    "--route",
+                    "loopx-product-mode",
+                    "--jobs-dir",
+                    str(jobs_dir),
+                    "--job-name",
+                    job_name,
+                    "--rollout-name",
+                    rollout_name,
+                    "--ledger-path",
+                    str(Path(tmp) / "ledger.json"),
+                    "--reduce-only",
+                    "--update-ledger",
+                ]
+            )
+        assert rc == 0, stderr.getvalue()
+        payload = json.loads(stdout.getvalue())
+        compact_path = Path(payload["compact_benchmark_run_json"])
+        compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        prereqs = compact["runner_prerequisites"]
+        assert_prerequisites_include(
+            prereqs,
+            {
+                "schema_version": "skillsbench_runner_prerequisites_v0",
+                "agent_execution_mode": "host_local_acp",
+                "host_local_acp_launch": True,
+                "host_local_acp_launch_status": "sandbox_installed",
+                "codex_acp_runtime_container_bootstrap": False,
+                "codex_acp_runtime_dependency_preflight": False,
+                "codex_acp_runtime_launch_preflight": True,
+                "codex_acp_runtime_launch_preflight_status": "skipped",
+                "remote_command_file_bridge_consumed_by_solver": True,
+                "remote_command_file_bridge_agent_request_count": 2,
+                "remote_command_file_bridge_agent_loopx_cli_call_count": 6,
+                "remote_command_file_bridge_agent_task_facing_operation_count": 1,
+                "reduce_only_prerequisites_source": "persisted_public_job_artifact",
+                "reduce_only_prerequisites_artifact_read": True,
+            },
+        )
+        compact_text = json.dumps(compact, sort_keys=True)
+        assert "container_codex_acp" not in compact_text, compact
+        assert "FILTERED_PREREQ_MARKER_MUST_NOT_ESCAPE" not in compact_text, compact
+
+
 if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_sixteen()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
@@ -9631,4 +9741,5 @@ if __name__ == "__main__":
     test_skillsbench_main_redirects_runner_output_to_private_log()
     test_skillsbench_reduce_only_discovers_nested_official_result()
     test_skillsbench_reduce_only_preserves_round_reward_trace()
+    test_skillsbench_reduce_only_preserves_persisted_public_prerequisites()
     print("skillsbench-benchmark-run-smoke: ok")
