@@ -23,6 +23,49 @@ Do not manually copy one project's registry entry into another project. Local
 `connect` and `refresh-state` should sync into the shared global registry
 automatically.
 
+## Slash Command Fallback
+
+When the visible user message is exactly a LoopX slash command or starts with a
+LoopX slash command plus arguments, do not treat it as ordinary chat.
+
+Recognized project-local commands:
+
+- `/loopx`
+- `/loopx <goal text>`
+
+From the target project root, run the bootstrap command pack before planning or
+writing project state:
+
+```bash
+loopx bootstrap-command-pack --project .
+```
+
+For `/loopx <goal text>`, pass the text after `/loopx` as the explicit
+goal-start objective:
+
+```bash
+loopx bootstrap-command-pack --project . --goal-text "<GOAL_TEXT>"
+```
+
+Include `--goal-id <STABLE_GOAL_ID>` and `--agent-id <REGISTERED_AGENT_ID>` when
+they are known. If `--goal-text` is not available, refresh the local LoopX CLI
+or use the checked-out LoopX repository CLI for validation; do not silently
+downgrade `/loopx <goal text>` into a bare `/loopx` read-only command.
+
+Bare `/loopx` is read/status-first: inspect the returned command pack, stop
+before registry/state writes that require confirmation, and keep quota unspent
+while only previewing the pack. `/loopx <goal text>` is an explicit goal-start
+intent: first produce a concise ordered plan, then write todos in priority
+order, using planner order plus `todo add` write order as the same-priority
+tie-breaker. For broad or fuzzy product directions, use a small
+public-safe planning set; for clear bounded problems, use the minimum
+sufficient ordered todo plan and avoid management-only filler.
+
+Global manager slash commands such as `/loop-global-summary`,
+`/loop-global-gates`, `/loop-global-todos`, and `/loop-global-risks` are not
+project bootstrap commands. Route them to the global manager command contract
+or status summary surface instead of `bootstrap-command-pack`.
+
 ## Register Project Authority And Material Sources
 
 When a project agent discovers a durable design document, research note,
