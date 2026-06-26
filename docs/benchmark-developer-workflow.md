@@ -775,6 +775,20 @@ boring and Docker-compose-safe:
 - start with `--no-rebuild` only after the task image already exists, otherwise
   record the image/build blocker instead of hiding it behind a score result.
 
+Classify pre-agent failures before comparing model or LoopX behavior:
+
+- invalid or unsafe run ids are launch-shape blockers. Normalize them with
+  `scripts/terminal_bench_safe_run_id.py`; do not hand-format timestamps with
+  uppercase separators that Docker Compose can reject;
+- `--no-rebuild` is a runner-startup optimization, not a readiness proof. Use
+  it only after the task image exists locally and the no-rebuild guard has made
+  Compose use `--no-build`; otherwise classify the attempt as task-image or
+  runner materialization blocked;
+- missing job roots, job locks, trial directories, or compact result files are
+  job-materialization blockers. Do not report them as agent failures,
+  benchmark score failures, or verifier failures until the runner has created a
+  job and a task environment that the agent actually reached.
+
 Before trusting `--no-rebuild`, guard the local Terminal-Bench checkout:
 
 ```bash
