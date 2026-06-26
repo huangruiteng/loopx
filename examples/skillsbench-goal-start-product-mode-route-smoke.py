@@ -6,9 +6,96 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _assert_adapter_route_contract_surface() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from loopx.benchmark_adapters.skillsbench import (
+        build_skillsbench_benchflow_result_benchmark_run,
+        build_skillsbench_benchmark_run,
+        skillsbench_route_contract,
+    )
+
+    route = "loopx-goal-start-product-mode"
+    contract = skillsbench_route_contract(route)
+    assert contract["mode"] == "skillsbench_loopx_goal_start_product_mode_treatment"
+    assert contract["arm_id"] == "loopx_goal_start_product_mode"
+    assert contract["product_mode"] is True, contract
+    assert contract["loopx_inside_case"] is True, contract
+    assert contract["loopx_automation_loop"] is True, contract
+    assert "ranked_todo_plan" in contract["skillsbench_route_semantics"], contract
+
+    skeleton = build_skillsbench_benchmark_run(route=route)
+    assert skeleton["route"] == route, skeleton
+    assert skeleton["mode"] == contract["mode"], skeleton
+    assert skeleton["source_runner"] == contract["source_runner"], skeleton
+    counters = skeleton["interaction_counters"]
+    assert counters["product_mode"] is True, counters
+    assert counters["case_goal_state_packet_present"] is True, counters
+    assert counters["case_goal_state_init_required"] is True, counters
+    assert counters["goal_start_product_mode"] is True, counters
+    assert counters["declared_done_requires_no_remaining_goals"] is True, counters
+    policy = skeleton["episode_policy"]
+    assert policy["outer_controller"] == "loopx_goal_start_product_mode", policy
+    assert policy["inner_case_actor"] == "ordinary_codex_acp_agent", policy
+    kwargs_keys = skeleton["agent"]["kwargs_keys"]
+    assert "loopx_goal_start_product_mode" in kwargs_keys, kwargs_keys
+    assert "ranked_todo_plan_selected_p0_lifecycle" in kwargs_keys, kwargs_keys
+
+    controller_trace = {
+        "schema_version": "skillsbench_loopx_controller_trace_v0",
+        "product_mode": True,
+        "goal_start_product_mode": True,
+        "goal_start_plan_observed": True,
+        "planned_todo_count": 3,
+        "planned_p0_count": 1,
+        "planner_before_todo_write": True,
+        "same_priority_order_preserved": True,
+        "selected_p0_todo_id": "todo_public_solver",
+        "non_selected_todos_preserved_open_or_deferred": True,
+        "remote_command_file_bridge_driver_lifecycle_command_counts": {
+            "todo claim": 1,
+            "todo update": 1,
+        },
+        "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+    }
+    with tempfile.TemporaryDirectory() as temp_dir:
+        result_path = Path(temp_dir) / "result.json"
+        result_path.write_text(
+            json.dumps(
+                {
+                    "task_name": "planning-granularity",
+                    "agent": "codex-acp",
+                    "model": "gpt-5.5",
+                    "rollout_name": "planning-granularity__loopx_goal_start_product_mode",
+                    "rewards": {"reward": 0},
+                    "n_tool_calls": 0,
+                }
+            ),
+            encoding="utf-8",
+        )
+        reduced = build_skillsbench_benchflow_result_benchmark_run(
+            result_path,
+            route=route,
+            controller_trace=controller_trace,
+        )
+    reduced_counters = reduced["interaction_counters"]
+    assert reduced_counters["goal_start_product_mode"] is True, reduced_counters
+    assert reduced_counters["goal_start_plan_observed"] is True, reduced_counters
+    assert reduced_counters["planned_todo_count"] == 3, reduced_counters
+    assert reduced_counters["planned_p0_count"] == 1, reduced_counters
+    assert reduced_counters["selected_p0_todo_id"] == "todo_public_solver"
+    assert reduced_counters["selected_todo_claimed"] is True, reduced_counters
+    assert (
+        reduced_counters["selected_todo_updated_before_solver"] is True
+    ), reduced_counters
+    assert (
+        reduced_counters["non_selected_todos_preserved_open_or_deferred"] is True
+    ), reduced_counters
 
 
 def _assert_control_score_surface() -> None:
@@ -174,6 +261,7 @@ def main() -> int:
     assert prerequisites["benchflow_intermediate_soft_verify_policy"] == "every-round"
     assert plan["public_boundary"]["public_raw_prompt"] is False, plan
     assert plan["public_boundary"]["public_raw_trajectory"] is False, plan
+    _assert_adapter_route_contract_surface()
     _assert_control_score_surface()
     print("skillsbench-goal-start-product-mode-route-smoke ok")
     return 0
