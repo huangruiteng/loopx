@@ -2264,7 +2264,14 @@ may use it to decide whether a run should continue polling, unload/disable a
 local `launchd` label, or write a precise missing-handle blocker before any
 rerun. It must be derived from compact artifacts, pid liveness, and run labels
 only; it must not expose raw logs, task text, trajectories, scheduler payloads,
-or local paths.
+or local paths. Snapshots may also include
+`runs[].process_polling.schema_version=benchmark_process_polling_v0` to make
+the polling boundary explicit. That object records that polling used the
+private pid file and compact artifacts only; it must keep
+`process_table_read=false`, `cmdline_read=false`, `argv_read=false`, and
+`raw_process_payload_recorded=false` so benchmark task prompts embedded in
+worker argv cannot leak into status, rollout logs, chat summaries, or
+control-plane projections.
 
 ## Boundary
 

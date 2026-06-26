@@ -125,6 +125,16 @@ def snapshot_run(
         "label": label,
         "run_dir_recorded": False,
         "exists": run_dir.exists(),
+        "process_polling": {
+            "schema_version": "benchmark_process_polling_v0",
+            "mode": "pid_file_liveness_only",
+            "pid_file_checked": False,
+            "process_table_read": False,
+            "cmdline_read": False,
+            "argv_read": False,
+            "comm_recorded": False,
+            "raw_process_payload_recorded": False,
+        },
     }
     if not run_dir.exists():
         return item
@@ -133,10 +143,13 @@ def snapshot_run(
     item["status"] = _read_text(status_file).strip() if status_file.exists() else "running/no-status"
 
     pid_file = run_dir / "pid.private"
+    item["process_polling"]["pid_file_checked"] = pid_file.exists()
     if pid_file.exists():
         pid_text = _read_text(pid_file).strip()
         item["pid"] = pid_text
         item["pid_alive"] = _pid_alive(pid_text)
+        item["process_polling"]["pid_present"] = bool(pid_text)
+        item["process_polling"]["pid_alive"] = item["pid_alive"]
 
     item["compact_results"] = [
         _compact_summary(path, run_dir)
@@ -186,6 +199,10 @@ def build_snapshot(
             "raw_logs_emitted": False,
             "capture_content_emitted": False,
             "local_paths_recorded": False,
+            "process_table_read": False,
+            "process_cmdline_read": False,
+            "process_argv_read": False,
+            "process_argv_emitted": False,
         },
         "runs": [
             snapshot_run(
@@ -264,6 +281,10 @@ def _snapshot_rollout_details(payload: dict[str, Any]) -> dict[str, Any]:
             and run["observable_handle_policy"].get("blocker_required_before_rerun")
             is True
         ),
+        "process_table_read": False,
+        "process_cmdline_read": False,
+        "process_argv_read": False,
+        "process_argv_emitted": False,
     }
 
 

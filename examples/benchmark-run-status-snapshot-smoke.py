@@ -47,6 +47,10 @@ def main() -> int:
             "Working\nsecret raw transcript should never be emitted\n",
             encoding="utf-8",
         )
+        (run / "cmdline.private.txt").write_text(
+            "codex exec solve TASK_PROMPT_SHOULD_NOT_APPEAR_IN_SNAPSHOT\n",
+            encoding="utf-8",
+        )
         (run / "result.compact.json").write_text(
             json.dumps(
                 {
@@ -115,6 +119,10 @@ def main() -> int:
         assert payload["schema_version"] == "benchmark_run_status_snapshot_v0"
         assert payload["boundary"]["raw_logs_emitted"] is False
         assert payload["boundary"]["local_paths_recorded"] is False
+        assert payload["boundary"]["process_table_read"] is False
+        assert payload["boundary"]["process_cmdline_read"] is False
+        assert payload["boundary"]["process_argv_read"] is False
+        assert payload["boundary"]["process_argv_emitted"] is False
         assert payload["run_root_recorded"] is False
         item = payload["runs"][0]
         running_item = payload["runs"][1]
@@ -122,6 +130,12 @@ def main() -> int:
         assert item["status"] == "rc=0"
         assert item["run_dir_recorded"] is False
         assert item["pid_alive"] is True
+        assert item["process_polling"]["schema_version"] == "benchmark_process_polling_v0"
+        assert item["process_polling"]["mode"] == "pid_file_liveness_only"
+        assert item["process_polling"]["process_table_read"] is False
+        assert item["process_polling"]["cmdline_read"] is False
+        assert item["process_polling"]["argv_read"] is False
+        assert item["process_polling"]["raw_process_payload_recorded"] is False
         summaries = [result["summary"] for result in item["compact_results"]]
         assert any(summary.get("official_score") == 1.0 for summary in summaries)
         goal_summaries = [
@@ -163,7 +177,20 @@ def main() -> int:
         assert failure_policy["cleanup_required"] is True
         assert failure_policy["blocker_required_before_rerun"] is False
         assert "secret raw transcript" not in proc.stdout
+        assert "TASK_PROMPT_SHOULD_NOT_APPEAR_IN_SNAPSHOT" not in proc.stdout
         assert str(root) not in proc.stdout
+        script_source = SCRIPT.read_text(encoding="utf-8")
+        forbidden_process_polling = [
+            "subprocess.run",
+            "subprocess.check_output",
+            "pgrep",
+            "/proc/",
+            "process_iter",
+        ]
+        leaked_polling = [
+            item for item in forbidden_process_polling if item in script_source
+        ]
+        assert not leaked_polling, leaked_polling
 
         runtime_root = root / "runtime"
         rollout_proc = subprocess.run(
@@ -213,6 +240,10 @@ def main() -> int:
         assert event["details"]["cleanup_required_count"] == 2, event
         assert event["details"]["monitor_poll_allowed_count"] == 1, event
         assert event["details"]["blocker_required_count"] == 0, event
+        assert event["details"]["process_table_read"] is False, event
+        assert event["details"]["process_cmdline_read"] is False, event
+        assert event["details"]["process_argv_read"] is False, event
+        assert event["details"]["process_argv_emitted"] is False, event
         assert event["boundary"]["raw_logs_recorded"] is False, event
         assert event["boundary"]["absolute_paths_recorded"] is False, event
 
