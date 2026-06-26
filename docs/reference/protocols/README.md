@@ -17,6 +17,7 @@ Current contracts:
 - [global_manager_command_v0](global-manager-command-v0.md)
 - [rollback_packet_v0](rollback-packet-v0.md)
 - [content_ops_surface_v0](content-ops-surface-v0.md)
+- [x_public_channel_ops_v0](x-public-channel-ops-v0.md)
 - [issue_fix_acceptance_loop_v0](issue-fix-acceptance-loop-v0.md)
 - [cs_notes_explore_capability_map_v0](cs-notes-explore-capability-map-v0.md)
 - [value_connector_plan_v0](value-connector-plan-v0.md)

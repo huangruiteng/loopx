@@ -13,6 +13,10 @@ dist/
 .playwright-cli/
 output/playwright/
 
+# Local/private operator skills. Generic, reusable contracts belong in docs or
+# product code; account-specific creator/operator skills stay outside git.
+skills/loopx-social-media/
+
 # Project-local private state. Keep real project paths, task ids, tokens,
 # internal logs, and active goal state outside the public repository.
 .local/

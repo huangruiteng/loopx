@@ -1,4 +1,0 @@
-interface:
-  display_name: "LoopX Social Media"
-  short_description: "Draft public-safe LoopX X posts"
-  default_prompt: "Use $loopx-social-media to refine a LoopX X post with source gates, visuals, and timing."

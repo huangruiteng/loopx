@@ -233,6 +233,10 @@ browser connector trial against X showed that opening a normal public profile
 page can autoload timelines, post text, media streams, analytics, and
 engagement data. Therefore the safe default for public-handle metadata intake
 is `head_only_metadata_probe`; browser opening is not the default metadata path.
+For reusable X research, draft, and gated posting behavior, use
+[`x_public_channel_ops_v0`](x-public-channel-ops-v0.md). Account-specific launch
+calendars, exact post bodies, mentions, and operator skills belong in ignored
+local state or user-local Codex skills, not in the public repository.
 
 Private connectors use a gate-projection command before any source access:
 
