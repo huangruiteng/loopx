@@ -52,6 +52,13 @@ def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) 
         help="Host surface where the slash command pack will be exposed.",
     )
     bootstrap_command_pack_parser.add_argument(
+        "--goal-text",
+        help=(
+            "Optional text after /loopx. When present, preview the explicit goal-start flow: "
+            "connect if needed, plan ranked todos, write them in order, then enter quota-gated automation."
+        ),
+    )
+    bootstrap_command_pack_parser.add_argument(
         "--message-only",
         "--copy-only",
         dest="message_only",
@@ -174,6 +181,7 @@ def handle_loopx_bootstrap_command_pack_command(
         agent_id=args.agent_id,
         cli_bin=args.cli_bin,
         host_surface=args.host_surface,
+        goal_text=args.goal_text,
     )
     if bool(getattr(args, "message_only", False)):
         print(str(payload.get("message") or ""))

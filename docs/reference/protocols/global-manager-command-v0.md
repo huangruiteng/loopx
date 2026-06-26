@@ -30,6 +30,11 @@ Commands are read-only by default. They can propose follow-up actions, but
 they do not approve gates, promote suggested todos, spend quota, merge PRs,
 pause automations, or run destructive operations.
 
+Related project-local command: `/loopx <goal text>` is covered by
+[`loopx_goal_command_v0`](loopx-goal-command-v0.md). It is not a global manager
+command: it starts one project goal, plans ranked todos, writes them in order,
+and then enters the quota-gated automation flow.
+
 ## Request Shape
 
 ```json
