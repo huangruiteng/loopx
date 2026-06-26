@@ -5,6 +5,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ..codex_cli_probe import DEFAULT_CODEX_BIN
+from ..bootstrap_command_pack import (
+    build_loopx_bootstrap_command_pack,
+    render_loopx_bootstrap_command_pack_markdown,
+)
 from ..project_prompt import (
     DEFAULT_HANDOFF_ADAPTER_KIND,
     DEFAULT_HANDOFF_ADAPTER_STATUS,
@@ -26,6 +30,35 @@ PrintPayload = Callable[
 
 
 def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) -> None:
+    bootstrap_command_pack_parser = subparsers.add_parser(
+        "bootstrap-command-pack",
+        help="Preview the /loopx project bootstrap command pack without mutating state.",
+    )
+    bootstrap_command_pack_parser.add_argument("--project", default=".", help="Project directory to inspect.")
+    bootstrap_command_pack_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
+    bootstrap_command_pack_parser.add_argument(
+        "--agent-id",
+        help="Registered LoopX agent id to include in quota/heartbeat commands.",
+    )
+    bootstrap_command_pack_parser.add_argument(
+        "--cli-bin",
+        default="loopx",
+        help="LoopX CLI binary name embedded in generated commands.",
+    )
+    bootstrap_command_pack_parser.add_argument(
+        "--host-surface",
+        default="chat-box",
+        choices=["chat-box", "codex-app", "codex-cli-tui", "claude-code", "shell", "http", "worker-bridge"],
+        help="Host surface where the slash command pack will be exposed.",
+    )
+    bootstrap_command_pack_parser.add_argument(
+        "--message-only",
+        "--copy-only",
+        dest="message_only",
+        action="store_true",
+        help="Print only the pasteable /loopx handling message.",
+    )
+
     prompt_parser = subparsers.add_parser(
         "new-project-prompt",
         help="Generate a copy-paste Codex prompt for connecting a project from a goal document.",
@@ -131,6 +164,24 @@ def handle_new_project_prompt_command(
     return 0
 
 
+def handle_loopx_bootstrap_command_pack_command(
+    args: argparse.Namespace,
+    print_payload: PrintPayload,
+) -> int:
+    payload = build_loopx_bootstrap_command_pack(
+        project=Path(args.project),
+        goal_id=args.goal_id,
+        agent_id=args.agent_id,
+        cli_bin=args.cli_bin,
+        host_surface=args.host_surface,
+    )
+    if bool(getattr(args, "message_only", False)):
+        print(str(payload.get("message") or ""))
+        return 0
+    print_payload(payload, args.format, render_loopx_bootstrap_command_pack_markdown)
+    return 0
+
+
 def handle_codex_cli_bootstrap_message_command(
     args: argparse.Namespace,
     print_payload: PrintPayload,
@@ -182,6 +233,7 @@ def handle_starter_bootstrap_command(
     print_payload: PrintPayload,
 ) -> int | None:
     handlers: dict[str, Callable[[argparse.Namespace, PrintPayload], int]] = {
+        "bootstrap-command-pack": handle_loopx_bootstrap_command_pack_command,
         "new-project-prompt": handle_new_project_prompt_command,
         "codex-cli-bootstrap-message": handle_codex_cli_bootstrap_message_command,
         "codex-cli-tui-bootstrap-smoke-bundle": handle_codex_cli_tui_bootstrap_smoke_bundle_command,

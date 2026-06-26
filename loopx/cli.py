@@ -155,6 +155,7 @@ def main(argv: list[str] | None = None) -> int:
         args.command
         not in {
             "bootstrap",
+            "bootstrap-command-pack",
             "connect",
             "codex-cli-bootstrap-message",
             "codex-cli-bounded-visible-pilot-adapter",
