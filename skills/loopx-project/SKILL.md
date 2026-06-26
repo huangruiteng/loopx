@@ -68,6 +68,23 @@ or status summary surface instead of `bootstrap-command-pack`. Legacy
 `/loop-global-*` forms may be treated as aliases, but canonical help and
 packets should use `/loopx-global-*`.
 
+When a user has just connected a project or receives a bootstrap command pack
+for the first time, briefly tell them the usable commands instead of assuming
+they will inspect CLI help:
+
+- `/loopx`: inspect or preview this project's LoopX connection/status.
+- `/loopx <goal text>`: start a concrete goal with a plan-before-todo-write
+  flow.
+- `/loopx-global-summary`: read the global progress digest.
+- `/loopx-global-gates`, `/loopx-global-todos`, `/loopx-global-risks`: inspect
+  manager-level gates, work, and risks.
+
+For command-line discovery, use:
+
+```bash
+loopx slash-commands
+```
+
 ## Register Project Authority And Material Sources
 
 When a project agent discovers a durable design document, research note,

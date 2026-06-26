@@ -44,6 +44,18 @@ def test_missing_project_stops_before_mutation() -> None:
         assert payload["schema_version"] == "loopx_bootstrap_command_pack_v0"
         assert payload["slash_command"] == "/loopx"
         assert {"form": "/loopx <goal text>", "mode": "goal_plan_write_and_activate"} in payload["slash_forms"]
+        slash_catalog = payload["available_slash_commands"]
+        assert isinstance(slash_catalog, dict)
+        assert slash_catalog["schema_version"] == "loopx_slash_command_catalog_v0"
+        command_names = {item["command"] for item in slash_catalog["commands"]}
+        assert "/loopx" in command_names
+        assert "/loopx <goal text>" in command_names
+        assert "/loopx-global-summary" in command_names
+        assert "/loopx-global-gates" in command_names
+        onboarding = payload["onboarding_hint"]
+        assert onboarding["tell_new_users"] is True
+        assert "LoopX command surface is available. Useful commands:" in onboarding["suggested_user_note"]
+        assert "loopx slash-commands" in onboarding["suggested_user_note"]
         assert payload["read_only"] is True
         assert connection["connection_state"] == "not_connected"
         assert connection["mutation_confirmation_required"] is True
@@ -187,6 +199,7 @@ def test_skill_slash_fallback_contract() -> None:
     assert "do not silently downgrade `/loopx <goal text>`" in normalized
     assert "`/loopx-global-summary`" in skill_text
     assert "Legacy `/loop-global-*` forms" in normalized
+    assert "loopx slash-commands" in skill_text
     assert "not project bootstrap commands" in normalized
 
 

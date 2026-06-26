@@ -91,6 +91,7 @@ from .registry_admin import (
     handle_registry_admin_command,
     register_registry_admin_commands,
 )
+from .slash_commands import handle_slash_commands_command, register_slash_commands_command
 from .starter import (
     handle_demo_command,
     handle_starter_command,
@@ -206,6 +207,7 @@ __all__ = [
     "handle_quota_command",
     "handle_registry_admin_command",
     "handle_review_packet_command",
+    "handle_slash_commands_command",
     "handle_status_command",
     "handle_starter_command",
     "handle_starter_bootstrap_command",
@@ -245,6 +247,7 @@ __all__ = [
     "register_project_lifecycle_commands",
     "register_quota_command",
     "register_registry_admin_commands",
+    "register_slash_commands_command",
     "register_starter_commands",
     "register_starter_bootstrap_commands",
     "register_starter_scheduler_commands",

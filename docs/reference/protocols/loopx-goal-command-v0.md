@@ -24,6 +24,10 @@ When the user provides text after `/loopx`, the host should:
 
 The command pack preview is still read-only. It describes the commands and
 contracts; the slash invocation is what authorizes project-local state writes.
+New-user surfaces should also show the compact slash command catalog from the
+command pack, or the equivalent `loopx slash-commands` CLI help, so users can
+discover `/loopx`, `/loopx <goal text>`, and the `/loopx-global-*` read-only
+manager commands.
 
 ## Planning Contract
 

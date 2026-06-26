@@ -33,6 +33,7 @@ from .cli_commands import (
     handle_quota_command,
     handle_registry_admin_command,
     handle_review_packet_command,
+    handle_slash_commands_command,
     handle_status_command,
     handle_starter_command,
     handle_summary_all_command,
@@ -50,6 +51,7 @@ from .cli_commands import (
     register_project_lifecycle_commands,
     register_quota_command,
     register_registry_admin_commands,
+    register_slash_commands_command,
     register_starter_commands,
     register_status_commands,
     register_summary_all_command,
@@ -148,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
 
     register_status_commands(sub, add_subcommand_format)
     register_summary_all_command(sub, add_subcommand_format)
+    register_slash_commands_command(sub, add_subcommand_format)
     register_dreaming_commands(sub, add_subcommand_format)
     register_todo_command(sub)
     register_quota_command(sub)
@@ -178,6 +181,7 @@ def main(argv: list[str] | None = None) -> int:
             "demo",
             "doctor",
             "new-project-prompt",
+            "slash-commands",
             "heartbeat-prompt",
             "sync-global",
             "uninstall-project",
@@ -339,6 +343,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if summary_all_result is not None:
         return summary_all_result
+
+    slash_commands_result = handle_slash_commands_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if slash_commands_result is not None:
+        return slash_commands_result
 
     if args.command == "dreaming":
         return handle_dreaming_command(

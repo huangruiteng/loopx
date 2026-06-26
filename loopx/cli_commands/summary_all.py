@@ -29,7 +29,7 @@ def register_summary_all_command(
 ) -> None:
     parser = subparsers.add_parser(
         "global-summary",
-        help="Read a public-safe /loopx-global-summary progress digest across visible LoopX goals.",
+        help="Read a public-safe /loopx-global-summary progress digest; see `loopx slash-commands` for slash help.",
     )
     add_subcommand_format(parser)
     parser.add_argument("--agent-id", help="Registered agent id for agent-lane quota projection.")

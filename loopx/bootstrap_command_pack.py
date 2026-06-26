@@ -13,6 +13,7 @@ from .project_prompt import (
     shell_arg,
 )
 from .registry import registry_goals, resolve_state_file
+from .slash_commands import build_slash_command_catalog
 
 
 SCHEMA_VERSION = "loopx_bootstrap_command_pack_v0"
@@ -350,6 +351,7 @@ def build_loopx_bootstrap_command_pack(
         goal_id=resolved_goal_id,
         agent_id=agent_id,
     )
+    slash_command_catalog = build_slash_command_catalog(cli_bin=cli_bin)
 
     if explicit_goal_start:
         recommended_next_step = {
@@ -396,6 +398,8 @@ def build_loopx_bootstrap_command_pack(
         "agent_id": agent_id,
         "host_surface": host_surface,
         "project_connection": inspection,
+        "available_slash_commands": slash_command_catalog,
+        "onboarding_hint": slash_command_catalog["onboarding"],
         "recommended_next_step": recommended_next_step,
         "goal_start_contract": _goal_start_contract(goal_text=normalized_goal_text, connected=connected),
         "commands": {
@@ -443,6 +447,8 @@ def render_loopx_bootstrap_command_pack_message(payload: dict[str, Any]) -> str:
     reason = connection.get("reason")
     goal_start_contract = payload.get("goal_start_contract")
     goal_start_contract = goal_start_contract if isinstance(goal_start_contract, dict) else {}
+    onboarding = payload.get("onboarding_hint")
+    onboarding = onboarding if isinstance(onboarding, dict) else {}
 
     if goal_text:
         action = f"""This is an explicit goal-start invocation. Connect project-local LoopX state if needed:
@@ -506,6 +512,12 @@ Rules:
 
 Goal-start contract: `{goal_start_contract.get("schema_version")}`
 
+Suggested new-user note:
+
+```text
+{onboarding.get("suggested_user_note", "")}
+```
+
 {action}
 
 For ongoing work after the project is connected, use the quota guard:
@@ -525,6 +537,10 @@ def render_loopx_bootstrap_command_pack_markdown(payload: dict[str, Any]) -> str
     safety = safety if isinstance(safety, dict) else {}
     commands = payload.get("commands")
     commands = commands if isinstance(commands, dict) else {}
+    onboarding = payload.get("onboarding_hint")
+    onboarding = onboarding if isinstance(onboarding, dict) else {}
+    slash_catalog = payload.get("available_slash_commands")
+    slash_catalog = slash_catalog if isinstance(slash_catalog, dict) else {}
     goal_start = payload.get("goal_start_contract")
     goal_start = goal_start if isinstance(goal_start, dict) else {}
     ordering = goal_start.get("priority_ordering")
@@ -549,6 +565,14 @@ Supported forms: `/loopx`, `/loopx <goal text>`
 - kind: `{next_step.get("kind")}`
 - requires_user_confirmation: `{next_step.get("requires_user_confirmation")}`
 - summary: {next_step.get("summary")}
+
+## New User Command Hint
+
+````text
+{onboarding.get("suggested_user_note", "")}
+````
+
+- CLI help: `{(slash_catalog.get("help") or {}).get("cli_command") if isinstance(slash_catalog.get("help"), dict) else "loopx slash-commands"}`
 
 ## Paste Message
 
