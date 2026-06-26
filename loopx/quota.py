@@ -4395,6 +4395,22 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
                 default=str,
             ).encode("utf-8")
         ).hexdigest()[:16]
+        identity_signature = hashlib.sha256(
+            json.dumps(
+                identity_snapshot,
+                ensure_ascii=True,
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()[:12]
+        profile_signature = hashlib.sha256(
+            json.dumps(
+                profile_snapshot,
+                ensure_ascii=True,
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()[:12]
         reset_policy = {
             "schema_version": SCHEDULER_RESET_POLICY_SCHEMA_VERSION,
             "source": "quota.should-run",
@@ -4406,21 +4422,12 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
             "codex_app_initial_rrule": codex_rrule,
             "local_scheduler_initial_interval_minutes": codex_interval,
             "clear_unchanged_poll_state": True,
-            "identity_keys": identity_keys,
-            "identity_snapshot": identity_snapshot,
-            "profile_snapshot": profile_snapshot,
-            "reset_conditions": [
-                "reset_token_changed",
-                "quota_identity_snapshot_changed",
-                "scheduler_action_changed",
-                "user_feedback",
-                "new_or_reassigned_todo",
-                "gate_resolved",
-                "material_transition",
-                "active_work_projected",
-            ],
-            "after_reset": "apply the current profile initial interval before starting unchanged backoff again",
-            "codex_app_apply": "if a stored reset_token differs, update the heartbeat RRULE to codex_app_initial_rrule and clear unchanged poll state before applying new backoff",
+            "identity_key_count": len(identity_keys),
+            "identity_signature": identity_signature,
+            "profile_signature": profile_signature,
+            "reset_condition_summary": "token_changed|user_feedback|new_or_reassigned_todo|gate_or_material_transition|active_work_projected",
+            "after_reset": "apply_initial_interval_before_backoff",
+            "codex_app_apply": "update_rrule_to_initial_and_clear_unchanged_state_on_token_change",
             "no_spend_for_reset": True,
         }
         return {
@@ -8868,8 +8875,10 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"initial_interval={reset_policy.get('codex_app_initial_interval_minutes')} "
                 f"initial_rrule={reset_policy.get('codex_app_initial_rrule')} "
                 f"reset_generation={reset_policy.get('reset_token')} "
-                f"identity_keys={reset_policy.get('identity_keys')} "
-                f"conditions={reset_policy.get('reset_conditions')}"
+                f"identity_key_count={reset_policy.get('identity_key_count')} "
+                f"identity_signature={reset_policy.get('identity_signature')} "
+                f"profile_signature={reset_policy.get('profile_signature')} "
+                f"conditions={reset_policy.get('reset_condition_summary')}"
             )
     protocol_action_packet = (
         payload.get("protocol_action_packet")
