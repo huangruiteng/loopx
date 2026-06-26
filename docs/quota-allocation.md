@@ -532,16 +532,15 @@ JSON or Markdown decision:
     "reset_policy": {
       "schema_version": "scheduler_reset_policy_v0",
       "reset_to": "profile_initial_interval",
+      "reset_token": "0123456789abcdef",
+      "host_state_key": "scheduler_hint.reset_policy.reset_token",
       "codex_app_initial_interval_minutes": 30,
+      "codex_app_initial_rrule": "FREQ=MINUTELY;INTERVAL=30",
       "clear_unchanged_poll_state": true,
-      "reset_conditions": [
-        "quota_identity_snapshot_changed",
-        "scheduler_action_changed",
-        "user_feedback",
-        "new_or_reassigned_todo",
-        "gate_resolved",
-        "material_transition"
-      ]
+      "identity_key_count": 6,
+      "identity_signature": "123456789abc",
+      "profile_signature": "abcdef123456",
+      "reset_condition_summary": "token_changed|user_feedback|new_or_reassigned_todo|gate_or_material_transition|active_work_projected"
     }
   },
   "operator_question": "是否同意 project-main-control 先做 read-only map dry-run？",
@@ -669,11 +668,14 @@ Agent-scope waits use a more conservative adjustment curve such as
 `[10, 20, 30, 60]`, so a 600-second local tick stays close to the existing
 agent-to-agent interaction cadence before cooling further.
 Each hint also carries `reset_policy.schema_version=scheduler_reset_policy_v0`.
-Hosts should compare `reset_policy.identity_snapshot` across unchanged polls
-and reset the unchanged streak whenever the snapshot or scheduler action
-changes. They should also reset when an external event makes the goal
-actionable again, such as user feedback in the thread, a new or reassigned todo,
-a resolved gate, or material evidence transition. A reset applies
+Hosts should cache and compare `reset_policy.reset_token` across unchanged
+polls and reset the unchanged streak whenever the token changes. The token is
+derived from scheduler action plus the current identity/profile inputs, while
+the hot path only exposes short `identity_signature` and `profile_signature`
+debug aids instead of full snapshots. Hosts should also reset when an external
+event makes the goal actionable again, such as user feedback in the thread, a
+new or reassigned todo, a resolved gate, or material evidence transition. A
+reset applies
 `codex_app_initial_interval_minutes` (and the matching local scheduler initial
 interval) before starting unchanged backoff again; it never spends quota.
 For Codex App heartbeats, hosts and agents should use
@@ -681,8 +683,9 @@ For Codex App heartbeats, hosts and agents should use
 `reset_policy.codex_app_initial_rrule` when the stored
 `reset_policy.reset_token` changes. This gives host runtimes a compact state key
 instead of requiring them to diff the whole quota payload. The token is derived
-from scheduler action, `identity_snapshot`, and `profile_snapshot`, so a changed
-initial RRULE or scheduler profile also produces a new generation. User
+from scheduler action plus identity/profile inputs, so a changed initial RRULE
+or scheduler profile also produces a new generation without projecting full
+snapshots in `quota should-run` JSON. User
 feedback, newly runnable work, reassignment, or material evidence should
 therefore restore the automation to the current profile's initial interval
 before backoff resumes.

@@ -1216,12 +1216,13 @@ subsequent unchanged intervals by `unchanged_poll_backoff_multiplier` until
 `max_interval_minutes`; `example_progression_minutes` exposes the compact
 human-readable sequence. The hint also includes
 `reset_policy.schema_version=scheduler_reset_policy_v0`: hosts compare its
-`identity_snapshot` between polls and clear the unchanged/backoff streak when
-that snapshot or scheduler action changes, or when a user reply,
-new/reassigned todo, resolved gate, or material transition makes the goal
-actionable again. The reset moves Codex App/local cadence back to the current
-profile's initial interval before unchanged backoff resumes, and does not spend
-quota.
+`reset_token` between polls and clear the unchanged/backoff streak when that
+token changes, or when a user reply, new/reassigned todo, resolved gate, or
+material transition makes the goal actionable again. The token is derived from
+scheduler action plus identity/profile inputs, while the hot path carries only
+short identity/profile signatures instead of full snapshots. The reset moves
+Codex App/local cadence back to the current profile's initial interval before
+unchanged backoff resumes, and does not spend quota.
 Codex App heartbeats should apply `codex_app.recommended_rrule` for ordinary
 cadence updates. They should cache only
 `reset_policy.reset_token` plus the automation id when possible; when that token
@@ -1229,8 +1230,8 @@ changes, or when user feedback/new work/reassignment/material evidence makes the
 goal active again, update the heartbeat RRULE to
 `reset_policy.codex_app_initial_rrule` and clear unchanged-poll state before
 starting a new backoff progression. The token is generated from scheduler
-action, `identity_snapshot`, and `profile_snapshot`, so hosts do not need to
-diff the whole payload to notice an initial-RRULE/profile generation change.
+action plus identity/profile inputs, so hosts do not need to diff the whole
+payload to notice an initial-RRULE/profile generation change.
 The payload also includes `execution_obligation`, which is the compatibility
 entry point for older workers deciding whether a quiet no-op is allowed.
 `heartbeat_recommendation.notify` is only a user-facing notification policy. It
