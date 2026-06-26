@@ -1894,6 +1894,150 @@ def test_product_mode_declared_done_below_passing_reward_continues() -> None:
         assert trace["stop_decision_count"] == 0, trace
 
 
+def test_product_mode_declared_done_missing_reward_continues() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-declared-done-no-reward-") as tmp:
+        root = Path(tmp)
+        jobs_dir = root / "jobs"
+        job_name = "skillsbench_declared_done_missing_reward_fixture"
+        rollout_name = "case__loopx_product_mode"
+        trajectory_path = (
+            jobs_dir / job_name / rollout_name / "agent" / "acp_trajectory.jsonl"
+        )
+        trajectory_path.parent.mkdir(parents=True)
+        trajectory_path.write_text(
+            json.dumps(
+                {
+                    "type": "user_message",
+                    "text": "LoopX product-mode treatment round 1.",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-product-mode",
+            "heartbeat_count": 0,
+            "controller_action_decisions": 0,
+            "initial_prompt_count": 0,
+            "followup_prompt_count": 0,
+            "stop_decision_count": 0,
+            "reward_observation_count": 0,
+            "round_rewards": [],
+            "remote_command_file_bridge_driver_lifecycle_execution_style": (
+                "orchestrated_agentloop_loopx_cli"
+            ),
+            "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_success_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+            "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_recorded"
+            ),
+            "remote_command_file_bridge_agent_operation_trace_count": 2,
+            "remote_command_file_bridge_agent_operation_trace_satisfied": True,
+            "remote_command_file_bridge_agent_request_count": 10,
+            "remote_command_file_bridge_agent_loopx_cli_call_count": 6,
+            "remote_command_file_bridge_agent_loopx_state_read_count": 1,
+            "remote_command_file_bridge_agent_loopx_state_write_count": 5,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 4,
+            "remote_command_file_bridge_agent_todo_closeout_count": 2,
+            "remote_command_file_bridge_agent_refresh_state_count": 1,
+            "remote_command_file_bridge_agent_quota_spend_slot_count": 1,
+        }
+        plan = {
+            "jobs_dir": str(jobs_dir),
+            "job_name": job_name,
+            "rollout_name": rollout_name,
+        }
+        saved_modules = {
+            name: sys.modules.get(name)
+            for name in (
+                "benchflow",
+                "benchflow.sandbox",
+                "benchflow.sandbox.user",
+            )
+        }
+        fake_benchflow = types.ModuleType("benchflow")
+        fake_sandbox = types.ModuleType("benchflow.sandbox")
+        fake_user = types.ModuleType("benchflow.sandbox.user")
+
+        class FakeBaseUser:
+            pass
+
+        class FakeRoundResultBase:
+            pass
+
+        fake_user.BaseUser = FakeBaseUser
+        fake_user.RoundResult = FakeRoundResultBase
+        sys.modules["benchflow"] = fake_benchflow
+        sys.modules["benchflow.sandbox"] = fake_sandbox
+        sys.modules["benchflow.sandbox.user"] = fake_user
+        try:
+            user = _build_product_mode_user(
+                route="loopx-product-mode",
+                max_rounds=24,
+                trace=trace,
+                plan=plan,
+            )
+            user._task_instruction_sent = True
+        finally:
+            for name, module in saved_modules.items():
+                if module is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = module
+
+        class FakeRoundResult:
+            n_tool_calls = 0
+            rewards = {}
+            verifier_error = None
+            verifier_output = None
+            trajectory = [
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Done. {DECLARED_DONE_MARKER}",
+                        }
+                    ],
+                }
+            ]
+
+        prompt = asyncio.run(
+            user.run(
+                2,
+                "Fix the fixture.",
+                round_result=FakeRoundResult(),
+            )
+        )
+        assert prompt is not None, trace
+        assert "Scheduled product-mode continuation round 3 of 24" in prompt
+        assert "official verifier passed or failed" in prompt
+        assert trace["last_decision"] == (
+            "send_product_mode_success_or_budget_continuation_after_declared_done"
+        )
+        assert trace["agent_declared_done"] is True, trace
+        assert trace["declared_done_round"] == 2, trace
+        assert "declared_done_score" not in trace, trace
+        assert trace["product_mode_declared_done_below_passing_reward"] is True
+        assert trace["product_mode_declared_done_below_passing_reward_round"] == 2
+        assert trace["product_mode_declared_done_below_passing_reward_count"] == 1
+        assert (
+            trace["product_mode_declared_done_below_passing_reward_score_status"]
+            == "missing"
+        )
+        assert trace["product_mode_declared_done_policy"] == (
+            "continue_until_official_success_or_budget"
+        )
+        assert trace["followup_prompt_count"] == 1, trace
+        assert trace["stop_decision_count"] == 0, trace
+
+
 def test_product_mode_missing_lifecycle_prompts_exact_checkpoint() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-lifecycle-checkpoint-") as tmp:
         root = Path(tmp)
@@ -8870,6 +9014,7 @@ if __name__ == "__main__":
     test_product_mode_declared_done_requires_case_state_depth()
     test_product_mode_declared_done_requires_solver_activity_after_driver_lifecycle()
     test_product_mode_declared_done_below_passing_reward_continues()
+    test_product_mode_declared_done_missing_reward_continues()
     test_product_mode_missing_lifecycle_prompts_exact_checkpoint()
     test_product_mode_no_tool_call_stops_before_checkpoint_loop()
     test_product_mode_workflow_driver_task_bridge_activity_avoids_no_tool_abort()

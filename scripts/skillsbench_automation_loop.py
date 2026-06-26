@@ -5259,11 +5259,19 @@ def _record_product_mode_declared_done_below_passing_reward(
     trace: dict[str, Any],
     *,
     agent_round: int,
-    reward: float,
+    reward: float | None,
 ) -> None:
     trace["product_mode_declared_done_below_passing_reward"] = True
     trace["product_mode_declared_done_below_passing_reward_round"] = agent_round
-    trace["product_mode_declared_done_below_passing_reward_score"] = reward
+    if reward is None:
+        trace["product_mode_declared_done_below_passing_reward_score_status"] = (
+            "missing"
+        )
+    else:
+        trace["product_mode_declared_done_below_passing_reward_score"] = reward
+        trace["product_mode_declared_done_below_passing_reward_score_status"] = (
+            "observed_below_passing"
+        )
     trace["product_mode_declared_done_policy"] = (
         "continue_until_official_success_or_budget"
     )
@@ -6229,21 +6237,32 @@ def _build_product_mode_user(
                                 "send_product_mode_solver_activity_continuation"
                             )
                             return solver_activity_prompt(round + 1)
-                    if (
-                        treatment
-                        and isinstance(reward, (int, float))
-                        and not isinstance(reward, bool)
-                        and reward < 1.0
-                    ):
+                    if treatment:
                         _record_declared_done(
                             trace,
                             agent_round=round,
                             reward=reward,
                         )
+                        if (
+                            isinstance(reward, (int, float))
+                            and not isinstance(reward, bool)
+                            and reward >= 1.0
+                        ):
+                            _inc_counter(trace, "controller_action_decisions")
+                            _inc_counter(trace, "stop_decision_count")
+                            trace["last_decision"] = (
+                                "stop_after_product_mode_official_success_observed_without_feedback"
+                            )
+                            return None
                         _record_product_mode_declared_done_below_passing_reward(
                             trace,
                             agent_round=round,
-                            reward=float(reward),
+                            reward=(
+                                float(reward)
+                                if isinstance(reward, (int, float))
+                                and not isinstance(reward, bool)
+                                else None
+                            ),
                         )
                         _inc_counter(trace, "controller_action_decisions")
                         if round >= max_rounds:
