@@ -65,6 +65,7 @@ LOCAL_PRIVATE_STATE_FILE_NAMES = {"ACTIVE_GOAL_STATE.md", "ACTIVE_GOAL_STATE.md.
 
 
 def _git_probe(path: Path) -> dict[str, Any]:
+    path = path.resolve()
     target = path if path.is_dir() else path.parent
     try:
         root = subprocess.run(
@@ -76,7 +77,7 @@ def _git_probe(path: Path) -> dict[str, Any]:
     except (subprocess.CalledProcessError, FileNotFoundError):
         return {"inside_worktree": False, "tracked": False, "ignored": False}
 
-    repo_root = Path(root)
+    repo_root = Path(root).resolve()
     try:
         rel_path = str(path.relative_to(repo_root))
     except ValueError:
@@ -200,13 +201,57 @@ def _index_duplicate_warning(goal_id: object, raw: int, unique: int) -> str:
     )
 
 
+def _tracked_scan_files(scan_root: Path) -> list[Path]:
+    scan_root = scan_root.resolve()
+    target = scan_root if scan_root.is_dir() else scan_root.parent
+    try:
+        root = subprocess.run(
+            ["git", "-C", str(target), "rev-parse", "--show-toplevel"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return []
+
+    repo_root = Path(root).resolve()
+    try:
+        rel_root = str(scan_root.resolve().relative_to(repo_root.resolve()))
+    except ValueError:
+        return []
+    if not rel_root:
+        rel_root = "."
+
+    tracked = subprocess.run(
+        ["git", "-C", str(repo_root), "ls-files", "-z", "--", rel_root],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if tracked.returncode != 0:
+        return []
+
+    files: list[Path] = []
+    for rel_path in tracked.stdout.split("\0"):
+        if not rel_path:
+            continue
+        path = (repo_root / rel_path).resolve()
+        if path.name.endswith(".local.json"):
+            continue
+        if path.is_file() and path.suffix in DEFAULT_SCAN_SUFFIXES:
+            files.append(path)
+    return files
+
+
 def iter_scan_files(scan_root: Path) -> list[Path]:
+    scan_root = scan_root.resolve()
     if scan_root.is_file():
         return [scan_root]
     files: list[Path] = []
+    tracked_files = _tracked_scan_files(scan_root)
     root_parts = set(scan_root.parts)
     if any(part in DEFAULT_SKIP_DIRS or part.endswith(".egg-info") for part in root_parts):
-        return files
+        return sorted(tracked_files)
 
     for dir_path, dir_names, file_names in os.walk(scan_root):
         dir_names[:] = [
@@ -216,12 +261,12 @@ def iter_scan_files(scan_root: Path) -> list[Path]:
         ]
         current_dir = Path(dir_path)
         for file_name in file_names:
-            path = current_dir / file_name
+            path = (current_dir / file_name).resolve()
             if path.name.endswith(".local.json"):
                 continue
             if path.suffix in DEFAULT_SCAN_SUFFIXES:
                 files.append(path)
-    return sorted(files)
+    return sorted(set(files + tracked_files))
 
 
 def scan_public_boundary(
@@ -234,8 +279,9 @@ def scan_public_boundary(
     files: list[Path] = []
     file_roots: dict[Path, Path] = {}
     for scan_root in scan_roots:
-        display_root = scan_root.parent if scan_root.is_file() else scan_root
-        for file_path in iter_scan_files(scan_root):
+        resolved_scan_root = scan_root.resolve()
+        display_root = resolved_scan_root.parent if resolved_scan_root.is_file() else resolved_scan_root
+        for file_path in iter_scan_files(resolved_scan_root):
             files.append(file_path)
             file_roots[file_path] = display_root
     files = sorted(set(files))

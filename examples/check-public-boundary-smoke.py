@@ -144,6 +144,24 @@ def main() -> int:
         if not any("ACTIVE_GOAL_STATE.md" in str(item) and "private_doc_url" in str(item) for item in tracked_errors):
             raise AssertionError(tracked_state_payload)
 
+        tracked_root = run_cli(
+            root,
+            "--format",
+            "json",
+            "check",
+            "--scan-root",
+            str(git_project),
+        )
+        if tracked_root.returncode == 0:
+            raise AssertionError(tracked_root.stdout)
+        tracked_root_payload = json.loads(tracked_root.stdout)
+        tracked_root_errors = tracked_root_payload.get("errors") or []
+        if not any(
+            "ACTIVE_GOAL_STATE.md" in str(item) and "private_doc_url" in str(item)
+            for item in tracked_root_errors
+        ):
+            raise AssertionError(tracked_root_payload)
+
         registry_path = git_project / ".loopx" / "registry.json"
         registry_path.parent.mkdir(parents=True)
         registry_path.write_text(
@@ -175,6 +193,25 @@ def main() -> int:
         checks = "\n".join(str(item) for item in allowed_state_payload.get("checks") or [])
         if "public boundary policy allowed: 1 private_doc_url hits" not in checks:
             raise AssertionError(allowed_state_payload)
+
+        allowed_root = run_cli(
+            root,
+            "--registry",
+            str(registry_path),
+            "--format",
+            "json",
+            "check",
+            "--scan-root",
+            str(git_project),
+        )
+        if allowed_root.returncode != 0:
+            raise AssertionError(allowed_root.stderr or allowed_root.stdout)
+        allowed_root_payload = json.loads(allowed_root.stdout)
+        if not allowed_root_payload.get("ok"):
+            raise AssertionError(allowed_root_payload)
+        checks = "\n".join(str(item) for item in allowed_root_payload.get("checks") or [])
+        if "public boundary policy allowed: 1 private_doc_url hits" not in checks:
+            raise AssertionError(allowed_root_payload)
 
     print("check-public-boundary-smoke ok")
     return 0
