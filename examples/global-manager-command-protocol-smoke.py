@@ -23,6 +23,9 @@ REQUIRED_COMMANDS = {
     "/loop-global-risks",
     "/loop-goal-summary",
 }
+REJECTED_COMMAND_ALIASES = {
+    "/loopx-summary-all",
+}
 
 REQUIRED_BOUNDARY_FALSE = {
     "raw_logs_recorded",
@@ -79,6 +82,9 @@ def main() -> int:
     assert_contains(long_horizon, "global_manager_command_v0", "long horizon protocol")
     for command in REQUIRED_COMMANDS:
         assert_contains(contract, command, "command set")
+    for command in REJECTED_COMMAND_ALIASES:
+        if command in contract:
+            raise AssertionError(f"command set should not include superseded alias {command!r}")
     for needle in [
         "read-only by default",
         "Action Ladder",
