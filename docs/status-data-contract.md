@@ -891,6 +891,13 @@ Item fields:
   counts to indicate when more claimed work exists than is expanded in the
   current payload, and richer frontstage views should use a future
   paged/filtered projection instead of forcing larger heartbeat payloads.
+  The canonical todo drill-down contract is
+  `docs/reference/protocols/todo-detail-cold-path-v0.md`: hot-path summaries
+  may carry only a compact `todo_detail_ref_v0` pointer for one selected item,
+  while full notes, evidence summaries, related lifecycle references, and page
+  tokens stay in `todo_detail_cold_path_v0` cold-path responses. Status,
+  quota, heartbeat, and handoff payloads must not inline full todo detail in
+  order to make hidden backlog visible.
   When claimed lanes exceed the cap, producers should avoid raw top-N
   truncation. Sort by priority and source position, group by `claimed_by`, take
   a fair per-claimant slice, then fill remaining slots from the sorted
