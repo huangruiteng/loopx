@@ -30,6 +30,82 @@
     "write_authority": "none",
     "recompute_rule": "Regenerate from active state, rollout events, PR metadata, and public docs; do not edit dashboard state as truth."
   },
+  "state_partitioning": {
+    "schema_version": "long_horizon_state_partitioning_v0",
+    "canonical_stream": {
+      "goal_id": "public-long-horizon-loop",
+      "source_surfaces": [
+        "registry",
+        "active_state",
+        "run_history",
+        "rollout_event_log",
+        "human_reward"
+      ],
+      "event_stream_count": 1,
+      "write_authority": "loopx_lifecycle_commands"
+    },
+    "derived_view_contract": {
+      "views_are_writable": false,
+      "must_reference_canonical_events": true,
+      "recompute_rule": "Filter and rank canonical events by stable join keys; never fork truth into per-agent state unless the goal identity or boundary changes."
+    },
+    "independent_state_file_rule": {
+      "use_agent_lane_projection_when": "same goal_id, repo boundary, backlog, and operator policy; only the selected next action or timeline is scoped",
+      "use_independent_state_when": "distinct goal_id, durable objective, protected boundary, owner policy, or backlog would be misleading inside the parent goal"
+    }
+  },
+  "derived_views": [
+    {
+      "view_id": "agent_codex_product_capability",
+      "view_kind": "per_agent",
+      "filter_keys": {
+        "agent_id": "codex-product-capability",
+        "lane_id": "product_capability"
+      },
+      "source_event_ids": [
+        "evt_lh_001_protocol_contract_ready",
+        "evt_lh_002_fixture_scope_narrowed",
+        "evt_lh_005_minimal_fixture_validated"
+      ],
+      "projection_is_writable": false
+    },
+    {
+      "view_id": "todo_frontstage_timeline",
+      "view_kind": "per_todo",
+      "filter_keys": {
+        "todo_id": "todo_frontstage_timeline"
+      },
+      "source_event_ids": [
+        "evt_lh_003_frontstage_impl_handoff",
+        "evt_lh_007_timeline_ready"
+      ],
+      "projection_is_writable": false
+    },
+    {
+      "view_id": "case_public_frontstage_rollout",
+      "view_kind": "per_case",
+      "filter_keys": {
+        "case_id": "public_frontstage_rollout"
+      },
+      "source_event_ids": [
+        "evt_lh_005_minimal_fixture_validated",
+        "evt_lh_006_sufficiency_ready",
+        "evt_lh_007_timeline_ready"
+      ],
+      "projection_is_writable": false
+    },
+    {
+      "view_id": "run_frontstage_validation",
+      "view_kind": "per_run",
+      "filter_keys": {
+        "run_id": "run_frontstage_fixture_validation"
+      },
+      "source_event_ids": [
+        "evt_lh_005_minimal_fixture_validated"
+      ],
+      "projection_is_writable": false
+    }
+  ],
   "lanes": [
     {
       "lane_id": "primary_control",
@@ -107,6 +183,8 @@
       "recorded_at": "2026-06-24T01:13:00+08:00",
       "agent_id": "codex-product-capability",
       "todo_id": "todo_minimal_rollout_fixture",
+      "case_id": "public_frontstage_rollout",
+      "run_id": "run_frontstage_fixture_validation",
       "lane": {
         "lane_id": "product_capability",
         "agent_role": "side-agent"
@@ -250,6 +328,8 @@
       "recorded_at": "2026-06-24T01:16:00+08:00",
       "agent_id": "codex-product-capability",
       "todo_id": "todo_minimal_rollout_fixture",
+      "case_id": "public_frontstage_rollout",
+      "run_id": "run_frontstage_fixture_validation",
       "lane": {
         "lane_id": "product_capability",
         "agent_role": "side-agent"
@@ -297,6 +377,7 @@
       "recorded_at": "2026-06-24T01:17:00+08:00",
       "agent_id": "codex-product-capability",
       "todo_id": "todo_frontstage_sufficiency",
+      "case_id": "public_frontstage_rollout",
       "lane": {
         "lane_id": "implementation_lane",
         "agent_role": "side-agent"
@@ -338,6 +419,7 @@
       "recorded_at": "2026-06-24T01:18:00+08:00",
       "agent_id": "codex-product-capability",
       "todo_id": "todo_frontstage_timeline",
+      "case_id": "public_frontstage_rollout",
       "lane": {
         "lane_id": "implementation_lane",
         "agent_role": "side-agent"

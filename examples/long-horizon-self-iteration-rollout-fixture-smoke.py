@@ -70,6 +70,16 @@ def main() -> int:
     assert payload["truth_contract"]["projection_is_writable"] is False, payload
     assert payload["truth_contract"]["write_authority"] == "none", payload
 
+    state_partitioning = payload["state_partitioning"]
+    assert state_partitioning["schema_version"] == "long_horizon_state_partitioning_v0", state_partitioning
+    canonical_stream = state_partitioning["canonical_stream"]
+    assert canonical_stream["goal_id"] == payload["goal_id"], state_partitioning
+    assert canonical_stream["event_stream_count"] == 1, state_partitioning
+    assert "rollout_event_log" in canonical_stream["source_surfaces"], state_partitioning
+    derived_contract = state_partitioning["derived_view_contract"]
+    assert derived_contract["views_are_writable"] is False, state_partitioning
+    assert derived_contract["must_reference_canonical_events"] is True, state_partitioning
+
     public_boundary = payload["public_boundary"]
     for key in REQUIRED_BOUNDARY_FALSE:
         assert public_boundary.get(key) is False, (key, public_boundary)
@@ -85,8 +95,45 @@ def main() -> int:
     assert len(rollout_events) >= 7, rollout_events
     event_ids = [event["event_id"] for event in rollout_events]
     assert len(event_ids) == len(set(event_ids)), event_ids
+    events_by_id = {event["event_id"]: event for event in rollout_events}
     event_lanes = {event.get("lane", {}).get("lane_id") for event in rollout_events}
     assert {"implementation_lane", "product_capability"} <= event_lanes, event_lanes
+
+    derived_views = payload["derived_views"]
+    assert {view["view_kind"] for view in derived_views} == {
+        "per_agent",
+        "per_todo",
+        "per_case",
+        "per_run",
+    }, derived_views
+    for view in derived_views:
+        assert view["projection_is_writable"] is False, view
+        source_event_ids = view["source_event_ids"]
+        assert source_event_ids, view
+        for event_id in source_event_ids:
+            assert event_id in events_by_id, (view, event_id)
+        filter_keys = view["filter_keys"]
+        if view["view_kind"] == "per_agent":
+            assert any(
+                event.get("agent_id") == filter_keys["agent_id"]
+                or event.get("lane", {}).get("lane_id") == filter_keys["lane_id"]
+                for event in (events_by_id[event_id] for event_id in source_event_ids)
+            ), view
+        if view["view_kind"] == "per_todo":
+            assert all(
+                events_by_id[event_id].get("todo_id") == filter_keys["todo_id"]
+                for event_id in source_event_ids
+            ), view
+        if view["view_kind"] == "per_case":
+            assert all(
+                events_by_id[event_id].get("case_id") == filter_keys["case_id"]
+                for event_id in source_event_ids
+            ), view
+        if view["view_kind"] == "per_run":
+            assert all(
+                events_by_id[event_id].get("run_id") == filter_keys["run_id"]
+                for event_id in source_event_ids
+            ), view
 
     saw_gate = False
     saw_handoff = False

@@ -87,6 +87,49 @@ Projection truth contract:
 }
 ```
 
+## State Partitioning For Concurrent Agents
+
+Concurrent agents share one source-of-truth event stream per goal. LoopX should
+not fork truth just because a primary agent, side agent, benchmark case, or UI
+view wants a narrower timeline.
+
+Canonical source:
+
+- one registry entry and active goal state for the goal;
+- one append-only run history for compact lifecycle records;
+- one append-only `loopx_rollout_event_v0` log for todo, validation, PR, handoff,
+  quota, repair, and failure events;
+- formal todos as durable work units, including `claimed_by`, `task_class`,
+  `action_kind`, `resume_when`, and `unblocks_todo_id` when present.
+
+Derived views:
+
+- per-agent views filter by `agent_id`, `lane.lane_id`, `claimed_by`, and
+  selected `agent_lane_next_action_v0`;
+- per-todo views filter by `todo_id` and lifecycle transition events;
+- per-case or benchmark views filter by `case_id`, `benchmark_id`, and
+  validation/result events;
+- per-run views filter by `run_id`, `source_event_id`, and compact causality
+  refs.
+
+Derived views are read-only indexes. They may cache, rank, or summarize, but
+they must carry source refs back to canonical events and must be recomputable
+from the registry, active state, run history, rollout events, and reward
+overlays. A derived view must not become a separate active-state file, alternate
+run history, or dashboard-owned write path.
+
+Use an agent-lane projection when the agent shares the same goal, repo boundary,
+todo backlog, and operator policy, and only needs a scoped next action or
+timeline. Use an independent state file only when the work has a distinct
+`goal_id`, durable objective, protected boundary, owner policy, or backlog that
+would be misleading if compressed into the parent goal's `Next Action`.
+
+Every new rollout event that should participate in concurrent-agent views should
+try to include at least one stable join key: `agent_id`, `todo_id`, `run_id`,
+`lane.lane_id`, `case_id`, or `benchmark_id`. Events that cannot expose a join
+key may still be recorded, but projections should label any bridge from them as
+inferred rather than observed.
+
 ## Lifecycle
 
 ### Startup
@@ -208,7 +251,8 @@ Already aligned:
   code refs for new events.
 - `examples/fixtures/long-horizon-self-iteration-rollout.public.json` gives
   frontend and protocol tests a compact public-safe fixture with gate, handoff,
-  validation, deferred-resume, evidence, and inferred display-bridge coverage.
+  validation, deferred-resume, evidence, state partitioning, derived views, and
+  inferred display-bridge coverage.
 - `rollback_packet_v0` defines how rollback, fix-forward, external cleanup,
   support requests, and todo compensation are represented before any protected
   action runs.
@@ -248,6 +292,9 @@ A protocol implementation or fixture is acceptable when it proves:
 - every formal execution step maps to a todo, gate, run, event, or reward;
 - candidate todos are not silently promoted;
 - at least one lane-aware next action can be selected for a registered agent;
+- per-agent, per-todo, per-case, and per-run views are read-only derived
+  indexes over one canonical event stream;
+- an agent-lane projection is not confused with an independent state file;
 - validation and writeback precede quota spend;
 - human gates name what they block and unblock;
 - handoffs name source agent, target agent, todo scope, and stop condition;
