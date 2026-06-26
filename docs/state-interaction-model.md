@@ -485,6 +485,12 @@ the append-only event ledger for long-running work. Chat threads, browser
 filters, and local tool outputs may help a worker decide what to do in the
 moment, but they are not the durable source of truth.
 
+The todo/history migration contract is captured in
+[`event_sourced_state_contract_v0`](reference/protocols/event-sourced-state-contract-v0.md):
+`ACTIVE_GOAL_STATE.md` stays the human/agent workbench, while canonical
+todo/history state moves to append-only events with deterministic replay,
+idempotent append, privacy partitions, and Markdown-compatible projections.
+
 The control plane should preserve these event classes:
 
 - **work events**: `refresh-state`, read-only maps, adapter ticks, and progress
