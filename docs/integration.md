@@ -168,6 +168,12 @@ parallel lanes without leaving Feishu. The bridge renders those JSON contracts
 as short chat summaries instead of forwarding raw scheduler output. Ordinary
 text or `/ask <task>` creates a tracked agent todo with progress cards.
 
+When a candidate is waiting because another selected worker already occupies
+the same agent lane or write scope, the scheduler exposes compact waiting
+conflict details. This is advisory visibility only: it helps the operator see
+which todo is blocking the waiting item, without treating soft `claimed_by`
+ownership as a hard lease or automatically stealing work.
+
 Feishu-created tasks are claimed into stable request lanes such as
 `codex-devbox-req-<hash>` instead of the bridge's main agent id. This lets
 independent chat requests appear as separate scheduler lanes in `/next`.
