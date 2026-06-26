@@ -35,6 +35,7 @@ from .cli_commands import (
     handle_review_packet_command,
     handle_status_command,
     handle_starter_command,
+    handle_summary_all_command,
     handle_support_control_command,
     handle_todo_command,
     handle_worker_bridge_command,
@@ -51,6 +52,7 @@ from .cli_commands import (
     register_registry_admin_commands,
     register_starter_commands,
     register_status_commands,
+    register_summary_all_command,
     register_support_control_commands,
     register_todo_command,
     register_worker_bridge_commands,
@@ -145,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     register_lark_kanban_commands(sub, add_subcommand_format)
 
     register_status_commands(sub, add_subcommand_format)
+    register_summary_all_command(sub, add_subcommand_format)
     register_dreaming_commands(sub, add_subcommand_format)
     register_todo_command(sub)
     register_quota_command(sub)
@@ -326,6 +329,16 @@ def main(argv: list[str] | None = None) -> int:
             output_format=output_format,
             print_payload=print_payload,
         )
+
+    summary_all_result = handle_summary_all_command(
+        args,
+        registry_path=registry_path,
+        runtime_root_arg=args.runtime_root,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if summary_all_result is not None:
+        return summary_all_result
 
     if args.command == "dreaming":
         return handle_dreaming_command(

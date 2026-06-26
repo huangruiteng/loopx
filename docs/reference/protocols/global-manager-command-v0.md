@@ -8,9 +8,11 @@ The product goal is to let a user act as a manager across long-running agent
 work: ask for the last day of progress, see blocked decisions, compare agent
 lanes, and choose the next safe action without reading every thread.
 
-This protocol is not a chat-command router yet. It defines the request,
-allowed sources, response shape, privacy boundary, and action ladder that a
-Codex host, CLI wrapper, or dashboard command palette can implement later.
+This protocol is not a general chat-command router yet. It defines the
+request, allowed sources, response shape, privacy boundary, and action ladder
+for Codex hosts, CLI wrappers, or dashboard command palettes. The first CLI
+wrapper is `loopx global-summary`, which returns the canonical
+`/loop-global-summary` response.
 
 ## Command Set
 

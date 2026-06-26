@@ -134,6 +134,7 @@ from .starter_visible_pilot import (
     handle_starter_visible_pilot_command,
     register_starter_visible_pilot_commands,
 )
+from .summary_all import handle_summary_all_command, register_summary_all_command
 from .status import (
     handle_check_command,
     handle_diagnose_command,
@@ -212,6 +213,7 @@ __all__ = [
     "handle_starter_session_runtime_command",
     "handle_starter_visible_driver_command",
     "handle_starter_visible_pilot_command",
+    "handle_summary_all_command",
     "handle_support_control_command",
     "handle_terminal_bench_adapter_command",
     "handle_terminal_bench_environment_result_command",
@@ -249,6 +251,7 @@ __all__ = [
     "register_starter_session_runtime_commands",
     "register_starter_visible_driver_commands",
     "register_starter_visible_pilot_commands",
+    "register_summary_all_command",
     "register_status_commands",
     "register_support_control_commands",
     "register_terminal_bench_adapter_commands",
