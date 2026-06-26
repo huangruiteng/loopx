@@ -91,6 +91,7 @@ def build_scheduler_plan(
                         "runnable": False,
                         "reason_codes": ["agent_lane_capacity"],
                         "conflicts_with": _candidate_refs(lane_conflicts),
+                        "conflict_details": _candidate_detail_refs(lane_conflicts),
                     }
                 )
                 continue
@@ -119,6 +120,7 @@ def build_scheduler_plan(
                         "runnable": False,
                         "reason_codes": ["write_scope_conflict"],
                         "conflicts_with": _candidate_refs(conflicts),
+                        "conflict_details": _candidate_detail_refs(conflicts),
                     }
                 )
                 continue
@@ -395,7 +397,7 @@ def _candidate_from_todo(goal_id: str, raw: dict[str, Any]) -> dict[str, Any]:
     }
     if claimed_by:
         payload["claimed_by"] = claimed_by
-    for key in ("action_kind", "priority", "title", "blocks_agent", "unblocks_todo_id", "resume_when"):
+    for key in ("action_kind", "priority", "title", "blocks_agent", "unblocks_todo_id", "resume_when", "updated_at"):
         if raw.get(key):
             payload[key] = raw.get(key)
     if isinstance(raw.get("resume_condition"), dict):
@@ -422,6 +424,7 @@ def _public_candidate(item: dict[str, Any]) -> dict[str, Any]:
         "runnable",
         "reason_codes",
         "conflicts_with",
+        "conflict_details",
         "blocked_by_user_todos",
         "parallel_limit",
         "action_kind",
@@ -429,6 +432,7 @@ def _public_candidate(item: dict[str, Any]) -> dict[str, Any]:
         "blocks_agent",
         "unblocks_todo_id",
         "resume_when",
+        "updated_at",
     )
     return {key: item.get(key) for key in keys if item.get(key) is not None}
 
@@ -455,6 +459,19 @@ def _candidate_refs(items: list[dict[str, Any]]) -> list[str]:
         for item in items
         if item.get("todo_id") or item.get("candidate_key")
     ]
+
+
+def _candidate_detail_refs(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    details: list[dict[str, Any]] = []
+    for item in items:
+        ref = {
+            key: item.get(key)
+            for key in ("todo_id", "candidate_key", "agent_lane", "claimed_by", "updated_at")
+            if item.get(key)
+        }
+        if ref:
+            details.append(ref)
+    return details
 
 
 def _developer_commands(

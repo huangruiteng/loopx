@@ -42,6 +42,9 @@ def render_scheduler_plan_chat_text(payload: dict[str, Any], *, max_chars: int =
     blocked_counts = _reason_count_text(dispatch.get("blocked_reason_counts"))
     if waiting_counts:
         lines.append(f"Waiting: {waiting_counts}")
+        waiting_lines = _waiting_item_lines(payload.get("waiting_items") or payload.get("waiting_candidates"))
+        if waiting_lines:
+            lines.extend(waiting_lines)
     if blocked_counts:
         lines.append(f"Blocked: {blocked_counts}")
 
@@ -88,6 +91,7 @@ def render_scheduler_next_batch_chat_text(payload: dict[str, Any], *, max_chars:
     blocked_counts = _reason_count_text(payload.get("blocked_reason_counts"))
     if waiting_counts:
         lines.append(f"Waiting: {waiting_counts}")
+        lines.extend(_waiting_item_lines(payload.get("waiting_items")))
     if blocked_counts:
         lines.append(f"Blocked: {blocked_counts}")
     claim_commands = _command_lines("claim", payload.get("claim_commands"), limit=3)
@@ -259,6 +263,25 @@ def _worker_slot_summary(value: Any) -> str:
         lane = str(slot.get("agent_lane") or "").strip()
         parts.append(f"{todo_id}->{lane}" if lane else todo_id)
     return ", ".join(parts)
+
+
+def _waiting_item_lines(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    lines: list[str] = []
+    for item in value[:4]:
+        if not isinstance(item, dict):
+            continue
+        todo_id = str(item.get("todo_id") or "").strip()
+        if not todo_id:
+            continue
+        reasons = ",".join(str(reason) for reason in item.get("reason_codes") or [] if str(reason))
+        conflicts = _scheduler_ids(item.get("conflicts_with"))
+        detail = f" reason={reasons}" if reasons else ""
+        if conflicts:
+            detail += " waits_for=" + ",".join(conflicts)
+        lines.append(f"- wait {todo_id}{detail}")
+    return lines
 
 
 def _handoff_heading(value: dict[str, Any]) -> str:

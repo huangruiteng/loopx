@@ -22,6 +22,7 @@ def todo(
     *,
     claimed_by: str | None = None,
     write_scope: str | None = None,
+    updated_at: str | None = None,
 ) -> dict:
     item = {
         "todo_id": todo_id,
@@ -36,6 +37,8 @@ def todo(
         item["claimed_by"] = claimed_by
     if write_scope:
         item["required_write_scopes"] = [write_scope]
+    if updated_at:
+        item["updated_at"] = updated_at
     return item
 
 
@@ -68,7 +71,13 @@ def assert_same_claimed_agent_is_serialized() -> None:
     plan = build_scheduler_plan(
         payload(
             [
-                todo("todo_dev_docs", "Update docs.", claimed_by="codex-devbox", write_scope="docs/**"),
+                todo(
+                    "todo_dev_docs",
+                    "Update docs.",
+                    claimed_by="codex-devbox",
+                    write_scope="docs/**",
+                    updated_at="2026-01-01T00:00:00+00:00",
+                ),
                 todo("todo_dev_src", "Update source.", claimed_by="codex-devbox", write_scope="loopx/scheduler.py"),
                 todo("todo_side_ui", "Update UI.", claimed_by="codex-side-ui", write_scope="apps/dashboard/**"),
             ]
@@ -116,6 +125,7 @@ def assert_same_claimed_agent_is_serialized() -> None:
     waiting = {item["todo_id"]: item for item in plan["waiting_candidates"]}
     assert waiting["todo_dev_src"]["reason_codes"] == ["agent_lane_capacity"], waiting
     assert waiting["todo_dev_src"]["conflicts_with"] == ["todo_dev_docs"], waiting
+    assert waiting["todo_dev_src"]["conflict_details"][0]["updated_at"] == "2026-01-01T00:00:00+00:00", waiting
 
 
 def assert_agent_scoped_plan_includes_claim_and_guard_commands() -> None:

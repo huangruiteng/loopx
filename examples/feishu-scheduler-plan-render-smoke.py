@@ -28,6 +28,7 @@ def assert_dispatch_plan_renders_operable_summary() -> None:
                 "action": "run_parallel_batch",
                 "parallelizable": True,
                 "runnable_todo_ids": ["todo_docs", "todo_ui"],
+                "waiting_todo_ids": ["todo_later"],
                 "waiting_reason_counts": {"agent_lane_capacity": 1},
                 "agent_lanes": [
                     {
@@ -57,12 +58,20 @@ def assert_dispatch_plan_renders_operable_summary() -> None:
                     },
                 ],
             },
+            "waiting_candidates": [
+                {
+                    "todo_id": "todo_later",
+                    "reason_codes": ["agent_lane_capacity"],
+                    "conflicts_with": ["todo_docs"],
+                }
+            ],
         }
     )
     assert "Scheduler plan: run_parallel_batch" in plan_text, plan_text
     assert "Runnable: todo_docs, todo_ui" in plan_text, plan_text
     assert "Waiting: agent_lane_capacity=1" in plan_text, plan_text
     assert "- agent: run=todo_docs; wait=todo_later" in plan_text, plan_text
+    assert "wait todo_later reason=agent_lane_capacity waits_for=todo_docs" in plan_text, plan_text
     assert "Worker handoffs: todo_docs->agent" in plan_text, plan_text
     assert "claim_runnable todo_docs" in plan_text, plan_text
 

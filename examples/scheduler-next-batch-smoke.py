@@ -86,6 +86,9 @@ def assert_next_batch_summarizes_parallel_dispatch() -> None:
     assert payload["batch_size"] == 2, payload
     assert payload["runnable_todo_ids"] == ["todo_docs", "todo_view"], payload
     assert payload["waiting_reason_counts"] == {"agent_lane_capacity": 1}, payload
+    assert payload["waiting_items"][0]["todo_id"] == "todo_later", payload
+    assert payload["waiting_items"][0]["conflicts_with"] == ["todo_docs"], payload
+    assert payload["waiting_items"][0]["conflict_details"][0]["agent_lane"] == "agent-a", payload
     slots = {item["todo_id"]: item for item in payload["worker_slots"]}
     assert slots["todo_docs"]["agent_lane"] == "agent-a", slots
     assert slots["todo_view"]["agent_lane"] == "agent-b", slots
@@ -107,9 +110,11 @@ def assert_next_batch_summarizes_parallel_dispatch() -> None:
     assert "# LoopX Scheduler Next Batch" in markdown, markdown
     assert "dispatch_mode: `parallel_batch`" in markdown, markdown
     assert "workspace_isolation" in markdown, markdown
+    assert "todo_later reason=agent_lane_capacity waits_for=todo_docs" in markdown, markdown
     chat_text = render_scheduler_next_batch_chat_text(payload)
     assert "Next batch: parallel_batch" in chat_text, chat_text
     assert "Workers: todo_docs->agent-a, todo_view->agent-b" in chat_text, chat_text
+    assert "wait todo_later reason=agent_lane_capacity waits_for=todo_docs" in chat_text, chat_text
 
 
 def write_cli_fixture(root: Path) -> tuple[Path, Path]:

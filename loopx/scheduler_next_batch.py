@@ -16,6 +16,7 @@ def build_scheduler_next_batch_payload(plan: dict[str, Any]) -> dict[str, Any]:
     blocked_ids = _ids(dispatch.get("blocked_todo_ids")) or _candidate_ids(plan.get("blocked_candidates"))
     worker_slots = [_worker_slot(index, item) for index, item in enumerate(handoffs, start=1)]
     worker_slots = [item for item in worker_slots if item]
+    waiting_items = _waiting_items(plan.get("waiting_candidates"))
     return {
         "ok": bool(plan.get("ok")),
         "status_health_ok": bool(plan.get("status_health_ok")),
@@ -32,6 +33,7 @@ def build_scheduler_next_batch_payload(plan: dict[str, Any]) -> dict[str, Any]:
         "runnable_todo_ids": runnable_ids,
         "waiting_todo_ids": waiting_ids,
         "blocked_todo_ids": blocked_ids,
+        "waiting_items": waiting_items,
         "waiting_count": plan.get("waiting_count", len(waiting_ids)),
         "blocked_count": plan.get("blocked_count", len(blocked_ids)),
         "waiting_reason_counts": dispatch.get("waiting_reason_counts") or {},
@@ -57,6 +59,7 @@ def render_scheduler_next_batch_markdown(payload: dict[str, Any]) -> str:
     ]
     _append_reason_counts(lines, "waiting", payload.get("waiting_reason_counts"))
     _append_reason_counts(lines, "blocked", payload.get("blocked_reason_counts"))
+    _append_waiting_items(lines, payload.get("waiting_items"))
     quota_guard = _string_command(payload.get("quota_guard_command"))
     if quota_guard:
         lines.append(f"- quota_guard: `{quota_guard}`")
@@ -149,6 +152,24 @@ def _candidate_ids(value: Any) -> list[str]:
     return ids
 
 
+def _waiting_items(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    items: list[dict[str, Any]] = []
+    for item in value[:10]:
+        if not isinstance(item, dict):
+            continue
+        todo_id = str(item.get("todo_id") or item.get("candidate_key") or "").strip()
+        if not todo_id:
+            continue
+        waiting: dict[str, Any] = {"todo_id": todo_id}
+        for key in ("agent_lane", "claimed_by", "reason_codes", "conflicts_with", "conflict_details", "updated_at"):
+            if item.get(key) is not None:
+                waiting[key] = item.get(key)
+        items.append(waiting)
+    return items
+
+
 def _claim_commands(value: Any) -> list[str]:
     if not isinstance(value, dict):
         return []
@@ -163,6 +184,21 @@ def _append_reason_counts(lines: list[str], label: str, value: Any) -> None:
         return
     text = ",".join(f"{key}={count}" for key, count in sorted(value.items()))
     lines.append(f"- {label}_reason_counts: `{text}`")
+
+
+def _append_waiting_items(lines: list[str], value: Any) -> None:
+    if not isinstance(value, list) or not value:
+        return
+    lines.append("- waiting_items:")
+    for item in value[:6]:
+        if not isinstance(item, dict):
+            continue
+        todo_id = str(item.get("todo_id") or "").strip()
+        reasons = ",".join(str(reason) for reason in item.get("reason_codes") or [] if str(reason))
+        conflicts = ",".join(str(ref) for ref in item.get("conflicts_with") or [] if str(ref))
+        suffix = f" reason={reasons}" if reasons else ""
+        suffix += f" waits_for={conflicts}" if conflicts else ""
+        lines.append(f"  - {todo_id}{suffix}")
 
 
 def _append_step_lines(lines: list[str], label: str, value: Any) -> None:
