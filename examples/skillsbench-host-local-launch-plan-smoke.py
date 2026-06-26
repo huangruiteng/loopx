@@ -1090,6 +1090,45 @@ raise SystemExit(125)
             exit125_controller_trace["host_local_acp_codex_exec_failure_category"]
             == "codex_exec_exit_125"
         )
+        exit1_codex = Path(tmp) / "exit1-codex"
+        exit1_codex.write_text(
+            """#!/usr/bin/env python3
+import sys
+
+print("opaque command failure", file=sys.stderr)
+raise SystemExit(1)
+""",
+            encoding="utf-8",
+        )
+        exit1_codex.chmod(0o755)
+        exit1_trace_dir = Path(tmp) / "relay-exit1-traces"
+        exit1_probe = run_skillsbench_local_acp_relay_probe(
+            [
+                sys.executable,
+                str(RELAY_SCRIPT),
+                "--codex-bin",
+                str(exit1_codex),
+                "--route",
+                "loopx-product-mode",
+                "--dataset",
+                "skillsbench-v1.1",
+                "--task-id",
+                "demo-task",
+                "--worker-public-trace-dir",
+                str(exit1_trace_dir),
+            ],
+            timeout_sec=20,
+        )
+        assert exit1_probe["ready"] is False, exit1_probe
+        exit1_failure = json.loads(
+            next(exit1_trace_dir.glob("*.compact.json")).read_text(
+                encoding="utf-8"
+            )
+        )
+        exit1_process = exit1_failure["codex_exec_process"]
+        assert exit1_process["failure_category"] == "codex_exec_exit_1"
+        assert exit1_process["returncode"] == 1
+        assert exit1_process["raw_stderr_recorded"] is False
         reverse_failing_codex = Path(tmp) / "reverse-failing-codex"
         reverse_failing_codex.write_text(
             """#!/usr/bin/env python3

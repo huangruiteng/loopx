@@ -179,8 +179,8 @@ def _codex_exec_failure_category(
             return "codex_network_or_api_unreachable"
     if returncode == 124:
         return "codex_exec_timeout"
-    if returncode == 125:
-        return "codex_exec_exit_125"
+    if returncode is not None and 0 < returncode <= 255:
+        return f"codex_exec_exit_{returncode}"
     if returncode is not None:
         return "codex_exec_exit_nonzero"
     return "codex_exec_failed"
