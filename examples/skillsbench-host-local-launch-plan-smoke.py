@@ -294,31 +294,52 @@ if out:
         assert prerequisites["container_codex_acp_install_skipped"] is False
         assert plan["public_boundary"]["leaderboard_upload"] is False
         assert plan["public_boundary"]["public_submission"] is False
-        launch_command = _host_local_acp_launch_command(
-            SimpleNamespace(
-                app_server_acp_heartbeat_interval_sec=120.0,
-                app_server_reasoning_effort="high",
-                dataset="skillsbench-v1.1",
-                host_local_acp_launch=True,
-                local_acp_relay_command=None,
-                local_codex_bin="codex",
-                local_codex_exec_timeout_sec=7200,
-                local_codex_sandbox="workspace-write",
-                max_rounds=24,
-                model=None,
-                remote_command_file_bridge_probe=False,
-                remote_command_file_bridge_probe_timeout_sec=5.0,
-                remote_command_file_bridge_ready=False,
-                remote_command_file_bridge_agent_command=None,
-                remote_command_file_bridge_solver_command=None,
-                route="loopx-product-mode",
-                sandbox="docker",
-                task_id="demo-task",
-            ),
-            {"host_local_acp_relay_trace_dir": str(Path(tmp) / "trace")},
+        launch_args = SimpleNamespace(
+            agent_idle_timeout=7200,
+            app_server_acp_heartbeat_interval_sec=120.0,
+            app_server_reasoning_effort="high",
+            dataset="skillsbench-v1.1",
+            host_local_acp_launch=True,
+            local_acp_relay_command=None,
+            local_codex_bin="codex",
+            local_codex_bridge_idle_timeout_sec=None,
+            local_codex_exec_timeout_sec=7200,
+            local_codex_sandbox="workspace-write",
+            max_rounds=24,
+            model=None,
+            remote_command_file_bridge_probe=False,
+            remote_command_file_bridge_probe_timeout_sec=5.0,
+            remote_command_file_bridge_ready=False,
+            remote_command_file_bridge_agent_command=None,
+            remote_command_file_bridge_solver_command=None,
+            route="loopx-product-mode",
+            sandbox="docker",
+            task_id="demo-task",
         )
+        launch_plan = {"host_local_acp_relay_trace_dir": str(Path(tmp) / "trace")}
+        launch_command = _host_local_acp_launch_command(launch_args, launch_plan)
         heartbeat_index = launch_command.index("--stream-heartbeat-interval-sec")
         assert launch_command[heartbeat_index + 1] == "15.0"
+        bridge_idle_index = launch_command.index("--bridge-idle-timeout-sec")
+        assert launch_command[bridge_idle_index + 1] == "7200"
+        launch_args.local_codex_bridge_idle_timeout_sec = 0
+        bridge_idle_disabled_command = _host_local_acp_launch_command(
+            launch_args,
+            launch_plan,
+        )
+        bridge_idle_disabled_index = bridge_idle_disabled_command.index(
+            "--bridge-idle-timeout-sec"
+        )
+        assert bridge_idle_disabled_command[bridge_idle_disabled_index + 1] == "0"
+        launch_args.local_codex_bridge_idle_timeout_sec = 1800
+        bridge_idle_explicit_command = _host_local_acp_launch_command(
+            launch_args,
+            launch_plan,
+        )
+        bridge_idle_explicit_index = bridge_idle_explicit_command.index(
+            "--bridge-idle-timeout-sec"
+        )
+        assert bridge_idle_explicit_command[bridge_idle_explicit_index + 1] == "1800"
         explicit_preflight_command = _host_local_acp_codex_exec_preflight_command(
             SimpleNamespace(
                 dataset="skillsbench-v1.1",

@@ -856,12 +856,9 @@ def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
 
 
 def _effective_local_codex_bridge_idle_timeout_sec(args: argparse.Namespace) -> int:
-    configured = max(
-        0,
-        int(getattr(args, "local_codex_bridge_idle_timeout_sec", 0) or 0),
-    )
-    if configured > 0:
-        return configured
+    configured = getattr(args, "local_codex_bridge_idle_timeout_sec", None)
+    if configured is not None:
+        return max(0, int(configured or 0))
     return max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
 
 
@@ -8005,10 +8002,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--local-codex-bridge-idle-timeout-sec",
         type=int,
-        default=0,
+        default=None,
         help=(
             "Optional watchdog after the most recent sandbox bridge operation "
-            "from a host-local Codex turn. 0 disables the watchdog."
+            "from a host-local Codex turn. Omit to inherit --agent-idle-timeout; "
+            "0 disables the watchdog."
         ),
     )
     parser.add_argument(
