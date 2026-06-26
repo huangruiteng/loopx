@@ -15,6 +15,7 @@ from ..todos import (
     archive_completed_todos,
     add_goal_todo,
     complete_goal_todo,
+    list_goal_todos,
     render_todo_markdown,
     supersede_goal_todo,
     update_goal_todo,
@@ -38,6 +39,7 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         nargs="?",
         choices=[
             "add",
+            "list",
             "claim",
             "update",
             "complete",
@@ -49,7 +51,7 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         default="add",
         help=(
             "Use add to append a checkbox todo, claim to soft-claim by registered "
-            "agent id, update/complete/supersede to transition by todo_id, or "
+            "agent id, list to read projected todos, update/complete/supersede to transition by todo_id, or "
             "archive-completed to move older completed todos into Completed Work Archive. "
             "Use suggest to generate an agent-facing candidate todo analysis prompt without writing state. "
             "Use capture-followups to record a capped public-safe unclaimed follow-up batch."
@@ -266,7 +268,57 @@ def handle_todo_command(
                 "`todo add/update` for user gates; --from, --limit, and "
                 "--trigger are only supported by `todo suggest`"
             )
-        if args.todo_command == "add":
+        if args.todo_command == "list":
+            unsupported = [
+                flag
+                for flag, value in (
+                    ("--text", args.text),
+                    ("--follow-up", args.followups),
+                    ("--todo-id", args.todo_id),
+                    ("--note", args.note),
+                    ("--evidence", args.evidence),
+                    ("--reason", args.reason),
+                    ("--task-class", args.task_class),
+                    ("--action-kind", args.action_kind),
+                    ("--required-write-scope", args.required_write_scopes),
+                    ("--required-capability", args.required_capabilities),
+                    ("--target-capability", args.target_capabilities),
+                    ("--claimed-by", args.claimed_by),
+                    ("--blocks-agent", args.blocks_agent),
+                    ("--global-gate", args.global_gate),
+                    ("--unblocks-todo-id", args.unblocks_todo_id),
+                    ("--resume-when", args.resume_when),
+                    ("--clear-claim", args.clear_claim),
+                    ("--no-follow-up", args.no_follow_up),
+                    ("--next-agent-todo", args.next_agent_todo),
+                    ("--next-user-todo", args.next_user_todo),
+                    ("--next-claimed-by", args.next_claimed_by),
+                    ("--next-task-class", args.next_task_class),
+                    ("--next-action-kind", args.next_action_kind),
+                    ("--side-agent-self-merged", args.side_agent_self_merged),
+                    ("--agent-id", args.agent_id),
+                    ("--from", args.suggestion_sources),
+                    ("--limit", args.suggestion_limit),
+                    ("--trigger", args.suggestion_trigger),
+                    ("--execute", args.execute),
+                )
+                if value
+            ]
+            if unsupported:
+                raise ValueError(
+                    "todo list only accepts --goal-id, optional --role, --status, "
+                    "--project, --state-file, --dry-run, and --format; unsupported: "
+                    + ", ".join(unsupported)
+                )
+            payload = list_goal_todos(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                role=args.role,
+                status=args.status,
+                project=Path(args.project).expanduser() if args.project else None,
+                state_file=Path(args.state_file).expanduser() if args.state_file else None,
+            )
+        elif args.todo_command == "add":
             if args.followups:
                 raise ValueError("todo add does not support --follow-up; use `todo capture-followups`")
             if not args.role:

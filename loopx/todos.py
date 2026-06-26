@@ -15,7 +15,10 @@ from .history import load_registry
 from .state_refresh import now_local, resolve_goal_state
 from .status import (
     MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE,
+    active_state_event_projection_fields,
+    compact_todo_group,
     normalize_todo_text,
+    parse_active_state_todos,
     todo_role_for_heading,
 )
 from .todo_contract import (
@@ -257,6 +260,114 @@ def todo_blocks(
         ensure_block_identity(current, role=role, source_section=source_section)
         blocks.append(current)
     return blocks
+
+
+def todo_item_status(item: dict[str, Any]) -> str:
+    status = normalize_todo_status(item.get("status"))
+    if status:
+        return status
+    return TODO_STATUS_DONE if item.get("done") else TODO_STATUS_OPEN
+
+
+def empty_todo_summary(*, role: str) -> dict[str, Any]:
+    return {
+        "schema_version": "todo_summary_v0",
+        "role": role,
+        "source_section": TODO_SECTION_HEADINGS[role],
+        "total_count": 0,
+        "open_count": 0,
+        "done_count": 0,
+        "items": [],
+        "first_open_items": [],
+    }
+
+
+def filtered_todo_summary(
+    summary: dict[str, Any] | None,
+    *,
+    role: str,
+    status: str | None = None,
+) -> dict[str, Any]:
+    items = list((summary or {}).get("items") or [])
+    normalized_status = normalize_todo_status(status)
+    if normalized_status:
+        items = [item for item in items if todo_item_status(item) == normalized_status]
+    source_section = str((summary or {}).get("source_section") or TODO_SECTION_HEADINGS[role])
+    return compact_todo_group(items, source_section=source_section, role=role) or empty_todo_summary(role=role)
+
+
+def list_goal_todos(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    role: str | None = None,
+    status: str | None = None,
+    project: Path | None = None,
+    state_file: Path | None = None,
+) -> dict[str, Any]:
+    registry = load_registry(registry_path)
+    goal, resolved_project, resolved_state_file = resolve_goal_state(
+        registry=registry,
+        goal_id=goal_id,
+        project_override=project,
+        state_file_override=state_file,
+    )
+    if goal is None:
+        raise ValueError(f"goal {goal_id!r} is not present in the registry")
+    if not resolved_state_file.exists():
+        raise ValueError(f"active state file does not exist: {resolved_state_file}")
+
+    projection_fields = active_state_event_projection_fields(
+        goal,
+        state_path=resolved_state_file,
+    )
+    projection_has_todos = bool(
+        projection_fields.get("user_todos") or projection_fields.get("agent_todos")
+    )
+    if projection_has_todos:
+        fields = projection_fields
+        source = "event_projection"
+    else:
+        fields = parse_active_state_todos(
+            resolved_state_file.read_text(encoding="utf-8"),
+            goal=goal,
+            state_path=resolved_state_file,
+        )
+        source = "markdown_active_state"
+
+    roles = [role] if role else ["user", "agent"]
+    summaries: dict[str, dict[str, Any]] = {}
+    todos: list[dict[str, Any]] = []
+    for item_role in roles:
+        key = f"{item_role}_todos"
+        summary = filtered_todo_summary(
+            fields.get(key) if isinstance(fields, dict) else None,
+            role=item_role,
+            status=status,
+        )
+        summaries[key] = summary
+        todos.extend(summary.get("items") or [])
+
+    payload: dict[str, Any] = {
+        "ok": True,
+        "dry_run": True,
+        "read_only": True,
+        "command": "list",
+        "goal_id": goal_id,
+        "role": role or "all",
+        "status_filter": normalize_todo_status(status) if status else None,
+        "source": source,
+        "todo_count": len(todos),
+        "todos": todos,
+        "state_file": str(resolved_state_file),
+        "project": str(resolved_project) if resolved_project else None,
+    }
+    payload.update(summaries)
+    if source == "event_projection" and projection_fields.get("state_event_projection"):
+        payload["state_event_projection"] = projection_fields["state_event_projection"]
+    if projection_fields.get("state_event_projection_warning"):
+        payload["state_event_projection_warning"] = projection_fields["state_event_projection_warning"]
+    return payload
 
 
 def insert_archive_blocks(lines: list[str], blocks: list[list[str]]) -> None:
@@ -1472,6 +1583,55 @@ def archive_completed_todos(
 
 
 def render_todo_markdown(payload: dict[str, Any]) -> str:
+    if payload.get("command") == "list":
+        lines = [
+            "# LoopX Todo List",
+            "",
+            f"- ok: `{payload.get('ok')}`",
+            f"- read_only: `{payload.get('read_only')}`",
+            f"- goal_id: `{payload.get('goal_id')}`",
+            f"- role: `{payload.get('role')}`",
+            f"- status_filter: `{payload.get('status_filter')}`",
+            f"- source: `{payload.get('source')}`",
+            f"- todo_count: `{payload.get('todo_count')}`",
+            f"- state_file: `{payload.get('state_file')}`",
+        ]
+        projection = payload.get("state_event_projection")
+        if isinstance(projection, dict):
+            lines.extend(
+                [
+                    f"- event_log: `{projection.get('event_log')}`",
+                    f"- source_event_count: `{projection.get('source_event_count')}`",
+                    f"- last_event_id: `{projection.get('last_event_id')}`",
+                ]
+            )
+        for key, heading in (
+            ("user_todos", "User Todo"),
+            ("agent_todos", "Agent Todo"),
+        ):
+            summary = payload.get(key)
+            if not isinstance(summary, dict):
+                continue
+            lines.extend(["", f"## {heading}", ""])
+            items = summary.get("items") or []
+            if not items:
+                lines.append("- none")
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                marker = todo_marker_for_status(item.get("status") or TODO_STATUS_OPEN)
+                text = item.get("text") or item.get("title") or ""
+                metadata = []
+                for metadata_key in ("todo_id", "status", "task_class", "action_kind", "claimed_by"):
+                    if item.get(metadata_key):
+                        metadata.append(f"{metadata_key}={item.get(metadata_key)}")
+                suffix = f" <!-- {' '.join(metadata)} -->" if metadata else ""
+                lines.append(f"- [{marker}] {text}{suffix}")
+        if payload.get("error"):
+            lines.append(f"- error: {payload.get('error')}")
+        return "\n".join(lines)
+
     lines = [
         "# LoopX Todo",
         "",
