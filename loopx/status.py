@@ -34,6 +34,12 @@ from .execution_profile import (
     execution_profile_outcome_floor,
     execution_profile_summary,
 )
+from .event_sourced_state import (
+    AppendOnlyStateEventStore,
+    StateEventError,
+    build_state_projection,
+    render_active_state_sections,
+)
 from .frontstage import build_goal_channel_projection
 from .handoff_budget import handoff_budget_contract
 from .history import collect_history, load_registry
@@ -95,6 +101,7 @@ CODEX_READY_CLASSIFICATIONS = {
     "monitor_todo_repeat_dedupe_deployed",
 }
 STATUS_NEUTRAL_CLASSIFICATIONS = HISTORY_STATUS_NEUTRAL_CLASSIFICATIONS
+STATE_EVENT_LOG_BASENAME = "events.jsonl"
 STATUS_CONTROL_PLANE_CONTEXT_LIMIT = 20
 AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
 HANDOFF_READY_CLASSIFICATIONS = {
@@ -5255,6 +5262,73 @@ def parse_active_state_todos(
     return result
 
 
+def state_event_log_candidates(goal: dict[str, Any], *, state_path: Path) -> list[Path]:
+    candidates: list[Path] = []
+    for key in ("state_event_log", "state_events_file", "event_log"):
+        resolved = resolve_goal_local_path(goal.get(key), goal, fallback_base=state_path.parent)
+        if resolved is not None:
+            candidates.append(resolved)
+    candidates.append(state_path.with_name(STATE_EVENT_LOG_BASENAME))
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        key = str(path.expanduser())
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
+
+
+def active_state_event_projection_fields(
+    goal: dict[str, Any],
+    *,
+    state_path: Path,
+    preferred_todo_ids: set[str] | None = None,
+    rollout_events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    goal_id = str(goal.get("id") or "").strip()
+    for event_log_path in state_event_log_candidates(goal, state_path=state_path):
+        if not event_log_path.exists():
+            continue
+        try:
+            events = AppendOnlyStateEventStore(event_log_path).load()
+            if not events:
+                continue
+            projection = build_state_projection(events, goal_id=goal_id or None)
+            projection_markdown = render_active_state_sections(projection)
+            fields = parse_active_state_todos(
+                projection_markdown,
+                goal=goal,
+                state_path=state_path,
+                preferred_todo_ids=preferred_todo_ids,
+                rollout_events=rollout_events,
+            )
+        except (OSError, StateEventError) as exc:
+            return {
+                "state_event_projection_warning": {
+                    "schema_version": "event_sourced_state_read_warning_v0",
+                    "source": "event_log",
+                    "event_log": event_log_path.name,
+                    "fallback": "markdown_active_state",
+                    "reason": type(exc).__name__,
+                }
+            }
+        if fields:
+            fields["state_event_projection"] = {
+                "schema_version": "event_sourced_state_status_projection_v0",
+                "source": "event_log",
+                "event_log": event_log_path.name,
+                "source_event_count": projection.get("source_event_count"),
+                "last_event_id": projection.get("last_event_id"),
+                "last_append_sequence": projection.get("last_append_sequence"),
+                "projection_version": projection.get("projection_version"),
+            }
+            return fields
+    return {}
+
+
 def active_state_sections(state_text: str, headings: tuple[str, ...]) -> dict[str, list[str]]:
     wanted = {heading.lower(): heading for heading in headings}
     current: str | None = None
@@ -6832,13 +6906,24 @@ def active_state_todo_fields(
             rollout_event_log_path(runtime_root, goal_id),
             limit=MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
         )
-    fields = parse_active_state_todos(
-        state_text,
-        goal=goal,
+    event_fields = active_state_event_projection_fields(
+        goal,
         state_path=state_path,
         preferred_todo_ids=preferred_todo_ids,
         rollout_events=rollout_events,
     )
+    if event_fields.get("user_todos") or event_fields.get("agent_todos"):
+        fields = event_fields
+    else:
+        fields = parse_active_state_todos(
+            state_text,
+            goal=goal,
+            state_path=state_path,
+            preferred_todo_ids=preferred_todo_ids,
+            rollout_events=rollout_events,
+        )
+        if event_fields:
+            fields.update(event_fields)
     issue_meta_surface = parse_issue_meta_surface(state_text)
     if issue_meta_surface:
         fields["issue_meta_surface"] = issue_meta_surface
