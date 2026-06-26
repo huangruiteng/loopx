@@ -175,6 +175,37 @@ def _harbor_profile(
             "Codex inside the task container."
         )
     if benchmark_id == "terminal-bench":
+        recommended_goal_baseline_tb_args = [
+            "--dataset-path",
+            "<tasks-dir>",
+            "--task-id",
+            "<task-id>",
+            "--output-path",
+            "<run-parent>",
+            "--run-id",
+            "$RUN_ID",
+            "--no-upload-results",
+            "--no-rebuild",
+            "--agent-import-path",
+            "terminal_bench_host_codex_goal_agent:HostCodexGoalAgent",
+            "--agent-kwarg",
+            "goal_surface=app_server",
+            "--agent-kwarg",
+            "goal_timeout_sec=<seconds>",
+        ]
+        recommended_loopx_prompt_polling_tb_args = [
+            *recommended_goal_baseline_tb_args,
+            "--agent-kwarg",
+            "loopx_mode=codex_loopx",
+            "--agent-kwarg",
+            "loopx_access_packet_mode=compact",
+            "--agent-kwarg",
+            "loopx_case_id=<case-id>",
+            "--agent-kwarg",
+            "loopx_arm_id=loopx_prompt_polling_test",
+            "--agent-kwarg",
+            "loopx_max_rounds=5",
+        ]
         runner_fragments["terminal_bench_no_rebuild_guard_command"] = (
             "python3 scripts/terminal_bench_no_rebuild_guard.py "
             "--terminal-bench-root <terminal-bench-checkout> --apply --pretty"
@@ -204,6 +235,35 @@ def _harbor_profile(
                 "--agent-kwarg",
                 "goal_timeout_sec=<seconds>",
             ],
+            "recommended_goal_baseline_tb_args": recommended_goal_baseline_tb_args,
+            "recommended_loopx_prompt_polling_tb_args": (
+                recommended_loopx_prompt_polling_tb_args
+            ),
+            "official_hello_world_proof_gate": {
+                "case_id": "hello-world",
+                "safe_run_id_command": (
+                    "RUN_ID=$(python3 scripts/terminal_bench_safe_run_id.py "
+                    "--prefix hello-world-host-codex-goal | "
+                    "python3 -c 'import json,sys; "
+                    "print(json.load(sys.stdin)[\"safe_run_id\"])')"
+                ),
+                "required_prelaunch_gates": [
+                    "terminal_bench_no_rebuild_guard_applied",
+                    "task_image_exists_or_bootstrap_done",
+                    "codex_app_server_goal_schema_ready",
+                ],
+                "tb_args": [
+                    part.replace("<task-id>", "hello-world")
+                    for part in recommended_goal_baseline_tb_args
+                ],
+                "compact_result_reducer": (
+                    "python3 scripts/terminal_bench_official_result_reducer.py "
+                    "--results-json <results-json> "
+                    "--run-metadata-json <run-metadata-json> --pretty"
+                ),
+                "no_upload_required": True,
+                "runner_or_scorer_behavior_changed": False,
+            },
             "goal_surface": "app_server",
             "fallback_goal_surface": "tui",
             "preflight_gate": (
