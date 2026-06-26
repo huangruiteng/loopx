@@ -530,39 +530,40 @@ if out:
             probe_only_failure["remote_command_file_bridge_consumption_status"]
             == "sandbox_bridge_auto_wiring_pending"
         )
-        blocked_auto_wiring_full_run = subprocess.run(
-            [
-                sys.executable,
-                str(SCRIPT),
-                "--skillsbench-root",
-                str(root),
-                "--task-id",
-                "demo-task",
-                "--route",
-                "loopx-product-mode",
-                "--host-local-acp-launch",
-                "--remote-command-file-bridge-ready",
-            ],
-            cwd=REPO_ROOT,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-        assert blocked_auto_wiring_full_run.returncode == 2, (
-            blocked_auto_wiring_full_run
-        )
-        auto_wiring_failure = json.loads(blocked_auto_wiring_full_run.stderr)
-        assert auto_wiring_failure["error_type"] == (
-            "SkillsBenchProductModeBridgeAutoWiringPending"
-        ), auto_wiring_failure
-        assert (
-            auto_wiring_failure["remote_command_file_bridge_consumption_status"]
-            == "sandbox_bridge_auto_wiring_pending"
-        ), auto_wiring_failure
-        assert auto_wiring_failure["raw_task_text_read"] is False
-        assert auto_wiring_failure["raw_trajectory_recorded"] is False
+        for route in ("loopx-product-mode", "loopx-goal-start-product-mode"):
+            blocked_auto_wiring_full_run = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--skillsbench-root",
+                    str(root),
+                    "--task-id",
+                    "demo-task",
+                    "--route",
+                    route,
+                    "--host-local-acp-launch",
+                    "--remote-command-file-bridge-ready",
+                ],
+                cwd=REPO_ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            assert blocked_auto_wiring_full_run.returncode == 2, (
+                blocked_auto_wiring_full_run
+            )
+            auto_wiring_failure = json.loads(blocked_auto_wiring_full_run.stderr)
+            assert auto_wiring_failure["error_type"] == (
+                "SkillsBenchProductModeBridgeAutoWiringPending"
+            ), auto_wiring_failure
+            assert (
+                auto_wiring_failure["remote_command_file_bridge_consumption_status"]
+                == "sandbox_bridge_auto_wiring_pending"
+            ), auto_wiring_failure
+            assert auto_wiring_failure["raw_task_text_read"] is False
+            assert auto_wiring_failure["raw_trajectory_recorded"] is False
         blocked_fixture_solver = subprocess.run(
             [
                 sys.executable,
@@ -1129,6 +1130,50 @@ raise SystemExit(125)
             exit125_controller_trace["host_local_acp_codex_exec_failure_category"]
             == "codex_exec_exit_125"
         )
+        network_exit125_codex = Path(tmp) / "network-exit125-codex"
+        network_exit125_codex.write_text(
+            """#!/usr/bin/env python3
+import sys
+
+print(
+    "failed to refresh available models: stream disconnected before completion",
+    file=sys.stderr,
+)
+raise SystemExit(125)
+""",
+            encoding="utf-8",
+        )
+        network_exit125_codex.chmod(0o755)
+        network_exit125_trace_dir = Path(tmp) / "relay-network-exit125-traces"
+        network_exit125_probe = run_skillsbench_local_acp_relay_probe(
+            [
+                sys.executable,
+                str(RELAY_SCRIPT),
+                "--codex-bin",
+                str(network_exit125_codex),
+                "--route",
+                "loopx-product-mode",
+                "--dataset",
+                "skillsbench-v1.1",
+                "--task-id",
+                "demo-task",
+                "--worker-public-trace-dir",
+                str(network_exit125_trace_dir),
+            ],
+            timeout_sec=20,
+        )
+        assert network_exit125_probe["ready"] is False, network_exit125_probe
+        network_exit125_failure = json.loads(
+            next(network_exit125_trace_dir.glob("*.compact.json")).read_text(
+                encoding="utf-8"
+            )
+        )
+        network_exit125_process = network_exit125_failure["codex_exec_process"]
+        assert network_exit125_process["returncode"] == 125
+        assert network_exit125_process["failure_category"] == (
+            "codex_network_or_api_unreachable"
+        )
+        assert network_exit125_process["raw_stderr_recorded"] is False
         exit1_codex = Path(tmp) / "exit1-codex"
         exit1_codex.write_text(
             """#!/usr/bin/env python3

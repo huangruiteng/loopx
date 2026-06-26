@@ -29,6 +29,8 @@ from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_ACTIVE_STATE_PROOF_FIELDS,
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
     BENCHMARK_CASE_LIFECYCLE_SCHEMA_VERSION,
+    BENCHMARK_CASE_LOOPX_GOAL_START_SELECTED_TODO_ID,
+    BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS,
     BENCHMARK_CASE_LOOPX_TODO_ID,
     benchmark_case_active_state_init_contract,
     benchmark_case_active_state_path,
@@ -166,6 +168,37 @@ def test_case_loopx_install_payload_uses_official_product_lifecycle() -> None:
     assert "/Users/" not in command
 
 
+def test_goal_start_product_mode_seeds_ranked_plan_before_todos() -> None:
+    payload = benchmark_case_loopx_install_payload(
+        benchmark_id="skillsbench",
+        case_id="planning-granularity",
+        arm_id="loopx_goal_start_product_mode",
+        route="loopx-goal-start-product-mode",
+        max_rounds=16,
+        goal_start_product_mode=True,
+    )
+    assert payload["goal_start_product_mode"] is True
+    assert payload["goal_start_plan_observed"] is True
+    assert payload["planner_before_todo_write"] is True
+    assert payload["planned_todo_count"] == 3
+    assert payload["planned_p0_count"] == 1
+    assert payload["planned_todo_ids"] == list(BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS)
+    assert payload["case_todo_id"] == BENCHMARK_CASE_LOOPX_GOAL_START_SELECTED_TODO_ID
+    assert payload["selected_p0_todo_id"] == BENCHMARK_CASE_LOOPX_GOAL_START_SELECTED_TODO_ID
+    assert payload["selected_todo_claimed"] is False
+    assert payload["selected_todo_updated_before_solver"] is False
+    assert payload["selected_todo_completed_before_spend"] is False
+    assert payload["non_selected_todos_preserved_open_or_deferred"] is True
+    command = str(payload["command"])
+    assert " bootstrap-command-pack " in command
+    assert " --goal-text " in command
+    assert command.count(" todo add ") == 3
+    assert command.index("bootstrap-command-pack") < command.index(" todo add ")
+    for todo_id in BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS:
+        assert todo_id in command
+    assert "/Users/" not in command
+
+
 def test_case_loopx_install_command_uses_real_loopx_lifecycle() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-case-install-") as tmp:
         root = Path(tmp)
@@ -249,6 +282,64 @@ def test_case_loopx_install_command_uses_real_loopx_lifecycle() -> None:
         assert any('"event_kind": "quota_should_run"' in line or '"event_kind":"quota_should_run"' in line for line in event_lines)
         assert any('"event_kind": "todo_claim"' in line or '"event_kind":"todo_claim"' in line for line in event_lines)
         assert all("raw_task_text" not in line or "false" in line for line in event_lines)
+
+
+def test_goal_start_install_command_seeds_three_ranked_todos() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-goal-start-install-") as tmp:
+        root = Path(tmp)
+        state_path = root / ".codex" / "goals" / "goal-start-case" / "ACTIVE_GOAL_STATE.md"
+        cli_path = root / ".local" / "bin" / "loopx"
+        registry_path = root / ".loopx" / "registry.json"
+        runtime_root = root / ".loopx" / "runtime"
+        goal_doc_path = root / ".loopx" / "LOOPX_CASE_GOAL.md"
+        command = benchmark_case_loopx_install_command(
+            benchmark_id="skillsbench",
+            case_id="goal-start-case",
+            route="loopx-goal-start-product-mode",
+            max_rounds=16,
+            goal_id="goal-start-case",
+            case_state_path=str(state_path),
+            content="",
+            case_cli_path=str(cli_path),
+            case_registry_path=str(registry_path),
+            case_runtime_root=str(runtime_root),
+            case_goal_doc_path=str(goal_doc_path),
+            case_project_root=str(root),
+            case_home=str(root),
+            goal_start_product_mode=True,
+        )
+        subprocess.run(
+            ["bash", "-lc", command],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        status = subprocess.run(
+            [
+                str(cli_path),
+                "--registry",
+                str(registry_path),
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "status",
+                "--agent-id",
+                "codex-benchmark-agent",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        status_payload = json.loads(status.stdout)
+        items = status_payload["attention_queue"]["items"][0]["agent_todos"][
+            "backlog_items"
+        ]
+        ids = {item["todo_id"] for item in items}
+        assert set(BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS).issubset(ids)
+        assert status_payload["attention_queue"]["items"][0]["agent_lane_next_action"][
+            "todo_id"
+        ] == BENCHMARK_CASE_LOOPX_GOAL_START_SELECTED_TODO_ID
 
 
 def test_case_loopx_install_command_uses_source_wrapper_without_local_installer() -> None:
@@ -377,7 +468,9 @@ if __name__ == "__main__":
     test_seed_text_uses_real_loopx_active_state_shape()
     test_seed_write_command_uses_canonical_path()
     test_case_loopx_install_payload_uses_official_product_lifecycle()
+    test_goal_start_product_mode_seeds_ranked_plan_before_todos()
     test_case_loopx_install_command_uses_real_loopx_lifecycle()
+    test_goal_start_install_command_seeds_three_ranked_todos()
     test_case_loopx_install_command_uses_source_wrapper_without_local_installer()
     test_case_lifecycle_contract_is_per_case_arm()
     test_ale_launch_packet_reuses_shared_contract()

@@ -44,6 +44,32 @@ BENCHMARK_CASE_LOOPX_TODO_ID = build_todo_id(
     index=1,
     text=BENCHMARK_CASE_LOOPX_TODO_TEXT,
 )
+BENCHMARK_CASE_LOOPX_GOAL_START_TODO_TEXTS = (
+    BENCHMARK_CASE_LOOPX_TODO_TEXT,
+    (
+        "Validate the benchmark solution locally and keep public-safe LoopX "
+        "evidence before final closeout."
+    ),
+    (
+        "Close out the selected solver todo only after validation, then "
+        "refresh state and spend quota once."
+    ),
+)
+BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS = tuple(
+    build_todo_id(
+        role="agent",
+        source_section="Agent Todo",
+        index=index,
+        text=text,
+    )
+    for index, text in enumerate(
+        BENCHMARK_CASE_LOOPX_GOAL_START_TODO_TEXTS,
+        start=1,
+    )
+)
+BENCHMARK_CASE_LOOPX_GOAL_START_SELECTED_TODO_ID = (
+    BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS[0]
+)
 BENCHMARK_CASE_LOOPX_FORMAL_TREATMENT_SEMANTICS = "loopx-product-mode"
 BENCHMARK_CASE_LOOPX_PROMPT_DRIVEN_EXECUTION_STYLE = "prompt_driven_loopx_cli"
 BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE = (
@@ -673,6 +699,7 @@ def benchmark_case_loopx_install_command(
     case_agent_id: str = BENCHMARK_CASE_LOOPX_AGENT_ID,
     case_todo_text: str = BENCHMARK_CASE_LOOPX_TODO_TEXT,
     case_todo_id: str = BENCHMARK_CASE_LOOPX_TODO_ID,
+    goal_start_product_mode: bool = False,
 ) -> str:
     """Return the official case-local LoopX product-mode install command.
 
@@ -711,7 +738,6 @@ def benchmark_case_loopx_install_command(
     )
     runtime_root = shlex.quote(case_runtime_root)
     installer_url = shlex.quote(BENCHMARK_CASE_LOOPX_OFFICIAL_INSTALLER_URL)
-    todo_text = shlex.quote(case_todo_text)
     bootstrap_cmd = (
         f"{cli_prefix} bootstrap "
         f"--project {project_root} "
@@ -733,13 +759,58 @@ def benchmark_case_loopx_install_command(
         f"--primary-agent {shlex.quote(case_agent_id)} "
         "--execute"
     )
-    todo_add_cmd = (
-        f"{cli_prefix} todo add "
+    goal_start_pack_cmd = (
+        f"{cli_prefix} bootstrap-command-pack "
+        f"--project {project_root} "
         f"--goal-id {shlex.quote(goal_id)} "
-        "--role agent "
-        f"--text {todo_text} "
-        "--task-class advancement_task "
-        "--action-kind solve_benchmark_case"
+        f"--agent-id {shlex.quote(case_agent_id)} "
+        "--host-surface shell "
+        "--message-only "
+        "--goal-text "
+        f"{shlex.quote('Solve the current benchmark task with a compact LoopX ranked todo plan.')}"
+    )
+    if goal_start_product_mode:
+        if len(BENCHMARK_CASE_LOOPX_GOAL_START_TODO_TEXTS) != len(
+            BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS
+        ):
+            raise ValueError("goal-start todo text/id contract length mismatch")
+        todo_specs = [
+            (
+                text,
+                todo_id,
+                "solve_benchmark_case"
+                if index == 0
+                else "validate_benchmark_case"
+                if index == 1
+                else "closeout_benchmark_case",
+            )
+            for index, (text, todo_id) in enumerate(
+                zip(
+                    BENCHMARK_CASE_LOOPX_GOAL_START_TODO_TEXTS,
+                    BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS,
+                )
+            )
+        ]
+    else:
+        todo_specs = [(case_todo_text, case_todo_id, "solve_benchmark_case")]
+    todo_add_cmds = []
+    for planned_todo_text, planned_todo_id, action_kind in todo_specs:
+        todo_add_cmds.append(
+            f"{cli_prefix} todo add "
+            f"--goal-id {shlex.quote(goal_id)} "
+            "--role agent "
+            f"--todo-id {shlex.quote(planned_todo_id)} "
+            f"--text {shlex.quote(planned_todo_text)} "
+            "--task-class advancement_task "
+            f"--action-kind {shlex.quote(action_kind)}"
+        )
+    todo_add_cmd = "\n".join(todo_add_cmds)
+    goal_start_plan_cmd = (
+        "echo 'loopx_case_init_phase:goal_start_plan' >&2\n"
+        f"{goal_start_pack_cmd} >/tmp/loopx_goal_start_command_pack.txt\n"
+        "test -s /tmp/loopx_goal_start_command_pack.txt\n"
+        if goal_start_product_mode
+        else ""
     )
     quota_cmd = (
         f"{cli_prefix} quota should-run "
@@ -815,6 +886,7 @@ def benchmark_case_loopx_install_command(
         f"{bootstrap_cmd}\n"
         "echo 'loopx_case_init_phase:configure_goal' >&2\n"
         f"{configure_cmd}\n"
+        f"{goal_start_plan_cmd}"
         "echo 'loopx_case_init_phase:todo_add' >&2\n"
         f"{todo_add_cmd}\n"
         "echo 'loopx_case_init_phase:quota_should_run' >&2\n"
@@ -840,6 +912,7 @@ def benchmark_case_loopx_install_payload(
     case_loopx_source_path: str | None = None,
     case_agent_id: str = BENCHMARK_CASE_LOOPX_AGENT_ID,
     case_todo_id: str = BENCHMARK_CASE_LOOPX_TODO_ID,
+    goal_start_product_mode: bool = False,
 ) -> dict[str, object]:
     """Return the case-local GH install/state/todo launch payload."""
 
@@ -860,6 +933,21 @@ def benchmark_case_loopx_install_payload(
         case_state_path=case_state_path,
     )
     case_rollout_event_log_path = benchmark_case_loopx_event_log_path(goal_id)
+    planned_todo_texts = (
+        BENCHMARK_CASE_LOOPX_GOAL_START_TODO_TEXTS
+        if goal_start_product_mode
+        else (BENCHMARK_CASE_LOOPX_TODO_TEXT,)
+    )
+    planned_todo_ids = (
+        BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS
+        if goal_start_product_mode
+        else (case_todo_id,)
+    )
+    selected_todo_id = (
+        BENCHMARK_CASE_LOOPX_GOAL_START_SELECTED_TODO_ID
+        if goal_start_product_mode
+        else case_todo_id
+    )
     return {
         "schema_version": BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
         "install_flow_schema_version": (
@@ -883,11 +971,26 @@ def benchmark_case_loopx_install_payload(
         "case_loopx_source_install_requested": bool(case_loopx_source_path),
         "case_rollout_event_log_path": case_rollout_event_log_path,
         "case_agent_id": case_agent_id,
-        "case_todo_id": case_todo_id,
+        "case_todo_id": selected_todo_id,
         "case_todo_text_public_safe": BENCHMARK_CASE_LOOPX_TODO_TEXT,
         "case_todo_seeded": True,
         "case_todo_preclaimed": False,
         "case_todo_seeded_by": "loopx todo add",
+        "goal_start_product_mode": goal_start_product_mode,
+        "goal_start_plan_observed": goal_start_product_mode,
+        "planner_before_todo_write": goal_start_product_mode,
+        "planned_todo_count": len(planned_todo_ids),
+        "planned_todo_ids": list(planned_todo_ids),
+        "planned_todo_texts_public_safe": list(planned_todo_texts),
+        "planned_p0_count": 1 if goal_start_product_mode else 0,
+        "same_priority_order_preserved": goal_start_product_mode,
+        "selected_p0_todo_id": selected_todo_id,
+        "selected_todo_claimed": False,
+        "selected_todo_updated_before_solver": False,
+        "selected_todo_completed_before_spend": False,
+        "non_selected_todos_preserved_open_or_deferred": (
+            goal_start_product_mode
+        ),
         "install_flow_required": True,
         "prompt_driven_route_required": True,
         "product_path_primary_route": (
@@ -916,7 +1019,8 @@ def benchmark_case_loopx_install_payload(
             case_goal_doc_path=BENCHMARK_CASE_LOOPX_GOAL_DOC_PATH,
             case_agent_id=case_agent_id,
             case_todo_text=BENCHMARK_CASE_LOOPX_TODO_TEXT,
-            case_todo_id=case_todo_id,
+            case_todo_id=selected_todo_id,
+            goal_start_product_mode=goal_start_product_mode,
         ),
         "raw_task_text_required_for_init": False,
         "raw_logs_recorded": False,

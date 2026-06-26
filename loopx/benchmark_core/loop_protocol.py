@@ -22,6 +22,7 @@ LOOPX_PROMPT_POLLING_TEST_ROUTE = "loopx-prompt-polling-test"
 AUTOMATION_LOOP_TREATMENT_ROUTE = "automation-loop-treatment"
 RAW_CODEX_AUTONOMOUS_MAX5_ROUTE = "raw-codex-autonomous-max5"
 LOOPX_PRODUCT_MODE_ROUTE = "loopx-product-mode"
+LOOPX_GOAL_START_PRODUCT_MODE_ROUTE = "loopx-goal-start-product-mode"
 CODEX_APP_SERVER_GOAL_BASELINE_ROUTE = "codex-app-server-goal-baseline"
 LOOPX_PACKET_ONLY_OBSERVATION_ROUTE = (
     "loopx-packet-only-observation"
@@ -41,6 +42,7 @@ NO_REWARD_FEEDBACK_ROUTES = frozenset(
         LOOPX_PROMPT_POLLING_TEST_ROUTE,
         RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
         LOOPX_PRODUCT_MODE_ROUTE,
+        LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
         CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
     }
 )
@@ -48,6 +50,13 @@ PRODUCT_MODE_ROUTES = frozenset(
     {
         RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
         LOOPX_PRODUCT_MODE_ROUTE,
+        LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+    }
+)
+LOOPX_PRODUCT_MODE_TREATMENT_ROUTES = frozenset(
+    {
+        LOOPX_PRODUCT_MODE_ROUTE,
+        LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
     }
 )
 
@@ -160,8 +169,18 @@ def build_product_mode_main_table_comparison_contract(
         route=treatment_route,
         max_rounds=budget,
         protocol_id=PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
-        if treatment_route == LOOPX_PRODUCT_MODE_ROUTE
+        if treatment_route in LOOPX_PRODUCT_MODE_TREATMENT_ROUTES
         else None,
+    )
+    treatment_arm_id = (
+        "loopx_goal_start_product_mode"
+        if treatment_route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
+        else "loopx_product_mode"
+    )
+    treatment_agent_surface = (
+        "loopx_goal_start_plan_todo_lifecycle_cli"
+        if treatment_route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
+        else "loopx_state_todo_replan_cli"
     )
     return {
         "schema_version": BENCHMARK_PRODUCT_MODE_COMPARISON_SCHEMA_VERSION,
@@ -179,12 +198,12 @@ def build_product_mode_main_table_comparison_contract(
         },
         "treatment_arm": {
             "route": treatment_route,
-            "arm_id": "loopx_product_mode",
+            "arm_id": treatment_arm_id,
             "contract": treatment_contract,
             "loopx_state_todo_replan_cli_required": True,
             "case_local_loopx_state_required": True,
             "loopx_cli_required": True,
-            "agent_surface": "loopx_state_todo_replan_cli",
+            "agent_surface": treatment_agent_surface,
         },
         "policy_gate": {
             "same_benchmark_and_case_required": True,

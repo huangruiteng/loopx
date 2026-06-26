@@ -191,6 +191,24 @@ def _codex_exec_failure_category(
         or ("create_connection" in text and "socket" in text)
     ):
         return "codex_reverse_channel_unavailable"
+    if any(
+        token in text
+        for token in (
+            "failed to refresh available models",
+            "stream disconnected before completion",
+            "error sending request",
+            "request error",
+        )
+    ) and any(
+        token in text
+        for token in (
+            "chatgpt.com",
+            "api.openai.com",
+            "backend-api",
+            "available models",
+        )
+    ):
+        return "codex_network_or_api_unreachable"
     if "hit your usage limit" in text or "usage limit" in text:
         return "codex_usage_limit"
     if "codex_exec_first_action_timeout" in text:

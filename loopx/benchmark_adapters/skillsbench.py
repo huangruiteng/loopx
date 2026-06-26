@@ -28,6 +28,15 @@ SKILLSBENCH_PRODUCT_MODE_CASE_GOAL_ID = "skillsbench-case"
 SKILLSBENCH_PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
     SKILLSBENCH_PRODUCT_MODE_CASE_GOAL_ID
 )
+SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE = "raw-codex-autonomous-max5"
+SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE = "loopx-product-mode"
+SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE = "loopx-goal-start-product-mode"
+SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES = frozenset(
+    {
+        SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
+        SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+    }
+)
 SKILLSBENCH_ROUTES = (
     "codex-acp-blind-loop-baseline",
     "loopx-blind-loop-treatment",
@@ -36,8 +45,9 @@ SKILLSBENCH_ROUTES = (
     "codex-goal-mode-baseline",
     "automation-loop-treatment",
     "curated-skills-baseline",
-    "raw-codex-autonomous-max5",
-    "loopx-product-mode",
+    SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE,
+    SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
+    SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
 )
 SKILLSBENCH_DEFAULT_ROUTE = "loopx-blind-loop-treatment"
 
@@ -75,9 +85,30 @@ SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_SCOPES = (
     "derived_sandbox_image",
 )
 SKILLSBENCH_LOCAL_DRIVER_A2A_PAIR_ROUTES = (
-    "raw-codex-autonomous-max5",
-    "loopx-product-mode",
+    SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE,
+    SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
+    SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
 )
+
+
+def _is_skillsbench_loopx_product_mode_treatment_route(route: str) -> bool:
+    return route in SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES
+
+
+def _is_skillsbench_goal_start_product_mode_route(route: str) -> bool:
+    return route == SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
+
+
+def _skillsbench_product_mode_arm_id(route: str) -> str:
+    if _is_skillsbench_goal_start_product_mode_route(route):
+        return "loopx_goal_start_product_mode"
+    return "loopx_product_mode"
+
+
+def _skillsbench_product_mode_outer_controller(route: str) -> str:
+    if _is_skillsbench_goal_start_product_mode_route(route):
+        return "loopx_goal_start_product_mode"
+    return "loopx_product_mode"
 
 
 def _skillsbench_public_safe_label(value: Any, *, limit: int = 120) -> str | None:
@@ -183,7 +214,7 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
                 "verifier output to the in-case agent during the loop"
             ),
         }
-    if route == "raw-codex-autonomous-max5":
+    if route == SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE:
         return {
             "mode": "skillsbench_raw_codex_autonomous_max5_baseline",
             "arm_id": "raw_codex_autonomous_max5",
@@ -211,17 +242,30 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
                 "returned during execution"
             ),
         }
-    if route == "loopx-product-mode":
+    if _is_skillsbench_loopx_product_mode_treatment_route(route):
+        goal_start_product_mode = _is_skillsbench_goal_start_product_mode_route(route)
         return {
-            "mode": "skillsbench_loopx_product_mode_treatment",
-            "arm_id": "loopx_product_mode",
-            "source_runner": "loopx_skillsbench_canonical_product_lifecycle_driver",
+            "mode": (
+                "skillsbench_loopx_goal_start_product_mode_treatment"
+                if goal_start_product_mode
+                else "skillsbench_loopx_product_mode_treatment"
+            ),
+            "arm_id": _skillsbench_product_mode_arm_id(route),
+            "source_runner": (
+                "loopx_skillsbench_goal_start_product_lifecycle_driver"
+                if goal_start_product_mode
+                else "loopx_skillsbench_canonical_product_lifecycle_driver"
+            ),
             "inner_codex_goal_mode": False,
             "native_goal_mode_requested": False,
             "native_goal_mode_invoked": False,
             "native_goal_mode_confirmation_status": "not_requested",
             "codex_acp_protocol_used": True,
-            "skillsbench_route_semantics": "codex_agent_with_loopx_state_todo_replan_cli_no_reward_feedback",
+            "skillsbench_route_semantics": (
+                "codex_agent_with_loopx_goal_start_ranked_todo_plan_selected_p0_lifecycle_no_reward_feedback"
+                if goal_start_product_mode
+                else "codex_agent_with_loopx_state_todo_replan_cli_no_reward_feedback"
+            ),
             "curated_skills_visible": False,
             "loopx_automation_loop": True,
             "loopx_inside_case": True,
@@ -234,9 +278,16 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
             "official_score_comparable_to_loopx_treatment": True,
             "first_blocker": "none",
             "next_action": (
-                "run LoopX product-mode treatment with goal state, todos, "
-                "replan/status writeback, and LoopX CLI/ledger surfaces; do not "
-                "return official reward or verifier feedback during execution"
+                "run LoopX goal-start product-mode treatment with a compact ranked "
+                "todo plan, selected P0 todo lifecycle, replan/status writeback, "
+                "and LoopX CLI/ledger surfaces; do not return official reward or "
+                "verifier feedback during execution"
+                if goal_start_product_mode
+                else (
+                    "run LoopX product-mode treatment with goal state, todos, "
+                    "replan/status writeback, and LoopX CLI/ledger surfaces; do not "
+                    "return official reward or verifier feedback during execution"
+                )
             ),
         }
     if route == "codex-goal-mode-baseline":
@@ -1512,6 +1563,10 @@ def build_skillsbench_benchmark_run(
         raise ValueError(f"unsupported SkillsBench route: {route}")
     contract = skillsbench_route_contract(route)
     job_name = skillsbench_job_name(dataset, task_id, route)
+    is_product_mode_treatment = _is_skillsbench_loopx_product_mode_treatment_route(
+        route
+    )
+    is_goal_start_product_mode = _is_skillsbench_goal_start_product_mode_route(route)
     validation: dict[str, Any] = {
         "cli_skeleton_present": True,
         "skillsbench_route_declared": True,
@@ -1577,14 +1632,18 @@ def build_skillsbench_benchmark_run(
                 if route == "raw-codex-autonomous-max5"
                 else [
                     "ordinary_codex_cli_actor",
-                    "loopx_product_mode",
-                    "goal_state_todos_replan_cli",
+                    "loopx_goal_start_product_mode"
+                    if is_goal_start_product_mode
+                    else "loopx_product_mode",
+                    "ranked_todo_plan_selected_p0_lifecycle"
+                    if is_goal_start_product_mode
+                    else "goal_state_todos_replan_cli",
                     "official_feedback_withheld",
                     "fixture_only",
                     "no_upload",
                     "single_task_planned",
                 ]
-                if route == "loopx-product-mode"
+                if is_product_mode_treatment
                 else [
                     "ordinary_codex_cli_actor",
                     "loopx_prompt_polling_test",
@@ -1655,26 +1714,30 @@ def build_skillsbench_benchmark_run(
             "loopx_case_state_reads": 0,
             "loopx_case_state_writes": 0,
             "heartbeat_count": 0,
-            "case_goal_state_packet_present": route == "loopx-product-mode",
-            "case_goal_state_init_required": route == "loopx-product-mode",
+            "case_goal_state_packet_present": is_product_mode_treatment,
+            "case_goal_state_init_required": is_product_mode_treatment,
             "case_goal_state_initialized_before_agent": False,
             "case_goal_state_init_status": (
                 "not_run_adapter_skeleton"
-                if route == "loopx-product-mode"
+                if is_product_mode_treatment
                 else ""
             ),
             "case_goal_state_schema_version": (
                 BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
-                if route == "loopx-product-mode"
+                if is_product_mode_treatment
                 else ""
             ),
             "case_goal_state_path": (
                 SKILLSBENCH_PRODUCT_MODE_CASE_STATE_PATH
-                if route == "loopx-product-mode"
+                if is_product_mode_treatment
                 else ""
             ),
-            "declared_done_requires_no_remaining_goals": route
-            == "loopx-product-mode",
+            "declared_done_requires_no_remaining_goals": is_product_mode_treatment,
+            "goal_start_product_mode": is_goal_start_product_mode,
+            "goal_start_plan_observed": False,
+            "planned_todo_count": 0,
+            "planned_p0_count": 0,
+            "selected_p0_todo_id": "",
             "case_result_writeback": "not_run_adapter_skeleton",
             "counter_trust_level": "adapter_contract_fixture",
         },
@@ -1686,8 +1749,8 @@ def build_skillsbench_benchmark_run(
                 if route == "loopx-prompt-polling-test"
                 else "loopx_blind_automation_loop"
                 if route == "loopx-blind-loop-treatment"
-                else "loopx_product_mode"
-                if route == "loopx-product-mode"
+                else _skillsbench_product_mode_outer_controller(route)
+                if is_product_mode_treatment
                 else "reward_feedback_automation_loop_ablation"
                 if route == "automation-loop-treatment"
                 else "raw_codex_autonomous_max5"
@@ -1707,7 +1770,7 @@ def build_skillsbench_benchmark_run(
                     "loopx-prompt-polling-test",
                     "codex-acp-blind-loop-baseline",
                     "raw-codex-autonomous-max5",
-                    "loopx-product-mode",
+                    *SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES,
                 }
                 else "codex_acp_goal_prompt_request_unconfirmed_native_goal_mode"
                 if route == "codex-goal-mode-baseline"
@@ -1877,6 +1940,44 @@ def _skillsbench_controller_trace_counters(
             return value
         return 0
 
+    def successful_subcommand_count(command: str) -> int:
+        counts = controller_trace.get(
+            "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
+        )
+        if not isinstance(counts, dict):
+            return 0
+        value = counts.get(command)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+        return 0
+
+    def driver_command_count(command: str) -> int:
+        counts = controller_trace.get(
+            "remote_command_file_bridge_driver_lifecycle_command_counts"
+        )
+        if not isinstance(counts, dict):
+            return 0
+        value = counts.get(command)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+        return 0
+
+    def count_map(key: str) -> dict[str, int]:
+        raw = controller_trace.get(key)
+        if not isinstance(raw, dict):
+            return {}
+        counts: dict[str, int] = {}
+        for name, value in raw.items():
+            if (
+                isinstance(name, str)
+                and name
+                and isinstance(value, int)
+                and not isinstance(value, bool)
+                and value >= 0
+            ):
+                counts[name[:80]] = value
+        return dict(sorted(counts.items()))
+
     def max_direct_or_subcommands(key: str, commands: tuple[str, ...]) -> int:
         direct = count(key)
         derived = sum(subcommand_count(command) for command in commands)
@@ -1925,6 +2026,33 @@ def _skillsbench_controller_trace_counters(
                 first_success_round = int(record["agent_round"])
                 break
 
+    driver_lifecycle_command_successful = (
+        count("remote_command_file_bridge_driver_lifecycle_failure_count") == 0
+    )
+    selected_todo_claimed = bool(
+        controller_trace.get("selected_todo_claimed") is True
+        or successful_subcommand_count("todo claim") > 0
+        or (
+            driver_lifecycle_command_successful
+            and driver_command_count("todo claim") > 0
+        )
+    )
+    selected_todo_updated_before_solver = bool(
+        controller_trace.get("selected_todo_updated_before_solver") is True
+        or successful_subcommand_count("todo update") > 0
+        or (
+            driver_lifecycle_command_successful
+            and driver_command_count("todo update") > 0
+        )
+    )
+    selected_todo_completed_before_spend = bool(
+        controller_trace.get("selected_todo_completed_before_spend") is True
+        or (
+            successful_subcommand_count("todo complete") > 0
+            and successful_subcommand_count("quota spend-slot") > 0
+        )
+    )
+
     counters: dict[str, Any] = {
         "controller_trace_present": True,
         "controller_trace_schema_version": schema_version,
@@ -1952,6 +2080,25 @@ def _skillsbench_controller_trace_counters(
         is True,
         "blind_loop": controller_trace.get("blind_loop") is True,
         "product_mode": controller_trace.get("product_mode") is True,
+        "goal_start_product_mode": controller_trace.get("goal_start_product_mode")
+        is True,
+        "goal_start_plan_observed": controller_trace.get("goal_start_plan_observed")
+        is True,
+        "planner_before_todo_write": controller_trace.get("planner_before_todo_write")
+        is True,
+        "same_priority_order_preserved": controller_trace.get(
+            "same_priority_order_preserved"
+        )
+        is True,
+        "selected_todo_claimed": selected_todo_claimed,
+        "selected_todo_updated_before_solver": selected_todo_updated_before_solver,
+        "selected_todo_completed_before_spend": selected_todo_completed_before_spend,
+        "non_selected_todos_preserved_open_or_deferred": controller_trace.get(
+            "non_selected_todos_preserved_open_or_deferred"
+        )
+        is True,
+        "planned_todo_count": count("planned_todo_count"),
+        "planned_p0_count": count("planned_p0_count"),
         "case_goal_state_packet_present": controller_trace.get(
             "case_goal_state_packet_present"
         )
@@ -2249,6 +2396,20 @@ def _skillsbench_controller_trace_counters(
     )
     if last_decision:
         counters["last_decision"] = last_decision
+    selected_p0_todo_id = _skillsbench_public_safe_label(
+        controller_trace.get("selected_p0_todo_id") or ""
+    )
+    if selected_p0_todo_id:
+        counters["selected_p0_todo_id"] = selected_p0_todo_id
+    for source_key in (
+        "remote_command_file_bridge_agent_loopx_subcommand_counts",
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts",
+        "remote_command_file_bridge_driver_lifecycle_command_counts",
+        "remote_command_file_bridge_driver_lifecycle_returncode_counts",
+    ):
+        counts = count_map(source_key)
+        if counts:
+            counters[source_key] = counts
     init_status = _skillsbench_public_safe_label(
         controller_trace.get("case_goal_state_init_status") or ""
     )
@@ -2652,8 +2813,8 @@ def build_skillsbench_benchflow_result_benchmark_run(
         if route == "loopx-blind-loop-treatment"
         else "loopx_prompt_polling_loop"
         if route == "loopx-prompt-polling-test"
-        else "loopx_product_mode"
-        if route == "loopx-product-mode"
+        else _skillsbench_product_mode_outer_controller(route)
+        if _is_skillsbench_loopx_product_mode_treatment_route(route)
         else "reward_feedback_automation_loop_ablation"
         if route == "automation-loop-treatment"
         else "raw_codex_autonomous_max5"
@@ -2673,7 +2834,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "loopx-prompt-polling-test",
             "codex-acp-blind-loop-baseline",
             "raw-codex-autonomous-max5",
-            "loopx-product-mode",
+            *SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES,
         }
         else "codex_acp_goal_prompt_request_unconfirmed_native_goal_mode"
         if route == "codex-goal-mode-baseline"
@@ -2811,7 +2972,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
         value = trajectory_summary.get(name, 0)
         return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
-    product_mode_lifecycle_required = bool(route == "loopx-product-mode")
+    product_mode_lifecycle_required = _is_skillsbench_loopx_product_mode_treatment_route(
+        route
+    )
     workflow_execution_style = controller_counters.get(
         "remote_command_file_bridge_driver_lifecycle_execution_style"
     )
@@ -3266,7 +3429,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "skillsbench_host_local_acp_codex_exec_failed",
             "skillsbench_runner_setup_error",
             "skillsbench_product_mode_transport_failure"
-            if route == "loopx-product-mode"
+            if _is_skillsbench_loopx_product_mode_treatment_route(route)
             else "",
         ):
             if item and item not in failure_labels:
@@ -3688,6 +3851,35 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "controller_blind_loop": controller_counters.get("blind_loop", False),
             "product_mode": controller_counters.get("product_mode", False),
+            "goal_start_product_mode": controller_counters.get(
+                "goal_start_product_mode", False
+            ),
+            "goal_start_plan_observed": controller_counters.get(
+                "goal_start_plan_observed", False
+            ),
+            "planned_todo_count": controller_counters.get("planned_todo_count", 0),
+            "planned_p0_count": controller_counters.get("planned_p0_count", 0),
+            "planner_before_todo_write": controller_counters.get(
+                "planner_before_todo_write", False
+            ),
+            "same_priority_order_preserved": controller_counters.get(
+                "same_priority_order_preserved", False
+            ),
+            "selected_p0_todo_id": controller_counters.get(
+                "selected_p0_todo_id", ""
+            ),
+            "selected_todo_claimed": controller_counters.get(
+                "selected_todo_claimed", False
+            ),
+            "selected_todo_updated_before_solver": controller_counters.get(
+                "selected_todo_updated_before_solver", False
+            ),
+            "selected_todo_completed_before_spend": controller_counters.get(
+                "selected_todo_completed_before_spend", False
+            ),
+            "non_selected_todos_preserved_open_or_deferred": controller_counters.get(
+                "non_selected_todos_preserved_open_or_deferred", False
+            ),
             "case_goal_state_packet_present": controller_counters.get(
                 "case_goal_state_packet_present", False
             ),

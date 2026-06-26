@@ -114,6 +114,7 @@ from loopx.benchmark_core.loop_protocol import (  # noqa: E402
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
     CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
     LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
+    LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
     LOOPX_PRODUCT_MODE_ROUTE,
     LOOPX_PROMPT_POLLING_TEST_ROUTE,
     RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
@@ -160,6 +161,7 @@ SUPPORTED_ROUTES = (
     LOOPX_PROMPT_POLLING_TEST_ROUTE,
     RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
     LOOPX_PRODUCT_MODE_ROUTE,
+    LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
     CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
     "codex-goal-mode-baseline",
     AUTOMATION_LOOP_TREATMENT_ROUTE,
@@ -178,13 +180,39 @@ PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
     PRODUCT_MODE_CASE_GOAL_ID
 )
 PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION = BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION
+LOOPX_PRODUCT_MODE_FAMILY_ROUTES = frozenset(
+    {
+        LOOPX_PRODUCT_MODE_ROUTE,
+        LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+    }
+)
+PRODUCT_MODE_CONTROLLER_ROUTES = frozenset(
+    {
+        RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
+        *LOOPX_PRODUCT_MODE_FAMILY_ROUTES,
+    }
+)
+
+
+def _is_loopx_product_mode_route(route: str) -> bool:
+    return route in LOOPX_PRODUCT_MODE_FAMILY_ROUTES
+
+
+def _is_goal_start_product_mode_route(route: str) -> bool:
+    return route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
+
+
+def _product_mode_arm_id_for_route(route: str) -> str:
+    if _is_goal_start_product_mode_route(route):
+        return "loopx_goal_start_product_mode"
+    return "loopx_product_mode"
 
 
 def product_mode_soft_verify_policy_for_route(
     route: str,
     requested_policy: str,
 ) -> str:
-    if route in {"raw-codex-autonomous-max5", "loopx-product-mode"}:
+    if route in PRODUCT_MODE_CONTROLLER_ROUTES:
         return requested_policy
     return "every-round"
 
@@ -753,7 +781,7 @@ def _host_local_acp_launch_command(
     if args.model:
         command.extend(["--model", args.model])
     if (
-        args.route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and args.host_local_acp_launch
         and args.remote_command_file_bridge_solver_command
         and (
@@ -776,14 +804,15 @@ def _host_local_acp_launch_command(
                     args.remote_command_file_bridge_agent_command,
                 ]
         )
-        if args.route == "loopx-product-mode":
+        if _is_loopx_product_mode_route(args.route):
             payload = benchmark_case_loopx_install_payload(
                 benchmark_id="skillsbench",
                 case_id=args.task_id,
-                arm_id="loopx_product_mode",
+                arm_id=_product_mode_arm_id_for_route(args.route),
                 route=args.route,
                 max_rounds=args.max_rounds,
                 case_loopx_source_path=_loopx_case_source_path_for_container(args),
+                goal_start_product_mode=_is_goal_start_product_mode_route(args.route),
             )
             command.extend(
                 [
@@ -809,17 +838,18 @@ def _host_local_acp_launch_command(
                 ]
             )
     if (
-        args.route == "loopx-product-mode"
+        _is_loopx_product_mode_route(args.route)
         and args.host_local_acp_launch
         and "--loopx-workflow-lifecycle-checkpoint" not in command
     ):
         payload = benchmark_case_loopx_install_payload(
             benchmark_id="skillsbench",
             case_id=args.task_id,
-            arm_id="loopx_product_mode",
+            arm_id=_product_mode_arm_id_for_route(args.route),
             route=args.route,
             max_rounds=args.max_rounds,
             case_loopx_source_path=_loopx_case_source_path_for_container(args),
+            goal_start_product_mode=_is_goal_start_product_mode_route(args.route),
         )
         command.extend(
             [
@@ -1018,7 +1048,7 @@ def _host_local_acp_codex_exec_preflight_requires_bridge_action(
     return bool(
         getattr(args, "host_local_acp_launch", False)
         and str(getattr(args, "route", "") or "")
-        in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        in PRODUCT_MODE_CONTROLLER_ROUTES
         and str(getattr(args, "remote_command_file_bridge_solver_command", "") or "")
         and (
             bool(getattr(args, "remote_command_file_bridge_ready", False))
@@ -1288,7 +1318,7 @@ def _loopx_source_mount_contract(args: argparse.Namespace) -> dict[str, Any]:
     source_dir = Path(str(source_arg)).expanduser() if source_arg else None
     disabled = bool(getattr(args, "no_loopx_source_mount", False))
     requested = (
-        args.route == LOOPX_PRODUCT_MODE_ROUTE
+        _is_loopx_product_mode_route(args.route)
         and args.sandbox == "docker"
         and not disabled
         and source_dir is not None
@@ -1489,6 +1519,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
         "benchflow_intermediate_soft_verify_orphan_cleanup_requested",
         "benchflow_intermediate_soft_verify_orphan_cleanup_raw_logs_read",
+        "goal_start_product_mode",
+        "goal_start_plan_required",
+        "goal_start_selected_p0_lifecycle_required",
         "benchflow_verifier_prep_timeout_override_enabled",
         "benchflow_verifier_prep_timeout_raw_command_recorded",
         "benchflow_final_verifier_timeout_enabled",
@@ -1546,6 +1579,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_cleanup_term_sent_count",
         "benchflow_setup_stall_cleanup_kill_sent_count",
         "benchflow_setup_stall_cleanup_alive_after_count",
+        "goal_start_planned_todo_count_expected",
         "remote_command_file_bridge_solver_trace_count",
         "remote_command_file_bridge_solver_probe_ready_count",
         "remote_command_file_bridge_solver_operation_count",
@@ -1589,6 +1623,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
     for field in (
         "remote_command_file_bridge_agent_operation_counts",
         "remote_command_file_bridge_agent_loopx_subcommand_counts",
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts",
         "remote_command_file_bridge_driver_lifecycle_command_counts",
         "remote_command_file_bridge_driver_lifecycle_returncode_counts",
     ):
@@ -2904,6 +2939,260 @@ def _append_case_timeline_event(
     events.append(entry)
 
 
+def _goal_start_public_count_map(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, int] = {}
+    for key, count in value.items():
+        if (
+            isinstance(key, str)
+            and key
+            and isinstance(count, int)
+            and not isinstance(count, bool)
+            and count >= 0
+        ):
+            compact[key[:80]] = count
+    return compact
+
+
+def _goal_start_subcommand_count(
+    families: tuple[str, ...],
+    *maps: Any,
+) -> int:
+    return max(
+        (
+            _subcommand_family_count(_goal_start_public_count_map(item), *families)
+            for item in maps
+        ),
+        default=0,
+    )
+
+
+def _build_goal_start_product_mode_control_score(
+    compact: dict[str, Any],
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    """Summarize goal-start control-plane closure from public compact counters."""
+
+    counters = (
+        compact.get("interaction_counters")
+        if isinstance(compact.get("interaction_counters"), dict)
+        else {}
+    )
+    runner_prerequisites = _public_runner_prerequisites(
+        plan.get("runner_prerequisites")
+    )
+    compact_runner_prerequisites = compact.get("runner_prerequisites")
+    if isinstance(compact_runner_prerequisites, dict):
+        runner_prerequisites.update(compact_runner_prerequisites)
+    lifecycle_contract = (
+        compact.get("product_mode_lifecycle_contract")
+        if isinstance(compact.get("product_mode_lifecycle_contract"), dict)
+        else {}
+    )
+
+    required = bool(
+        counters.get("goal_start_product_mode") is True
+        or runner_prerequisites.get("goal_start_product_mode") is True
+        or runner_prerequisites.get("goal_start_plan_required") is True
+    )
+    if not required:
+        return {}
+
+    agent_successful_subcommands = counters.get(
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
+    )
+    agent_requested_subcommands = counters.get(
+        "remote_command_file_bridge_agent_loopx_subcommand_counts"
+    )
+    prereq_agent_successful_subcommands = runner_prerequisites.get(
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
+    )
+    prereq_agent_requested_subcommands = runner_prerequisites.get(
+        "remote_command_file_bridge_agent_loopx_subcommand_counts"
+    )
+    driver_commands = counters.get(
+        "remote_command_file_bridge_driver_lifecycle_command_counts"
+    )
+    prereq_driver_commands = runner_prerequisites.get(
+        "remote_command_file_bridge_driver_lifecycle_command_counts"
+    )
+    driver_failure_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_failure_count"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_driver_lifecycle_failure_count"
+        ),
+    )
+    driver_commands_count_as_successful = driver_failure_count == 0
+
+    selected_p0_todo_id = _case_timeline_safe_string(
+        counters.get("selected_p0_todo_id")
+        or runner_prerequisites.get("selected_p0_todo_id"),
+        limit=100,
+    )
+    planned_todo_count = _case_timeline_max_int(counters.get("planned_todo_count"))
+    expected_todo_count = _case_timeline_max_int(
+        runner_prerequisites.get("goal_start_planned_todo_count_expected")
+    )
+    planned_p0_count = _case_timeline_max_int(counters.get("planned_p0_count"))
+    closeout_spend_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_agent_quota_spend_slot_count"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_agent_quota_spend_slot_count"
+        ),
+        lifecycle_contract.get("agent_bridge_quota_spend_slot_count"),
+    )
+
+    agent_claim_count = _goal_start_subcommand_count(
+        ("todo claim",),
+        agent_successful_subcommands,
+        prereq_agent_successful_subcommands,
+        agent_requested_subcommands,
+        prereq_agent_requested_subcommands,
+    )
+    agent_update_count = _goal_start_subcommand_count(
+        ("todo update",),
+        agent_successful_subcommands,
+        prereq_agent_successful_subcommands,
+        agent_requested_subcommands,
+        prereq_agent_requested_subcommands,
+    )
+    agent_complete_count = _goal_start_subcommand_count(
+        ("todo complete",),
+        agent_successful_subcommands,
+        prereq_agent_successful_subcommands,
+        agent_requested_subcommands,
+        prereq_agent_requested_subcommands,
+    )
+    agent_spend_count = _goal_start_subcommand_count(
+        ("quota spend-slot",),
+        agent_successful_subcommands,
+        prereq_agent_successful_subcommands,
+        agent_requested_subcommands,
+        prereq_agent_requested_subcommands,
+    )
+    driver_claim_count = (
+        _goal_start_subcommand_count(("todo claim",), driver_commands, prereq_driver_commands)
+        if driver_commands_count_as_successful
+        else 0
+    )
+    driver_update_count = (
+        _goal_start_subcommand_count(("todo update",), driver_commands, prereq_driver_commands)
+        if driver_commands_count_as_successful
+        else 0
+    )
+
+    selected_todo_claimed = bool(
+        counters.get("selected_todo_claimed") is True
+        or agent_claim_count > 0
+        or driver_claim_count > 0
+    )
+    selected_todo_updated_before_solver = bool(
+        counters.get("selected_todo_updated_before_solver") is True
+        or agent_update_count > 0
+        or driver_update_count > 0
+    )
+    selected_todo_spend_observed = bool(closeout_spend_count > 0 or agent_spend_count > 0)
+    selected_todo_completed_before_spend = bool(
+        counters.get("selected_todo_completed_before_spend") is True
+        or (agent_complete_count > 0 and selected_todo_spend_observed)
+    )
+    last_decision = _case_timeline_safe_string(counters.get("last_decision"), limit=100)
+    premature_done_signal_count = _case_timeline_max_int(
+        counters.get("product_mode_declared_done_below_passing_reward_count")
+    )
+    premature_done_stop_reason = ""
+    if (
+        counters.get("product_mode_declared_done_below_passing_reward") is True
+        and last_decision.startswith("stop_after")
+        and "below_passing_reward" in last_decision
+    ):
+        premature_done_stop_reason = (
+            last_decision or "declared_done_below_passing_reward"
+        )
+
+    component_results = [
+        {
+            "name": "plan_observed",
+            "satisfied": counters.get("goal_start_plan_observed") is True,
+        },
+        {
+            "name": "planned_todo_count",
+            "satisfied": bool(
+                planned_todo_count > 0
+                and (expected_todo_count == 0 or planned_todo_count >= expected_todo_count)
+            ),
+        },
+        {"name": "planned_p0_count", "satisfied": planned_p0_count > 0},
+        {
+            "name": "planner_before_todo_write",
+            "satisfied": counters.get("planner_before_todo_write") is True,
+        },
+        {
+            "name": "same_priority_order_preserved",
+            "satisfied": counters.get("same_priority_order_preserved") is True,
+        },
+        {"name": "selected_p0_todo_id", "satisfied": bool(selected_p0_todo_id)},
+        {"name": "selected_todo_claimed", "satisfied": selected_todo_claimed},
+        {
+            "name": "selected_todo_updated_before_solver",
+            "satisfied": selected_todo_updated_before_solver,
+        },
+        {
+            "name": "selected_todo_completed_before_spend",
+            "satisfied": selected_todo_completed_before_spend,
+        },
+        {
+            "name": "selected_todo_spend_observed",
+            "satisfied": selected_todo_spend_observed,
+        },
+        {
+            "name": "non_selected_todos_preserved_open_or_deferred",
+            "satisfied": (
+                counters.get("non_selected_todos_preserved_open_or_deferred") is True
+            ),
+        },
+        {"name": "no_premature_done_stop", "satisfied": not premature_done_stop_reason},
+    ]
+    satisfied_count = sum(1 for item in component_results if item["satisfied"])
+    component_count = len(component_results)
+    score = round(satisfied_count / component_count, 3) if component_count else 0.0
+    return {
+        "schema_version": "skillsbench_goal_start_product_mode_control_score_v0",
+        "required": True,
+        "satisfied": satisfied_count == component_count,
+        "score": score,
+        "component_count": component_count,
+        "satisfied_component_count": satisfied_count,
+        "raw_material_recorded": False,
+        "goal_start_plan_observed": counters.get("goal_start_plan_observed") is True,
+        "planned_todo_count": planned_todo_count,
+        "planned_todo_count_expected": expected_todo_count,
+        "planned_p0_count": planned_p0_count,
+        "planner_before_todo_write": counters.get("planner_before_todo_write") is True,
+        "same_priority_order_preserved": (
+            counters.get("same_priority_order_preserved") is True
+        ),
+        "selected_p0_todo_id": selected_p0_todo_id,
+        "selected_todo_claimed": selected_todo_claimed,
+        "selected_todo_updated_before_solver": selected_todo_updated_before_solver,
+        "selected_todo_completed_before_spend": selected_todo_completed_before_spend,
+        "selected_todo_spend_observed": selected_todo_spend_observed,
+        "non_selected_todos_preserved_open_or_deferred": (
+            counters.get("non_selected_todos_preserved_open_or_deferred") is True
+        ),
+        "premature_done_signal_count": premature_done_signal_count,
+        "premature_done_stop_reason": premature_done_stop_reason,
+        "agent_todo_claim_count": agent_claim_count,
+        "agent_todo_update_count": agent_update_count,
+        "agent_todo_complete_count": agent_complete_count,
+        "agent_quota_spend_slot_count": max(closeout_spend_count, agent_spend_count),
+        "driver_todo_claim_count": driver_claim_count,
+        "driver_todo_update_count": driver_update_count,
+        "component_results": component_results,
+    }
+
+
 def _build_case_event_timeline(
     compact: dict[str, Any],
     plan: dict[str, Any],
@@ -2960,6 +3249,61 @@ def _build_case_event_timeline(
             counters.get("case_goal_state_initialized_before_agent") is True
         ),
     )
+
+    goal_start_control_score = (
+        compact.get("goal_start_product_mode_control_score")
+        if isinstance(compact.get("goal_start_product_mode_control_score"), dict)
+        else _build_goal_start_product_mode_control_score(compact, plan)
+    )
+    if goal_start_control_score:
+        if goal_start_control_score.get("satisfied") is True:
+            goal_start_status = "satisfied"
+        elif goal_start_control_score.get("goal_start_plan_observed") is True:
+            goal_start_status = "partial"
+        else:
+            goal_start_status = "missing"
+        _append_case_timeline_event(
+            events,
+            phase="goal_start_plan",
+            event="ranked_todo_plan_selected_p0_lifecycle",
+            status=goal_start_status,
+            control_score=goal_start_control_score.get("score"),
+            planned_todo_count=goal_start_control_score.get("planned_todo_count"),
+            planned_todo_count_expected=goal_start_control_score.get(
+                "planned_todo_count_expected"
+            ),
+            planned_p0_count=goal_start_control_score.get("planned_p0_count"),
+            planner_before_todo_write=goal_start_control_score.get(
+                "planner_before_todo_write"
+            ),
+            same_priority_order_preserved=goal_start_control_score.get(
+                "same_priority_order_preserved"
+            ),
+            selected_p0_todo_id=goal_start_control_score.get("selected_p0_todo_id"),
+            selected_todo_claimed=goal_start_control_score.get(
+                "selected_todo_claimed"
+            ),
+            selected_todo_updated_before_solver=goal_start_control_score.get(
+                "selected_todo_updated_before_solver"
+            ),
+            selected_todo_completed_before_spend=goal_start_control_score.get(
+                "selected_todo_completed_before_spend"
+            ),
+            selected_todo_spend_observed=goal_start_control_score.get(
+                "selected_todo_spend_observed"
+            ),
+            non_selected_todos_preserved_open_or_deferred=(
+                goal_start_control_score.get(
+                    "non_selected_todos_preserved_open_or_deferred"
+                )
+            ),
+            premature_done_signal_count=goal_start_control_score.get(
+                "premature_done_signal_count"
+            ),
+            premature_done_stop_reason=goal_start_control_score.get(
+                "premature_done_stop_reason"
+            ),
+        )
 
     driver_checkpoint_count = _case_timeline_max_int(
         counters.get("remote_command_file_bridge_driver_lifecycle_checkpoint_count"),
@@ -3984,7 +4328,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         rollout_suffix = "loopx_prompt_polling_test"
     elif route == LOOPX_BLIND_LOOP_TREATMENT_ROUTE:
         rollout_suffix = "loopx_blind_loop"
-    elif route == "loopx-product-mode":
+    elif route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE:
+        rollout_suffix = "loopx_goal_start_product_mode"
+    elif route == LOOPX_PRODUCT_MODE_ROUTE:
         rollout_suffix = "loopx_product_mode"
     elif route == "raw-codex-autonomous-max5":
         rollout_suffix = "raw_codex_autonomous_max5"
@@ -4031,18 +4377,18 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     )
     remote_command_file_bridge_solver_wiring_configured = bool(
         args.host_local_acp_launch
-        and route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        and route in PRODUCT_MODE_CONTROLLER_ROUTES
         and remote_command_file_bridge_materialized
         and remote_command_file_bridge_solver_command_configured
     )
     remote_command_file_bridge_sandbox_auto_wiring_pending = bool(
         args.host_local_acp_launch
-        and route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        and route in PRODUCT_MODE_CONTROLLER_ROUTES
         and remote_command_file_bridge_materialized
         and not remote_command_file_bridge_solver_command_configured
     )
     remote_command_file_bridge_agent_operation_trace_required = bool(
-        route == "loopx-product-mode"
+        _is_loopx_product_mode_route(route)
         and (
             remote_command_file_bridge_solver_wiring_configured
             or remote_command_file_bridge_sandbox_auto_wiring_pending
@@ -4216,14 +4562,24 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 "pending" if args.host_local_acp_launch else "not_requested"
             ),
             "loopx_workflow_lifecycle_checkpoint": bool(
-                args.route == "loopx-product-mode" and args.host_local_acp_launch
+                _is_loopx_product_mode_route(args.route)
+                and args.host_local_acp_launch
             ),
             "loopx_product_mode_lifecycle_driver_kind": (
                 BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE
-                if args.route == "loopx-product-mode" and args.host_local_acp_launch
+                if _is_loopx_product_mode_route(args.route)
+                and args.host_local_acp_launch
                 else BENCHMARK_CASE_LOOPX_PROMPT_DRIVEN_EXECUTION_STYLE
-                if args.route == "loopx-product-mode"
+                if _is_loopx_product_mode_route(args.route)
                 else "not_applicable"
+            ),
+            "goal_start_product_mode": _is_goal_start_product_mode_route(args.route),
+            "goal_start_plan_required": _is_goal_start_product_mode_route(args.route),
+            "goal_start_planned_todo_count_expected": (
+                3 if _is_goal_start_product_mode_route(args.route) else 0
+            ),
+            "goal_start_selected_p0_lifecycle_required": (
+                _is_goal_start_product_mode_route(args.route)
             ),
             "host_local_acp_codex_exec_preflight_requested": bool(
                 args.host_local_acp_codex_exec_preflight
@@ -4771,24 +5127,36 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
         max_rounds=max_rounds,
         schema_version="skillsbench_loopx_controller_trace_v0",
     )
+    loopx_product_mode = _is_loopx_product_mode_route(route)
+    goal_start_product_mode = _is_goal_start_product_mode_route(route)
     trace.update(
         {
         "case_goal_state_packet_present": False,
-        "case_goal_state_init_required": route == LOOPX_PRODUCT_MODE_ROUTE,
+        "case_goal_state_init_required": loopx_product_mode,
         "case_goal_state_initialized_before_agent": False,
         "case_goal_state_init_status": "not_applicable",
         "case_goal_state_path": (
             PRODUCT_MODE_CASE_STATE_PATH
-            if route == LOOPX_PRODUCT_MODE_ROUTE
+            if loopx_product_mode
             else ""
         ),
         "case_goal_state_schema_version": (
             PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION
-            if route == LOOPX_PRODUCT_MODE_ROUTE
+            if loopx_product_mode
             else ""
         ),
-        "declared_done_requires_no_remaining_goals": route
-        == LOOPX_PRODUCT_MODE_ROUTE,
+        "declared_done_requires_no_remaining_goals": loopx_product_mode,
+        "goal_start_product_mode": goal_start_product_mode,
+        "goal_start_plan_observed": False,
+        "planned_todo_count": 0,
+        "planned_p0_count": 0,
+        "planner_before_todo_write": False,
+        "same_priority_order_preserved": False,
+        "selected_p0_todo_id": "",
+        "selected_todo_claimed": False,
+        "selected_todo_updated_before_solver": False,
+        "selected_todo_completed_before_spend": False,
+        "non_selected_todos_preserved_open_or_deferred": False,
         "agent_declared_done": False,
         "agent_declared_no_remaining_goals": False,
         "declared_done_round": None,
@@ -6371,7 +6739,8 @@ def _build_product_mode_user(
 ):
     from benchflow.sandbox.user import BaseUser, RoundResult
 
-    treatment = route == "loopx-product-mode"
+    treatment = _is_loopx_product_mode_route(route)
+    goal_start_product_mode = _is_goal_start_product_mode_route(route)
     payload = case_payload or {}
     case_state_path = str(
         payload.get("case_state_path") or PRODUCT_MODE_CASE_STATE_PATH
@@ -6379,6 +6748,8 @@ def _build_product_mode_user(
     case_goal_id = str(payload.get("benchmark_case_goal_id") or PRODUCT_MODE_CASE_GOAL_ID)
     case_agent_id = str(payload.get("case_agent_id") or BENCHMARK_CASE_LOOPX_AGENT_ID)
     case_todo_id = str(payload.get("case_todo_id") or BENCHMARK_CASE_LOOPX_TODO_ID)
+    planned_todo_count = payload.get("planned_todo_count")
+    selected_p0_todo_id = str(payload.get("selected_p0_todo_id") or case_todo_id)
     case_cli_prefix = benchmark_case_loopx_command_prefix(
         case_cli_path=str(payload.get("case_cli_path") or "/app/.local/bin/loopx"),
         case_registry_path=str(payload.get("case_registry_path") or "/app/.loopx/registry.json"),
@@ -6402,6 +6773,23 @@ def _build_product_mode_user(
     )
 
     def treatment_state_contract() -> str:
+        goal_start_clause = ""
+        if goal_start_product_mode:
+            planned_count = (
+                planned_todo_count
+                if isinstance(planned_todo_count, int)
+                and not isinstance(planned_todo_count, bool)
+                and planned_todo_count > 0
+                else 3
+            )
+            goal_start_clause = (
+                "This route simulates `/loopx <task objective>` goal start: "
+                f"a compact ranked {planned_count}-todo plan must exist before "
+                "todo writes, "
+                f"with selected runnable P0 todo `{selected_p0_todo_id}` entering "
+                "the lifecycle. Non-selected todos remain open or deferred until "
+                "the selected P0 is validated. "
+            )
         if workflow_lifecycle_driver:
             return (
                 "LoopX product-mode lifecycle contract: official case-local "
@@ -6411,7 +6799,9 @@ def _build_product_mode_user(
                 "canonical workflow lifecycle driver has already executed the "
                 "case-local `quota should-run`, `todo claim`, `todo update`, "
                 "and `refresh-state` checkpoint through the sandbox bridge "
-                "before this prompt. Do not repeat that setup checkpoint as "
+                "before this prompt. "
+                f"{goal_start_clause}"
+                "Do not repeat that setup checkpoint as "
                 "your first action. The benchmark task remains the primary "
                 "objective; LoopX commands track control-plane state and do "
                 "not themselves complete the task. Before prose planning, "
@@ -6440,6 +6830,7 @@ def _build_product_mode_user(
             "the first control-plane action, run the following commands inside "
             "the scored sandbox, then wait for the scheduler to send the task "
             "packet. "
+            f"{goal_start_clause}"
             "Before reading, planning, solving, or answering the task, your first "
             "agent action must be a shell/tool call that sends the case-local "
             "LoopX CLI commands through the available sandbox bridge; a prose-only "
@@ -7058,7 +7449,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             prerequisites["remote_command_file_bridge_consumption_status"] = (
                 "solver_wiring_configured_pending_prompt"
             )
-            if args.route == "loopx-product-mode":
+            if _is_loopx_product_mode_route(args.route):
                 prerequisites[
                     "remote_command_file_bridge_agent_operation_trace_required"
                 ] = True
@@ -7171,15 +7562,16 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         prerequisites["codex_acp_runtime_launch_preflight_status"] = "passed"
 
     async def seed_product_mode_case_state(env: Any) -> None:
-        if args.route != "loopx-product-mode":
+        if not _is_loopx_product_mode_route(args.route):
             return
         payload = benchmark_case_loopx_install_payload(
             benchmark_id="skillsbench",
             case_id=args.task_id,
-            arm_id="loopx_product_mode",
+            arm_id=_product_mode_arm_id_for_route(args.route),
             route=args.route,
             max_rounds=args.max_rounds,
             case_loopx_source_path=_loopx_case_source_path_for_container(args),
+            goal_start_product_mode=_is_goal_start_product_mode_route(args.route),
         )
         trace = controller_trace if isinstance(controller_trace, dict) else {}
         trace["case_goal_state_init_required"] = True
@@ -7208,6 +7600,20 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         trace["loopx_case_todo_id"] = payload.get("case_todo_id") or ""
         trace["loopx_case_todo_seeded"] = bool(payload.get("case_todo_seeded"))
         trace["loopx_case_todo_preclaimed"] = bool(payload.get("case_todo_preclaimed"))
+        for key in (
+            "goal_start_product_mode",
+            "goal_start_plan_observed",
+            "planned_todo_count",
+            "planned_p0_count",
+            "planner_before_todo_write",
+            "same_priority_order_preserved",
+            "selected_p0_todo_id",
+            "selected_todo_claimed",
+            "selected_todo_updated_before_solver",
+            "selected_todo_completed_before_spend",
+            "non_selected_todos_preserved_open_or_deferred",
+        ):
+            trace[key] = payload.get(key)
         trace["case_goal_state_initialized_before_agent"] = False
         result = await env.exec(str(payload["command"]), timeout_sec=180)
         trace["case_goal_state_init_rc"] = int(result.return_code)
@@ -7230,7 +7636,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         trace["loopx_case_cli_installed_before_agent"] = True
 
     async def ensure_loopx_source_available(env: Any) -> None:
-        if args.route != LOOPX_PRODUCT_MODE_ROUTE:
+        if not _is_loopx_product_mode_route(args.route):
             return
         prerequisites = plan.setdefault("runner_prerequisites", {})
         source_contract = _loopx_source_mount_contract(args)
@@ -7512,7 +7918,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                     getattr(self, "_task", None),
                     include_task_skills=cfg.include_task_skills,
                 )
-            if args.route == "loopx-product-mode":
+            if _is_loopx_product_mode_route(args.route):
                 prerequisites["host_local_acp_install_stage"] = (
                     "loopx_source_upload_fallback"
                 )
@@ -7536,7 +7942,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                 await benchflow_rollout_module.lockdown_paths(
                     self._env, self._effective_locked
                 )
-            if args.route == "loopx-product-mode":
+            if _is_loopx_product_mode_route(args.route):
                 prerequisites["host_local_acp_install_stage"] = "seed_loopx_case_state"
                 if isinstance(controller_trace, dict):
                     controller_trace["case_goal_state_init_invocation_stage"] = (
@@ -7596,14 +8002,15 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     controller_user = None
     controller_trace: dict[str, Any] | None = None
     product_mode_case_payload: dict[str, Any] | None = None
-    if args.route == "loopx-product-mode":
+    if _is_loopx_product_mode_route(args.route):
         product_mode_case_payload = benchmark_case_loopx_install_payload(
             benchmark_id="skillsbench",
             case_id=args.task_id,
-            arm_id="loopx_product_mode",
+            arm_id=_product_mode_arm_id_for_route(args.route),
             route=args.route,
             max_rounds=args.max_rounds,
             case_loopx_source_path=_loopx_case_source_path_for_container(args),
+            goal_start_product_mode=_is_goal_start_product_mode_route(args.route),
         )
     if args.route == "automation-loop-treatment":
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
@@ -7623,10 +8030,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             trace=controller_trace,
             treatment_prompt_style=args.treatment_prompt_style,
         )
-    elif args.route in {
-        "raw-codex-autonomous-max5",
-        "loopx-product-mode",
-    }:
+    elif args.route in PRODUCT_MODE_CONTROLLER_ROUTES:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         controller_user = _build_product_mode_user(
             route=args.route,
@@ -7668,7 +8072,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         or args.require_preinstalled_benchflow_agent_runtime
         else [ensure_codex_acp_runtime_deps]
     )
-    if args.route == "loopx-product-mode" and not args.host_local_acp_launch:
+    if _is_loopx_product_mode_route(args.route) and not args.host_local_acp_launch:
         pre_agent_hooks.append(seed_product_mode_case_state)
 
     agent_env: dict[str, str] = {}
@@ -7960,6 +8364,12 @@ def reduce_result(
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         compact["runner_output_capture"] = runner_output_capture
+    goal_start_control_score = _build_goal_start_product_mode_control_score(
+        compact,
+        plan,
+    )
+    if goal_start_control_score:
+        compact["goal_start_product_mode_control_score"] = goal_start_control_score
     compact["case_event_timeline"] = _build_case_event_timeline(compact, plan)
     return compact
 
@@ -8173,8 +8583,10 @@ def update_ledger(
         if args.route == LOOPX_BLIND_LOOP_TREATMENT_ROUTE
         else "Codex ACP blind-loop baseline"
         if args.route == "codex-acp-blind-loop-baseline"
+        else "LoopX goal-start product-mode treatment"
+        if args.route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
         else "LoopX product-mode treatment"
-        if args.route == "loopx-product-mode"
+        if args.route == LOOPX_PRODUCT_MODE_ROUTE
         else "raw Codex autonomous max5 baseline"
         if args.route == "raw-codex-autonomous-max5"
         else "LoopX reward-feedback ablation"
@@ -8207,6 +8619,7 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, An
         "loopx-prompt-polling-test": "skillsbench_loopx_prompt_polling_test_result_v0",
         "codex-acp-blind-loop-baseline": "skillsbench_codex_acp_blind_loop_baseline_result_v0",
         "loopx-product-mode": "skillsbench_loopx_product_mode_result_v0",
+        "loopx-goal-start-product-mode": "skillsbench_loopx_goal_start_product_mode_result_v0",
         "raw-codex-autonomous-max5": "skillsbench_raw_codex_autonomous_max5_result_v0",
         "automation-loop-treatment": "skillsbench_reward_feedback_ablation_result_v0",
         "codex-app-server-goal-baseline": "skillsbench_codex_app_server_goal_baseline_result_v0",
@@ -8325,6 +8738,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "is the ordinary Codex no-goal baseline with the same loop budget; "
             "raw-codex-autonomous-max5 and loopx-product-mode are the "
             "main-table product-mode comparison routes; "
+            "loopx-goal-start-product-mode adds /loopx goal-start planning "
+            "with a compact ranked todo plan before selected-P0 lifecycle; "
             "codex-app-server-goal-baseline is the native Codex Goal baseline "
             "contract using app-server thread/goal/set/get and turn/start; "
             "codex-goal-mode-baseline sends one /goal-prefixed prompt request "
@@ -8921,13 +9336,13 @@ def main(argv: list[str] | None = None) -> int:
         args.remote_command_file_bridge_solver_command
     )
     product_host_local_bridge_sandbox_auto_wiring_pending = bool(
-        args.route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and args.host_local_acp_launch
         and product_host_local_bridge_materialized
         and not product_host_local_bridge_command_configured
     )
     if (
-        args.route == "loopx-product-mode"
+        _is_loopx_product_mode_route(args.route)
         and not args.host_local_acp_launch
         and not args.local_driver_worker_handshake_preflight
         and not args.plan_only
@@ -8938,11 +9353,10 @@ def main(argv: list[str] | None = None) -> int:
             "error_type": "SkillsBenchProductModeCanonicalDriverRequired",
             "route": args.route,
             "reason": (
-                "loopx-product-mode is the formal LoopX treatment route and "
-                "must use the canonical host-local ACP lifecycle driver. A "
-                "container-local codex-acp fallback can solve the task but "
-                "cannot produce the required case-local quota/todo/update/"
-                "refresh/spend lifecycle evidence."
+                "LoopX product-mode treatment routes must use the canonical "
+                "host-local ACP lifecycle driver. A container-local codex-acp "
+                "fallback can solve the task but cannot produce the required "
+                "case-local quota/todo/update/refresh/spend lifecycle evidence."
             ),
             "next_action": (
                 "rerun with --host-local-acp-launch and a materialized "
@@ -8964,7 +9378,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     if (
-        args.route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and args.host_local_acp_launch
         and product_host_local_bridge_fixture_solver
         and not args.local_driver_worker_handshake_preflight
@@ -9001,7 +9415,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 2
     if (
-        args.route == "loopx-product-mode"
+        _is_loopx_product_mode_route(args.route)
         and args.host_local_acp_launch
         and product_host_local_bridge_sandbox_auto_wiring_pending
         and not args.local_driver_worker_handshake_preflight
@@ -9013,12 +9427,13 @@ def main(argv: list[str] | None = None) -> int:
             "error_type": "SkillsBenchProductModeBridgeAutoWiringPending",
             "route": args.route,
             "reason": (
-                "loopx-product-mode is countable only when the host-local "
-                "agent has an explicit sandbox command/file bridge available "
-                "before the scored case starts. A readiness declaration without "
-                "a solver bridge command leaves sandbox bridge auto-wiring "
-                "pending; prior runs can reach the agent with zero task-facing "
-                "bridge/tool calls, then fail after consuming a scored attempt."
+                "LoopX product-mode routes are countable only when the "
+                "host-local agent has an explicit sandbox command/file bridge "
+                "available before the scored case starts. A readiness "
+                "declaration without a solver bridge command leaves sandbox "
+                "bridge auto-wiring pending; prior runs can reach the agent "
+                "with zero task-facing bridge/tool calls, then fail after "
+                "consuming a scored attempt."
             ),
             "next_action": (
                 "rerun with a real --remote-command-file-bridge-solver-command "
@@ -9043,7 +9458,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 2
     if (
-        args.route in {"raw-codex-autonomous-max5", "loopx-product-mode"}
+        args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and args.host_local_acp_launch
         and not (
             product_host_local_bridge_materialized

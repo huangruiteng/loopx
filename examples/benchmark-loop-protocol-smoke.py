@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.benchmark_core.loop_protocol import (
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
+    LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
     LOOPX_PACKET_ONLY_OBSERVATION_ROUTE,
     LOOPX_PROMPT_POLLING_TEST_ROUTE,
     MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID,
@@ -63,6 +64,16 @@ def main() -> int:
     assert raw_product["protocol_id"] == PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
     assert raw_product["product_mode"] is True
     assert raw_product["official_feedback_blinded"] is True
+    goal_start_product = build_benchmark_loop_contract(
+        route=LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+        max_rounds=5,
+    )
+    assert (
+        goal_start_product["protocol_id"]
+        == PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
+    )
+    assert goal_start_product["product_mode"] is True
+    assert goal_start_product["official_feedback_blinded"] is True
 
     product_contract = build_product_mode_main_table_comparison_contract()
     assert product_contract["protocol_id"] == PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
@@ -86,6 +97,26 @@ def main() -> int:
             "continue_after_declared_done_below_passing_reward"
         ]
         is True
+    )
+
+    goal_start_contract = build_product_mode_main_table_comparison_contract(
+        treatment_route=LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+    )
+    assert (
+        goal_start_contract["treatment_arm"]["route"]
+        == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
+    )
+    assert (
+        goal_start_contract["treatment_arm"]["arm_id"]
+        == "loopx_goal_start_product_mode"
+    )
+    assert (
+        goal_start_contract["treatment_arm"]["agent_surface"]
+        == "loopx_goal_start_plan_todo_lifecycle_cli"
+    )
+    assert (
+        goal_start_contract["treatment_arm"]["contract"]["protocol_id"]
+        == PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
     )
 
     trace = build_benchmark_loop_controller_trace(

@@ -762,6 +762,14 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "inner_codex_goal_mode",
         "curated_skills_visible",
         "product_mode",
+        "goal_start_product_mode",
+        "goal_start_plan_observed",
+        "planner_before_todo_write",
+        "same_priority_order_preserved",
+        "selected_todo_claimed",
+        "selected_todo_updated_before_solver",
+        "selected_todo_completed_before_spend",
+        "non_selected_todos_preserved_open_or_deferred",
         "blind_loop",
         "case_goal_state_packet_present",
         "case_goal_state_init_required",
@@ -828,6 +836,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "controller_official_success_observation_count",
         "controller_first_success_round",
         "declared_done_round",
+        "planned_todo_count",
+        "planned_p0_count",
         "product_mode_lifecycle_checkpoint_count",
         "product_mode_lifecycle_checkpoint_round",
         "product_mode_solver_activity_gap_count",
@@ -969,11 +979,20 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "trajectory_action_category_counts",
         "loopx_cli_state_usage_counts",
         "remote_command_file_bridge_agent_returncode_counts",
+        "remote_command_file_bridge_agent_loopx_subcommand_counts",
         "remote_command_file_bridge_agent_successful_loopx_subcommand_counts",
+        "remote_command_file_bridge_driver_lifecycle_command_counts",
+        "remote_command_file_bridge_driver_lifecycle_returncode_counts",
     ):
         calls = _compact_numeric_map(value.get(field))
         if calls:
             compact[field] = calls
+    selected_p0_todo_id = public_safe_compact_text(
+        value.get("selected_p0_todo_id"),
+        limit=100,
+    )
+    if selected_p0_todo_id:
+        compact["selected_p0_todo_id"] = selected_p0_todo_id
     raw_loopx_cli_calls = value.get("loopx_cli_calls")
     if isinstance(raw_loopx_cli_calls, dict):
         calls = _compact_numeric_map(raw_loopx_cli_calls)
@@ -1517,6 +1536,9 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
         "benchflow_intermediate_soft_verify_orphan_cleanup_requested",
         "benchflow_intermediate_soft_verify_orphan_cleanup_raw_logs_read",
+        "goal_start_product_mode",
+        "goal_start_plan_required",
+        "goal_start_selected_p0_lifecycle_required",
         "benchflow_verifier_prep_timeout_override_enabled",
         "benchflow_verifier_prep_timeout_raw_command_recorded",
         "benchflow_final_verifier_timeout_enabled",
@@ -1574,6 +1596,7 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_cleanup_term_sent_count",
         "benchflow_setup_stall_cleanup_kill_sent_count",
         "benchflow_setup_stall_cleanup_alive_after_count",
+        "goal_start_planned_todo_count_expected",
         "remote_command_file_bridge_solver_trace_count",
         "remote_command_file_bridge_solver_probe_ready_count",
         "remote_command_file_bridge_solver_operation_count",
@@ -1599,6 +1622,16 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
+    for field in (
+        "remote_command_file_bridge_agent_operation_counts",
+        "remote_command_file_bridge_agent_loopx_subcommand_counts",
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts",
+        "remote_command_file_bridge_driver_lifecycle_command_counts",
+        "remote_command_file_bridge_driver_lifecycle_returncode_counts",
+    ):
+        calls = _compact_numeric_map(value.get(field))
+        if calls:
+            compact[field] = calls
     return compact
 
 
