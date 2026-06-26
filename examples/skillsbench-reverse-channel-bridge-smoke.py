@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -35,6 +36,81 @@ def connect_only_probe(path: Path) -> None:
         sock.connect(str(path))
     finally:
         sock.close()
+
+
+def wait_for_path(path: Path) -> None:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if path.exists():
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"path did not appear: {path}")
+
+
+def run_empty_response_server(path: Path) -> threading.Thread:
+    def serve() -> None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        server = socket.socket(socket.AF_UNIX)
+        try:
+            server.bind(str(path))
+            path.chmod(0o600)
+            server.listen(1)
+            conn, _ = server.accept()
+            with conn:
+                conn.recv(65536)
+        finally:
+            server.close()
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+
+    thread = threading.Thread(target=serve)
+    thread.start()
+    wait_for_path(path)
+    return thread
+
+
+def test_reverse_channel_clients_fail_closed_on_empty_response() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-reverse-empty-response-") as tmp:
+        root = Path(tmp)
+        for kind in ("codex", "json"):
+            socket_path = root / f"{kind}.sock"
+            server = run_empty_response_server(socket_path)
+            client = root / f"{kind}-client"
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(BRIDGE),
+                    "write-client",
+                    "--kind",
+                    kind,
+                    "--socket",
+                    str(socket_path),
+                    "--output",
+                    str(client),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            args = [str(client), "exec"] if kind == "codex" else [str(client)]
+            proc = subprocess.run(
+                args,
+                input="{}",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            assert proc.returncode == 125, (kind, proc.returncode, proc.stderr)
+            assert "reverse channel response missing" in proc.stderr
+            server.join(timeout=5)
+            assert not server.is_alive()
 
 
 def test_codex_client_writes_last_message_and_rewrites_bridge() -> None:

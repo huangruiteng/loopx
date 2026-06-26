@@ -671,7 +671,17 @@ while not data.endswith(b'\\n'):
     if not chunk:
         break
     data += chunk
-resp=json.loads(data.decode() or '{{}}')
+if not data:
+    sys.stderr.write('reverse channel response missing\\n')
+    sys.exit(125)
+try:
+    resp=json.loads(data.decode())
+except Exception:
+    sys.stderr.write('reverse channel response invalid\\n')
+    sys.exit(125)
+if not isinstance(resp, dict):
+    sys.stderr.write('reverse channel response invalid\\n')
+    sys.exit(125)
 out=resp.get('stdout')
 err=resp.get('stderr')
 if isinstance(out, str): sys.stdout.write(out)
@@ -719,7 +729,17 @@ while not data.endswith(b'\\n'):
     if not chunk:
         break
     data += chunk
-resp=json.loads(data.decode() or '{{}}')
+if not data:
+    sys.stderr.write('reverse channel response missing\\n')
+    sys.exit(125)
+try:
+    resp=json.loads(data.decode())
+except Exception:
+    sys.stderr.write('reverse channel response invalid\\n')
+    sys.exit(125)
+if not isinstance(resp, dict):
+    sys.stderr.write('reverse channel response invalid\\n')
+    sys.exit(125)
 out=resp.get('stdout')
 err=resp.get('stderr')
 if isinstance(out, str): sys.stdout.write(out)
