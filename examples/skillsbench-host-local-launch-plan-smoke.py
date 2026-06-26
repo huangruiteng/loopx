@@ -1071,6 +1071,79 @@ time.sleep(30)
         assert reverse_timeout["agent_operations_jsonl"] == ""
         assert reverse_timeout["agent_operations_raw_material_recorded"] is False
         assert reverse_timeout["raw_task_text_recorded"] is False
+        reverse_hanging_bridge = Path(tmp) / "reverse-hanging-bridge"
+        reverse_hanging_bridge.write_text(
+            """#!/usr/bin/env python3
+import sys
+import time
+
+sys.stdin.read()
+time.sleep(30)
+""",
+            encoding="utf-8",
+        )
+        reverse_hanging_bridge.chmod(0o755)
+        reverse_hanging_codex = Path(tmp) / "reverse-hanging-codex"
+        reverse_hanging_codex.write_text(
+            """#!/usr/bin/env python3
+import json
+import re
+import subprocess
+import sys
+
+prompt = sys.stdin.read()
+match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
+assert match, prompt
+subprocess.run(
+    match.group(1),
+    input=json.dumps({
+        "operation": "exec",
+        "cwd": "/app",
+        "command": "python - <<'PY'\\nprint('task-facing')\\nPY",
+        "timeout_sec": 10,
+    }),
+    text=True,
+    shell=True,
+    check=False,
+)
+""",
+            encoding="utf-8",
+        )
+        reverse_hanging_codex.chmod(0o755)
+        reverse_hanging_timeout = _run_codex_payload(
+            {
+                "args": [
+                    "exec",
+                    (
+                        "LoopX bridge test. Your first tool action should be "
+                        "a shell pipeline that sends JSON to the private bridge.\n\n"
+                        "Private bridge command:\n"
+                        "/tmp/not-recorded"
+                    ),
+                ],
+                "timeout_sec": 2,
+            },
+            codex_bin=str(reverse_hanging_codex),
+            default_timeout_sec=2,
+            prompt_bridge_command=str(reverse_hanging_bridge),
+            first_action_timeout_sec=1,
+        )
+        assert reverse_hanging_timeout["exit_code"] == 124, reverse_hanging_timeout
+        assert "codex_exec_timeout" in reverse_hanging_timeout["stderr"]
+        reverse_hanging_operations = [
+            json.loads(line)
+            for line in str(
+                reverse_hanging_timeout["agent_operations_jsonl"]
+            ).splitlines()
+            if line.strip()
+        ]
+        assert len(reverse_hanging_operations) == 1, reverse_hanging_timeout
+        assert (
+            reverse_hanging_operations[0]["task_facing_operation"] is True
+        ), reverse_hanging_operations
+        assert (
+            reverse_hanging_operations[0]["raw_request_recorded"] is False
+        ), reverse_hanging_operations
         idle_bridge = Path(tmp) / "post-action-idle-bridge"
         idle_bridge.write_text(
             """#!/usr/bin/env python3
@@ -1188,6 +1261,115 @@ time.sleep(30)
         assert idle_failures[0]["codex_exec_process"]["failure_category"] == (
             "codex_exec_bridge_idle_timeout"
         )
+        inflight_bridge = Path(tmp) / "inflight-idle-bridge"
+        inflight_bridge.write_text(
+            """#!/usr/bin/env python3
+import json
+import sys
+import time
+
+payload = json.loads(sys.stdin.read() or "{}")
+if "operations" in payload:
+    print(json.dumps({
+        "schema_version": "skillsbench_remote_command_file_bridge_probe_response_v0",
+        "ready": True,
+        "stage": "complete",
+        "operations": [
+            {"kind": "exec", "status": "ok", "exit_code_zero": True},
+            {"kind": "write_file", "status": "ok"},
+            {"kind": "read_file", "status": "ok", "content_match": True},
+            {"kind": "cleanup", "status": "ok"},
+        ],
+        "raw_command_recorded": False,
+        "raw_stdout_recorded": False,
+        "raw_stderr_recorded": False,
+        "raw_task_text_recorded": False,
+        "raw_logs_recorded": False,
+        "raw_trajectory_recorded": False,
+        "credential_values_recorded": False,
+        "host_paths_recorded": False,
+        "remote_paths_recorded": False,
+        "upload_performed": False,
+        "submit_performed": False,
+    }))
+    raise SystemExit(0)
+time.sleep(30)
+""",
+            encoding="utf-8",
+        )
+        inflight_bridge.chmod(0o755)
+        inflight_codex = Path(tmp) / "inflight-idle-codex"
+        inflight_codex.write_text(
+            """#!/usr/bin/env python3
+import json
+import re
+import subprocess
+import sys
+
+args = sys.argv[1:]
+prompt = sys.stdin.read()
+if any("Private bridge command:" in item for item in args):
+    raise SystemExit(42)
+match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
+assert match, prompt
+subprocess.run(
+    match.group(1),
+    input=json.dumps({
+        "operation": "exec",
+        "cwd": "/app",
+        "command": "python - <<'PY'\\nprint('task-facing')\\nPY",
+        "timeout_sec": 10,
+    }),
+    text=True,
+    shell=True,
+    check=False,
+)
+""",
+            encoding="utf-8",
+        )
+        inflight_codex.chmod(0o755)
+        inflight_trace_dir = Path(tmp) / "inflight-idle-traces"
+        inflight_relay = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(
+                codex_bin=str(inflight_codex),
+                sandbox="workspace-write",
+                route="loopx-product-mode",
+                dataset="skillsbench-v1.1",
+                task_id="demo-task",
+                timeout_sec=30,
+                first_action_timeout_sec=1,
+                bridge_idle_timeout_sec=1,
+                worker_public_trace_dir=str(inflight_trace_dir),
+                remote_command_file_bridge_command=str(inflight_bridge),
+                remote_command_file_bridge_agent_command=str(inflight_bridge),
+            )
+        )
+        try:
+            inflight_relay._run_codex(
+                "LoopX demo prompt.",
+                session={"cwd": str(Path(tmp))},
+                session_id="inflight-idle-demo",
+                stdout=io.StringIO(),
+            )
+        except TimeoutError as exc:
+            assert "bridge idle timeout" in str(exc), exc
+        else:
+            raise AssertionError("expected in-flight bridge idle timeout")
+        inflight_traces = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in inflight_trace_dir.glob("*.compact.json")
+        ]
+        inflight_agent_ops = [
+            trace
+            for trace in inflight_traces
+            if trace.get("trace_kind") == "remote_command_file_bridge_agent_operations"
+        ]
+        assert len(inflight_agent_ops) == 1, inflight_traces
+        inflight_counts = inflight_agent_ops[0][
+            "remote_command_file_bridge_agent_operations"
+        ]
+        assert inflight_counts["request_count"] == 1, inflight_counts
+        assert inflight_counts["task_facing_operation_count"] == 1, inflight_counts
         bridge_preflight_codex = Path(tmp) / "bridge-preflight-codex"
         bridge_preflight_codex.write_text(
             f"""#!/usr/bin/env python3

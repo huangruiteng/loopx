@@ -126,6 +126,15 @@ def _communicate_after_stop(proc: subprocess.Popen[str]) -> tuple[str, str]:
     return stdout_text or "", stderr_text or ""
 
 
+def _read_agent_operations_jsonl(path: Path | None) -> str:
+    if path is None or not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[:200_000]
+    except OSError:
+        return ""
+
+
 def _replace_output_last_message(args: list[str], replacement: Path) -> str | None:
     for index, token in enumerate(args[:-1]):
         if token == "--output-last-message":
@@ -318,6 +327,13 @@ record["task_facing_operation"] = bool(
     operation in {{"read_file", "write_file", "cleanup"}}
     or (operation == "exec" and not subcommands)
 )
+record["operation_observed"] = True
+try:
+    SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with SUMMARY_PATH.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, sort_keys=True) + "\\n")
+except OSError:
+    pass
 proc = subprocess.run(
     bridge_command(),
     input=raw,
@@ -326,13 +342,6 @@ proc = subprocess.run(
     stderr=subprocess.PIPE,
     shell=True,
 )
-record["returncode"] = int(proc.returncode)
-try:
-    SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with SUMMARY_PATH.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record, sort_keys=True) + "\\n")
-except OSError:
-    pass
 sys.stdout.write(proc.stdout)
 sys.stderr.write(proc.stderr)
 raise SystemExit(proc.returncode)
@@ -446,7 +455,9 @@ def _run_codex_payload(
                     "stderr": f"{timeout_kind}\n",
                     "last_message": "",
                     "remote_last_message_path": remote_last_message_path,
-                    "agent_operations_jsonl": "",
+                    "agent_operations_jsonl": _read_agent_operations_jsonl(
+                        agent_operations_summary_path
+                    ),
                     "agent_operations_raw_material_recorded": False,
                     "raw_task_text_recorded": False,
                     "credential_values_recorded": False,
@@ -455,12 +466,6 @@ def _run_codex_payload(
                 last_message = last_message_path.read_text(encoding="utf-8")
             except OSError:
                 last_message = ""
-            agent_operations_jsonl = ""
-            if agent_operations_summary_path and agent_operations_summary_path.exists():
-                agent_operations_jsonl = agent_operations_summary_path.read_text(
-                    encoding="utf-8",
-                    errors="replace",
-                )[:200_000]
             return {
                 "schema_version": SERVER_RESPONSE_SCHEMA_VERSION,
                 "exit_code": int(proc.returncode),
@@ -468,7 +473,9 @@ def _run_codex_payload(
                 "stderr": stderr_text or "",
                 "last_message": last_message,
                 "remote_last_message_path": remote_last_message_path,
-                "agent_operations_jsonl": agent_operations_jsonl,
+                "agent_operations_jsonl": _read_agent_operations_jsonl(
+                    agent_operations_summary_path
+                ),
                 "agent_operations_raw_material_recorded": False,
                 "raw_task_text_recorded": False,
                 "credential_values_recorded": False,
@@ -483,7 +490,9 @@ def _run_codex_payload(
                 "stderr": stderr,
                 "last_message": "",
                 "remote_last_message_path": remote_last_message_path,
-                "agent_operations_jsonl": "",
+                "agent_operations_jsonl": _read_agent_operations_jsonl(
+                    agent_operations_summary_path
+                ),
                 "agent_operations_raw_material_recorded": False,
                 "raw_task_text_recorded": False,
                 "credential_values_recorded": False,

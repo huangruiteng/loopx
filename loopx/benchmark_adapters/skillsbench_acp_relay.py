@@ -1030,6 +1030,13 @@ record["task_facing_operation"] = bool(
     operation in {{"read_file", "write_file", "cleanup"}}
     or (operation == "exec" and not subcommands)
 )
+record["operation_observed"] = True
+try:
+    SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with SUMMARY_PATH.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, sort_keys=True) + "\\n")
+except OSError:
+    pass
 proc = subprocess.run(
     BRIDGE_COMMAND,
     input=raw,
@@ -1038,13 +1045,6 @@ proc = subprocess.run(
     stderr=subprocess.PIPE,
     shell=True,
 )
-record["returncode"] = int(proc.returncode)
-try:
-    SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with SUMMARY_PATH.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record, sort_keys=True) + "\\n")
-except OSError:
-    pass
 sys.stdout.write(proc.stdout)
 sys.stderr.write(proc.stderr)
 raise SystemExit(proc.returncode)
