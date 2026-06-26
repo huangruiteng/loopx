@@ -6,6 +6,7 @@ from typing import Any
 
 from .agent_registry import (
     primary_agent_id_from_registry,
+    registered_agent_ids_from_registry,
     require_registered_agent_id,
     side_agent_handoff_agent_id_from_registry,
 )
@@ -29,6 +30,7 @@ from .todo_contract import (
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_no_followup,
     normalize_todo_resume_when,
@@ -55,6 +57,7 @@ TODO_METADATA_FIELDS = (
     "target_capabilities",
     "claimed_by",
     "blocks_agent",
+    "global_gate",
     "unblocks_todo_id",
     "resume_when",
     "no_followup",
@@ -330,6 +333,11 @@ def block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             if no_followup is not None:
                 metadata[key] = no_followup
             continue
+        if key == "global_gate":
+            global_gate = normalize_todo_global_gate(value)
+            if global_gate is not None:
+                metadata[key] = global_gate
+            continue
         if str(value or "").strip():
             metadata[key] = str(value).strip()
     return metadata
@@ -364,6 +372,12 @@ def metadata_line_for_block(block: dict[str, Any], updates: dict[str, Any]) -> s
             no_followup = normalize_todo_no_followup(value)
             if no_followup is not None:
                 metadata[key] = no_followup
+            else:
+                metadata.pop(key, None)
+        elif key == "global_gate":
+            global_gate = normalize_todo_global_gate(value)
+            if global_gate is not None:
+                metadata[key] = global_gate
             else:
                 metadata.pop(key, None)
         elif str(value).strip():
@@ -473,6 +487,7 @@ def add_todo_to_lines(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    global_gate: bool | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     evidence: str | None = None,
@@ -513,6 +528,7 @@ def add_todo_to_lines(
             target_capabilities=target_capabilities,
             claimed_by=claimed_by,
             blocks_agent=blocks_agent,
+            global_gate=global_gate,
             unblocks_todo_id=unblocks_todo_id,
             resume_when=resume_when,
             evidence=evidence,
@@ -542,6 +558,8 @@ def add_todo_to_lines(
             updates["claimed_by"] = claimed_by
         if blocks_agent:
             updates["blocks_agent"] = blocks_agent
+        if global_gate is not None:
+            updates["global_gate"] = global_gate
         if unblocks_todo_id:
             updates["unblocks_todo_id"] = unblocks_todo_id
         if resume_when:
@@ -574,10 +592,40 @@ def add_todo_to_lines(
         ),
         "claimed_by": normalize_todo_claimed_by(effective_metadata.get("claimed_by")),
         "blocks_agent": normalize_todo_blocks_agent(effective_metadata.get("blocks_agent")),
+        "global_gate": normalize_todo_global_gate(effective_metadata.get("global_gate")),
         "unblocks_todo_id": normalize_todo_id(effective_metadata.get("unblocks_todo_id")),
         "resume_when": normalize_todo_resume_when(effective_metadata.get("resume_when")),
         "evidence": effective_metadata.get("evidence") or evidence,
     }
+
+
+def require_user_gate_scope(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    role: str,
+    task_class: str | None,
+    blocks_agent: str | None,
+    global_gate: bool | None,
+) -> None:
+    if role != "user" or task_class != TODO_TASK_CLASS_USER_GATE:
+        return
+    if global_gate and blocks_agent:
+        raise ValueError(
+            "user_gate cannot set both blocks_agent and global_gate=true; "
+            "use blocks_agent for one registered agent or global_gate=true for a goal-wide gate"
+        )
+    registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
+    if len(registered_agents) <= 1:
+        return
+    if blocks_agent or global_gate is True:
+        return
+    raise ValueError(
+        "multi-agent user_gate requires an explicit scope: pass --blocks-agent "
+        "<registered-agent> (or --agent-id <registered-agent> for authoring) "
+        "when the gate blocks one lane, or pass --global-gate when it genuinely "
+        "blocks every registered agent"
+    )
 
 
 def add_goal_todo(
@@ -593,6 +641,7 @@ def add_goal_todo(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    global_gate: bool = False,
     agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
@@ -602,6 +651,8 @@ def add_goal_todo(
 ) -> dict[str, Any]:
     if role not in TODO_SECTION_HEADINGS:
         raise ValueError("todo role must be one of: user, agent")
+    if global_gate and not (role == "user" and task_class == TODO_TASK_CLASS_USER_GATE):
+        raise ValueError("global_gate is only valid for `--role user --task-class user_gate`")
     todo_text = normalize_new_todo(text)
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
@@ -651,6 +702,14 @@ def add_goal_todo(
             if inferred_blocks_agent
             else None
         )
+        require_user_gate_scope(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            role=role,
+            task_class=task_class,
+            blocks_agent=effective_blocks_agent,
+            global_gate=True if global_gate else None,
+        )
         normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id) if unblocks_todo_id else None
         if unblocks_todo_id and not normalized_unblocks_todo_id:
             raise ValueError("unblocks_todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")
@@ -668,6 +727,7 @@ def add_goal_todo(
             target_capabilities=target_capabilities,
             claimed_by=effective_claimed_by,
             blocks_agent=effective_blocks_agent,
+            global_gate=True if global_gate else None,
             unblocks_todo_id=normalized_unblocks_todo_id,
             resume_when=normalized_resume_when,
         )
@@ -699,6 +759,7 @@ def add_goal_todo(
         "claimed_by": add_result.get("claimed_by"),
         "agent_id": effective_agent_id,
         "blocks_agent": add_result.get("blocks_agent"),
+        "global_gate": add_result.get("global_gate"),
         "unblocks_todo_id": add_result.get("unblocks_todo_id"),
         "resume_when": add_result.get("resume_when"),
         "state_file": str(resolved_state_file),
@@ -741,6 +802,7 @@ def apply_todo_update_to_lines(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    global_gate: bool | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     no_followup: bool | None = None,
@@ -804,6 +866,8 @@ def apply_todo_update_to_lines(
         updates["claimed_by"] = claimed_by
     if blocks_agent:
         updates["blocks_agent"] = blocks_agent
+    if global_gate is not None:
+        updates["global_gate"] = global_gate
     if unblocks_todo_id:
         updates["unblocks_todo_id"] = unblocks_todo_id
     if resume_when:
@@ -837,6 +901,7 @@ def apply_todo_update_to_lines(
             effective_metadata.get("target_capabilities")
         ),
         "blocks_agent": normalize_todo_blocks_agent(effective_metadata.get("blocks_agent")),
+        "global_gate": normalize_todo_global_gate(effective_metadata.get("global_gate")),
         "unblocks_todo_id": normalize_todo_id(effective_metadata.get("unblocks_todo_id")),
         "resume_when": normalize_todo_resume_when(effective_metadata.get("resume_when")),
         "no_followup": normalize_todo_no_followup(effective_metadata.get("no_followup")),
@@ -861,6 +926,7 @@ def update_goal_todo(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    global_gate: bool = False,
     agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
@@ -871,6 +937,11 @@ def update_goal_todo(
     state_file: Path | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
+    if global_gate and (
+        (role is not None and role != "user")
+        or (task_class is not None and task_class != TODO_TASK_CLASS_USER_GATE)
+    ):
+        raise ValueError("global_gate is only valid for user_gate todos")
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -918,6 +989,41 @@ def update_goal_todo(
             if inferred_blocks_agent
             else None
         )
+        existing_block_match = find_todo_block(lines, todo_id=todo_id, role=role)
+        if not existing_block_match:
+            normalized_todo_id = normalize_todo_id(todo_id) or todo_id
+            raise ValueError(f"todo_id {normalized_todo_id!r} was not found in active user or agent todos")
+        existing_role, _section, _start, _end, existing_block = existing_block_match
+        target_role = role or existing_role
+        target_task_class = task_class or str(existing_block.get("task_class") or "")
+        target_status = (
+            normalize_todo_status(status)
+            if status
+            else str(existing_block.get("status") or TODO_STATUS_OPEN)
+        )
+        existing_blocks_agent = normalize_todo_blocks_agent(existing_block.get("blocks_agent"))
+        existing_global_gate = normalize_todo_global_gate(existing_block.get("global_gate"))
+        if global_gate and not (target_role == "user" and target_task_class == TODO_TASK_CLASS_USER_GATE):
+            raise ValueError("global_gate is only valid for user_gate todos")
+        target_blocks_agent = effective_blocks_agent or existing_blocks_agent
+        if (
+            effective_agent_id
+            and not target_blocks_agent
+            and target_role == "user"
+            and target_task_class == TODO_TASK_CLASS_USER_GATE
+        ):
+            target_blocks_agent = effective_agent_id
+            effective_blocks_agent = effective_agent_id
+        target_global_gate = True if global_gate else existing_global_gate
+        if not todo_done_for_status(target_status):
+            require_user_gate_scope(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                role=target_role,
+                task_class=target_task_class,
+                blocks_agent=target_blocks_agent,
+                global_gate=target_global_gate,
+            )
         normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id) if unblocks_todo_id else None
         if unblocks_todo_id and not normalized_unblocks_todo_id:
             raise ValueError("unblocks_todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")
@@ -940,6 +1046,7 @@ def update_goal_todo(
             target_capabilities=target_capabilities,
             claimed_by=effective_claimed_by,
             blocks_agent=effective_blocks_agent,
+            global_gate=True if global_gate else None,
             unblocks_todo_id=normalized_unblocks_todo_id,
             resume_when=normalized_resume_when,
             no_followup=no_followup,
@@ -1007,6 +1114,7 @@ def complete_goal_todo(
             else None
         )
         primary_agent = primary_agent_id_from_registry(registry_path, goal_id)
+        registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
         configured_handoff_agent = side_agent_handoff_agent_id_from_registry(registry_path, goal_id)
         handoff_agent = configured_handoff_agent or primary_agent
         if configured_handoff_agent:
@@ -1083,6 +1191,14 @@ def complete_goal_todo(
         if side_agent_completion and next_agent_todo and not side_agent_self_merged:
             next_blocks_agent = effective_claimed_by
             next_unblocks_todo_id = normalize_todo_id(str(update_result.get("todo_id") or todo_id))
+        next_user_blocks_agent = None
+        if next_user_todo and len(registered_agents) > 1:
+            next_user_blocks_agent = effective_claimed_by or primary_agent
+            if not next_user_blocks_agent:
+                raise ValueError(
+                    "multi-agent --next-user-todo requires a completing --claimed-by "
+                    "agent or coordination.primary_agent so the user_gate can be scoped"
+                )
         next_results: list[dict[str, Any]] = []
         if next_agent_todo:
             next_results.append(
@@ -1110,6 +1226,7 @@ def complete_goal_todo(
                         str(update_result.get("todo") or ""),
                     ),
                     task_class="user_gate",
+                    blocks_agent=next_user_blocks_agent,
                 )
             )
         next_changed = any(item.get("added") or item.get("metadata_updated") for item in next_results)
@@ -1185,6 +1302,21 @@ def supersede_goal_todo(
             effective_next_claimed_by = normalize_todo_claimed_by(update_result.get("claimed_by"))
         next_blocks_agent = normalize_todo_blocks_agent(update_result.get("blocks_agent"))
         next_unblocks_todo_id = normalize_todo_id(update_result.get("unblocks_todo_id"))
+        registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
+        primary_agent = primary_agent_id_from_registry(registry_path, goal_id)
+        next_user_blocks_agent = next_blocks_agent
+        if next_user_todo and len(registered_agents) > 1 and not next_user_blocks_agent:
+            next_user_blocks_agent = (
+                normalize_todo_claimed_by(update_result.get("claimed_by"))
+                or effective_next_claimed_by
+                or primary_agent
+            )
+            if not next_user_blocks_agent:
+                raise ValueError(
+                    "multi-agent supersede --next-user-todo requires inherited "
+                    "blocks_agent, next_claimed_by, or coordination.primary_agent "
+                    "so the user_gate can be scoped"
+                )
         next_results: list[dict[str, Any]] = []
         if next_agent_todo:
             next_results.append(
@@ -1212,6 +1344,7 @@ def supersede_goal_todo(
                         str(update_result.get("todo") or ""),
                     ),
                     task_class="user_gate",
+                    blocks_agent=next_user_blocks_agent,
                 )
             )
         superseded_by = next((item.get("todo_id") for item in next_results if item.get("todo_id")), None)
@@ -1371,6 +1504,8 @@ def render_todo_markdown(payload: dict[str, Any]) -> str:
                 f"- required_capabilities: `{payload.get('required_capabilities')}`",
                 f"- target_capabilities: `{payload.get('target_capabilities')}`",
                 f"- claimed_by: `{payload.get('claimed_by')}`",
+                f"- blocks_agent: `{payload.get('blocks_agent')}`",
+                f"- global_gate: `{payload.get('global_gate')}`",
                 f"- resume_when: `{payload.get('resume_when')}`",
             ]
         )

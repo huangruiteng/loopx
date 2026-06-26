@@ -67,6 +67,7 @@ from .todo_contract import (
     normalize_required_write_scopes,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_no_followup,
     normalize_todo_resume_when,
@@ -4678,6 +4679,9 @@ def structured_todo_item(
     blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
     if blocks_agent:
         normalized["blocks_agent"] = blocks_agent
+    global_gate = normalize_todo_global_gate(item.get("global_gate"))
+    if global_gate is not None:
+        normalized["global_gate"] = global_gate
     unblocks_todo_id = normalize_todo_id(item.get("unblocks_todo_id"))
     if unblocks_todo_id:
         normalized["unblocks_todo_id"] = unblocks_todo_id
@@ -4715,6 +4719,7 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "target_capabilities",
         "claimed_by",
         "blocks_agent",
+        "global_gate",
         "unblocks_todo_id",
         "resume_when",
         "resume_condition",

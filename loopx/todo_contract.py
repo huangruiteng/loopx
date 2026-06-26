@@ -182,6 +182,17 @@ def normalize_todo_no_followup(value: Any) -> bool | None:
     return None
 
 
+def normalize_todo_global_gate(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    candidate = compact_todo_text(value).lower()
+    if candidate in {"1", "true", "yes", "y", "global_gate", "global-gate"}:
+        return True
+    if candidate in {"0", "false", "no", "n"}:
+        return False
+    return None
+
+
 def normalize_todo_id(value: Any) -> str | None:
     candidate = str(value or "").strip().lower()
     if candidate and TODO_ID_PATTERN.match(candidate):
@@ -349,6 +360,10 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             blocks_agent = normalize_todo_blocks_agent(value)
             if blocks_agent:
                 metadata["blocks_agent"] = blocks_agent
+        elif key == "global_gate":
+            global_gate = normalize_todo_global_gate(value)
+            if global_gate is not None:
+                metadata["global_gate"] = global_gate
         elif key == "unblocks_todo_id":
             todo_id = normalize_todo_id(value)
             if todo_id:
@@ -382,6 +397,7 @@ def format_todo_metadata_line(
     target_capabilities: Any = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    global_gate: bool | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     no_followup: bool | None = None,
@@ -447,6 +463,8 @@ def format_todo_metadata_line(
         raise ValueError("blocks_agent must be a public-safe agent token such as codex-side-bypass")
     if normalized_blocks_agent:
         fields.append(f"blocks_agent={encode_metadata_value(normalized_blocks_agent)}")
+    if global_gate is not None:
+        fields.append(f"global_gate={encode_metadata_value('true' if global_gate else 'false')}")
     normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id)
     if unblocks_todo_id and not normalized_unblocks_todo_id:
         raise ValueError("unblocks_todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")

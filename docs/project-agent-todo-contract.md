@@ -95,8 +95,12 @@ User-gate todos are different: when a user decision only unlocks one registered
 agent or lane, record the blocked agent explicitly with `blocks_agent` so quota
 does not stop unrelated agents. For convenience, `todo add/update --role user
 --task-class user_gate --agent-id <agent>` defaults `blocks_agent` to that agent
-when `--blocks-agent` is omitted. Omit `--agent-id` and `--blocks-agent` only
-for a genuine goal-wide user gate.
+when `--blocks-agent` is omitted. In multi-agent goals, open `user_gate` todos
+must have exactly one explicit scope: either `blocks_agent=<registered-agent>`
+for a lane-scoped decision or `global_gate=true` / `--global-gate` for a
+genuine goal-wide owner gate. Unscoped multi-agent user gates are an authoring
+error because every registered agent would otherwise see another lane's
+question as its own stop condition.
 
 Each goal should have one `coordination.primary_agent`: the primary agent owns
 final review, verification, merge, publication, and reassignment decisions. All

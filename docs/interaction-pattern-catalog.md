@@ -38,6 +38,12 @@ User gates are not global booleans. The first-class model is a scoped decision:
 the machine-facing schema is
 [`decision_scope_v0`](reference/protocols/decision-scope-v0.md).
 
+Compatibility todo metadata follows the same rule. In a multi-agent goal, an
+open `user_gate` todo must carry `blocks_agent=<registered-agent>` when only
+one lane is waiting, or `global_gate=true` when the decision intentionally
+blocks every registered agent. An unscoped multi-agent `user_gate` is a
+projection bug, not a safe fallback to a global operator gate.
+
 - a **decision/gate** names the authority still needed, such as a private
   material read, resource spend, write boundary, production action, public
   submission, or product-direction choice;

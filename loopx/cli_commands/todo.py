@@ -129,6 +129,15 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     todo_parser.add_argument(
+        "--global-gate",
+        action="store_true",
+        help=(
+            "For todo add/update on role=user task-class=user_gate, explicitly mark "
+            "that the gate blocks every registered agent. Prefer --blocks-agent or "
+            "--agent-id when only one lane is waiting."
+        ),
+    )
+    todo_parser.add_argument(
         "--unblocks-todo-id",
         help=(
             "For todo add/update, link this todo to the blocked todo it unblocks, "
@@ -242,8 +251,10 @@ def handle_todo_command(
             and args.role == "user"
             and args.task_class == "user_gate"
         )
+        global_gate_allowed = args.todo_command in {"add", "update"}
         if args.todo_command not in {"suggest", "capture-followups"} and (
             (args.agent_id and not agent_id_allowed_for_gate_authoring)
+            or (args.global_gate and not global_gate_allowed)
             or args.suggestion_sources
             or args.suggestion_limit is not None
             or args.suggestion_trigger
@@ -251,8 +262,9 @@ def handle_todo_command(
             raise ValueError(
                 "todo --agent-id is supported by `todo suggest` and by "
                 "`todo add/update --role user --task-class user_gate` for "
-                "agent-scoped user gates; --from, --limit, and --trigger are "
-                "only supported by `todo suggest`"
+                "agent-scoped user gates; --global-gate is supported by "
+                "`todo add/update` for user gates; --from, --limit, and "
+                "--trigger are only supported by `todo suggest`"
             )
         if args.todo_command == "add":
             if args.followups:
@@ -281,6 +293,7 @@ def handle_todo_command(
                 target_capabilities=args.target_capabilities,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
+                global_gate=bool(args.global_gate),
                 agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
                 resume_when=args.resume_when,
@@ -309,6 +322,7 @@ def handle_todo_command(
                     ("--required-capability", args.required_capabilities),
                     ("--target-capability", args.target_capabilities),
                     ("--blocks-agent", args.blocks_agent),
+                    ("--global-gate", args.global_gate),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--resume-when", args.resume_when),
                     ("--no-follow-up", args.no_follow_up),
@@ -358,12 +372,13 @@ def handle_todo_command(
                 args.target_capabilities,
                 args.claimed_by,
                 args.blocks_agent,
+                args.global_gate,
                 args.unblocks_todo_id,
                 args.resume_when,
                 args.no_follow_up,
                 args.clear_claim,
             ]):
-                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, --blocks-agent, --unblocks-todo-id, --resume-when, --no-follow-up, or --clear-claim")
+                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, --blocks-agent, --global-gate, --unblocks-todo-id, --resume-when, --no-follow-up, or --clear-claim")
             if args.no_follow_up and not (args.note or args.reason or args.evidence):
                 raise ValueError("--no-follow-up requires --note, --reason, or --evidence")
             if args.followups:
@@ -389,6 +404,7 @@ def handle_todo_command(
                 target_capabilities=args.target_capabilities,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
+                global_gate=bool(args.global_gate),
                 agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
                 resume_when=args.resume_when,
@@ -403,8 +419,8 @@ def handle_todo_command(
                 raise ValueError("todo complete requires --todo-id")
             if args.claimed_by and args.clear_claim:
                 raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
-            if args.blocks_agent or args.unblocks_todo_id or args.resume_when:
-                raise ValueError("todo complete does not support --blocks-agent, --unblocks-todo-id, or --resume-when; use todo update before completion or side-agent handoff successor metadata")
+            if args.blocks_agent or args.global_gate or args.unblocks_todo_id or args.resume_when:
+                raise ValueError("todo complete does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; use todo update before completion or side-agent handoff successor metadata")
             if args.no_follow_up and (args.next_agent_todo or args.next_user_todo):
                 raise ValueError("--no-follow-up cannot be combined with successor todos")
             if args.no_follow_up and not (args.note or args.evidence):
@@ -448,8 +464,8 @@ def handle_todo_command(
                 raise ValueError("todo supersede does not support --no-follow-up")
             if args.followups:
                 raise ValueError("todo supersede does not support --follow-up; use `todo capture-followups`")
-            if args.blocks_agent or args.unblocks_todo_id or args.resume_when:
-                raise ValueError("todo supersede does not support --blocks-agent, --unblocks-todo-id, or --resume-when; update the source todo first so the successor can inherit dependency metadata")
+            if args.blocks_agent or args.global_gate or args.unblocks_todo_id or args.resume_when:
+                raise ValueError("todo supersede does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; update the source todo first so the successor can inherit dependency metadata")
             payload = supersede_goal_todo(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -503,6 +519,7 @@ def handle_todo_command(
                     ("--target-capability", args.target_capabilities),
                     ("--claimed-by", args.claimed_by),
                     ("--blocks-agent", args.blocks_agent),
+                    ("--global-gate", args.global_gate),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--resume-when", args.resume_when),
                     ("--no-follow-up", args.no_follow_up),
@@ -547,6 +564,7 @@ def handle_todo_command(
                     ("--note", args.note),
                     ("--reason", args.reason),
                     ("--blocks-agent", args.blocks_agent),
+                    ("--global-gate", args.global_gate),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--resume-when", args.resume_when),
                     ("--no-follow-up", args.no_follow_up),
