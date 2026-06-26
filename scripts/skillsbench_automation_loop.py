@@ -2835,6 +2835,409 @@ def _apply_agent_message_only_no_tool_calls_attribution(
     return True
 
 
+def _case_timeline_safe_string(value: Any, *, limit: int = 140) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value[:limit] if value else ""
+
+
+def _case_timeline_public_number(value: Any) -> int | float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, float):
+        return max(0.0, value)
+    return None
+
+
+def _case_timeline_max_int(*values: Any) -> int:
+    safe_values = [
+        value
+        for value in (_case_timeline_public_number(item) for item in values)
+        if isinstance(value, int)
+    ]
+    return max(safe_values) if safe_values else 0
+
+
+def _append_case_timeline_event(
+    events: list[dict[str, Any]],
+    *,
+    phase: str,
+    event: str,
+    status: str,
+    **fields: Any,
+) -> None:
+    entry: dict[str, Any] = {
+        "index": len(events) + 1,
+        "phase": phase,
+        "event": event,
+        "status": status[:140],
+    }
+    for key, value in fields.items():
+        if isinstance(value, bool):
+            entry[key] = value
+            continue
+        number = _case_timeline_public_number(value)
+        if number is not None:
+            entry[key] = number
+            continue
+        text = _case_timeline_safe_string(value)
+        if text:
+            entry[key] = text
+            continue
+        if isinstance(value, list):
+            safe_items: list[Any] = []
+            for item in value:
+                if isinstance(item, bool):
+                    safe_items.append(item)
+                else:
+                    item_number = _case_timeline_public_number(item)
+                    if item_number is not None:
+                        safe_items.append(item_number)
+                        continue
+                    item_text = _case_timeline_safe_string(item, limit=80)
+                    if item_text:
+                        safe_items.append(item_text)
+            if safe_items:
+                entry[key] = safe_items[:8]
+    events.append(entry)
+
+
+def _build_case_event_timeline(
+    compact: dict[str, Any],
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a public-safe phase timeline from already-compacted signals."""
+
+    counters = (
+        compact.get("interaction_counters")
+        if isinstance(compact.get("interaction_counters"), dict)
+        else {}
+    )
+    runner_prerequisites = _public_runner_prerequisites(
+        plan.get("runner_prerequisites")
+    )
+    compact_runner_prerequisites = compact.get("runner_prerequisites")
+    if isinstance(compact_runner_prerequisites, dict):
+        runner_prerequisites.update(compact_runner_prerequisites)
+    lifecycle_contract = (
+        compact.get("product_mode_lifecycle_contract")
+        if isinstance(compact.get("product_mode_lifecycle_contract"), dict)
+        else {}
+    )
+    runner_failure = (
+        compact.get("runner_failure")
+        if isinstance(compact.get("runner_failure"), dict)
+        else {}
+    )
+    official_task_score = (
+        compact.get("official_task_score")
+        if isinstance(compact.get("official_task_score"), dict)
+        else {}
+    )
+    events: list[dict[str, Any]] = []
+
+    case_init_status = _case_timeline_safe_string(
+        counters.get("case_goal_state_init_status")
+    )
+    if not case_init_status:
+        if counters.get("case_goal_state_initialized_before_agent") is True:
+            case_init_status = "passed"
+        elif counters.get("case_goal_state_init_required") is True:
+            case_init_status = "missing"
+        elif compact.get("product_mode") is True or counters.get("product_mode") is True:
+            case_init_status = "not_observed"
+        else:
+            case_init_status = "not_required"
+    _append_case_timeline_event(
+        events,
+        phase="case_state",
+        event="case_goal_state_init",
+        status=case_init_status,
+        required=counters.get("case_goal_state_init_required") is True,
+        initialized_before_agent=(
+            counters.get("case_goal_state_initialized_before_agent") is True
+        ),
+    )
+
+    driver_checkpoint_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_checkpoint_count"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_driver_lifecycle_checkpoint_count"
+        ),
+        lifecycle_contract.get("checkpoint_count"),
+    )
+    driver_state_read_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_loopx_state_read_count"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count"
+        ),
+        lifecycle_contract.get("driver_lifecycle_state_read_count"),
+    )
+    driver_state_write_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_loopx_state_write_count"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count"
+        ),
+        lifecycle_contract.get("driver_lifecycle_state_write_count"),
+    )
+    driver_status = "not_observed"
+    if lifecycle_contract.get("orchestrated_driver_counts_as_product_mode") is True:
+        driver_status = "satisfied"
+    elif driver_checkpoint_count or driver_state_read_count or driver_state_write_count:
+        driver_status = "observed"
+    elif lifecycle_contract.get("checkpoint_required") is True:
+        driver_status = "missing"
+    _append_case_timeline_event(
+        events,
+        phase="driver_lifecycle",
+        event="orchestrated_loopx_lifecycle",
+        status=driver_status,
+        checkpoint_count=driver_checkpoint_count,
+        state_read_count=driver_state_read_count,
+        state_write_count=driver_state_write_count,
+        execution_style=(
+            lifecycle_contract.get("execution_style")
+            or counters.get("remote_command_file_bridge_driver_lifecycle_execution_style")
+            or runner_prerequisites.get(
+                "remote_command_file_bridge_driver_lifecycle_execution_style"
+            )
+        ),
+    )
+
+    solver_op_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_solver_operation_count"),
+        runner_prerequisites.get("remote_command_file_bridge_solver_operation_count"),
+    )
+    solver_probe_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_solver_probe_ready_count"),
+        runner_prerequisites.get("remote_command_file_bridge_solver_probe_ready_count"),
+    )
+    solver_consumed = (
+        compact.get("remote_command_file_bridge_consumed_by_solver") is True
+        or counters.get("remote_command_file_bridge_consumed_by_solver") is True
+        or runner_prerequisites.get("remote_command_file_bridge_consumed_by_solver")
+        is True
+    )
+    if solver_consumed:
+        solver_status = "consumed"
+    elif solver_op_count or solver_probe_count:
+        solver_status = "observed_not_consumed"
+    elif compact.get("product_mode") is True or counters.get("product_mode") is True:
+        solver_status = "missing"
+    else:
+        solver_status = "not_required"
+    _append_case_timeline_event(
+        events,
+        phase="solver_bridge",
+        event="remote_command_bridge_consumption",
+        status=solver_status,
+        consumed_by_solver=solver_consumed,
+        solver_operation_count=solver_op_count,
+        solver_probe_ready_count=solver_probe_count,
+    )
+
+    trajectory_event_count = _case_timeline_max_int(
+        counters.get("private_trajectory_event_count")
+    )
+    trajectory_round_count = _case_timeline_max_int(
+        counters.get("private_trajectory_round_count")
+    )
+    trajectory_tool_call_count = _case_timeline_max_int(
+        counters.get("private_trajectory_tool_call_count")
+    )
+    agent_request_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_agent_request_count"),
+        runner_prerequisites.get("remote_command_file_bridge_agent_request_count"),
+    )
+    task_facing_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_agent_task_facing_operation_count"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_agent_task_facing_operation_count"
+        ),
+    )
+    if trajectory_tool_call_count or task_facing_count:
+        activity_status = "task_activity_observed"
+    elif trajectory_event_count or agent_request_count:
+        activity_status = "agent_messages_only"
+    elif (
+        counters.get("remote_command_file_bridge_agent_operation_trace_required")
+        is True
+        or runner_prerequisites.get(
+            "remote_command_file_bridge_agent_operation_trace_required"
+        )
+        is True
+    ):
+        activity_status = "missing_agent_operation_trace"
+    else:
+        activity_status = "not_observed"
+    _append_case_timeline_event(
+        events,
+        phase="agent_activity",
+        event="task_facing_activity",
+        status=activity_status,
+        trajectory_event_count=trajectory_event_count,
+        trajectory_round_count=trajectory_round_count,
+        trajectory_tool_call_count=trajectory_tool_call_count,
+        agent_bridge_request_count=agent_request_count,
+        agent_bridge_task_facing_operation_count=task_facing_count,
+        agent_operation_trace_status=(
+            counters.get("remote_command_file_bridge_agent_operation_trace_status")
+            or runner_prerequisites.get(
+                "remote_command_file_bridge_agent_operation_trace_status"
+            )
+        ),
+    )
+
+    round_reward_trace = (
+        compact.get("round_reward_trace")
+        if isinstance(compact.get("round_reward_trace"), dict)
+        else {}
+    )
+    controller_status = "not_observed"
+    if counters.get("controller_official_success_observed") is True:
+        controller_status = "official_success_observed"
+    elif counters.get("product_mode_declared_done_below_passing_reward") is True:
+        controller_status = "declared_done_below_passing_reward"
+    elif counters.get("agent_declared_done") is True:
+        controller_status = "agent_declared_done"
+    elif _case_timeline_max_int(counters.get("controller_action_decisions")):
+        controller_status = "rounds_observed"
+    _append_case_timeline_event(
+        events,
+        phase="controller",
+        event="controller_decision_loop",
+        status=controller_status,
+        action_decision_count=_case_timeline_max_int(
+            counters.get("controller_action_decisions")
+        ),
+        initial_prompt_count=_case_timeline_max_int(
+            counters.get("controller_initial_prompt_count")
+        ),
+        followup_prompt_count=_case_timeline_max_int(
+            counters.get("controller_followup_prompt_count")
+        ),
+        stop_decision_count=_case_timeline_max_int(
+            counters.get("controller_stop_decision_count")
+        ),
+        max_rounds_budget=_case_timeline_max_int(
+            counters.get("controller_max_rounds_budget"),
+            compact.get("controller_max_rounds_budget"),
+        ),
+        final_round=round_reward_trace.get("final_round"),
+        best_round_reward=round_reward_trace.get("best_round_reward"),
+        last_decision=(
+            counters.get("last_decision") or compact.get("controller_last_decision")
+        ),
+    )
+
+    recovery_exception = (
+        runner_prerequisites.get("benchflow_user_loop_recovery_exception_type")
+        or counters.get("benchflow_user_loop_recovery_exception_type")
+    )
+    runner_failure_class = runner_failure.get("failure_class")
+    if recovery_exception:
+        recovery_status = "user_loop_recovery_triggered"
+    elif runner_failure_class:
+        recovery_status = "runner_failure_recorded"
+    else:
+        recovery_status = "not_triggered"
+    _append_case_timeline_event(
+        events,
+        phase="runner_recovery",
+        event="timeout_or_failure_closeout",
+        status=recovery_status,
+        recovery_stage=(
+            runner_prerequisites.get("benchflow_user_loop_recovery_stage")
+            or counters.get("benchflow_user_loop_recovery_stage")
+        ),
+        recovery_exception_type=recovery_exception,
+        recovery_delta_events=_case_timeline_max_int(
+            runner_prerequisites.get("benchflow_user_loop_recovery_delta_events"),
+            counters.get("benchflow_user_loop_recovery_delta_events"),
+        ),
+        recovery_delta_tool_calls=_case_timeline_max_int(
+            runner_prerequisites.get("benchflow_user_loop_recovery_delta_tool_calls"),
+            counters.get("benchflow_user_loop_recovery_delta_tool_calls"),
+        ),
+        runner_failure_class=runner_failure_class,
+        benchflow_agent_timeout_effective_sec=runner_prerequisites.get(
+            "benchflow_agent_timeout_effective_sec"
+        ),
+        local_codex_exec_timeout_sec=runner_prerequisites.get(
+            "benchflow_agent_timeout_host_local_acp_exec_timeout_sec"
+        ),
+    )
+
+    official_status = _case_timeline_safe_string(
+        compact.get("official_score_status")
+    ) or "unknown"
+    score_value = official_task_score.get("value")
+    if official_task_score.get("passed") is True:
+        verifier_status = "passed"
+    elif official_status == "completed":
+        verifier_status = "completed_nonpassing"
+    elif official_status == "missing":
+        verifier_status = "missing"
+    else:
+        verifier_status = official_status
+    _append_case_timeline_event(
+        events,
+        phase="verifier_score",
+        event="official_score_closeout",
+        status=verifier_status,
+        official_score_status=official_status,
+        official_score_value=score_value,
+        official_score_passed=official_task_score.get("passed"),
+        score_failure_attribution=compact.get("score_failure_attribution"),
+        failure_attribution_labels=compact.get("failure_attribution_labels"),
+    )
+
+    closeout_todo_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_agent_todo_closeout_count"),
+        runner_prerequisites.get("remote_command_file_bridge_agent_todo_closeout_count"),
+        lifecycle_contract.get("agent_bridge_todo_closeout_count"),
+    )
+    closeout_refresh_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_agent_refresh_state_count"),
+        runner_prerequisites.get("remote_command_file_bridge_agent_refresh_state_count"),
+        lifecycle_contract.get("agent_bridge_refresh_state_count"),
+    )
+    closeout_spend_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_agent_quota_spend_slot_count"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_agent_quota_spend_slot_count"
+        ),
+        lifecycle_contract.get("agent_bridge_quota_spend_slot_count"),
+    )
+    if lifecycle_contract.get("closeout_satisfied") is True:
+        closeout_status = "satisfied"
+    elif closeout_todo_count or closeout_refresh_count or closeout_spend_count:
+        closeout_status = "partial"
+    elif lifecycle_contract.get("closeout_required") is True:
+        closeout_status = "missing"
+    else:
+        closeout_status = "not_required"
+    _append_case_timeline_event(
+        events,
+        phase="loopx_closeout",
+        event="agent_bridge_closeout",
+        status=closeout_status,
+        todo_closeout_count=closeout_todo_count,
+        refresh_state_count=closeout_refresh_count,
+        quota_spend_slot_count=closeout_spend_count,
+    )
+
+    return {
+        "schema_version": "skillsbench_case_event_timeline_v0",
+        "source": "compact_public_signals",
+        "raw_material_recorded": False,
+        "event_count": len(events),
+        "events": events,
+    }
+
+
 def _public_task_staging(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -7450,6 +7853,7 @@ def reduce_result(
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         compact["runner_output_capture"] = runner_output_capture
+    compact["case_event_timeline"] = _build_case_event_timeline(compact, plan)
     return compact
 
 
@@ -7643,6 +8047,7 @@ def build_runner_failure_compact(
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         reduced["runner_output_capture"] = runner_output_capture
+    reduced["case_event_timeline"] = _build_case_event_timeline(reduced, plan)
     return reduced
 
 
