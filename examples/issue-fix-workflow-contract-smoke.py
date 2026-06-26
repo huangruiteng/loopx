@@ -85,6 +85,7 @@ def main() -> int:
         [
             "**Metadata preview:**",
             "**Intake classification:**",
+            "**Workflow plan:**",
             "**LoopX todo writeback:**",
             "**Caller repo branch:**",
             "**Validation:**",
@@ -97,6 +98,7 @@ def main() -> int:
         CONTENT_OPS_ISSUE_FIX_METADATA_PREVIEW_PACKET_SCHEMA_VERSION,
         CONTENT_OPS_ISSUE_FIX_INTAKE_PACKET_SCHEMA_VERSION,
         ISSUE_FIX_INTAKE_SCHEMA_VERSION,
+        "issue_fix_workflow_plan_packet_v0",
         "loopx_todo_writeback_preview_v0",
         ISSUE_FIX_CALLER_REPO_BRANCH_PACKET_SCHEMA_VERSION,
         ISSUE_FIX_VALIDATED_FIX_ARTIFACT_SCHEMA_VERSION,

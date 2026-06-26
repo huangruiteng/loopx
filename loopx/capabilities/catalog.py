@@ -18,7 +18,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Turn a public GitHub issue or PR signal into a caller-approved "
             "local issue branch with validation evidence and a PR-review packet."
         ),
-        "entry_command": "loopx issue-fix caller-repo-branch --repo-path <repo> --execute --format json",
+        "entry_command": "loopx issue-fix workflow-plan --url <github-issue-url> --format json",
         "commands": [
             {
                 "command": "loopx content-ops issue-fix-metadata-preview --url <github-issue-url> --fetch-metadata --format json",
@@ -29,6 +29,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "command": "loopx content-ops issue-fix-intake --format json",
                 "purpose": "Project public issue metadata into an issue-fix intake packet.",
                 "write_boundary": "fixture-only; no external read or write",
+            },
+            {
+                "command": "loopx issue-fix workflow-plan --url <github-issue-url> --repo-path <repo> --format json",
+                "purpose": "Compose metadata, intake, ordered LoopX todo previews, validation labels, and PR review readiness blockers.",
+                "write_boundary": "preview-only; no todo write, repo execution, external comment, PR creation, merge, or publish",
             },
             {
                 "command": "loopx issue-fix acceptance-fixture --format json",
@@ -68,6 +73,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/reference/protocols/content-ops-surface-v0.md",
             },
             {
+                "schema_version": "issue_fix_workflow_plan_packet_v0",
+                "module": "loopx.capabilities.issue_fix.workflow_plan",
+                "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
+            },
+            {
                 "schema_version": "issue_fix_acceptance_loop_v0",
                 "module": "loopx.capabilities.issue_fix.acceptance_loop",
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-acceptance-loop-v0.md",
@@ -84,12 +94,14 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
         ],
         "smokes": [
+            "python3 examples/issue-fix-workflow-plan-smoke.py",
             "python3 examples/content-ops-issue-fix-metadata-preview-smoke.py",
             "python3 examples/content-ops-issue-fix-intake-smoke.py",
             "python3 examples/issue-fix-acceptance-loop-smoke.py",
         ],
         "docs": [
             "docs/capabilities/issue-fix/README.md",
+            "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-acceptance-loop-v0.md",
             "docs/reference/protocols/content-ops-surface-v0.md",
             "docs/reference/protocols/issue-fix-acceptance-loop-v0.md",
