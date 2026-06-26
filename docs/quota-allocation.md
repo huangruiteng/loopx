@@ -391,10 +391,13 @@ may flip to `autonomous_replan_required` /
 `execution_obligation.must_attempt_work=true`; the executor should then perform
 one bounded replan slice instead of another quiet skip.
 
-After that bounded replan or accounting slice is acknowledged by a compact
-state run such as `monitor_poll_autonomous_replan_recorded_v0` or
-`delivery_completion_spend_accounted_v0`, later empty monitor polls for the
-same acknowledged wait do not repeatedly retrigger replan. They remain
+After that bounded replan slice is acknowledged by a compact state run carrying
+`autonomous_replan_ack_v0` and `repair_delta_contract_v0` with
+`delta_present=true`, later empty monitor polls for the same acknowledged wait
+do not repeatedly retrigger replan. A plain classification such as
+`monitor_poll_autonomous_replan_recorded_v0` is not enough. Accounting-only
+runs such as `delivery_completion_spend_accounted_v0` remain neutral liveness
+records; they do not close a replan obligation by themselves. Empty polls stay
 no-spend liveness checks until a material monitor transition, regression, or
 concrete blocker appears.
 

@@ -2004,15 +2004,20 @@ loopx refresh-state \
   --goal-id <goal-id> \
   --classification autonomous_replan_recorded \
   --autonomous-replan-recorded \
+  --repair-delta-kind runnable_todo_set \
   --delivery-batch-scale <scale> \
   --delivery-outcome <outcome>
 ```
 
-The resulting run carries `autonomous_replan_ack_v0`. Classification remains a
-human-readable history label; the structured ACK is the control-plane signal
+The resulting run carries `autonomous_replan_ack_v0` with
+`repair_delta_contract_v0`. Classification remains a human-readable history
+label; the structured ACK plus `delta_present=true` is the control-plane signal
 that lets status/quota stop projecting the replan obligation. This keeps agents
 responsible for actively closing the loop instead of relying on loose
 classification wording such as `autonomous_replan_validated_*`.
+If `--autonomous-replan-recorded` is used without a delta, the run is stored as
+`replan_noop`/`repair_noop`; any progress outcome is downgraded so it cannot
+hide the unresolved obligation.
 
 A replan ACK should also change the work frontier. It should add, split,
 supersede, complete-with-successor, or block a todo, or else record an explicit

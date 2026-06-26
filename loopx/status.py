@@ -465,10 +465,8 @@ AUTONOMOUS_RUN_HISTORY_PROGRESS_OUTCOMES = PROGRESS_DELIVERY_OUTCOMES
 AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS = {
     "quota_slot_spent",
     "quota_slot_voided",
+    "delivery_completion_spend_accounted_v0",
 }
-AUTONOMOUS_RUN_HISTORY_REPLAN_ACK_CLASSIFICATION = re.compile(
-    r"(?i)(?:autonomous_replan.*recorded|delivery_completion_spend_accounted)"
-)
 AUTONOMOUS_RUN_HISTORY_STALL_PATTERN = re.compile(
     r"(?i)(?:monitor|observe|observation|poll|watch|quiet|no[-_ ]?op|no[-_ ]?progress|stalled?|unchanged|dependency|停转|无进展|重复|反复|观察|轮询)"
 )
@@ -5696,10 +5694,12 @@ def run_history_monitor_wait_already_acknowledged(
 
 def autonomous_replan_ack_recorded(run: dict[str, Any]) -> bool:
     ack = run.get("autonomous_replan_ack")
-    if isinstance(ack, dict) and ack.get("recorded") is True:
-        return True
-    classification = str(run.get("classification") or "").strip()
-    return bool(classification and AUTONOMOUS_RUN_HISTORY_REPLAN_ACK_CLASSIFICATION.search(classification))
+    if not isinstance(ack, dict) or ack.get("recorded") is not True:
+        return False
+    delta_contract = ack.get("delta_contract")
+    if not isinstance(delta_contract, dict):
+        return False
+    return delta_contract.get("delta_present") is True
 
 
 def autonomous_replan_periodic_review_from_runs(

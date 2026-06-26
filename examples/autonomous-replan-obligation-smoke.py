@@ -192,6 +192,19 @@ def write_fixture(
                     "recommended_action": "Periodic review was recorded; continue selected next slice.",
                     "health_check": "compact replan ack",
                     "delivery_outcome": "outcome_progress",
+                    "autonomous_replan_ack": {
+                        "schema_version": "autonomous_replan_ack_v0",
+                        "recorded": True,
+                        "source": "fixture",
+                        "delta_contract": {
+                            "schema_version": "repair_delta_contract_v0",
+                            "required": True,
+                            "delta_present": True,
+                            "delta_kinds": ["runnable_todo_set"],
+                            "auto_evidence": [],
+                            "accepted_without_delta": False,
+                        },
+                    },
                 },
             )
     if periodic_run_count:
@@ -416,6 +429,8 @@ def assert_refresh_state_structured_ack_clears_replan() -> None:
             "--classification",
             "autonomous_replan_validated_20260621",
             "--autonomous-replan-recorded",
+            "--repair-delta-kind",
+            "runnable_todo_set",
             "--delivery-batch-scale",
             "single_surface",
             "--delivery-outcome",
@@ -429,10 +444,57 @@ def assert_refresh_state_structured_ack_clears_replan() -> None:
         json_path = Path(refresh["json_path"])
         record = json.loads(json_path.read_text(encoding="utf-8"))
         assert record["autonomous_replan_ack"]["recorded"] is True, record
+        delta = record["autonomous_replan_ack"]["delta_contract"]
+        assert delta["schema_version"] == "repair_delta_contract_v0", delta
+        assert delta["delta_present"] is True, delta
+        assert delta["delta_kinds"] == ["runnable_todo_set"], delta
 
         guard = run_cli("quota", "should-run", "--goal-id", GOAL_ID, registry_path=registry_path, runtime=runtime)
         assert "autonomous_replan_obligation" not in guard, guard
         assert guard["heartbeat_recommendation"]["recommended_mode"] != "autonomous_replan_required", guard
+
+
+def assert_replan_ack_without_delta_is_noop() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-autonomous-replan-") as tmp:
+        registry_path, runtime = write_fixture(
+            Path(tmp),
+            include_replan_signals=False,
+            periodic_run_count=20,
+        )
+        refresh = run_cli(
+            "refresh-state",
+            "--goal-id",
+            GOAL_ID,
+            "--classification",
+            "autonomous_replan_recorded",
+            "--autonomous-replan-recorded",
+            "--delivery-batch-scale",
+            "single_surface",
+            "--delivery-outcome",
+            "outcome_progress",
+            "--recommended-action",
+            "Tried to acknowledge a replan without changing the frontier.",
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert refresh["classification"] == "replan_noop", refresh
+        assert refresh["delivery_outcome"] == "outcome_gap", refresh
+        assert refresh["autonomous_replan_recorded"] is False, refresh
+        assert refresh["autonomous_replan_recorded_requested"] is True, refresh
+        delta = refresh["repair_delta_contract"]
+        assert delta["schema_version"] == "repair_delta_contract_v0", delta
+        assert delta["delta_present"] is False, delta
+
+        record = json.loads(Path(refresh["json_path"]).read_text(encoding="utf-8"))
+        assert record["autonomous_replan_ack"]["recorded"] is False, record
+        assert record["autonomous_replan_ack"]["requested"] is True, record
+        assert record["autonomous_replan_noop"]["classification"] == "replan_noop", record
+
+        guard = run_cli("quota", "should-run", "--goal-id", GOAL_ID, registry_path=registry_path, runtime=runtime)
+        obligation = guard["autonomous_replan_obligation"]
+        assert obligation["required"] is True, guard
+        assert obligation["triggers"][0]["kind"] == "periodic_review_due", guard
+        assert guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", guard
 
 
 def assert_no_replan_obligation_without_signal() -> None:
@@ -461,6 +523,7 @@ def main() -> int:
     assert_no_periodic_replan_before_threshold_or_after_ack()
     assert_validated_classification_without_ack_does_not_clear_replan()
     assert_refresh_state_structured_ack_clears_replan()
+    assert_replan_ack_without_delta_is_noop()
     assert_no_replan_obligation_without_signal()
     print("autonomous-replan-obligation-smoke ok")
     return 0

@@ -21,6 +21,7 @@ from ..project_map import (
 from ..state_refresh import (
     DEFAULT_REFRESH_ACTION,
     DEFAULT_REFRESH_CLASSIFICATION,
+    REPAIR_DELTA_KIND_CHOICES,
     refresh_state_run,
     render_state_refresh_markdown,
 )
@@ -93,6 +94,17 @@ def register_project_lifecycle_commands(
         help=(
             "Mark this refresh as the explicit autonomous replan ACK. "
             "Use only after the agent has performed and written back the bounded replan slice."
+        ),
+    )
+    refresh_state_parser.add_argument(
+        "--repair-delta-kind",
+        dest="repair_delta_kinds",
+        choices=REPAIR_DELTA_KIND_CHOICES,
+        action="append",
+        help=(
+            "Machine-visible frontier changed by this repair/replan ACK. Repeat for "
+            "multiple deltas. Without a delta, --autonomous-replan-recorded is stored "
+            "as replan_noop/repair_noop and does not clear the obligation."
         ),
     )
     refresh_state_parser.add_argument(
@@ -273,6 +285,7 @@ def handle_project_lifecycle_command(
                 agent_id=args.agent_id,
                 agent_lane=args.agent_lane,
                 autonomous_replan_recorded=bool(args.autonomous_replan_recorded),
+                repair_delta_kinds=args.repair_delta_kinds,
                 dry_run=bool(args.dry_run),
                 sync_global=not bool(args.no_global_sync),
             )

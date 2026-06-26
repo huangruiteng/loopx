@@ -32,6 +32,21 @@ RECOMMENDED_ACTION_SECTION_LINE_LIMIT = 16
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
 CHECKBOX_PREFIX_RE = re.compile(r"^\[(?P<mark>[ xX])\]\s+")
 ACTIVE_STATE_NEXT_ACTION_UPDATE_SCHEMA_VERSION = "active_state_next_action_update_v0"
+REPAIR_DELTA_CONTRACT_SCHEMA_VERSION = "repair_delta_contract_v0"
+REPAIR_NOOP_SCHEMA_VERSION = "repair_noop_v0"
+REPAIR_DELTA_KIND_CHOICES = (
+    "effective_action",
+    "interaction_contract",
+    "runnable_todo_set",
+    "user_gate",
+    "blocker",
+    "successor_or_supersede",
+    "capability_gate",
+    "monitor_target",
+    "active_state_next_action",
+    "goal_boundary_projection",
+    "watch_lane_continuation",
+)
 
 
 def now_local() -> str:
@@ -101,6 +116,71 @@ def normalize_next_action_text(value: str) -> str:
         raise ValueError("next_action must not be empty")
     validate_public_safe_text("active_state_next_action", text)
     return text
+
+
+def normalize_repair_delta_kinds(values: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    allowed = set(REPAIR_DELTA_KIND_CHOICES)
+    for value in values or []:
+        item = str(value or "").strip()
+        if not item:
+            continue
+        if item not in allowed:
+            raise ValueError(
+                "repair_delta_kind must be one of: " + ", ".join(REPAIR_DELTA_KIND_CHOICES)
+            )
+        if item in seen:
+            continue
+        seen.add(item)
+        normalized.append(item)
+    return normalized
+
+
+def _noop_classification_for(classification: str) -> str:
+    normalized = str(classification or "").strip().lower()
+    if "repair" in normalized and "replan" not in normalized:
+        return "repair_noop"
+    return "replan_noop"
+
+
+def build_repair_delta_contract(
+    *,
+    requested_delta_kinds: list[str],
+    active_state_next_action_update: dict[str, Any] | None,
+    dry_run: bool,
+) -> dict[str, Any]:
+    delta_kinds = list(requested_delta_kinds)
+    evidence: list[dict[str, Any]] = []
+    update = active_state_next_action_update or {}
+    if update.get("updated") is True:
+        if "active_state_next_action" not in delta_kinds:
+            delta_kinds.append("active_state_next_action")
+        evidence.append(
+            {
+                "kind": "active_state_next_action",
+                "source": "refresh_state_next_action_update",
+                "updated": True,
+            }
+        )
+    elif update.get("would_update") is True:
+        evidence.append(
+            {
+                "kind": "active_state_next_action",
+                "source": "refresh_state_next_action_update",
+                "would_update": True,
+                "dry_run": bool(dry_run),
+            }
+        )
+
+    return {
+        "schema_version": REPAIR_DELTA_CONTRACT_SCHEMA_VERSION,
+        "required": True,
+        "delta_present": bool(delta_kinds),
+        "delta_kinds": delta_kinds,
+        "auto_evidence": evidence,
+        "accepted_without_delta": False,
+    }
 
 
 def next_action_section_bounds(lines: list[str]) -> tuple[int, int] | None:
@@ -314,6 +394,7 @@ def build_state_refresh_record(
     agent_id: str | None = None,
     agent_lane: str | None = None,
     autonomous_replan_recorded: bool = False,
+    repair_delta_contract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     frontmatter = parse_frontmatter(state_text)
     next_action = extract_section_lines(state_text, "Next Action")
@@ -361,6 +442,8 @@ def build_state_refresh_record(
             "recorded": True,
             "source": "refresh_state",
         }
+        if repair_delta_contract:
+            record["autonomous_replan_ack"]["delta_contract"] = repair_delta_contract
     if agent_id:
         record["progress_scope"] = AGENT_LANE_PROGRESS_SCOPE
         record["agent_id"] = agent_id
@@ -385,6 +468,7 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
         f"- delivery_batch_scale: `{payload.get('delivery_batch_scale')}`",
         f"- delivery_outcome: `{payload.get('delivery_outcome')}`",
         f"- autonomous_replan_recorded: `{payload.get('autonomous_replan_recorded')}`",
+        f"- autonomous_replan_recorded_requested: `{payload.get('autonomous_replan_recorded_requested')}`",
         f"- generated_at: `{payload.get('generated_at')}`",
         f"- state_file: `{state.get('path')}`",
         f"- state_updated_at: `{frontmatter.get('updated_at')}`",
@@ -393,6 +477,18 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
     if payload.get("error"):
         lines.append(f"- error: {payload.get('error')}")
         return "\n".join(lines)
+
+    repair_delta = (
+        payload.get("repair_delta_contract")
+        if isinstance(payload.get("repair_delta_contract"), dict)
+        else {}
+    )
+    if repair_delta:
+        lines.append(
+            "- repair_delta_contract: "
+            f"delta_present={repair_delta.get('delta_present')} "
+            f"kinds={','.join(repair_delta.get('delta_kinds') or [])}"
+        )
 
     projection_gap = (
         payload.get("state_projection_gap")
@@ -470,6 +566,7 @@ def refresh_state_run(
     agent_id: str | None = None,
     agent_lane: str | None = None,
     autonomous_replan_recorded: bool = False,
+    repair_delta_kinds: list[str] | None = None,
     dry_run: bool,
     sync_global: bool = True,
 ) -> dict[str, Any]:
@@ -489,6 +586,7 @@ def refresh_state_run(
     normalized_delivery_outcome = (
         require_delivery_outcome(delivery_outcome).value if delivery_outcome else None
     )
+    normalized_repair_delta_kinds = normalize_repair_delta_kinds(repair_delta_kinds)
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
     registry_goal, resolved_project, resolved_state_file = resolve_goal_state(
@@ -541,6 +639,20 @@ def refresh_state_run(
 
     action = recommended_action or derive_recommended_action(state_text)
     validate_public_safe_text("recommended_action", action)
+    repair_delta_contract: dict[str, Any] | None = None
+    requested_classification = classification
+    effective_autonomous_replan_recorded = bool(autonomous_replan_recorded)
+    if autonomous_replan_recorded:
+        repair_delta_contract = build_repair_delta_contract(
+            requested_delta_kinds=normalized_repair_delta_kinds,
+            active_state_next_action_update=active_state_next_action_update,
+            dry_run=dry_run,
+        )
+        if not repair_delta_contract["delta_present"]:
+            classification = _noop_classification_for(classification)
+            effective_autonomous_replan_recorded = False
+            if normalized_delivery_outcome in {"outcome_progress", "primary_goal_outcome"}:
+                normalized_delivery_outcome = "outcome_gap"
     record = build_state_refresh_record(
         goal_id=safe_goal_id,
         state_file=resolved_state_file,
@@ -553,8 +665,26 @@ def refresh_state_run(
         delivery_outcome=normalized_delivery_outcome,
         agent_id=normalized_agent_id or None,
         agent_lane=normalized_agent_lane or None,
-        autonomous_replan_recorded=autonomous_replan_recorded,
+        autonomous_replan_recorded=effective_autonomous_replan_recorded,
+        repair_delta_contract=repair_delta_contract,
     )
+    if autonomous_replan_recorded:
+        if "autonomous_replan_ack" not in record:
+            record["autonomous_replan_ack"] = {
+                "schema_version": "autonomous_replan_ack_v0",
+                "recorded": False,
+                "source": "refresh_state",
+                "delta_contract": repair_delta_contract,
+            }
+        record["autonomous_replan_ack"]["requested"] = True
+        if requested_classification != classification:
+            record["autonomous_replan_ack"]["requested_classification"] = requested_classification
+            record["autonomous_replan_noop"] = {
+                "schema_version": REPAIR_NOOP_SCHEMA_VERSION,
+                "classification": classification,
+                "requested_classification": requested_classification,
+                "reason": "autonomous replan ACK requested without a machine-visible repair delta",
+            }
     if active_state_next_action_update:
         record["active_state_next_action_update"] = active_state_next_action_update
 
@@ -576,6 +706,8 @@ def refresh_state_run(
         index_record["delivery_outcome"] = normalized_delivery_outcome
     if autonomous_replan_recorded:
         index_record["autonomous_replan_ack"] = record["autonomous_replan_ack"]
+        if requested_classification != classification:
+            index_record["requested_classification"] = requested_classification
     if normalized_agent_id:
         index_record["progress_scope"] = AGENT_LANE_PROGRESS_SCOPE
         index_record["agent_id"] = normalized_agent_id
@@ -592,7 +724,9 @@ def refresh_state_run(
         "progress_scope": record.get("progress_scope"),
         "agent_id": record.get("agent_id"),
         "agent_lane": record.get("agent_lane"),
-        "autonomous_replan_recorded": autonomous_replan_recorded,
+        "autonomous_replan_recorded": effective_autonomous_replan_recorded,
+        "autonomous_replan_recorded_requested": bool(autonomous_replan_recorded),
+        "repair_delta_contract": repair_delta_contract,
         "recommended_action": action,
         "active_state_next_action_update": active_state_next_action_update,
         "generated_at": generated_at,

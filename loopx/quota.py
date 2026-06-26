@@ -3805,7 +3805,7 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
     if mode == "autonomous_replan":
         return [
             "run one bounded autonomous replan slice and write back the selected next action/todo changes",
-            f"loopx refresh-state --goal-id {goal_id} --classification autonomous_replan_recorded --autonomous-replan-recorded --delivery-batch-scale <scale> --delivery-outcome <outcome>",
+            f"loopx refresh-state --goal-id {goal_id} --classification autonomous_replan_recorded --autonomous-replan-recorded --repair-delta-kind <delta_kind> --delivery-batch-scale <scale> --delivery-outcome <outcome>",
             f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
         ]
     if mode in {
