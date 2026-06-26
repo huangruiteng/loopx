@@ -1988,6 +1988,11 @@ def assert_monitor_poll_event_carries_agent_id() -> None:
 
     assert event["agent_id"] == SCOPED_AGENT_ID, event
     assert event["monitor_event"]["agent_id"] == SCOPED_AGENT_ID, event
+    target = event["monitor_target"]
+    assert target["schema_version"] == "quota_monitor_target_v0", target
+    assert target["target_id"] == event["monitor_event"]["monitor_target"]["target_id"], event
+    assert target["agent_id"] == SCOPED_AGENT_ID, target
+    assert target["effective_action"] == "monitor_quiet_skip", target
 
 
 def main() -> int:

@@ -157,6 +157,7 @@ SIDE_AGENT_CLAIM_SCOPE_SCHEMA_VERSION = AGENT_CLAIM_SCOPE_SCHEMA_VERSION
 AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION = "agent_lane_next_action_v0"
 AGENT_SCOPE_FRONTIER_SCHEMA_VERSION = "agent_scope_frontier_v0"
 AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION = "agent_lane_frontier_hint_v0"
+QUOTA_MONITOR_TARGET_SCHEMA_VERSION = "quota_monitor_target_v0"
 
 
 class AgentScopeFrontierAction(str, Enum):
@@ -7324,6 +7325,41 @@ def _quota_decision_agent_id(decision: dict[str, Any]) -> str | None:
     return normalize_todo_claimed_by(agent_identity.get("agent_id"))
 
 
+def _monitor_target_summary(value: Any, *, limit: int = 160) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+
+def _quota_monitor_target(before: dict[str, Any], *, monitor_mode: str) -> dict[str, Any]:
+    action_summary = _monitor_target_summary(
+        before.get("recommended_action") or before.get("reason") or "",
+        limit=160,
+    )
+    agent_id = _quota_decision_agent_id(before) or ""
+    parts = {
+        "goal_id": str(before.get("goal_id") or ""),
+        "agent_id": agent_id,
+        "monitor_mode": str(monitor_mode or ""),
+        "effective_action": str(before.get("effective_action") or ""),
+        "action_summary": action_summary,
+    }
+    target_id = hashlib.sha256(
+        json.dumps(parts, ensure_ascii=True, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:16]
+    target: dict[str, Any] = {
+        "schema_version": QUOTA_MONITOR_TARGET_SCHEMA_VERSION,
+        "target_id": target_id,
+        "monitor_mode": parts["monitor_mode"],
+        "effective_action": parts["effective_action"],
+        "action_summary": action_summary,
+    }
+    if agent_id:
+        target["agent_id"] = agent_id
+    return target
+
+
 def _work_lane_reason_codes(work_lane_contract: dict[str, Any]) -> set[str]:
     reason_codes = work_lane_contract.get("reason_codes")
     if not isinstance(reason_codes, list):
@@ -7387,6 +7423,7 @@ def build_quota_monitor_poll_event(
         if external_monitor_poll
         else "monitor_quiet_until_material_transition"
     )
+    monitor_target = _quota_monitor_target(before, monitor_mode=monitor_mode)
     safe_reason_summary = str(reason_summary or "").strip()
     if not safe_reason_summary:
         safe_reason_summary = (
@@ -7409,10 +7446,12 @@ def build_quota_monitor_poll_event(
             else "monitor-only poll unchanged; no quota spend; no material transition"
         ),
         "delivery_outcome": DeliveryOutcome.SURFACE_ONLY.value,
+        "monitor_target": monitor_target,
         "monitor_event": {
             "event_type": QUOTA_MONITOR_POLL_CLASSIFICATION,
             "source": safe_source,
             "monitor_mode": monitor_mode,
+            "monitor_target": monitor_target,
             "reason_summary": safe_reason_summary,
             "before": _compact_quota_decision(before),
         },
@@ -7639,6 +7678,7 @@ def record_quota_monitor_poll(
         "recommended_action": record["recommended_action"],
         "health_check": record["health_check"],
         "delivery_outcome": record["delivery_outcome"],
+        "monitor_target": record["monitor_target"],
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
@@ -8115,6 +8155,7 @@ def render_quota_monitor_poll_markdown(payload: dict[str, Any]) -> str:
         f"- agent_id: `{payload.get('agent_id') or event.get('agent_id') or ''}`",
         f"- source: `{event.get('source')}`",
         f"- effective_action: `{before.get('effective_action')}`",
+        f"- monitor_target: `{(event.get('monitor_target') or {}).get('target_id') if isinstance(event.get('monitor_target'), dict) else ''}`",
         f"- should_run: `{before.get('should_run')}`",
         f"- self_repair_allowed: `{before.get('self_repair_allowed')}`",
         f"- state: `{before.get('state')}`",

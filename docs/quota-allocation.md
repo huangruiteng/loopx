@@ -385,11 +385,14 @@ loopx --registry "$HOME/.codex/loopx/registry.global.json" quota monitor-poll --
 `effective_action=monitor_quiet_skip` and
 `recommended_mode=monitor_quiet_until_material_transition`. It appends a
 `quota_monitor_poll` run record, does not mutate the registry, and does not
-append `quota_slot_spent`. Two consecutive public stalled monitor records can
-feed `autonomous_replan_obligation`, so the next independent `quota should-run`
-may flip to `autonomous_replan_required` /
-`execution_obligation.must_attempt_work=true`; the executor should then perform
-one bounded replan slice instead of another quiet skip.
+append `quota_slot_spent`. The run includes `quota_monitor_target_v0`, a compact
+hash of the public monitor identity. Two consecutive public stalled monitor
+records with the same target feed `autonomous_replan_obligation` as
+`dead_monitor_repeat`, so the next independent `quota should-run` may flip to
+`autonomous_replan_required` /
+`execution_obligation.must_attempt_work=true`; the executor should then record a
+watch-lane expiry, concrete blocker, todo supersede, or successor runnable todo
+instead of another quiet skip.
 
 After that bounded replan slice is acknowledged by a compact state run carrying
 `autonomous_replan_ack_v0` and `repair_delta_contract_v0` with

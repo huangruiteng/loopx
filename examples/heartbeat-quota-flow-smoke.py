@@ -716,6 +716,22 @@ def main() -> int:
         )
         assert replan_guard["should_run"] is True, replan_guard
         assert replan_guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", replan_guard
+        obligation = replan_guard["autonomous_replan_obligation"]
+        assert obligation["triggers"][0]["kind"] == "dead_monitor_repeat", obligation
+        assert obligation["dead_monitor_detector"]["schema_version"] == "dead_monitor_repeat_v0", obligation
+        assert obligation["dead_monitor_detector"]["required_resolution"] == [
+            "watch_lane_expiry",
+            "blocker",
+            "todo_supersede",
+            "successor_runnable_todo",
+        ], obligation
+        assert obligation["guidance_actions"] == [
+            "set_watch_expiry",
+            "write_blocker",
+            "supersede_monitor",
+            "create_successor",
+        ], obligation
+        assert "watch-lane continuation with expiry" in obligation["recommended_action"], obligation
         assert replan_guard["execution_obligation"]["kind"] == "autonomous_replan_required", replan_guard
         assert replan_guard["execution_obligation"]["must_attempt_work"] is True, replan_guard
         assert replan_guard["automation_liveness"]["automation_action"] == "execute_bounded_work", replan_guard
