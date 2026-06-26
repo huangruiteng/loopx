@@ -139,7 +139,10 @@ Current implementation status:
   `required_write_scopes`, and `required_decision_scopes` to build a bounded
   read-only safe-parallel batch. It keeps state writes serialized, blocks
   unresolved user decision scopes, blocks external/protected work by default,
-  and reports write-scope conflicts as waiting candidates.
+  and reports write-scope conflicts as waiting candidates. Glob-style write
+  scopes use their nearest stable directory prefix, or a broad conflict when no
+  stable directory exists, so `docs/**/*.md` conflicts with `docs/api.md`
+  instead of being parallelized.
 - Hot-path quota relation still treats the fields as projection metadata; full
   gate dominance evaluation is intentionally left for a later runtime slice.
 
