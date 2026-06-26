@@ -1877,6 +1877,44 @@ def _skillsbench_controller_trace_counters(
             return value
         return 0
 
+    def successful_subcommand_count(command: str) -> int:
+        counts = controller_trace.get(
+            "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
+        )
+        if not isinstance(counts, dict):
+            return 0
+        value = counts.get(command)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+        return 0
+
+    def driver_command_count(command: str) -> int:
+        counts = controller_trace.get(
+            "remote_command_file_bridge_driver_lifecycle_command_counts"
+        )
+        if not isinstance(counts, dict):
+            return 0
+        value = counts.get(command)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+        return 0
+
+    def count_map(key: str) -> dict[str, int]:
+        raw = controller_trace.get(key)
+        if not isinstance(raw, dict):
+            return {}
+        counts: dict[str, int] = {}
+        for name, value in raw.items():
+            if (
+                isinstance(name, str)
+                and name
+                and isinstance(value, int)
+                and not isinstance(value, bool)
+                and value >= 0
+            ):
+                counts[name[:80]] = value
+        return dict(sorted(counts.items()))
+
     def max_direct_or_subcommands(key: str, commands: tuple[str, ...]) -> int:
         direct = count(key)
         derived = sum(subcommand_count(command) for command in commands)
@@ -1925,6 +1963,33 @@ def _skillsbench_controller_trace_counters(
                 first_success_round = int(record["agent_round"])
                 break
 
+    driver_lifecycle_command_successful = (
+        count("remote_command_file_bridge_driver_lifecycle_failure_count") == 0
+    )
+    selected_todo_claimed = bool(
+        controller_trace.get("selected_todo_claimed") is True
+        or successful_subcommand_count("todo claim") > 0
+        or (
+            driver_lifecycle_command_successful
+            and driver_command_count("todo claim") > 0
+        )
+    )
+    selected_todo_updated_before_solver = bool(
+        controller_trace.get("selected_todo_updated_before_solver") is True
+        or successful_subcommand_count("todo update") > 0
+        or (
+            driver_lifecycle_command_successful
+            and driver_command_count("todo update") > 0
+        )
+    )
+    selected_todo_completed_before_spend = bool(
+        controller_trace.get("selected_todo_completed_before_spend") is True
+        or (
+            successful_subcommand_count("todo complete") > 0
+            and successful_subcommand_count("quota spend-slot") > 0
+        )
+    )
+
     counters: dict[str, Any] = {
         "controller_trace_present": True,
         "controller_trace_schema_version": schema_version,
@@ -1952,6 +2017,25 @@ def _skillsbench_controller_trace_counters(
         is True,
         "blind_loop": controller_trace.get("blind_loop") is True,
         "product_mode": controller_trace.get("product_mode") is True,
+        "goal_start_product_mode": controller_trace.get("goal_start_product_mode")
+        is True,
+        "goal_start_plan_observed": controller_trace.get("goal_start_plan_observed")
+        is True,
+        "planner_before_todo_write": controller_trace.get("planner_before_todo_write")
+        is True,
+        "same_priority_order_preserved": controller_trace.get(
+            "same_priority_order_preserved"
+        )
+        is True,
+        "selected_todo_claimed": selected_todo_claimed,
+        "selected_todo_updated_before_solver": selected_todo_updated_before_solver,
+        "selected_todo_completed_before_spend": selected_todo_completed_before_spend,
+        "non_selected_todos_preserved_open_or_deferred": controller_trace.get(
+            "non_selected_todos_preserved_open_or_deferred"
+        )
+        is True,
+        "planned_todo_count": count("planned_todo_count"),
+        "planned_p0_count": count("planned_p0_count"),
         "case_goal_state_packet_present": controller_trace.get(
             "case_goal_state_packet_present"
         )
@@ -2249,6 +2333,20 @@ def _skillsbench_controller_trace_counters(
     )
     if last_decision:
         counters["last_decision"] = last_decision
+    selected_p0_todo_id = _skillsbench_public_safe_label(
+        controller_trace.get("selected_p0_todo_id") or ""
+    )
+    if selected_p0_todo_id:
+        counters["selected_p0_todo_id"] = selected_p0_todo_id
+    for source_key in (
+        "remote_command_file_bridge_agent_loopx_subcommand_counts",
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts",
+        "remote_command_file_bridge_driver_lifecycle_command_counts",
+        "remote_command_file_bridge_driver_lifecycle_returncode_counts",
+    ):
+        counts = count_map(source_key)
+        if counts:
+            counters[source_key] = counts
     init_status = _skillsbench_public_safe_label(
         controller_trace.get("case_goal_state_init_status") or ""
     )

@@ -1519,6 +1519,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
         "benchflow_intermediate_soft_verify_orphan_cleanup_requested",
         "benchflow_intermediate_soft_verify_orphan_cleanup_raw_logs_read",
+        "goal_start_product_mode",
+        "goal_start_plan_required",
+        "goal_start_selected_p0_lifecycle_required",
         "benchflow_verifier_prep_timeout_override_enabled",
         "benchflow_verifier_prep_timeout_raw_command_recorded",
         "benchflow_final_verifier_timeout_enabled",
@@ -1576,6 +1579,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_cleanup_term_sent_count",
         "benchflow_setup_stall_cleanup_kill_sent_count",
         "benchflow_setup_stall_cleanup_alive_after_count",
+        "goal_start_planned_todo_count_expected",
         "remote_command_file_bridge_solver_trace_count",
         "remote_command_file_bridge_solver_probe_ready_count",
         "remote_command_file_bridge_solver_operation_count",
@@ -1619,6 +1623,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
     for field in (
         "remote_command_file_bridge_agent_operation_counts",
         "remote_command_file_bridge_agent_loopx_subcommand_counts",
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts",
         "remote_command_file_bridge_driver_lifecycle_command_counts",
         "remote_command_file_bridge_driver_lifecycle_returncode_counts",
     ):
@@ -2934,6 +2939,260 @@ def _append_case_timeline_event(
     events.append(entry)
 
 
+def _goal_start_public_count_map(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, int] = {}
+    for key, count in value.items():
+        if (
+            isinstance(key, str)
+            and key
+            and isinstance(count, int)
+            and not isinstance(count, bool)
+            and count >= 0
+        ):
+            compact[key[:80]] = count
+    return compact
+
+
+def _goal_start_subcommand_count(
+    families: tuple[str, ...],
+    *maps: Any,
+) -> int:
+    return max(
+        (
+            _subcommand_family_count(_goal_start_public_count_map(item), *families)
+            for item in maps
+        ),
+        default=0,
+    )
+
+
+def _build_goal_start_product_mode_control_score(
+    compact: dict[str, Any],
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    """Summarize goal-start control-plane closure from public compact counters."""
+
+    counters = (
+        compact.get("interaction_counters")
+        if isinstance(compact.get("interaction_counters"), dict)
+        else {}
+    )
+    runner_prerequisites = _public_runner_prerequisites(
+        plan.get("runner_prerequisites")
+    )
+    compact_runner_prerequisites = compact.get("runner_prerequisites")
+    if isinstance(compact_runner_prerequisites, dict):
+        runner_prerequisites.update(compact_runner_prerequisites)
+    lifecycle_contract = (
+        compact.get("product_mode_lifecycle_contract")
+        if isinstance(compact.get("product_mode_lifecycle_contract"), dict)
+        else {}
+    )
+
+    required = bool(
+        counters.get("goal_start_product_mode") is True
+        or runner_prerequisites.get("goal_start_product_mode") is True
+        or runner_prerequisites.get("goal_start_plan_required") is True
+    )
+    if not required:
+        return {}
+
+    agent_successful_subcommands = counters.get(
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
+    )
+    agent_requested_subcommands = counters.get(
+        "remote_command_file_bridge_agent_loopx_subcommand_counts"
+    )
+    prereq_agent_successful_subcommands = runner_prerequisites.get(
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
+    )
+    prereq_agent_requested_subcommands = runner_prerequisites.get(
+        "remote_command_file_bridge_agent_loopx_subcommand_counts"
+    )
+    driver_commands = counters.get(
+        "remote_command_file_bridge_driver_lifecycle_command_counts"
+    )
+    prereq_driver_commands = runner_prerequisites.get(
+        "remote_command_file_bridge_driver_lifecycle_command_counts"
+    )
+    driver_failure_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_failure_count"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_driver_lifecycle_failure_count"
+        ),
+    )
+    driver_commands_count_as_successful = driver_failure_count == 0
+
+    selected_p0_todo_id = _case_timeline_safe_string(
+        counters.get("selected_p0_todo_id")
+        or runner_prerequisites.get("selected_p0_todo_id"),
+        limit=100,
+    )
+    planned_todo_count = _case_timeline_max_int(counters.get("planned_todo_count"))
+    expected_todo_count = _case_timeline_max_int(
+        runner_prerequisites.get("goal_start_planned_todo_count_expected")
+    )
+    planned_p0_count = _case_timeline_max_int(counters.get("planned_p0_count"))
+    closeout_spend_count = _case_timeline_max_int(
+        counters.get("remote_command_file_bridge_agent_quota_spend_slot_count"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_agent_quota_spend_slot_count"
+        ),
+        lifecycle_contract.get("agent_bridge_quota_spend_slot_count"),
+    )
+
+    agent_claim_count = _goal_start_subcommand_count(
+        ("todo claim",),
+        agent_successful_subcommands,
+        prereq_agent_successful_subcommands,
+        agent_requested_subcommands,
+        prereq_agent_requested_subcommands,
+    )
+    agent_update_count = _goal_start_subcommand_count(
+        ("todo update",),
+        agent_successful_subcommands,
+        prereq_agent_successful_subcommands,
+        agent_requested_subcommands,
+        prereq_agent_requested_subcommands,
+    )
+    agent_complete_count = _goal_start_subcommand_count(
+        ("todo complete",),
+        agent_successful_subcommands,
+        prereq_agent_successful_subcommands,
+        agent_requested_subcommands,
+        prereq_agent_requested_subcommands,
+    )
+    agent_spend_count = _goal_start_subcommand_count(
+        ("quota spend-slot",),
+        agent_successful_subcommands,
+        prereq_agent_successful_subcommands,
+        agent_requested_subcommands,
+        prereq_agent_requested_subcommands,
+    )
+    driver_claim_count = (
+        _goal_start_subcommand_count(("todo claim",), driver_commands, prereq_driver_commands)
+        if driver_commands_count_as_successful
+        else 0
+    )
+    driver_update_count = (
+        _goal_start_subcommand_count(("todo update",), driver_commands, prereq_driver_commands)
+        if driver_commands_count_as_successful
+        else 0
+    )
+
+    selected_todo_claimed = bool(
+        counters.get("selected_todo_claimed") is True
+        or agent_claim_count > 0
+        or driver_claim_count > 0
+    )
+    selected_todo_updated_before_solver = bool(
+        counters.get("selected_todo_updated_before_solver") is True
+        or agent_update_count > 0
+        or driver_update_count > 0
+    )
+    selected_todo_spend_observed = bool(closeout_spend_count > 0 or agent_spend_count > 0)
+    selected_todo_completed_before_spend = bool(
+        counters.get("selected_todo_completed_before_spend") is True
+        or (agent_complete_count > 0 and selected_todo_spend_observed)
+    )
+    last_decision = _case_timeline_safe_string(counters.get("last_decision"), limit=100)
+    premature_done_signal_count = _case_timeline_max_int(
+        counters.get("product_mode_declared_done_below_passing_reward_count")
+    )
+    premature_done_stop_reason = ""
+    if (
+        counters.get("product_mode_declared_done_below_passing_reward") is True
+        and last_decision.startswith("stop_after")
+        and "below_passing_reward" in last_decision
+    ):
+        premature_done_stop_reason = (
+            last_decision or "declared_done_below_passing_reward"
+        )
+
+    component_results = [
+        {
+            "name": "plan_observed",
+            "satisfied": counters.get("goal_start_plan_observed") is True,
+        },
+        {
+            "name": "planned_todo_count",
+            "satisfied": bool(
+                planned_todo_count > 0
+                and (expected_todo_count == 0 or planned_todo_count >= expected_todo_count)
+            ),
+        },
+        {"name": "planned_p0_count", "satisfied": planned_p0_count > 0},
+        {
+            "name": "planner_before_todo_write",
+            "satisfied": counters.get("planner_before_todo_write") is True,
+        },
+        {
+            "name": "same_priority_order_preserved",
+            "satisfied": counters.get("same_priority_order_preserved") is True,
+        },
+        {"name": "selected_p0_todo_id", "satisfied": bool(selected_p0_todo_id)},
+        {"name": "selected_todo_claimed", "satisfied": selected_todo_claimed},
+        {
+            "name": "selected_todo_updated_before_solver",
+            "satisfied": selected_todo_updated_before_solver,
+        },
+        {
+            "name": "selected_todo_completed_before_spend",
+            "satisfied": selected_todo_completed_before_spend,
+        },
+        {
+            "name": "selected_todo_spend_observed",
+            "satisfied": selected_todo_spend_observed,
+        },
+        {
+            "name": "non_selected_todos_preserved_open_or_deferred",
+            "satisfied": (
+                counters.get("non_selected_todos_preserved_open_or_deferred") is True
+            ),
+        },
+        {"name": "no_premature_done_stop", "satisfied": not premature_done_stop_reason},
+    ]
+    satisfied_count = sum(1 for item in component_results if item["satisfied"])
+    component_count = len(component_results)
+    score = round(satisfied_count / component_count, 3) if component_count else 0.0
+    return {
+        "schema_version": "skillsbench_goal_start_product_mode_control_score_v0",
+        "required": True,
+        "satisfied": satisfied_count == component_count,
+        "score": score,
+        "component_count": component_count,
+        "satisfied_component_count": satisfied_count,
+        "raw_material_recorded": False,
+        "goal_start_plan_observed": counters.get("goal_start_plan_observed") is True,
+        "planned_todo_count": planned_todo_count,
+        "planned_todo_count_expected": expected_todo_count,
+        "planned_p0_count": planned_p0_count,
+        "planner_before_todo_write": counters.get("planner_before_todo_write") is True,
+        "same_priority_order_preserved": (
+            counters.get("same_priority_order_preserved") is True
+        ),
+        "selected_p0_todo_id": selected_p0_todo_id,
+        "selected_todo_claimed": selected_todo_claimed,
+        "selected_todo_updated_before_solver": selected_todo_updated_before_solver,
+        "selected_todo_completed_before_spend": selected_todo_completed_before_spend,
+        "selected_todo_spend_observed": selected_todo_spend_observed,
+        "non_selected_todos_preserved_open_or_deferred": (
+            counters.get("non_selected_todos_preserved_open_or_deferred") is True
+        ),
+        "premature_done_signal_count": premature_done_signal_count,
+        "premature_done_stop_reason": premature_done_stop_reason,
+        "agent_todo_claim_count": agent_claim_count,
+        "agent_todo_update_count": agent_update_count,
+        "agent_todo_complete_count": agent_complete_count,
+        "agent_quota_spend_slot_count": max(closeout_spend_count, agent_spend_count),
+        "driver_todo_claim_count": driver_claim_count,
+        "driver_todo_update_count": driver_update_count,
+        "component_results": component_results,
+    }
+
+
 def _build_case_event_timeline(
     compact: dict[str, Any],
     plan: dict[str, Any],
@@ -2990,6 +3249,61 @@ def _build_case_event_timeline(
             counters.get("case_goal_state_initialized_before_agent") is True
         ),
     )
+
+    goal_start_control_score = (
+        compact.get("goal_start_product_mode_control_score")
+        if isinstance(compact.get("goal_start_product_mode_control_score"), dict)
+        else _build_goal_start_product_mode_control_score(compact, plan)
+    )
+    if goal_start_control_score:
+        if goal_start_control_score.get("satisfied") is True:
+            goal_start_status = "satisfied"
+        elif goal_start_control_score.get("goal_start_plan_observed") is True:
+            goal_start_status = "partial"
+        else:
+            goal_start_status = "missing"
+        _append_case_timeline_event(
+            events,
+            phase="goal_start_plan",
+            event="ranked_todo_plan_selected_p0_lifecycle",
+            status=goal_start_status,
+            control_score=goal_start_control_score.get("score"),
+            planned_todo_count=goal_start_control_score.get("planned_todo_count"),
+            planned_todo_count_expected=goal_start_control_score.get(
+                "planned_todo_count_expected"
+            ),
+            planned_p0_count=goal_start_control_score.get("planned_p0_count"),
+            planner_before_todo_write=goal_start_control_score.get(
+                "planner_before_todo_write"
+            ),
+            same_priority_order_preserved=goal_start_control_score.get(
+                "same_priority_order_preserved"
+            ),
+            selected_p0_todo_id=goal_start_control_score.get("selected_p0_todo_id"),
+            selected_todo_claimed=goal_start_control_score.get(
+                "selected_todo_claimed"
+            ),
+            selected_todo_updated_before_solver=goal_start_control_score.get(
+                "selected_todo_updated_before_solver"
+            ),
+            selected_todo_completed_before_spend=goal_start_control_score.get(
+                "selected_todo_completed_before_spend"
+            ),
+            selected_todo_spend_observed=goal_start_control_score.get(
+                "selected_todo_spend_observed"
+            ),
+            non_selected_todos_preserved_open_or_deferred=(
+                goal_start_control_score.get(
+                    "non_selected_todos_preserved_open_or_deferred"
+                )
+            ),
+            premature_done_signal_count=goal_start_control_score.get(
+                "premature_done_signal_count"
+            ),
+            premature_done_stop_reason=goal_start_control_score.get(
+                "premature_done_stop_reason"
+            ),
+        )
 
     driver_checkpoint_count = _case_timeline_max_int(
         counters.get("remote_command_file_bridge_driver_lifecycle_checkpoint_count"),
@@ -8050,6 +8364,12 @@ def reduce_result(
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         compact["runner_output_capture"] = runner_output_capture
+    goal_start_control_score = _build_goal_start_product_mode_control_score(
+        compact,
+        plan,
+    )
+    if goal_start_control_score:
+        compact["goal_start_product_mode_control_score"] = goal_start_control_score
     compact["case_event_timeline"] = _build_case_event_timeline(compact, plan)
     return compact
 
