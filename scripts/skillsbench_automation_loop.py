@@ -4946,12 +4946,16 @@ def _merge_host_local_acp_relay_trace_summary(
     codex_exec_failure_categories: list[str] = []
     agent_bridge_trace_count = 0
     agent_bridge_request_count = 0
+    agent_bridge_success_count = 0
+    agent_bridge_failure_count = 0
     agent_bridge_loopx_cli_call_count = 0
     agent_bridge_loopx_state_read_count = 0
     agent_bridge_loopx_state_write_count = 0
     agent_bridge_task_facing_operation_count = 0
     agent_bridge_operation_counts: dict[str, int] = {}
     agent_bridge_loopx_subcommand_counts: dict[str, int] = {}
+    agent_bridge_successful_loopx_subcommand_counts: dict[str, int] = {}
+    agent_bridge_returncode_counts: dict[str, int] = {}
     driver_lifecycle_trace_count = 0
     driver_lifecycle_checkpoint_count = 0
     driver_lifecycle_request_count = 0
@@ -5025,6 +5029,8 @@ def _merge_host_local_acp_relay_trace_summary(
             )
             count_fields = {
                 "request_count": "request",
+                "success_count": "success",
+                "failure_count": "failure",
                 "loopx_cli_call_count": "loopx_cli",
                 "loopx_state_read_count": "state_read",
                 "loopx_state_write_count": "state_write",
@@ -5037,6 +5043,10 @@ def _merge_host_local_acp_relay_trace_summary(
                 value = max(0, value)
                 if target == "request":
                     agent_bridge_request_count += value
+                elif target == "success":
+                    agent_bridge_success_count += value
+                elif target == "failure":
+                    agent_bridge_failure_count += value
                 elif target == "loopx_cli":
                     agent_bridge_loopx_cli_call_count += value
                 elif target == "state_read":
@@ -5048,6 +5058,11 @@ def _merge_host_local_acp_relay_trace_summary(
             for source_key, target_counts in (
                 ("operation_counts", agent_bridge_operation_counts),
                 ("loopx_cli_subcommand_counts", agent_bridge_loopx_subcommand_counts),
+                (
+                    "successful_loopx_cli_subcommand_counts",
+                    agent_bridge_successful_loopx_subcommand_counts,
+                ),
+                ("returncode_counts", agent_bridge_returncode_counts),
             ):
                 source_counts = agent_ops.get(source_key)
                 if not isinstance(source_counts, dict):
@@ -5217,6 +5232,12 @@ def _merge_host_local_acp_relay_trace_summary(
     trace["remote_command_file_bridge_agent_request_count"] = (
         agent_bridge_request_count
     )
+    trace["remote_command_file_bridge_agent_success_count"] = (
+        agent_bridge_success_count
+    )
+    trace["remote_command_file_bridge_agent_failure_count"] = (
+        agent_bridge_failure_count
+    )
     trace["remote_command_file_bridge_agent_loopx_cli_call_count"] = (
         agent_bridge_loopx_cli_call_count
     )
@@ -5235,22 +5256,28 @@ def _merge_host_local_acp_relay_trace_summary(
     trace["remote_command_file_bridge_agent_loopx_subcommand_counts"] = dict(
         sorted(agent_bridge_loopx_subcommand_counts.items())
     )
+    trace[
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
+    ] = dict(sorted(agent_bridge_successful_loopx_subcommand_counts.items()))
+    trace["remote_command_file_bridge_agent_returncode_counts"] = dict(
+        sorted(agent_bridge_returncode_counts.items())
+    )
     trace["remote_command_file_bridge_agent_todo_closeout_count"] = (
         _subcommand_family_count(
-            agent_bridge_loopx_subcommand_counts,
+            agent_bridge_successful_loopx_subcommand_counts,
             "todo complete",
             "todo update",
         )
     )
     trace["remote_command_file_bridge_agent_refresh_state_count"] = (
         _subcommand_family_count(
-            agent_bridge_loopx_subcommand_counts,
+            agent_bridge_successful_loopx_subcommand_counts,
             "refresh-state",
         )
     )
     trace["remote_command_file_bridge_agent_quota_spend_slot_count"] = (
         _subcommand_family_count(
-            agent_bridge_loopx_subcommand_counts,
+            agent_bridge_successful_loopx_subcommand_counts,
             "quota spend-slot",
         )
     )
@@ -5347,6 +5374,12 @@ def _merge_host_local_acp_relay_trace_summary(
     prerequisites["remote_command_file_bridge_agent_request_count"] = (
         agent_bridge_request_count
     )
+    prerequisites["remote_command_file_bridge_agent_success_count"] = (
+        agent_bridge_success_count
+    )
+    prerequisites["remote_command_file_bridge_agent_failure_count"] = (
+        agent_bridge_failure_count
+    )
     prerequisites["remote_command_file_bridge_agent_loopx_cli_call_count"] = (
         agent_bridge_loopx_cli_call_count
     )
@@ -5364,6 +5397,12 @@ def _merge_host_local_acp_relay_trace_summary(
     )
     prerequisites["remote_command_file_bridge_agent_loopx_subcommand_counts"] = dict(
         sorted(agent_bridge_loopx_subcommand_counts.items())
+    )
+    prerequisites[
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
+    ] = dict(sorted(agent_bridge_successful_loopx_subcommand_counts.items()))
+    prerequisites["remote_command_file_bridge_agent_returncode_counts"] = dict(
+        sorted(agent_bridge_returncode_counts.items())
     )
     prerequisites["remote_command_file_bridge_agent_todo_closeout_count"] = trace[
         "remote_command_file_bridge_agent_todo_closeout_count"
@@ -5587,6 +5626,71 @@ def _trajectory_text_fragments(value: Any) -> list[str]:
     return fragments
 
 
+def _trajectory_agent_output_fragments(value: Any) -> list[str]:
+    """Return text fragments authored by the agent/assistant, not the user prompt."""
+
+    fragments: list[str] = []
+
+    def role_is_agent(role: Any) -> bool:
+        return str(role or "").strip().lower() in {
+            "agent",
+            "assistant",
+            "assistant_message",
+            "model",
+            "worker",
+        }
+
+    def type_is_agent_message(event_type: Any) -> bool:
+        text = str(event_type or "").strip().lower()
+        return bool(
+            text
+            and (
+                "assistant" in text
+                or "agent_message" in text
+                or text in {"message", "final_message", "response"}
+            )
+        )
+
+    def add_text(value: Any) -> None:
+        if isinstance(value, str) and value:
+            fragments.append(value)
+        elif isinstance(value, list):
+            fragments.extend(_trajectory_text_fragments(value))
+        elif isinstance(value, dict):
+            fragments.extend(_trajectory_text_fragments(value))
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            role = node.get("role") or node.get("author") or node.get("speaker")
+            event_type = node.get("type") or node.get("event") or node.get("kind")
+            role_present = bool(str(role or "").strip())
+            if role_is_agent(role) or (
+                not role_present and type_is_agent_message(event_type)
+            ):
+                for key in (
+                    "content",
+                    "text",
+                    "message",
+                    "final_message",
+                    "response",
+                    "output",
+                ):
+                    if key in node:
+                        add_text(node.get(key))
+                return
+            if role_present:
+                return
+            for nested in node.values():
+                walk(nested)
+            return
+        if isinstance(node, list):
+            for nested in node:
+                walk(nested)
+
+    walk(value)
+    return fragments
+
+
 def _trajectory_tool_call_titles(value: Any) -> list[str]:
     titles: list[str] = []
     if isinstance(value, dict):
@@ -5657,7 +5761,10 @@ def _round_result_declared_done(round_result: Any) -> bool:
     trajectory = getattr(round_result, "trajectory", None)
     if not isinstance(trajectory, list):
         return False
-    return any(DECLARED_DONE_MARKER in text for text in _trajectory_text_fragments(trajectory))
+    return any(
+        DECLARED_DONE_MARKER in text
+        for text in _trajectory_agent_output_fragments(trajectory)
+    )
 
 
 def _record_declared_done(

@@ -159,6 +159,31 @@ def _codex_exec_failure_category(
     stderr_text: str,
 ) -> str:
     text = (stderr_text or "").lower()
+    if any(
+        token in text
+        for token in (
+            "not authenticated",
+            "authentication",
+            "unauthorized",
+            "api key",
+            "login required",
+            "please login",
+            "401",
+        )
+    ):
+        return "codex_auth_or_login_required"
+    if "model" in text and any(
+        token in text
+        for token in (
+            "not found",
+            "unknown",
+            "unsupported",
+            "invalid",
+            "does not exist",
+            "unavailable",
+        )
+    ):
+        return "codex_model_unavailable"
     if (
         "connectionrefusederror" in text
         or "connection refused" in text
@@ -174,6 +199,17 @@ def _codex_exec_failure_category(
         return "codex_exec_bridge_idle_timeout"
     if "unexpected argument" in text or "unrecognized option" in text:
         return "codex_cli_argument_incompatible"
+    if any(
+        token in text
+        for token in (
+            "command not found",
+            "no such file or directory",
+            "modulenotfounderror",
+            "importerror",
+            "failed to spawn",
+        )
+    ):
+        return "codex_cli_or_environment_missing"
     if "api.openai.com" in text or "chatgpt.com" in text:
         if any(token in text for token in ("timed out", "timeout", "connection")):
             return "codex_network_or_api_unreachable"
@@ -1033,12 +1069,17 @@ record["task_facing_operation"] = bool(
     or (operation == "exec" and not subcommands)
 )
 record["operation_observed"] = True
-try:
-    SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with SUMMARY_PATH.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record, sort_keys=True) + "\\n")
-except OSError:
-    pass
+
+def append_record(item: dict[str, object]) -> None:
+    try:
+        SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with SUMMARY_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(item, sort_keys=True) + "\\n")
+    except OSError:
+        pass
+
+record["record_phase"] = "start"
+append_record(record)
 proc = subprocess.run(
     BRIDGE_COMMAND,
     input=raw,
@@ -1047,6 +1088,13 @@ proc = subprocess.run(
     stderr=subprocess.PIPE,
     shell=True,
 )
+complete_record = dict(record)
+complete_record["record_phase"] = "complete"
+complete_record["returncode"] = int(proc.returncode)
+complete_record["success"] = proc.returncode == 0
+complete_record["stdout_bytes"] = len((proc.stdout or "").encode("utf-8"))
+complete_record["stderr_bytes"] = len((proc.stderr or "").encode("utf-8"))
+append_record(complete_record)
 sys.stdout.write(proc.stdout)
 sys.stderr.write(proc.stderr)
 raise SystemExit(proc.returncode)
@@ -1064,7 +1112,11 @@ raise SystemExit(proc.returncode)
             return
         operation_counts: dict[str, int] = {}
         loopx_subcommand_counts: dict[str, int] = {}
+        successful_loopx_subcommand_counts: dict[str, int] = {}
+        returncode_counts: dict[str, int] = {}
         request_count = 0
+        success_count = 0
+        failure_count = 0
         loopx_cli_call_count = 0
         state_read_count = 0
         state_write_count = 0
@@ -1081,16 +1133,44 @@ raise SystemExit(proc.returncode)
                     continue
                 if not isinstance(record, dict):
                     continue
-                request_count += 1
                 operation = str(record.get("operation") or "unknown")[:40]
-                operation_counts[operation] = operation_counts.get(operation, 0) + 1
-                if record.get("loopx_cli_call") is True:
+                phase = str(record.get("record_phase") or "").strip().lower()
+                counts_as_request = phase != "complete"
+                counts_as_completion = phase == "complete" or (
+                    not phase and ("returncode" in record or "success" in record)
+                )
+                if counts_as_request:
+                    request_count += 1
+                    operation_counts[operation] = (
+                        operation_counts.get(operation, 0) + 1
+                    )
+                rc = record.get("returncode")
+                if counts_as_completion:
+                    if isinstance(rc, int) and not isinstance(rc, bool):
+                        returncode_counts[str(rc)] = (
+                            returncode_counts.get(str(rc), 0) + 1
+                        )
+                        if rc == 0:
+                            success_count += 1
+                        else:
+                            failure_count += 1
+                    elif record.get("success") is True:
+                        success_count += 1
+                        returncode_counts["unknown_success"] = (
+                            returncode_counts.get("unknown_success", 0) + 1
+                        )
+                    elif record.get("success") is False:
+                        failure_count += 1
+                        returncode_counts["unknown_failure"] = (
+                            returncode_counts.get("unknown_failure", 0) + 1
+                        )
+                if counts_as_request and record.get("loopx_cli_call") is True:
                     loopx_cli_call_count += 1
-                if record.get("loopx_state_read") is True:
+                if counts_as_request and record.get("loopx_state_read") is True:
                     state_read_count += 1
-                if record.get("loopx_state_write") is True:
+                if counts_as_request and record.get("loopx_state_write") is True:
                     state_write_count += 1
-                if record.get("task_facing_operation") is True:
+                if counts_as_request and record.get("task_facing_operation") is True:
                     task_facing_operation_count += 1
                 subcommands = record.get("loopx_subcommands")
                 if isinstance(subcommands, list) and subcommands:
@@ -1099,10 +1179,15 @@ raise SystemExit(proc.returncode)
                         for item in subcommands[:2]
                         if re.match(r"^[A-Za-z][A-Za-z0-9_-]{0,40}$", str(item))
                     )
-                    if key:
+                    if key and counts_as_request:
                         loopx_subcommand_counts[key] = (
                             loopx_subcommand_counts.get(key, 0) + 1
                         )
+                    if key and counts_as_completion:
+                        if record.get("success") is True or record.get("returncode") == 0:
+                            successful_loopx_subcommand_counts[key] = (
+                                successful_loopx_subcommand_counts.get(key, 0) + 1
+                            )
                 raw_material_recorded = raw_material_recorded or any(
                     record.get(field) is True
                     for field in (
@@ -1127,10 +1212,16 @@ raise SystemExit(proc.returncode)
                     "skillsbench_remote_command_file_bridge_agent_operations_v0"
                 ),
                 "request_count": request_count,
+                "success_count": success_count,
+                "failure_count": failure_count,
                 "operation_counts": dict(sorted(operation_counts.items())),
+                "returncode_counts": dict(sorted(returncode_counts.items())),
                 "loopx_cli_call_count": loopx_cli_call_count,
                 "loopx_cli_subcommand_counts": dict(
                     sorted(loopx_subcommand_counts.items())
+                ),
+                "successful_loopx_cli_subcommand_counts": dict(
+                    sorted(successful_loopx_subcommand_counts.items())
                 ),
                 "loopx_state_read_count": state_read_count,
                 "loopx_state_write_count": state_write_count,

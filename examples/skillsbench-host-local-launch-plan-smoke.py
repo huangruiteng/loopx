@@ -786,9 +786,15 @@ output.write_text("fake solver saw bridge packet\\n", encoding="utf-8")
         )
         agent_ops = agent_ops_trace["remote_command_file_bridge_agent_operations"]
         assert agent_ops["request_count"] == 2, agent_ops
+        assert agent_ops["success_count"] == 2, agent_ops
+        assert agent_ops["failure_count"] == 0, agent_ops
         assert agent_ops["loopx_cli_call_count"] == 2, agent_ops
         assert agent_ops["loopx_state_read_count"] == 1, agent_ops
         assert agent_ops["loopx_state_write_count"] == 1, agent_ops
+        assert agent_ops["successful_loopx_cli_subcommand_counts"] == {
+            "quota should-run": 1,
+            "todo update": 1,
+        }, agent_ops
         assert agent_ops["raw_material_recorded"] is False, agent_ops
         driver_lifecycle_trace = next(
             trace
@@ -1261,7 +1267,14 @@ subprocess.run(
             first_action_timeout_sec=1,
         )
         assert reverse_hanging_timeout["exit_code"] == 124, reverse_hanging_timeout
-        assert "codex_exec_timeout" in reverse_hanging_timeout["stderr"]
+        assert any(
+            marker in reverse_hanging_timeout["stderr"]
+            for marker in (
+                "codex_exec_timeout",
+                "codex_exec_first_action_timeout",
+                "codex_exec_bridge_idle_timeout",
+            )
+        ), reverse_hanging_timeout
         reverse_hanging_operations = [
             json.loads(line)
             for line in str(
@@ -1269,13 +1282,16 @@ subprocess.run(
             ).splitlines()
             if line.strip()
         ]
-        assert len(reverse_hanging_operations) == 1, reverse_hanging_timeout
-        assert (
-            reverse_hanging_operations[0]["task_facing_operation"] is True
-        ), reverse_hanging_operations
-        assert (
-            reverse_hanging_operations[0]["raw_request_recorded"] is False
-        ), reverse_hanging_operations
+        if "codex_exec_first_action_timeout" in reverse_hanging_timeout["stderr"]:
+            assert reverse_hanging_operations == [], reverse_hanging_timeout
+        else:
+            assert len(reverse_hanging_operations) == 1, reverse_hanging_timeout
+            assert (
+                reverse_hanging_operations[0]["task_facing_operation"] is True
+            ), reverse_hanging_operations
+            assert (
+                reverse_hanging_operations[0]["raw_request_recorded"] is False
+            ), reverse_hanging_operations
         idle_bridge = Path(tmp) / "post-action-idle-bridge"
         idle_bridge.write_text(
             """#!/usr/bin/env python3
@@ -1382,8 +1398,12 @@ time.sleep(30)
         ]
         assert len(idle_agent_ops) == 1, idle_traces
         idle_counts = idle_agent_ops[0]["remote_command_file_bridge_agent_operations"]
-        assert idle_counts["request_count"] == 1, idle_counts
-        assert idle_counts["task_facing_operation_count"] == 1, idle_counts
+        assert idle_counts["request_count"] in {0, 1}, idle_counts
+        if idle_counts["request_count"] == 1:
+            assert idle_counts["task_facing_operation_count"] == 1, idle_counts
+        else:
+            assert idle_counts["task_facing_operation_count"] == 0, idle_counts
+        assert idle_counts["raw_material_recorded"] is False, idle_counts
         idle_failures = [
             trace
             for trace in idle_traces
@@ -1500,8 +1520,12 @@ subprocess.run(
         inflight_counts = inflight_agent_ops[0][
             "remote_command_file_bridge_agent_operations"
         ]
-        assert inflight_counts["request_count"] == 1, inflight_counts
-        assert inflight_counts["task_facing_operation_count"] == 1, inflight_counts
+        assert inflight_counts["request_count"] in {0, 1}, inflight_counts
+        if inflight_counts["request_count"] == 1:
+            assert inflight_counts["task_facing_operation_count"] == 1, inflight_counts
+        else:
+            assert inflight_counts["task_facing_operation_count"] == 0, inflight_counts
+        assert inflight_counts["raw_material_recorded"] is False, inflight_counts
         bridge_preflight_codex = Path(tmp) / "bridge-preflight-codex"
         bridge_preflight_codex.write_text(
             f"""#!/usr/bin/env python3

@@ -896,6 +896,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_solver_operation_count",
         "remote_command_file_bridge_agent_operation_trace_count",
         "remote_command_file_bridge_agent_request_count",
+        "remote_command_file_bridge_agent_success_count",
+        "remote_command_file_bridge_agent_failure_count",
         "remote_command_file_bridge_agent_loopx_cli_call_count",
         "remote_command_file_bridge_agent_loopx_state_read_count",
         "remote_command_file_bridge_agent_loopx_state_write_count",
@@ -964,6 +966,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "codex_runtime_goal_tool_calls",
         "trajectory_action_category_counts",
         "loopx_cli_state_usage_counts",
+        "remote_command_file_bridge_agent_returncode_counts",
+        "remote_command_file_bridge_agent_successful_loopx_subcommand_counts",
     ):
         calls = _compact_numeric_map(value.get(field))
         if calls:
@@ -1573,6 +1577,8 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_solver_operation_count",
         "remote_command_file_bridge_agent_operation_trace_count",
         "remote_command_file_bridge_agent_request_count",
+        "remote_command_file_bridge_agent_success_count",
+        "remote_command_file_bridge_agent_failure_count",
         "remote_command_file_bridge_agent_loopx_cli_call_count",
         "remote_command_file_bridge_agent_loopx_state_read_count",
         "remote_command_file_bridge_agent_loopx_state_write_count",
