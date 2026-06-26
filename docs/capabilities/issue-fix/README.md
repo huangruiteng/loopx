@@ -41,6 +41,41 @@ metadata boundary.
 - External issue comments, PR creation, merge, publish, and destructive git are
   out of scope for this capability.
 
+## Conversational `/loopx` Entry
+
+When the user starts from a chat box or command palette, use the project-local
+goal command first:
+
+```text
+/loopx Fix https://github.com/owner/repo/issues/123
+```
+
+The host or skill fallback should run the command pack preview with the exact
+goal text:
+
+```bash
+loopx bootstrap-command-pack --project . \
+  --goal-text "Fix https://github.com/owner/repo/issues/123"
+```
+
+For a GitHub issue/PR fix goal, the command pack points to the issue-fix
+workflow planner before todo writeback:
+
+```bash
+loopx issue-fix workflow-plan \
+  --url https://github.com/owner/repo/issues/123 \
+  --repo-path <approved-repo> \
+  --validation-label "<validation command>" \
+  --format json
+```
+
+The workflow-plan output is still preview-only. Accepted candidates become
+ordered LoopX todos: public metadata/intake, repro or route selection,
+branch-local patch and validation, then PR review packet readiness. Concrete
+owner actions become explicit user gates, including private repro material,
+issue body/comment reads, external issue comments, PR creation, merge, publish,
+destructive git, production actions, and repository-policy approvals.
+
 ## Workflow Plan
 
 ```bash

@@ -33,6 +33,7 @@ from loopx.capabilities.issue_fix.metadata_preview import (  # noqa: E402
 
 DOC = ROOT / "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md"
 README = ROOT / "docs/capabilities/issue-fix/README.md"
+LOOPX_GOAL_COMMAND = ROOT / "docs" / "reference" / "protocols" / "loopx-goal-command-v0.md"
 
 PRIVATE_PATTERNS = [
     re.compile(r"/Users/[A-Za-z0-9._-]+/"),
@@ -77,9 +78,23 @@ def assert_ordered(text: str, markers: list[str]) -> None:
 def main() -> int:
     doc = DOC.read_text(encoding="utf-8")
     readme = README.read_text(encoding="utf-8")
+    loopx_goal_command = LOOPX_GOAL_COMMAND.read_text(encoding="utf-8")
     assert doc.startswith("# issue_fix_workflow_contract_v0")
     assert "issue-fix-workflow-contract-v0.md" in readme
     assert "python3 examples/issue-fix-workflow-contract-smoke.py" in readme
+    assert "## Conversational `/loopx` Entry" in readme
+    assert "/loopx Fix https://github.com/owner/repo/issues/123" in readme
+    assert "loopx bootstrap-command-pack --project ." in readme
+    assert "--goal-text \"Fix https://github.com/owner/repo/issues/123\"" in readme
+    assert "loopx issue-fix workflow-plan" in readme
+    assert "ordered LoopX todos" in readme
+    assert "PR review packet readiness" in readme
+    assert "explicit user gates" in readme
+    assert "## Issue-Fix Domain Route" in loopx_goal_command
+    assert "loopx issue-fix workflow-plan" in loopx_goal_command
+    assert "before writing todos" in loopx_goal_command
+    assert "priority and planner order" in loopx_goal_command
+    assert "operator gates must cover private repro material" in loopx_goal_command
     assert_ordered(
         doc,
         [

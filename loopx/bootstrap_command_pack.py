@@ -271,6 +271,20 @@ def _goal_start_contract(*, goal_text: str | None, connected: bool) -> dict[str,
             "begin_automation_when_quota_allows": True,
             "spend_quota_after_writeback": True,
         },
+        "domain_route_hints": {
+            "issue_fix_workflow": {
+                "when": "goal text contains a public GitHub issue/PR URL or asks for an issue-fix workflow",
+                "preview_command": (
+                    "loopx issue-fix workflow-plan --url <github-issue-or-pr-url> "
+                    "--repo-path <approved-repo> --validation-label '<validation command>' --format json"
+                ),
+                "writeback": (
+                    "turn accepted workflow-plan candidates into ordered LoopX agent/user todos; "
+                    "private repro material, issue body/comment reads, external comments, PR creation, "
+                    "merge, publish, destructive git, and production actions stay explicit gates"
+                ),
+            }
+        },
         "connected_at_preview_time": connected,
         "stop_conditions": [
             "private material requested before a public-safe todo can be written",
@@ -300,6 +314,7 @@ Planning rules:
 4. If several todos share the same priority, their listed order is their relative priority. Preserve that exact order when writing them.
 5. Prefer executable Agent Todo items with `task_class=advancement_task`; use User Todo only for concrete owner decisions or private-material gates.
 6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, then `loopx quota should-run --goal-id {goal_id}` and begin the first allowed bounded segment.
+7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --validation-label '<validation command>' --format json`; convert accepted preview candidates into ordered todos and keep private repro material, body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates.
 """
 
 
@@ -416,6 +431,13 @@ def build_loopx_bootstrap_command_pack(
                 f"{shell_arg(cli_bin)} quota should-run --goal-id {shell_arg(resolved_goal_id)}"
                 + (f" --agent-id {shell_arg(agent_id)}" if agent_id else "")
             ),
+            "issue_fix_workflow_plan_template": (
+                f"{shell_arg(cli_bin)} issue-fix workflow-plan "
+                "--url <github-issue-or-pr-url> "
+                "--repo-path <approved-repo> "
+                "--validation-label '<validation command>' "
+                "--format json"
+            ),
         },
         "safety_contract": {
             "runs_bootstrap": False,
@@ -464,6 +486,14 @@ Then plan before writing todos. Preserve relative priority by write order:
 ````
 
 Write the planned todos with `loopx todo add` in the exact planned order. Same-priority items use that write order as the tie-breaker.
+
+For GitHub issue/PR fix goals, preview the issue-fix route before todo writeback:
+
+```bash
+{commands.get("issue_fix_workflow_plan_template", "")}
+```
+
+Accepted preview candidates become ordered Agent/User todos. Private repro material, issue body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions stay explicit gates.
 
 After todo writeback:
 
@@ -599,6 +629,10 @@ Supported forms: `/loopx`, `/loopx <goal text>`
 
 ```bash
 {commands.get("goal_start_connect_if_needed", "")}
+```
+
+```bash
+{commands.get("issue_fix_workflow_plan_template", "")}
 ```
 
 ## Safety Contract

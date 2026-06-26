@@ -64,6 +64,28 @@ quota projections already use todo index as the same-priority tie-breaker, so
 the first written `P0` outranks the second written `P0` without adding a new
 rank field.
 
+## Issue-Fix Domain Route
+
+When `/loopx <goal text>` contains a public GitHub issue/PR URL or an explicit
+issue-fix intent, the planner should preview the dedicated capability route
+before writing todos:
+
+```bash
+loopx issue-fix workflow-plan \
+  --url <github-issue-or-pr-url> \
+  --repo-path <approved-repo> \
+  --validation-label "<validation command>" \
+  --format json
+```
+
+The preview maps public metadata, intake classification, branch planning,
+validation labels, todo writeback previews, and PR review readiness blockers
+into the `/loopx <goal text>` planning checkpoint. Accepted candidates are then
+written with `loopx todo add` in priority and planner order. User todos or
+operator gates must cover private repro material, issue body/comment reads,
+external issue comments, PR creation, merge, publish, destructive git,
+production actions, and repository-policy approvals.
+
 ## Stop Conditions
 
 Stop and ask the user instead of writing or executing when:

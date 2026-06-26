@@ -129,8 +129,22 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "avoid management-only filler" in plan_prompt
         assert "Every new todo starts with `[P0]`, `[P1]`, or `[P2]`" in plan_prompt
         assert "Preserve that exact order" in plan_prompt
+        assert "GitHub issue/PR fix" in plan_prompt
+        assert "loopx issue-fix workflow-plan" in plan_prompt
+        assert "external comments, PR creation, merge, publish" in plan_prompt
+        assert "issue_fix_workflow_plan_template" in commands
+        issue_fix_template = str(commands["issue_fix_workflow_plan_template"])
+        assert "issue-fix workflow-plan" in issue_fix_template
+        assert "--url <github-issue-or-pr-url>" in issue_fix_template
+        assert "--repo-path <approved-repo>" in issue_fix_template
+        assert "--validation-label '<validation command>'" in issue_fix_template
         assert "--agent-id codex-test-agent" in str(commands["goal_start_quota_should_run"])
         assert "Same-priority items use that write order as the tie-breaker" in str(payload["message"])
+        assert "preview the issue-fix route before todo writeback" in str(payload["message"])
+        domain_routes = goal_start["domain_route_hints"]
+        assert domain_routes["issue_fix_workflow"]["when"].startswith("goal text contains")
+        assert "workflow-plan" in domain_routes["issue_fix_workflow"]["preview_command"]
+        assert "explicit gates" in domain_routes["issue_fix_workflow"]["writeback"]
         assert not (project / ".loopx").exists()
         assert not (project / ".codex").exists()
 
