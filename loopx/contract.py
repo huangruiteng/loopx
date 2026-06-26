@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,93 @@ DEFAULT_SKIP_DIRS = {
     "node_modules",
     "runtime",
 }
+LOCAL_PRIVATE_STATE_PARTS = {
+    ".codex",
+    ".goal-harness",
+    ".goal-wrapper.local",
+    ".local",
+    ".loopx",
+    "logs",
+    "runtime",
+}
+LOCAL_PRIVATE_STATE_FILE_NAMES = {"ACTIVE_GOAL_STATE.md", "ACTIVE_GOAL_STATE.md.lock"}
+
+
+def _git_probe(path: Path) -> dict[str, Any]:
+    target = path if path.is_dir() else path.parent
+    try:
+        root = subprocess.run(
+            ["git", "-C", str(target), "rev-parse", "--show-toplevel"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return {"inside_worktree": False, "tracked": False, "ignored": False}
+
+    repo_root = Path(root)
+    try:
+        rel_path = str(path.relative_to(repo_root))
+    except ValueError:
+        rel_path = str(path)
+    tracked = (
+        subprocess.run(
+            ["git", "-C", str(repo_root), "ls-files", "--error-unmatch", "--", rel_path],
+            text=True,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+    ignored = (
+        subprocess.run(
+            ["git", "-C", str(repo_root), "check-ignore", "-q", "--", rel_path],
+            text=True,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+    return {
+        "inside_worktree": True,
+        "root": str(repo_root),
+        "tracked": tracked,
+        "ignored": ignored,
+    }
+
+
+def _is_local_private_state_path(path: Path) -> bool:
+    parts = set(path.parts)
+    return bool(parts & LOCAL_PRIVATE_STATE_PARTS) or path.name in LOCAL_PRIVATE_STATE_FILE_NAMES
+
+
+def _public_boundary_policy(registry: dict[str, Any]) -> dict[str, str]:
+    policy = registry.get("public_boundary") if isinstance(registry, dict) else None
+    if not isinstance(policy, dict):
+        policy = registry.get("privacy") if isinstance(registry, dict) else None
+    if not isinstance(policy, dict):
+        policy = {}
+
+    tracked_private_doc_urls = "block"
+    raw_mode = (
+        policy.get("tracked_private_doc_urls")
+        or policy.get("private_doc_urls_in_tracked_files")
+    )
+    if str(raw_mode).lower() == "allow" or policy.get("allow_tracked_private_doc_urls") is True:
+        tracked_private_doc_urls = "allow"
+
+    return {
+        "schema_version": "loopx_public_boundary_policy_v0",
+        "tracked_private_doc_urls": tracked_private_doc_urls,
+    }
+
+
+def _hit_allowed_by_policy(name: str, git: dict[str, Any], policy: dict[str, str]) -> bool:
+    if name != "private_doc_url":
+        return False
+    if not git.get("tracked"):
+        return False
+    return policy.get("tracked_private_doc_urls") == "allow"
 
 
 def _index_duplicate_summary(index_path: Path) -> dict[str, Any]:
@@ -136,14 +224,35 @@ def iter_scan_files(scan_root: Path) -> list[Path]:
     return sorted(files)
 
 
-def scan_public_boundary(scan_roots: list[Path]) -> dict[str, Any]:
+def scan_public_boundary(
+    scan_roots: list[Path], *, registry: dict[str, Any] | None = None
+) -> dict[str, Any]:
     hits: list[str] = []
+    allowed_hits: list[str] = []
+    private_state_git_warnings: list[str] = []
+    skipped_private_state_files: list[str] = []
     files: list[Path] = []
+    file_roots: dict[Path, Path] = {}
     for scan_root in scan_roots:
-        files.extend(iter_scan_files(scan_root))
+        display_root = scan_root.parent if scan_root.is_file() else scan_root
+        for file_path in iter_scan_files(scan_root):
+            files.append(file_path)
+            file_roots[file_path] = display_root
     files = sorted(set(files))
+    policy = _public_boundary_policy(registry or {})
 
     for path in files:
+        root = file_roots.get(path, path)
+        git: dict[str, Any] | None = None
+        if _is_local_private_state_path(path):
+            git = _git_probe(path)
+            if not git.get("tracked"):
+                skipped_private_state_files.append(rel_or_abs(path, root))
+                if git.get("inside_worktree") and not git.get("ignored"):
+                    private_state_git_warnings.append(
+                        f"{rel_or_abs(path, root)}: private state should be gitignored"
+                    )
+                continue
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
@@ -151,11 +260,22 @@ def scan_public_boundary(scan_roots: list[Path]) -> dict[str, Any]:
         for line_no, line in enumerate(text.splitlines(), start=1):
             for name, pattern in LEAK_PATTERNS.items():
                 if pattern.search(line):
-                    hits.append(f"{rel_or_abs(path, scan_root)}:{line_no}: {name}")
+                    hit = f"{rel_or_abs(path, root)}:{line_no}: {name}"
+                    if name == "private_doc_url":
+                        git = git or _git_probe(path)
+                    if git is not None and _hit_allowed_by_policy(name, git, policy):
+                        allowed_hits.append(hit)
+                    else:
+                        hits.append(hit)
     return {
         "ok": not hits,
         "scan_roots": [str(path) for path in scan_roots],
         "files": len(files),
+        "scanned_files": len(files) - len(skipped_private_state_files),
+        "skipped_private_state_files": skipped_private_state_files,
+        "allowed_hits": allowed_hits,
+        "private_state_git_warnings": private_state_git_warnings,
+        "policy": policy,
         "hits": hits,
     }
 
@@ -234,11 +354,22 @@ def check_contract(
             else:
                 warnings.append(_index_duplicate_warning(item.get("id"), raw, unique))
 
-    boundary = scan_public_boundary(scan_roots)
+    boundary = scan_public_boundary(scan_roots, registry=registry)
     if boundary.get("ok"):
-        checks.append(f"public boundary scan clean: {boundary.get('files')} files")
+        checks.append(f"public boundary scan clean: {boundary.get('scanned_files')} files")
     else:
         errors.extend(str(item) for item in boundary.get("hits") or [])
+    if boundary.get("skipped_private_state_files"):
+        checks.append(
+            "private state scan skipped: "
+            f"{len(boundary.get('skipped_private_state_files') or [])} local-private files"
+        )
+    if boundary.get("allowed_hits"):
+        checks.append(
+            "public boundary policy allowed: "
+            f"{len(boundary.get('allowed_hits') or [])} private_doc_url hits"
+        )
+    warnings.extend(str(item) for item in boundary.get("private_state_git_warnings") or [])
 
     return {
         "ok": not errors,

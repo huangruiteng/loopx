@@ -32,6 +32,16 @@ def run_cli(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -89,6 +99,82 @@ def main() -> int:
         errors = public_payload.get("errors") or []
         if not any("public.md" in str(item) and "private_doc_url" in str(item) for item in errors):
             raise AssertionError(public_payload)
+
+        git_project = root / "git-project"
+        git_project.mkdir()
+        init = run_git(git_project, "init")
+        if init.returncode != 0:
+            raise AssertionError(init.stderr or init.stdout)
+        state_file = git_project / ".codex" / "goals" / "demo" / "ACTIVE_GOAL_STATE.md"
+        state_file.parent.mkdir(parents=True)
+        state_file.write_text(f"private_doc_url: {PRIVATE_DOC_MARKER}\n", encoding="utf-8")
+
+        local_state = run_cli(
+            root,
+            "--format",
+            "json",
+            "check",
+            "--scan-path",
+            str(state_file),
+        )
+        if local_state.returncode != 0:
+            raise AssertionError(local_state.stderr or local_state.stdout)
+        local_state_payload = json.loads(local_state.stdout)
+        if not local_state_payload.get("ok"):
+            raise AssertionError(local_state_payload)
+        checks = "\n".join(str(item) for item in local_state_payload.get("checks") or [])
+        if "private state scan skipped: 1 local-private files" not in checks:
+            raise AssertionError(local_state_payload)
+
+        add_state = run_git(git_project, "add", str(state_file.relative_to(git_project)))
+        if add_state.returncode != 0:
+            raise AssertionError(add_state.stderr or add_state.stdout)
+        tracked_state = run_cli(
+            root,
+            "--format",
+            "json",
+            "check",
+            "--scan-path",
+            str(state_file),
+        )
+        if tracked_state.returncode == 0:
+            raise AssertionError(tracked_state.stdout)
+        tracked_state_payload = json.loads(tracked_state.stdout)
+        tracked_errors = tracked_state_payload.get("errors") or []
+        if not any("ACTIVE_GOAL_STATE.md" in str(item) and "private_doc_url" in str(item) for item in tracked_errors):
+            raise AssertionError(tracked_state_payload)
+
+        registry_path = git_project / ".loopx" / "registry.json"
+        registry_path.parent.mkdir(parents=True)
+        registry_path.write_text(
+            json.dumps(
+                {
+                    "public_boundary": {
+                        "tracked_private_doc_urls": "allow",
+                    },
+                    "goals": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        allowed_state = run_cli(
+            root,
+            "--registry",
+            str(registry_path),
+            "--format",
+            "json",
+            "check",
+            "--scan-path",
+            str(state_file),
+        )
+        if allowed_state.returncode != 0:
+            raise AssertionError(allowed_state.stderr or allowed_state.stdout)
+        allowed_state_payload = json.loads(allowed_state.stdout)
+        if not allowed_state_payload.get("ok"):
+            raise AssertionError(allowed_state_payload)
+        checks = "\n".join(str(item) for item in allowed_state_payload.get("checks") or [])
+        if "public boundary policy allowed: 1 private_doc_url hits" not in checks:
+            raise AssertionError(allowed_state_payload)
 
     print("check-public-boundary-smoke ok")
     return 0

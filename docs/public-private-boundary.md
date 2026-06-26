@@ -66,6 +66,27 @@ Real controller state belongs in ignored local files such as
 public repository may track sanitized templates, fixtures, and compact
 projections, but not the live file that a controller updates on every turn.
 
+`loopx check` treats that as a file-state boundary, not just a path-name
+boundary. Local private state that is not tracked by git may contain private
+document links because it is not a publishable artifact. If that same file is
+tracked by git, it enters the public boundary and is scanned like any other
+publishable file.
+
+Projects that intentionally publish tracked files with private document links
+can opt in through the project registry:
+
+```json
+{
+  "public_boundary": {
+    "tracked_private_doc_urls": "allow"
+  }
+}
+```
+
+This policy only allows `private_doc_url` findings in tracked files. It does
+not allow credentials, tokens, passwords, private IPs, internal task ids, or
+local private paths.
+
 If a runtime-only goal is obsolete, archive its directory rather than copying
 private run payloads into public notes:
 
