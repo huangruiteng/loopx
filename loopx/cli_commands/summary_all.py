@@ -29,7 +29,7 @@ def register_summary_all_command(
 ) -> None:
     parser = subparsers.add_parser(
         "global-summary",
-        help="Read a public-safe /loop-global-summary progress digest across visible LoopX goals.",
+        help="Read a public-safe /loopx-global-summary progress digest across visible LoopX goals.",
     )
     add_subcommand_format(parser)
     parser.add_argument("--agent-id", help="Registered agent id for agent-lane quota projection.")
@@ -73,7 +73,8 @@ def handle_summary_all_command(
             "schema_version": "global_manager_command_response_v0",
             "request": {
                 "schema_version": "global_manager_command_request_v0",
-                "command": "/loop-global-summary",
+                "command": "/loopx-global-summary",
+                "legacy_aliases": ["/loop-global-summary"],
                 "privacy_mode": "public_safe_summary",
                 "dry_run": True,
             },

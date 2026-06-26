@@ -1,8 +1,8 @@
 # global_manager_command_v0
 
 `global_manager_command_v0` is a read-first protocol for operator commands
-such as `/loop-global-summary`, `/loop-global-gates`, `/loop-global-todos`,
-and `/loop-global-risks`.
+such as `/loopx-global-summary`, `/loopx-global-gates`,
+`/loopx-global-todos`, and `/loopx-global-risks`.
 
 The product goal is to let a user act as a manager across long-running agent
 work: ask for the last day of progress, see blocked decisions, compare agent
@@ -12,7 +12,7 @@ This protocol is not a general chat-command router yet. It defines the
 request, allowed sources, response shape, privacy boundary, and action ladder
 for Codex hosts, CLI wrappers, or dashboard command palettes. The first CLI
 wrapper is `loopx global-summary`, which returns the canonical
-`/loop-global-summary` response.
+`/loopx-global-summary` response.
 
 ## Command Set
 
@@ -20,15 +20,26 @@ Recommended first commands:
 
 | Command | User intent | Default source window |
 | --- | --- | --- |
-| `/loop-global-summary <time range>` | Show progress, completed work, active lanes, and next decisions. | 24 hours |
-| `/loop-global-gates` | Show open user/controller gates and what each blocks. | current state |
-| `/loop-global-todos` | Show top runnable, blocked, deferred-ready, and review todos. | current state |
-| `/loop-global-risks` | Show stale runs, public/private boundary warnings, failing checks, and rollback candidates. | 24 hours |
+| `/loopx-global-summary <time range>` | Show progress, completed work, active lanes, and next decisions. | 24 hours |
+| `/loopx-global-gates` | Show open user/controller gates and what each blocks. | current state |
+| `/loopx-global-todos` | Show top runnable, blocked, deferred-ready, and review todos. | current state |
+| `/loopx-global-risks` | Show stale runs, public/private boundary warnings, failing checks, and rollback candidates. | 24 hours |
 | `/loop-goal-summary <goal id>` | Drill into one goal without scanning unrelated projects. | 24 hours |
 
 Commands are read-only by default. They can propose follow-up actions, but
 they do not approve gates, promote suggested todos, spend quota, merge PRs,
 pause automations, or run destructive operations.
+
+Legacy `/loop-global-*` forms may be accepted as aliases during migration, but
+hosts should canonicalize command packets and user-facing help to the
+`/loopx-global-*` names.
+
+| Legacy alias | Canonical command |
+| --- | --- |
+| `/loop-global-summary` | `/loopx-global-summary` |
+| `/loop-global-gates` | `/loopx-global-gates` |
+| `/loop-global-todos` | `/loopx-global-todos` |
+| `/loop-global-risks` | `/loopx-global-risks` |
 
 Related project-local command: `/loopx <goal text>` is covered by
 [`loopx_goal_command_v0`](loopx-goal-command-v0.md). It is not a global manager
@@ -40,7 +51,8 @@ and then enters the quota-gated automation flow.
 ```json
 {
   "schema_version": "global_manager_command_request_v0",
-  "command": "/loop-global-summary",
+  "command": "/loopx-global-summary",
+  "legacy_aliases": ["/loop-global-summary"],
   "time_range": "24h",
   "goal_filter": ["loopx-meta"],
   "agent_filter": ["codex-main-control", "codex-side-bypass"],
@@ -83,7 +95,7 @@ payloads, credentials, local absolute paths, or private source bodies.
 {
   "schema_version": "global_manager_command_response_v0",
   "request": {
-    "command": "/loop-global-summary",
+    "command": "/loopx-global-summary",
     "time_range": "24h"
   },
   "generated_at": "2026-06-24T00:00:00Z",

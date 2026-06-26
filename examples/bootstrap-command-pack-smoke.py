@@ -185,7 +185,8 @@ def test_skill_slash_fallback_contract() -> None:
     assert "explicit goal-start intent" in normalized
     assert "planner order plus `todo add` write order" in normalized
     assert "do not silently downgrade `/loopx <goal text>`" in normalized
-    assert "`/loop-global-summary`" in skill_text
+    assert "`/loopx-global-summary`" in skill_text
+    assert "Legacy `/loop-global-*` forms" in normalized
     assert "not project bootstrap commands" in normalized
 
 

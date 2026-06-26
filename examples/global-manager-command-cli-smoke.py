@@ -93,7 +93,8 @@ def main() -> int:
     payload = json.loads(proc.stdout)
     assert payload["schema_version"] == "global_manager_command_response_v0", payload
     request = payload["request"]
-    assert request["command"] == "/loop-global-summary", request
+    assert request["command"] == "/loopx-global-summary", request
+    assert "/loop-global-summary" in request["legacy_aliases"], request
     assert request["cli_command"] == "loopx global-summary", request
     assert request["privacy_mode"] == "public_safe_summary", request
     assert request["dry_run"] is True, request

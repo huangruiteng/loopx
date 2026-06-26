@@ -7,7 +7,7 @@
 | `/loopx` | Inspect or preview project connection. | Read-first; ask before bootstrap/connect writes. |
 | `/loopx <goal text>` | Start a concrete goal, plan ranked todos, and enter the LoopX automation flow. | Explicit invocation may write project-local LoopX state and todos. |
 
-This command is intentionally separate from `/loop-global-*`: global commands
+This command is intentionally separate from `/loopx-global-*`: global commands
 summarize and manage visible control-plane state across projects, while
 `/loopx <goal text>` starts or continues one project goal.
 

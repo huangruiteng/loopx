@@ -2,7 +2,10 @@
   "schema_version": "global_manager_command_response_v0",
   "request": {
     "schema_version": "global_manager_command_request_v0",
-    "command": "/loop-global-summary",
+    "command": "/loopx-global-summary",
+    "legacy_aliases": [
+      "/loop-global-summary"
+    ],
     "time_range": "24h",
     "goal_filter": [
       "loopx-meta"

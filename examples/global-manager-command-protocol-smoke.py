@@ -17,11 +17,17 @@ LONG_HORIZON_PATH = (
 FIXTURE_PATH = REPO_ROOT / "examples" / "fixtures" / "global-manager-command.public.json"
 
 REQUIRED_COMMANDS = {
+    "/loopx-global-summary",
+    "/loopx-global-gates",
+    "/loopx-global-todos",
+    "/loopx-global-risks",
+    "/loop-goal-summary",
+}
+LEGACY_COMMAND_ALIASES = {
     "/loop-global-summary",
     "/loop-global-gates",
     "/loop-global-todos",
     "/loop-global-risks",
-    "/loop-goal-summary",
 }
 REJECTED_COMMAND_ALIASES = {
     "/loopx-summary-all",
@@ -82,6 +88,8 @@ def main() -> int:
     assert_contains(long_horizon, "global_manager_command_v0", "long horizon protocol")
     for command in REQUIRED_COMMANDS:
         assert_contains(contract, command, "command set")
+    for command in LEGACY_COMMAND_ALIASES:
+        assert_contains(contract, command, "legacy alias note")
     for command in REJECTED_COMMAND_ALIASES:
         if command in contract:
             raise AssertionError(f"command set should not include superseded alias {command!r}")
@@ -99,6 +107,7 @@ def main() -> int:
     request = payload["request"]
     assert request["schema_version"] == "global_manager_command_request_v0", request
     assert request["command"] in REQUIRED_COMMANDS, request
+    assert "/loop-global-summary" in request.get("legacy_aliases", []), request
     assert request["privacy_mode"] == "public_safe_summary", request
     assert request["dry_run"] is True, request
 

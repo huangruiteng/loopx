@@ -61,10 +61,12 @@ tie-breaker. For broad or fuzzy product directions, use a small
 public-safe planning set; for clear bounded problems, use the minimum
 sufficient ordered todo plan and avoid management-only filler.
 
-Global manager slash commands such as `/loop-global-summary`,
-`/loop-global-gates`, `/loop-global-todos`, and `/loop-global-risks` are not
+Global manager slash commands such as `/loopx-global-summary`,
+`/loopx-global-gates`, `/loopx-global-todos`, and `/loopx-global-risks` are not
 project bootstrap commands. Route them to the global manager command contract
-or status summary surface instead of `bootstrap-command-pack`.
+or status summary surface instead of `bootstrap-command-pack`. Legacy
+`/loop-global-*` forms may be treated as aliases, but canonical help and
+packets should use `/loopx-global-*`.
 
 ## Register Project Authority And Material Sources
 

@@ -11,7 +11,11 @@ from .quota import build_quota_should_run
 from .status import collect_status
 
 
-COMMAND = "/loop-global-summary"
+COMMAND = "/loopx-global-summary"
+LEGACY_COMMAND_ALIASES = {
+    "/loopx-summary-all": COMMAND,
+    "/loop-global-summary": COMMAND,
+}
 SCHEMA_VERSION = "global_manager_command_response_v0"
 
 BOUNDARY = {
@@ -75,7 +79,8 @@ def _parse_datetime(value: object) -> datetime | None:
 
 def _redact_text(value: object, *, limit: int = 260) -> str:
     text = str(value or "").strip()
-    text = text.replace("/loopx-summary-all", "/loop-global-summary")
+    for alias, canonical in LEGACY_COMMAND_ALIASES.items():
+        text = text.replace(alias, canonical)
     for pattern in LOCAL_PATH_PATTERNS:
         text = pattern.sub("<local-path-redacted>", text)
     text = re.sub(r"\s+", " ", text)
@@ -319,6 +324,7 @@ def build_summary_all(
         "request": {
             "schema_version": "global_manager_command_request_v0",
             "command": COMMAND,
+            "legacy_aliases": ["/loop-global-summary"],
             "cli_command": "loopx global-summary",
             "time_range": normalized_range,
             "include": ["progress", "gates", "todos", "risks", "next_actions"],
