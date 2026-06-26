@@ -9415,6 +9415,49 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 2
     if (
+        _is_loopx_product_mode_route(args.route)
+        and args.host_local_acp_launch
+        and product_host_local_bridge_sandbox_auto_wiring_pending
+        and not args.local_driver_worker_handshake_preflight
+        and not args.plan_only
+        and not args.reduce_only
+    ):
+        payload = {
+            "ok": False,
+            "error_type": "SkillsBenchProductModeBridgeAutoWiringPending",
+            "route": args.route,
+            "reason": (
+                "LoopX product-mode routes are countable only when the "
+                "host-local agent has an explicit sandbox command/file bridge "
+                "available before the scored case starts. A readiness "
+                "declaration without a solver bridge command leaves sandbox "
+                "bridge auto-wiring pending; prior runs can reach the agent "
+                "with zero task-facing bridge/tool calls, then fail after "
+                "consuming a scored attempt."
+            ),
+            "next_action": (
+                "rerun with a real --remote-command-file-bridge-solver-command "
+                "and a countable agent bridge command or instrumented wrapper; "
+                "use --plan-only or --local-driver-worker-handshake-preflight "
+                "for non-executing readiness inspection"
+            ),
+            "remote_command_file_bridge_materialized": (
+                product_host_local_bridge_materialized
+            ),
+            "remote_command_file_bridge_command_configured": False,
+            "remote_command_file_bridge_solver_wiring_configured": False,
+            "remote_command_file_bridge_consumed_by_solver": False,
+            "remote_command_file_bridge_consumption_status": (
+                "sandbox_bridge_auto_wiring_pending"
+            ),
+            "raw_logs_recorded": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_recorded": False,
+            "credential_values_recorded": False,
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+        return 2
+    if (
         args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and args.host_local_acp_launch
         and not (

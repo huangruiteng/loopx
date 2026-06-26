@@ -530,6 +530,39 @@ if out:
             probe_only_failure["remote_command_file_bridge_consumption_status"]
             == "sandbox_bridge_auto_wiring_pending"
         )
+        blocked_auto_wiring_full_run = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--skillsbench-root",
+                str(root),
+                "--task-id",
+                "demo-task",
+                "--route",
+                "loopx-goal-start-product-mode",
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+            ],
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert blocked_auto_wiring_full_run.returncode == 2, (
+            blocked_auto_wiring_full_run
+        )
+        auto_wiring_failure = json.loads(blocked_auto_wiring_full_run.stderr)
+        assert auto_wiring_failure["error_type"] == (
+            "SkillsBenchProductModeBridgeAutoWiringPending"
+        ), auto_wiring_failure
+        assert (
+            auto_wiring_failure["remote_command_file_bridge_consumption_status"]
+            == "sandbox_bridge_auto_wiring_pending"
+        ), auto_wiring_failure
+        assert auto_wiring_failure["raw_task_text_read"] is False
+        assert auto_wiring_failure["raw_trajectory_recorded"] is False
         blocked_fixture_solver = subprocess.run(
             [
                 sys.executable,
