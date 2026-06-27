@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import build_quota_should_run  # noqa: E402
+from loopx.todos import add_todo_to_lines, todo_blocks  # noqa: E402
 
 
 GOAL_ID = "agent-scoped-user-gate-fixture"
@@ -26,6 +27,9 @@ def todo_item(
     claimed_by: str | None = None,
     action_kind: str | None = None,
     blocks_agent: str | None = None,
+    decision_scope: dict | None = None,
+    required_decision_scopes: list[dict] | None = None,
+    safety_class: str | None = None,
 ) -> dict:
     item = {
         "todo_id": todo_id,
@@ -42,6 +46,12 @@ def todo_item(
         item["action_kind"] = action_kind
     if blocks_agent:
         item["blocks_agent"] = blocks_agent
+    if decision_scope:
+        item["decision_scope"] = decision_scope
+    if required_decision_scopes:
+        item["required_decision_scopes"] = required_decision_scopes
+    if safety_class:
+        item["safety_class"] = safety_class
     return item
 
 
@@ -391,12 +401,170 @@ def assert_agent_without_advancement_candidate_enters_scope_wait() -> None:
     assert "scheduler=backoff_until_reassigned" in payload["protocol_action_packet"]["summary"], payload
 
 
+def decision_scope_status_payload(*, include_independent: bool = True) -> dict:
+    gate_scope = {
+        "kind": "write_scope",
+        "granularity": "lane",
+        "scope_key": "lark_kanban_setup",
+    }
+    user_gate = todo_item(
+        todo_id="todo_lark_scope_gate",
+        text="Choose the Lark Kanban target before product capability setup.",
+        role="user",
+        task_class="user_gate",
+        action_kind="owner_decision",
+        decision_scope=gate_scope,
+    )
+    gated_agent_todo = todo_item(
+        todo_id="todo_lark_setup",
+        text="[P0] Configure the Lark Kanban setup lane.",
+        claimed_by="codex-main-control",
+        required_decision_scopes=[gate_scope],
+        safety_class="local_write",
+    )
+    independent_agent_todo = todo_item(
+        todo_id="todo_benchmark_driver",
+        text="[P1] Debug benchmark lifecycle counters and validate the driver.",
+        claimed_by="codex-main-control",
+        required_decision_scopes=[
+            {
+                "kind": "write_scope",
+                "granularity": "lane",
+                "scope_key": "benchmark_driver",
+            }
+        ],
+        safety_class="local_write",
+    )
+    agent_items = [gated_agent_todo]
+    if include_independent:
+        agent_items.append(independent_agent_todo)
+    return {
+        "ok": True,
+        "goal_count": 1,
+        "run_count": 0,
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "status": "active_state_user_todo",
+                    "waiting_on": "controller",
+                    "severity": "action",
+                    "source": "active_state",
+                    "recommended_action": "Choose the Lark Kanban target.",
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 1440,
+                        "spent_slots": 0,
+                        "state": "operator_gate",
+                        "blocked_action_scope": "gated_delivery",
+                        "safe_bypass_allowed": True,
+                        "safe_bypass_policy": (
+                            "Only the gated path is blocked; independent public-safe "
+                            "agent work may continue."
+                        ),
+                        "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
+                    },
+                    "user_todos": todo_summary(user_gate, source_section="User Todo"),
+                    "agent_todos": {
+                        "schema_version": "todo_summary_v0",
+                        "source_section": "Agent Todo",
+                        "total_count": len(agent_items),
+                        "open_count": len(agent_items),
+                        "done_count": 0,
+                        "first_open_items": agent_items,
+                        "first_executable_items": agent_items,
+                        "executable_backlog_items": agent_items,
+                        "items": agent_items,
+                    },
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": "active",
+                    "adapter_kind": "fixture_adapter_v0",
+                    "adapter_status": "connected",
+                    "coordination": {
+                        "primary_agent": "codex-main-control",
+                        "registered_agents": [
+                            "codex-main-control",
+                            "codex-product-capability",
+                        ],
+                    },
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+
+
+def assert_decision_scope_metadata_round_trips() -> None:
+    lines = ["## User Todo / Owner Review Reading Queue", ""]
+    add_result = add_todo_to_lines(
+        lines,
+        role="user",
+        text="Choose the Lark Kanban target.",
+        task_class="user_gate",
+        decision_scope="write_scope:lane:lark_kanban_setup",
+    )
+    assert add_result["decision_scope"]["scope_key"] == "lark_kanban_setup", add_result
+    blocks = todo_blocks(lines, 0, len(lines), role="user", source_section="User Todo")
+    assert blocks[0]["decision_scope"]["kind"] == "write_scope", blocks
+
+    lines = ["## Agent Todo", ""]
+    add_result = add_todo_to_lines(
+        lines,
+        role="agent",
+        text="[P1] Debug benchmark lifecycle counters.",
+        required_decision_scopes=["write_scope:lane:benchmark_driver"],
+        safety_class="local_write",
+    )
+    assert add_result["required_decision_scopes"][0]["scope_key"] == "benchmark_driver", add_result
+    assert add_result["safety_class"] == "local_write", add_result
+    blocks = todo_blocks(lines, 0, len(lines), role="agent", source_section="Agent Todo")
+    assert blocks[0]["required_decision_scopes"][0]["kind"] == "write_scope", blocks
+    assert blocks[0]["safety_class"] == "local_write", blocks
+
+
+def assert_decision_scope_relation_selects_independent_fallback() -> None:
+    payload = build_quota_should_run(
+        decision_scope_status_payload(),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+    )
+    assert payload["decision"] == "safe_bypass_user_gate_fallback", payload
+    fallback = payload["scoped_user_gate_fallback"]
+    assert fallback["blocked_agent_items"][0]["todo_id"] == "todo_lark_setup", fallback
+    blocked_relation = fallback["blocked_agent_items"][0]["decision_scope_relation"]
+    assert blocked_relation["state"] == "gate_covers_action", blocked_relation
+    selected = fallback["selected_executable"]
+    assert selected["todo_id"] == "todo_benchmark_driver", fallback
+    assert selected["decision_scope_relation"]["state"] == "independent", selected
+    assert fallback["scope_relation"]["source"] == "structured_decision_scope", fallback
+
+    blocked_payload = build_quota_should_run(
+        decision_scope_status_payload(include_independent=False),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+    )
+    assert blocked_payload["should_run"] is False, blocked_payload
+    assert blocked_payload["interaction_contract"]["mode"] == "user_gate", blocked_payload
+    assert "scoped_user_gate_fallback" not in blocked_payload, blocked_payload
+
+
 def main() -> int:
     assert_other_agent_user_gate_does_not_block_current_agent()
     assert_target_agent_still_blocks_on_its_user_gate()
     assert_unscoped_user_gate_remains_global()
     assert_unrelated_user_gate_allows_feishu_fallback()
     assert_agent_without_advancement_candidate_enters_scope_wait()
+    assert_decision_scope_metadata_round_trips()
+    assert_decision_scope_relation_selects_independent_fallback()
     print("quota-agent-scoped-user-gate-smoke ok")
     return 0
 

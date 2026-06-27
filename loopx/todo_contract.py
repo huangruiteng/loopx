@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Any
 from urllib.parse import quote, unquote
@@ -13,6 +14,8 @@ TODO_ACTION_KIND_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 TODO_ID_PATTERN = re.compile(r"^todo_[a-z0-9_-]{3,64}$")
 TODO_AGENT_CLAIM_PATTERN = re.compile(r"^[a-z][a-z0-9_.:@-]{0,79}$")
 TODO_CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9_:-]{0,63}$")
+TODO_DECISION_SCOPE_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_.:/@*+-]{1,160}$")
+TODO_DECISION_SCOPE_OPTIONAL_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:/@+-]{1,120}$")
 TODO_RESUME_KIND_TODO_DONE = "todo_done"
 TODO_RESUME_KIND_PR_MERGED = "pr_merged"
 TODO_RESUME_WHEN_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}(?::[a-z0-9_.:@-]{1,96})?$")
@@ -70,6 +73,28 @@ TODO_ACTION_KIND_MONITOR_VALUES = {
     "observe",
     "poll",
     "watch",
+}
+TODO_DECISION_SCOPE_KIND_VALUES = {
+    "private_read",
+    "write_scope",
+    "resource",
+    "production",
+    "public_claim",
+    "direction",
+    "other",
+}
+TODO_DECISION_SCOPE_GRANULARITY_VALUES = {
+    "action",
+    "lane",
+    "goal",
+    "project",
+    "global",
+}
+TODO_SAFETY_CLASS_VALUES = {
+    "read_only",
+    "local_write",
+    "external_run",
+    "protected_write",
 }
 
 TODO_HARD_MONITOR_PATTERNS = (
@@ -252,6 +277,111 @@ def normalize_target_capabilities(value: Any) -> list[str]:
     return normalize_required_capabilities(value)
 
 
+def _json_compact(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _load_scope_json(value: str) -> Any:
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return None
+
+
+def _decision_scope_from_compact_string(value: str) -> dict[str, Any] | None:
+    parts = value.split(":", 2)
+    if len(parts) != 3:
+        return None
+    return {
+        "kind": parts[0],
+        "granularity": parts[1],
+        "scope_key": parts[2],
+    }
+
+
+def normalize_todo_decision_scope(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        raw_scope = value
+    else:
+        candidate = compact_todo_text(value)
+        if not candidate:
+            return None
+        loaded = _load_scope_json(candidate)
+        raw_scope = loaded if isinstance(loaded, dict) else _decision_scope_from_compact_string(candidate)
+        if raw_scope is None:
+            return None
+
+    kind = compact_todo_text(raw_scope.get("kind")).lower()
+    granularity = compact_todo_text(raw_scope.get("granularity")).lower()
+    scope_key = compact_todo_text(raw_scope.get("scope_key"))
+    if kind not in TODO_DECISION_SCOPE_KIND_VALUES:
+        return None
+    if granularity not in TODO_DECISION_SCOPE_GRANULARITY_VALUES:
+        return None
+    if not TODO_DECISION_SCOPE_KEY_PATTERN.match(scope_key):
+        return None
+
+    normalized: dict[str, Any] = {
+        "kind": kind,
+        "granularity": granularity,
+        "scope_key": scope_key,
+    }
+    decision_id = compact_todo_text(raw_scope.get("decision_id"))
+    if decision_id and (
+        normalize_todo_id(decision_id)
+        or TODO_DECISION_SCOPE_OPTIONAL_TOKEN_PATTERN.match(decision_id)
+    ):
+        normalized["decision_id"] = decision_id
+    expires_at = compact_todo_text(raw_scope.get("expires_at"))
+    if expires_at and TODO_DECISION_SCOPE_OPTIONAL_TOKEN_PATTERN.match(expires_at):
+        normalized["expires_at"] = expires_at
+    reason_summary = compact_todo_text(raw_scope.get("reason_summary"))
+    if reason_summary and len(reason_summary) <= 180 and not re.search(r"[<>]", reason_summary):
+        normalized["reason_summary"] = reason_summary
+    return normalized
+
+
+def normalize_required_decision_scopes(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    raw_values: list[Any]
+    if isinstance(value, (list, tuple, set)):
+        raw_values = list(value)
+    else:
+        candidate = compact_todo_text(value)
+        if not candidate:
+            return []
+        loaded = _load_scope_json(candidate)
+        if isinstance(loaded, list):
+            raw_values = loaded
+        elif isinstance(loaded, dict):
+            raw_values = [loaded]
+        else:
+            raw_values = re.split(r"[;,|]", candidate)
+
+    scopes: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        scope = normalize_todo_decision_scope(raw)
+        if not scope:
+            continue
+        key = _json_compact(scope)
+        if key in seen:
+            continue
+        seen.add(key)
+        scopes.append(scope)
+    return scopes
+
+
+def normalize_todo_safety_class(value: Any) -> str | None:
+    candidate = compact_todo_text(value).lower()
+    if candidate in TODO_SAFETY_CLASS_VALUES:
+        return candidate
+    return None
+
+
 def build_todo_id(
     *,
     role: Any,
@@ -360,6 +490,18 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             blocks_agent = normalize_todo_blocks_agent(value)
             if blocks_agent:
                 metadata["blocks_agent"] = blocks_agent
+        elif key == "decision_scope":
+            decision_scope = normalize_todo_decision_scope(value)
+            if decision_scope:
+                metadata["decision_scope"] = decision_scope
+        elif key in {"required_decision_scope", "required_decision_scopes"}:
+            scopes = normalize_required_decision_scopes(value)
+            if scopes:
+                metadata["required_decision_scopes"] = scopes
+        elif key == "safety_class":
+            safety_class = normalize_todo_safety_class(value)
+            if safety_class:
+                metadata["safety_class"] = safety_class
         elif key == "global_gate":
             global_gate = normalize_todo_global_gate(value)
             if global_gate is not None:
@@ -397,6 +539,9 @@ def format_todo_metadata_line(
     target_capabilities: Any = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    decision_scope: Any = None,
+    required_decision_scopes: Any = None,
+    safety_class: str | None = None,
     global_gate: bool | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
@@ -463,6 +608,28 @@ def format_todo_metadata_line(
         raise ValueError("blocks_agent must be a public-safe agent token such as codex-side-bypass")
     if normalized_blocks_agent:
         fields.append(f"blocks_agent={encode_metadata_value(normalized_blocks_agent)}")
+    normalized_decision_scope = normalize_todo_decision_scope(decision_scope)
+    if decision_scope and not normalized_decision_scope:
+        raise ValueError(
+            "decision_scope must be JSON or kind:granularity:scope_key using decision-scope-v0 values"
+        )
+    if normalized_decision_scope:
+        fields.append(f"decision_scope={encode_metadata_value(_json_compact(normalized_decision_scope))}")
+    normalized_required_decision_scopes = normalize_required_decision_scopes(required_decision_scopes)
+    if required_decision_scopes and not normalized_required_decision_scopes:
+        raise ValueError(
+            "required_decision_scopes must contain JSON or kind:granularity:scope_key values"
+        )
+    if normalized_required_decision_scopes:
+        fields.append(
+            "required_decision_scopes="
+            f"{encode_metadata_value(_json_compact(normalized_required_decision_scopes))}"
+        )
+    normalized_safety_class = normalize_todo_safety_class(safety_class)
+    if safety_class and not normalized_safety_class:
+        raise ValueError(f"safety_class must be one of: {', '.join(sorted(TODO_SAFETY_CLASS_VALUES))}")
+    if normalized_safety_class:
+        fields.append(f"safety_class={encode_metadata_value(normalized_safety_class)}")
     if global_gate is not None:
         fields.append(f"global_gate={encode_metadata_value('true' if global_gate else 'false')}")
     normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id)

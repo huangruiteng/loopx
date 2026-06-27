@@ -26,14 +26,17 @@ from .todo_contract import (
     build_todo_id,
     format_todo_metadata_line,
     normalize_required_capabilities,
+    normalize_required_decision_scopes,
     normalize_required_write_scopes,
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_decision_scope,
     normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_no_followup,
     normalize_todo_resume_when,
+    normalize_todo_safety_class,
     normalize_todo_status,
     parse_todo_metadata_line,
     todo_done_for_status,
@@ -57,6 +60,9 @@ TODO_METADATA_FIELDS = (
     "target_capabilities",
     "claimed_by",
     "blocks_agent",
+    "decision_scope",
+    "required_decision_scopes",
+    "safety_class",
     "global_gate",
     "unblocks_todo_id",
     "resume_when",
@@ -328,6 +334,21 @@ def block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             if capabilities:
                 metadata[key] = capabilities
             continue
+        if key == "decision_scope":
+            decision_scope = normalize_todo_decision_scope(value)
+            if decision_scope:
+                metadata[key] = decision_scope
+            continue
+        if key == "required_decision_scopes":
+            scopes = normalize_required_decision_scopes(value)
+            if scopes:
+                metadata[key] = scopes
+            continue
+        if key == "safety_class":
+            safety_class = normalize_todo_safety_class(value)
+            if safety_class:
+                metadata[key] = safety_class
+            continue
         if key == "no_followup":
             no_followup = normalize_todo_no_followup(value)
             if no_followup is not None:
@@ -366,6 +387,24 @@ def metadata_line_for_block(block: dict[str, Any], updates: dict[str, Any]) -> s
             capabilities = normalize_target_capabilities(value)
             if capabilities:
                 metadata[key] = capabilities
+            else:
+                metadata.pop(key, None)
+        elif key == "decision_scope":
+            decision_scope = normalize_todo_decision_scope(value)
+            if decision_scope:
+                metadata[key] = decision_scope
+            else:
+                metadata.pop(key, None)
+        elif key == "required_decision_scopes":
+            scopes = normalize_required_decision_scopes(value)
+            if scopes:
+                metadata[key] = scopes
+            else:
+                metadata.pop(key, None)
+        elif key == "safety_class":
+            safety_class = normalize_todo_safety_class(value)
+            if safety_class:
+                metadata[key] = safety_class
             else:
                 metadata.pop(key, None)
         elif key == "no_followup":
@@ -487,6 +526,9 @@ def add_todo_to_lines(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    decision_scope: Any = None,
+    required_decision_scopes: Any = None,
+    safety_class: str | None = None,
     global_gate: bool | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
@@ -528,6 +570,9 @@ def add_todo_to_lines(
             target_capabilities=target_capabilities,
             claimed_by=claimed_by,
             blocks_agent=blocks_agent,
+            decision_scope=decision_scope,
+            required_decision_scopes=required_decision_scopes,
+            safety_class=safety_class,
             global_gate=global_gate,
             unblocks_todo_id=unblocks_todo_id,
             resume_when=resume_when,
@@ -558,6 +603,12 @@ def add_todo_to_lines(
             updates["claimed_by"] = claimed_by
         if blocks_agent:
             updates["blocks_agent"] = blocks_agent
+        if decision_scope is not None:
+            updates["decision_scope"] = decision_scope
+        if required_decision_scopes is not None:
+            updates["required_decision_scopes"] = required_decision_scopes
+        if safety_class:
+            updates["safety_class"] = safety_class
         if global_gate is not None:
             updates["global_gate"] = global_gate
         if unblocks_todo_id:
@@ -592,6 +643,11 @@ def add_todo_to_lines(
         ),
         "claimed_by": normalize_todo_claimed_by(effective_metadata.get("claimed_by")),
         "blocks_agent": normalize_todo_blocks_agent(effective_metadata.get("blocks_agent")),
+        "decision_scope": normalize_todo_decision_scope(effective_metadata.get("decision_scope")),
+        "required_decision_scopes": normalize_required_decision_scopes(
+            effective_metadata.get("required_decision_scopes")
+        ),
+        "safety_class": normalize_todo_safety_class(effective_metadata.get("safety_class")),
         "global_gate": normalize_todo_global_gate(effective_metadata.get("global_gate")),
         "unblocks_todo_id": normalize_todo_id(effective_metadata.get("unblocks_todo_id")),
         "resume_when": normalize_todo_resume_when(effective_metadata.get("resume_when")),
@@ -641,6 +697,9 @@ def add_goal_todo(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    decision_scope: Any = None,
+    required_decision_scopes: Any = None,
+    safety_class: str | None = None,
     global_gate: bool = False,
     agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
@@ -727,6 +786,9 @@ def add_goal_todo(
             target_capabilities=target_capabilities,
             claimed_by=effective_claimed_by,
             blocks_agent=effective_blocks_agent,
+            decision_scope=decision_scope,
+            required_decision_scopes=required_decision_scopes,
+            safety_class=safety_class,
             global_gate=True if global_gate else None,
             unblocks_todo_id=normalized_unblocks_todo_id,
             resume_when=normalized_resume_when,
@@ -759,6 +821,9 @@ def add_goal_todo(
         "claimed_by": add_result.get("claimed_by"),
         "agent_id": effective_agent_id,
         "blocks_agent": add_result.get("blocks_agent"),
+        "decision_scope": add_result.get("decision_scope"),
+        "required_decision_scopes": add_result.get("required_decision_scopes"),
+        "safety_class": add_result.get("safety_class"),
         "global_gate": add_result.get("global_gate"),
         "unblocks_todo_id": add_result.get("unblocks_todo_id"),
         "resume_when": add_result.get("resume_when"),
@@ -802,6 +867,9 @@ def apply_todo_update_to_lines(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    decision_scope: Any = None,
+    required_decision_scopes: Any = None,
+    safety_class: str | None = None,
     global_gate: bool | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
@@ -866,6 +934,12 @@ def apply_todo_update_to_lines(
         updates["claimed_by"] = claimed_by
     if blocks_agent:
         updates["blocks_agent"] = blocks_agent
+    if decision_scope is not None:
+        updates["decision_scope"] = decision_scope
+    if required_decision_scopes is not None:
+        updates["required_decision_scopes"] = required_decision_scopes
+    if safety_class:
+        updates["safety_class"] = safety_class
     if global_gate is not None:
         updates["global_gate"] = global_gate
     if unblocks_todo_id:
@@ -901,6 +975,11 @@ def apply_todo_update_to_lines(
             effective_metadata.get("target_capabilities")
         ),
         "blocks_agent": normalize_todo_blocks_agent(effective_metadata.get("blocks_agent")),
+        "decision_scope": normalize_todo_decision_scope(effective_metadata.get("decision_scope")),
+        "required_decision_scopes": normalize_required_decision_scopes(
+            effective_metadata.get("required_decision_scopes")
+        ),
+        "safety_class": normalize_todo_safety_class(effective_metadata.get("safety_class")),
         "global_gate": normalize_todo_global_gate(effective_metadata.get("global_gate")),
         "unblocks_todo_id": normalize_todo_id(effective_metadata.get("unblocks_todo_id")),
         "resume_when": normalize_todo_resume_when(effective_metadata.get("resume_when")),
@@ -926,6 +1005,9 @@ def update_goal_todo(
     target_capabilities: list[str] | None = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    decision_scope: Any = None,
+    required_decision_scopes: Any = None,
+    safety_class: str | None = None,
     global_gate: bool = False,
     agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
@@ -1046,6 +1128,9 @@ def update_goal_todo(
             target_capabilities=target_capabilities,
             claimed_by=effective_claimed_by,
             blocks_agent=effective_blocks_agent,
+            decision_scope=decision_scope,
+            required_decision_scopes=required_decision_scopes,
+            safety_class=safety_class,
             global_gate=True if global_gate else None,
             unblocks_todo_id=normalized_unblocks_todo_id,
             resume_when=normalized_resume_when,

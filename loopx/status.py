@@ -69,14 +69,17 @@ from .todo_contract import (
     build_todo_id,
     normalize_todo_action_kind,
     normalize_required_capabilities,
+    normalize_required_decision_scopes,
     normalize_target_capabilities,
     normalize_required_write_scopes,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_decision_scope,
     normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_no_followup,
     normalize_todo_resume_when,
+    normalize_todo_safety_class,
     normalize_todo_status,
     normalize_todo_task_class,
     parse_todo_metadata_line,
@@ -4719,6 +4722,17 @@ def structured_todo_item(
     blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
     if blocks_agent:
         normalized["blocks_agent"] = blocks_agent
+    decision_scope = normalize_todo_decision_scope(item.get("decision_scope"))
+    if decision_scope:
+        normalized["decision_scope"] = decision_scope
+    required_decision_scopes = normalize_required_decision_scopes(
+        item.get("required_decision_scopes")
+    )
+    if required_decision_scopes:
+        normalized["required_decision_scopes"] = required_decision_scopes
+    safety_class = normalize_todo_safety_class(item.get("safety_class"))
+    if safety_class:
+        normalized["safety_class"] = safety_class
     global_gate = normalize_todo_global_gate(item.get("global_gate"))
     if global_gate is not None:
         normalized["global_gate"] = global_gate
@@ -4759,6 +4773,9 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "target_capabilities",
         "claimed_by",
         "blocks_agent",
+        "decision_scope",
+        "required_decision_scopes",
+        "safety_class",
         "global_gate",
         "unblocks_todo_id",
         "resume_when",
