@@ -36,7 +36,7 @@ private evidence migration, production actions, or public first-screen copy.
 | Agent-lane selection | `_agent_lane_next_action`, `_agent_lane_frontier_hint` | Agent-scoped selector over normalized todo projections. | Current-agent claimed todos outrank unrelated agents; frontier hints stay diagnostic when no runnable candidate exists. |
 | Quota plan and should-run assembly | `build_quota_plan`, `build_quota_should_run` | Thin orchestration layer that merges status, quota accounting, gates, and policy outputs. | `quota should-run` JSON field names and interaction contract stay compatible. |
 | User/agent/CLI split | `_protocol_action_packet`, `_interaction_contract` | Protocol packet builder with no scheduler or writeback side effects. | Operator gate vs bounded delivery payloads keep the same action_required and must_attempt meanings. |
-| Scheduler policy | `_scheduler_hint` | Scheduler-hint builder fed by final decision state. | RRULE, reset token, and no-spend cadence fields stay stable for Codex App and local loops. |
+| Scheduler policy | `_scheduler_hint` wrapper plus `loopx/policies/scheduler_hint.py` | Pure scheduler-hint builder fed by final decision state. | RRULE, reset token, and no-spend cadence fields stay stable for Codex App and local loops. |
 | Monitor writeback | `_quota_decision_due_monitor_item`, `build_quota_monitor_poll_event`, `record_quota_monitor_poll` | Monitor event/writeback module with idempotent todo lookup and next-due projection. | Due-monitor and external-evidence monitor-poll paths remain no-spend and reject non-monitor todos. |
 | Spend accounting | `build_quota_slot_spend_event`, `spend_quota_slot` | Quota accounting module with explicit accountable-run lookup. | Spend only after validated writeback; source enum and slot accounting remain unchanged. |
 | Markdown rendering | `render_quota_should_run_markdown` and related renderers | Render-only module over already-built payloads. | JSON decisions do not depend on markdown strings. |
@@ -95,7 +95,7 @@ private evidence migration, production actions, or public first-screen copy.
 | --- | --- |
 | Seam-map/docs only | `git diff --check`; `loopx check` on changed docs; public/private boundary scan. |
 | Active-state/todo projection extraction | Characterization smoke plus focused parser fixtures and `py_compile` for touched modules. |
-| Quota policy extraction | Characterization smoke plus quota-plan/contract smokes and `quota should-run` JSON parity fixtures. |
+| Quota policy extraction | Characterization smoke plus quota-plan/contract smokes, focused policy parity smokes, and `quota should-run` JSON parity fixtures. |
 | Status read-model extraction | Characterization smoke plus status/task-graph/cold-path projection smokes. |
 | Scheduler/monitor extraction | Monitor cadence CLI smokes, monitor-poll writeback smokes, and no-spend spend-accounting checks. |
 | Write correctness contract | Non-destructive lock/idempotency/CAS/lease smokes; no migration of canonical state without owner approval. |
