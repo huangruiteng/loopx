@@ -67,11 +67,12 @@ public counters; absence from this table means the durable case record does
 not yet contain a public trajectory summary.
 
 - schema_version: `trajectory_public_summary_coverage_v0`
-- summary_count: `2`
-- attribution_conclusion_count: `2`
+- summary_count: `3`
+- attribution_conclusion_count: `3`
 
 | Benchmark | Case | Summary | Rounds | Tools | LoopX CLI | Protected Edits | Attribution |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| `skillsbench@1.1` | `citation-check` | `post_stop_policy_raw_rerun.trajectory_public_summary` (public-safe) | `1` | `26` | `0` | `0` | `yes` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `trajectory_public_summary` (public-safe) | `5` | `112` | `0` | `2` | `yes` |
 | `skillsbench@1.1` | `paratransit-routing` | `legacy_blind_loop_positive_result.trajectory_public_summary` (public-safe) | `1` | `16` | `0` | `0` | `yes` |
 
@@ -84,11 +85,12 @@ benchmark case records that expose the same public fields. They do not read
 or copy raw trajectories, task text, verifier output, logs, or local paths.
 
 - schema_version: `harness_interaction_public_summary_coverage_v0`
-- summary_count: `11`
+- summary_count: `12`
 - benchmark_ids: `skillsbench@1.1, swe-marathon, terminal-bench@2.0`
 
 | Benchmark | Case | Source | Kind | LoopX CLI | Rounds | Tools | Events | Controller Trace | Lifecycle |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `skillsbench@1.1` | `citation-check` | `post_stop_policy_raw_rerun.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `1` | `26` | `0` | `no` | `no` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `5` | `112` | `0` | `no` | `no` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `0` | `0` | `0` | `yes` | `no` |
 | `skillsbench@1.1` | `paratransit-routing` | `arms.treatment` (public-safe) | `case_arm` | `1` | `0` | `0` | `0` | `no` | `no` |

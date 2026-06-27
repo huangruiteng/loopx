@@ -1855,6 +1855,42 @@
           "The treatment used the outer LoopX blind-loop wrapper, but no official reward/pass/fail/verifier feedback was returned to the agent."
         ]
       },
+      "post_stop_policy_raw_rerun": {
+        "schema_version": "skillsbench_compact_public_rerun_summary_v0",
+        "route": "raw_codex_autonomous_max5",
+        "official_score": 1.0,
+        "score_failure_attribution": "none",
+        "case_semantics_changed_by_harness": false,
+        "official_feedback_blinded": true,
+        "reward_feedback_forwarded": false,
+        "trajectory_public_summary": {
+          "schema_version": "skillsbench_acp_trajectory_summary_v0",
+          "attribution_conclusion": "The post-stop-policy raw Codex rerun solved citation-check in one round; the public-safe trajectory summary shows 26 tool calls, zero LoopX CLI calls, and no protected-path edit signal, so this remains a baseline-solved guard rather than uplift evidence.",
+          "private_trajectory_present": true,
+          "raw_text_copied_to_public": false,
+          "raw_task_text_copied_to_public": false,
+          "raw_verifier_output_copied_to_public": false,
+          "host_path_recorded": false,
+          "round_count": 1,
+          "tool_call_count": 26,
+          "loopx_cli_call_count": 0,
+          "loopx_cli_calls": [],
+          "loopx_cli_state_usage_counts": {},
+          "protected_path_edit_signal_count": 0,
+          "protected_path_mention_count": 0,
+          "codex_acp_text_present": false,
+          "codex_acp_text_bytes": 0,
+          "source_compact_run": {
+            "case_id": "citation-check",
+            "route": "raw_codex_autonomous_max5",
+            "official_score": 1.0,
+            "score_failure_attribution": "none",
+            "official_feedback_blinded": true,
+            "reward_feedback_forwarded": false,
+            "case_semantics_changed_by_harness": false
+          }
+        }
+      },
       "canonical_product_mode_every_round_recheck": {
         "schema_version": "skillsbench_canonical_product_mode_recheck_v0",
         "protocol": "canonical_loopx_product_mode_lifecycle_driver",

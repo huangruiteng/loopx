@@ -69,15 +69,20 @@ def test_case_analysis_json() -> None:
     assert trajectory_coverage["schema_version"] == (
         "trajectory_public_summary_coverage_v0"
     ), trajectory_coverage
-    assert trajectory_coverage["summary_count"] == 2, trajectory_coverage
-    assert trajectory_coverage["public_safe_count"] == 2, trajectory_coverage
-    assert trajectory_coverage["attribution_conclusion_count"] == 2, (
+    assert trajectory_coverage["summary_count"] == 3, trajectory_coverage
+    assert trajectory_coverage["public_safe_count"] == 3, trajectory_coverage
+    assert trajectory_coverage["attribution_conclusion_count"] == 3, (
         trajectory_coverage
     )
     coverage_rows = {
         (row["benchmark_id"], row["case_id"], row["summary_path"]): row
         for row in trajectory_coverage["rows"]
     }
+    assert (
+        "skillsbench@1.1",
+        "citation-check",
+        "post_stop_policy_raw_rerun.trajectory_public_summary",
+    ) in coverage_rows, trajectory_coverage
     assert (
         "skillsbench@1.1",
         "debug-trl-grpo",
@@ -1238,6 +1243,8 @@ def test_case_analysis_markdown() -> None:
     assert "`terminal-bench@2.0` | `nginx-request-logging` | `arms.treatment`" in text, text
     assert "native_goal_route_observations" in text, text
     assert "legacy_blind_loop_positive_result.trajectory_public_summary" in text, text
+    assert "post_stop_policy_raw_rerun.trajectory_public_summary" in text, text
+    assert "`citation-check` | `post_stop_policy_raw_rerun.trajectory_public_summary`" in text, text
     assert "`debug-trl-grpo` | `trajectory_public_summary`" in text, text
     assert "current-protocol success-preservation guards" in text, text
     assert "cobol-modernization" in text, text
