@@ -131,7 +131,10 @@ REGISTRY_WAITING_ON_OVERRIDES = {
     "codex",
     "external_evidence",
 }
-WATCH_CLASSIFICATION_PREFIXES = ("await_", "monitor_", "external_evidence_observation_")
+LEGACY_EXTERNAL_EVIDENCE_CLASSIFICATION_PREFIXES = (
+    "await_",
+    "external_evidence_observation_",
+)
 MONITOR_SIGNAL_WAITING_ON = "monitor_signal"
 MONITOR_DISPLAY_SCHEMA_VERSION = "monitor_quiet_display_v0"
 MONITOR_DISPLAY_STOP_CONDITION = (
@@ -6615,6 +6618,33 @@ def is_handoff_ready_run(run: dict[str, Any]) -> bool:
     )
 
 
+def run_has_external_evidence_watch_signal(run: dict[str, Any]) -> bool:
+    """Return true only for explicit external-evidence watch state.
+
+    Feature names may legitimately start with words such as "monitor"; routing
+    to an external-evidence wait must come from structured state or explicit
+    legacy external-evidence classifications, not broad classification prefixes.
+    """
+
+    waiting_on = str(run.get("waiting_on") or "").strip()
+    execution_waiting_on = str(run.get("execution_waiting_on") or "").strip()
+    if waiting_on == "external_evidence" or execution_waiting_on == "external_evidence":
+        return True
+    if isinstance(run.get("external_evidence_observation"), dict):
+        return True
+    monitor_event = run.get("monitor_event")
+    if isinstance(monitor_event, dict):
+        event_waiting_on = str(monitor_event.get("waiting_on") or "").strip()
+        monitor_mode = str(monitor_event.get("monitor_mode") or "").strip()
+        monitor_kind = str(monitor_event.get("monitor_kind") or "").strip()
+        if event_waiting_on == "external_evidence":
+            return True
+        if monitor_mode.startswith("external_") or monitor_kind == "external_evidence":
+            return True
+    classification = str(run.get("classification") or "")
+    return classification.startswith(LEGACY_EXTERNAL_EVIDENCE_CLASSIFICATION_PREFIXES)
+
+
 def is_custom_post_handoff_work_run(run: dict[str, Any]) -> bool:
     classification = str(run.get("classification") or "")
     if not classification:
@@ -6625,7 +6655,7 @@ def is_custom_post_handoff_work_run(run: dict[str, Any]) -> bool:
         return False
     if classification in USER_OR_CONTROLLER_CLASSIFICATIONS or classification in BLOCKING_CLASSIFICATIONS:
         return False
-    if classification.startswith(WATCH_CLASSIFICATION_PREFIXES):
+    if run_has_external_evidence_watch_signal(run):
         return False
     return True
 
@@ -8110,7 +8140,7 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
             **attention_fields,
             **lifecycle_fields,
         )
-    if classification.startswith(WATCH_CLASSIFICATION_PREFIXES):
+    if run_has_external_evidence_watch_signal(current_run):
         return attention_item(
             goal_id=goal_id,
             status=classification,
@@ -9155,7 +9185,7 @@ def event_ledger_event_class(run: dict[str, Any]) -> str:
         return "decision"
     if classification in EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS:
         return "evidence"
-    if classification.startswith(WATCH_CLASSIFICATION_PREFIXES):
+    if run_has_external_evidence_watch_signal(run):
         return "evidence"
     if any(hint in classification for hint in EVENT_LEDGER_EVIDENCE_HINTS):
         return "evidence"
